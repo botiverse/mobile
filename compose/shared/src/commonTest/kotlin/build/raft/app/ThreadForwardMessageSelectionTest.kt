@@ -72,6 +72,10 @@ class ThreadForwardMessageSelectionTest {
             ThreadUnsupportedSourceMessage,
             "unsupported_source_message".threadForwardErrorMessage()
         )
+        assertEquals(
+            ThreadForwardSourceTargetForbiddenMessage,
+            "forward_source_target_forbidden".threadForwardErrorMessage()
+        )
         assertEquals("server_unavailable", "server_unavailable".threadForwardErrorMessage())
     }
 

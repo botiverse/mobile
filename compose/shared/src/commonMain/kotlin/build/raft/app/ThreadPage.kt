@@ -1848,11 +1848,12 @@ private fun ThreadPageScreen() {
             )
         }
     val forwardTargetRepository =
-        remember(authStore, networkClient, channelRepository) {
+        remember(authStore, networkClient, channelRepository, memberRepository) {
             RealForwardMessageTargetRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
                 channelRepository = channelRepository,
+                memberRepository = memberRepository,
                 warningLogger = { message -> bridge.log("thread_forward_target_repository $message") }
             )
         }
@@ -8745,7 +8746,7 @@ private fun ThreadPageContent(
     var forwardTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
     var forwardTargetStatus by remember(threadInstanceKey) { mutableStateOf(SharedMembersLoadStatus.Idle) }
     var forwardTargetErrorCode by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var forwardSendingTargetId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardSelectedTarget by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTarget?>(null) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -8773,9 +8774,12 @@ private fun ThreadPageContent(
                 .mapNotNull { message -> payload.threadMessagePermalink(message, currentServerSlug) }
                 .joinToString(separator = "\n")
         }
+    val forwardSourceChannelId = remember(payload) { payload.threadForwardSourceChannelId() }
     val forwardTargetItems =
-        remember(forwardTargets) {
-            forwardTargets.map { it.toThreadForwardTargetItem() }
+        remember(forwardTargets, forwardSourceChannelId) {
+            forwardTargets
+                .threadForwardPickerTargets(forwardSourceChannelId)
+                .map { it.toThreadForwardTargetItem() }
         }
     LaunchedEffect(activeModal, forwardTargetQuery, forwardServerId, forwardTargetRepository, selectedShareMessageIds) {
         if (activeModal != "forwardTargets") return@LaunchedEffect
@@ -9313,88 +9317,76 @@ private fun ThreadPageContent(
                     )
                 }
             "forwardTargets" ->
-                ThreadForwardTargetModal(
-                    selectedCount = forwardMessageSelection.forwardableMessages.size,
+                ThreadForwardTargetPickerPage(
+                    messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
                     query = forwardTargetQuery,
                     loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
                     targets = forwardTargetItems,
-                    selectedTargetId = forwardSelectedTarget?.let { "${it.kind.name}:${it.id}" },
                     errorCode = forwardTargetErrorCode,
-                    sendingTargetId = forwardSendingTargetId,
-                    note = forwardNote,
                     onQueryChange = { forwardTargetQuery = it },
-                    onNoteChange = { forwardNote = it },
                     onDismiss = { activeModal = null },
                     onSelectTarget = { target ->
-                        forwardSelectedTarget = target.forwardTarget
-                    },
+                        target.forwardTarget?.let { selected ->
+                            forwardSelectedTarget = selected
+                            activeModal = "forwardNote"
+                        }
+                    }
+                )
+            "forwardNote" ->
+                ThreadForwardNoteDialog(
+                    messageCount = forwardMessageSelection.forwardableMessages.size,
+                    selectedTarget = forwardSelectedTarget,
+                    note = forwardNote,
+                    sending = forwardSending,
+                    onNoteChange = { forwardNote = it },
+                    onDismiss = { activeModal = "forwardTargets" },
                     onSend = {
                         val repository = forwardTargetRepository
-                        val sourceChannelId = payload.threadForwardSourceChannelId()
-                        val forwardTarget = forwardSelectedTarget
+                        val sourceChannelId = forwardSourceChannelId
+                        val selectedTarget = forwardSelectedTarget
                         when {
                             repository == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
                             sourceChannelId == null ->
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
-                            forwardTarget == null ->
+                            selectedTarget == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
-                            forwardSendingTargetId == null -> {
-                                forwardSendingTargetId = "${forwardTarget.kind.name}:${forwardTarget.id}"
+                            !forwardSending -> {
+                                forwardSending = true
                                 shareExportScope.launch {
                                     try {
-                                        when (val resolved = repository.resolveTargetChannel(forwardTarget)) {
-                                            is DataResult.Content -> {
-                                                val request =
-                                                    ForwardMessageExecuteRequest(
-                                                        sourceChannelId = sourceChannelId,
-                                                        targetChannelId = resolved.data,
-                                                        messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
-                                                        mode = activeForwardSelectionMode.toForwardMessageSendMode(),
-                                                        note = forwardNote
-                                                    )
-                                                when (val forwarded = repository.forwardMessages(request)) {
-                                                    is DataResult.Content -> {
-                                                        activeModal = null
-                                                        forwardSelectedTarget = null
-                                                        forwardNote = ""
-                                                        clearShareSelection()
-                                                        onThreadEvent(
-                                                            "forwardMessagesSent",
-                                                            forwardTarget.title,
-                                                            null,
-                                                            activeForwardSelectionMode.wireValue
-                                                        )
-                                                    }
-                                                    is DataResult.Empty ->
-                                                        onThreadEvent("forwardMessagesFailed", "No selected messages", null, null)
-                                                    is DataResult.Error ->
-                                                        onThreadEvent(
-                                                            "forwardMessagesFailed",
-                                                            forwarded.error.code.threadForwardErrorMessage(),
-                                                            null,
-                                                            null
-                                                        )
-                                                    is DataResult.NoPermission ->
-                                                        onThreadEvent(
-                                                            "forwardMessagesFailed",
-                                                            forwarded.blocker.code.threadForwardErrorMessage(),
-                                                            null,
-                                                            null
-                                                        )
-                                                }
-                                            }
-                                            is DataResult.Empty ->
-                                                onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
-                                            is DataResult.Error ->
-                                                onThreadEvent("forwardMessagesFailed", resolved.error.code, null, null)
-                                            is DataResult.NoPermission ->
-                                                onThreadEvent("forwardMessagesFailed", resolved.blocker.code, null, null)
+                                        val outcome =
+                                            executeThreadForward(
+                                                repository = repository,
+                                                sourceChannelId = sourceChannelId,
+                                                target = selectedTarget,
+                                                messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
+                                                mode = activeForwardSelectionMode.toForwardMessageSendMode(),
+                                                note = forwardNote
+                                            )
+                                        if (outcome.failureCode == null) {
+                                            activeModal = null
+                                            forwardSelectedTarget = null
+                                            forwardNote = ""
+                                            clearShareSelection()
+                                            onThreadEvent(
+                                                "forwardMessagesSent",
+                                                selectedTarget.title,
+                                                null,
+                                                activeForwardSelectionMode.wireValue
+                                            )
+                                        } else {
+                                            onThreadEvent(
+                                                "forwardMessagesFailed",
+                                                outcome.failureCode.threadForwardErrorMessage(),
+                                                null,
+                                                null
+                                            )
                                         }
                                     } finally {
-                                        forwardSendingTargetId = null
+                                        forwardSending = false
                                     }
                                 }
                             }
@@ -12113,6 +12105,8 @@ internal const val ThreadNestedForwardUnsupportedMessage =
     "Forwarded messages can't be forwarded. Select the original message instead."
 internal const val ThreadUnsupportedSourceMessage =
     "Tasks, system messages, and action messages can't be forwarded. Select an ordinary message instead."
+internal const val ThreadForwardSourceTargetForbiddenMessage =
+    "Choose a different destination from the conversation you are forwarding."
 
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<KuiklyThreadMessageItem>,
@@ -12144,6 +12138,7 @@ internal fun String.threadForwardErrorMessage(): String =
         "unsupported",
         "forwarded_source_not_supported" -> ThreadNestedForwardUnsupportedMessage
         "unsupported_source_message" -> ThreadUnsupportedSourceMessage
+        "forward_source_target_forbidden" -> ThreadForwardSourceTargetForbiddenMessage
         else -> this
     }
 
@@ -17356,6 +17351,64 @@ private fun ThreadForwardSelectionMode.toForwardMessageSendMode(): ForwardMessag
         ThreadForwardSelectionMode.Individual -> ForwardMessageSendMode.Individual
     }
 
+internal data class ThreadForwardOutcome(
+    val failureCode: String? = null
+)
+
+internal fun ForwardMessageTarget.threadForwardSelectionKey(): String = "${kind.name}:$id"
+
+internal fun List<ForwardMessageTarget>.threadForwardPickerTargets(
+    sourceChannelId: ChannelId?
+): List<ForwardMessageTarget> =
+    filterNot { target ->
+        sourceChannelId != null && target.channelId == sourceChannelId
+    }
+
+internal suspend fun executeThreadForward(
+    repository: ForwardMessageTargetRepository,
+    sourceChannelId: ChannelId,
+    target: ForwardMessageTarget,
+    messageIds: List<String>,
+    mode: ForwardMessageSendMode,
+    note: String
+): ThreadForwardOutcome {
+    val resolved = repository.resolveTargetChannel(target)
+    val targetChannelId =
+        when (resolved) {
+            is DataResult.Content -> resolved.data
+            else ->
+                return ThreadForwardOutcome(
+                    failureCode = resolved.threadForwardFailureCode("forward_target_unavailable")
+                )
+        }
+    if (targetChannelId == sourceChannelId) {
+        return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
+    }
+    val forwarded =
+        repository.forwardMessages(
+            ForwardMessageExecuteRequest(
+                sourceChannelId = sourceChannelId,
+                targetChannelId = targetChannelId,
+                messageIds = messageIds,
+                mode = mode,
+                note = note
+            )
+        )
+    return if (forwarded is DataResult.Content) {
+        ThreadForwardOutcome()
+    } else {
+        ThreadForwardOutcome(failureCode = forwarded.threadForwardFailureCode("forward_failed"))
+    }
+}
+
+private fun DataResult<*>.threadForwardFailureCode(fallback: String): String =
+    when (this) {
+        is DataResult.Content -> fallback
+        is DataResult.Empty -> "forward_no_selected_messages"
+        is DataResult.Error -> error.code
+        is DataResult.NoPermission -> blocker.code
+    }
+
 private fun String?.threadForwardSelectionModeLabel(): String =
     when (this?.trim()?.lowercase()) {
         ThreadForwardSelectionMode.Individual.wireValue -> ThreadForwardSelectionMode.Individual.label
@@ -17367,8 +17420,6 @@ private data class ThreadForwardTargetItem(
     val title: String,
     val subtitle: String,
     val kind: ThreadForwardTargetKind,
-    val avatarWireValue: String? = null,
-    val avatarLabel: String = title.take(1).uppercase(),
     val forwardTarget: ForwardMessageTarget? = null
 )
 
@@ -17381,7 +17432,7 @@ private enum class ThreadForwardTargetKind {
 
 private fun ForwardMessageTarget.toThreadForwardTargetItem(): ThreadForwardTargetItem =
     ThreadForwardTargetItem(
-        id = "${kind.name}:$id",
+        id = threadForwardSelectionKey(),
         title = title,
         subtitle = threadForwardTargetSubtitle(),
         kind =
@@ -17393,8 +17444,6 @@ private fun ForwardMessageTarget.toThreadForwardTargetItem(): ThreadForwardTarge
                 ForwardMessageTargetKind.AgentDirectMessageCandidate ->
                     ThreadForwardTargetKind.Member
             },
-        avatarWireValue = avatarWireValue,
-        avatarLabel = avatarLabel,
         forwardTarget = this
     )
 
@@ -17429,9 +17478,7 @@ private fun ThreadForwardTargetItem.localizedForwardTargetSubtitle(): String =
         else -> subtitle
     }
 
-// Visual-testing fixture (task #560): renders the Forward target modal with a
-// seeded destination list so the header/content alignment (title + close vs the
-// 16dp-inset rows below) is captured and can't regress unseen.
+// Stable visual fixtures for the two-step forward flow.
 @Page("compose_thread_forward_modal_visual", supportInLocal = true)
 internal class ComposeThreadForwardModalVisualPage : build.raft.app.base.BasePager() {
     override fun willInit() {
@@ -17471,21 +17518,46 @@ internal fun ThreadForwardModalVisualScreen() {
                 )
             )
         }
-    ThreadForwardTargetModal(
-        selectedCount = 2,
+    ThreadForwardTargetPickerPage(
+        messageCount = 2,
         skippedCount = 0,
         nestedForwardCount = 0,
         query = "",
         loading = false,
         targets = targets,
-        selectedTargetId = "channel-design",
         errorCode = null,
-        sendingTargetId = null,
-        note = "",
         onQueryChange = {},
+        onDismiss = {},
+        onSelectTarget = {}
+    )
+}
+
+@Page("compose_thread_forward_note_visual", supportInLocal = true)
+internal class ComposeThreadForwardNoteVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadForwardNoteVisualScreen() }
+    }
+}
+
+@Composable
+internal fun ThreadForwardNoteVisualScreen() {
+    val target =
+        remember {
+            ForwardMessageTarget(
+                kind = ForwardMessageTargetKind.RecentChannel,
+                id = "channel-design",
+                title = "#design",
+                channelId = ChannelId("channel-design")
+            )
+        }
+    ThreadForwardNoteDialog(
+        messageCount = 2,
+        selectedTarget = target,
+        note = "Please review these together.",
+        sending = false,
         onNoteChange = {},
         onDismiss = {},
-        onSelectTarget = {},
         onSend = {}
     )
 }
@@ -17630,56 +17702,49 @@ internal fun ThreadForwardBundleVisualScreen() {
 }
 
 @Composable
-private fun ThreadForwardTargetModal(
-    selectedCount: Int,
+private fun ThreadForwardTargetPickerPage(
+    messageCount: Int,
     skippedCount: Int,
     nestedForwardCount: Int,
     query: String,
     loading: Boolean,
     targets: List<ThreadForwardTargetItem>,
-    selectedTargetId: String?,
     errorCode: String?,
-    sendingTargetId: String?,
-    note: String,
     onQueryChange: (String) -> Unit,
-    onNoteChange: (String) -> Unit,
     onDismiss: () -> Unit,
-    onSelectTarget: (ThreadForwardTargetItem) -> Unit,
-    onSend: () -> Unit
+    onSelectTarget: (ThreadForwardTargetItem) -> Unit
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.thread_action_forward),
-        onDismiss = onDismiss,
-        minWidth = 320.dp,
-        maxWidth = 430.dp,
-        contentPadding = 0.dp,
-        headerPadding = 16.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
-        contentSpacing = 0.dp
+    SlockBackHandler(enabled = true, label = "thread_forward_targets") { onDismiss() }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .slockNativeDispatchCapture()
+                .zIndex(100f)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = stringResource(MR.strings.thread_forward_selected, selectedCount),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        Column(modifier = Modifier.fillMaxSize()) {
+            SlockTopPageHeader(
+                title = stringResource(MR.strings.thread_action_forward),
+                subtitle = stringResource(MR.strings.thread_forward_messages_selected, messageCount),
+                iconName = SlockLucideIconName.Send,
+                backgroundColor = SlockColor.SurfaceWhite,
+                leadingContent = {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.ArrowLeft,
+                        onClick = onDismiss,
+                        size = 30.dp,
+                        shadowOffset = 2.dp
+                    )
+                }
+            )
             threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
                 Box(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                            .padding(start = 16.dp, top = 12.dp, end = 16.dp)
                             .background(SlockColor.BrandYellow.copy(alpha = 0.18f))
                             .border(SlockStroke.Default, SlockColor.BrandYellow)
                             .padding(10.dp)
@@ -17699,9 +17764,8 @@ private fun ThreadForwardTargetModal(
                 onSubmit = {},
                 onClear = { onQueryChange("") },
                 placeholder = stringResource(MR.strings.thread_action_search),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp)
             )
-            Spacer(Modifier.height(10.dp))
             Text(
                 text =
                     if (query.isBlank()) {
@@ -17711,9 +17775,9 @@ private fun ThreadForwardTargetModal(
                     },
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 4.dp)
             )
-            Box(modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp)) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 if (targets.isEmpty()) {
                     ThreadModalEmptyState(
                         title =
@@ -17741,53 +17805,81 @@ private fun ThreadForwardTargetModal(
                         items(targets.size, key = { targets[it].id }) { index ->
                             ThreadForwardTargetRow(
                                 target = targets[index],
-                                selected = selectedTargetId == targets[index].id,
-                                sending = sendingTargetId == targets[index].id,
                                 onClick = { onSelectTarget(targets[index]) }
                             )
                         }
                     }
                 }
             }
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.12f)))
-            SlockBrutalTextField(
-                label = stringResource(MR.strings.thread_state_note),
-                value = note,
-                placeholder =
-                    if (selectedCount == 1) {
-                        stringResource(MR.strings.thread_forward_placeholder_one)
-                    } else {
-                        stringResource(MR.strings.thread_forward_placeholder_many, selectedCount)
-                    },
-                maxLines = 2,
-                fieldMinHeight = 62.dp,
-                onValueChange = onNoteChange,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
+        }
+    }
+}
+
+@Composable
+private fun ThreadForwardNoteDialog(
+    messageCount: Int,
+    selectedTarget: ForwardMessageTarget?,
+    note: String,
+    sending: Boolean,
+    onNoteChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onSend: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.thread_forward_add_note),
+        onDismiss = onDismiss,
+        dismissEnabled = !sending,
+        minWidth = 320.dp,
+        maxWidth = 430.dp
+    ) {
+        Text(
+            text = stringResource(MR.strings.thread_forward_destination),
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextMutedGray
+        )
+        Text(
+            text = selectedTarget?.title.orEmpty(),
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        SlockBrutalTextField(
+            label = stringResource(MR.strings.thread_state_note),
+            value = note,
+            placeholder =
+                if (messageCount == 1) {
+                    stringResource(MR.strings.thread_forward_placeholder_one)
+                } else {
+                    stringResource(MR.strings.thread_forward_placeholder_many, messageCount)
+                },
+            maxLines = 3,
+            fieldMinHeight = 76.dp,
+            onValueChange = onNoteChange
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockModalActionButton(
+                label = stringResource(MR.strings.common_back),
+                icon = SlockLucideIconName.ArrowLeft,
+                onClick = onDismiss,
+                enabled = !sending
             )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Design-system brutal-shadow action buttons (task #560): the raw
-                // Button+border above had no drop shadow, unlike the rest of the app.
-                SlockModalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
-                    onClick = onDismiss
-                )
-                SlockModalActionButton(
-                    label =
-                        if (sendingTargetId == null) {
-                            stringResource(MR.strings.common_send)
-                        } else {
-                            stringResource(MR.strings.thread_forward_sending)
-                        },
-                    icon = if (sendingTargetId == null) SlockLucideIconName.Send else SlockLucideIconName.RefreshCw,
-                    onClick = onSend,
-                    color = SlockColor.AccentPink,
-                    enabled = selectedTargetId != null && sendingTargetId == null
-                )
-            }
+            SlockModalActionButton(
+                label =
+                    if (sending) {
+                        stringResource(MR.strings.thread_forward_sending)
+                    } else {
+                        stringResource(MR.strings.common_send)
+                    },
+                icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
+                onClick = onSend,
+                color = SlockColor.AccentPink,
+                enabled = selectedTarget != null && !sending
+            )
         }
     }
 }
@@ -17795,50 +17887,42 @@ private fun ThreadForwardTargetModal(
 @Composable
 private fun ThreadForwardTargetRow(
     target: ThreadForwardTargetItem,
-    selected: Boolean,
-    sending: Boolean,
     onClick: () -> Unit
 ) {
     Button(
         onClick = onClick,
         pressFeedback = false,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.12f))
+                .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            when (target.kind) {
-                ThreadForwardTargetKind.Channel,
-                ThreadForwardTargetKind.PublicChannelUnjoined,
-                ThreadForwardTargetKind.DirectMessage ->
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(38.dp)
-                                .background(SlockColor.SurfaceCream)
-                                .border(SlockStroke.Default, SlockColor.BrandYellow),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SlockLucideIcon(
-                            when (target.kind) {
-                                ThreadForwardTargetKind.Channel,
-                                ThreadForwardTargetKind.PublicChannelUnjoined ->
-                                    SlockLucideIconName.Hash
-                                else -> SlockLucideIconName.MessageCircle
-                            },
-                            modifier = Modifier.size(18.dp),
-                            color = "#FF111111"
-                        )
-                    }
-                ThreadForwardTargetKind.Member ->
-                    SlockAvatar(
-                        avatarWireValue = target.avatarWireValue,
-                        label = target.avatarLabel,
-                        avatarSize = 38.dp,
-                        borderWidth = 0.dp
-                    )
+            Box(
+                modifier =
+                    Modifier
+                        .size(38.dp)
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(
+                    when (target.kind) {
+                        ThreadForwardTargetKind.Channel,
+                        ThreadForwardTargetKind.PublicChannelUnjoined -> SlockLucideIconName.Hash
+                        ThreadForwardTargetKind.DirectMessage -> SlockLucideIconName.MessageCircle
+                        ThreadForwardTargetKind.Member -> SlockLucideIconName.User
+                    },
+                    modifier = Modifier.size(18.dp),
+                    color = "#FF111111"
+                )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
@@ -17858,16 +17942,7 @@ private fun ThreadForwardTargetRow(
                     )
                 }
             }
-            if (sending) {
-                Text(
-                    text = stringResource(MR.strings.thread_forward_sending),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1
-                )
-            } else if (selected) {
-                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(16.dp), color = "#FF111111")
-            }
+            SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = "#FF111111")
         }
     }
 }

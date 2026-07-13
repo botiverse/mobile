@@ -709,6 +709,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadForwardNote() {
+        captureKmpComponentCase(
+            caseId = "components.thread.forward-note",
+            pageName = "compose_thread_forward_note_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-forward-note"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
     fun captureThreadCommentAnchor() {
         captureKmpComponentCase(
             caseId = "components.thread.comment-anchor",
