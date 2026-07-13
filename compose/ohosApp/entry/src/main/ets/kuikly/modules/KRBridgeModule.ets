@@ -840,10 +840,19 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       );
       const shortId = ticketId.slice(0, 8);
       const environmentText = SlockOhosAppDiagnostics.exportEnvironmentText(context);
-      const shareText = `Hands feedback ${shortId}\nTicket: ${ticketId}\n\nEnvironment:\n${environmentText}\n\nFeedback:\n${message}`;
+      const attachmentNames = this.feedbackAttachmentNames(attachmentPaths);
+      const attachmentSection = attachmentNames.length > 0
+        ? `\nattachments:\n${attachmentNames.join('\n')}`
+        : '';
+      const shareText = `Hands feedback ${shortId}\nTicket: ${ticketId}${attachmentSection}\n\nEnvironment:\n${environmentText}\n\nFeedback:\n${message}`;
       SlockOhosClipboard.copyText(shareText);
       SlockOhosDiagnostics.record("Settings", `quiver_feedback_submitted ticket=${shortId}`);
-      return { "status": "ok", "ticketId": ticketId, "shareText": shareText };
+      return {
+        "status": "ok",
+        "ticketId": ticketId,
+        "shareText": shareText,
+        "attachment_names": attachmentNames
+      };
     } catch (error) {
       const message = String(error);
       SlockOhosDiagnostics.record("Settings", `quiver_feedback_submit_failed ${message}`);
@@ -865,6 +874,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
     });
     return paths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
+  }
+
+  private feedbackAttachmentNames(paths: Array<string>): Array<string> {
+    return paths
+      .map((attachmentPath: string): string => {
+        const normalizedPath = attachmentPath.replace(/\\/g, '/');
+        const segments = normalizedPath.split('/');
+        const fileName = segments.length > 0 ? segments[segments.length - 1] : '';
+        return fileName.replace(/[\r\n]+/g, ' ').trim();
+      })
+      .filter((fileName: string): boolean => fileName.length > 0)
+      .slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
   }
 
   private feedbackAttachmentFits(path: string): boolean {

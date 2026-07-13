@@ -69,6 +69,28 @@ static NSString *SlockBridgeString(id value) {
     return @"";
 }
 
+static NSString *SlockHandsFeedbackAttachmentBlock(NSArray<NSString *> *attachmentPaths) {
+    NSMutableArray<NSString *> *attachmentNames = [NSMutableArray array];
+    NSCharacterSet *lineBreaks = NSCharacterSet.newlineCharacterSet;
+    for (id value in attachmentPaths ?: @[]) {
+        NSString *path = SlockBridgeString(value);
+        NSString *fileName = path.lastPathComponent;
+        if (fileName.length == 0) {
+            continue;
+        }
+        NSArray<NSString *> *parts = [fileName componentsSeparatedByCharactersInSet:lineBreaks];
+        NSString *normalized = [[parts componentsJoinedByString:@" "]
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+        if (normalized.length > 0) {
+            [attachmentNames addObject:normalized];
+        }
+    }
+    if (attachmentNames.count == 0) {
+        return @"";
+    }
+    return [NSString stringWithFormat:@"attachments:\n%@", [attachmentNames componentsJoinedByString:@"\n"]];
+}
+
 static NSString *SlockBridgeBuildTime(void) {
     return SlockBridgeString(RAFT_IOS_BUILD_TIME);
 }
@@ -1354,9 +1376,14 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
                 NSString *environment = SlockDiagnosticsEnvironmentSectionFromExportText(
                     SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}])
                 );
-                NSString *shareText = [NSString stringWithFormat:@"Hands feedback %@\nTicket: %@\n\nEnvironment:\n%@\n\nFeedback:\n%@",
+                NSString *attachmentBlock = SlockHandsFeedbackAttachmentBlock(attachments);
+                NSString *attachmentSection = attachmentBlock.length > 0
+                    ? [NSString stringWithFormat:@"\n%@", attachmentBlock]
+                    : @"";
+                NSString *shareText = [NSString stringWithFormat:@"Hands feedback %@\nTicket: %@%@\n\nEnvironment:\n%@\n\nFeedback:\n%@",
                     shortId,
                     ticketId,
+                    attachmentSection,
                     environment.length > 0 ? environment : @"--",
                     description];
                 UIPasteboard.generalPasteboard.string = shareText;

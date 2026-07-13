@@ -121,6 +121,61 @@ class SlockKuiklyNotificationLaunchTest {
     }
 
     @Test
+    fun feedbackShareTextListsEachSubmittedAttachmentOnItsOwnLine() {
+        val shareText =
+            formatHandsFeedbackShareText(
+                ticketId = "ticket-1234567890",
+                description = "The app froze.",
+                environment = "App: Raft",
+                utcTime = "2026-07-13T15:00:00Z",
+                localTime = "2026-07-13 23:00:00 +0800",
+                appSlug = "raft-android",
+                channel = "main",
+                attachmentNames =
+                    listOf(
+                        "/tmp/logcat.txt",
+                        "screenshots\\home.png",
+                        "bad\r\nname.jpg"
+                    )
+            )
+
+        assertTrue(
+            shareText.contains(
+                "Ticket: ticket-1234567890\n" +
+                    "attachments:\n" +
+                    "logcat.txt\n" +
+                    "home.png\n" +
+                    "bad name.jpg\n" +
+                    "Submitted: 2026-07-13T15:00:00Z"
+            )
+        )
+        assertEquals(
+            listOf("logcat.txt", "home.png", "bad name.jpg"),
+            handsFeedbackAttachmentNames(
+                listOf("/tmp/logcat.txt", "screenshots\\home.png", "bad\r\nname.jpg")
+            )
+        )
+    }
+
+    @Test
+    fun feedbackShareTextKeepsLegacyShapeWhenNoAttachmentsWereSubmitted() {
+        val shareText =
+            formatHandsFeedbackShareText(
+                ticketId = "ticket-1234567890",
+                description = "No file attached.",
+                environment = "App: Raft",
+                utcTime = "2026-07-13T15:00:00Z",
+                localTime = "2026-07-13 23:00:00 +0800",
+                appSlug = "raft-android",
+                channel = "main",
+                attachmentNames = emptyList()
+            )
+
+        assertFalse(shareText.contains("attachments:"))
+        assertTrue(shareText.contains("Ticket: ticket-1234567890\nSubmitted:"))
+    }
+
+    @Test
     fun unreadNotificationLaunchesChannelThreadFocusedOnMessage() {
         val pageData =
             SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
