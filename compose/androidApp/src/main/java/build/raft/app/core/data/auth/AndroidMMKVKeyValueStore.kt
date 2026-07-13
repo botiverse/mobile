@@ -119,6 +119,12 @@ internal object AndroidAppScopeMMKV {
         valueLength: Int? = null
     ) {
         if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
+        if (
+            (operation == "contains" && result == "true") ||
+            (operation == "decode" && result == "value")
+        ) {
+            return
+        }
         SlockAndroidLocalDiagnostics.recordLog(
             "info",
             "SlockKuikly",

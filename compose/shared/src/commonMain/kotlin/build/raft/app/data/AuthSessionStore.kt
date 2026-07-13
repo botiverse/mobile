@@ -549,10 +549,11 @@ class KeyValueAuthSessionStore(
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock {
-            val caller = authSessionDiagnosticsCaller()
             val encoded = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
             if (encoded == null) {
-                diagnosticsLogger("auth_session_read result=null raw=null caller=$caller")
+                diagnosticsLogger(
+                    "auth_session_read result=null raw=null caller=${authSessionDiagnosticsCaller()}"
+                )
                 return@withLock null
             }
             val session =
@@ -560,18 +561,13 @@ class KeyValueAuthSessionStore(
                     onFailure = { type ->
                         diagnosticsLogger(
                             "auth_session_read result=null rawLen=${encoded.length} " +
-                                "decode=failure errorType=$type caller=$caller"
+                                "decode=failure errorType=$type caller=${authSessionDiagnosticsCaller()}"
                         )
                     }
                 )
             if (session == null) {
                 null
             } else {
-                diagnosticsLogger(
-                    "auth_session_read result=success rawLen=${encoded.length} " +
-                        "selectedServer=${!session.selectedServerId.isNullOrBlank()} " +
-                        "servers=${session.servers.size} caller=$caller"
-                )
                 session
             }
         }

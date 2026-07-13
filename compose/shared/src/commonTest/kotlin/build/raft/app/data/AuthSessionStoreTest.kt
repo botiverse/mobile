@@ -76,6 +76,19 @@ class AuthSessionStoreTest {
     }
 
     @Test
+    fun successfulSessionReadsDoNotWriteHotPathDiagnostics() = runBlocking {
+        val keyValueStore = InMemorySlockKeyValueStore()
+        val logs = mutableListOf<String>()
+        val store = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
+
+        store.saveSession(sampleSession())
+        logs.clear()
+
+        assertEquals("server-1", store.readSession()?.currentServerId)
+        assertTrue(logs.isEmpty())
+    }
+
+    @Test
     fun mmkvAuthSessionStoreBroadcastsChangedSessionFingerprint() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
         val store = KeyValueAuthSessionStore(keyValueStore)

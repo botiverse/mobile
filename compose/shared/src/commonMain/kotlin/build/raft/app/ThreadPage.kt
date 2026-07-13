@@ -13806,12 +13806,16 @@ private fun ThreadMessageCard(
                                                 message.copy(body = bodyForRender).threadMarkdownRenderSignature()
                                             }
                                         }
-                                    diagnosticsLogger(
-                                        "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                            "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                            "sourceBodyLen=${renderedBody.length} collapsed=${showLongMessageToggle && !longMessageExpanded} " +
-                                            "bodyHash=${bodyForRender.hashCode().toString(16)} context=$markdownTagContextSignature"
-                                    )
+                                    LaunchedEffect(markdownRenderSignature, markdownTagContextSignature) {
+                                        diagnosticsLogger(
+                                            "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                                "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
+                                                "sourceBodyLen=${renderedBody.length} " +
+                                                "collapsed=${showLongMessageToggle && !longMessageExpanded} " +
+                                                "bodyHash=${bodyForRender.hashCode().toString(16)} " +
+                                                "context=$markdownTagContextSignature"
+                                        )
+                                    }
                                     key(markdownRenderSignature, markdownTagContextSignature, activeMarkdownTagKey) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
