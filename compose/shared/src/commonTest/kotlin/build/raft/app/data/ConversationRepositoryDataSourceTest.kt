@@ -127,26 +127,13 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
-    fun getThreadLoadsCanonicalMessagesAndMergesThreadSummaries() = runBlocking {
+    fun getThreadInitialLoadReturnsCanonicalMessagesWithoutThreadSummaryDependency() = runBlocking {
         val network =
             FakeConversationNetworkClient(
                 responses =
                     mapOf(
                         "GET messages/channel/channel-1" to
                             """{"messages":[${messageJson("parent-1", "channel-1", threadId = "thread-1")}],"historyLimited":false}""",
-                        "GET channels/channel-1/threads" to
-                            """
-                            {
-                              "parent-1": {
-                                "threadChannelId": "thread-1",
-                                "replyCount": 3,
-                                "lastReplyAt": "2026-05-22T10:05:00.000Z",
-                                "participantIds": ["user-1", "agent-1"],
-                                "unreadCount": 2,
-                                "firstUnreadMessageId": "reply-2"
-                              }
-                            }
-                            """.trimIndent()
                     )
             )
         val repository = RealConversationRepository(sampleStore(), network)
@@ -157,14 +144,13 @@ class ConversationRepositoryDataSourceTest {
         val message = snapshot.messages.single()
         assertEquals("parent-1", message.id.value)
         assertEquals("thread-1", message.threadChannelId?.value)
-        assertEquals(3, message.replyCount)
-        assertEquals(2, message.unreadReplyCount)
-        assertEquals("reply-2", message.firstUnreadReplyMessageId?.value)
+        assertEquals(0, message.replyCount)
+        assertEquals(0, message.unreadReplyCount)
+        assertEquals(null, message.firstUnreadReplyMessageId?.value)
         assertFalse(message.isThreadFollowed)
         assertEquals(
             listOf(
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
-                RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1/threads")
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30"))
             ),
             network.requests
         )
@@ -210,7 +196,12 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
-                RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1/threads"),
+                RecordedConversationRequest(
+                    DataRequestPriority.Visible,
+                    "GET",
+                    "channels/channel-1/threads",
+                    listOf("parentMessageIds" to "parent-1")
+                ),
                 RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/threads/followed", listOf("limit" to "50"))
             ),
             network.requests
@@ -510,7 +501,17 @@ class ConversationRepositoryDataSourceTest {
                     mapOf(
                         "GET messages/channel/channel-1" to
                             """{"messages":[${messageJson("older-1", "channel-1", seq = 7)}],"historyLimited":false}""",
-                        "GET channels/channel-1/threads" to """{"threads":[]}""",
+                        "GET channels/channel-1/threads" to
+                            """
+                            {
+                              "older-1": {
+                                "threadChannelId": "thread-older-1",
+                                "replyCount": 2,
+                                "unreadCount": 1,
+                                "firstUnreadMessageId": "reply-older-2"
+                              }
+                            }
+                            """.trimIndent(),
                         "GET messages/context/message-1" to
                             """{"channelId":"channel-1","targetMessageId":"message-1","hasOlder":true,"hasNewer":false,"messages":[${messageJson("message-1", "channel-1")}]}""",
                         "GET channels/channel-1/files" to
@@ -542,7 +543,12 @@ class ConversationRepositoryDataSourceTest {
                 )
             )
 
-        assertEquals("older-1", assertIs<DataResult.Content<ThreadSnapshot>>(older).data.messages.single().id.value)
+        val olderMessage = assertIs<DataResult.Content<ThreadSnapshot>>(older).data.messages.single()
+        assertEquals("older-1", olderMessage.id.value)
+        assertEquals("thread-older-1", olderMessage.threadChannelId?.value)
+        assertEquals(2, olderMessage.replyCount)
+        assertEquals(1, olderMessage.unreadReplyCount)
+        assertEquals("reply-older-2", olderMessage.firstUnreadReplyMessageId?.value)
         assertEquals("message-1", assertIs<DataResult.Content<ThreadSnapshot>>(context).data.highlightedMessageId?.value)
         val fileSnapshot = assertIs<DataResult.Content<ChannelFilesSnapshot>>(files).data
         assertEquals("cursor-2", fileSnapshot.nextCursor)
@@ -561,6 +567,12 @@ class ConversationRepositoryDataSourceTest {
             network.requests.any { request ->
                 request.path == "messages/context/message-1" &&
                     request.query == listOf("channelId" to "channel-1")
+            }
+        )
+        assertTrue(
+            network.requests.any { request ->
+                request.path == "channels/channel-1/threads" &&
+                    request.query == listOf("parentMessageIds" to "older-1")
             }
         )
     }

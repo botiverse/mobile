@@ -91,9 +91,25 @@ private suspend fun SlockNetworkClient.messageSync(
 private suspend fun SlockNetworkClient.channelThreads(
     priority: DataRequestPriority,
     channelId: ChannelId,
-    limit: Int? = null
+    limit: Int? = null,
+    parentMessageIds: List<MessageId>? = null
 ): HomeNetworkResponse =
-    request(priority, "channels/${channelId.value}/threads", query = listOfNotNull(limit?.let { "limit" to it.toString() }))
+    request(
+        priority,
+        "channels/${channelId.value}/threads",
+        query =
+            listOfNotNull(
+                limit?.let { "limit" to it.toString() },
+                parentMessageIds
+                    ?.asSequence()
+                    ?.map { it.value }
+                    ?.filter { it.isNotBlank() }
+                    ?.distinct()
+                    ?.joinToString(",")
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { "parentMessageIds" to it }
+            )
+    )
 
 private suspend fun SlockNetworkClient.followedThreads(
     priority: DataRequestPriority,
@@ -186,6 +202,7 @@ class RealConversationRepository(
             messageLimit = messageLimit,
             block = { networkClient.channelMessages(DataRequestPriority.Foreground, ChannelId(threadId.value), messageLimit) },
             source = "messages_channel",
+            includeChannelSummaries = includeFollowedSummaries,
             includeFollowedSummaries = includeFollowedSummaries
         )
     }
@@ -308,7 +325,8 @@ class RealConversationRepository(
                     beforeSeq = beforeSeq
                 )
             },
-            source = "messages_channel_older"
+            source = "messages_channel_older",
+            includeChannelSummaries = true
         )
     }
 
@@ -662,12 +680,14 @@ class RealConversationRepository(
         messageLimit: Int,
         block: suspend () -> HomeNetworkResponse,
         source: String,
+        includeChannelSummaries: Boolean = false,
         includeFollowedSummaries: Boolean = false
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
             "thread_load_start source=$source threadId=${threadId.value} " +
-                "messageLimit=$messageLimit includeFollowedSummaries=$includeFollowedSummaries"
+                "messageLimit=$messageLimit includeChannelSummaries=$includeChannelSummaries " +
+                "includeFollowedSummaries=$includeFollowedSummaries"
         )
         val messagesDeferred =
             async {
@@ -695,23 +715,46 @@ class RealConversationRepository(
                 )
                 result
             }
+        val messagesResult = messagesDeferred.await()
+        val visibleParentMessageIds =
+            (messagesResult as? DataResult.Content)
+                ?.data
+                ?.messages
+                ?.map { it.id }
+                .orEmpty()
         val threadSummariesDeferred =
-            async {
-                val branchStartedAt = TimeSource.Monotonic.markNow()
-                val result = executeConversation(
-                    emptyReason = EmptyReason.NoInboxItems,
-                    block = { networkClient.channelThreads(DataRequestPriority.Visible, ChannelId(threadId.value)) },
-                    emptyWhen = { false },
-                    source = "${source}_thread_summaries",
-                    mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }
-                )
+            if (includeChannelSummaries && visibleParentMessageIds.isNotEmpty()) {
+                async {
+                    val branchStartedAt = TimeSource.Monotonic.markNow()
+                    val result = executeConversation(
+                        emptyReason = EmptyReason.NoInboxItems,
+                        block = {
+                            networkClient.channelThreads(
+                                priority = DataRequestPriority.Visible,
+                                channelId = ChannelId(threadId.value),
+                                parentMessageIds = visibleParentMessageIds
+                            )
+                        },
+                        emptyWhen = { false },
+                        source = "${source}_thread_summaries",
+                        mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }
+                    )
+                    warningLogger(
+                        "thread_load_branch source=$source branch=channel_thread_summaries " +
+                            "result=${result.conversationDiagnosticsResult()} " +
+                            "parentMessageIds=${visibleParentMessageIds.size} " +
+                            "threads=${(result as? DataResult.Content)?.data?.threads?.size ?: 0} " +
+                            "durationMs=${branchStartedAt.elapsedNow().inWholeMilliseconds}"
+                    )
+                    result
+                }
+            } else {
+                val reason = if (includeChannelSummaries) "no_visible_messages" else "disabled"
                 warningLogger(
                     "thread_load_branch source=$source branch=channel_thread_summaries " +
-                        "result=${result.conversationDiagnosticsResult()} " +
-                        "threads=${(result as? DataResult.Content)?.data?.threads?.size ?: 0} " +
-                        "durationMs=${branchStartedAt.elapsedNow().inWholeMilliseconds}"
+                        "result=skipped:$reason parentMessageIds=${visibleParentMessageIds.size} threads=0 durationMs=0"
                 )
-                result
+                null
             }
         val followedSummariesDeferred =
             if (includeFollowedSummaries) {
@@ -739,8 +782,7 @@ class RealConversationRepository(
                 )
                 null
             }
-        val messagesResult = messagesDeferred.await()
-        val threadSummaries = threadSummariesDeferred.await()
+        val threadSummaries = threadSummariesDeferred?.await()
         val followedSummaries = followedSummariesDeferred?.await()
         if (messagesResult !is DataResult.Content) {
             warningLogger(
