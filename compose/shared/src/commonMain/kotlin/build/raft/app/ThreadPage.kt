@@ -21,6 +21,7 @@ import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
+import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.AuthLossSignal
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
@@ -35,6 +36,7 @@ import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealForwardMessageTargetRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
+import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SlockEventBus
@@ -261,6 +263,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
+internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 4
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
@@ -543,6 +546,14 @@ internal class ComposeThreadPage : build.raft.app.base.BasePager() {
     }
 }
 
+@Page(THREAD_MEMBERS_PAGE, supportInLocal = true)
+internal class ComposeThreadMembersPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadMembersPageScreen() }
+    }
+}
+
 @Serializable
 internal data class KuiklyThreadScreenPayload(
     val instanceId: String = "",
@@ -620,6 +631,66 @@ internal data class KuiklyThreadScreenPayload(
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false
 )
+
+internal data class ThreadMembersPageRoute(
+    val instanceId: String,
+    val title: String,
+    val serverId: ServerId,
+    val channelId: ChannelId,
+    val localOffsetMinutes: Int,
+    val todayEpochDay: Long?,
+    val nowEpochMillis: Long?,
+    val timeFormat: String
+)
+
+internal fun KuiklyThreadScreenPayload.toThreadMembersPageData(
+    serverId: ServerId,
+    channelId: ChannelId,
+    storeScope: SlockShellStoreScope
+): JSONObject =
+    JSONObject().apply {
+        put("pageName", THREAD_MEMBERS_PAGE)
+        put("instanceId", "thread-members-${instanceId.ifBlank { channelId.value }}")
+        put("title", threadHeaderDisplayTitle(title, surfaceKind))
+        put("serverId", serverId.value)
+        put("channelId", channelId.value)
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+    }
+
+internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute? {
+    val serverId = optString("serverId").trim().takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+    val channelId = optString("channelId").trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+    return ThreadMembersPageRoute(
+        instanceId = optString("instanceId"),
+        title = optString("title").trim().takeIf { it.isNotBlank() } ?: "Members",
+        serverId = serverId,
+        channelId = channelId,
+        localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull() ?: 0,
+        todayEpochDay = optString("todayEpochDay").toLongOrNull(),
+        nowEpochMillis = optString("nowEpochMillis").toLongOrNull(),
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
+    )
+}
+
+private fun ThreadMembersPageRoute.toMemberDetailPageData(identity: MemberDetailIdentity): JSONObject? {
+    val selected = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "thread-members-detail-${instanceId.ifBlank { channelId.value }}-$selected")
+        put("memberId", selected)
+        put("memberKind", identity.kind.memberKindWireValue())
+        identity.sourceServerId?.value?.let { put("sourceServerId", it) }
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+    }
+}
 
 internal data class ThreadActivityMuteUiState(
     val channelId: String,
@@ -1977,8 +2048,268 @@ private fun ThreadPageScreen() {
                     }
                 routerModule.openPage(MEMBER_DETAIL_PAGE, pageData)
             }
+        },
+        onOpenMembersPager = { currentPayload, serverId, channelId, currentStoreScope ->
+            routerModule.openPage(
+                THREAD_MEMBERS_PAGE,
+                currentPayload.toThreadMembersPageData(serverId, channelId, currentStoreScope)
+            )
         }
     )
+}
+
+@Composable
+private fun ThreadMembersPageScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = Utils.bridgeModule(pager.pagerId)
+    val route = remember(pager.pageData.params.toString()) { pager.pageData.params.toThreadMembersPageRouteOrNull() }
+    if (route == null) {
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SlockTopPageHeader(
+                    title = "Members",
+                    iconName = SlockLucideIconName.Users,
+                    leadingContent = {
+                        SlockTopPageHeaderAction(SlockLucideIconName.ArrowLeft) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+                    }
+                )
+                ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
+            }
+        }
+        return
+    }
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
+    val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val memberScope = rememberCoroutineScope()
+    val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
+    val slice by remember(serverMembersStore, route.serverId, route.channelId) {
+        serverMembersStore
+            .channelMemberSliceFlow(route.serverId, route.channelId)
+            .onStart {
+                serverMembersStore.loadChannelMembers(
+                    serverId = route.serverId,
+                    channelId = route.channelId,
+                    priority = DataRequestPriority.Visible,
+                    force = false
+                )
+            }
+    }.collectAsState(
+        SharedServerChannelMembersSlice(
+            serverId = route.serverId.value,
+            channelId = route.channelId.value
+        )
+    )
+    val serverMembersState by remember(serverMembersStore) { serverMembersStore.state }
+        .collectAsState(SharedServerMembersState())
+    LaunchedEffect(serverMembersStore, route.serverId) {
+        serverMembersStore.refreshMembers(route.serverId, DataRequestPriority.Background, force = false)
+    }
+    val members = remember(slice.members, route.serverId) {
+        slice.members
+            .distinctBy { it.threadMemberKey }
+            .map { it.toKuiklyThreadMemberItem(route.serverId) }
+    }
+    val memberKeys = remember(members) { members.map { it.memberKey }.toSet() }
+    val candidates = remember(serverMembersState, route.serverId, memberKeys) {
+        serverMembersState
+            .entryFor(route.serverId)
+            ?.members
+            .orEmpty()
+            .filterNot { it.threadMemberKey in memberKeys }
+            .map { it.toKuiklyThreadMemberItem(route.serverId) }
+    }
+    val agentStatusResolver = remember(serverMembersStore, route.serverId) {
+        slockAgentStatusResolver(serverMembersStore, route.serverId.value)
+    }
+    val memberAvatarResolver = remember(serverMembersStore, route.serverId) {
+        slockMemberAvatarResolver(
+            serverMembersStore = serverMembersStore,
+            serverId = route.serverId.value,
+            diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") }
+        )
+    }
+    var addDialogVisible by remember { mutableStateOf(false) }
+    var addMemberStatus by remember { mutableStateOf("idle") }
+    var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
+    var removeMemberStatus by remember { mutableStateOf("idle") }
+    var removingMemberId by remember { mutableStateOf<String?>(null) }
+    var removeMemberErrorCode by remember { mutableStateOf<String?>(null) }
+
+    fun openMember(member: KuiklyThreadMemberItem) {
+        val identity = member.memberDetailIdentity() ?: return
+        val pageData = route.toMemberDetailPageData(identity) ?: return
+        member.toMemberProfile()
+            ?.toThreadCandidateAgentDetailSnapshot()
+            ?.let { detail ->
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(detail.agentId))
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(detail.agentId, detail))
+            }
+        router.openPage(MEMBER_DETAIL_PAGE, pageData)
+    }
+
+    fun removeMember(member: KuiklyThreadMemberItem) {
+        val identity = member.memberDetailIdentity() ?: return
+        if (!member.canRemove || removingMemberId != null) return
+        removeMemberStatus = "removing"
+        removingMemberId = member.id
+        removeMemberErrorCode = null
+        memberScope.launch {
+            when (
+                val result =
+                    serverMembersStore.removeChannelMember(
+                        serverId = route.serverId,
+                        request = RemoveChannelMemberRequest(route.channelId, identity.memberId, identity.kind)
+                    )
+            ) {
+                is DataResult.Content -> {
+                    removeMemberStatus = "idle"
+                    removingMemberId = null
+                }
+                is DataResult.Empty -> {
+                    removeMemberStatus = "failed"
+                    removeMemberErrorCode = "member_remove_empty"
+                    removingMemberId = null
+                }
+                is DataResult.Error -> {
+                    removeMemberStatus = "failed"
+                    removeMemberErrorCode = result.error.code
+                    removingMemberId = null
+                }
+                is DataResult.NoPermission -> {
+                    removeMemberStatus = "no_permission"
+                    removeMemberErrorCode = result.blocker.code
+                    removingMemberId = null
+                }
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SlockTopPageHeader(
+                title = stringResource(MR.strings.thread_members_title, members.size),
+                subtitle = route.title,
+                iconName = SlockLucideIconName.Users,
+                backgroundColor = SlockColor.SurfaceWhite,
+                refreshing = slice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
+                leadingContent = {
+                    SlockTopPageHeaderAction(SlockLucideIconName.ArrowLeft) { router.closePage() }
+                },
+                trailingContent =
+                    if (slice.canAddMembers) {
+                        {
+                            SlockTopPageHeaderAction(SlockLucideIconName.UserPlus) { addDialogVisible = true }
+                        }
+                    } else {
+                        null
+                    }
+            )
+            if (removeMemberStatus == "failed" || removeMemberStatus == "no_permission") {
+                Text(
+                    text =
+                        if (removeMemberStatus == "no_permission") {
+                            stringResource(MR.strings.thread_members_remove_no_permission)
+                        } else {
+                            stringResource(MR.strings.thread_members_remove_failed)
+                        },
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                    color = SlockColor.AccentRed,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
+                )
+            }
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (members.isEmpty()) {
+                    item {
+                        ThreadModalEmptyState(
+                            title = stringResource(MR.strings.thread_state_no_members),
+                            detail = stringResource(MR.strings.thread_members_refresh_detail)
+                        )
+                    }
+                } else {
+                    val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
+                    val humans = members.filterNot { it.kind.equals("agent", ignoreCase = true) }
+                    if (agents.isNotEmpty()) {
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
+                        items(agents.size, key = { agents[it].memberKey }) { index ->
+                            ThreadMembersPagerRow(
+                                member = agents[index],
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                removing = removeMemberStatus == "removing" && removingMemberId == agents[index].id,
+                                onOpen = ::openMember,
+                                onRemove = ::removeMember
+                            )
+                        }
+                    }
+                    if (humans.isNotEmpty()) {
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
+                        items(humans.size, key = { humans[it].memberKey }) { index ->
+                            ThreadMembersPagerRow(
+                                member = humans[index],
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                removing = removeMemberStatus == "removing" && removingMemberId == humans[index].id,
+                                onOpen = ::openMember,
+                                onRemove = ::removeMember
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (addDialogVisible) {
+            ThreadAddMemberModal(
+                members = members,
+                candidates = candidates,
+                canAddMembers = slice.canAddMembers,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                addMemberStatus = addMemberStatus,
+                addMemberErrorCode = addMemberErrorCode,
+                onDismiss = { addDialogVisible = false },
+                onSubmit = { member ->
+                    val identity = member.memberDetailIdentity() ?: return@ThreadAddMemberModal
+                    if (addMemberStatus == "adding") return@ThreadAddMemberModal
+                    addMemberStatus = "adding"
+                    addMemberErrorCode = null
+                    memberScope.launch {
+                        when (
+                            val result =
+                                serverMembersStore.addChannelMember(
+                                    serverId = route.serverId,
+                                    request = AddChannelMemberRequest(route.channelId, identity.memberId, identity.kind)
+                                )
+                        ) {
+                            is DataResult.Content -> {
+                                addMemberStatus = "idle"
+                                addDialogVisible = false
+                            }
+                            is DataResult.Empty -> {
+                                addMemberStatus = "failed"
+                                addMemberErrorCode = "member_add_empty"
+                            }
+                            is DataResult.Error -> {
+                                addMemberStatus = "failed"
+                                addMemberErrorCode = result.error.code
+                            }
+                            is DataResult.NoPermission -> {
+                                addMemberStatus = "no_permission"
+                                addMemberErrorCode = result.blocker.code
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Page("compose_thread_message_row_visual", supportInLocal = true)
@@ -2826,7 +3157,8 @@ internal fun SharedThreadRouteContent(
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
-    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> }
+    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
+    onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
@@ -5644,6 +5976,19 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "selectTab" && !tab.isNullOrBlank() -> {
                     threadViewModel.dispatch(SharedThreadIntent.SelectTab(tab))
+                }
+                action == "openMembersPager" -> {
+                    val serverId = threadMembersServerId
+                    val channelId = threadMembersChannelId
+                    if (serverId == null || channelId == null) {
+                        bridge.logWarn(
+                            "thread_members_pager_open_skip reason=missing_scope " +
+                                "serverId=${currentSession?.currentServerId.orEmpty()} " +
+                                "channelId=${renderedThread.sourceThreadId.orEmpty()}"
+                        )
+                        return@ThreadPageContent
+                    }
+                    onOpenMembersPager(renderedThread, serverId, channelId, storeScope)
                 }
                 action == "loadMembers" -> {
                     if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
@@ -8787,8 +9132,7 @@ private fun ThreadPageContent(
                     }
                 },
                 onShowMembers = {
-                    activeModal = "members"
-                    onThreadEvent("loadMembers", null, null, null)
+                    onThreadEvent("openMembersPager", null, null, null)
                 },
                 onShowSettings = {
                     activeModal = "settings"
@@ -8950,28 +9294,6 @@ private fun ThreadPageContent(
                 }
             }
         }
-        if (activeModal == "addMember") {
-            ThreadMembersModal(
-                members = payload.members,
-                membersCount = payload.membersCount,
-                canAddMembers = payload.canAddMembers,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                onDismiss = { activeModal = null },
-                onAddMember = {
-                    activeModal = "addMember"
-                },
-                onOpenMember = { member ->
-                    member.memberDetailIdentity()?.let(onOpenMemberProfile)
-                },
-                removeMemberStatus = payload.removeMemberStatus,
-                removingMemberId = payload.removingMemberId,
-                removeMemberErrorCode = payload.removeMemberErrorCode,
-                onRemoveMember = { memberId ->
-                    onThreadEvent("removeMember", memberId, null, null)
-                }
-            )
-        }
         when (activeModal) {
             "forwardBundle" ->
                 activeForwardBundle?.let { bundle ->
@@ -9074,41 +9396,6 @@ private fun ThreadPageContent(
                                 }
                             }
                         }
-                    }
-                )
-            "members" ->
-                ThreadMembersModal(
-                    members = payload.members,
-                    membersCount = payload.membersCount,
-                    canAddMembers = payload.canAddMembers,
-                    agentStatusResolver = agentStatusResolver,
-                    memberAvatarResolver = memberAvatarResolver,
-                    onDismiss = { activeModal = null },
-                    onAddMember = {
-                        activeModal = "addMember"
-                    },
-                    onOpenMember = { member ->
-                        member.memberDetailIdentity()?.let(onOpenMemberProfile)
-                    },
-                    removeMemberStatus = payload.removeMemberStatus,
-                    removingMemberId = payload.removingMemberId,
-                    removeMemberErrorCode = payload.removeMemberErrorCode,
-                    onRemoveMember = { memberId ->
-                        onThreadEvent("removeMember", memberId, null, null)
-                    }
-                )
-            "addMember" ->
-                ThreadAddMemberModal(
-                    members = payload.members,
-                    candidates = payload.memberCandidates,
-                    canAddMembers = payload.canAddMembers,
-                    agentStatusResolver = agentStatusResolver,
-                    memberAvatarResolver = memberAvatarResolver,
-                    addMemberStatus = payload.addMemberStatus,
-                    addMemberErrorCode = payload.addMemberErrorCode,
-                    onDismiss = { activeModal = "members" },
-                    onSubmit = { member ->
-                        onThreadEvent("submitAddMember", member.id, null, member.kind)
                     }
                 )
             "settings" ->
@@ -17897,6 +18184,34 @@ private fun ThreadMembersModal(
             )
         }
     }
+}
+
+@Composable
+private fun ThreadMembersPagerRow(
+    member: KuiklyThreadMemberItem,
+    agentStatusResolver: SlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    removing: Boolean,
+    onOpen: (KuiklyThreadMemberItem) -> Unit,
+    onRemove: (KuiklyThreadMemberItem) -> Unit
+) {
+    val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+    val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+        ?: member.modalAvatarWireValue()
+    SlockModalCompactMemberRow(
+        title = member.displayName,
+        subtitle = member.localizedModalRoleLabel(),
+        sourceBadgeLabel = member.sourceServerLabel,
+        avatarWireValue = avatarWireValue,
+        avatarLabel = member.modalAvatarLabel(),
+        statusColor = status?.color,
+        statusPulsing = status?.pulsing == true,
+        enabled = !removing,
+        trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
+        trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
+        onTrailingClick = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
+        onClick = { onOpen(member) }
+    )
 }
 
 @Composable
