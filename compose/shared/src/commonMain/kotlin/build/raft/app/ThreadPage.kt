@@ -2838,7 +2838,12 @@ internal fun SharedThreadRouteContent(
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper =
-        remember(sharedStores) { RealtimeEventMapper(messageShadowObserver = sharedStores.messageShadowObserver) }
+        remember(sharedStores) {
+            RealtimeEventMapper(
+                messageShadowObserver = sharedStores.messageShadowObserver,
+                messageShadowFoldEnabled = sharedStores.messageShadowFoldEnabled,
+            )
+        }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val incomingRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()

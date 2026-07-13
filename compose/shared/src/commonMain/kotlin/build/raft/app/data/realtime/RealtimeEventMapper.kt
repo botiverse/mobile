@@ -55,6 +55,9 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
+import build.raft.app.network.sync.DecodedCanonicalMessage
+import build.raft.app.network.sync.ProductionFace
+import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.data.projectAgentActivityStatus
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.data.toForwardMessageBundle
@@ -93,6 +96,10 @@ class RealtimeEventMapper(
     // Flag-gated sync-core shadow-compare hook. Default no-op keeps the mapper decoupled and unchanged in
     // behavior; the provider injects the real observer when `sync_core_messages_v0` is in shadow mode.
     private val messageShadowObserver: MessageShadowObserver = MessageShadowObserver.NoOp,
+    // Flag gate for the `sync_core_messages_v0` shadow fold+persist carry. Default false so flag-off (every
+    // real user) pays ZERO canonical-decode cost on the hot path — the carry only decodes when the provider
+    // reports the flag on for a resolved server.
+    private val messageShadowFoldEnabled: () -> Boolean = { false },
 ) {
 
     /**
@@ -169,17 +176,44 @@ class RealtimeEventMapper(
         return this
     }
 
+    /**
+     * Decode the raw-wire canonical row ONCE for the flag-gated `sync_core_messages_v0` shadow fold+persist
+     * lane and carry it on the constructed event (see [MessageNew.decodedCanonical]). FAIL-OPEN: the shadow
+     * lane is a diagnostic-only shadow-of-record, so a decode that fails closed (returns null) or throws must
+     * never affect the authoritative event — it just leaves the carry null and the lane skips this frame.
+     */
+    private fun decodeCanonicalCarry(element: JsonObject, face: ProductionFace): DecodedCanonicalMessage? =
+        runCatching { decodeCanonicalMessageWire(element, face) }.getOrNull()
+
     private fun mapElement(eventName: String, element: JsonObject): RealtimeEvent? = try {
         when (eventName) {
             RealtimeSocketEvents.MessageNew ->
                 decodeMessageWire(element)?.toDomain()
                     ?.withShadowObserved(eventName, element)
-                    ?.let(::MessageNew)
+                    ?.let {
+                        MessageNew(
+                            it,
+                            if (messageShadowFoldEnabled()) {
+                                decodeCanonicalCarry(element, ProductionFace.MessageNew)
+                            } else {
+                                null
+                            },
+                        )
+                    }
             RealtimeSocketEvents.MessageUpdated ->
                 decodeMessageWire(element)?.toDomain()
                     ?.withRealtimeReactionsClearedIfExplicitNull(element)
                     ?.withShadowObserved(eventName, element)
-                    ?.let(::MessageUpdated)
+                    ?.let {
+                        MessageUpdated(
+                            it,
+                            if (messageShadowFoldEnabled()) {
+                                decodeCanonicalCarry(element, ProductionFace.EnrichedUpdated)
+                            } else {
+                                null
+                            },
+                        )
+                    }
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()

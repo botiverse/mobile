@@ -2653,7 +2653,12 @@ private fun SlockAppShellContent(
     val shellScope = rememberSlockAppShellScope(adaptivePane)
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
     val realtimeEventMapper =
-        remember(sharedStores) { RealtimeEventMapper(messageShadowObserver = sharedStores.messageShadowObserver) }
+        remember(sharedStores) {
+            RealtimeEventMapper(
+                messageShadowObserver = sharedStores.messageShadowObserver,
+                messageShadowFoldEnabled = sharedStores.messageShadowFoldEnabled,
+            )
+        }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersListRefreshKey by remember { mutableStateOf(0) }

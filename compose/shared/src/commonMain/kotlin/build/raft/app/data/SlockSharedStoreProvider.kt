@@ -39,6 +39,7 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
@@ -147,13 +148,41 @@ internal class SlockSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
+    /**
+     * Flag gate for the `sync_core_messages_v0` shadow fold+persist carry, handed to [RealtimeEventMapper] so
+     * the raw-wire canonical decode only runs when the flag is on for a resolved server. Keeps the flag-off
+     * hot path (every real user) free of the canonical decode; the same gate the fold lane checks in accept.
+     */
+    val messageShadowFoldEnabled: () -> Boolean = {
+        serverFeatureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
+    }
+
     init {
+        // Attach the flag-gated `sync_core_messages_v0` shadow fold+persist lane to the legacy-scope owner.
+        // (The owner is constructed in create() before this instance exists, so serverFeatureFlags can only
+        // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
+        realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
                 clearActiveShellServerSelections()
             }
         }
     }
+
+    /**
+     * A fresh [SyncCoreMessageShadowFoldLane] per realtime owner (one owner = one shell/server selection), so
+     * each owner's shadow SyncCore state is isolated. Built eagerly but dormant: the owner only invokes it
+     * when the `sync_core_messages_v0` flag is on. Uses the provider's own [sqlDatabase] and the shared wall
+     * clock ([defaultNowMillis]); the persist runs off the accept thread on a dedicated supervised scope.
+     */
+    private fun buildMessageShadowFoldLane(): SyncCoreMessageShadowFoldLane =
+        SyncCoreMessageShadowFoldLane.create(
+            featureFlags = serverFeatureFlags,
+            sqlDatabase = sqlDatabase,
+            now = ::defaultNowMillis,
+            scope = CoroutineScope(SupervisorJob()),
+            logger = sharedInfoLogger("SyncCoreT0Shadow", "sync_core_t0_shadow"),
+        )
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = conversationIdentityProvider(SlockShellStoreScope.Legacy)
@@ -244,7 +273,7 @@ internal class SlockSharedStoreProvider private constructor(
                 SharedRealtimeDomainEventOwner(
                     tasksDataStore = tasksDataStore,
                     cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
-                )
+                ).also { it.installMessageShadowFoldLane(buildMessageShadowFoldLane()) }
             }
         }
 
@@ -757,6 +786,15 @@ internal class SharedRealtimeDomainEventOwner(
     private val acceptedKeySet = mutableSetOf<String>()
     private val recoveryStates = mutableMapOf<String, MessageSeqRecoveryState<RealtimeEvent>>()
 
+    // Flag-gated `sync_core_messages_v0` shadow fold+persist lane. Null until the provider installs it (see
+    // installMessageShadowFoldLane); a null lane means the shadow path is entirely absent (e.g. unit tests
+    // that don't exercise it). Invisible to sinks and fail-open — see foldPersistMessageShadow.
+    private var messageShadowFoldLane: SyncCoreMessageShadowFoldLane? = null
+
+    fun installMessageShadowFoldLane(lane: SyncCoreMessageShadowFoldLane) {
+        messageShadowFoldLane = lane
+    }
+
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
         this.sinks = sinks
     }
@@ -786,6 +824,11 @@ internal class SharedRealtimeDomainEventOwner(
         }
         val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
         if (acceptedEvents.isEmpty()) return
+        // `sync_core_messages_v0` SHADOW fold+persist, BEFORE the sink fan-out and invisible to it. Flag-gated
+        // and fail-open (foldPersistMessageShadow never throws), so the legacy path below is untouched.
+        messageShadowFoldLane?.let { lane ->
+            if (lane.isEnabled()) foldPersistMessageShadow(lane, resolvedServerId, acceptedEvents)
+        }
         val activeSinks = sinks
         // Tee to Thread routes before the Heartbeat early-return: Thread
         // consumes Heartbeat seq for realtime gap recovery. Snapshot the list
@@ -842,6 +885,40 @@ internal class SharedRealtimeDomainEventOwner(
                     "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
                 )
             }
+        }
+    }
+
+    /**
+     * SHADOW-of-record fold+persist for message-canonical frames (`sync_core_messages_v0`). For each accepted
+     * MessageNew/MessageUpdated carrying a raw-wire [DecodedCanonicalMessage] (decoded ONCE upstream in the
+     * mapper), fold it through the shadow SyncCore and persist the channel's fact window via [lane]. The epoch
+     * is the same per-scope recovery epoch the legacy cursor advanced just above (acceptedEventsForFold), so
+     * the shadow cursor stays consistent with it. The entire body is guarded and swallows: this shadow persist
+     * must NEVER block or throw into the legacy accept path, and it does not touch any sink output.
+     */
+    private fun foldPersistMessageShadow(
+        lane: SyncCoreMessageShadowFoldLane,
+        resolvedServerId: String,
+        acceptedEvents: List<RealtimeEvent>,
+    ) {
+        try {
+            val epoch = recoveryStates[resolvedServerId]?.epoch
+            for (acceptedEvent in acceptedEvents) {
+                val decoded =
+                    when (acceptedEvent) {
+                        is MessageNew -> acceptedEvent.decodedCanonical
+                        is MessageUpdated -> acceptedEvent.decodedCanonical
+                        else -> null
+                    } ?: continue
+                lane.foldAndPersist(
+                    resolvedServerId = resolvedServerId,
+                    decoded = decoded,
+                    updated = acceptedEvent is MessageUpdated,
+                    epoch = epoch,
+                )
+            }
+        } catch (throwable: Throwable) {
+            lane.logShadowFailure(resolvedServerId, throwable)
         }
     }
 
