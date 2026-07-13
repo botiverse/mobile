@@ -92,7 +92,8 @@ class MemberDetailIdentityBoundaryTest {
         BoundaryFile(
             path = "build/raft/app/SettingsHomePage.kt",
             required = listOf(
-                "launchPayload.toMemberDetailPageData(\n                                MemberDetailIdentity(",
+                "val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)",
+                "launchPayload.toMemberDetailPageData(\n                                identity",
                 "onPinnedMemberClick = { identity ->",
                 "repository.openPinnedMemberDirectMessage(identity)",
             ),

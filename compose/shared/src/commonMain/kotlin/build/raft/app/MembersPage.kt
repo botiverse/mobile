@@ -331,6 +331,17 @@ internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: B
         }
     }
 
+internal fun membersAgentDetailTabsForAccess(
+    profileOnly: Boolean,
+    canViewPrivateSurfaces: Boolean,
+    deleted: Boolean
+): List<MembersAgentDetailTab> =
+    if (profileOnly) {
+        listOf(MembersAgentDetailTab.Profile)
+    } else {
+        membersVisibleAgentTabs(canViewPrivateSurfaces, deleted)
+    }
+
 internal fun membersOrderedAgentTabs(
     visibleTabs: List<MembersAgentDetailTab>,
     storedOrder: List<String>
@@ -1378,8 +1389,14 @@ internal fun MembersPageContent() {
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenMemberDetail = { member ->
             scope.launch {
+                val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+                val remoteProfileOnly = memberDetailUsesRemoteProfileOnly(identity, serverId)
                 val launchPayload =
-                    if (member.kind == MemberKind.Agent && (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)) {
+                    if (
+                        member.kind == MemberKind.Agent &&
+                        !remoteProfileOnly &&
+                        (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
+                    ) {
                         loadAgentPanelTabOrderForMembersPage()
                             ?.also { order ->
                                 agentPanelTabOrderStore.applyLoaded(
@@ -1396,7 +1413,7 @@ internal fun MembersPageContent() {
                     }
                 val pageData =
                     launchPayload.toMemberDetailPageData(
-                        MemberDetailIdentity(member.id, member.kind, member.serverId)
+                        identity
                     )
                 if (pageData == null) {
                     bridge.toast(openProfileFailed)
@@ -1440,7 +1457,8 @@ private sealed interface MemberDetailRouteState {
     data class Error(val code: String) : MemberDetailRouteState
     data class Agent(
         val server: ServerSummary,
-        val currentUserId: String?
+        val currentUserId: String?,
+        val profileOnly: Boolean = false
     ) : MemberDetailRouteState
     data class Human(
         val server: ServerSummary,
@@ -1454,6 +1472,39 @@ private data class MemberDetailVisualSeed(
     val agentDetailState: MembersAgentDetailLoadState,
     val agentScopeSet: AgentScopeSet? = null
 )
+
+internal fun memberDetailUsesRemoteProfileOnly(
+    identity: MemberDetailIdentity,
+    currentServerId: String?
+): Boolean {
+    val sourceServerId = identity.sourceServerId?.value?.trim().orEmpty()
+    val activeServerId = currentServerId?.trim().orEmpty()
+    return identity.kind == MemberKind.Agent &&
+        sourceServerId.isNotBlank() &&
+        activeServerId.isNotBlank() &&
+        sourceServerId != activeServerId
+}
+
+private fun MemberProfile.toRemoteProfileServerSummary(
+    profileServerId: ServerId,
+    fallback: ServerSummary
+): ServerSummary =
+    ServerSummary(
+        id = profileServerId,
+        name = serverName?.takeIf { it.isNotBlank() } ?: fallback.name,
+        slug = serverSlug?.takeIf { it.isNotBlank() }
+    )
+
+internal fun seedRemoteAgentProfile(
+    agentDetailStore: SharedAgentDetailStore,
+    member: MemberProfile
+) {
+    // Agent detail state is keyed by member id, while joint-channel identities are
+    // server-scoped. Clear a same-id local detail before installing the remote public
+    // profile so data from the active server cannot win the seed no-op guard.
+    agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
+}
 
 private class MemberDetailRouteProvider(
     val bridge: BridgeModule,
@@ -1473,13 +1524,14 @@ private class MemberDetailRouteProvider(
         identity: MemberDetailIdentity
     ): MemberDetailRouteState.Agent? {
         if (identity.kind != MemberKind.Agent) return null
+        val session = authStore.readSession() ?: return null
+        if (memberDetailUsesRemoteProfileOnly(identity, session.currentServerId)) return null
         val selectedId = identity.memberId
         val state = agentDetailStore.state.value
         val detail = state.detail
         if (state.agentId != selectedId || detail == null || detail.agentId != selectedId) {
             return null
         }
-        val session = authStore.readSession() ?: return null
         val serverId = session.currentServerId
         val server = session.servers.firstOrNull { it.id == serverId }?.toServerSummary() ?: return null
         return MemberDetailRouteState.Agent(
@@ -1506,9 +1558,54 @@ private class MemberDetailRouteProvider(
                     currentUserId = session.user.id
                 )
             },
-            loadAgent = { selectedId -> loadAgentMember(selectedId, server, session.user.id) },
+            loadAgent = { selectedId ->
+                val sourceServerId = identity.sourceServerId
+                if (memberDetailUsesRemoteProfileOnly(identity, serverId)) {
+                    loadRemoteAgentProfile(
+                        selectedId = selectedId,
+                        profileServerId = checkNotNull(sourceServerId),
+                        fallbackServer = server,
+                        currentUserId = session.user.id
+                    )
+                } else {
+                    loadAgentMember(selectedId, server, session.user.id)
+                }
+            },
             unsupported = { _, _ -> MemberDetailRouteState.Error("member_kind_unsupported") }
         )
+    }
+
+    private suspend fun loadRemoteAgentProfile(
+        selectedId: MemberId,
+        profileServerId: ServerId,
+        fallbackServer: ServerSummary,
+        currentUserId: String?
+    ): MemberDetailRouteState {
+        return when (
+            val memberResult =
+                memberRepository.getMemberProfile(
+                    DataRequestPriority.Visible,
+                    selectedId,
+                    profileServerId
+                )
+        ) {
+            is DataResult.Content -> {
+                val member = memberResult.data
+                if (member.kind != MemberKind.Agent || member.id != selectedId) {
+                    return MemberDetailRouteState.Error("member_identity_mismatch")
+                }
+                serverMembersStore.seedProfiles(profileServerId, listOf(member))
+                seedRemoteAgentProfile(agentDetailStore, member)
+                MemberDetailRouteState.Agent(
+                    server = member.toRemoteProfileServerSummary(profileServerId, fallbackServer),
+                    currentUserId = currentUserId,
+                    profileOnly = true
+                )
+            }
+            is DataResult.Empty -> MemberDetailRouteState.Error("member_not_found")
+            is DataResult.Error -> MemberDetailRouteState.Error(memberResult.error.code)
+            is DataResult.NoPermission -> MemberDetailRouteState.Error(memberResult.blocker.code)
+        }
     }
 
     private suspend fun loadAgentMember(
@@ -1910,16 +2007,17 @@ private fun MemberDetailPageContent() {
     val timeContext = payload.toSlockTimeContext()
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val expectedKind = memberIdentity?.kind
+    val profileOnlyAgent = (routeState as? MemberDetailRouteState.Agent)?.profileOnly == true
     val statusLookupServerId =
         when (val current = routeState) {
-            is MemberDetailRouteState.Agent -> current.server.id.value
+            is MemberDetailRouteState.Agent -> current.server.id.value.takeUnless { current.profileOnly }
             else -> null
         }
     val agentPanelTabOrderServerId =
-        memberDetailAgentPanelTabOrderServerId(
-            routeServerId = statusLookupServerId,
-            payloadSourceServerId = memberIdentity?.sourceServerId?.value.orEmpty()
-        )
+        when (val current = routeState) {
+            is MemberDetailRouteState.Agent -> current.server.id.value.takeUnless { current.profileOnly }
+            else -> null
+        }
     val computerPickerSlice by provider.computersStore.computerPickerSliceFlow(statusLookupServerId).collectAsState(
         SharedComputersPickerSlice()
     )
@@ -1949,7 +2047,7 @@ private fun MemberDetailPageContent() {
             payload.agentPanelTabOrder
         }
     val waitForAgentPanelTabOrder =
-        shouldWaitForAgentPanelTabOrderBeforeRender(
+        !profileOnlyAgent && shouldWaitForAgentPanelTabOrderBeforeRender(
             expectedKind = expectedKind,
             initialAgentTab = initialAgentTab,
             payloadAgentPanelTabOrder = payload.agentPanelTabOrder,
@@ -1972,7 +2070,7 @@ private fun MemberDetailPageContent() {
         }
         val cached = provider.cachedContext(memberIdentity)
         routeState = cached ?: MemberDetailRouteState.Loading
-        if (cached != null && selectedMemberId != null) {
+        if (cached != null && !cached.profileOnly && selectedMemberId != null) {
             launch {
                 provider.refreshAgentActivity(selectedMemberId)
             }
@@ -2158,12 +2256,16 @@ private fun MemberDetailPageContent() {
                     agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
                     onAgentRuntimeModelsRequest = loadAgentRuntimeModels,
                     canViewPrivateAgentSurfaces = { _, detail ->
-                        current.server.permissions.canManageSettings ||
+                        !current.profileOnly &&
+                            (current.server.permissions.canManageSettings ||
                             detail?.summary?.creatorId == current.currentUserId
+                            )
                     },
                     canManageAgent = { _, detail ->
-                        current.server.permissions.canManageSettings ||
+                        !current.profileOnly &&
+                            (current.server.permissions.canManageSettings ||
                             detail?.summary?.creatorId == current.currentUserId
+                            )
                     },
                     onBack = { provider.bridge.closePage() },
                     onOpenDirectMessage = {
@@ -2223,7 +2325,8 @@ private fun MemberDetailPageContent() {
                     onUnavailableAction = { bridge.toast(it) },
                     timeContext = timeContext,
                     sharedAgentDetailStore = provider.agentDetailStore,
-                    initialAgentTab = initialAgentTab,
+                    initialAgentTab = if (current.profileOnly) MembersAgentDetailTab.Profile else initialAgentTab,
+                    profileOnly = current.profileOnly,
                     agentPanelTabOrder = agentPanelTabOrder,
                     onAgentPanelTabOrderChange = { orderedTabs ->
                         val previousOrder = agentPanelTabOrder
@@ -3191,6 +3294,7 @@ private fun MembersDetailContent(
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     initialAgentTab: MembersAgentDetailTab? = null,
+    profileOnly: Boolean = false,
     agentPanelTabOrder: List<String> = emptyList(),
     onAgentPanelTabOrderChange: ((List<MembersAgentDetailTab>) -> Unit)? = null,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
@@ -3303,10 +3407,15 @@ private fun MembersDetailContent(
             MembersAgentDetailVisualMode.Profile -> Unit
         }
     }
-    val visibleTabs = remember(canViewPrivate, deleted, member.kind, agentPanelTabOrder) {
+    val visibleTabs = remember(profileOnly, canViewPrivate, deleted, member.kind, agentPanelTabOrder) {
         if (member.kind == MemberKind.Agent) {
             membersOrderedAgentTabs(
-                visibleTabs = membersVisibleAgentTabs(canViewPrivateSurfaces = canViewPrivate, deleted = deleted),
+                visibleTabs =
+                    membersAgentDetailTabsForAccess(
+                        profileOnly = profileOnly,
+                        canViewPrivateSurfaces = canViewPrivate,
+                        deleted = deleted
+                    ),
                 storedOrder = agentPanelTabOrder
             )
         } else {
