@@ -279,9 +279,20 @@ jobs:
           fi
           "${BT}/aapt" dump badging "${APP_APK}" > "${WORK_DIR}/app-badging.log"
           "${BT}/aapt" dump badging "${TEST_APK}" > "${WORK_DIR}/instrumentation-badging.log"
-          grep -q "package: name='build.raft.app.connectedtest'" "${WORK_DIR}/app-badging.log"
-          grep -q "package: name='build.raft.app.connectedtest.test'" "${WORK_DIR}/instrumentation-badging.log"
-          grep -q "targetPackage='build.raft.app.connectedtest'" "${WORK_DIR}/instrumentation-badging.log"
+          "${BT}/aapt" dump xmltree "${TEST_APK}" AndroidManifest.xml > "${WORK_DIR}/instrumentation-manifest.log"
+          grep -Fq "package: name='build.raft.app.connectedtest'" "${WORK_DIR}/app-badging.log" || {
+            cat "${WORK_DIR}/app-badging.log" >&2
+            exit 1
+          }
+          grep -Fq "package: name='build.raft.app.connectedtest.test'" "${WORK_DIR}/instrumentation-badging.log" || {
+            cat "${WORK_DIR}/instrumentation-badging.log" >&2
+            exit 1
+          }
+          grep -F "android:targetPackage" "${WORK_DIR}/instrumentation-manifest.log" \
+            | grep -Fq '="build.raft.app.connectedtest"' || {
+              cat "${WORK_DIR}/instrumentation-manifest.log" >&2
+              exit 1
+            }
           {
             echo "## Connected-test stable signing"
             echo "- App package: \`build.raft.app.connectedtest\`"
