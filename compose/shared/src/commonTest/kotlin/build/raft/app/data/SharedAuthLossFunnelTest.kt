@@ -2,13 +2,12 @@ package build.raft.app.data
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -19,24 +18,31 @@ class SharedAuthLossFunnelTest {
     fun concurrentSignalsForSameTokenRestoreOnlyOnce() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val restoreStarted = CompletableDeferred<Unit>()
+        val restoreFinished = CompletableDeferred<Unit>()
+        val secondSignalJoined = CompletableDeferred<Unit>()
         val releaseRestore = CompletableDeferred<Unit>()
         var restoreCount = 0
-        val resolutions = mutableListOf<AuthLossResolution>()
         val funnel =
             SharedAuthLossFunnel(
                 restoreSession = {
                     restoreCount += 1
                     restoreStarted.complete(Unit)
                     releaseRestore.await()
+                    restoreFinished.complete(Unit)
                     SharedAuthResult.Success(storedSession())
                 },
                 clearSession = { _, _ -> error("session must not clear") },
-                scope = scope
+                scope = scope,
+                diagnosticsLogger = { message ->
+                    if (message.startsWith("auth_loss_join ")) {
+                        secondSignalJoined.complete(Unit)
+                    }
+                }
             )
-        val resolutionCollector = launch {
-            funnel.resolutions.collect { resolutions += it }
+        // Subscribe before the owner can emit because this SharedFlow has no replay.
+        val resolution = async(start = CoroutineStart.UNDISPATCHED) {
+            funnel.resolutions.first()
         }
-        yield()
 
         val first =
             funnel.report(
@@ -47,16 +53,16 @@ class SharedAuthLossFunnelTest {
                 AuthLossSignal(source = "home", tokenFingerprint = "token-a")
             )
         restoreStarted.await()
-        yield()
+        // The duplicate report must join the held restore before it is allowed to finish.
+        secondSignalJoined.await()
 
         assertEquals(1, restoreCount)
         releaseRestore.complete(Unit)
+        restoreFinished.await()
         assertIs<AuthLossDecision.SessionPreserved>(first.await())
         assertIs<AuthLossDecision.SessionPreserved>(second.await())
         assertEquals(1, restoreCount)
-        yield()
-        assertEquals(1, resolutions.size)
-        resolutionCollector.cancel()
+        assertIs<AuthLossDecision.SessionPreserved>(resolution.await().decision)
         scope.cancel()
     }
 
