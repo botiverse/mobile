@@ -5,8 +5,68 @@ import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class MessageParserTest {
+    @Test
+    fun completeRawRowsExposeCanonicalCoverageInput() {
+        val payload =
+            parseSharedChannelMessages(
+                """
+                {"messages":[{
+                  "id":"m-coverage","seq":31,"channelId":"channel-1",
+                  "senderType":"user","senderId":"u-2","senderName":"User 2",
+                  "messageType":"chat","content":"hello","randomId":null,"threadId":null,
+                  "createdAt":"2026-07-14T00:00:00Z"
+                }],"messageWindow":{"schemaVersion":1,"domain":"receiver_visible_messages_v1","serverId":"server-1","receiverKind":"user","receiverId":"user-1","scopeId":"channel-1","coveredAfterSeq":30,"coveredFromSeq":31,"coveredThroughSeq":31,"remoteHighWaterSeq":31,"hasGap":false,"hasNewer":false,"completeThroughLatest":true}}
+                """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1"),
+            )
+
+        assertTrue(payload.canonicalRowsComplete)
+        assertEquals(listOf("m-coverage"), payload.canonicalRows.map { it.id })
+        assertEquals(listOf(31L), payload.canonicalRows.map { it.seq })
+        assertEquals(30L, assertNotNull(payload.messageWindow).coveredAfterSeq)
+    }
+
+    @Test
+    fun malformedOrUnknownMessageWindowFailsClosedWithoutDroppingLegacyRows() {
+        val body =
+            """{"messages":[{"id":"m-coverage","seq":31,"channelId":"channel-1","senderType":"user","senderId":"u-2","senderName":"User 2","messageType":"chat","content":"hello","randomId":null,"threadId":null,"createdAt":"2026-07-14T00:00:00Z"}],"messageWindow":{"schemaVersion":2,"domain":"receiver_visible_messages_v1","serverId":"server-1","receiverKind":"user","receiverId":"user-1","scopeId":"channel-1","coveredAfterSeq":31,"coveredFromSeq":31,"coveredThroughSeq":31,"remoteHighWaterSeq":31,"hasGap":false,"hasNewer":false,"completeThroughLatest":true}}"""
+
+        val payload = parseSharedChannelMessages(body, fallbackThreadId = ThreadId("channel-1"))
+
+        assertNull(payload.messageWindow)
+        assertTrue(payload.canonicalRowsComplete)
+        assertEquals(1, payload.messages.size)
+    }
+
+    @Test
+    fun oneMalformedRawRowFailsCoverageClosedWithoutDroppingLegacyProjection() {
+        val payload =
+            parseSharedChannelMessages(
+                """
+                {"messages":[{
+                  "id":"m-legacy","seq":31,"channelId":"channel-1",
+                  "senderType":"user","senderId":"u-2","senderName":"User 2",
+                  "messageType":"chat","content":"hello","randomId":null,"threadId":null,
+                  "createdAt":"2026-07-14T00:00:00Z"
+                },{
+                  "id":"m-malformed","seq":32,"channelId":"channel-1",
+                  "senderType":"user","senderId":"u-2","messageType":"chat",
+                  "randomId":null,"threadId":null,"createdAt":"2026-07-14T00:00:01Z"
+                }]}
+                """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1"),
+            )
+
+        assertFalse(payload.canonicalRowsComplete)
+        assertTrue(payload.canonicalRows.isEmpty())
+        assertEquals(2, payload.messages.size, "legacy REST projection remains fail-open")
+    }
+
     @Test
     fun parsesThreadSummaryIntoDomainMessageReplyMetadata() {
         val payload =

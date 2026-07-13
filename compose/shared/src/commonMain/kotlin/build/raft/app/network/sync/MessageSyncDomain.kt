@@ -90,6 +90,7 @@ data class MessageScopeCoverage(
     val receiverKind: MessageReceiverKind,
     val scopeId: String,
     val epoch: String?,
+    val coveredAfterSeq: Long,
     val coveredFromSeq: Long,
     val coveredThroughSeq: Long,
     val remoteHighWaterSeq: Long,
@@ -105,6 +106,7 @@ data class MessageScopeCoverageSnapshot(
     val scopeId: String,
     val epoch: String?,
     val rows: List<CanonicalMessageRow>,
+    val coveredAfterSeq: Long,
     val coveredFromSeq: Long,
     val remoteHighWaterSeq: Long,
     val hasGap: Boolean = false,
@@ -131,6 +133,85 @@ data class MessageReadStateProjection(
     val firstMentionMessageId: String?,
     val complete: Boolean,
 )
+
+data class MessageScopeRebaselineToken(
+    val serverId: String,
+    val memberId: String,
+    val ownerGeneration: Long,
+    val scopeId: String,
+    val generation: Long,
+    val epoch: String?,
+)
+
+/** Shared owner surface used by authoritative conversation hydrate and Activity read-state projection. */
+interface MessageDomainStore {
+    fun beginAuthoritativeRebaseline(serverId: String, memberId: String, scopeId: String): MessageScopeRebaselineToken?
+
+    fun completeAuthoritativeRebaseline(
+        token: MessageScopeRebaselineToken,
+        memberId: String,
+        receiverKind: MessageReceiverKind,
+        rows: List<CanonicalMessageRow>,
+        coveredAfterSeq: Long,
+        coveredFromSeq: Long,
+        coveredThroughSeq: Long,
+        remoteHighWaterSeq: Long,
+        hasGap: Boolean,
+        hasNewer: Boolean,
+    ): SyncIngestOutcome?
+
+    fun invalidateAuthoritativeRebaseline(token: MessageScopeRebaselineToken)
+
+    fun currentOwnerGeneration(serverId: String, memberId: String): Long? = null
+
+    fun projectReadState(
+        serverId: String,
+        memberId: String,
+        receiverKind: MessageReceiverKind,
+        scopeId: String,
+        checkpoint: MessageReadStateCheckpoint,
+    ): MessageReadStateProjection
+
+    object NoOp : MessageDomainStore {
+        override fun beginAuthoritativeRebaseline(
+            serverId: String,
+            memberId: String,
+            scopeId: String,
+        ): MessageScopeRebaselineToken? = null
+
+        override fun completeAuthoritativeRebaseline(
+            token: MessageScopeRebaselineToken,
+            memberId: String,
+            receiverKind: MessageReceiverKind,
+            rows: List<CanonicalMessageRow>,
+            coveredAfterSeq: Long,
+            coveredFromSeq: Long,
+            coveredThroughSeq: Long,
+            remoteHighWaterSeq: Long,
+            hasGap: Boolean,
+            hasNewer: Boolean,
+        ): SyncIngestOutcome? = null
+
+        override fun invalidateAuthoritativeRebaseline(token: MessageScopeRebaselineToken) = Unit
+
+        override fun projectReadState(
+            serverId: String,
+            memberId: String,
+            receiverKind: MessageReceiverKind,
+            scopeId: String,
+            checkpoint: MessageReadStateCheckpoint,
+        ): MessageReadStateProjection =
+            applyReadStateProjection(
+                state = createInitialMessageDomainState(),
+                serverId = serverId,
+                memberId = memberId,
+                receiverKind = receiverKind,
+                scopeId = scopeId,
+                epoch = null,
+                checkpoint = checkpoint,
+            )
+    }
+}
 
 fun createInitialMessageDomainState(): MessageDomainState = MessageDomainState()
 
@@ -264,8 +345,10 @@ fun rebaselineMessageScope(
     val validIdentity =
         snapshot.serverId.isNotBlank() && snapshot.memberId.isNotBlank() && snapshot.scopeId.isNotBlank()
     val validBounds =
-        snapshot.coveredFromSeq >= 0L &&
+        snapshot.coveredAfterSeq >= 0L &&
+            snapshot.coveredFromSeq >= 0L &&
             snapshot.remoteHighWaterSeq >= 0L &&
+            snapshot.coveredAfterSeq < snapshot.coveredFromSeq &&
             (
                 snapshot.coveredFromSeq <= snapshot.remoteHighWaterSeq ||
                     snapshot.coveredFromSeq == snapshot.remoteHighWaterSeq.saturatedIncrement()
@@ -295,6 +378,7 @@ fun rebaselineMessageScope(
             receiverKind = snapshot.receiverKind,
             scopeId = snapshot.scopeId,
             epoch = snapshot.epoch,
+            coveredAfterSeq = snapshot.coveredAfterSeq,
             coveredFromSeq = snapshot.coveredFromSeq,
             coveredThroughSeq = coveredThroughSeq,
             remoteHighWaterSeq = snapshot.remoteHighWaterSeq,
@@ -356,7 +440,7 @@ fun applyReadStateProjection(
         coverage.completeThroughLatest &&
             !coverage.hasGap &&
             coverage.coveredThroughSeq >= coverage.remoteHighWaterSeq &&
-            coverage.coveredFromSeq <= checkpoint.maxReadSeq.saturatedIncrement()
+            checkpoint.maxReadSeq >= coverage.coveredAfterSeq
     if (!identityMatches || !coversUnreadTail) return incompleteReadStateProjection(checkpoint)
 
     var unreadCount = 0
@@ -432,6 +516,10 @@ internal class MessageDomainSyncHost(
 
     private fun owner(scopeId: SyncScopeId): ScopeOwner =
         synchronized(ownersLock) { owners.getOrPut(scopeId, ::ScopeOwner) }
+
+    fun clearAll() {
+        synchronized(ownersLock) { owners.clear() }
+    }
 
     fun ingestFrame(frame: SyncFrame): SyncIngestOutcome {
         val scopeOwner = owner(frame.scopeId)
@@ -569,6 +657,43 @@ internal class MessageDomainSyncHost(
             }
             outcome
         }
+    }
+
+    fun invalidateAuthoritativeRebaseline(scopeId: SyncScopeId, generation: Long) {
+        val scopeOwner = owner(scopeId)
+        synchronized(scopeOwner.lock) {
+            val pending = scopeOwner.pendingRebaseline
+            if (pending == null || pending.generation != generation) return@synchronized
+            scopeOwner.invalidateCoverageLocked(scopeId)
+            scopeOwner.acceptedRebaselineGeneration = generation
+            scopeOwner.pendingRebaseline = null
+        }
+    }
+
+    fun invalidateScopeCoverage(scopeId: SyncScopeId) {
+        val scopeOwner = owner(scopeId)
+        synchronized(scopeOwner.lock) {
+            scopeOwner.invalidateCoverageLocked(scopeId)
+        }
+    }
+
+    private fun ScopeOwner.invalidateCoverageLocked(scopeId: SyncScopeId) {
+        val syncState = activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, scopeId) ?: return
+        val current = activeCore.state(MESSAGES_SYNC_DOMAIN, scopeId) as? MessageDomainState ?: return
+        val invalidated = invalidateMessageScopeCoverage(current, scopeId)
+        if (invalidated === current) return
+        val replacement = newMessageDomainSyncCore()
+        val outcome =
+            replacement.ingestSnapshot(
+                MESSAGES_SYNC_DOMAIN,
+                SyncSnapshot(
+                    scopeId = scopeId,
+                    watermark = syncState.appliedSeq,
+                    epoch = syncState.epoch,
+                    state = invalidated,
+                ),
+            )
+        if (outcome is SyncIngestOutcome.Applied) activeCore = replacement
     }
 
     fun state(scopeId: SyncScopeId): MessageDomainState {

@@ -24,8 +24,15 @@ import build.raft.app.model.Presence
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.network.sync.ProductionFace
+import build.raft.app.network.sync.decodeCanonicalMessageWire
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Strict parser for the `/api/messages` endpoints.
@@ -141,6 +148,7 @@ private data class MessagesWireThreadSummary(
 private data class MessagesWireChannelResponse(
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
+    val messageWindow: MessagesWireMessageWindow? = null,
 )
 
 @Serializable
@@ -153,6 +161,24 @@ private data class MessagesWireContextResponse(
     val messages: List<MessagesWireMessage> = emptyList(),
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
+    val messageWindow: MessagesWireMessageWindow? = null,
+)
+
+@Serializable
+private data class MessagesWireMessageWindow(
+    val schemaVersion: Int? = null,
+    val domain: String? = null,
+    val serverId: String? = null,
+    val receiverKind: String? = null,
+    val receiverId: String? = null,
+    val scopeId: String? = null,
+    val coveredAfterSeq: Long? = null,
+    val coveredFromSeq: Long? = null,
+    val coveredThroughSeq: Long? = null,
+    val remoteHighWaterSeq: Long? = null,
+    val hasGap: Boolean? = null,
+    val hasNewer: Boolean? = null,
+    val completeThroughLatest: Boolean? = null,
 )
 
 @Serializable
@@ -204,6 +230,9 @@ private data class MessagesWireMentionActionExecuteResult(
  */
 data class SharedMessagesPayload(
     val messages: List<Message>,
+    val canonicalRows: List<CanonicalMessageRow> = emptyList(),
+    val canonicalRowsComplete: Boolean = false,
+    val messageWindow: SharedMessageWindowCoverage? = null,
     val channelId: ChannelId? = null,
     val targetMessageId: MessageId? = null,
     val canonicalTarget: SharedMessagesCanonicalTarget? = null,
@@ -212,6 +241,88 @@ data class SharedMessagesPayload(
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
 )
+
+data class SharedMessageWindowCoverage(
+    val schemaVersion: Int,
+    val domain: String,
+    val serverId: String,
+    val receiverKind: String,
+    val receiverId: String,
+    val scopeId: String,
+    val coveredAfterSeq: Long,
+    val coveredFromSeq: Long,
+    val coveredThroughSeq: Long,
+    val remoteHighWaterSeq: Long,
+    val hasGap: Boolean,
+    val hasNewer: Boolean,
+    val completeThroughLatest: Boolean,
+)
+
+private fun MessagesWireMessageWindow.toDomainOrNull(): SharedMessageWindowCoverage? {
+    val version = schemaVersion ?: return null
+    val resolvedDomain = domain?.takeIf { it.isNotBlank() } ?: return null
+    val resolvedServerId = serverId?.takeIf { it.isNotBlank() } ?: return null
+    val resolvedReceiverKind = receiverKind?.takeIf { it.isNotBlank() } ?: return null
+    val resolvedReceiverId = receiverId?.takeIf { it.isNotBlank() } ?: return null
+    val resolvedScopeId = scopeId?.takeIf { it.isNotBlank() } ?: return null
+    val resolvedCoveredAfterSeq = coveredAfterSeq ?: return null
+    val resolvedCoveredFromSeq = coveredFromSeq ?: return null
+    val resolvedCoveredThroughSeq = coveredThroughSeq ?: return null
+    val resolvedRemoteHighWaterSeq = remoteHighWaterSeq ?: return null
+    val resolvedHasGap = hasGap ?: return null
+    val resolvedHasNewer = hasNewer ?: return null
+    val resolvedCompleteThroughLatest = completeThroughLatest ?: return null
+    val validBounds =
+        resolvedCoveredAfterSeq >= 0L &&
+            resolvedCoveredFromSeq >= 0L &&
+            resolvedCoveredThroughSeq >= 0L &&
+            resolvedRemoteHighWaterSeq >= 0L &&
+            resolvedCoveredAfterSeq < resolvedCoveredFromSeq &&
+            resolvedCoveredThroughSeq <= resolvedRemoteHighWaterSeq &&
+            (
+                resolvedCoveredFromSeq <= resolvedCoveredThroughSeq ||
+                    resolvedCoveredFromSeq == resolvedCoveredThroughSeq + 1L
+            )
+    if (version != 1 || resolvedDomain != "receiver_visible_messages_v1" || !validBounds) return null
+    return SharedMessageWindowCoverage(
+        schemaVersion = version,
+        domain = resolvedDomain,
+        serverId = resolvedServerId,
+        receiverKind = resolvedReceiverKind,
+        receiverId = resolvedReceiverId,
+        scopeId = resolvedScopeId,
+        coveredAfterSeq = resolvedCoveredAfterSeq,
+        coveredFromSeq = resolvedCoveredFromSeq,
+        coveredThroughSeq = resolvedCoveredThroughSeq,
+        remoteHighWaterSeq = resolvedRemoteHighWaterSeq,
+        hasGap = resolvedHasGap,
+        hasNewer = resolvedHasNewer,
+        completeThroughLatest = resolvedCompleteThroughLatest,
+    )
+}
+
+private data class CanonicalRowsDecode(
+    val rows: List<CanonicalMessageRow>,
+    val complete: Boolean,
+)
+
+private fun decodeCanonicalRows(elements: JsonArray): CanonicalRowsDecode {
+    val rows = ArrayList<CanonicalMessageRow>(elements.size)
+    for (element in elements) {
+        val raw = element as? JsonObject ?: return CanonicalRowsDecode(emptyList(), complete = false)
+        val decoded = decodeCanonicalMessageWire(raw, ProductionFace.MessageNew)
+            ?: return CanonicalRowsDecode(emptyList(), complete = false)
+        rows += decoded.row
+    }
+    return CanonicalRowsDecode(rows, complete = true)
+}
+
+private fun parseRawMessages(bodyText: String, objectEnvelope: Boolean): CanonicalRowsDecode =
+    runCatching {
+        val root = messagesJson.parseToJsonElement(bodyText)
+        val elements = if (objectEnvelope) root.jsonObject["messages"]?.jsonArray else root.jsonArray
+        elements?.let(::decodeCanonicalRows) ?: CanonicalRowsDecode(emptyList(), complete = false)
+    }.getOrElse { CanonicalRowsDecode(emptyList(), complete = false) }
 
 data class SharedMessagesCanonicalTarget(
     val kind: String,
@@ -236,8 +347,12 @@ fun parseSharedChannelMessages(
     val response = runCatching {
         messagesJson.decodeFromString(MessagesWireChannelResponse.serializer(), bodyText)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
+    val canonical = parseRawMessages(bodyText, objectEnvelope = true)
     return SharedMessagesPayload(
         messages = response.messages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
+        canonicalRows = canonical.rows,
+        canonicalRowsComplete = canonical.complete,
+        messageWindow = response.messageWindow?.toDomainOrNull(),
         historyLimited = response.historyLimited,
     )
 }
@@ -251,9 +366,13 @@ fun parseSharedMessageContext(
     val response = runCatching {
         messagesJson.decodeFromString(MessagesWireContextResponse.serializer(), bodyText)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
+    val canonical = parseRawMessages(bodyText, objectEnvelope = true)
     val resolvedThreadId = response.channelId?.let(::ThreadId) ?: fallbackThreadId
     return SharedMessagesPayload(
         messages = response.messages.mapNotNull { it.toDomain(resolvedThreadId, diagnostics) },
+        canonicalRows = canonical.rows,
+        canonicalRowsComplete = canonical.complete,
+        messageWindow = response.messageWindow?.toDomainOrNull(),
         channelId = response.channelId?.let(::ChannelId),
         targetMessageId = response.targetMessageId?.let(::MessageId),
         canonicalTarget = response.canonicalTarget?.toDomain(),
@@ -284,8 +403,11 @@ fun parseSharedSyncMessages(
     val wireMessages = runCatching {
         messagesJson.decodeFromString<List<MessagesWireMessage>>(bodyText)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
+    val canonical = parseRawMessages(bodyText, objectEnvelope = false)
     return SharedMessagesPayload(
         messages = wireMessages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
+        canonicalRows = canonical.rows,
+        canonicalRowsComplete = canonical.complete,
     )
 }
 

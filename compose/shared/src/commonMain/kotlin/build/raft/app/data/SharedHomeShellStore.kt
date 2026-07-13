@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.RealtimeEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -38,7 +40,13 @@ sealed interface SharedHomeShellIntent {
     data class SetSelectedConversation(val conversationId: String?) : SharedHomeShellIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeShellIntent
     data class DismissNotification(val id: String) : SharedHomeShellIntent
-    data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeShellIntent
+    data class ApplyRealtimeEvent(
+        val ownerToken: RealtimeIngressOwnerToken?,
+        val serverId: String,
+        val event: RealtimeEvent,
+    ) : SharedHomeShellIntent {
+        constructor(serverId: String, event: RealtimeEvent) : this(null, serverId, event)
+    }
     data class ApplyBackgroundServerUnreadEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeShellIntent
     data class Home(val intent: SharedHomeIntent) : SharedHomeShellIntent
     data class Activity(val intent: SharedActivityIntent) : SharedHomeShellIntent
@@ -140,7 +148,8 @@ class SharedHomeShellStore(
                 dispatchHome(SharedHomeIntent.SelectTopAction(intent.action))
             is SharedHomeShellIntent.DismissNotification ->
                 dispatchHome(SharedHomeIntent.DismissNotification(intent.id))
-            is SharedHomeShellIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
+            is SharedHomeShellIntent.ApplyRealtimeEvent ->
+                applyRealtimeEvent(intent.ownerToken, intent.serverId, intent.event)
             is SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent ->
                 dispatchHome(SharedHomeIntent.ApplyBackgroundServerUnreadEvent(intent.serverId, intent.event))
             is SharedHomeShellIntent.Home -> dispatchHomeIntent(intent.intent)
@@ -194,25 +203,41 @@ class SharedHomeShellStore(
         }
     }
 
-    private fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
-        dispatchHome(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
+    private fun applyRealtimeEvent(
+        ownerToken: RealtimeIngressOwnerToken?,
+        serverId: String,
+        event: RealtimeEvent,
+    ) {
         val current = _state.value
+        if (event.requiresReceiverOwnerToken()) {
+            val currentOwner = current.activity.realtimeOwnerTokenFor(serverId)
+            if (ownerToken?.toActivityOwnerToken() != currentOwner) return
+        }
+        dispatchHome(SharedHomeIntent.ApplyRealtimeEvent(ownerToken, serverId, event))
+        val activityOwnerToken = ownerToken?.toActivityOwnerToken()
         if (current.destination == SharedHomeShellDestinationActivity) {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeEvent(
                     event = event,
-                    allowLocalPatch = current.home.allowsLocalActivityPatch(event)
+                    allowLocalPatch = current.home.allowsLocalActivityPatch(event),
+                    ownerToken = activityOwnerToken,
                 )
             )
         } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
-                    activeConversationId = current.selectedConversationId
+                    activeConversationId = current.selectedConversationId,
+                    ownerToken = activityOwnerToken,
                 )
             )
         }
     }
+
+    private fun RealtimeEvent.requiresReceiverOwnerToken(): Boolean =
+        this is PerReceiverReadStateChanged ||
+            this is PerReceiverNotificationPrefsChanged ||
+            this is PerReceiverPinnedChanged
 
     private fun clearBadgeSummaries() {
         dispatchActivity(SharedActivityIntent.ClearSummary)

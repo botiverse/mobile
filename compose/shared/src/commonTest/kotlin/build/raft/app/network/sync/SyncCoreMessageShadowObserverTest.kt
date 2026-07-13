@@ -2,8 +2,8 @@
  * Shadow gateway gate + no-apply invariants (sync_core_messages_v0).
  *
  * Nails the rollout-safety properties LiBai flagged for #700 plus the #607 decode-once contract:
- *  - flag OFF => the gateway does NO work: ZERO canonical decodes, compare never runs, zero diagnostics,
- *    null carry — nothing beyond one map lookup (the default-off hot path);
+ *  - flag OFF => canonical decode/carry remains available to the global in-memory owner, while shadow
+ *    compare/diagnostics stay off;
  *  - flag ON => the raw frame is decoded exactly ONCE, and that same decoded object feeds both the
  *    shadow-compare and the returned carry the fold+persist lane consumes (no double decode);
  *  - the gateway's only outputs are a diagnostic line and the returned carry. It holds no store/UI
@@ -50,7 +50,7 @@ class SyncCoreMessageShadowObserverTest {
         return f
     }
 
-    /** Countable wrapper around the real ingress decode — the #607 decode-once/zero-decode proof seam. */
+    /** Countable wrapper around the real ingress decode — the #607 decode-once proof seam. */
     private class CountingDecoder {
         var invocations = 0
         var lastDecoded: CanonicalMessageCarry? = null
@@ -94,9 +94,7 @@ class SyncCoreMessageShadowObserverTest {
     }
 
     @Test
-    fun flagOff_zeroDecodesAndNullEventCarry() {
-        // Gate (a): flag off => the gateway never invokes the canonical decoder AND the mapped event
-        // carries a null canonical carry (flag-off pays zero decode cost on the hot path).
+    fun flagOff_decodesOnceAndCarriesCanonicalRowWithoutShadowDiagnostics() {
         val decoder = CountingDecoder()
         val observer = SyncCoreMessageShadowObserver(
             featureFlags = flags(enabled = false),
@@ -104,8 +102,9 @@ class SyncCoreMessageShadowObserverTest {
         )
         val event = RealtimeEventMapper(messageShadowObserver = observer)
             .map(RealtimeSocketEvents.MessageNew, payload()) as MessageNew
-        assertEquals(0, decoder.invocations, "flag off must never invoke the canonical decoder")
-        assertNull(event.decodedCanonical, "flag off must attach a null carry to the event")
+        assertEquals(1, decoder.invocations, "global owner requires one canonical decode even while rollout is off")
+        assertNotNull(event.decodedCanonical, "flag off must still attach the canonical carry")
+        assertSame(decoder.lastDecoded, event.decodedCanonical)
     }
 
     @Test

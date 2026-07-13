@@ -7,14 +7,248 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.network.MultipartFile
+import build.raft.app.network.sync.MessageDomainStore
+import build.raft.app.network.sync.MessageReadStateCheckpoint
+import build.raft.app.network.sync.MessageReadStateProjection
+import build.raft.app.network.sync.MessageReceiverKind
+import build.raft.app.network.sync.MessageScopeRebaselineToken
+import build.raft.app.network.sync.FoldPersistFrame
+import build.raft.app.network.sync.FoldPersistenceAdapter
+import build.raft.app.network.sync.RestoredFoldState
+import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
+import build.raft.app.network.sync.SyncIngestOutcome
+import build.raft.app.network.sync.SyncScopeKey
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
+    @Test
+    fun authoritativeLatestChannelLoadBeginsBeforeRequestAndCompletesCanonicalCoverage() = runBlocking {
+        val domain = RecordingMessageDomainStore()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"messages":[{"id":"m-31","seq":31,"channelId":"channel-1","senderType":"user","senderId":"user-2","senderName":"User 2","messageType":"chat","content":"hello","randomId":null,"threadId":null,"createdAt":"2026-07-14T00:00:00Z"}],"messageWindow":{"schemaVersion":1,"domain":"receiver_visible_messages_v1","serverId":"server-1","receiverKind":"user","receiverId":"user-1","scopeId":"channel-1","coveredAfterSeq":30,"coveredFromSeq":31,"coveredThroughSeq":31,"remoteHighWaterSeq":31,"hasGap":false,"hasNewer":false,"completeThroughLatest":true}}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network, messageDomainStore = domain)
+
+        val result = repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 50)
+
+        assertIs<DataResult.Content<ThreadSnapshot>>(result)
+        assertEquals(listOf("begin:server-1:channel-1", "complete:server-1:channel-1:31:30:31:false"), domain.calls)
+    }
+
+    @Test
+    fun malformedCanonicalRowNeverCompletesCoverage() = runBlocking {
+        val domain = RecordingMessageDomainStore()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"messages":[{"id":"m-31","seq":31,"channelId":"channel-1","senderType":"user","senderId":"user-2","messageType":"chat","content":"hello","createdAt":"2026-07-14T00:00:00Z"}]}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network, messageDomainStore = domain)
+
+        repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 50)
+
+        assertEquals(listOf("begin:server-1:channel-1", "invalidate:server-1:channel-1:1"), domain.calls)
+    }
+
+    @Test
+    fun nonLatestPageDoesNotBeginOrReplaceAuthoritativeCoverage() = runBlocking {
+        val domain = RecordingMessageDomainStore()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"messages":[${messageJson("m-7", "channel-1", seq = 7)}],"messageWindow":{"schemaVersion":1,"domain":"receiver_visible_messages_v1","serverId":"server-1","receiverKind":"user","receiverId":"user-1","scopeId":"channel-1","coveredAfterSeq":0,"coveredFromSeq":7,"coveredThroughSeq":7,"remoteHighWaterSeq":31,"hasGap":true,"hasNewer":true,"completeThroughLatest":false}}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network, messageDomainStore = domain)
+
+        repository.loadOlderMessages(ThreadId("channel-1"), beforeSeq = 8, limit = 50)
+
+        assertEquals(emptyList(), domain.calls)
+    }
+
+    @Test
+    fun failedLatestChannelRequestsConsumeGenerationAndDropExistingCoverage() = runBlocking {
+        val path = "GET messages/channel/channel-1"
+        val clients =
+            listOf(
+                FakeConversationNetworkClient(responseCodes = mapOf(path to 500)),
+                FakeConversationNetworkClient(responses = mapOf(path to "")),
+                FakeConversationNetworkClient(responses = mapOf(path to "{")),
+                FakeConversationNetworkClient(failures = mapOf(path to "offline")),
+            )
+
+        clients.forEach { network ->
+            val domain = RecordingMessageDomainStore(initialCoverageComplete = true)
+            val repository = RealConversationRepository(sampleStore(), network, messageDomainStore = domain)
+
+            repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 50)
+
+            assertFalse(domain.coverageComplete)
+            assertEquals(listOf("begin:server-1:channel-1", "invalidate:server-1:channel-1:1"), domain.calls)
+        }
+    }
+
+    @Test
+    fun cancelledLatestChannelRequestConsumesGenerationAndRethrowsCancellation() = runBlocking {
+        val path = "GET messages/channel/channel-1"
+        val domain = RecordingMessageDomainStore(initialCoverageComplete = true)
+        val repository =
+            RealConversationRepository(
+                sampleStore(),
+                FakeConversationNetworkClient(cancellations = setOf(path)),
+                messageDomainStore = domain,
+            )
+
+        assertFailsWith<CancellationException> {
+            repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 50)
+        }
+
+        assertFalse(domain.coverageComplete)
+        assertEquals(listOf("begin:server-1:channel-1", "invalidate:server-1:channel-1:1"), domain.calls)
+    }
+
+    @Test
+    fun failedReplyThreadMessageRequestConsumesResolvedScopeGeneration() = runBlocking {
+        val domain = RecordingMessageDomainStore(initialCoverageComplete = true)
+        val repository =
+            RealConversationRepository(
+                sampleStore(),
+                FakeConversationNetworkClient(
+                    responses =
+                        mapOf(
+                            "POST channels/channel-1/threads" to
+                                """{"threadChannelId":"thread-1","replyCount":0,"ok":true}"""
+                        ),
+                    responseCodes = mapOf("GET messages/channel/thread-1" to 500),
+                ),
+                messageDomainStore = domain,
+            )
+
+        repository.getReplyThread(ChannelId("channel-1"), MessageId("parent-1"), limit = 50)
+
+        assertFalse(domain.coverageComplete)
+        assertEquals(listOf("begin:server-1:thread-1", "invalidate:server-1:thread-1:1"), domain.calls)
+    }
+
+    @Test
+    fun duplicateDroppedCompletionFallsThroughToFinalInvalidation() = runBlocking {
+        val domain =
+            RecordingMessageDomainStore(
+                initialCoverageComplete = true,
+                completionOutcome = SyncIngestOutcome.DuplicateDropped("channel-1", 31),
+            )
+        val repository =
+            RealConversationRepository(
+                sampleStore(),
+                FakeConversationNetworkClient(
+                    responses =
+                        mapOf(
+                            "GET messages/channel/channel-1" to
+                                """{"messages":[{"id":"m-31","seq":31,"channelId":"channel-1","senderType":"user","senderId":"user-2","senderName":"User 2","messageType":"chat","content":"hello","randomId":null,"threadId":null,"createdAt":"2026-07-14T00:00:00Z"}],"messageWindow":{"schemaVersion":1,"domain":"receiver_visible_messages_v1","serverId":"server-1","receiverKind":"user","receiverId":"user-1","scopeId":"channel-1","coveredAfterSeq":30,"coveredFromSeq":31,"coveredThroughSeq":31,"remoteHighWaterSeq":31,"hasGap":false,"hasNewer":false,"completeThroughLatest":true}}"""
+                        )
+                ),
+                messageDomainStore = domain,
+            )
+
+        repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 50)
+
+        assertFalse(domain.coverageComplete)
+        assertEquals(
+            listOf(
+                "begin:server-1:channel-1",
+                "complete:server-1:channel-1:31:30:31:false",
+                "invalidate:server-1:channel-1:1",
+            ),
+            domain.calls,
+        )
+    }
+
+    @Test
+    fun failedRequestInvalidatesExistingCoverageInRealMessageDomain() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val lane =
+            SyncCoreMessageShadowFoldLane(
+                featureFlags =
+                    SharedServerFeatureFlags(
+                        api =
+                            object : SlockFeatureFlagsApi {
+                                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                                    error("flag lookup is not expected")
+                            }
+                    ),
+                adapter =
+                    object : FoldPersistenceAdapter {
+                        override suspend fun applyFrame(frame: FoldPersistFrame) = Unit
+
+                        override suspend fun restore(scope: SyncScopeKey): RestoredFoldState =
+                            RestoredFoldState(facts = emptyList(), cursor = null)
+                    },
+                scope = scope,
+                logger = {},
+            )
+        val domain = SharedRealtimeDomainEventOwner().also { it.installMessageShadowFoldLane(lane) }
+        val baseline = domain.beginAuthoritativeRebaseline("server-1", "user-1", "channel-1")!!
+        domain.completeAuthoritativeRebaseline(
+            token = baseline,
+            memberId = "user-1",
+            receiverKind = MessageReceiverKind.User,
+            rows =
+                listOf(
+                    build.raft.app.canonical.message.CanonicalMessageRow(
+                        id = "m-30",
+                        channelId = "channel-1",
+                        seq = 30,
+                        senderType = "user",
+                        senderId = "user-2",
+                        senderName = "User 2",
+                        content = "baseline",
+                        messageType = "chat",
+                        createdAt = "2026-07-14T00:00:00Z",
+                    )
+                ),
+            coveredAfterSeq = 29,
+            coveredFromSeq = 30,
+            coveredThroughSeq = 30,
+            remoteHighWaterSeq = 30,
+            hasGap = false,
+            hasNewer = false,
+        )
+        val checkpoint = MessageReadStateCheckpoint(readStateVersion = 1, maxReadSeq = 30)
+        assertTrue(domain.projectReadState("server-1", "user-1", MessageReceiverKind.User, "channel-1", checkpoint).complete)
+        val repository =
+            RealConversationRepository(
+                sampleStore(),
+                FakeConversationNetworkClient(responseCodes = mapOf("GET messages/channel/channel-1" to 500)),
+                messageDomainStore = domain,
+            )
+
+        repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = false, limit = 50)
+
+        assertFalse(domain.projectReadState("server-1", "user-1", MessageReceiverKind.User, "channel-1", checkpoint).complete)
+        scope.cancel()
+    }
+
     @Test
     fun messageContextHydratesDeletedAgentDmDetailByChannelId() = runBlocking {
         val network =
@@ -603,6 +837,8 @@ class ConversationRepositoryDataSourceTest {
     private class FakeConversationNetworkClient(
         private val responses: Map<String, String> = emptyMap(),
         private val failures: Map<String, String> = emptyMap(),
+        private val responseCodes: Map<String, Int> = emptyMap(),
+        private val cancellations: Set<String> = emptySet(),
         private val uploadBody: String = """{"attachments":[]}"""
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
@@ -620,10 +856,14 @@ class ConversationRepositoryDataSourceTest {
             val normalized = path.trim('/')
             requests += RecordedConversationRequest(priority, method, normalized, query)
             bodyText?.let { bodies += it }
+            if ("$method $normalized" in cancellations) throw CancellationException("cancelled")
             failures["$method $normalized"]?.let { message ->
                 return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = message)
             }
-            return HomeNetworkResponse(code = 200, bodyText = responses["$method $normalized"] ?: """{"threads":[]}""")
+            return HomeNetworkResponse(
+                code = responseCodes["$method $normalized"] ?: 200,
+                bodyText = responses["$method $normalized"] ?: """{"threads":[]}""",
+            )
         }
 
         override suspend fun uploadAttachments(
@@ -635,6 +875,75 @@ class ConversationRepositoryDataSourceTest {
             uploadedFileNames += files.map { it.fileName }
             return HomeNetworkResponse(code = 200, bodyText = uploadBody)
         }
+    }
+
+    private class RecordingMessageDomainStore(
+        initialCoverageComplete: Boolean = false,
+        private val completionOutcome: SyncIngestOutcome = SyncIngestOutcome.Applied("channel-1", 0),
+    ) : MessageDomainStore {
+        val calls = mutableListOf<String>()
+        var coverageComplete: Boolean = initialCoverageComplete
+
+        override fun beginAuthoritativeRebaseline(
+            serverId: String,
+            memberId: String,
+            scopeId: String,
+        ): MessageScopeRebaselineToken {
+            calls += "begin:$serverId:$scopeId"
+            return MessageScopeRebaselineToken(
+                serverId = serverId,
+                memberId = memberId,
+                ownerGeneration = 1,
+                scopeId = scopeId,
+                generation = 1,
+                epoch = null,
+            )
+        }
+
+        override fun completeAuthoritativeRebaseline(
+            token: MessageScopeRebaselineToken,
+            memberId: String,
+            receiverKind: MessageReceiverKind,
+            rows: List<build.raft.app.canonical.message.CanonicalMessageRow>,
+            coveredAfterSeq: Long,
+            coveredFromSeq: Long,
+            coveredThroughSeq: Long,
+            remoteHighWaterSeq: Long,
+            hasGap: Boolean,
+            hasNewer: Boolean,
+        ): SyncIngestOutcome? {
+            calls += "complete:${token.serverId}:${token.scopeId}:${rows.singleOrNull()?.seq}:$coveredAfterSeq:$remoteHighWaterSeq:$hasNewer"
+            val outcome =
+                if (completionOutcome is SyncIngestOutcome.Applied) {
+                    SyncIngestOutcome.Applied(token.scopeId, remoteHighWaterSeq)
+                } else {
+                    completionOutcome
+                }
+            coverageComplete = outcome is SyncIngestOutcome.Applied
+            return outcome
+        }
+
+        override fun invalidateAuthoritativeRebaseline(token: MessageScopeRebaselineToken) {
+            calls += "invalidate:${token.serverId}:${token.scopeId}:${token.generation}"
+            coverageComplete = false
+        }
+
+        override fun projectReadState(
+            serverId: String,
+            memberId: String,
+            receiverKind: MessageReceiverKind,
+            scopeId: String,
+            checkpoint: MessageReadStateCheckpoint,
+        ): MessageReadStateProjection =
+            MessageReadStateProjection(
+                readStateVersion = checkpoint.readStateVersion,
+                maxReadSeq = checkpoint.maxReadSeq,
+                unreadCount = 0,
+                hasMention = false,
+                firstUnreadMessageId = null,
+                firstMentionMessageId = null,
+                complete = coverageComplete,
+            )
     }
 
     private data class RecordedConversationRequest(

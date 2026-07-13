@@ -14,6 +14,7 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
@@ -23,6 +24,10 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
 import build.raft.app.data.realtime.PerReceiverReadStateFactResult
+import build.raft.app.network.sync.MessageDomainStore
+import build.raft.app.network.sync.MessageReadStateCheckpoint
+import build.raft.app.network.sync.MessageReadStateProjection
+import build.raft.app.network.sync.MessageReceiverKind
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -55,6 +60,12 @@ private data class ActivityRealtimeReconcileResult(
     val items: List<InboxItem>
 )
 
+data class ActivityRealtimeOwnerToken(
+    val serverId: String,
+    val memberId: String,
+    val generation: Long,
+)
+
 data class ActivityReplyThreadPrewarmKey(
     val serverId: String,
     val parentChannelId: String,
@@ -72,6 +83,7 @@ class SharedActivityStore internal constructor(
     private var inboxRepository: InboxRepository,
     private var readReceiptRepository: ReadReceiptRepository,
     private var conversationRepository: ConversationRepository,
+    private var messageDomainStore: MessageDomainStore = MessageDomainStore.NoOp,
     private var memberRepository: MemberRepository? = null,
     private var serverMembersStore: SharedServerMembersStore? = null,
     private var tasksDataStore: SharedTasksDataStore? = null,
@@ -110,6 +122,7 @@ class SharedActivityStore internal constructor(
     private var tailDrainBarrier: Job? = null
     private var realtimeReconcileJob: Job? = null
     private var realtimeReconcileDirty = false
+    private var nextFallbackOwnerGeneration = 0L
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
     // One owner for live row patches, version ledger changes, load folds, and scheduler lifecycle.
     private val realtimeOwnerLock = SynchronizedObject()
@@ -119,6 +132,7 @@ class SharedActivityStore internal constructor(
         inboxRepository: InboxRepository = this.inboxRepository,
         readReceiptRepository: ReadReceiptRepository = this.readReceiptRepository,
         conversationRepository: ConversationRepository = this.conversationRepository,
+        messageDomainStore: MessageDomainStore = this.messageDomainStore,
         memberRepository: MemberRepository? = this.memberRepository,
         serverMembersStore: SharedServerMembersStore? = this.serverMembersStore,
         tasksDataStore: SharedTasksDataStore? = this.tasksDataStore,
@@ -131,6 +145,7 @@ class SharedActivityStore internal constructor(
         this.inboxRepository = inboxRepository
         this.readReceiptRepository = readReceiptRepository
         this.conversationRepository = conversationRepository
+        this.messageDomainStore = messageDomainStore
         this.memberRepository = memberRepository
         this.serverMembersStore = serverMembersStore
         this.tasksDataStore = tasksDataStore
@@ -162,7 +177,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
-                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
+                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId, intent.ownerToken)
         }
     }
 
@@ -410,7 +425,8 @@ class SharedActivityStore internal constructor(
 
     private fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
         if (intent.event is PerReceiverReadStateChanged) {
-            applyPerReceiverReadStateChanged(intent.event)
+            val ownerToken = intent.ownerToken ?: currentOwnerToken(intent.event.serverId?.value)
+            if (ownerToken != null) applyPerReceiverReadStateChanged(intent.event, ownerToken)
             return
         }
         val (shouldRefresh, reconcileJobToStart) =
@@ -576,10 +592,12 @@ class SharedActivityStore internal constructor(
 
     private fun applyRealtimeSummaryEvent(
         event: RealtimeEvent,
-        activeConversationId: String?
+        activeConversationId: String?,
+        ownerToken: ActivityRealtimeOwnerToken?,
     ) {
         if (event is PerReceiverReadStateChanged) {
-            applyPerReceiverReadStateChanged(event)
+            val capturedOwner = ownerToken ?: currentOwnerToken(event.serverId?.value)
+            if (capturedOwner != null) applyPerReceiverReadStateChanged(event, capturedOwner)
             return
         }
         scope.launch {
@@ -601,21 +619,39 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun applyPerReceiverReadStateChanged(event: PerReceiverReadStateChanged) {
+    private fun currentOwnerToken(eventServerId: String?): ActivityRealtimeOwnerToken? =
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val serverId = current.ownerServerId ?: return@synchronized null
+            val memberId = current.ownerUserId ?: return@synchronized null
+            if (eventServerId != null && eventServerId != serverId) return@synchronized null
+            ActivityRealtimeOwnerToken(serverId, memberId, current.ownerGeneration)
+        }
+
+    private fun applyPerReceiverReadStateChanged(
+        event: PerReceiverReadStateChanged,
+        ownerToken: ActivityRealtimeOwnerToken,
+    ) {
         scope.launch {
-            val session = authStore.readSession() ?: return@launch
-            val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@launch
+            val serverId = ownerToken.serverId.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@launch
             if (event.serverId != null && event.serverId != serverId) return@launch
-            val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return@launch
-            var shouldReconcile = false
+            val memberId = ownerToken.memberId.takeIf { it.isNotBlank() }?.let(::MemberId) ?: return@launch
             var acceptedHere = false
+            val accepted = mutableListOf<Pair<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint>>()
             synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                if (
+                    current.ownerServerId != ownerToken.serverId ||
+                    current.ownerUserId != ownerToken.memberId ||
+                    current.ownerGeneration != ownerToken.generation
+                ) return@synchronized
                 event.scopes.forEach { readScope ->
                     val maxReadSeq = readScope.maxReadSeq ?: return@forEach
                     val projectionKey =
                         ActivityReadStateProjectionKey(
                             serverId = serverId,
                             memberId = memberId,
+                            ownerGeneration = ownerToken.generation,
                             scopeId = readScope.scopeId
                         )
                     val checkpoint =
@@ -635,23 +671,64 @@ class SharedActivityStore internal constructor(
                         "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
                             "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
                     )
-                    val alreadyScheduledOrReconciled =
-                        pendingReadStateFacts[projectionKey] == checkpoint ||
-                            reconciledReadStateFacts[projectionKey] == checkpoint
-                    if (result != PerReceiverReadStateFactResult.Stale && !alreadyScheduledOrReconciled) {
+                    val needsProjection =
+                        result == PerReceiverReadStateFactResult.Accepted ||
+                            (
+                                result == PerReceiverReadStateFactResult.Current &&
+                                    reconciledReadStateFacts[projectionKey] != checkpoint &&
+                                    pendingReadStateFacts[projectionKey] != checkpoint
+                            )
+                    if (needsProjection) {
                         pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
-                        shouldReconcile = true
+                        accepted += projectionKey to checkpoint
                     }
                     acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
                 }
             }
-            if (shouldReconcile) {
-                diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
-                if (acceptedHere) onUnreadCountsChanged()
+            accepted.forEach { (key, checkpoint) ->
+                var projection = projectReadState(key, checkpoint)
+                if (!projection.complete) {
+                    conversationRepository.getThread(
+                        threadId = ThreadId(key.scopeId.value),
+                        includeFollowedSummaries = false,
+                        limit = 50,
+                    )
+                    projection = projectReadState(key, checkpoint)
+                }
+                synchronized(realtimeOwnerLock) {
+                    if (pendingReadStateFacts[key] != checkpoint) return@synchronized
+                    if (projection.complete) {
+                        val applied = applyMessageProjectionLocked(key, checkpoint, projection)
+                        if (applied) {
+                            pendingReadStateFacts = pendingReadStateFacts - key
+                            reconciledReadStateFacts = reconciledReadStateFacts + (key to checkpoint)
+                        }
+                    }
+                }
+            }
+            if (acceptedHere) onUnreadCountsChanged()
+            if (accepted.isNotEmpty()) {
+                diagnosticsLogger("activity_read_state_reconcile reason=global_projection_confirmation")
                 load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
             }
         }
     }
+
+    private fun projectReadState(
+        key: ActivityReadStateProjectionKey,
+        checkpoint: PerReceiverReadStateCheckpoint,
+    ): MessageReadStateProjection =
+        messageDomainStore.projectReadState(
+            serverId = key.serverId.value,
+            memberId = key.memberId.value,
+            receiverKind = MessageReceiverKind.User,
+            scopeId = key.scopeId.value,
+            checkpoint =
+                MessageReadStateCheckpoint(
+                    readStateVersion = checkpoint.version,
+                    maxReadSeq = checkpoint.maxReadSeq,
+                ),
+        )
 
     private fun load(
         refresh: Boolean,
@@ -702,6 +779,8 @@ class SharedActivityStore internal constructor(
                             return@launch
                         }
                         val userId = session.user.id
+                        val authoritativeOwnerGeneration =
+                            messageDomainStore.currentOwnerGeneration(serverId.value, userId)
                         val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         if (server == null) {
                             synchronized(realtimeOwnerLock) {
@@ -711,10 +790,37 @@ class SharedActivityStore internal constructor(
                         }
                         synchronized(realtimeOwnerLock) {
                             val stateBeforeOwner = _state.value
+                            val samePrincipal =
+                                stateBeforeOwner.ownerServerId == serverId.value &&
+                                    stateBeforeOwner.ownerUserId == userId
+                            authoritativeOwnerGeneration?.let {
+                                nextFallbackOwnerGeneration = maxOf(nextFallbackOwnerGeneration, it)
+                            }
+                            val ownerGeneration =
+                                authoritativeOwnerGeneration
+                                    ?: if (samePrincipal && stateBeforeOwner.ownerGeneration > 0L) {
+                                        stateBeforeOwner.ownerGeneration
+                                    } else {
+                                        nextFallbackOwnerGeneration += 1L
+                                        nextFallbackOwnerGeneration
+                                    }
                             val ownerChanged =
-                                stateBeforeOwner.ownerServerId?.let { it != serverId.value } == true ||
-                                    stateBeforeOwner.ownerUserId?.let { it != userId } == true
-                            if (ownerChanged) realtimeHighWater.clear()
+                                stateBeforeOwner.ownerServerId != serverId.value ||
+                                    stateBeforeOwner.ownerUserId != userId ||
+                                    stateBeforeOwner.ownerGeneration != ownerGeneration
+                            if (ownerChanged) {
+                                realtimeHighWater.clear()
+                                pendingReadStateFacts = pendingReadStateFacts.filterKeys { key ->
+                                    key.serverId == serverId &&
+                                        key.memberId.value == userId &&
+                                        key.ownerGeneration == ownerGeneration
+                                }
+                                reconciledReadStateFacts = reconciledReadStateFacts.filterKeys { key ->
+                                    key.serverId == serverId &&
+                                        key.memberId.value == userId &&
+                                        key.ownerGeneration == ownerGeneration
+                                }
+                            }
                             val stateForOwner =
                                 if (ownerChanged) {
                                     SharedActivityState(selectedFilter = stateBeforeOwner.selectedFilter)
@@ -725,7 +831,8 @@ class SharedActivityStore internal constructor(
                                 intent,
                                 stateForOwner.copy(
                                     ownerServerId = serverId.value,
-                                    ownerUserId = userId
+                                    ownerUserId = userId,
+                                    ownerGeneration = ownerGeneration,
                                 )
                             )
                             val stateBeforeRequest = _state.value
@@ -773,9 +880,7 @@ class SharedActivityStore internal constructor(
                                         senderProfiles = senderProfiles,
                                         intent = intent
                                     )
-                                    completeReadStateReconcileLocked(
-                                        successful = result is DataResult.Content || result is DataResult.Empty
-                                    )
+                                    completeReadStateReconcileLocked(result)
                                     true
                                 }
                             }
@@ -796,7 +901,7 @@ class SharedActivityStore internal constructor(
                                 if (generation != loadGeneration) {
                                     false
                                 } else {
-                                    completeReadStateReconcileLocked(successful = false)
+                                    completeReadStateReconcileLocked(null)
                                     setLoadError("activity_network", append = !refresh)
                                     true
                                 }
@@ -816,12 +921,81 @@ class SharedActivityStore internal constructor(
         job?.start()
     }
 
-    private fun completeReadStateReconcileLocked(successful: Boolean) {
-        if (pendingReadStateFacts.isEmpty()) return
-        if (successful) {
-            reconciledReadStateFacts = reconciledReadStateFacts + pendingReadStateFacts
+    private fun completeReadStateReconcileLocked(result: DataResult<InboxSnapshot>?) {
+        if (result !is DataResult.Content) return
+        val current = _state.value
+        val checkpoints = reconciledReadStateFacts + pendingReadStateFacts
+        checkpoints.forEach { (key, checkpoint) ->
+            if (current.ownerServerId != key.serverId.value || current.ownerUserId != key.memberId.value) {
+                return@forEach
+            }
+            if (current.ownerGeneration != key.ownerGeneration) return@forEach
+            val projection = projectReadState(key, checkpoint)
+            if (!projection.complete) return@forEach
+            val applied = applyMessageProjectionLocked(key, checkpoint, projection)
+            if (applied && pendingReadStateFacts[key] == checkpoint) {
+                pendingReadStateFacts = pendingReadStateFacts - key
+                reconciledReadStateFacts = reconciledReadStateFacts + (key to checkpoint)
+            }
         }
-        pendingReadStateFacts = emptyMap()
+    }
+
+    private fun applyMessageProjectionLocked(
+        key: ActivityReadStateProjectionKey,
+        checkpoint: PerReceiverReadStateCheckpoint,
+        projection: MessageReadStateProjection,
+    ): Boolean {
+        if (!projection.complete) return false
+        val current = _state.value
+        if (current.ownerServerId != key.serverId.value || current.ownerUserId != key.memberId.value) return false
+        if (current.ownerGeneration != key.ownerGeneration) return false
+        val snapshot = current.snapshot ?: return false
+        val scopeId = key.scopeId
+        val matching = snapshot.items.filter { it.activityActionChannelId() == scopeId }
+        if (matching.isEmpty()) return false
+        val matchingKeys = matching.mapTo(mutableSetOf()) { it.key }
+        val previousUnread = matching.sumOf { it.unreadCount }
+        val projected = snapshot.items.map { item ->
+            if (item.key !in matchingKeys) {
+                item
+            } else {
+                item.copy(
+                    unreadCount = projection.unreadCount,
+                    hasMention = projection.hasMention,
+                    firstUnreadMessageId = projection.firstUnreadMessageId?.let(::MessageId),
+                )
+            }
+        }
+        val nextItems =
+            if (current.selectedFilter.keepsReadActivityRows() || projection.unreadCount > 0) {
+                projected
+            } else {
+                projected.filterNot { it.key in matchingKeys }
+            }
+        val projectedUnread = projection.unreadCount * matching.size
+        reduceState(
+            SharedActivityIntent.Refresh,
+            current.copy(
+                snapshot =
+                    snapshot.copy(
+                        items = nextItems,
+                        totalCount =
+                            if (current.selectedFilter.keepsReadActivityRows()) {
+                                snapshot.totalCount
+                            } else {
+                                maxOf(0, snapshot.totalCount - if (projection.unreadCount == 0) matching.size else 0)
+                            },
+                        totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - previousUnread + projectedUnread)
+                    ),
+                errorCode = null
+            )
+        )
+        diagnosticsLogger(
+            "activity_read_state_projection result=complete scopeId=${scopeId.value} " +
+                "version=${checkpoint.version} maxReadSeq=${checkpoint.maxReadSeq} " +
+                "unread=${projection.unreadCount} mention=${projection.hasMention} rows=${matching.size}"
+        )
+        return true
     }
 
     private fun logActivityLoad(
@@ -1318,7 +1492,12 @@ class SharedActivityStore internal constructor(
                     incomingAnchor == override.unreadAnchor
             if (staleUnread) {
                 suppressedUnreadCount += item.unreadCount
-                val clearedItem = item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                val clearedItem =
+                    item.copy(
+                        unreadCount = 0,
+                        firstUnreadMessageId = null,
+                        hasMention = false,
+                    )
                 if (filter.keepsReadActivityRows()) {
                     reconciled += clearedItem
                 } else {
@@ -1379,12 +1558,13 @@ class SharedActivityStore internal constructor(
 }
 
 private data class ActivityUnreadClearOverride(
-    val unreadAnchor: MessageId?
+    val unreadAnchor: MessageId?,
 )
 
 private data class ActivityReadStateProjectionKey(
     val serverId: ServerId,
     val memberId: MemberId,
+    val ownerGeneration: Long,
     val scopeId: ChannelId
 )
 
@@ -1419,6 +1599,7 @@ data class SharedActivityState(
     val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
     val ownerServerId: String? = null,
     val ownerUserId: String? = null,
+    val ownerGeneration: Long = 0L,
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
@@ -1461,13 +1642,25 @@ sealed interface SharedActivityIntent {
     ) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
-        val allowLocalPatch: Boolean = true
+        val allowLocalPatch: Boolean = true,
+        val ownerToken: ActivityRealtimeOwnerToken? = null,
     ) : SharedActivityIntent
     data class ApplyRealtimeSummaryEvent(
         val event: RealtimeEvent,
-        val activeConversationId: String?
+        val activeConversationId: String?,
+        val ownerToken: ActivityRealtimeOwnerToken? = null,
     ) : SharedActivityIntent
 }
+
+internal fun SharedActivityState.realtimeOwnerTokenFor(serverId: String): ActivityRealtimeOwnerToken? {
+    val ownerServerId = ownerServerId ?: return null
+    val ownerUserId = ownerUserId ?: return null
+    if (ownerServerId != serverId) return null
+    return ActivityRealtimeOwnerToken(ownerServerId, ownerUserId, ownerGeneration)
+}
+
+internal fun RealtimeIngressOwnerToken.toActivityOwnerToken(): ActivityRealtimeOwnerToken =
+    ActivityRealtimeOwnerToken(serverId, memberId, generation)
 
 private fun RealtimeEvent.refreshesActivity(): Boolean =
     when (this) {

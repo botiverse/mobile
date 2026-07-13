@@ -29,6 +29,12 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.network.sync.MessageDomainStore
+import build.raft.app.network.sync.MessageReadStateCheckpoint
+import build.raft.app.network.sync.MessageReadStateProjection
+import build.raft.app.network.sync.MessageReceiverKind
+import build.raft.app.network.sync.MessageScopeRebaselineToken
+import build.raft.app.network.sync.SyncIngestOutcome
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -811,7 +817,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun readStateFactBeforeInitialRequestLoadsCanonicalActivitySnapshot() = runBlocking {
+    fun readStateFactWithoutEstablishedOwnerFailsClosedUntilCanonicalLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
             FakeInboxRepository(
@@ -833,46 +839,344 @@ class SharedActivityStoreTest {
                 readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
             )
         )
+        store.dispatch(SharedActivityIntent.LoadInitial)
 
         assertEquals(1, inbox.initialLoadCount)
-        assertEquals(1, homeReconcileRequests)
+        assertEquals(0, homeReconcileRequests)
         assertEquals(0, store.state.value.totalUnreadCount)
         assertEquals(
-            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 1, maxReadSeq = 10),
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 0, maxReadSeq = 0),
             versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"))
         )
         scope.cancel()
     }
 
     @Test
-    fun readStateFactAlreadyAcceptedByHomeStillReconcilesActivity() = runBlocking {
+    fun acceptedReadStateUsesGlobalProjectionAndFencesStaleInboxReload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val stale = activityItem("channel-1", unreadCount = 3).copy(hasMention = false)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(stale)), snapshot(listOf(stale))))
+        val domain =
+            FakeMessageDomainStore { _, checkpoint ->
+                MessageReadStateProjection(
+                    readStateVersion = checkpoint.readStateVersion,
+                    maxReadSeq = checkpoint.maxReadSeq,
+                    unreadCount = 1,
+                    hasMention = true,
+                    firstUnreadMessageId = "message-31",
+                    firstMentionMessageId = "message-31",
+                    complete = true,
+                )
+            }
+        val store = activityStore(scope, inboxRepository = inbox, messageDomainStore = domain)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 4, maxReadSeq = 30)
+            )
+        )
+
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
+        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertTrue(store.state.value.items.single().hasMention)
+        assertEquals(MessageId("message-31"), store.state.value.items.single().firstUnreadMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun incompleteGlobalProjectionHydratesOnlyAffectedScopeThenProjects() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = activityItem("channel-1", unreadCount = 3)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(initial)), snapshot(listOf(initial))))
+        val conversation = FakeConversationRepository()
+        var projections = 0
+        val domain =
+            FakeMessageDomainStore { _, checkpoint ->
+                projections += 1
+                MessageReadStateProjection(
+                    readStateVersion = checkpoint.readStateVersion,
+                    maxReadSeq = checkpoint.maxReadSeq,
+                    unreadCount = 0,
+                    hasMention = false,
+                    firstUnreadMessageId = null,
+                    firstMentionMessageId = null,
+                    complete = projections > 1,
+                )
+            }
+        val store =
+            activityStore(
+                scope,
+                inboxRepository = inbox,
+                conversationRepository = conversation,
+                messageDomainStore = domain,
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 2, maxReadSeq = 30)
+            )
+        )
+
+        assertEquals(listOf(ThreadId("channel-1")), conversation.loadedThreadIds)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun sameServerUserSwitchDropsPausedProjectionAndDoesNotReplayItOnNewOwner() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val hydrateEntered = CompletableDeferred<Unit>()
+        val releaseHydrate = CompletableDeferred<Unit>()
+        val conversation = FakeConversationRepository(threadGate = releaseHydrate, threadEntered = hydrateEntered)
+        var projections = 0
+        val domain =
+            FakeMessageDomainStore { _, checkpoint ->
+                projections += 1
+                MessageReadStateProjection(
+                    readStateVersion = checkpoint.readStateVersion,
+                    maxReadSeq = checkpoint.maxReadSeq,
+                    unreadCount = 0,
+                    hasMention = false,
+                    firstUnreadMessageId = null,
+                    firstMentionMessageId = null,
+                    complete = projections > 1,
+                )
+            }
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 3))))),
+                conversationRepository = conversation,
+                messageDomainStore = domain,
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(readStateEvent("channel-1", version = 3, maxReadSeq = 30)))
+        hydrateEntered.await()
+
+        val serverBInbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 7)), totalUnreadCount = 7))
+            )
+        store.updateRuntimeIntegrations(
+            authStore = InMemorySlockAuthSessionStore(sampleSession(userId = "user-2", serverId = "server-1")),
+            inboxRepository = serverBInbox,
+            readReceiptRepository = FakeReadReceiptRepository(),
+            conversationRepository = conversation,
+            messageDomainStore = domain,
+        )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        assertEquals("server-1", store.state.value.ownerServerId)
+        assertEquals("user-2", store.state.value.ownerUserId)
+        assertEquals(7, store.state.value.totalUnreadCount)
+
+        releaseHydrate.complete(Unit)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals("server-1", store.state.value.ownerServerId)
+        assertEquals("user-2", store.state.value.ownerUserId)
+        assertEquals(7, store.state.value.totalUnreadCount)
+        assertEquals(7, store.state.value.items.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun staleDispatchOwnerTokenCannotAttributeUserAReadStateToUserB() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        var projectionCalls = 0
+        val domain =
+            FakeMessageDomainStore { _, checkpoint ->
+                projectionCalls += 1
+                MessageReadStateProjection(
+                    readStateVersion = checkpoint.readStateVersion,
+                    maxReadSeq = checkpoint.maxReadSeq,
+                    unreadCount = 0,
+                    hasMention = false,
+                    firstUnreadMessageId = null,
+                    firstMentionMessageId = null,
+                    complete = true,
+                )
+            }
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 3))))),
+                perReceiverStateVersionStore = versionStore,
+                messageDomainStore = domain,
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val userAToken = requireNotNull(store.state.value.realtimeOwnerTokenFor("server-1"))
+
+        val userBInbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 7)), totalUnreadCount = 7))
+            )
+        store.updateRuntimeIntegrations(
+            authStore = InMemorySlockAuthSessionStore(sampleSession(userId = "user-2", serverId = "server-1")),
+            inboxRepository = userBInbox,
+            readReceiptRepository = FakeReadReceiptRepository(),
+            conversationRepository = FakeConversationRepository(),
+            messageDomainStore = domain,
+        )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                event = readStateEvent("channel-1", version = 4, maxReadSeq = 40),
+                ownerToken = userAToken,
+            )
+        )
+
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 0, maxReadSeq = 0),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-2"), ChannelId("channel-1"))
+        )
+        assertEquals(0, projectionCalls)
+        assertEquals(1, userBInbox.initialLoadCount)
+        assertEquals(7, store.state.value.totalUnreadCount)
+        assertEquals(7, store.state.value.items.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun resetDoesNotReuseSamePrincipalOwnerGenerationOrAcceptOldEvent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val inbox =
             FakeInboxRepository(
                 initialSnapshots =
-                    listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0))
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 3))),
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 3))),
+                    )
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                perReceiverStateVersionStore = versionStore,
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val oldToken = requireNotNull(store.state.value.realtimeOwnerTokenFor("server-1"))
+
+        store.reset()
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val newToken = requireNotNull(store.state.value.realtimeOwnerTokenFor("server-1"))
+        assertTrue(newToken.generation > oldToken.generation)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                event = readStateEvent("channel-1", version = 4, maxReadSeq = 40),
+                ownerToken = oldToken,
+            )
+        )
+
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 0, maxReadSeq = 0),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"))
+        )
+        assertEquals(3, store.state.value.items.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun exactObservedReadStateProjectsActivityOnceWithoutDuplicateReload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 0))))
             )
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         versionStore.writeReadStateCheckpoint(
             serverId = ServerId("server-1"),
             memberId = MemberId("user-1"),
             scopeId = ChannelId("channel-1"),
-            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 3, maxReadSeq = 30)
+            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 3, maxReadSeq = 30),
         )
         val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
+        val event = readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+
+        assertEquals(2, inbox.initialLoadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun completeGlobalProjectionClearsVisibleChannelAndSurvivesCanonicalReload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = activityItem("channel-1", unreadCount = 3)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(initial), totalUnreadCount = 3)))
+        val store = activityStore(scope, inboxRepository = inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
-            )
-        )
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
+                readStateEvent(scopeId = "channel-1", version = 4, maxReadSeq = 30)
             )
         )
 
-        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(null, store.state.value.items.single().firstUnreadMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun completeGlobalProjectionIsVisibleBeforeCanonicalReloadReturns() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inboxRepository = inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(
+            snapshot(
+                listOf(
+                    activityItem(
+                        "channel-1",
+                        unreadCount = 3,
+                    )
+                )
+            )
+        )
+        awaitState(store) { state -> state.loaded && state.totalUnreadCount == 3 }
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 4, maxReadSeq = 30)
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun completeGlobalProjectionClearsVisibleThreadAndSurvivesCanonicalReload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = threadItem("thread-1", unreadCount = 2)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(initial)), snapshot(listOf(initial))))
+        val store = activityStore(scope, inboxRepository = inbox)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "thread-1", version = 2, maxReadSeq = 20)
+            )
+        )
+
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount)
         scope.cancel()
     }
 
@@ -966,7 +1270,25 @@ class SharedActivityStoreTest {
             scopeId = ChannelId("channel-1"),
             checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50)
         )
-        val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
+        val domain =
+            FakeMessageDomainStore { _, checkpoint ->
+                MessageReadStateProjection(
+                    readStateVersion = checkpoint.readStateVersion,
+                    maxReadSeq = checkpoint.maxReadSeq,
+                    unreadCount = 2,
+                    hasMention = true,
+                    firstUnreadMessageId = "rewind-21",
+                    firstMentionMessageId = "rewind-21",
+                    complete = true,
+                )
+            }
+        val store =
+            activityStore(
+                scope,
+                inboxRepository = inbox,
+                perReceiverStateVersionStore = versionStore,
+                messageDomainStore = domain,
+            )
         store.dispatch(SharedActivityIntent.LoadInitial)
 
         store.dispatch(
@@ -977,6 +1299,8 @@ class SharedActivityStoreTest {
 
         assertEquals(2, inbox.initialLoadCount)
         assertEquals(2, store.state.value.totalUnreadCount)
+        assertTrue(store.state.value.items.single().hasMention)
+        assertEquals(MessageId("rewind-21"), store.state.value.items.single().firstUnreadMessageId)
         assertEquals(
             build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 6, maxReadSeq = 20),
             versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"))
@@ -997,6 +1321,7 @@ class SharedActivityStoreTest {
         )
         val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
 
+        store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 PerReceiverReadStateChanged(
@@ -1010,7 +1335,7 @@ class SharedActivityStoreTest {
             )
         )
 
-        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(2, inbox.initialLoadCount)
         assertEquals(
             build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50),
             versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-a"))
@@ -1019,63 +1344,6 @@ class SharedActivityStoreTest {
             build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 1, maxReadSeq = 7),
             versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-b"))
         )
-        scope.cancel()
-    }
-
-    @Test
-    fun acceptedReadStateFactFencesStaleInFlightActivityLoad() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store = activityStore(scope, inboxRepository = inbox)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
-            )
-        )
-        inbox.completeNextSnapshot(
-            snapshot(listOf(activityItem("channel-1", unreadCount = 3)), totalUnreadCount = 3)
-        )
-        assertEquals(null, store.state.value.snapshot)
-
-        inbox.completeNextSnapshot(
-            snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1)
-        )
-
-        assertEquals(1, store.state.value.totalUnreadCount)
-        scope.cancel()
-    }
-
-    @Test
-    fun partialReadStatePreservesLoadedSummaryUntilRestartedCanonicalLoadWins() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
-        val store = activityStore(scope, inboxRepository = inbox)
-        val visibleUnread = activityItem("channel-1", unreadCount = 3).copy(hasMention = true)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNextSnapshot(snapshot(listOf(visibleUnread), totalUnreadCount = 3))
-        store.dispatch(SharedActivityIntent.Refresh)
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
-            )
-        )
-
-        assertEquals(3, store.state.value.totalUnreadCount)
-        assertEquals(true, store.state.value.items.single().hasMention)
-
-        inbox.completeNextSnapshot(
-            snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
-        )
-        assertEquals(3, store.state.value.totalUnreadCount)
-        assertEquals(true, store.state.value.items.single().hasMention)
-
-        inbox.completeNextSnapshot(
-            snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1)
-        )
-        assertEquals(1, store.state.value.totalUnreadCount)
         scope.cancel()
     }
 
@@ -2158,6 +2426,7 @@ class SharedActivityStoreTest {
         inboxRepository: InboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
         readReceiptRepository: FakeReadReceiptRepository = FakeReadReceiptRepository(),
         conversationRepository: FakeConversationRepository = FakeConversationRepository(),
+        messageDomainStore: MessageDomainStore = FakeMessageDomainStore(),
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
@@ -2180,6 +2449,7 @@ class SharedActivityStoreTest {
             inboxRepository = inboxRepository,
             readReceiptRepository = readReceiptRepository,
             conversationRepository = conversationRepository,
+            messageDomainStore = messageDomainStore,
             memberRepository = memberRepository,
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
@@ -2194,6 +2464,49 @@ class SharedActivityStoreTest {
             beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
             onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered
         )
+
+    private class FakeMessageDomainStore(
+        private val projection: (String, MessageReadStateCheckpoint) -> MessageReadStateProjection = { _, checkpoint ->
+            MessageReadStateProjection(
+                readStateVersion = checkpoint.readStateVersion,
+                maxReadSeq = checkpoint.maxReadSeq,
+                unreadCount = 0,
+                hasMention = false,
+                firstUnreadMessageId = null,
+                firstMentionMessageId = null,
+                complete = true,
+            )
+        },
+    ) : MessageDomainStore {
+        override fun beginAuthoritativeRebaseline(
+            serverId: String,
+            memberId: String,
+            scopeId: String,
+        ): MessageScopeRebaselineToken? = null
+
+        override fun completeAuthoritativeRebaseline(
+            token: MessageScopeRebaselineToken,
+            memberId: String,
+            receiverKind: MessageReceiverKind,
+            rows: List<build.raft.app.canonical.message.CanonicalMessageRow>,
+            coveredAfterSeq: Long,
+            coveredFromSeq: Long,
+            coveredThroughSeq: Long,
+            remoteHighWaterSeq: Long,
+            hasGap: Boolean,
+            hasNewer: Boolean,
+        ): SyncIngestOutcome? = null
+
+        override fun invalidateAuthoritativeRebaseline(token: MessageScopeRebaselineToken) = Unit
+
+        override fun projectReadState(
+            serverId: String,
+            memberId: String,
+            receiverKind: MessageReceiverKind,
+            scopeId: String,
+            checkpoint: MessageReadStateCheckpoint,
+        ): MessageReadStateProjection = projection(scopeId, checkpoint)
+    }
 
     private fun readStateEvent(
         scopeId: String,
@@ -2453,11 +2766,19 @@ class SharedActivityStoreTest {
             error("unused")
     }
 
-    private class FakeConversationRepository : ConversationRepository {
+    private class FakeConversationRepository(
+        private val threadGate: CompletableDeferred<Unit>? = null,
+        private val threadEntered: CompletableDeferred<Unit>? = null,
+    ) : ConversationRepository {
         val doneThreadChannelIds = mutableListOf<ChannelId>()
+        val loadedThreadIds = mutableListOf<ThreadId>()
 
-        override suspend fun getThread(threadId: ThreadId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
-            error("unused")
+        override suspend fun getThread(threadId: ThreadId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> {
+            loadedThreadIds += threadId
+            threadEntered?.complete(Unit)
+            threadGate?.await()
+            return DataResult.Empty(EmptyReason.NoMessages)
+        }
 
         override suspend fun getReplyThread(parentChannelId: ChannelId, parentMessageId: MessageId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
             error("unused")
@@ -2518,7 +2839,7 @@ class SharedActivityStoreTest {
 
     private fun activityItem(
         channelId: String,
-        unreadCount: Int = 0
+        unreadCount: Int = 0,
     ): InboxItem =
         InboxItem(
             key = "channel:$channelId",
@@ -2585,7 +2906,7 @@ class SharedActivityStoreTest {
     private fun threadItem(
         channelId: String,
         threadChannelId: String? = channelId,
-        unreadCount: Int = 0
+        unreadCount: Int = 0,
     ): InboxItem =
         InboxItem(
             key = "thread:$channelId",

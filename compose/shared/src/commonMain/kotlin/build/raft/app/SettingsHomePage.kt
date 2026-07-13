@@ -152,6 +152,7 @@ import build.raft.app.data.SharedHomeShellDestinationSearch
 import build.raft.app.data.SharedHomeShellIntent
 import build.raft.app.data.SharedHomeShellStore
 import build.raft.app.data.RealtimeDomainEventSinks
+import build.raft.app.data.RealtimeIngressOwnerToken
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
@@ -2098,11 +2099,12 @@ private fun SlockAppShellContent(
             )
         }
     val conversationRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
+        remember(shellAuthStore, appShellNetworkClient, appShellRealtimeDomainEventOwner) {
             RealConversationRepository(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
-                warningLogger = slockLogger("SlockConversationRepository", "shared_conversation_repository", SlockLogLevel.Warn)
+                warningLogger = slockLogger("SlockConversationRepository", "shared_conversation_repository", SlockLogLevel.Warn),
+                messageDomainStore = appShellRealtimeDomainEventOwner,
             )
         }
     val agentsApiClient =
@@ -2663,6 +2665,7 @@ private fun SlockAppShellContent(
         }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
+    var realtimeOwnerToken by remember { mutableStateOf<RealtimeIngressOwnerToken?>(null) }
     var membersListRefreshKey by remember { mutableStateOf(0) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
@@ -2704,6 +2707,7 @@ private fun SlockAppShellContent(
     fun resetAppShellSessionState() {
         realtimeLastSeq = 0L
         realtimeSessionKey = null
+        realtimeOwnerToken = null
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
@@ -3059,6 +3063,8 @@ private fun SlockAppShellContent(
                     realtimeLastSeq
                 }
             realtimeSessionKey = nextSessionKey
+            realtimeOwnerToken =
+                appShellRealtimeDomainEventOwner.rotateOwner(serverId, readySession.user.id)
             appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
             bridge.realtimeConnect(
                 serverId = serverId,
@@ -3400,6 +3406,11 @@ private fun SlockAppShellContent(
                     }
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(refreshed))
                     realtimeSessionKey = "${refreshed.accessToken}|$refreshedServerId"
+                    realtimeOwnerToken =
+                        appShellRealtimeDomainEventOwner.rotateOwner(
+                            refreshedServerId.orEmpty(),
+                            refreshed.user.id,
+                        )
                     appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
                     bridge.realtimeConnect(
                         serverId = refreshedServerId.orEmpty(),
@@ -3434,8 +3445,10 @@ private fun SlockAppShellContent(
     ) {
         val sinks =
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event ->
-                    homeShellStore.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent(serverId, event))
+                applyHomeShellWithOwner = { ownerToken, serverId, event ->
+                    homeShellStore.dispatch(
+                        SharedHomeShellIntent.ApplyRealtimeEvent(ownerToken, serverId, event)
+                    )
                 },
                 applyHomeUnreadProjection = { serverId, event ->
                     homeShellStore.dispatch(
@@ -3508,11 +3521,14 @@ private fun SlockAppShellContent(
         realtimeEvents,
         homeStore,
         realtimeEventMapper,
-        settingsViewModel
+        settingsViewModel,
+        realtimeOwnerToken,
     ) {
+        val connectionOwnerToken = realtimeOwnerToken
         val callbackRef =
             realtimeEvents.addListener { rawEventData ->
                 val eventDataSnapshot = rawEventData.toString()
+                val readySessionSnapshot = latestReadySession
                 appShellCoroutineScope.launch {
                     val eventData = JSONObject(eventDataSnapshot)
                     if (
@@ -3533,7 +3549,7 @@ private fun SlockAppShellContent(
                                 event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                                     event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                                 ) &&
-                            latestReadySession != null
+                            readySessionSnapshot != null
                         ) {
                             refreshVisibleAppShellRoute("app_lifecycle_$event")
                             sharedStores.foregroundReconciler.onForeground("app_shell_$event")
@@ -3550,10 +3566,10 @@ private fun SlockAppShellContent(
                             realtimeEventMapper,
                             slockLogger("SlockRealtimeDecode")
                         ) ?: return@launch
-                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
+                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, readySessionSnapshot) ?: return@launch
                     val activeSelectedServerId = selectedServerStore.selectedServerId.value
                     if (!shouldRouteRealtimeEventToShell(activeSelectedServerId, serverId)) {
-                        if (shouldProjectBackgroundServerUnread(latestReadySession, activeSelectedServerId, serverId)) {
+                        if (shouldProjectBackgroundServerUnread(readySessionSnapshot, activeSelectedServerId, serverId)) {
                             appShellRealtimeDomainEventOwner.acceptHomeUnreadProjection(
                                 serverId,
                                 event,
@@ -3610,7 +3626,12 @@ private fun SlockAppShellContent(
                         return@launch
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                    appShellRealtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
+                    appShellRealtimeDomainEventOwner.accept(
+                        serverId,
+                        event,
+                        ownerToken = connectionOwnerToken,
+                        source = "app_shell",
+                    )
                     if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Announcements) {
                         // task #226: announcement:new — refetch the latest active
                         // announcement so the modal pops live.

@@ -14,6 +14,32 @@ import kotlin.test.assertTrue
 
 class InboxSavedSearchRepositoryDataSourceTest {
     @Test
+    fun inboxParserIgnoresRemovedReadStateProjectionProofFields() {
+        val snapshot =
+            parseSharedInboxSnapshot(
+                """
+                    {
+                      "items": [
+                        {
+                          "kind":"channel",
+                          "channelId":"channel-1",
+                          "channelName":"general",
+                          "channelType":"channel",
+                          "unreadCount":2,
+                          "latestNotifiedSeq":42,
+                          "maxReadSeq":40,
+                          "readStateVersion":7
+                        }
+                      ]
+                    }
+                """.trimIndent()
+            )
+
+        val item = assertNotNull(snapshot).items.single()
+        assertEquals(2, item.unreadCount)
+    }
+
+    @Test
     fun inboxRepositoryMapsPagingMetadataAndStableThreadKeys() = runBlocking {
         val network =
             FakeInboxNetworkClient(

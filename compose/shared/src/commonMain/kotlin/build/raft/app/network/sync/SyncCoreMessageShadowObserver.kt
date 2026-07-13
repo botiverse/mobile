@@ -17,9 +17,9 @@ import kotlinx.serialization.json.JsonObject
  * so the fold+persist and reaction lanes reuse it (no second decode). It NEVER applies anything to the
  * store — the legacy path stays sole source of truth until sole-apply.
  *
- * The gate is [SharedServerFeatureFlags.isEnabledForAnyResolvedServer]: when the flag is off (default) this
- * is a single map lookup and returns null immediately — no decode, so the gateway is effectively free on
- * the hot path.
+ * Canonical decode is always on because the carry feeds the single in-memory message-domain owner used by
+ * authoritative hydrate and read-state projection. The feature flag gates only shadow comparison and its
+ * diagnostics; SQLite persistence is gated independently in [SyncCoreMessageShadowFoldLane].
  */
 class SyncCoreMessageShadowObserver(
     private val featureFlags: SharedServerFeatureFlags,
@@ -34,11 +34,11 @@ class SyncCoreMessageShadowObserver(
 ) : MessageShadowObserver {
 
     override fun observe(eventName: String, rawElement: JsonObject, mapped: Message): CanonicalMessageCarry? {
-        if (!featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)) return null
         val face = shadowFaceForEvent(eventName) ?: return null
-        val messageId = mapped.id.value
         var violation: MessageWireCanonicalViolation? = null
         val decoded = decodeWire(rawElement, face) { violation = it }
+        if (!featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)) return decoded
+        val messageId = mapped.id.value
         val outcome = decoded?.let { compareCanonicalShadow(it, face, mapped, memberHydration) }
             ?: MessageShadowOutcome.DecodeFailed(face, violation?.missingOrInvalidRequiredFields ?: emptySet())
         when (outcome) {

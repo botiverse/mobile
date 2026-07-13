@@ -46,6 +46,7 @@ import kotlin.test.assertTrue
 class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
 
     private val serverId = "server-1"
+    private val memberId = "user-1"
     private val channelId = "channel-1"
     private val scopeKey = SyncScopeKey(serverId = serverId, scopeId = channelId, scopeKind = "channel")
 
@@ -181,7 +182,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         )
         val (owner, homeEvents) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), memberId = memberId, source = "app_shell")
 
         assertEquals(listOf("m1"), persistedFactIds(db), "flag-on shadow lane must persist the canonical fact")
         // Shadow is invisible: the legacy sink still saw the event exactly once.
@@ -200,11 +201,12 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         )
         val (owner, homeEvents) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
-        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), memberId = memberId, source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), memberId = memberId, source = "app_shell")
         owner.accept(
             serverId,
             messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
+            memberId = memberId,
             source = "app_shell",
         )
 
@@ -250,12 +252,13 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         )
         val (owner, _) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
-        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), memberId = memberId, source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), memberId = memberId, source = "app_shell")
         olderStarted.await()
         owner.accept(
             serverId,
             messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
+            memberId = memberId,
             source = "app_shell",
         )
 
@@ -281,7 +284,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             logger = {},
         )
         val (ownerOn, homeEventsOn) = ownerWith(laneOn)
-        ownerOn.accept(serverId, event, source = "app_shell")
+        ownerOn.accept(serverId, event, memberId = memberId, source = "app_shell")
 
         val laneOff = SyncCoreMessageShadowFoldLane.create(
             featureFlags = resolvedFlags(enabled = false),
@@ -291,7 +294,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             logger = {},
         )
         val (ownerOff, homeEventsOff) = ownerWith(laneOff)
-        ownerOff.accept(serverId, event, source = "app_shell")
+        ownerOff.accept(serverId, event, memberId = memberId, source = "app_shell")
 
         // The sink-facing output must be byte-identical whether the shadow lane is on or off.
         assertEquals(homeEventsOff, homeEventsOn)
@@ -315,7 +318,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val event = messageNewWithCanonical(id = "m1", seq = 1)
 
         // Must NOT throw out of accept, and the event must still reach the legacy sink.
-        owner.accept(serverId, event, source = "app_shell")
+        owner.accept(serverId, event, memberId = memberId, source = "app_shell")
 
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
         assertTrue(
@@ -336,7 +339,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         )
         val (owner, homeEvents) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), memberId = memberId, source = "app_shell")
 
         assertEquals(emptyList(), persistedFactIds(db), "flag-off must not persist anything")
         assertEquals(1, homeEvents.size)

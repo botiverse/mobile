@@ -1910,6 +1910,8 @@ private fun ThreadPageScreen() {
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val messageDomainStore =
+        remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val threadPageCoroutineScope = rememberCoroutineScope()
     var authLossReportInProgress by remember { mutableStateOf(false) }
@@ -1982,7 +1984,8 @@ private fun ThreadPageScreen() {
             serverMembersStore,
             channelRepository,
             sharedStores.threadMessageStore,
-            createAgentCoordinator
+            createAgentCoordinator,
+            messageDomainStore,
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
@@ -1994,7 +1997,8 @@ private fun ThreadPageScreen() {
                     RealConversationRepository(
                         sessionStore = authStore,
                         networkClient = networkClient,
-                        warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
+                        warningLogger = { message -> bridge.log("thread_conversation_repository $message") },
+                        messageDomainStore = messageDomainStore,
                     ),
                 channelRepository = channelRepository,
                 messageStore = sharedStores.threadMessageStore,
@@ -4043,8 +4047,9 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    val latestThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
+    val latestThreadRealtimeEventHandler by rememberUpdatedState<(RealtimeEvent) -> Boolean>(
         { event ->
+            var refreshMemberSuggestions = false
             if (event is Heartbeat) {
                 threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(event.seq))
             } else {
@@ -4067,19 +4072,13 @@ internal fun SharedThreadRouteContent(
                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(event.task))
                 }
                 if (event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
-                    currentServerId?.let { serverId ->
-                        serverMembersStore?.ensureMemberSuggestionsForServer(
-                            serverId = ServerId(serverId),
-                            mentionChannelId = memberSuggestionScopeChannelId,
-                            memberScopedMentions = memberSuggestionScopedMentions,
-                            force = true
-                        )
-                    }
+                    refreshMemberSuggestions = currentServerId != null
                     membersStore?.dispatch(
                         SharedMembersIntent.RefreshChannelSuggestions
                     )
                 }
             }
+            refreshMemberSuggestions
         }
     )
     // Pager lifecycle notifications are Thread-pager-local and stay on the raw
@@ -4139,7 +4138,7 @@ internal fun SharedThreadRouteContent(
     }
     DisposableEffect(realtimeDomainEventOwner, authStore, coroutineScope) {
         val sink =
-            RealtimeActiveThreadSink { serverId, event ->
+            RealtimeActiveThreadSink { ownerToken, serverId, event ->
                 coroutineScope.launch {
                     val currentSessionServerId =
                         authStore.readSession()
@@ -4148,24 +4147,36 @@ internal fun SharedThreadRouteContent(
                             ?: return@launch
                     if (currentSessionServerId != serverId) return@launch
                     if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
-                    latestThreadRealtimeEventHandler(event)
-                    if (event is MessageNew) {
-                        val session = latestCurrentSession
-                        foregroundMessageBanner =
-                            if (foregroundMessageBannersEnabled()) {
-                                slockForegroundMessageBannerProjection(
-                                    serverId = serverId,
-                                    currentServerId = session?.currentServerId ?: currentSessionServerId,
-                                    message = event.message,
-                                    currentMemberId = session?.user?.id,
-                                    visibleConversationKey = null,
-                                    visibleRouteIdentity = latestPayloadRouteIdentity,
-                                    conversationDirectory = latestForegroundConversationDirectory
-                                ) ?: foregroundMessageBanner
-                            } else {
-                                null
+                    var refreshMemberSuggestions = false
+                    val applied = realtimeDomainEventOwner.runIfCurrentOwnerToken(ownerToken) {
+                        refreshMemberSuggestions = latestThreadRealtimeEventHandler(event)
+                        if (event is MessageNew) {
+                            val session = latestCurrentSession
+                            foregroundMessageBanner =
+                                if (foregroundMessageBannersEnabled()) {
+                                    slockForegroundMessageBannerProjection(
+                                        serverId = serverId,
+                                        currentServerId = session?.currentServerId ?: currentSessionServerId,
+                                        message = event.message,
+                                        currentMemberId = session?.user?.id,
+                                        visibleConversationKey = null,
+                                        visibleRouteIdentity = latestPayloadRouteIdentity,
+                                        conversationDirectory = latestForegroundConversationDirectory
+                                    ) ?: foregroundMessageBanner
+                                } else {
+                                    null
                             }
+                        }
                     }
+                    if (!applied || !refreshMemberSuggestions) return@launch
+                    val stillCurrent = realtimeDomainEventOwner.runIfCurrentOwnerToken(ownerToken) {}
+                    if (!stillCurrent) return@launch
+                    serverMembersStore?.ensureMemberSuggestionsForServer(
+                        serverId = ServerId(serverId),
+                        mentionChannelId = memberSuggestionScopeChannelId,
+                        memberScopedMentions = memberSuggestionScopedMentions,
+                        force = true
+                    )
                 }
             }
         realtimeDomainEventOwner.registerActiveThreadSink(sink)

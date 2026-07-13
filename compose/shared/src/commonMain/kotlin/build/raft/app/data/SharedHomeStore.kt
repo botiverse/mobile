@@ -310,7 +310,7 @@ internal class SharedHomeStore(
                     )
                 )
             is SharedHomeIntent.ApplyRealtimeEvent ->
-                applyRealtimeEvent(ServerId(intent.serverId), intent.event)
+                applyRealtimeEvent(intent.ownerToken, ServerId(intent.serverId), intent.event)
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent ->
                 applyBackgroundServerUnreadEvent(ServerId(intent.serverId), intent.event)
             SharedHomeIntent.RefreshNotifications ->
@@ -423,7 +423,11 @@ internal class SharedHomeStore(
         )
     }
 
-    private suspend fun applyRealtimeEvent(serverId: ServerId, event: RealtimeEvent) {
+    private suspend fun applyRealtimeEvent(
+        ownerToken: RealtimeIngressOwnerToken?,
+        serverId: ServerId,
+        event: RealtimeEvent,
+    ) {
         val current = _state.value.content
         val currentContent = current as? SharedHomeContentState.Content
         val visibleServerId = currentContent?.snapshot?.server?.id
@@ -449,15 +453,15 @@ internal class SharedHomeStore(
             return
         }
         if (event is PerReceiverReadStateChanged) {
-            applyPerReceiverReadStateChanged(serverId, event)
+            applyPerReceiverReadStateChanged(ownerToken, serverId, event)
             return
         }
         if (event is PerReceiverNotificationPrefsChanged) {
-            applyPerReceiverNotificationPrefsChanged(serverId, event)
+            applyPerReceiverNotificationPrefsChanged(ownerToken, serverId, event)
             return
         }
         if (event is PerReceiverPinnedChanged) {
-            applyPerReceiverPinnedChanged(serverId, event)
+            applyPerReceiverPinnedChanged(ownerToken, serverId, event)
             return
         }
         applyRealtimeHomeEventLocally(serverId, event)
@@ -556,17 +560,18 @@ internal class SharedHomeStore(
         )
     }
 
-    // RFC 041 wire events carry the scope facts but not the receiving member —
-    // the server emits them to the caller's `user:<id>` room, so the member is
-    // whoever this session is. Enrich with the current snapshot's identity and
-    // hand each scope to the version-gated applier; a mismatched or stale
-    // scope is a per-scope no-op there, never a batch failure.
+    // RFC 041 wire events carry scope facts but not the receiving member. The
+    // immutable realtime owner token supplies that identity; current UI state
+    // is only used to verify the token still belongs to this snapshot.
     private fun applyPerReceiverReadStateChanged(
+        ownerToken: RealtimeIngressOwnerToken?,
         serverId: ServerId,
         event: PerReceiverReadStateChanged
     ) {
         val content = _state.value.content as? SharedHomeContentState.Content ?: return
-        val memberId = content.snapshot.currentMember.id
+        val token = ownerToken ?: return
+        if (token.serverId != serverId.value || token.memberId != content.snapshot.currentMember.id.value) return
+        val memberId = MemberId(token.memberId)
         val eventServerId = event.serverId ?: serverId
         var needsReconcile = false
         event.scopes.forEach { scope ->
@@ -596,11 +601,14 @@ internal class SharedHomeStore(
     }
 
     private fun applyPerReceiverNotificationPrefsChanged(
+        ownerToken: RealtimeIngressOwnerToken?,
         serverId: ServerId,
         event: PerReceiverNotificationPrefsChanged
     ) {
         val content = _state.value.content as? SharedHomeContentState.Content ?: return
-        val memberId = content.snapshot.currentMember.id
+        val token = ownerToken ?: return
+        if (token.serverId != serverId.value || token.memberId != content.snapshot.currentMember.id.value) return
+        val memberId = MemberId(token.memberId)
         val eventServerId = event.serverId ?: serverId
         val applied =
             applyPerReceiverNotificationPrefs(
@@ -620,15 +628,18 @@ internal class SharedHomeStore(
     }
 
     private fun applyPerReceiverPinnedChanged(
+        ownerToken: RealtimeIngressOwnerToken?,
         serverId: ServerId,
         event: PerReceiverPinnedChanged
     ) {
         val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val token = ownerToken ?: return
+        if (token.serverId != serverId.value || token.memberId != content.snapshot.currentMember.id.value) return
         val eventServerId = event.serverId ?: serverId
         val update =
             PerReceiverPinnedUpdate(
                 serverId = eventServerId,
-                memberId = content.snapshot.currentMember.id,
+                memberId = MemberId(token.memberId),
                 version = event.pinnedVersion,
                 sidebarOrder =
                     content.snapshot.sidebarOrder
@@ -2613,7 +2624,13 @@ sealed interface SharedHomeIntent {
     data class SelectConversation(val threadId: String) : SharedHomeIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
-    data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
+    data class ApplyRealtimeEvent(
+        val ownerToken: RealtimeIngressOwnerToken?,
+        val serverId: String,
+        val event: RealtimeEvent,
+    ) : SharedHomeIntent {
+        constructor(serverId: String, event: RealtimeEvent) : this(null, serverId, event)
+    }
     data class ApplyBackgroundServerUnreadEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
     data object RefreshNotifications : SharedHomeIntent
     data class UpsertNotification(val notification: SharedHomeNotification) : SharedHomeIntent

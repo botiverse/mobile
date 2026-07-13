@@ -21,6 +21,10 @@ import build.raft.app.model.parentMessageIdOrNull
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.network.MultipartFile
+import build.raft.app.network.sync.MessageDomainStore
+import build.raft.app.network.sync.MessageReceiverKind
+import build.raft.app.network.sync.MessageScopeRebaselineToken
+import build.raft.app.network.sync.SyncIngestOutcome
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
@@ -187,7 +191,8 @@ private suspend fun SlockNetworkClient.executePendingMentionActions(
 class RealConversationRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
-    private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
+    private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+    private val messageDomainStore: MessageDomainStore = MessageDomainStore.NoOp,
 ) : ConversationRepository {
     override suspend fun getThread(
         threadId: ThreadId,
@@ -326,7 +331,8 @@ class RealConversationRepository(
                 )
             },
             source = "messages_channel_older",
-            includeChannelSummaries = true
+            includeChannelSummaries = true,
+            authoritativeLatest = false,
         )
     }
 
@@ -623,8 +629,16 @@ class RealConversationRepository(
             }
         }
         val resolvedThreadChannelId = createOrOpen.data.threadChannelId
-        val messagesResult =
-            executeConversation(
+        val rebaselineToken =
+            messageDomainStore.beginAuthoritativeRebaseline(
+                context.server.id.value,
+                context.session.user.id,
+                resolvedThreadChannelId.value,
+            )
+        var rebaselineCompleted = false
+        try {
+            val messagesResult =
+                executeConversation(
                 emptyReason = EmptyReason.NoMessages,
                 block = {
                     networkClient.channelMessages(
@@ -636,17 +650,20 @@ class RealConversationRepository(
                 emptyWhen = { it.messages.isEmpty() },
                 source = source,
                 mapper = { bodyText ->
-                    parseSharedChannelMessages(
+                    val payload = parseSharedChannelMessages(
                         bodyText,
                         ThreadId(resolvedThreadChannelId.value),
                         warningLogger,
                     )
+                    rebaselineCompleted =
+                        completeMessageRebaseline(context, rebaselineToken, payload, resolvedThreadChannelId.value)
+                    payload
                 }
             )
-        val rawMessages: List<Message> =
-            (messagesResult as? DataResult.Content)?.data?.messages.orEmpty()
-        val snapshot =
-            buildSharedThreadSnapshot(
+            val rawMessages: List<Message> =
+                (messagesResult as? DataResult.Content)?.data?.messages.orEmpty()
+            val snapshot =
+                buildSharedThreadSnapshot(
                 payload = SharedMessagesPayload(
                     messages = rawMessages,
                     hasOlder = (messagesResult as? DataResult.Content)?.data?.hasOlder ?: false,
@@ -659,18 +676,24 @@ class RealConversationRepository(
                 parentMessageId = parentMessageId,
                 streamChannelId = resolvedThreadChannelId
             )
-        warningLogger(
-            "reply_thread_load_result source=$source " +
+            warningLogger(
+                "reply_thread_load_result source=$source " +
                 "result=${messagesResult.conversationDiagnosticsResult()} " +
                 "messages=${rawMessages.size} tasks=${snapshot.tasks.size} " +
                 "resolvedThreadChannelId=${resolvedThreadChannelId.value} " +
                 "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
         )
-        when {
-            messagesResult is DataResult.Content -> DataResult.Content(snapshot)
-            messagesResult is DataResult.Empty &&
-                messagesResult.reason == EmptyReason.NoMessages -> DataResult.Content(snapshot)
-            else -> messagesResult as DataResult<ThreadSnapshot>
+            when (messagesResult) {
+                is DataResult.Content -> DataResult.Content(snapshot)
+                is DataResult.Empty ->
+                    if (messagesResult.reason == EmptyReason.NoMessages) DataResult.Content(snapshot) else messagesResult
+                is DataResult.Error -> messagesResult
+                is DataResult.NoPermission -> messagesResult
+            }
+        } finally {
+            if (rebaselineToken != null && !rebaselineCompleted) {
+                messageDomainStore.invalidateAuthoritativeRebaseline(rebaselineToken)
+            }
         }
     }
 
@@ -681,15 +704,28 @@ class RealConversationRepository(
         block: suspend () -> HomeNetworkResponse,
         source: String,
         includeChannelSummaries: Boolean = false,
-        includeFollowedSummaries: Boolean = false
+        includeFollowedSummaries: Boolean = false,
+        authoritativeLatest: Boolean = true,
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
+        val rebaselineToken =
+            if (authoritativeLatest) {
+                messageDomainStore.beginAuthoritativeRebaseline(
+                    context.server.id.value,
+                    context.session.user.id,
+                    threadId.value,
+                )
+            } else {
+                null
+            }
         warningLogger(
             "thread_load_start source=$source threadId=${threadId.value} " +
                 "messageLimit=$messageLimit includeChannelSummaries=$includeChannelSummaries " +
                 "includeFollowedSummaries=$includeFollowedSummaries"
         )
-        val messagesDeferred =
+        var rebaselineCompleted = false
+        try {
+            val messagesDeferred =
             async {
                 val branchStartedAt = TimeSource.Monotonic.markNow()
                 val result = executeConversation(
@@ -699,6 +735,7 @@ class RealConversationRepository(
                     source = source,
                     mapper = { bodyText ->
                         val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger)
+                        rebaselineCompleted = completeMessageRebaseline(context, rebaselineToken, payload, threadId.value)
                         buildSharedThreadSnapshot(
                             payload = payload,
                             threadId = threadId,
@@ -715,14 +752,14 @@ class RealConversationRepository(
                 )
                 result
             }
-        val messagesResult = messagesDeferred.await()
-        val visibleParentMessageIds =
+            val messagesResult = messagesDeferred.await()
+            val visibleParentMessageIds =
             (messagesResult as? DataResult.Content)
                 ?.data
                 ?.messages
                 ?.map { it.id }
                 .orEmpty()
-        val threadSummariesDeferred =
+            val threadSummariesDeferred =
             if (includeChannelSummaries && visibleParentMessageIds.isNotEmpty()) {
                 async {
                     val branchStartedAt = TimeSource.Monotonic.markNow()
@@ -756,7 +793,7 @@ class RealConversationRepository(
                 )
                 null
             }
-        val followedSummariesDeferred =
+            val followedSummariesDeferred =
             if (includeFollowedSummaries) {
                 async {
                     val branchStartedAt = TimeSource.Monotonic.markNow()
@@ -782,9 +819,9 @@ class RealConversationRepository(
                 )
                 null
             }
-        val threadSummaries = threadSummariesDeferred?.await()
-        val followedSummaries = followedSummariesDeferred?.await()
-        if (messagesResult !is DataResult.Content) {
+            val threadSummaries = threadSummariesDeferred?.await()
+            val followedSummaries = followedSummariesDeferred?.await()
+            if (messagesResult !is DataResult.Content) {
             warningLogger(
                 "thread_load_result source=$source threadId=${threadId.value} " +
                     "result=${messagesResult.conversationDiagnosticsResult()} messages=0 tasks=0 " +
@@ -793,7 +830,7 @@ class RealConversationRepository(
                     "mergedSummaries=0 durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
             )
             messagesResult
-        } else {
+            } else {
             val channelThreads = if (threadSummaries is DataResult.Content) threadSummaries.data.threads else emptyList()
             val followedForChannel =
                 if (followedSummaries is DataResult.Content) {
@@ -831,7 +868,64 @@ class RealConversationRepository(
                 )
                 DataResult.Content(messagesResult.data.withReplySummaries(mergedThreads, followedThreadKeys, warningLogger))
             }
+            }
+        } finally {
+            if (rebaselineToken != null && !rebaselineCompleted) {
+                messageDomainStore.invalidateAuthoritativeRebaseline(rebaselineToken)
+            }
         }
+    }
+
+    private fun completeMessageRebaseline(
+        context: NetworkServerContext,
+        token: MessageScopeRebaselineToken?,
+        payload: SharedMessagesPayload,
+        scopeId: String,
+    ): Boolean {
+        if (token == null) return false
+        val window = payload.messageWindow
+        val rows = payload.canonicalRows
+        val validIdentity =
+            window?.serverId == context.server.id.value &&
+                window.receiverKind == "user" &&
+                window.receiverId == context.session.user.id &&
+                window.scopeId == scopeId &&
+                token.serverId == context.server.id.value &&
+                token.scopeId == scopeId
+        val validRows =
+            payload.canonicalRowsComplete &&
+                rows.all { it.channelId == scopeId } &&
+                if (rows.isEmpty()) {
+                    window != null &&
+                        window.coveredFromSeq == window.remoteHighWaterSeq + 1L &&
+                        window.coveredThroughSeq == window.remoteHighWaterSeq &&
+                        window.coveredAfterSeq == window.remoteHighWaterSeq
+                } else {
+                    window != null &&
+                        rows.first().seq == window.coveredFromSeq &&
+                        rows.last().seq == window.coveredThroughSeq &&
+                        rows.zipWithNext().all { (previous, next) -> previous.seq < next.seq }
+                }
+        val validLatestTail =
+            window != null &&
+                !window.hasGap &&
+                !window.hasNewer &&
+                window.completeThroughLatest &&
+                window.coveredThroughSeq == window.remoteHighWaterSeq &&
+                !payload.hasNewer
+        if (!validIdentity || !validRows || !validLatestTail) return false
+        return messageDomainStore.completeAuthoritativeRebaseline(
+            token = token,
+            memberId = context.session.user.id,
+            receiverKind = MessageReceiverKind.User,
+            rows = rows,
+            coveredAfterSeq = window.coveredAfterSeq,
+            coveredFromSeq = window.coveredFromSeq,
+            coveredThroughSeq = window.coveredThroughSeq,
+            remoteHighWaterSeq = window.remoteHighWaterSeq,
+            hasGap = window.hasGap,
+            hasNewer = window.hasNewer,
+        ) is SyncIngestOutcome.Applied
     }
 
     private suspend fun threadAction(

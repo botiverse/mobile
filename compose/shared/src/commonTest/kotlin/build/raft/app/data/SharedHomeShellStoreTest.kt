@@ -287,7 +287,16 @@ class SharedHomeShellStoreTest {
 
     @Test
     fun readStateRealtimeAlwaysForwardsHiddenActivityProjection() {
-        val fixture = fixture()
+        val ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 7)
+        val fixture =
+            fixture(
+                activityState =
+                    SharedActivityState(
+                        ownerServerId = "server-1",
+                        ownerUserId = "user-1",
+                        ownerGeneration = 7,
+                    )
+            )
         val store = fixture.store
         val event =
             PerReceiverReadStateChanged(
@@ -302,24 +311,78 @@ class SharedHomeShellStoreTest {
                     )
             )
 
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent(ownerToken, "server-1", event))
         store.dispatch(SharedHomeShellIntent.OpenSaved)
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent(ownerToken, "server-1", event))
 
         assertEquals(
             listOf<SharedHomeIntent>(
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
+                SharedHomeIntent.ApplyRealtimeEvent(ownerToken, "server-1", event),
+                SharedHomeIntent.ApplyRealtimeEvent(ownerToken, "server-1", event)
             ),
             fixture.homeIntents
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                    event,
+                    activeConversationId = null,
+                    ownerToken = ownerToken.toActivityOwnerToken(),
+                ),
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                    event,
+                    activeConversationId = null,
+                    ownerToken = ownerToken.toActivityOwnerToken(),
+                )
             ),
             fixture.activityIntents
         )
+        fixture.cancel()
+    }
+
+    @Test
+    fun realtimeOwnerTokenSurvivesFanoutAndStaleAIsDroppedAfterSameServerSwitchToB() {
+        lateinit var owner: SharedRealtimeDomainEventOwner
+        val fixture =
+            fixture(
+                homeState = homeStateForServer("server-1"),
+                activityState =
+                    SharedActivityState(
+                        ownerServerId = "server-1",
+                        ownerUserId = "user-1",
+                        ownerGeneration = 1,
+                    ),
+            )
+        owner =
+            SharedRealtimeDomainEventOwner(
+                beforeOwnerSideEffects = {
+                    val tokenB = owner.rotateOwner("server-1", "user-2")
+                    fixture.activityState.value =
+                        SharedActivityState(
+                            ownerServerId = tokenB.serverId,
+                            ownerUserId = tokenB.memberId,
+                            ownerGeneration = tokenB.generation,
+                        )
+                }
+            )
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShellWithOwner = { token, serverId, event ->
+                    fixture.store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent(token, serverId, event))
+                }
+            )
+        )
+        val tokenA = owner.rotateOwner("server-1", "user-1")
+        val event =
+            PerReceiverReadStateChanged(
+                serverId = ServerId("server-1"),
+                scopes = listOf(PerReceiverReadStateScope(ChannelId("channel-1"), 42, 3)),
+            )
+
+        owner.accept("server-1", event, ownerToken = tokenA, source = "test")
+
+        assertEquals(emptyList(), fixture.homeIntents)
+        assertEquals(emptyList(), fixture.activityIntents)
         fixture.cancel()
     }
 
@@ -433,7 +496,7 @@ class SharedHomeShellStoreTest {
                 resetActivity = {},
                 scope = scope
             )
-        return ShellFixture(store, scope, homeFlow, homeIntents, activityIntents, searchSavedIntents)
+        return ShellFixture(store, scope, homeFlow, activityFlow, homeIntents, activityIntents, searchSavedIntents)
     }
 
     private fun loadingHomeStateForServer(serverId: String): SharedHomeState =
@@ -508,6 +571,7 @@ class SharedHomeShellStoreTest {
         val store: SharedHomeShellStore,
         val scope: CoroutineScope,
         val homeState: MutableStateFlow<SharedHomeState>,
+        val activityState: MutableStateFlow<SharedActivityState>,
         val homeIntents: MutableList<SharedHomeIntent>,
         val activityIntents: MutableList<SharedActivityIntent>,
         val searchSavedIntents: MutableList<SharedHomeSearchSavedIntent>

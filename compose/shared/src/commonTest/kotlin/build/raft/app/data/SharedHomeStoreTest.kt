@@ -3716,6 +3716,7 @@ class SharedHomeStoreTest {
 
         store.dispatch(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -3782,6 +3783,7 @@ class SharedHomeStoreTest {
 
         store.dispatch(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4006,6 +4008,7 @@ class SharedHomeStoreTest {
         // in the payload.
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4032,6 +4035,7 @@ class SharedHomeStoreTest {
         // version 1 still applies — channel-1's high water must not swallow it.
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4094,6 +4098,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4118,6 +4123,7 @@ class SharedHomeStoreTest {
 
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4444,6 +4450,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
@@ -4551,6 +4558,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverPinnedChanged(
@@ -4579,6 +4587,7 @@ class SharedHomeStoreTest {
 
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverPinnedChanged(
@@ -4600,6 +4609,7 @@ class SharedHomeStoreTest {
 
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverPinnedChanged(
@@ -4691,6 +4701,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
@@ -4765,6 +4776,7 @@ class SharedHomeStoreTest {
         withTimeout(1_000) { requestStarted.await() }
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
@@ -4847,6 +4859,7 @@ class SharedHomeStoreTest {
         )
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
+                ownerToken = RealtimeIngressOwnerToken("server-1", "user-1", 1),
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
