@@ -14,8 +14,8 @@ import kotlinx.serialization.json.JsonObject
  * SHADOW mode only: for every authoritative message the legacy realtime path produces, it decodes the same
  * raw payload through the canonical ingress EXACTLY ONCE, runs the shadow-compare over that pre-decoded
  * result ([compareCanonicalShadow]) and emits a divergence diagnostic, then RETURNS the same decoded carry
- * so the fold+persist lane reuses it (no second decode). It NEVER applies anything to the store — the
- * legacy path stays sole source of truth until sole-apply.
+ * so the fold+persist and reaction lanes reuse it (no second decode). It NEVER applies anything to the
+ * store — the legacy path stays sole source of truth until sole-apply.
  *
  * The gate is [SharedServerFeatureFlags.isEnabledForAnyResolvedServer]: when the flag is off (default) this
  * is a single map lookup and returns null immediately — no decode, so the gateway is effectively free on
