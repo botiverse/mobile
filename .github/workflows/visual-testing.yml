@@ -533,6 +533,11 @@ jobs:
             # task #441: stash any SLOCK_RICHTEXT_CAPS marker line(s) printed
             # after the first frame so the metadata step can merge per-case caps.
             grep "SLOCK_RICHTEXT_CAPS " /tmp/launch.log > "visual-testing-results/ios/$case_id.caps.log" 2>/dev/null || true
+            # task #60 diag: surface per-element inline-box advance dumps so the
+            # trailing-cavity origin is visible in the job log AND the artifact.
+            if grep -q "KR_INLINE_BOX_DIAG" /tmp/launch.log; then
+              grep "KR_INLINE_BOX_DIAG" /tmp/launch.log | tee "visual-testing-results/ios/$case_id.inlinebox-diag.log"
+            fi
             echo "[$i/$total] $case_id OK"
           done < /tmp/ios-cases.tsv
           captured=$(ls visual-testing-results/ios/*.png 2>/dev/null | wc -l | tr -d ' ')
