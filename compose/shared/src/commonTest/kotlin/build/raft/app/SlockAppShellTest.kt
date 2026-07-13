@@ -571,7 +571,7 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellBottomTabsOnlyShowOnPrimarySurfaces() {
+    fun appShellBottomTabsStayMountedBehindNativeHomeChildPages() {
         assertEquals(
             true,
             appShellBottomTabsVisible(
@@ -581,10 +581,18 @@ class SlockAppShellTest {
             )
         )
         assertEquals(
-            false,
+            true,
             appShellBottomTabsVisible(
                 selectedTab = "home",
                 selectedHomeDestination = "activity",
+                selectedSettingsDestination = "home"
+            )
+        )
+        assertEquals(
+            false,
+            appShellBottomTabsVisible(
+                selectedTab = "home",
+                selectedHomeDestination = "unknown",
                 selectedSettingsDestination = "home"
             )
         )
@@ -2171,11 +2179,11 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun searchSurfaceRefreshesOnLifecycleResume() {
+    fun rootLifecycleRefreshDoesNotDuplicateNativeHomeChildRefreshes() {
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume(null))
-        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("activity"))
-        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("saved"))
-        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("search"))
+        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("activity"))
+        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("saved"))
+        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("search"))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("unknown"))
     }
 

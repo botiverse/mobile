@@ -1707,10 +1707,7 @@ internal fun retainedHomeSecondaryDestination(destination: String?): String? =
     destination?.takeIf { it in homeSecondaryDestinationKeys }
 
 internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
-    when (retainedHomeSecondaryDestination(destination)) {
-        null, HomeDestinationActivity, HomeDestinationSaved, HomeDestinationSearch -> true
-        else -> false
-    }
+    retainedHomeSecondaryDestination(destination) == null
 
 internal fun appShellPageDidAppearShouldRefresh(pageVisibleTick: Int): Boolean =
     pageVisibleTick > 0
@@ -1748,7 +1745,11 @@ internal fun appShellBottomTabsVisible(
     selectedSettingsDestination: String
 ): Boolean =
     when (retainedAppShellSelectedTab(selectedTab)) {
-        "home" -> selectedHomeDestination == null
+        // Home secondary destinations are native child pages. Keep the root tab bar mounted
+        // behind them so returning does not recreate it after the root is already visible.
+        "home" ->
+            selectedHomeDestination == null ||
+                retainedHomeSecondaryDestination(selectedHomeDestination) != null
         "settings" -> selectedSettingsDestination == SettingsDestinationHome
         else -> true
     }
