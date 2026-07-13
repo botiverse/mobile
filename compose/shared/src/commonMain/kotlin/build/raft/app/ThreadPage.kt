@@ -7647,48 +7647,6 @@ private fun threadMessageVisualWidth(visualFixture: String): Dp =
         // line (the inline-box line-wrap bug these cases reproduce).
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 -> 260.dp
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY -> 260.dp
-        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT ->
-            KuiklyThreadScreenPayload(
-                instanceId = resolvedInstanceId,
-                title = "#markdown",
-                subtitle = "Adjacent-chip acceptance fixture (task #60)",
-                status = "content",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                streamChannelId = "channel-markdown",
-                sourceThreadId = "channel-markdown",
-                selectedTab = "chat",
-                showModeTabs = false,
-                showReplyActions = true,
-                alignOwnMessagesRight = false,
-                showMessageSaveAction = false,
-                showTaskOpenActions = false,
-                showTaskStatusActions = false,
-                knownMarkdownChannelNames = listOf("对话流专修"),
-                knownMarkdownTaskNumbers = listOf(31, 521, 607),
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "msg_md_wrap_adjacent_visual",
-                            authorId = "agent-cindy",
-                            authorName = "Cindy",
-                            authorDescription = "Keeps visual testing release notes aligned.",
-                            authorKind = "agent",
-                            avatarLabel = "CI",
-                            timestampLabel = "07/13 05:56",
-                            messageType = "Chat",
-                            body =
-                                "对照：#31 / #521 两块同行。\n\n紧凑：#31/#521。\n\n尾宽对照：task #607 与 #对话流专修。"
-                        )
-                    ),
-                members = emptyList(),
-                showComposer = false,
-                joined = true,
-                composer =
-                    KuiklyThreadComposerPayload(
-                        instanceId = resolvedInstanceId,
-                        enabled = false
-                    )
-            )
         THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 -> 260.dp
         else -> 390.dp
     }
@@ -8243,6 +8201,48 @@ internal fun threadVisualFixture(
                             avatarLabel = "AD"
                         )
                     ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Adjacent-chip acceptance fixture (task #60)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("对话流专修"),
+                knownMarkdownTaskNumbers = listOf(31, 521, 607),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_adjacent_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:56",
+                            messageType = "Chat",
+                            body =
+                                "对照：#31 / #521 两块同行。\n\n紧凑：#31/#521。\n\n尾宽对照：task #607 与 #对话流专修。"
+                        )
+                    ),
+                members = emptyList(),
                 showComposer = false,
                 joined = true,
                 composer =
