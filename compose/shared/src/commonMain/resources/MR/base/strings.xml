@@ -113,6 +113,11 @@
     <string name="settings_feedback_submission_unavailable">Feedback is unavailable right now. Please try again.</string>
     <string name="settings_feedback_submission_failed_title">Feedback failed</string>
     <string name="settings_feedback_submission_failed_body">We could not send your feedback. Please try again.</string>
+    <string name="settings_feedback_submission_network_body">Could not reach Hands. Check your connection and try again.</string>
+    <string name="settings_feedback_submission_rate_limited_body">Too many feedback requests were sent. Wait a moment and try again.</string>
+    <string name="settings_feedback_submission_attachment_read_body">An attachment could not be read. Remove it and attach the file again.</string>
+    <string name="settings_feedback_submission_attachment_too_large_body">An attachment is too large. Remove it or choose a smaller file.</string>
+    <string name="settings_feedback_submission_auth_body">Feedback authentication failed. Update the app or contact support.</string>
     <string name="settings_feedback_submission_permission_title">Permission needed</string>
     <string name="settings_feedback_submission_permission_body">You do not have permission to send feedback.</string>
     <string name="settings_feedback_submission_succeeded">Submitted %1$s.</string>

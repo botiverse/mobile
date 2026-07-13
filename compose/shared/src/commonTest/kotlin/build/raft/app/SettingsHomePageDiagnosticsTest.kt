@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
@@ -451,20 +452,36 @@ class SettingsHomePageDiagnosticsTest {
             SettingsQuiverFeedbackCopy(
                 submissionFailedTitle = "发送失败",
                 submissionFailedBody = "暂时无法发送反馈，请重试。",
+                submissionNetworkBody = "无法连接 Hands，请检查网络后重试。",
+                submissionAttachmentTooLargeBody = "附件过大，请移除或选择更小的文件。",
                 submissionPermissionTitle = "需要权限",
                 submissionPermissionBody = "你没有发送反馈的权限。"
             )
 
-        val networkFailure = copy.submissionFailure("settings_feedback_submit_rate_limited")
+        val networkFailure = copy.submissionFailure("settings_feedback_network_failed")
         assertEquals("发送失败", networkFailure.title)
-        assertEquals("暂时无法发送反馈，请重试。", networkFailure.composerStatus)
-        assertEquals("暂时无法发送反馈，请重试。", networkFailure.body)
-        assertEquals("settings_feedback_submit_rate_limited", networkFailure.diagnosticDetail)
+        assertEquals("无法连接 Hands，请检查网络后重试。", networkFailure.composerStatus)
+        assertEquals("无法连接 Hands，请检查网络后重试。", networkFailure.body)
+        assertTrue(networkFailure.retryable)
 
-        val permissionFailure = copy.submissionPermissionFailure("server_forbidden")
+        val attachmentFailure = copy.submissionFailure("settings_feedback_attachment_too_large")
+        assertEquals("附件过大，请移除或选择更小的文件。", attachmentFailure.body)
+        assertFalse(attachmentFailure.retryable)
+
+        val permissionFailure = copy.submissionPermissionFailure()
         assertEquals("需要权限", permissionFailure.title)
         assertEquals("你没有发送反馈的权限。", permissionFailure.body)
-        assertEquals("server_forbidden", permissionFailure.diagnosticDetail)
+        assertFalse(permissionFailure.retryable)
+    }
+
+    @Test
+    fun feedbackRetryRequestMatchesTheRestoredDraftAndAttachments() {
+        val attachment = PlatformFile(id = "picked-1", fileName = "screen.png")
+        val request = SettingsQuiverFeedbackRetryRequest("上传图片失败", listOf(attachment))
+
+        assertTrue(request.matches("  上传图片失败  ", listOf(attachment)))
+        assertFalse(request.matches("另一条反馈", listOf(attachment)))
+        assertFalse(request.matches("上传图片失败", emptyList()))
     }
 
     @Test
