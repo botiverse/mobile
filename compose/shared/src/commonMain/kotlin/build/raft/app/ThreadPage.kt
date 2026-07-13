@@ -7286,11 +7286,19 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE = "tas
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG = "action_card_catalog"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD = "approve_login_action_card"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED = "approve_login_action_card_executed"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 = "md_wrap_slice1"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY = "md_wrap_clarify"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 = "md_wrap_task607"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP -> 920.dp
         THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW -> 260.dp
+        // Narrow 260dp column forces a channel/task chip to wrap to the next
+        // line (the inline-box line-wrap bug these cases reproduce).
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 -> 260.dp
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY -> 260.dp
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 -> 260.dp
         else -> 390.dp
     }
 
@@ -7718,6 +7726,189 @@ internal fun threadVisualFixture(
                             handle = "KMP-专家",
                             kind = "agent",
                             avatarLabel = "KM"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#raft-mobile-reconcile",
+                subtitle = "Narrow markdown wrap fixture (slice-1)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                // #791 is a PR (not a known task) so it stays plain; only #787 chips.
+                knownMarkdownChannelNames = listOf("raft-mobile-reconcile"),
+                knownMarkdownMentionNames = listOf("artin", "Mahua", "赵梓淇"),
+                knownMarkdownTaskNumbers = listOf(787),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_slice1_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:55",
+                            messageType = "Chat",
+                            body =
+                                "@artin **slice-1 已合入 main** —— PR #791 squash → `80e3162da`。\n\n" +
+                                    "- 重跑那个 flaky job **绿了**（`realtimeReadStatePreservesPartialSummaryAndReconcilesAcceptedRewind` 重跑即过，坐实是 flake 不是我的），Android/OHOS host/OHOS shared 三端 compile+test 全绿、sign-off 过、iOS skip。\n" +
+                                    "- **披露 merge actor**：走 `gh` 身份 `bytemain`（≠ commit author `HanXin`），squash-merge、删了分支。\n" +
+                                    "- 落地形态：flag `sync_core_messages_v0` **默认关 = 零行为变化**；开了才在旁边 shadow fold+persist（不可见、fail-open、eligibility 仍 false）。真实用户完全无感。\n" +
+                                    "- **AD2 的 mapper 解耦设计点**按你说的转 post-merge follow-up，我留着 observer-routed 方案等他定。\n" +
+                                    "- 我另外给 @Mahua 报了那个 flaky 测试（#787 的，main 上间歇误挂无关 PR）。\n\n" +
+                                    "**数据流接线地基这块落了。** 下一步 V2 归一化信封在 #raft-mobile-reconcile 跟 @赵梓淇 对齐字段（他是 canonical DRI）——赵定了形状我就落 mobile V2，然后翻 eligibility 就到你能\"试效果\"那步。"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "human-mahua",
+                            displayName = "Mahua",
+                            handle = "Mahua",
+                            kind = "human",
+                            avatarLabel = "MA"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "human-zhaoziqi",
+                            displayName = "赵梓淇",
+                            handle = "赵梓淇",
+                            kind = "human",
+                            avatarLabel = "赵"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#conversation-flow",
+                subtitle = "Narrow markdown wrap fixture (clarify)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownMentionNames = listOf("Android-Developer-4"),
+                knownMarkdownTaskNumbers = listOf(31, 521),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_clarify_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:56",
+                            messageType = "Chat",
+                            body =
+                                "另外帮一个澄清避免混淆：#31（read-state→Activity，我的）和 @Android-Developer-4 的 **task #521**（`message:new`→Activity 即时新增，artin 原话\"新消息来了 activity 没刷新\"）是两个不同 gap，不是重复——Codex 早前建议的\"#521 判重关闭\"是把两者混了，AD4 已更正。#31 复用 versioned read-state fact，#521 是 SharedActivityStore 缺 message:new realtime，两条链路各修各的。"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-android-dev-4",
+                            displayName = "Android-Developer-4",
+                            handle = "Android-Developer-4",
+                            kind = "agent",
+                            avatarLabel = "AD"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#对话流专修",
+                subtitle = "Narrow markdown wrap fixture (task607)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("对话流专修"),
+                knownMarkdownMentionNames = listOf("artin", "Android-Developer-2"),
+                knownMarkdownTaskNumbers = listOf(607),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_task607_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:57",
+                            messageType = "Chat",
+                            body =
+                                "@artin 建好了：**task #607**（#对话流专修，我已 claim）——slice-1 那个 mapper→network.sync 解耦 follow-up。scope + @Android-Developer-2 的 A/B 设计选择（接受耦合 vs observer-routed 重构）我贴在 task thread 了。AD2 定 A 我 close 成 by-design，定 B 我实现。V2 那条独立、等赵定信封。"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "agent-android-dev-2",
+                            displayName = "Android-Developer-2",
+                            handle = "Android-Developer-2",
+                            kind = "agent",
+                            avatarLabel = "AD"
                         )
                     ),
                 showComposer = false,
