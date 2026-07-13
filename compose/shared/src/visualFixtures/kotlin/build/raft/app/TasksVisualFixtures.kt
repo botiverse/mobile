@@ -67,6 +67,7 @@ private fun tasksPanelVisualTask(
         createdAt = createdAt,
         updatedAt = updatedAt
     ).toTaskSummary()
+        ?: error("visual fixture task #$taskNumber must map to a valid TaskSummary (check status literal)")
 
 private val tasksPanelVisualTasks: List<TaskSummary> =
     listOf(
