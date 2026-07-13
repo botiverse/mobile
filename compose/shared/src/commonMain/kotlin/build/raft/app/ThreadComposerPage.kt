@@ -65,7 +65,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
@@ -83,6 +85,7 @@ private const val ThreadComposerAttachmentImageTileSizeDp = 64
 private const val ThreadComposerAttachmentFileTileWidthDp = 128
 private const val ThreadComposerAttachmentRowGapDp = 8
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
+private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 private val ThreadComposerAttachmentTileSize = 64.dp
 private val ThreadComposerAttachmentCloseSize = 22.dp
 private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
@@ -1049,46 +1052,100 @@ internal fun ThreadComposerContent(
                 suggestionsEnabled = state.suggestionsEnabled
             )
         }
-    val memberSuggestionSearchEntries =
-        remember(state.memberSuggestions) {
-            state.memberSuggestions.toThreadComposerMemberSuggestionSearchEntries()
-        }
-    val filteredMemberSuggestions =
-        remember(suggestionTrigger, memberSuggestionSearchEntries) {
-            when (val trigger = suggestionTrigger) {
-                is KuiklyComposerSuggestionTrigger.MemberTrigger ->
-                    rankThreadComposerMemberSuggestionEntries(
-                        query = trigger.query,
-                        entries = memberSuggestionSearchEntries
-                    )
-
-                else -> emptyList()
+    var indexedMemberSuggestions by remember(state.instanceId) {
+        mutableStateOf<ThreadComposerIndexedSuggestions<KuiklyComposerMemberItem>?>(null)
+    }
+    var indexedChannelSuggestions by remember(state.instanceId) {
+        mutableStateOf<ThreadComposerIndexedSuggestions<KuiklyComposerChannelItem>?>(null)
+    }
+    LaunchedEffect(state.instanceId, state.memberSuggestions) {
+        val source = state.memberSuggestions
+        val entries = withContext(Dispatchers.Default) { source.toThreadComposerMemberSuggestionSearchEntries() }
+        indexedMemberSuggestions = ThreadComposerIndexedSuggestions(source = source, entries = entries)
+    }
+    LaunchedEffect(state.instanceId, state.channelSuggestions) {
+        val source = state.channelSuggestions
+        val entries = withContext(Dispatchers.Default) { source.toThreadComposerChannelSuggestionSearchEntries() }
+        indexedChannelSuggestions = ThreadComposerIndexedSuggestions(source = source, entries = entries)
+    }
+    val memberRankingRequest =
+        remember(suggestionTrigger, indexedMemberSuggestions, state.memberSuggestions) {
+            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)?.let { trigger ->
+                indexedMemberSuggestions
+                    ?.takeIf { indexed -> indexed.matches(state.memberSuggestions) }
+                    ?.let { indexed -> ThreadComposerSuggestionRankingRequest(trigger.query, indexed.entries) }
             }
         }
-    val channelSuggestionSearchEntries =
-        remember(state.channelSuggestions) {
-            state.channelSuggestions.toThreadComposerChannelSuggestionSearchEntries()
-        }
-    val filteredChannelSuggestions =
-        remember(suggestionTrigger, channelSuggestionSearchEntries) {
-            when (val trigger = suggestionTrigger) {
-                is KuiklyComposerSuggestionTrigger.ChannelTrigger ->
-                    rankThreadComposerChannelSuggestionEntries(
-                        query = trigger.query,
-                        entries = channelSuggestionSearchEntries
-                    )
-
-                else -> emptyList()
+    val channelRankingRequest =
+        remember(suggestionTrigger, indexedChannelSuggestions, state.channelSuggestions) {
+            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)?.let { trigger ->
+                indexedChannelSuggestions
+                    ?.takeIf { indexed -> indexed.matches(state.channelSuggestions) }
+                    ?.let { indexed -> ThreadComposerSuggestionRankingRequest(trigger.query, indexed.entries) }
             }
+        }
+    var memberRankingResult by remember(state.instanceId) {
+        mutableStateOf<ThreadComposerSuggestionRankingResult<KuiklyComposerMemberItem>?>(null)
+    }
+    var channelRankingResult by remember(state.instanceId) {
+        mutableStateOf<ThreadComposerSuggestionRankingResult<KuiklyComposerChannelItem>?>(null)
+    }
+    LaunchedEffect(state.instanceId, memberRankingRequest) {
+        if (memberRankingRequest == null) {
+            memberRankingResult = null
+        } else {
+            delay(ThreadComposerSuggestionQueryDebounceMillis)
+            val suggestions =
+                withContext(Dispatchers.Default) {
+                    rankThreadComposerMemberSuggestionEntriesCancellable(
+                        query = memberRankingRequest.query,
+                        entries = memberRankingRequest.entries
+                    )
+                }
+            memberRankingResult = ThreadComposerSuggestionRankingResult(memberRankingRequest, suggestions)
+        }
+    }
+    LaunchedEffect(state.instanceId, channelRankingRequest) {
+        if (channelRankingRequest == null) {
+            channelRankingResult = null
+        } else {
+            delay(ThreadComposerSuggestionQueryDebounceMillis)
+            val suggestions =
+                withContext(Dispatchers.Default) {
+                    rankThreadComposerChannelSuggestionEntriesCancellable(
+                        query = channelRankingRequest.query,
+                        entries = channelRankingRequest.entries
+                    )
+                }
+            channelRankingResult = ThreadComposerSuggestionRankingResult(channelRankingRequest, suggestions)
+        }
+    }
+    val memberRankingReady =
+        memberRankingRequest != null && memberRankingResult?.request === memberRankingRequest
+    val channelRankingReady =
+        channelRankingRequest != null && channelRankingResult?.request === channelRankingRequest
+    val filteredMemberSuggestions = memberRankingResult?.suggestions.takeIf { memberRankingReady }.orEmpty()
+    val filteredChannelSuggestions = channelRankingResult?.suggestions.takeIf { channelRankingReady }.orEmpty()
+    val effectiveMemberSuggestionsStatus =
+        if (suggestionTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger && !memberRankingReady) {
+            SharedMembersLoadStatus.InFlight
+        } else {
+            state.memberSuggestionsStatus
+        }
+    val effectiveChannelSuggestionsStatus =
+        if (suggestionTrigger is KuiklyComposerSuggestionTrigger.ChannelTrigger && !channelRankingReady) {
+            SharedMembersLoadStatus.InFlight
+        } else {
+            state.channelSuggestionsStatus
         }
     val suggestionPanelState =
         threadComposerSuggestionPanelState(
             focused = focused,
             trigger = suggestionTrigger,
             memberCount = filteredMemberSuggestions.size,
-            memberStatus = state.memberSuggestionsStatus,
+            memberStatus = effectiveMemberSuggestionsStatus,
             channelCount = filteredChannelSuggestions.size,
-            channelStatus = state.channelSuggestionsStatus
+            channelStatus = effectiveChannelSuggestionsStatus
         )
     var memberSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
     var channelSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
