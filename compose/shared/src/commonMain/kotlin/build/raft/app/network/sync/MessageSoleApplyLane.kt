@@ -3,6 +3,8 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.model.RealtimeEvent
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -35,6 +37,8 @@ internal class MessageSoleApplyLane(
     laneScope: CoroutineScope,
     private val config: SoleApplyConfig = SoleApplyConfig(),
     private val logger: (String) -> Unit = {},
+    /** Deterministic androidUnitTest seam; production uses the no-op default. */
+    private val beforeFrameOffer: () -> Unit = {},
     // A per-lane pure core (one lane = one scope); state is keyed by channel scope id, as in the shadow lane.
     initialCore: SyncCore = createMessageSyncCore(),
     // Stage A starts the engine directly in FOLD (a warm-started lane); the ACTIVATING warm-start
@@ -54,7 +58,7 @@ internal class MessageSoleApplyLane(
     private data class QueuedFrame(val frame: Frame, val generation: Long)
 
     private sealed interface LaneControl {
-        data object MailboxOverflowed : LaneControl
+        data class MailboxOverflowed(val observedGeneration: Long?) : LaneControl
         data class RebaselineResolved(val generation: Long, val success: Boolean) : LaneControl
         data object EligibilityRevoked : LaneControl
     }
@@ -67,6 +71,9 @@ internal class MessageSoleApplyLane(
     private val controls = Channel<LaneControl>(capacity = Channel.UNLIMITED)
     private val mailboxOverflowSignalPending = atomic(false)
     private val mailboxGeneration = atomic(initialState.generation)
+    private val rebaselineBarrierLock = SynchronizedObject()
+    private var enqueueVisibleRebaselineGeneration: Long? = initialState.rebaselineGeneration
+    private var dirtyEnqueueGeneration: Long? = null
 
     private var state: SoleApplyScopeState = initialState
     private var core: SyncCore = initialCore
@@ -100,9 +107,17 @@ internal class MessageSoleApplyLane(
      * transition, which blocks apply and requests the same generation-fenced rebaseline as a commit failure.
      */
     fun enqueue(frame: Frame) {
-        val offered = frames.trySend(QueuedFrame(frame, mailboxGeneration.value))
+        beforeFrameOffer()
+        val (offered, observedGeneration) = synchronized(rebaselineBarrierLock) {
+            val activeGeneration = enqueueVisibleRebaselineGeneration
+            activeGeneration?.let { dirtyEnqueueGeneration = it }
+            val queued = QueuedFrame(frame, mailboxGeneration.value)
+            // Sampling the active flight, tagging the queued frame, and the actual non-blocking offer
+            // are one linearization point. Recovery cannot start in a sample->offer gap.
+            frames.trySend(queued) to activeGeneration
+        }
         if (offered.isFailure && job.isActive && mailboxOverflowSignalPending.compareAndSet(expect = false, update = true)) {
-            if (controls.trySend(LaneControl.MailboxOverflowed).isFailure) {
+            if (controls.trySend(LaneControl.MailboxOverflowed(observedGeneration)).isFailure) {
                 mailboxOverflowSignalPending.value = false
                 logger("sole_apply_diag scope=${scopeKey.scopeId} reason=mailbox_closed")
             }
@@ -144,9 +159,23 @@ internal class MessageSoleApplyLane(
 
     private suspend fun consumeControl(control: LaneControl) {
         when (control) {
-            LaneControl.MailboxOverflowed -> {
+            is LaneControl.MailboxOverflowed -> {
                 mailboxOverflowSignalPending.value = false
-                dispatch(SoleApplyInput.MailboxOverflowed)
+                val currentGeneration = state.rebaselineGeneration
+                when {
+                    // Overflow created before any recovery flight: if no other flight has started,
+                    // this signal owns the transition that blocks and requests one.
+                    control.observedGeneration == null && currentGeneration == null ->
+                        dispatch(SoleApplyInput.MailboxOverflowed)
+                    // Overflow happened inside this exact flight: attribute it once to that flight.
+                    control.observedGeneration != null && control.observedGeneration == currentGeneration ->
+                        dispatch(SoleApplyInput.MailboxOverflowed)
+                    // The loss was already covered by/rearmed from an older generation. Never apply
+                    // the delayed control to the new flight and manufacture an unnecessary g+1.
+                    else -> logger(
+                        "sole_apply_diag scope=${scopeKey.scopeId} reason=stale_mailbox_overflow_control",
+                    )
+                }
             }
             is LaneControl.RebaselineResolved -> resolveRebaseline(control)
             LaneControl.EligibilityRevoked -> dispatch(SoleApplyInput.EligibilityRevoked)
@@ -165,22 +194,47 @@ internal class MessageSoleApplyLane(
             return
         }
         if (!control.success) {
-            dispatch(SoleApplyInput.RebaselineFailed(control.generation))
+            finishFailedRebaseline(control.generation)
             return
         }
 
         val restoredCore = runCatching { restoreFreshCore() }
         if (restoredCore.isSuccess) {
-            core = restoredCore.getOrThrow()
-            // Publish the new barrier before completing the engine transition. Any concurrent enqueue
-            // before this store is tagged old and explicitly superseded; any enqueue after it is tagged
-            // with the restored generation and cannot be mistaken for pre-snapshot backlog.
-            mailboxGeneration.value = control.generation
-            dispatch(SoleApplyInput.RebaselineSucceeded(control.generation))
+            finishSuccessfulRebaseline(control.generation, restoredCore.getOrThrow())
         } else {
             logger("sole_apply_diag scope=${scopeKey.scopeId} reason=rebaseline_restore_failed")
-            dispatch(SoleApplyInput.RebaselineFailed(control.generation))
+            finishFailedRebaseline(control.generation)
         }
+    }
+
+    private fun finishSuccessfulRebaseline(generation: Long, restoredCore: SyncCore) {
+        val commands = synchronized(rebaselineBarrierLock) {
+            // Close the snapshot-cut race with enqueue: every enqueue that observed this flight marks
+            // it dirty under the same lock. A dirty completion installs the restored core as a safe
+            // baseline but the engine immediately rearms the next generation instead of unlocking.
+            if (dirtyEnqueueGeneration == generation) {
+                reduceOnly(SoleApplyInput.RebaselineDirtied(generation))
+                dirtyEnqueueGeneration = null
+            }
+            core = restoredCore
+            mailboxGeneration.value = generation
+            val next = reduceOnly(SoleApplyInput.RebaselineSucceeded(generation))
+            enqueueVisibleRebaselineGeneration = state.rebaselineGeneration
+            next
+        }
+        executeCommands(commands)
+    }
+
+    private fun finishFailedRebaseline(generation: Long) {
+        val commands = synchronized(rebaselineBarrierLock) {
+            // The retry request is issued after this failed flight, so all arrivals observed during it
+            // belong before the new snapshot cut and do not dirty the retry generation by themselves.
+            if (dirtyEnqueueGeneration == generation) dirtyEnqueueGeneration = null
+            val next = reduceOnly(SoleApplyInput.RebaselineFailed(generation))
+            enqueueVisibleRebaselineGeneration = state.rebaselineGeneration
+            next
+        }
+        executeCommands(commands)
     }
 
     /** Build and fully seed a fresh core before publishing it; the old polluted core has no reuse path. */
@@ -266,13 +320,25 @@ internal class MessageSoleApplyLane(
         )
     }
 
-    private fun dispatch(input: SoleApplyInput) {
+    private fun reduceOnly(input: SoleApplyInput): List<SoleApplyCommand> {
         val transition = reduceSoleApply(state, input, config)
         state = transition.state
-        transition.commands.forEach(::execute)
-        // Anything the engine no longer tracks (fanned out, or superseded — post-failure arrival /
-        // rebaseline queue clear) is released from the held map so a superseded event can never
-        // surface later. FanOut has already delivered its event above.
+        return transition.commands
+    }
+
+    private fun dispatch(input: SoleApplyInput) {
+        val commands = synchronized(rebaselineBarrierLock) {
+            val next = reduceOnly(input)
+            enqueueVisibleRebaselineGeneration = state.rebaselineGeneration
+            next
+        }
+        executeCommands(commands)
+    }
+
+    private fun executeCommands(commands: List<SoleApplyCommand>) {
+        commands.forEach(::execute)
+        // Anything the engine no longer tracks (fanned out, or superseded by a recovery barrier) is
+        // released only AFTER FanOut commands had a chance to deliver the exact held event.
         heldEvents.keys.retainAll(state.heldSeqs.toSet())
     }
 
