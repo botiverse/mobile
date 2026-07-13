@@ -10,6 +10,7 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -20,11 +21,14 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import build.raft.app.model.TaskStatus
 
 const val SLOCK_FLOATING_OVERLAY_TOUCH_GUARD_VISUAL_PAGE = "compose_floating_overlay_touch_guard_visual"
 
@@ -34,16 +38,17 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
         super.willInit()
         val fixture = pageData.params.optString("fixture")
         setContent {
-            if (fixture == FloatingOverlayTouchGuardModalFixture) {
-                SlockModalPointerBarrierVisualScreen()
-            } else {
-                SlockFloatingOverlayTouchGuardVisualScreen()
+            when (fixture) {
+                FloatingOverlayTouchGuardModalFixture -> SlockModalPointerBarrierVisualScreen()
+                FloatingOverlayTouchGuardTaskStatusFixture -> SlockTaskStatusMenuTouchVisualScreen()
+                else -> SlockFloatingOverlayTouchGuardVisualScreen()
             }
         }
     }
 }
 
 private const val FloatingOverlayTouchGuardModalFixture = "modal"
+private const val FloatingOverlayTouchGuardTaskStatusFixture = "task-status-menu"
 
 @Composable
 internal fun SlockFloatingOverlayTouchGuardVisualScreen() {
@@ -123,3 +128,53 @@ private val FloatingOverlayTouchGuardIdleCream = Color(0xFFFFF7E6)
 private val FloatingOverlayTouchGuardPassGreen = Color(0xFF10B981)
 private val FloatingOverlayTouchGuardLeakRed = Color(0xFFEF4444)
 private val FloatingOverlayTouchGuardUnderlayYellow = Color(0xFFFFD440)
+
+@Composable
+internal fun SlockTaskStatusMenuTouchVisualScreen() {
+    var selectedStatus by remember { mutableStateOf(TaskStatus.Todo) }
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Box(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(112.dp)
+                    .background(
+                        if (selectedStatus == TaskStatus.Done) {
+                            FloatingOverlayTouchGuardPassGreen
+                        } else {
+                            FloatingOverlayTouchGuardIdleCream
+                        }
+                    )
+        )
+        val anchor =
+            with(density) {
+                Offset(
+                    x = (maxWidth - 12.dp).toPx(),
+                    y = (maxHeight - 32.dp).toPx()
+                )
+            }
+        SlockTaskStatusMenuOverlay(
+            anchor = anchor,
+            items =
+                TaskStatus.entries.map { status ->
+                    SlockBaseMenuItem(id = status.name, label = status.touchFixtureLabel())
+                },
+            selectedId = selectedStatus.name,
+            onDismiss = {},
+            onSelect = { id ->
+                TaskStatus.entries.firstOrNull { it.name == id }?.let { selectedStatus = it }
+            }
+        )
+    }
+}
+
+private fun TaskStatus.touchFixtureLabel(): String =
+    when (this) {
+        TaskStatus.Todo -> "Todo"
+        TaskStatus.InProgress -> "In Progress"
+        TaskStatus.InReview -> "In Review"
+        TaskStatus.Done -> "Done"
+        TaskStatus.Closed -> "Closed"
+    }

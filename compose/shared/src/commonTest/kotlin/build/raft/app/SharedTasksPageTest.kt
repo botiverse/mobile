@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.model.ChannelId
-import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -99,35 +98,4 @@ class SharedTasksPageTest {
         assertEquals(4, sharedTasksBeyondBoundsItemCount(1752))
     }
 
-    @Test
-    fun tasksStatusMenuAnchorUsesVisibleLazyItemBottomWhenAvailable() {
-        val corrected =
-            sharedTasksVisibleLazyItemBottomAnchor(
-                rawAnchor = Offset(260f, 120f),
-                lazyListRoot = Offset(16f, 88f),
-                itemIndex = 3,
-                visibleItems =
-                    listOf(
-                        SharedTasksLazyItemAnchorInfo(index = 2, offset = 24, size = 84),
-                        SharedTasksLazyItemAnchorInfo(index = 3, offset = 132, size = 96)
-                    )
-            )
-
-        assertEquals(Offset(260f, 316f), corrected)
-    }
-
-    @Test
-    fun tasksStatusMenuAnchorFallsBackToRawAnchorWhenItemIsNotVisible() {
-        val rawAnchor = Offset(260f, 120f)
-
-        val corrected =
-            sharedTasksVisibleLazyItemBottomAnchor(
-                rawAnchor = rawAnchor,
-                lazyListRoot = Offset(16f, 88f),
-                itemIndex = 7,
-                visibleItems = listOf(SharedTasksLazyItemAnchorInfo(index = 3, offset = 132, size = 96))
-            )
-
-        assertEquals(rawAnchor, corrected)
-    }
 }

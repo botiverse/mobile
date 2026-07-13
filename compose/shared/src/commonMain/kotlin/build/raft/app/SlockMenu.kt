@@ -51,6 +51,10 @@ private val SlockBaseMenuViewportGap = 8.dp
 private val SlockBaseMenuForegroundColor = Color(0xFF000000)
 private const val SlockBaseMenuChromeWidthValue = 84
 
+// Status editors can be opened from a card near either viewport edge. React measures
+// the trigger and flips the portal above when needed; retain that contract here.
+internal val SlockTaskStatusMenuVerticalPlacement = SlockFloatingVerticalPlacement.Auto
+
 internal enum class SlockMenuSelectedIndicatorPlacement {
     Leading,
     Trailing
@@ -133,7 +137,11 @@ internal fun SlockBaseMenuOverlay(
                     .width(menuWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
-                    .slockFloatingContentClickTarget()
+                    // This surface is the parent of actual Button rows. Native dispatch
+                    // capture here wins before child rows on Android, so only use the
+                    // no-op clickable needed to keep blank menu space out of the
+                    // sibling dismiss barrier.
+                    .clickable(onClick = {})
                     // react draws its 2px border around the rows (content-box), so
                     // the menu is rows + 2*2dp tall and the rows are inset by the
                     // stroke; Compose paints the border over the content instead —
@@ -197,7 +205,7 @@ internal fun SlockTaskStatusMenuOverlay(
         selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
         horizontalOffset = 0.dp,
         verticalOffset = 4.dp,
-        verticalPlacement = SlockFloatingVerticalPlacement.Below,
+        verticalPlacement = SlockTaskStatusMenuVerticalPlacement,
         onDismiss = onDismiss,
         onSelect = onSelect
     )

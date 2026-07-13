@@ -22,7 +22,6 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
-import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -175,7 +174,7 @@ internal fun TasksStatusMenuVisualContent() {
                 .height(260.dp)
                 .background(SlockColor.SurfaceWhite)
     ) {
-        // Same trigger chip + SlockBaseMenuOverlay call SharedTasksPage opens on a
+        // Same trigger chip + SlockTaskStatusMenuOverlay call SharedTasksPage opens on a
         // status chip tap, held statically open with in_progress selected. Text
         // params mirror the product status chip (SharedTasksPage task card) and the
         // box is pinned to react's measured chip border-box, 98x24dp at (16,18)dp —
@@ -194,28 +193,13 @@ internal fun TasksStatusMenuVisualContent() {
             borderWidth = SlockStroke.Default,
             anchorPlacement = SlockAnchorPlacement.BottomEnd
         )
-        SlockBaseMenuOverlay(
+        SlockTaskStatusMenuOverlay(
             anchor = with(density) { Offset(16.dp.toPx(), 42.dp.toPx()) },
             items =
                 TaskStatus.entries.map { status ->
                     SlockBaseMenuItem(id = status.name, label = tasksStatusMenuVisualLabel(status))
                 },
             selectedId = TaskStatus.InProgress.name,
-            selectedRowColor = SlockColor.SurfaceWhite,
-            uppercaseLabels = false,
-            // react renders this menu at exactly its 140px min-width (content is
-            // narrower); the char-estimate in slockBaseMenuWidth overshoots to
-            // 172dp for "In Progress", so pin the width (task #370).
-            width = 140.dp,
-            rowHeight = 36.dp,
-            labelFontSize = 14.sp,
-            labelLineHeight = 20.sp,
-            labelFontWeight = FontWeight.Normal,
-            labelLetterSpacing = 0.sp,
-            selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
-            horizontalOffset = 0.dp,
-            verticalOffset = 4.dp,
-            verticalPlacement = SlockFloatingVerticalPlacement.Below,
             onDismiss = {},
             onSelect = {}
         )
