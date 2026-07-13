@@ -2278,7 +2278,8 @@ private fun PendingMentionActionBanner(
                     .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            actions.forEach { action ->
+            // Keep mention actions one-by-one so follow-up rows do not clip controls above the composer.
+            actions.take(1).forEach { action ->
                 PendingMentionActionRow(
                     action = action,
                     targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
@@ -2330,11 +2331,16 @@ private fun PendingMentionActionRow(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SlockLucideIcon(
-                SlockLucideIconName.UserMinus,
-                modifier = Modifier.size(15.dp),
-                color = if (removing) "#777777" else SlockColor.TextMutedGrayArgb
-            )
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.UserPlus,
+                    modifier = Modifier.size(16.dp),
+                    color = if (removing) "#777777" else SlockColor.TextMutedGrayArgb
+                )
+            }
             SlockAvatar(
                 avatarWireValue = targetAvatarWireValue,
                 label = targetAvatarLabel,
