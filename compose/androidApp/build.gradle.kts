@@ -89,6 +89,9 @@ val slockAndroidVersionCode =
             slockAndroidVersionPatch * 100 +
             slockAndroidVersionBuild)
 val slockAndroidVersionSuffix = slockBuildConfigRawString("versionSuffix", "SLOCK_ANDROID_VERSION_SUFFIX")
+val slockAndroidApplicationIdSuffix =
+    slockBuildConfigRawString("SLOCK_ANDROID_APPLICATION_ID_SUFFIX")
+        ?.let { suffix -> if (suffix.startsWith(".")) suffix else ".$suffix" }
 val slockAndroidVersionName =
     slockBuildConfigRawString("versionName", "SLOCK_ANDROID_VERSION_NAME")
         ?: buildString {
@@ -352,7 +355,11 @@ android {
         versionName = slockAndroidVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
+        buildConfigField(
+            "Boolean",
+            "SHOW_TEST_BUILD_BADGE",
+            slockBuildConfigBoolean("SLOCK_SHOW_TEST_BUILD_BADGE", false).toString()
+        )
         buildConfigField(
             "Boolean",
             "ENABLE_MULTI_SERVER_REALTIME_SESSIONS",
@@ -369,6 +376,7 @@ android {
 
     buildTypes {
         getByName("debug") {
+            slockAndroidApplicationIdSuffix?.let { applicationIdSuffix = it }
             buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
         }
         create("connectedTest") {
