@@ -117,8 +117,44 @@ private val tasksPanelVisualTasks: List<TaskSummary> =
         )
     )
 
+private const val TasksPanelStatusMenuRecycleFixture = "status-menu-recycle"
+
+// Real SharedTasksPanel interaction fixture for the LazyColumn recycling regression in
+// task #525. The first viewport is intentionally filled with Todo cards; scrolling into
+// the In Progress group forces the same lazy slots/pointer inputs to bind new task ids,
+// statuses, click callbacks, and status-chip geometry.
+private val tasksPanelStatusMenuRecycleTasks: List<TaskSummary> =
+    (320 downTo 309).map { taskNumber ->
+        tasksPanelVisualTask(
+            taskNumber = taskNumber,
+            title = "Todo recycled slot $taskNumber",
+            status = "todo",
+            createdAt = VisualFixtureData.Times.ENTITY_CREATED_AT_ISO,
+            updatedAt = VisualFixtureData.Times.RECENT_ACTIVITY_AT_ISO
+        )
+    } +
+        (308 downTo 293).map { taskNumber ->
+            tasksPanelVisualTask(
+                taskNumber = taskNumber,
+                title = "In progress visible row $taskNumber",
+                status = "in_progress",
+                claimedByType = "agent",
+                claimedById = VisualFixtureData.Agents.Cindy.ID,
+                claimedByName = VisualFixtureData.Agents.Cindy.DISPLAY_NAME,
+                claimedAt = VisualFixtureData.Times.THREAD_MESSAGE_AT_ISO,
+                createdAt = VisualFixtureData.Times.ENTITY_CREATED_AT_ISO,
+                updatedAt = VisualFixtureData.Times.RECENT_ACTIVITY_AT_ISO
+            )
+        }
+
 @Composable
-internal fun TasksPanelVisualContent() {
+internal fun TasksPanelVisualContent(fixture: String = "") {
+    val tasks =
+        if (fixture == TasksPanelStatusMenuRecycleFixture) {
+            tasksPanelStatusMenuRecycleTasks
+        } else {
+            tasksPanelVisualTasks
+        }
     Box(
         modifier =
             Modifier
@@ -132,8 +168,8 @@ internal fun TasksPanelVisualContent() {
                     loadState =
                         ScreenLoadState.Content(
                             TasksContent(
-                                summaryCounts = tasksPanelVisualTasks.summaryCounts(),
-                                tasks = tasksPanelVisualTasks
+                                summaryCounts = tasks.summaryCounts(),
+                                tasks = tasks
                             )
                         )
                 ),
@@ -143,7 +179,12 @@ internal fun TasksPanelVisualContent() {
             initialPresentationOverride =
                 TasksPresentationState.Default.copy(
                     selectedMode = TasksViewMode.List,
-                    collapsedStatuses = setOf(TaskStatus.Closed)
+                    collapsedStatuses =
+                        if (fixture == TasksPanelStatusMenuRecycleFixture) {
+                            setOf(TaskStatus.InReview, TaskStatus.Done, TaskStatus.Closed)
+                        } else {
+                            setOf(TaskStatus.Closed)
+                        }
                 ),
             // #373: deterministic clock so the card timestamps render as relative
             // labels ("Just now"/"Yesterday"/…) in the capture, matching the fixed

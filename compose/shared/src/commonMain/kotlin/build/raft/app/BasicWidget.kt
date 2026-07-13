@@ -554,7 +554,7 @@ internal fun Button(
     clickIdentity: Any? = null,
     content: (@Composable () -> Unit) = {}
 ) {
-    val rootPosition = remember { SlockMutableOffsetRef() }
+    val rootPosition = remember(clickIdentity) { SlockMutableOffsetRef() }
     var pressed by remember { mutableStateOf(false) }
     val onClickUpdate = rememberUpdatedState(onClick)
     val onClick2Update = rememberUpdatedState(onClick2)

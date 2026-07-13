@@ -939,7 +939,7 @@ private fun Modifier.activityRowGestures(
 ): Modifier {
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnOpenMenu by rememberUpdatedState(onOpenMenu)
-    val rootPos = remember { SlockMutableOffsetRef() }
+    val rootPos = remember(gestureKey) { SlockMutableOffsetRef() }
     return this
         .then(
             if (captureMenuAnchor) {

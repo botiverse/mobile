@@ -1,9 +1,11 @@
 package build.raft.app
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.TaskStatus
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 
 class SharedTasksPageTest {
     @Test
@@ -96,6 +98,16 @@ class SharedTasksPageTest {
         assertEquals(1, sharedTasksBeyondBoundsItemCount(0))
         assertEquals(4, sharedTasksBeyondBoundsItemCount(40))
         assertEquals(4, sharedTasksBeyondBoundsItemCount(1752))
+    }
+
+    @Test
+    fun tasksStatusChipClickIdentityTracksRecycledCardBinding() {
+        val first = tasksStatusChipClickIdentity("task-1", TaskStatus.Todo)
+
+        assertEquals("tasks-status:task-1:Todo", first)
+        assertNotEquals(first, tasksStatusChipClickIdentity("task-2", TaskStatus.Todo))
+        assertNotEquals(first, tasksStatusChipClickIdentity("task-1", TaskStatus.InProgress))
+        assertEquals(first, tasksStatusChipClickIdentity("task-1", TaskStatus.Todo))
     }
 
 }
