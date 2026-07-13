@@ -10933,7 +10933,12 @@ private fun ThreadMessagesList(
             val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
             val action =
                 focusedAnchorSessionAction(
-                    userInteracting = listState.isScrollInProgress,
+                    userInteracting =
+                        focusedAnchorSessionUserOverrideActive(
+                            isScrollInProgress = listState.isScrollInProgress,
+                            targetIdentity = targetIdentity,
+                            scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
+                        ),
                     drifted = focusedAnchorTargetDrifted(anchoredOffset, currentOffset),
                     quietMs = quietMs,
                     elapsedMs = focusedAnchorSessionElapsedMs
@@ -11580,6 +11585,26 @@ private fun ThreadMessagesList(
             ThreadBackToBottomButton(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = SlockSpacing.Md),
                 onClick = {
+                    // A focused Activity/message anchor owns the viewport for a
+                    // short stabilization session. Back-to-bottom is an
+                    // explicit replacement viewport intent, so retire that
+                    // session before moving the list. Otherwise its next
+                    // drift probe sees the focused row leave the viewport and
+                    // immediately re-anchors above the bottom (Hands
+                    // edecc106).
+                    val retiredFocusedAnchorIdentity =
+                        focusedAnchorIdentityForViewportReplacement(
+                            pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                            sessionIdentity = focusedAnchorSessionIdentity
+                        )
+                    if (retiredFocusedAnchorIdentity != null) {
+                        scrollInterruptedFocusedMessageAnchorIdentity = retiredFocusedAnchorIdentity
+                        activeFocusedMessageId = null
+                    }
+                    diagnosticsLogger(
+                        "thread_back_to_bottom_click latestItemIndex=$latestItemIndex " +
+                            "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null}"
+                    )
                     coroutineScope.launch {
                         allowBottomAutoAnchor = true
                         repeat(ThreadBackToBottomAnchorAttempts) { attempt ->
@@ -12118,6 +12143,19 @@ internal const val FocusedAnchorBottomYieldCapMs = 3_000L
 internal const val FocusedAnchorDriftTolerancePx = 4
 
 internal enum class FocusedAnchorSessionAction { Interrupt, Consume, Reanchor, Continue }
+
+internal fun focusedAnchorIdentityForViewportReplacement(
+    pendingIdentity: String?,
+    sessionIdentity: String?
+): String? =
+    pendingIdentity ?: sessionIdentity
+
+internal fun focusedAnchorSessionUserOverrideActive(
+    isScrollInProgress: Boolean,
+    targetIdentity: String,
+    scrollInterruptedIdentity: String?
+): Boolean =
+    isScrollInProgress || scrollInterruptedIdentity == targetIdentity
 
 // The session policy as a pure state machine (task #567). Precedence:
 // user interaction always wins (#554 semantics), then the hard cap (never
