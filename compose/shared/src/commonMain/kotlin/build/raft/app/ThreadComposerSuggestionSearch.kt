@@ -22,6 +22,12 @@ internal data class ThreadComposerSuggestionRankingResult<T>(
     val suggestions: List<T>
 )
 
+internal fun <T> immediateThreadComposerSuggestions(
+    query: String,
+    suggestions: List<T>
+): List<T> =
+    if (query.isBlank()) suggestions.take(ThreadComposerSuggestionMaxResults) else emptyList()
+
 internal fun filterThreadComposerMemberSuggestions(
     query: String,
     suggestions: List<KuiklyComposerMemberItem>
