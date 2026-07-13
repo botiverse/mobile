@@ -9,7 +9,6 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.MessageId
-import build.raft.app.model.TaskSummary
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 
@@ -21,40 +20,6 @@ internal data class ThreadLaunchConversationIdentity(
     val threadStreamChannelIdHint: ChannelId? = null,
     val kind: ConversationKind
 )
-
-internal data class TaskThreadLaunchTarget(
-    val conversation: ThreadLaunchConversationIdentity,
-    val focusedMessageId: String?
-)
-
-internal fun TaskSummary.toTaskThreadLaunchTarget(): TaskThreadLaunchTarget? {
-    val parentChannelId = channelId?.value?.takeIf { it.isNotBlank() } ?: return null
-    val parentMessageId =
-        parentMessageId?.value?.takeIf { it.isNotBlank() }
-            ?: messageId?.value?.takeIf { it.isNotBlank() }
-            ?: return null
-    val focusedMessageId =
-        messageId
-            ?.value
-            ?.takeIf { it.isNotBlank() && it != parentMessageId }
-    val streamThreadId = threadId?.value?.takeIf { it.isNotBlank() }
-    return TaskThreadLaunchTarget(
-        conversation =
-            buildThreadLaunchConversationIdentity(
-                kind = ConversationKind.Thread,
-                channelId = streamThreadId?.let(::ChannelId) ?: ChannelId(parentChannelId),
-                threadChannelId = streamThreadId?.let(::ChannelId),
-                parentChannelId = ChannelId(parentChannelId),
-                parentMessageId = MessageId(parentMessageId),
-                // Inherited product assumption from the old bypass: task threads are
-                // channel-parented because TaskSummary wire carries no parent kind. This is
-                // not a parser fallback.
-                parentSurfaceKind = ConversationKind.Channel.threadParentSurfaceKindOrNull(),
-                parentChannelKind = ConversationKind.Channel.threadChannelKindWireValue()
-            ),
-        focusedMessageId = focusedMessageId
-    )
-}
 
 internal fun buildThreadLaunchConversationIdentity(
     kind: ConversationKind,
@@ -188,33 +153,6 @@ internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLau
         kind = kind
     )
 
-internal fun SlockThreadWebLinkTarget.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity? {
-    val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
-    val parentKind =
-        when (routeKind) {
-            KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
-            KuiklyThreadSurfaceKind.Channel -> ConversationKind.Channel
-            else -> return null
-        }
-    val parentMessageId = threadParentMessageId?.takeIf { it.isNotBlank() }
-    return if (parentMessageId != null) {
-        buildThreadLaunchConversationIdentity(
-            kind = ConversationKind.Thread,
-            channelId = ChannelId(cleanChannelId),
-            parentChannelId = ChannelId(cleanChannelId),
-            parentMessageId = MessageId(parentMessageId),
-            parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
-            parentChannelKind = parentKind.threadChannelKindWireValue()
-        )
-    } else {
-        buildThreadLaunchConversationIdentity(
-            kind = parentKind,
-            channelId = ChannelId(cleanChannelId),
-            channelType = parentKind.threadChannelKindWireValue()
-        )
-    }
-}
-
 internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val surfaceKind = threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
@@ -230,7 +168,16 @@ internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): Thre
                 threadStreamChannelId()
             },
         parentChannelId = if (isReplyThread) threadParentChannelId() else null,
-        parentMessageId = if (isReplyThread) threadParentMessageId() else null
+        parentMessageId = if (isReplyThread) threadParentMessageId() else null,
+        parentConversationKind =
+            if (isReplyThread) {
+                typedReplyParentConversationKindOrNull(
+                    threadParentSurfaceKind(),
+                    threadParentChannelKind()
+                )
+            } else {
+                null
+            }
     )
 }
 

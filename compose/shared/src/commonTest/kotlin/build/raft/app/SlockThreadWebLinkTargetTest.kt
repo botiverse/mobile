@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -84,12 +87,9 @@ class SlockThreadWebLinkTargetTest {
 
     @Test
     fun webLinkLoadingPayloadUsesChannelLaunchHeader() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                title = "Thread",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                canSend = false
-            ).webLinkLoadingPayload(SlockThreadWebLinkTarget(channelId = "channel-123", messageId = "message-456"))
+        val target = SlockThreadWebLinkTarget(channelId = "channel-123", messageId = "message-456")
+        val request = requireNotNull(target.resolveMarkdownOpenRequest("server-1", channelDirectory()))
+        val payload = requireNotNull(buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId))
 
         assertEquals("", payload.title)
         assertEquals("Channel", threadHeaderDisplayTitle(payload.title, payload.surfaceKind))
@@ -104,24 +104,19 @@ class SlockThreadWebLinkTargetTest {
             "Message #Channel",
             payload.resolveThreadComposer(displayName = threadHeaderDisplayTitle(payload.title, payload.surfaceKind)).placeholder
         )
-        assertEquals(false, payload.resolveThreadComposer().enabled)
     }
 
     @Test
     fun webLinkLoadingPayloadUsesReplyRouteForThreadPermalink() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                title = "Thread",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                canSend = true
-            ).webLinkLoadingPayload(
-                SlockThreadWebLinkTarget(
-                    channelId = "channel-123",
-                    messageId = "reply-456",
-                    routeKind = KuiklyThreadSurfaceKind.Channel,
-                    threadParentMessageId = "parent-789"
-                )
+        val target =
+            SlockThreadWebLinkTarget(
+                channelId = "channel-123",
+                messageId = "reply-456",
+                routeKind = KuiklyThreadSurfaceKind.Channel,
+                threadParentMessageId = "parent-789"
             )
+        val request = requireNotNull(target.resolveMarkdownOpenRequest("server-1", channelDirectory()))
+        val payload = requireNotNull(buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId))
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.sourceThreadId)
@@ -130,8 +125,21 @@ class SlockThreadWebLinkTargetTest {
         assertEquals("parent-789", payload.parentMessageId)
         assertEquals("parent-789", payload.originParentMessageId)
         assertEquals("reply-456", payload.focusedMessageId)
-        assertEquals("loading", payload.originStatus)
+        assertEquals("missing", payload.originStatus)
         assertEquals("parent-789", payload.resolveThreadComposer().parentMessageId)
         assertEquals("channel-123", payload.resolveThreadComposer().mentionChannelId)
     }
+
+    private fun channelDirectory() =
+        listOf(
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-123",
+                aliases = setOf("channel-123"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = KuiklyThreadSurfaceKind.Channel,
+                title = "Channel"
+            )
+        ).toSharedConversationDirectoryState()
 }

@@ -39,6 +39,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedMembersMemberSuggestion
@@ -77,6 +78,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -90,10 +92,7 @@ class ThreadPayloadTest {
     private val launchJson = Json { ignoreUnknownKeys = true }
 
     @Test
-    fun threadLaunchPayloadLogsDefaultedParentKind() {
-        // t5/#419: every live path resolves the parent kind before payload build, so the
-        // remaining `?: Channel` there is a defensive default that must log loudly (a hit
-        // means a resolver bypass and escalates to a t8 hardening item).
+    fun threadLaunchPayloadRejectsMissingParentKind() {
         val warnings = mutableListOf<String>()
         val identity =
             ThreadLaunchConversationIdentity(
@@ -110,18 +109,22 @@ class ThreadPayloadTest {
                 kind = ConversationKind.Thread
             )
 
-        buildStandaloneConversationThreadLaunchPayload(
-            conversation = identity,
-            timeContext = null,
-            onWarn = { warnings.add(it) }
-        )
-        buildAppShellThreadPayload(
-            conversation = identity,
-            onWarn = { warnings.add(it) }
-        )
+        val standalone =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = identity,
+                timeContext = null,
+                onWarn = { warnings.add(it) }
+            )
+        val appShell =
+            buildAppShellThreadPayload(
+                conversation = identity,
+                onWarn = { warnings.add(it) }
+            )
 
-        assertTrue(warnings.any { it.startsWith("thread_launch_parent_kind_defaulted source=standalone") })
-        assertTrue(warnings.any { it.startsWith("thread_launch_parent_kind_defaulted source=app_shell") })
+        assertNull(standalone)
+        assertNull(appShell)
+        assertTrue(warnings.any { it.contains("reply_identity_incomplete source=standalone") })
+        assertTrue(warnings.any { it.contains("reply_identity_incomplete source=app_shell") })
     }
 
     @Test
@@ -137,11 +140,11 @@ class ThreadPayloadTest {
                 parentChannelKind = ConversationKind.Channel.threadChannelKindWireValue()
             )
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            requireNotNull(buildStandaloneConversationThreadLaunchPayload(
                 conversation = identity,
                 timeContext = null,
                 anchorMessageId = "reply-message-1"
-            )
+            ))
 
         val previousShape = launch.copy(channelKind = null)
         val newRouteIdentity =
@@ -172,7 +175,7 @@ class ThreadPayloadTest {
 
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, identity.thread?.parentSurfaceKind)
 
-        val payload = buildStandaloneConversationThreadLaunchPayload(identity, timeContext = null)
+        val payload = requireNotNull(buildStandaloneConversationThreadLaunchPayload(identity, timeContext = null))
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
     }
 
@@ -2520,11 +2523,11 @@ class ThreadPayloadTest {
                 latestActivityMessageId = MessageId("reply-message-1")
             ).toHomeMessageOpenRequestForTest()
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            requireNotNull(buildStandaloneConversationThreadLaunchPayload(
                 conversation = request.conversationIdentity,
                 timeContext = null,
                 anchorMessageId = request.anchorMessageId
-            )
+            ))
         val initial =
             parseThreadScreenPayload(
                 payload = launchJson.encodeToString(launch),
@@ -3387,6 +3390,33 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun activityReplyThreadOpenActionTargetsParentChannelSurface() {
+        val replyPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-reply-stream",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelKind = "channel",
+                sourceThreadId = "reply-stream",
+                streamChannelId = "reply-stream",
+                parentChannelId = "parent-channel",
+                parentMessageId = "parent-message",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "channel",
+                showOpenInChannelAction = true
+            )
+
+        val parentRequest = assertNotNull(replyPayload.resolveReplyParentConversationOpenRequest("", null))
+        val parentIdentity = parentRequest.conversationIdentity
+        val parentPayload = requireNotNull(buildAppShellThreadPayload(parentIdentity))
+
+        assertEquals(ConversationKind.Channel, parentIdentity.kind)
+        assertEquals("parent-channel", parentIdentity.channelId?.value)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
+        assertEquals("parent-channel", parentPayload.sourceThreadId)
+        assertEquals(null, parentPayload.parentMessageId)
+    }
+
+    @Test
     fun jointReplyThreadLaunchKeepsParentChannelKind() {
         val parentMessage =
             KuiklyThreadMessageItem(
@@ -3468,7 +3498,9 @@ class ThreadPayloadTest {
                         ThreadConversation(
                             parentChannelId = ChannelId("channel-1"),
                             parentMessageId = MessageId("message-1"),
-                            streamChannelId = ChannelId("thread-1")
+                            streamChannelId = ChannelId("thread-1"),
+                            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                            parentChannelKind = "channel"
                         ),
                     kind = ConversationKind.Thread,
                     name = "general",
@@ -3624,11 +3656,11 @@ class ThreadPayloadTest {
         val conversation = request.conversationIdentity
 
         val payload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = conversation,
                 anchorMessageId = request.anchorMessageId,
                 originFallback = request.originFallback
-            )
+            ))
 
         assertEquals("reply-message-1", request.anchorMessageId)
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
@@ -3671,11 +3703,11 @@ class ThreadPayloadTest {
             ).toHomeMessageOpenRequestForTest()
 
         val payload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = request.conversationIdentity,
                 anchorMessageId = request.anchorMessageId,
                 originFallback = request.originFallback
-            )
+            ))
 
         assertEquals("Parent message preview", request.originFallback?.preview)
         assertEquals("user-1", request.originFallback?.senderId)
@@ -3711,11 +3743,11 @@ class ThreadPayloadTest {
             )
 
         val payload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = request.conversationIdentity,
                 anchorMessageId = request.anchorMessageId,
                 originFallback = wrongFallback
-            )
+            ))
 
         assertEquals("message-1", payload.originParentMessageId)
         assertEquals("missing", payload.originStatus)
@@ -4071,7 +4103,9 @@ class ThreadPayloadTest {
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequestForTest()
 
-        val payload = buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
+        val payload = requireNotNull(
+            buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
+        )
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("message-1", payload.originParentMessageId)
@@ -4097,7 +4131,7 @@ class ThreadPayloadTest {
             ).toHomeMessageOpenRequestForTest()
         val conversation = request.conversationIdentity
 
-        val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
+        val payload = requireNotNull(buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId))
 
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
@@ -4129,7 +4163,7 @@ class ThreadPayloadTest {
             ).toHomeMessageOpenRequestForTest()
         val conversation = request.conversationIdentity
 
-        val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
+        val payload = requireNotNull(buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId))
 
         assertEquals(ThreadId("channel-1"), conversation.threadId)
         assertEquals(ConversationKind.Channel, conversation.kind)
@@ -4440,12 +4474,12 @@ class ThreadPayloadTest {
             ).toHomeMessageOpenRequestForTest()
 
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            requireNotNull(buildStandaloneConversationThreadLaunchPayload(
                 conversation = request.conversationIdentity,
                 timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
                 anchorMessageId = request.anchorMessageId,
                 originFallback = request.originFallback
-            )
+            ))
         val initialPayload =
             parseThreadScreenPayload(
                 payload = launchJson.encodeToString(launch),
@@ -4493,11 +4527,11 @@ class ThreadPayloadTest {
             ).toHomeMessageOpenRequestForTest()
 
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            requireNotNull(buildStandaloneConversationThreadLaunchPayload(
                 conversation = request.conversationIdentity,
                 timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
                 anchorMessageId = request.anchorMessageId
-            )
+            ))
         val initialPayload =
             parseThreadScreenPayload(
                 payload = launchJson.encodeToString(launch),
@@ -4531,6 +4565,8 @@ class ThreadPayloadTest {
                 streamChannelId = "thread-channel-1",
                 parentChannelId = "parent-channel-1",
                 parentMessageId = "parent-message-1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "channel",
                 originParentMessageId = "parent-message-1",
                 focusedMessageId = "reply-2",
                 messages =
@@ -4601,6 +4637,8 @@ class ThreadPayloadTest {
                 streamChannelId = "thread-channel-1",
                 parentChannelId = "parent-channel-1",
                 parentMessageId = "parent-message-1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "channel",
                 originParentMessageId = "parent-message-1",
                 focusedMessageId = "reply-2",
                 alignOwnMessagesRight = true,
@@ -4624,7 +4662,7 @@ class ThreadPayloadTest {
         assertEquals("parent-message-1", initialPayload.originParentMessageId)
         assertEquals("reply-2", initialPayload.focusedMessageId)
         assertEquals(false, initialPayload.showModeTabs)
-        assertEquals(false, initialPayload.showOpenInChannelAction)
+        assertEquals(true, initialPayload.showOpenInChannelAction)
 
         val composer = initialPayload.resolveThreadComposer()
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, composer.surfaceKind)
@@ -4642,7 +4680,7 @@ class ThreadPayloadTest {
         val launch =
             requireNotNull(
                 buildStandaloneTaskThreadLaunchPayload(
-                    TaskSummary(
+                    task = TaskSummary(
                         id = TaskId("task-1"),
                         title = "Fix slow route",
                         status = TaskStatus.InProgress,
@@ -4668,7 +4706,20 @@ class ThreadPayloadTest {
                         channelName = "bug triage",
                         updatedAtLabel = "now"
                     ),
-                    AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                    serverId = "server-1",
+                    conversationDirectory =
+                        listOf(
+                            SharedConversationDirectoryProjection(
+                                serverId = "server-1",
+                                canonicalChannelId = "parent-channel-1",
+                                aliases = setOf("parent-channel-1"),
+                                conversationKind = ConversationKind.Channel,
+                                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                                channelKind = KuiklyThreadSurfaceKind.Channel,
+                                title = "bug triage"
+                            )
+                        ).toSharedConversationDirectoryState(),
+                    timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
                     alignOwnMessagesRight = true
                 )
             )
@@ -4903,11 +4954,11 @@ class ThreadPayloadTest {
             ).toHomeMessageOpenRequestForTest()
 
         val launch =
-            buildStandaloneConversationThreadLaunchPayload(
+            requireNotNull(buildStandaloneConversationThreadLaunchPayload(
                 conversation = request.conversationIdentity,
                 timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
                 anchorMessageId = request.anchorMessageId
-            )
+            ))
         val initialPayload =
             parseThreadScreenPayload(
                 payload = launchJson.encodeToString(launch),
@@ -6129,6 +6180,10 @@ class ThreadPayloadTest {
     fun markdownTaskNumberLaunchPayloadUsesTaskIdentityOnly() {
         val payload =
             KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-dialog",
+                streamChannelId = "channel-dialog",
                 alignOwnMessagesRight = true,
                 compactConsecutiveMessages = true,
                 localOffsetMinutes = 480,
@@ -6149,7 +6204,7 @@ class ThreadPayloadTest {
                 updatedAtLabel = "now"
             )
 
-        val launchPayload = payload.markdownTaskNumberLaunchPayload(task)
+        val launchPayload = payload.markdownTaskNumberLaunchPayload(task, ServerId("server-1"))
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launchPayload?.surfaceKind)
         assertEquals("channel-dialog", launchPayload?.parentChannelId)
@@ -6167,7 +6222,13 @@ class ThreadPayloadTest {
 
     @Test
     fun markdownTaskNumberLaunchPayloadFocusesTaskReplyWhenDistinctFromOrigin() {
-        val payload = KuiklyThreadScreenPayload()
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-dialog",
+                streamChannelId = "channel-dialog"
+            )
         val task =
             TaskSummary(
                 id = TaskId("task-482"),
@@ -6181,7 +6242,7 @@ class ThreadPayloadTest {
                 updatedAtLabel = "now"
             )
 
-        val launchPayload = payload.markdownTaskNumberLaunchPayload(task)
+        val launchPayload = payload.markdownTaskNumberLaunchPayload(task, ServerId("server-1"))
 
         assertEquals("parent-message-482", launchPayload?.parentMessageId)
         assertEquals("parent-message-482", launchPayload?.originParentMessageId)
@@ -6201,7 +6262,14 @@ class ThreadPayloadTest {
             openMarkdownTaskNumberPayload(
                 serverId = ServerId("server-1"),
                 taskNumber = 541,
-                currentPayload = KuiklyThreadScreenPayload(status = "content"),
+                currentPayload =
+                    KuiklyThreadScreenPayload(
+                        status = "content",
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        sourceThreadId = "parent-channel",
+                        streamChannelId = "parent-channel"
+                    ),
                 currentTaskChannelId = ChannelId("parent-channel"),
                 tasksDataSource = SharedTasksDataSource(api),
                 tasksDataStore = null
@@ -7293,7 +7361,7 @@ class ThreadPayloadTest {
         anchorMessageId: String? = null,
         originFallback: ThreadLaunchOriginFallback? = null
     ): KuiklyThreadScreenPayload =
-        buildAppShellThreadPayload(
+        requireNotNull(buildAppShellThreadPayload(
             conversation = conversation.toThreadLaunchConversationIdentity(),
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
@@ -7306,7 +7374,7 @@ class ThreadPayloadTest {
                     joined = conversation.joined,
                     permissions = conversation.permissions
                 )
-        )
+        ))
 
     private fun buildStandaloneConversationThreadLaunchPayloadFromSummary(
         conversation: ConversationSummary,
@@ -7316,14 +7384,14 @@ class ThreadPayloadTest {
         threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
         anchorMessageId: String? = null
     ): WireThreadLaunchPayload =
-        buildStandaloneConversationThreadLaunchPayload(
+        requireNotNull(buildStandaloneConversationThreadLaunchPayload(
             conversation = conversation.toThreadLaunchConversationIdentity(),
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
             threadRowAffordances = threadRowAffordances,
             anchorMessageId = anchorMessageId
-        )
+        ))
 
     private class FakeMarkdownTaskNumberApi(
         private val channelTaskBody: String,

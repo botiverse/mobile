@@ -22,6 +22,8 @@ import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.mergedSharedConversationDirectoryState
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
@@ -193,6 +195,9 @@ internal fun SharedHomeActivityScreen(
             )
         }
     val state by activityStore.state.collectAsState()
+    val sharedHomeStore = remember(sharedStores, storeScope) {
+        sharedStores.sharedHomeStore(storeScope)
+    }
     // t5/#419 A3: user-initiated opens resolve against the real conversation directory
     // (flow-based single source, #240) with the snapshot's real server id — the resolver is
     // the only exit; Pending is an explainable failure, never a guessed channel-shaped nav.
@@ -203,6 +208,12 @@ internal fun SharedHomeActivityScreen(
                 ?: flowOf(SharedConversationDirectoryState())
         }
     val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
+    val activityConversationDirectory = remember(state.snapshot) {
+        state.snapshot?.toSharedConversationDirectoryState() ?: SharedConversationDirectoryState()
+    }
+    val openConversationDirectory = remember(activityConversationDirectory, conversationDirectory) {
+        listOf(activityConversationDirectory, conversationDirectory).mergedSharedConversationDirectoryState()
+    }
     val activeDraftRecords by sharedStores.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val draftProjection =
         remember(activeDraftRecords) {
@@ -212,6 +223,11 @@ internal fun SharedHomeActivityScreen(
     LaunchedEffect(activityStore) {
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
+    LaunchedEffect(sharedHomeStore, state.snapshot) {
+        state.snapshot?.let { snapshot ->
+            sharedHomeStore?.supplementConversationIdentity(snapshot)
+        }
+    }
     LaunchedEffect(routeVisibleTick) {
         if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
             activityStore.dispatch(SharedActivityIntent.Refresh)
@@ -220,11 +236,14 @@ internal fun SharedHomeActivityScreen(
     SharedActivityPanelContent(
         state = state,
         onOpenItem = { item ->
+            state.snapshot?.let { snapshot ->
+                sharedHomeStore?.supplementConversationIdentity(snapshot)
+            }
             when (
                 val resolution =
                     item.toHomeMessageOpenRequest(
                         serverId = state.snapshot?.server?.id?.value.orEmpty(),
-                        conversationDirectory = conversationDirectory,
+                        conversationDirectory = openConversationDirectory,
                         diagnosticsLogger = bridge::log
                     )
             ) {

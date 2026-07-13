@@ -912,11 +912,11 @@ class SlockAppShellTest {
         assertEquals("Parent message preview", resolved.openRequest.originFallback?.preview)
 
         val launchPayload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = resolved.openRequest.conversationIdentity,
                 anchorMessageId = resolved.openRequest.anchorMessageId,
                 originFallback = resolved.openRequest.originFallback
-            )
+            ))
         assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentChannelKind)
         assertEquals("Parent message preview", launchPayload.originPreview)
@@ -1031,11 +1031,11 @@ class SlockAppShellTest {
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.openRequest.conversationIdentity.thread?.parentChannelKind)
 
         val launchPayload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = resolved.openRequest.conversationIdentity,
                 anchorMessageId = resolved.openRequest.anchorMessageId,
                 originFallback = resolved.openRequest.originFallback
-            )
+            ))
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
     }
@@ -1319,12 +1319,10 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun activityPendingOpenPreservesOriginFallback() {
-        // Pre-#419 this pinned the Pending->direct-builder fallback (which could navigate on
-        // a guessed identity — the removed leak). Under the resolver-only contract a thread
-        // row with no usable stream/channel id stays Pending(conversation_hydrating), and the
-        // Pending's source identity must still carry the origin fallback so a later retry
-        // (or hydrated resolution) loses nothing.
+    fun activityReplyOpenCanResolveBeforeStreamHydrationAndPreservesOriginFallback() {
+        // Reply stream identity may hydrate after navigation. The typed parent tuple is enough
+        // to establish the route without inventing a stream id, and display fallback remains
+        // separate from that identity.
         val activityItem =
             InboxItem(
                 key = "thread:pending-reply",
@@ -1343,13 +1341,16 @@ class SlockAppShellTest {
 
         val resolution =
             activityItem.toHomeMessageOpenRequest(
-                serverId = "",
+                serverId = "server-1",
                 conversationDirectory = SharedConversationDirectoryState()
             )
 
-        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
-        assertEquals("conversation_hydrating", pending.reason)
-        val originFallback = pending.sourceMessageIdentity.originFallback
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        assertEquals("parent-channel", request.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", request.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals(null, request.conversationIdentity.thread?.streamChannelId)
+        val originFallback = request.originFallback
         assertEquals("parent-channel", originFallback?.parentChannelId)
         assertEquals("parent-message", originFallback?.parentMessageId)
         assertEquals("Original thread question", originFallback?.preview)
@@ -1398,11 +1399,11 @@ class SlockAppShellTest {
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.conversationIdentity.thread?.parentChannelKind)
 
         val launchPayload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = resolved.conversationIdentity,
                 anchorMessageId = resolved.anchorMessageId,
                 originFallback = resolved.originFallback
-            )
+            ))
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
     }
@@ -1784,10 +1785,10 @@ class SlockAppShellTest {
         assertTrue(log.contains("result=resolved:Thread"), log)
     }
 
-    // task #441 companion: no typed parent kind and no own row — an honest hydrating
-    // Pending, never the parent channel's identity.
+    // task #441 companion: the source does not carry a typed parent kind, but the parent
+    // directory row is authoritative and may qualify it without claiming the child identity.
     @Test
-    fun resolveOpenRequestThreadSourceWithoutTypedKindStaysPending() {
+    fun resolveOpenRequestThreadSourceUsesAuthoritativeParentDirectoryKind() {
         val directory =
             slockConversationDirectoryStateFromProjections(
                 listOf(
@@ -1821,8 +1822,12 @@ class SlockAppShellTest {
                 conversationDirectory = directory
             )
 
-        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
-        assertEquals("conversation_hydrating", pending.reason)
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        assertEquals("parent-channel", request.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", request.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", request.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(ConversationKind.Channel, request.conversationIdentity.resolveThreadRouteIdentity().parentConversationKind)
     }
 
     // task #441 notification source (三源合一): a thread notification's channelId can name
@@ -1870,7 +1875,21 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun resolveOpenRequestNotificationThreadUsesTypedPushIdentityWithoutDirectoryHydration() {
+    fun resolveOpenRequestNotificationThreadUsesAuthoritativeParentDirectoryKind() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
         val resolution =
             resolveOpenRequest(
                 serverId = "server-1",
@@ -1883,7 +1902,7 @@ class SlockAppShellTest {
                         parentMessageId = "parent-message",
                         conversationKind = ConversationKind.Thread
                     ).toConversationOpenSourceMessageIdentity(),
-                conversationDirectory = SharedConversationDirectoryState()
+                conversationDirectory = directory
             )
 
         val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
@@ -1946,17 +1965,17 @@ class SlockAppShellTest {
         assertEquals("dm-reply-stream", activityRequest.conversationIdentity.thread?.streamChannelId?.value)
 
         val activityPayload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = activityRequest.conversationIdentity,
                 anchorMessageId = activityRequest.anchorMessageId,
                 originFallback = activityRequest.originFallback
-            )
+            ))
         val notificationPayload =
-            buildAppShellThreadPayload(
+            requireNotNull(buildAppShellThreadPayload(
                 conversation = notificationRequest.conversationIdentity,
                 anchorMessageId = notificationRequest.anchorMessageId,
                 originFallback = notificationRequest.originFallback
-            )
+            ))
         assertEquals(activityPayload.surfaceKind, notificationPayload.surfaceKind)
         assertEquals(activityPayload.sourceThreadId, notificationPayload.sourceThreadId)
         assertEquals(activityPayload.streamChannelId, notificationPayload.streamChannelId)

@@ -4706,7 +4706,7 @@ internal fun buildMarkdownChannelLaunchPayload(
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
         instanceIdOverride = "shared-shell-thread-$streamChannelId"
-    ).toInitialPayloadOrNull("shared-shell-thread-$streamChannelId")
+    )?.toInitialPayloadOrNull("shared-shell-thread-$streamChannelId")
 }
 
 internal fun buildMarkdownThreadRefLaunchPayload(
@@ -4746,7 +4746,7 @@ internal fun buildMarkdownThreadRefLaunchPayload(
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
         instanceIdOverride = instanceId
-    ).toInitialPayloadOrNull(instanceId)
+    )?.toInitialPayloadOrNull(instanceId)
 }
 
 private fun resolveMarkdownChannelConversation(home: HomeSnapshot, channelLabel: String): ConversationSummary? {

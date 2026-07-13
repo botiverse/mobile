@@ -248,15 +248,27 @@ private fun WireThreadLaunchPayload.toThreadLaunchRouteKindsOrNull(): ThreadLaun
         } else {
             null
         }
-    val parentSurfaceConversationKind =
-        parentSurfaceKind.nonBlank()?.let { rawKind ->
-            parseConversationKindOrNull(rawKind) ?: return null
-        }
-    val parentChannelConversationKind =
-        parentChannelKind.nonBlank()?.let { rawKind ->
-            parseConversationKindOrNull(rawKind) ?: return null
-        }
-    val parentKind = parentChannelConversationKind ?: parentSurfaceConversationKind
+    parentSurfaceKind.nonBlank()?.let { rawKind ->
+        parseConversationKindOrNull(rawKind) ?: return null
+    }
+    parentChannelKind.nonBlank()?.let { rawKind ->
+        parseConversationKindOrNull(rawKind) ?: return null
+    }
+    val parentKind =
+        typedReplyParentConversationKindOrNull(
+            parentSurfaceKind = parentSurfaceKind,
+            parentChannelKind = parentChannelKind
+        )
+    if (
+        routeKind == ConversationKind.Thread &&
+        (
+            parentChannelId.nonBlank() == null ||
+                parentMessageId.nonBlank() == null ||
+                parentKind == null
+            )
+    ) {
+        return null
+    }
     val parentSurface = parentKind?.toLaunchParentSurfaceKindOrNull()
     if (parentKind != null && parentSurface == null) return null
     val parentChannel =

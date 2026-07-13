@@ -7,6 +7,7 @@ import build.raft.app.model.messageStreamChannelId
 internal data class ThreadRouteIdentity(
     val surfaceKind: String,
     val channelKind: String? = null,
+    val parentConversationKind: ConversationKind? = null,
     val instanceKey: String,
     val timelineKey: String?,
     val parentKey: String? = null,
@@ -22,6 +23,11 @@ internal data class ThreadRouteIdentity(
             } else {
                 surfaceKind
             }
+
+    val hasCompleteReplyIdentity: Boolean
+        get() =
+            surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+                (parentKey != null && parentConversationKind != null)
 }
 
 internal fun ThreadRouteIdentity.canRetainThreadPageFor(incoming: ThreadRouteIdentity): Boolean {
@@ -48,7 +54,9 @@ internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRoute
         sourceThreadId = sourceThreadId,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
-        parentMessageId = parentMessage
+        parentMessageId = parentMessage,
+        parentConversationKind =
+            typedReplyParentConversationKindOrNull(parentSurfaceKind, parentChannelKind)
     )
 }
 
@@ -73,7 +81,16 @@ internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdenti
         sourceThreadId = threadId.value,
         streamChannelId = streamChannelId,
         parentChannelId = if (isReplyThread) thread?.parentChannelId?.value else null,
-        parentMessageId = if (isReplyThread) thread?.parentMessageId?.value else null
+        parentMessageId = if (isReplyThread) thread?.parentMessageId?.value else null,
+        parentConversationKind =
+            if (isReplyThread) {
+                typedReplyParentConversationKindOrNull(
+                    thread?.parentSurfaceKind,
+                    thread?.parentChannelKind
+                )
+            } else {
+                null
+            }
     )
 }
 
@@ -84,7 +101,8 @@ internal fun resolveThreadRouteIdentity(
     sourceThreadId: String?,
     streamChannelId: String?,
     parentChannelId: String?,
-    parentMessageId: String?
+    parentMessageId: String?,
+    parentConversationKind: ConversationKind? = null
 ): ThreadRouteIdentity {
     val surface = surfaceKind.takeIf { it.isNotBlank() } ?: KuiklyThreadSurfaceKind.Channel
     val routeKind =
@@ -115,6 +133,7 @@ internal fun resolveThreadRouteIdentity(
                 ThreadRouteIdentity(
                     surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                     channelKind = null,
+                    parentConversationKind = parentConversationKind,
                     instanceKey = "reply-stream:$resolvedStream",
                     timelineKey = resolvedStream,
                     parentKey = parentKey,
@@ -124,6 +143,7 @@ internal fun resolveThreadRouteIdentity(
                 ThreadRouteIdentity(
                     surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                     channelKind = null,
+                    parentConversationKind = parentConversationKind,
                     instanceKey = "reply-parent:$parentChannel:$parentMessage",
                     timelineKey = null,
                     parentKey = parentKey,
@@ -133,6 +153,7 @@ internal fun resolveThreadRouteIdentity(
                 ThreadRouteIdentity(
                     surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                     channelKind = null,
+                    parentConversationKind = parentConversationKind,
                     instanceKey = instanceId.nonBlank() ?: "reply-pending",
                     timelineKey = null,
                     parentKey = parentKey,
@@ -144,6 +165,7 @@ internal fun resolveThreadRouteIdentity(
         ThreadRouteIdentity(
             surfaceKind = surface,
             channelKind = routeKind.takeIf { surface == KuiklyThreadSurfaceKind.Channel },
+            parentConversationKind = null,
             instanceKey = timelineKey?.let { "$routeKind:$it" } ?: instanceId.nonBlank() ?: "$routeKind:pending",
             timelineKey = timelineKey,
             parentKey = parentKey,

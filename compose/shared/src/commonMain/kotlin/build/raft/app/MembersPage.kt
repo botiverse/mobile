@@ -64,6 +64,9 @@ import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
@@ -1526,6 +1529,8 @@ private class MemberDetailRouteProvider(
     val serverMembersStore: build.raft.app.data.SharedServerMembersStore,
     val computersStore: SharedComputersStore,
     val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator,
+    val conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
+    val storeScope: SlockShellStoreScope,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
     suspend fun cachedContext(
@@ -2012,6 +2017,8 @@ private fun rememberMemberDetailRouteProvider(
         serverMembersStore,
         computersStore,
         createAgentCoordinator,
+        sharedStores.conversationIdentityProvider(storeScope),
+        storeScope,
         agentsApiClient
     ) {
         MemberDetailRouteProvider(
@@ -2026,6 +2033,8 @@ private fun rememberMemberDetailRouteProvider(
             serverMembersStore = serverMembersStore,
             computersStore = computersStore,
             createAgentCoordinator = createAgentCoordinator,
+            conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
+            storeScope = storeScope,
             agentsApiClient = agentsApiClient
         )
     }
@@ -2360,6 +2369,9 @@ private fun MemberDetailPageContent() {
                     onOpenReminderMessage = { permalink ->
                         pager.openMembersReminderMessage(
                             permalink = permalink,
+                            server = current.server,
+                            conversationIdentityProvider = provider.conversationIdentityProvider,
+                            storeScope = provider.storeScope,
                             timeContext = timeContext,
                             onOpenExternal = { provider.bridge.openUrl(it) },
                             unavailableMessage = reminderOpenError,
@@ -2504,6 +2516,9 @@ private fun MemberDetailPageContent() {
                 onOpenReminderMessage = { permalink ->
                     pager.openMembersReminderMessage(
                         permalink = permalink,
+                        server = current.server,
+                        conversationIdentityProvider = provider.conversationIdentityProvider,
+                        storeScope = provider.storeScope,
                         timeContext = timeContext,
                         onOpenExternal = { provider.bridge.openUrl(it) },
                         unavailableMessage = reminderOpenError,
@@ -2688,6 +2703,9 @@ private fun readCurrentServerId(): String? = null
 
 private fun Pager.openMembersReminderMessage(
     permalink: String,
+    server: ServerSummary,
+    conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
+    storeScope: SlockShellStoreScope,
     timeContext: SlockTimeContext,
     onOpenExternal: (String) -> Unit,
     unavailableMessage: String,
@@ -2706,14 +2724,19 @@ private fun Pager.openMembersReminderMessage(
     val launchPayload =
         target.toMembersReminderThreadLaunchPayload(
             messageId = messageId,
-            timeContext = timeContext
+            timeContext = timeContext,
+            server = server,
+            conversationIdentityProvider = conversationIdentityProvider
         )
             ?: run {
                 onUnavailableAction(unavailableMessage)
                 return
             }
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+    val pageData =
+        launchPayload.toThreadPageData()
+            .put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            .also { data -> storeScope.initialServerId?.let { data.put(SLOCK_SHELL_SERVER_ID, it) } }
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
 }
 
 private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
@@ -2773,13 +2796,23 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
 
 internal fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
     messageId: String,
-    timeContext: SlockTimeContext
+    timeContext: SlockTimeContext,
+    server: ServerSummary,
+    conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
+    conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
 ): WireThreadLaunchPayload? {
     val instanceId = "members-reminder-${channelId}-${messageId}"
+    val serverId = server.id.value.takeIf { it.isNotBlank() } ?: return null
+    val providerDirectory =
+        listOfNotNull(conversationIdentityProvider?.resolveProjection(server.id, channelId))
+            .toSharedConversationDirectoryState()
+    val directory =
+        listOf(conversationDirectory, providerDirectory).mergedSharedConversationDirectoryState()
+    val request = resolveMarkdownOpenRequest(serverId, directory) ?: return null
     return buildStandaloneConversationThreadLaunchPayload(
-        conversation = toThreadLaunchConversationIdentity() ?: return null,
+        conversation = request.conversationIdentity,
         timeContext = timeContext,
-        anchorMessageId = messageId,
+        anchorMessageId = request.anchorMessageId ?: messageId,
         instanceIdOverride = instanceId
     )
 }

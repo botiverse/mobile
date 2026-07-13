@@ -11,6 +11,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.Heartbeat
+import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
@@ -129,6 +130,59 @@ class SharedHomeStoreTest {
                 listOf("channel-1")
             ).first()
         assertEquals("general", projections["channel-1"]?.title)
+        scope.cancel()
+    }
+
+    @Test
+    fun activitySnapshotSupplementsMissingParentIdentityWithoutOverwritingHome() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        store.supplementConversationIdentity(
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "Thread",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("activity-parent"),
+                            parentChannelName = "activity-parent-name",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message")
+                        ),
+                        InboxItem(
+                            key = "thread:home-parent-reply",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("home-parent-reply"),
+                            channelName = "Thread",
+                            threadChannelId = ChannelId("home-parent-reply"),
+                            parentChannelId = ChannelId("channel-1"),
+                            parentChannelName = "stale-general",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("home-parent-message")
+                        )
+                    )
+            )
+        )
+
+        assertEquals(
+            "activity-parent-name",
+            store.resolveProjection(ServerId("server-1"), "activity-parent")?.title
+        )
+        assertEquals(
+            "general",
+            store.resolveProjection(ServerId("server-1"), "channel-1")?.title,
+            "Home remains authoritative when both Home and Activity project the same parent"
+        )
         scope.cancel()
     }
 

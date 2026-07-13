@@ -1,15 +1,22 @@
 package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
+import build.raft.app.model.TaskSummary
 
 internal enum class ConversationOpenSource {
     ActivityRow,
-    Notification
+    Notification,
+    ForegroundBanner,
+    Task,
+    Markdown,
+    ParentConversation,
+    AuthResume
 }
 
 internal data class ConversationOpenSourceMessageIdentity(
@@ -86,9 +93,15 @@ internal fun resolveOpenRequest(
     // parentConversationKind on the source; otherwise it stays unresolved and must NOT fall
     // back to a channel-shaped guess (#415). A projection that never resolved is still just
     // hydrating. The distinction is the Pending reason.
+    val authoritativeParentKind =
+        sourceMessageIdentity.parentConversationKind
+            ?: sourceMessageIdentity.parentChannelId
+                ?.let(conversationDirectory::resolve)
+                ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+                ?.conversationKind
     val conversation =
         projection?.toThreadLaunchConversationIdentity(conversationDirectory)
-            ?: sourceMessageIdentity.toThreadLaunchConversationIdentity()
+            ?: sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
     val resolution =
         if (conversation == null) {
             ConversationOpenResolution.Pending(
@@ -162,31 +175,89 @@ internal fun AppShellNotificationThreadLaunchRequest.toConversationOpenSourceMes
         conversationKind = conversationKind
     )
 
-private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity? {
-    val kind = conversationKind ?: return null
-    val channel = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
-    // A reply thread whose parent kind is unknown must not be reconstructed with a guessed
-    // parent shape — that is exactly the #415 misroute. Only a trusted typed
-    // parentConversationKind (server-enriched, e.g. Activity InboxItem.parentChannelKind) may
-    // rebuild the thread; a null parent kind stays unresolved for the caller to handle.
-    if (kind == ConversationKind.Thread && parentConversationKind == null) {
-        if (
-            source != ConversationOpenSource.Notification ||
-            parentChannelId.isNullOrBlank() ||
-            parentMessageId.isNullOrBlank() ||
-            threadChannelId.isNullOrBlank()
-        ) {
-            return null
+internal fun TaskSummary.toConversationOpenSourceMessageIdentity(
+    parentConversationKind: ConversationKind? = null
+): ConversationOpenSourceMessageIdentity {
+    val parentId =
+        parentMessageId?.value?.takeIf { it.isNotBlank() }
+            ?: messageId?.value?.takeIf { it.isNotBlank() }
+    val streamId = threadId?.value?.takeIf { it.isNotBlank() }
+    val parentChannel = channelId?.value?.takeIf { it.isNotBlank() }
+    val focusedId = messageId?.value?.takeIf { it.isNotBlank() && it != parentId }
+    return ConversationOpenSourceMessageIdentity(
+        source = ConversationOpenSource.Task,
+        messageId = focusedId,
+        channelId = streamId ?: parentChannel,
+        threadChannelId = streamId,
+        parentChannelId = parentChannel,
+        parentMessageId = parentId,
+        conversationKind = ConversationKind.Thread,
+        parentConversationKind = parentConversationKind
+    )
+}
+
+internal fun TaskSummary.resolveTaskThreadOpenRequest(
+    serverId: String,
+    conversationDirectory: SharedConversationDirectoryState,
+    parentConversationKind: ConversationKind? = null
+): HomeMessageOpenRequest? =
+    (resolveOpenRequest(
+        serverId,
+        toConversationOpenSourceMessageIdentity(parentConversationKind),
+        conversationDirectory
+    )
+        as? ConversationOpenResolution.Resolved)
+        ?.request
+
+internal fun AuthPendingOpenRequest.Thread.toConversationOpenSourceMessageIdentity(): ConversationOpenSourceMessageIdentity {
+    val kind =
+        if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+            parseConversationKindOrNull(channelKind)
+        } else {
+            parseConversationKindOrNull(surfaceKind)
         }
+    val streamId = streamChannelId?.takeIf { it.isNotBlank() } ?: sourceThreadId?.takeIf { it.isNotBlank() }
+    return ConversationOpenSourceMessageIdentity(
+        source = ConversationOpenSource.AuthResume,
+        messageId = focusedMessageId?.takeIf { it.isNotBlank() },
+        channelId = streamId ?: parentChannelId?.takeIf { it.isNotBlank() },
+        threadChannelId = streamId.takeIf { kind == ConversationKind.Thread },
+        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() },
+        conversationKind = kind,
+        parentConversationKind =
+            typedReplyParentConversationKindOrNull(parentSurfaceKind, parentChannelKind)
+    )
+}
+
+private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIdentity(
+    authoritativeParentKind: ConversationKind?
+): ThreadLaunchConversationIdentity? {
+    val kind = conversationKind ?: return null
+    val parentKind = parentConversationKind ?: authoritativeParentKind
+    if (kind == ConversationKind.Thread) {
+        val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+        val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId) ?: return null
+        val typedParentKind = parentKind ?: return null
+        return buildThreadLaunchConversationIdentity(
+            kind = ConversationKind.Thread,
+            channelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: parentChannel,
+            threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+            parentChannelId = parentChannel,
+            parentMessageId = parentMessage,
+            parentSurfaceKind = typedParentKind.threadParentSurfaceKindOrNull(),
+            parentChannelKind = typedParentKind.threadChannelKindWireValue()
+        )
     }
+    val channel = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
     return buildThreadLaunchConversationIdentity(
         kind = kind,
         channelId = channel,
         threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        parentSurfaceKind = parentConversationKind.threadParentSurfaceKindOrNull(),
-        parentChannelKind = parentConversationKind.threadChannelKindWireValue()
+        parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
+        parentChannelKind = parentKind.threadChannelKindWireValue()
     )
 }
 
@@ -211,6 +282,11 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
             } else {
                 messageId
             }
+        ConversationOpenSource.ForegroundBanner,
+        ConversationOpenSource.Task,
+        ConversationOpenSource.Markdown,
+        ConversationOpenSource.ParentConversation,
+        ConversationOpenSource.AuthResume -> messageId
     }?.takeIf { it.isNotBlank() }
 
 private fun InboxItem.toActivityOpenThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {

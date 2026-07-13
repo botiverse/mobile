@@ -413,9 +413,10 @@ internal fun slockForegroundMessageBannerProjectionResult(
         return SlockForegroundMessageBannerProjectionResult(null, null, "system_message")
     }
     val projection = message.resolveForegroundBannerProjection(conversationDirectory)
-    val conversation =
-        message.resolveForegroundBannerConversation(conversationDirectory)
+    val openRequest =
+        message.resolveForegroundBannerOpenRequest(normalizedServerId, projection, conversationDirectory)
             ?: return SlockForegroundMessageBannerProjectionResult(null, projection, "conversation_missing")
+    val conversation = openRequest.conversationIdentity
     if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
         return SlockForegroundMessageBannerProjectionResult(null, projection, "visible_conversation")
     }
@@ -425,7 +426,6 @@ internal fun slockForegroundMessageBannerProjectionResult(
     val iconKind = projection.resolveForegroundBannerIconKind(conversation)
     val iconName = projection.resolveForegroundBannerIconName(conversation)
     val body = message.body.toForegroundBannerPreview().ifBlank { "Sent a new message." }
-    val openRequest = message.resolveForegroundBannerOpenRequest(projection, conversation)
     val senderMemberId =
         projection.resolveForegroundBannerSenderMemberId(message)
             ?: message.author.id.value.takeIf { it.isNotBlank() }
@@ -510,69 +510,53 @@ private fun MemberProfile.explicitForegroundBannerAvatarWireValue(): String? =
         ?.takeIf { it.isNotBlank() }
         ?: avatarUrl?.takeIf { it.isNotBlank() }
 
-/**
- * task #425 part 2: conversation identity derived from the server-provided
- * [build.raft.app.model.MessageConversationContext] alone. Used when the
- * directory projection has not caught up yet — routing is already correct
- * from the context, labels stay best-effort until the directory arrives
- * (product call: correctness now, label richness later). Returns null when
- * the context cannot yield a safe identity (e.g. a thread context missing
- * its parent) so callers keep the projection-wait path — never a guessed
- * Channel.
- */
-internal fun Message.foregroundBannerContextConversationOrNull(): ThreadLaunchConversationIdentity? {
-    val context = conversationContext ?: return null
-    return when (context.channelKind) {
-        ConversationKind.Thread -> {
-            val parentChannel = context.parentChannelId ?: return null
-            val parentMessage = context.parentMessageId ?: return null
-            buildThreadLaunchConversationIdentity(
-                kind = ConversationKind.Thread,
-                channelId = parentChannel,
-                threadChannelId = channelId ?: threadChannelId,
-                parentChannelId = parentChannel,
-                parentMessageId = parentMessage,
-                parentSurfaceKind = context.parentChannelKind?.toKuiklySurfaceKind(),
-                parentChannelKind = context.parentChannelKind?.toWireChannelKindOrNull()
-            )
-        }
-        ConversationKind.DirectMessage,
-        ConversationKind.Channel,
-        ConversationKind.Joint -> {
-            val streamChannel = channelId ?: threadChannelId ?: ChannelId(threadId.value)
-            buildThreadLaunchConversationIdentity(
-                kind = context.channelKind,
-                channelId = streamChannel,
-                channelType = context.channelKind.toWireChannelKindOrNull()
-            )
-        }
-        ConversationKind.Inbox,
-        ConversationKind.System,
-        null -> null
-    }
-}
-
-private fun Message.resolveForegroundBannerConversation(
+private fun Message.resolveForegroundBannerOpenRequest(
+    serverId: String,
+    projection: SharedConversationDirectoryProjection?,
     directory: SharedConversationDirectoryState
-): ThreadLaunchConversationIdentity? {
-    val projection = resolveForegroundBannerProjection(directory)
-    if (projection != null) {
-        return projection.toThreadLaunchConversationIdentity(directory)
-            // t430 context rescue: the projection resolved but its reply-thread parent shape
-            // is unresolvable (builder null). A server-provided conversationContext is a
-            // trusted typed identity (same qualification as the resolver's typed-parent
-            // rescue) and may still open the banner correctly; without one this stays null
-            // -> the conversation_missing suppress, byte-identical to pre-context servers.
-            ?: foregroundBannerContextConversationOrNull()
-    }
-    foregroundBannerContextConversationOrNull()?.let { return it }
-    // t434 identity-proof-required: the raw tail that assembled a ReplyThread from
-    // parentMessageId + channelId, or a Channel from bare stream ids, is gone. The banner
-    // only accepts identities proven by a directory projection or a trusted typed
-    // conversationContext; an unproven message returns null — it never navigates a guess.
-    // (The defer/retry compensation this used to feed retired with the message:new
-    // banner path in task #459 — the qualified push stream carries typed identity.)
-    return null
+): HomeMessageOpenRequest? {
+    val context = conversationContext
+    val contextKind = context?.channelKind
+    val projectedKind = projection?.conversationKind
+    val kind = contextKind ?: projectedKind ?: return null
+    val resolvedChannelId =
+        when (kind) {
+            ConversationKind.Thread ->
+                threadChannelId?.value?.takeIf { it.isNotBlank() }
+                    ?: channelId?.value?.takeIf { it.isNotBlank() }
+                    ?: projection?.canonicalChannelId?.takeIf { it.isNotBlank() }
+            else ->
+                channelId?.value?.takeIf { it.isNotBlank() }
+                    ?: threadChannelId?.value?.takeIf { it.isNotBlank() }
+                    ?: projection?.canonicalChannelId?.takeIf { it.isNotBlank() }
+                    ?: threadId.value.takeIf { it.isNotBlank() }
+        }
+    val sourceIdentity =
+        ConversationOpenSourceMessageIdentity(
+            source = ConversationOpenSource.ForegroundBanner,
+            messageId = foregroundBannerAnchorMessageId(),
+            channelId = resolvedChannelId,
+            threadChannelId =
+                if (kind == ConversationKind.Thread) {
+                    threadChannelId?.value?.takeIf { it.isNotBlank() }
+                        ?: channelId?.value?.takeIf { it.isNotBlank() }
+                        ?: projection?.canonicalChannelId?.takeIf { it.isNotBlank() }
+                } else {
+                    null
+                },
+            parentChannelId =
+                context?.parentChannelId?.value?.takeIf { it.isNotBlank() }
+                    ?: projection?.parentChannelId?.takeIf { it.isNotBlank() },
+            parentMessageId =
+                context?.parentMessageId?.value?.takeIf { it.isNotBlank() }
+                    ?: parentMessageId?.value?.takeIf { it.isNotBlank() }
+                    ?: projection?.parentMessageId?.takeIf { it.isNotBlank() },
+            conversationKind = kind,
+            parentConversationKind = context?.parentChannelKind,
+            originFallback = projection.toThreadLaunchOriginFallback()
+        )
+    return (resolveOpenRequest(serverId, sourceIdentity, directory) as? ConversationOpenResolution.Resolved)
+        ?.request
 }
 
 // task #437 SSOT: banner display labels derive from ONE chain — the resolved
@@ -678,16 +662,6 @@ private fun Message.resolveForegroundBannerProjection(
     foregroundBannerLookupIds()
         .firstNotNullOfOrNull(directory::resolve)
 
-private fun Message.resolveForegroundBannerOpenRequest(
-    projection: SharedConversationDirectoryProjection?,
-    conversation: ThreadLaunchConversationIdentity
-): HomeMessageOpenRequest =
-    HomeMessageOpenRequest(
-        conversationIdentity = conversation,
-        anchorMessageId = foregroundBannerAnchorMessageId(),
-        originFallback = projection.toThreadLaunchOriginFallback()
-    )
-
 /**
  * The foreground banner's anchor strategy: the tapped banner IS a specific new message, so
  * it anchors on that message id — nothing to infer. This is the third named anchor branch
@@ -787,38 +761,27 @@ internal fun slockNotificationPushBannerOrNull(
         onSuppressed("server_mismatch")
         return null
     }
-    val conversation =
-        if (event.kind == ConversationKind.Thread) {
-            buildThreadLaunchConversationIdentity(
-                kind = ConversationKind.Thread,
-                channelId = event.threadId ?: return null.also { onSuppressed("identity_incomplete") },
-                threadChannelId = event.threadId,
-                parentChannelId = event.parentChannelId,
-                parentMessageId = event.parentMessageId,
-                // The payload carries no parent kind; enrich from the parent's
-                // directory row when home has it (data-only, §5), else null —
-                // the post-#344 launch chain handles the stream-only shape.
-                parentSurfaceKind =
-                    event.parentChannelId
-                        ?.let { conversationDirectory.resolve(it.value) }
-                        ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
-                        ?.conversationKind
-                        ?.threadParentSurfaceKindOrNull(),
-                parentChannelKind =
-                    event.parentChannelId
-                        ?.let { conversationDirectory.resolve(it.value) }
-                        ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
-                        ?.conversationKind
-                        ?.threadChannelKindWireValue()
-            )
-        } else {
-            val channelId = event.channelId ?: return null.also { onSuppressed("identity_incomplete") }
-            buildThreadLaunchConversationIdentity(
-                kind = event.kind,
-                channelId = channelId,
-                channelType = event.kind.toWireChannelKindOrNull()
-            )
-        }
+    val sourceIdentity =
+        ConversationOpenSourceMessageIdentity(
+            source = ConversationOpenSource.ForegroundBanner,
+            messageId = event.messageId.value,
+            channelId =
+                if (event.kind == ConversationKind.Thread) {
+                    event.threadId?.value
+                } else {
+                    event.channelId?.value
+                },
+            threadChannelId = event.threadId?.value,
+            parentChannelId = event.parentChannelId?.value,
+            parentMessageId = event.parentMessageId?.value,
+            conversationKind = event.kind
+        )
+    val openRequest =
+        (resolveOpenRequest(normalizedCurrentServerId, sourceIdentity, conversationDirectory)
+            as? ConversationOpenResolution.Resolved)
+            ?.request
+            ?: return null.also { onSuppressed("identity_incomplete") }
+    val conversation = openRequest.conversationIdentity
     if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity = null)) {
         onSuppressed("visible_conversation")
         return null
@@ -829,11 +792,7 @@ internal fun slockNotificationPushBannerOrNull(
         focusedMessageId = event.messageId.value,
         conversation = conversation,
         openRequest =
-            HomeMessageOpenRequest(
-                conversationIdentity = conversation,
-                anchorMessageId = event.messageId.value,
-                originFallback = null
-            ),
+            openRequest,
         title = event.title.ifBlank { "New message" },
         context = conversation.resolveForegroundBannerContext(null, conversationDirectory),
         threadContext = null,

@@ -634,9 +634,8 @@ private fun Pager.openThreadPageFromConversation(
         buildStandaloneConversationThreadLaunchPayload(
             conversation = conversation.toThreadLaunchConversationIdentity(),
             timeContext = null,
-            instanceIdOverride = instanceIdOverride,
-            defaultMissingReplyParentKind = false
-        )
+            instanceIdOverride = instanceIdOverride
+        ) ?: return
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", threadLaunchPageData(launchPayload))
 }
 
@@ -690,8 +689,7 @@ internal fun buildHomeConversationThreadLaunchPayload(
     return buildStandaloneConversationThreadLaunchPayload(
         conversation = conversation.toThreadLaunchConversationIdentity() ?: return null,
         timeContext = null,
-        instanceIdOverride = "${payload.instanceId}:$conversationId",
-        defaultMissingReplyParentKind = false
+        instanceIdOverride = "${payload.instanceId}:$conversationId"
     )
 }
 
