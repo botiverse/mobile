@@ -1,11 +1,16 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.MemberKindWireContract
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.parseConversationKindOrNull
+import build.raft.app.projectionRejectingDiagnosticsLogger
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictMessageTypeOrNull
+import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentStatus
@@ -189,9 +194,9 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.ChannelMembersUpdated ->
                 decodeChannelRefresh(element, RealtimeRefreshScope.ChannelMembers, RealtimeSocketEvents.ChannelMembersUpdated)
             RealtimeSocketEvents.TaskCreated ->
-                decodeOrNull(TaskCreatedDto.serializer(), element)?.toDomain()
+                decodeOrNull(TaskCreatedDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.TaskUpdated ->
-                decodeOrNull(TaskUpdatedDto.serializer(), element)?.toDomain()
+                decodeOrNull(TaskUpdatedDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.TaskDeleted ->
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
             RealtimeSocketEvents.AgentActivity ->
@@ -236,7 +241,7 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.ReminderCanceled ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Reminders, eventName)
             RealtimeSocketEvents.SyncResumeResponse ->
-                decodeOrNull(SyncResumeResponseDto.serializer(), element)?.toDomain()
+                decodeOrNull(SyncResumeResponseDto.serializer(), element)?.toDomainOrRecovery(diagnosticsLogger)
             RealtimeSocketEvents.Heartbeat ->
                 decodeOrNull(HeartbeatDto.serializer(), element)?.let { Heartbeat(it.seq) }
             RealtimeSocketEvents.ReadStateUpdated ->
@@ -588,18 +593,26 @@ private data class PinnedUpdatedDto(
 
 // ── DTO → domain mappers ─────────────────────────────────────────────────────
 
-private fun MessageWireDto.toDomain(): Message {
-    val authorId = senderId ?: "unknown"
+private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
+    val authorId =
+        senderId?.trim()?.takeIf { it.isNotBlank() }
+            ?: run {
+                diagnostics("projection_value_rejected source=realtime_message_sender field=member_id value=blank")
+                return null
+            }
+    val resolvedMessageType = messageType.strictMessageTypeOrNull("realtime_message_type", diagnostics) ?: return null
+    val senderKind =
+        senderType.strictMemberKindOrNull(
+            source = "realtime_message_sender",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.InternalActor,
+        ) ?: return null
+    val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val author = MemberProfile(
         id = MemberId(authorId),
         displayName = senderName ?: authorId,
         handle = senderName ?: authorId,
-        kind =
-            when {
-                senderType.equals("agent", ignoreCase = true) -> MemberKind.Agent
-                messageType.equals("system", ignoreCase = true) -> MemberKind.System
-                else -> MemberKind.Human
-            },
+        kind = authorKind,
         description = senderDescription,
         avatarLabel = (senderName ?: authorId).take(1).uppercase(),
         presence = Presence.Offline,
@@ -617,7 +630,7 @@ private fun MessageWireDto.toDomain(): Message {
         author = author,
         timestampLabel = updatedAt ?: createdAt ?: "",
         body = content,
-        messageType = if (messageType.equals("system", ignoreCase = true)) MessageType.System else MessageType.Chat,
+        messageType = resolvedMessageType,
         systemEventType = null,
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },
@@ -733,30 +746,36 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
     )
 }
 
-private fun TaskCreatedDto.toDomain(): TaskCreated? {
-    val list = tasks.map { it.toDomain(envelopeChannelId = channelId) }
+private fun TaskCreatedDto.toDomain(diagnostics: (String) -> Unit): TaskCreated? {
+    val list = tasks.mapNotNull { it.toDomain(envelopeChannelId = channelId, diagnostics = diagnostics) }
     return if (list.isEmpty()) null else TaskCreated(list)
 }
 
-private fun TaskUpdatedDto.toDomain(): TaskUpdated =
-    TaskUpdated(task.toDomain(envelopeChannelId = channelId))
+private fun TaskUpdatedDto.toDomain(diagnostics: (String) -> Unit): TaskUpdated? =
+    task.toDomain(envelopeChannelId = channelId, diagnostics = diagnostics)?.let(::TaskUpdated)
 
-private fun TaskInfoWireDto.toDomain(envelopeChannelId: String? = null): TaskSummary = TaskSummary(
-    id = TaskId(id),
-    title = title,
-    status = TaskStatus.fromWireValue(status) ?: TaskStatus.Todo,
-    taskNumber = taskNumber,
-    messageId = messageId?.let(::MessageId),
-    parentMessageId = null,
-    channelId = (channelId ?: envelopeChannelId)?.takeIf { it.isNotBlank() }?.let(::ChannelId),
-    threadId = null,
-    isThreadTask = channelType?.lowercase() == KuiklyThreadSurfaceKind.ReplyThread,
-    assignee = memberFrom(type = claimedByType, id = claimedById, name = claimedByName),
-    creator = memberFrom(type = createdByType, id = createdById, name = createdByName),
-    channelName = channelName,
-    updatedAtLabel = updatedAt ?: createdAt.orEmpty(),
-    canClaim = true,
-)
+private fun TaskInfoWireDto.toDomain(
+    envelopeChannelId: String? = null,
+    diagnostics: (String) -> Unit,
+): TaskSummary? {
+    val resolvedStatus = status.strictTaskStatusOrNull("realtime_task", diagnostics) ?: return null
+    return TaskSummary(
+        id = TaskId(id),
+        title = title,
+        status = resolvedStatus,
+        taskNumber = taskNumber,
+        messageId = messageId?.let(::MessageId),
+        parentMessageId = null,
+        channelId = (channelId ?: envelopeChannelId)?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        threadId = null,
+        isThreadTask = channelType?.lowercase() == KuiklyThreadSurfaceKind.ReplyThread,
+        assignee = memberFrom(type = claimedByType, id = claimedById, name = claimedByName, diagnostics = diagnostics),
+        creator = memberFrom(type = createdByType, id = createdById, name = createdByName, diagnostics = diagnostics),
+        channelName = channelName,
+        updatedAtLabel = updatedAt ?: createdAt.orEmpty(),
+        canClaim = true,
+    )
+}
 
 private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
     val projectedActivity = entries.latestAgentActivityProjection()
@@ -1080,11 +1099,33 @@ private fun String.stableActivityHash(): String {
     return hash.toString()
 }
 
-private fun SyncResumeResponseDto.toDomain(): SyncResumeResponse = SyncResumeResponse(
-    messages = messages.map { it.toDomain() },
-    currentSeq = currentSeq,
-    hasMore = hasMore,
-)
+private fun SyncResumeResponseDto.toDomainOrRecovery(diagnostics: (String) -> Unit): RealtimeEvent {
+    val projectedMessages = ArrayList<Message>(messages.size)
+    messages.forEach { wireMessage ->
+        val projected = wireMessage.toDomain(diagnostics)
+        if (projected == null) {
+            val recoverySeq = maxOf(currentSeq, messages.mapNotNull { it.seq }.maxOrNull() ?: 0L)
+            diagnostics(
+                "sync_resume_projection_rejected recovery=${if (recoverySeq > 0L) "heartbeat" else "home_refresh"} " +
+                    "currentSeq=${currentSeq.coerceAtLeast(0L)}"
+            )
+            return if (recoverySeq > 0L) {
+                Heartbeat(recoverySeq)
+            } else {
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Home,
+                    reason = "sync_resume_projection_rejected",
+                )
+            }
+        }
+        projectedMessages += projected
+    }
+    return SyncResumeResponse(
+        messages = projectedMessages,
+        currentSeq = currentSeq,
+        hasMore = hasMore,
+    )
+}
 
 private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
     val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
@@ -1182,14 +1223,25 @@ private fun NotificationPushDto.toDomainOrNull(): NotificationPushReceived? {
     )
 }
 
-private fun memberFrom(type: String?, id: String?, name: String?): MemberProfile? {
+private fun memberFrom(
+    type: String?,
+    id: String?,
+    name: String?,
+    diagnostics: (String) -> Unit,
+): MemberProfile? {
     if (id.isNullOrBlank()) return null
     val label = name?.trim().orEmpty().ifBlank { id }
+    val kind =
+        type.strictMemberKindOrNull(
+            source = "realtime_task_member",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.InternalActor,
+        ) ?: return null
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
         handle = label,
-        kind = if (type == "agent") MemberKind.Agent else MemberKind.Human,
+        kind = kind,
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
     )
