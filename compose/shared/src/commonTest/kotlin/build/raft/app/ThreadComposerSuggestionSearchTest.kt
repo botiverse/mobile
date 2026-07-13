@@ -2,6 +2,9 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 class ThreadComposerSuggestionSearchTest {
     private data class Person(
@@ -128,6 +131,44 @@ class ThreadComposerSuggestionSearchTest {
         assertEquals(
             listOf("b", "a"),
             filterThreadComposerMemberSuggestions("", suggestions).map { it.handle }
+        )
+    }
+
+    @Test
+    fun blankQueryIsBoundedToThirtyResults() {
+        val suggestions =
+            (0 until 100).map { index ->
+                KuiklyComposerMemberItem(displayName = "Member $index", handle = "member-$index")
+            }
+
+        assertEquals(
+            (0 until 30).map { index -> "member-$index" },
+            filterThreadComposerMemberSuggestions("", suggestions).map { it.handle }
+        )
+    }
+
+    @Test
+    fun tenThousandCandidateRankingKeepsBoundedTopThirtyWithinBudget() {
+        val suggestions =
+            (0 until 10_000).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Target Member $index",
+                    handle = "target-member-${index.toString().padStart(5, '0')}",
+                    description = "Large directory benchmark candidate"
+                )
+            }
+        val started = TimeSource.Monotonic.markNow()
+
+        val result = filterThreadComposerMemberSuggestions("target", suggestions)
+
+        assertEquals(30, result.size)
+        assertEquals(
+            (0 until 30).map { index -> "target-member-${index.toString().padStart(5, '0')}" },
+            result.map { it.handle }
+        )
+        assertTrue(
+            started.elapsedNow() < 5.seconds,
+            "10k candidate ranking exceeded the 5s regression budget"
         )
     }
 

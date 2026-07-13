@@ -1,6 +1,26 @@
 package build.raft.app
 
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
+
 private const val ThreadComposerSuggestionMaxResults = 30
+
+internal data class ThreadComposerIndexedSuggestions<T>(
+    val source: List<T>,
+    val entries: List<ThreadComposerSuggestionSearchEntry<T>>
+) {
+    fun matches(candidate: List<T>): Boolean = source === candidate || source == candidate
+}
+
+internal class ThreadComposerSuggestionRankingRequest<T>(
+    val query: String,
+    val entries: List<ThreadComposerSuggestionSearchEntry<T>>
+)
+
+internal data class ThreadComposerSuggestionRankingResult<T>(
+    val request: ThreadComposerSuggestionRankingRequest<T>,
+    val suggestions: List<T>
+)
 
 internal fun filterThreadComposerMemberSuggestions(
     query: String,
@@ -35,6 +55,18 @@ internal fun rankThreadComposerMemberSuggestionEntries(
         query = query,
         entries = entries
     )
+
+internal suspend fun rankThreadComposerMemberSuggestionEntriesCancellable(
+    query: String,
+    entries: List<ThreadComposerSuggestionSearchEntry<KuiklyComposerMemberItem>>
+): List<KuiklyComposerMemberItem> {
+    val coroutineContext = currentCoroutineContext()
+    return rankThreadComposerSuggestions(
+        query = query,
+        entries = entries,
+        cancellationCheckpoint = { coroutineContext.ensureActive() }
+    )
+}
 
 internal fun <T> filterPeopleSuggestions(
     query: String,
@@ -96,6 +128,18 @@ internal fun rankThreadComposerChannelSuggestionEntries(
         entries = entries
     )
 
+internal suspend fun rankThreadComposerChannelSuggestionEntriesCancellable(
+    query: String,
+    entries: List<ThreadComposerSuggestionSearchEntry<KuiklyComposerChannelItem>>
+): List<KuiklyComposerChannelItem> {
+    val coroutineContext = currentCoroutineContext()
+    return rankThreadComposerSuggestions(
+        query = query,
+        entries = entries,
+        cancellationCheckpoint = { coroutineContext.ensureActive() }
+    )
+}
+
 internal data class ThreadComposerSuggestionSearchEntry<T>(
     val index: Int,
     val suggestion: T,
@@ -104,32 +148,46 @@ internal data class ThreadComposerSuggestionSearchEntry<T>(
 
 private fun <T> rankThreadComposerSuggestions(
     query: String,
-    entries: List<ThreadComposerSuggestionSearchEntry<T>>
+    entries: List<ThreadComposerSuggestionSearchEntry<T>>,
+    cancellationCheckpoint: (() -> Unit)? = null
 ): List<T> {
     val queryKey = ThreadComposerSuggestionQueryKey.from(query)
-    if (queryKey.isBlank) return entries.map { it.suggestion }
-    return entries
-        .mapNotNull { entry ->
-            val score =
-                entry.fields
-                    .asSequence()
-                    .mapNotNull { field -> field.score(queryKey) }
-                    .minOrNull()
-                    ?: return@mapNotNull null
-            ThreadComposerRankedSuggestion(index = entry.index, suggestion = entry.suggestion, score = score)
+    if (queryKey.isBlank) return entries.take(ThreadComposerSuggestionMaxResults).map { it.suggestion }
+    val topSuggestions = mutableListOf<ThreadComposerRankedSuggestion<T>>()
+    entries.forEachIndexed { offset, entry ->
+        if (offset % 64 == 0) cancellationCheckpoint?.invoke()
+        val score =
+            entry.fields
+                .asSequence()
+                .mapNotNull { field -> field.score(queryKey) }
+                .minOrNull()
+                ?: return@forEachIndexed
+        val ranked = ThreadComposerRankedSuggestion(index = entry.index, suggestion = entry.suggestion, score = score)
+        val insertionIndex =
+            topSuggestions.binarySearch { current -> ThreadComposerRankedSuggestionComparator.compare(current, ranked) }
+                .let { index -> if (index >= 0) index else -index - 1 }
+        if (insertionIndex < ThreadComposerSuggestionMaxResults) {
+            topSuggestions.add(insertionIndex, ranked)
+            if (topSuggestions.size > ThreadComposerSuggestionMaxResults) {
+                topSuggestions.removeAt(topSuggestions.lastIndex)
+            }
         }
-        .sortedWith(
-            compareBy<ThreadComposerRankedSuggestion<T>>(
-                { ranked -> ranked.score.rank },
-                { ranked -> ranked.score.fieldPriority },
-                { ranked -> ranked.score.position },
-                { ranked -> ranked.score.gap },
-                { ranked -> ranked.index }
-            )
-        )
-        .take(ThreadComposerSuggestionMaxResults)
-        .map { ranked -> ranked.suggestion }
+    }
+    return topSuggestions.map { ranked -> ranked.suggestion }
 }
+
+private val ThreadComposerRankedSuggestionComparator =
+    Comparator<ThreadComposerRankedSuggestion<*>> { left, right ->
+        compareValuesBy(
+            left,
+            right,
+            { ranked -> ranked.score.rank },
+            { ranked -> ranked.score.fieldPriority },
+            { ranked -> ranked.score.position },
+            { ranked -> ranked.score.gap },
+            { ranked -> ranked.index }
+        )
+    }
 
 private data class ThreadComposerRankedSuggestion<T>(
     val index: Int,
