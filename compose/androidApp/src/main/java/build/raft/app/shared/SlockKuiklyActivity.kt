@@ -1757,13 +1757,26 @@ private class SlockKuiklyImageAdapter(
             imageLoadOption: HRImageLoadOption,
             callback: (drawable: Drawable?) -> Unit
     ) {
+        val sourceKind = imageLoadOption.slockSourceKind()
+        SlockAppLog.record(
+                "SlockImageLoad",
+                "source=$sourceKind status=request requestWidth=${imageLoadOption.requestWidth} " +
+                        "requestHeight=${imageLoadOption.requestHeight} ${binaryDownloadUrlDiagnostics(imageLoadOption.src)}"
+        )
         when {
             imageLoadOption.isSvgSource() -> loadSvg(imageLoadOption, callback)
             imageLoadOption.isBase64() -> loadFromBase64(imageLoadOption, callback)
             imageLoadOption.isAssets() -> loadFromAssets(imageLoadOption, callback)
             imageLoadOption.isLocalUri() -> loadFromLocalUri(imageLoadOption, callback)
             imageLoadOption.isWebUrl() -> loadFromNetwork(imageLoadOption, callback)
-            else -> callback(null)
+            else -> {
+                SlockAppLog.record(
+                        "SlockImageLoad",
+                        "source=unsupported status=failed requestWidth=${imageLoadOption.requestWidth} " +
+                                "requestHeight=${imageLoadOption.requestHeight} ${binaryDownloadUrlDiagnostics(imageLoadOption.src)}"
+                )
+                callback(null)
+            }
         }
     }
 
@@ -1870,6 +1883,12 @@ private class SlockKuiklyImageAdapter(
         SlockKuiklyThreadAdapter.executeOnSubThread {
             runCatching {
                         cachedNetworkBitmap(imageLoadOption.src)?.let { bitmap ->
+                            SlockAppLog.record(
+                                    "SlockImageLoad",
+                                    "source=network status=cache_hit bitmapWidth=${bitmap.width} bitmapHeight=${bitmap.height} " +
+                                            "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                                            binaryDownloadUrlDiagnostics(imageLoadOption.src)
+                            )
                             return@runCatching bitmap.toBitmapDrawable()
                         }
                         val response =
@@ -2137,6 +2156,16 @@ private class SlockKuiklyImageAdapter(
     private fun HRImageLoadOption.isLocalUri(): Boolean {
         return isFile() || isContentUri()
     }
+
+    private fun HRImageLoadOption.slockSourceKind(): String =
+            when {
+                isSvgSource() -> "svg"
+                isBase64() -> "base64"
+                isAssets() -> "assets"
+                isLocalUri() -> "local"
+                isWebUrl() -> "network"
+                else -> "unsupported"
+            }
 
     private fun ByteArray.looksLikeSvg(contentType: String?): Boolean {
         if (contentType?.contains("svg", ignoreCase = true) == true) {

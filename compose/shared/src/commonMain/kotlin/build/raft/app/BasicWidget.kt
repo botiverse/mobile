@@ -124,6 +124,7 @@ fun SlockCachedImage(
 @Composable
 internal fun SlockAspectFitImagePreviewSurface(
     source: String?,
+    fallbackSource: String? = null,
     contentDescription: String?,
     modifier: Modifier = Modifier,
     placeholderLabel: String = "IMG",
@@ -132,28 +133,41 @@ internal fun SlockAspectFitImagePreviewSurface(
     zoomable: Boolean = false,
     showLoadingIndicator: Boolean = false
 ) {
-    var imageState by remember(source) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    val normalizedSource = source?.trim()?.takeIf { it.isNotBlank() }
+    val normalizedFallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() && it != normalizedSource }
+    var activeSource by remember(normalizedSource, normalizedFallback) { mutableStateOf(normalizedSource ?: normalizedFallback) }
+    var imageState by remember(activeSource) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
     Box(
         modifier = modifier
             .background(backgroundColor)
             .border(borderWidth, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        if (source != null) {
+        if (activeSource != null) {
             if (zoomable) {
                 SlockZoomableCachedImage(
-                    source = source,
+                    source = activeSource.orEmpty(),
                     contentDescription = contentDescription,
                     modifier = Modifier.fillMaxSize(),
-                    onImageStateChange = { imageState = it }
+                    onImageStateChange = { state ->
+                        imageState = state
+                        if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
+                            activeSource = normalizedFallback
+                        }
+                    }
                 )
             } else {
                 SlockCachedImage(
-                    source = source,
+                    source = activeSource,
                     contentDescription = contentDescription,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
-                    onImageStateChange = { imageState = it }
+                    onImageStateChange = { state ->
+                        imageState = state
+                        if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
+                            activeSource = normalizedFallback
+                        }
+                    }
                 )
             }
             if (showLoadingIndicator && imageState !is AsyncImagePainter.State.Success) {

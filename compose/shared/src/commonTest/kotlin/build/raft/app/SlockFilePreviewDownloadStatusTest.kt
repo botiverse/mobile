@@ -438,6 +438,42 @@ class SlockFilePreviewDownloadStatusTest {
         assertEquals(MR.strings.file_preview_image.desc(), payload.titleDesc)
         assertEquals("https://cdn.slock.test/thumb.jpg", payload.imageUrl)
         assertEquals("att-1", payload.attachmentId)
+        assertTrue(payload.shouldRenderImagePreview())
+        assertEquals("https://cdn.slock.test/thumb.jpg", payload.currentImageThumbnailUrl())
+    }
+
+    @Test
+    fun resolvedThreadImageKeepsGalleryThumbnailAsRenderFallback() {
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "image",
+                requestedKind = "image",
+                attachmentId = "att-1",
+                imageUrl = "https://cdn.slock.test/full.jpg?signature=private",
+                imageGallery =
+                    listOf(
+                        SlockFilePreviewGalleryImage(
+                            attachmentId = "att-1",
+                            thumbnailUrl = "https://cdn.slock.test/thumb.jpg"
+                        )
+                    )
+            )
+
+        assertTrue(payload.shouldRenderImagePreview())
+        assertEquals("https://cdn.slock.test/thumb.jpg", payload.currentImageThumbnailUrl())
+    }
+
+    @Test
+    fun nonImageLoadingPayloadDoesNotEnterImageRenderer() {
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "loading",
+                requestedKind = "markdown",
+                imageUrl = "file:///tmp/not-an-image-preview"
+            )
+
+        assertFalse(payload.shouldRenderImagePreview())
+        assertEquals(null, payload.currentImageThumbnailUrl())
     }
 
     @Test
