@@ -57,6 +57,8 @@ interface SettingsRepository {
     suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>
     suspend fun getComputerDetailForComputer(computer: SettingsComputerSnapshot): DataResult<SettingsComputerDetailSnapshot> =
         getComputerDetail(computer.id)
+    suspend fun scanComputerWorkspaces(machineId: String): DataResult<List<SettingsComputerWorkspaceSnapshot>> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult>
     suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot>
     suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot>

@@ -294,6 +294,7 @@ sealed interface SharedSettingsIntent {
     data object Back : SharedSettingsIntent
     data object Refresh : SharedSettingsIntent
     data object RefreshComputers : SharedSettingsIntent
+    data class ScanComputerWorkspaces(val machineId: String) : SharedSettingsIntent
     data object Logout : SharedSettingsIntent
     data object RequestNotificationPermission : SharedSettingsIntent
     data object OpenNotificationSettings : SharedSettingsIntent
@@ -607,6 +608,10 @@ class SharedSettingsDataSource(
         }
         return result
     }
+
+    suspend fun scanComputerWorkspaces(machineId: String): DataResult<List<SettingsComputerWorkspaceSnapshot>> =
+        settingsRepository?.scanComputerWorkspaces(machineId)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     private suspend fun refreshServerMembersForSettingsStatus(serverId: String, force: Boolean) {
         val store = serverMembersStore ?: return
@@ -1410,6 +1415,12 @@ class SharedSettingsStore(
             }
             SharedSettingsIntent.Refresh -> loadCurrentRoute()
             SharedSettingsIntent.RefreshComputers -> refreshComputers()
+            is SharedSettingsIntent.ScanComputerWorkspaces -> {
+                runAction(COMPUTER_ACTION_SCAN_WORKSPACES, intent.machineId) {
+                    dataSource.scanComputerWorkspaces(intent.machineId)
+                        .applyComputerWorkspacesActionResult(intent.machineId)
+                }
+            }
             SharedSettingsIntent.Logout ->
                 _state.value =
                     _state.value.copy(
@@ -2514,7 +2525,28 @@ class SharedSettingsStore(
         action: String,
         machineId: String
     ) {
-        val next = toScreenLoadState()
+        val currentDetail = (_state.value.computerDetail as? ScreenLoadState.Content)?.data
+        val next =
+            when (this) {
+                is DataResult.Content -> {
+                    val detail =
+                        if (
+                            currentDetail?.computer?.id == data.computer.id &&
+                            currentDetail.workspacesScanned &&
+                            !data.workspacesScanned
+                        ) {
+                            data.copy(
+                                workspaces = currentDetail.workspaces,
+                                workspacesScanned = true,
+                                workspacesError = currentDetail.workspacesError
+                            )
+                        } else {
+                            data
+                        }
+                    ScreenLoadState.Content(detail)
+                }
+                else -> toScreenLoadState()
+            }
         _state.value =
             _state.value.copy(
                 computerDetail =
@@ -2530,6 +2562,64 @@ class SharedSettingsStore(
                         errorCode = next.routeErrorCode()
                     ),
                 routeErrorCode = next.routeErrorCode()
+            )
+    }
+
+    private fun DataResult<List<SettingsComputerWorkspaceSnapshot>>.applyComputerWorkspacesActionResult(machineId: String) {
+        val current = (_state.value.computerDetail as? ScreenLoadState.Content)?.data
+        if (current == null || current.computer.id != machineId) {
+            _state.value =
+                _state.value.copy(
+                    actionState = SharedSettingsActionState(
+                        action = COMPUTER_ACTION_SCAN_WORKSPACES,
+                        itemId = machineId,
+                        inProgress = false,
+                        errorCode = "settings_computer_required"
+                    )
+                )
+            return
+        }
+        val nextDetail =
+            when (this) {
+                is DataResult.Content ->
+                    current.copy(
+                        workspaces = data,
+                        workspacesScanned = true,
+                        workspacesError = null
+                    )
+                is DataResult.Empty ->
+                    current.copy(
+                        workspaces = emptyList(),
+                        workspacesScanned = true,
+                        workspacesError = null
+                    )
+                is DataResult.Error ->
+                    current.copy(
+                        workspacesScanned = true,
+                        workspacesError = SettingsSectionErrorSnapshot(error.code, error.retryable)
+                    )
+                is DataResult.NoPermission ->
+                    current.copy(
+                        workspacesScanned = true,
+                        workspacesError = SettingsSectionErrorSnapshot(blocker.code, retryable = false)
+                    )
+            }
+        val errorCode =
+            when (this) {
+                is DataResult.Error -> error.code
+                is DataResult.NoPermission -> blocker.code
+                else -> null
+            }
+        _state.value =
+            _state.value.copy(
+                computerDetail = ScreenLoadState.Content(nextDetail),
+                actionState =
+                    SharedSettingsActionState(
+                        action = COMPUTER_ACTION_SCAN_WORKSPACES,
+                        itemId = machineId,
+                        inProgress = false,
+                        errorCode = errorCode
+                    )
             )
     }
 
@@ -2730,6 +2820,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.RefreshRecompositionProfilerReport,
             SharedSettingsIntent.ExportRecompositionProfilerReport,
             SharedSettingsIntent.SendFeedback,
+            is SharedSettingsIntent.ScanComputerWorkspaces,
             is SharedSettingsIntent.RenameComputer,
             is SharedSettingsIntent.UpdateComputerDescription,
             is SharedSettingsIntent.DeleteComputer,
@@ -2887,6 +2978,7 @@ internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
 internal const val COMPUTER_ACTION_ROTATE_KEY = "rotateComputerKey"
 internal const val COMPUTER_ACTION_REGISTER = "registerComputer"
+internal const val COMPUTER_ACTION_SCAN_WORKSPACES = "scanComputerWorkspaces"
 internal const val COMPUTER_ACTION_AT_LIMIT = "atLimit"
 internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAutoTranslation"
 internal const val LANGUAGE_REGION_ACTION_LANGUAGE = "languageRegionLanguage"

@@ -605,25 +605,20 @@ class RealSettingsRepository(
         computer: SettingsComputerSnapshot
     ): DataResult<SettingsComputerDetailSnapshot> {
         val machineId = computer.id
-        logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=workspaces")
-        val workspaces = settingsMachineWorkspaces(serverId, machineId)
-        workspaces.logMachineDetailSection(serverId, machineId, "workspaces", (workspaces as? DataResult.Content)?.data?.size, logger, warningLogger)
-
+        // Workspace discovery is a remote recursive filesystem scan. Keep it behind the explicit Scan action.
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=agents")
         val agents = settingsComputerAgents(machineId).mapSettingsContractMismatch("settings_agents_contract_mismatch")
         agents.logMachineDetailSection(serverId, machineId, "agents", (agents as? DataResult.Content)?.data?.size, logger, warningLogger)
 
-        val workspaceRows = (workspaces as? DataResult.Content)?.data.orEmpty()
         val agentRows = enrichComputerAgents(serverId, (agents as? DataResult.Content)?.data.orEmpty())
-        val workspacesError = workspaces.toSettingsSectionErrorSnapshot()
         val agentsError = agents.toSettingsSectionErrorSnapshot()
         logger(
-            "machine_detail_fetch_content serverId=$serverId machineId=$machineId workspaces=${workspaceRows.size} agents=${agentRows.size} workspacesError=${workspacesError?.code ?: "none"} agentsError=${agentsError?.code ?: "none"}"
+            "machine_detail_fetch_content serverId=$serverId machineId=$machineId workspaces=not_scanned agents=${agentRows.size} agentsError=${agentsError?.code ?: "none"}"
         )
         return DataResult.Content(
             SettingsComputerDetailSnapshot(
                 computer = computer,
-                workspaces = workspaceRows,
+                workspaces = emptyList(),
                 agents = agentRows,
                 sections = listOf(
                     SettingsServerSectionSnapshot(
@@ -637,10 +632,26 @@ class RealSettingsRepository(
                         detail = "Machine logs or heartbeat history endpoint is not confirmed for Android yet."
                     )
                 ),
-                workspacesError = workspacesError,
+                workspacesScanned = false,
                 agentsError = agentsError
             )
         )
+    }
+
+    override suspend fun scanComputerWorkspaces(machineId: String): DataResult<List<SettingsComputerWorkspaceSnapshot>> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        if (machineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=workspaces trigger=user_scan")
+        val result = settingsMachineWorkspaces(serverId, machineId)
+        result.logMachineDetailSection(
+            serverId,
+            machineId,
+            "workspaces",
+            (result as? DataResult.Content)?.data?.size,
+            logger,
+            warningLogger
+        )
+        return result
     }
 
     override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> {

@@ -820,7 +820,7 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun computerDetailCombinesMachineWorkspacesAndAgents() = runBlocking {
+    fun computerDetailLoadsAgentsAndScansWorkspacesOnDemand() = runBlocking {
         val network =
             FakeSettingsNetworkClient(
                 machinesJson = """
@@ -847,7 +847,7 @@ class SettingsRepositoryDataSourceTest {
 
         assertTrue(result is DataResult.Content)
         val detail = result.data
-        assertEquals("machine-1", network.workspacesMachineId)
+        assertNull(network.workspacesMachineId)
         assertEquals("MacBook", detail.computer.name)
         assertEquals("Main build computer", detail.computer.description)
         assertEquals("macOS", detail.computer.platform)
@@ -858,16 +858,23 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(listOf("claude", "codex"), detail.computer.runtimes)
         assertEquals("2026-04-01T00:00:00Z", detail.computer.createdAt)
         assertEquals("2026-05-07T01:00:00Z", detail.computer.lastHeartbeat)
-        assertEquals(1, detail.workspaces.size)
-        assertEquals("Slock", detail.workspaces.first().name)
-        assertEquals("~/.slock/agents/Slock/", detail.workspaces.first().path)
-        assertEquals(4096L, detail.workspaces.first().totalSizeBytes)
-        assertEquals(12, detail.workspaces.first().fileCount)
+        assertTrue(detail.workspaces.isEmpty())
+        assertEquals(false, detail.workspacesScanned)
         assertEquals(1, detail.agents.size)
         assertEquals("Settings Integrator", detail.agents.first().name)
         assertEquals("Settings real-data wiring", detail.agents.first().memberProfile?.description)
         assertEquals("settings-integrator", detail.agents.first().memberProfile?.handle)
         assertTrue(detail.sections.any { it.key == "machine_status_events" })
+
+        val workspaces = repository.scanComputerWorkspaces("machine-1")
+
+        assertTrue(workspaces is DataResult.Content)
+        assertEquals("machine-1", network.workspacesMachineId)
+        assertEquals(1, workspaces.data.size)
+        assertEquals("Slock", workspaces.data.first().name)
+        assertEquals("~/.slock/agents/Slock/", workspaces.data.first().path)
+        assertEquals(4096L, workspaces.data.first().totalSizeBytes)
+        assertEquals(12, workspaces.data.first().fileCount)
     }
 
     @Test
@@ -895,10 +902,14 @@ class SettingsRepositoryDataSourceTest {
         // see server/routes/servers.ts runtime-models handler — surfaces as
         // structured "machine_offline" code so the Settings page can show retry copy
         // for that specific case instead of generic server_unavailable.
-        assertEquals("machine_offline", detail.workspacesError?.code)
-        assertEquals(true, detail.workspacesError?.retryable)
+        assertNull(detail.workspacesError)
+        assertEquals(false, detail.workspacesScanned)
         assertEquals("server_forbidden", detail.agentsError?.code)
         assertEquals(false, detail.agentsError?.retryable)
+        val workspaces = repository.scanComputerWorkspaces("machine-1")
+        assertTrue(workspaces is DataResult.Error)
+        assertEquals("machine_offline", workspaces.error.code)
+        assertEquals(true, workspaces.error.retryable)
         assertTrue(logs.any { it.contains("section=workspaces result=error code=machine_offline") })
         assertTrue(logs.any { it.contains("section=agents result=noPermission code=server_forbidden") })
         assertTrue(logs.none { it.contains("Bearer") || it.contains("token", ignoreCase = true) })
