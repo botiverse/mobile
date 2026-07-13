@@ -59,10 +59,10 @@ internal fun resolveAndroidShellLaunchTarget(pageData: JSONObject): AndroidShell
             ?: pageData.optString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID)
                 .trim()
                 .takeIf { it.isNotBlank() }
-    if (serverId == null) {
+    if (serverId == null || pageData.explicitAndroidDocumentShell() == false) {
         return AndroidShellLaunchTarget(
             shellInstanceId = DEFAULT_ANDROID_SHELL_INSTANCE_ID,
-            serverId = null,
+            serverId = serverId,
             documentShell = false,
         )
     }
@@ -82,13 +82,18 @@ internal fun JSONObject.withAndroidShellLaunchTarget(target: AndroidShellLaunchT
     }
 
 internal fun androidShellLaunchTargetFromPageData(pageData: JSONObject): AndroidShellLaunchTarget? {
-    val shellInstanceId = pageData.optString(ANDROID_SHELL_INSTANCE_ID_KEY).trim()
-    if (shellInstanceId.isBlank()) return null
+    val requestedShellInstanceId = pageData.optString(ANDROID_SHELL_INSTANCE_ID_KEY).trim()
+    if (requestedShellInstanceId.isBlank()) return null
     val serverId = pageData.optString(ANDROID_SHELL_SERVER_ID_KEY).trim().takeIf { it.isNotBlank() }
+    val requestedDocumentShell = pageData.explicitAndroidDocumentShell() == true
+    val documentShell =
+        requestedDocumentShell && requestedShellInstanceId != DEFAULT_ANDROID_SHELL_INSTANCE_ID
     return AndroidShellLaunchTarget(
-        shellInstanceId = shellInstanceId,
+        shellInstanceId =
+            requestedShellInstanceId.takeIf { documentShell }
+                ?: DEFAULT_ANDROID_SHELL_INSTANCE_ID,
         serverId = serverId,
-        documentShell = shellInstanceId != DEFAULT_ANDROID_SHELL_INSTANCE_ID,
+        documentShell = documentShell,
     )
 }
 
@@ -102,5 +107,12 @@ internal fun shouldReleaseAndroidShellWindow(
 
 internal fun shouldUseGlobalHostDisplayMetrics(target: AndroidShellLaunchTarget?): Boolean =
     target?.documentShell != true
+
+private fun JSONObject.explicitAndroidDocumentShell(): Boolean? =
+    if (has(ANDROID_DOCUMENT_SHELL_KEY)) {
+        optBoolean(ANDROID_DOCUMENT_SHELL_KEY, false)
+    } else {
+        null
+    }
 
 private const val DEFAULT_ANDROID_SHELL_INSTANCE_ID = "android-default-app-shell"

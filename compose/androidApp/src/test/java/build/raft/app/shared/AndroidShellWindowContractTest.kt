@@ -76,6 +76,67 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
+    fun firstLoginServerSelectionStaysInDefaultNonDocumentTask() {
+        val pageData =
+            JSONObject()
+                .put(ANDROID_SHELL_INSTANCE_ID_KEY, "legacy-app-shell")
+                .put(ANDROID_SHELL_SERVER_ID_KEY, "server-a")
+                .put(ANDROID_DOCUMENT_SHELL_KEY, false)
+
+        val target = androidShellLaunchTargetFromPageData(pageData)
+        val taskLaunch = target?.taskLaunchPlan(requestedTaskClear = false)
+
+        assertEquals("android-default-app-shell", target?.shellInstanceId)
+        assertEquals("server-a", target?.serverId)
+        assertFalse(target?.documentShell ?: true)
+        assertFalse(taskLaunch?.clearTask ?: true)
+        assertNull(taskLaunch?.documentShellId)
+    }
+
+    @Test
+    fun explicitNonDocumentServerRouteStaysDefaultEvenWithoutShellId() {
+        val pageData =
+            JSONObject()
+                .put(ANDROID_SHELL_SERVER_ID_KEY, "server-a")
+                .put(ANDROID_DOCUMENT_SHELL_KEY, false)
+
+        val target = resolveAndroidShellLaunchTarget(pageData)
+
+        assertEquals("android-default-app-shell", target.shellInstanceId)
+        assertEquals("server-a", target.serverId)
+        assertFalse(target.documentShell)
+    }
+
+    @Test
+    fun defaultShellIdentityCannotBePromotedToDocumentMode() {
+        val pageData =
+            JSONObject()
+                .put(ANDROID_SHELL_INSTANCE_ID_KEY, "android-default-app-shell")
+                .put(ANDROID_SHELL_SERVER_ID_KEY, "server-a")
+                .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+
+        val target = androidShellLaunchTargetFromPageData(pageData)
+
+        assertEquals("android-default-app-shell", target?.shellInstanceId)
+        assertEquals("server-a", target?.serverId)
+        assertFalse(target?.documentShell ?: true)
+    }
+
+    @Test
+    fun shellIdentityWithoutDocumentMarkerCannotCreateDocumentTask() {
+        val pageData =
+            JSONObject()
+                .put(ANDROID_SHELL_INSTANCE_ID_KEY, "server-shell:server-a")
+                .put(ANDROID_SHELL_SERVER_ID_KEY, "server-a")
+
+        val target = androidShellLaunchTargetFromPageData(pageData)
+
+        assertEquals("android-default-app-shell", target?.shellInstanceId)
+        assertEquals("server-a", target?.serverId)
+        assertFalse(target?.documentShell ?: true)
+    }
+
+    @Test
     fun chooserCrossServerRouteWithoutOldShellIdResolvesTargetServerDocument() {
         val replacementPageData = JSONObject().put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
 
