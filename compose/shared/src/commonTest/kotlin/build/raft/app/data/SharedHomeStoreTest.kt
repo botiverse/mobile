@@ -3732,7 +3732,14 @@ class SharedHomeStoreTest {
             )
         )
 
-        awaitCondition { api.calls.count { it == "channels:server-1" } == 2 }
+        awaitCondition {
+            api.calls.count { it == "channels:server-1" } == 2 &&
+                (store.state.value.content as? SharedHomeContentState.Content)
+                    ?.snapshot
+                    ?.channels
+                    ?.single()
+                    ?.readStateMaxReadSeq == 31L
+        }
         val current = (store.state.value.content as SharedHomeContentState.Content).snapshot
         assertEquals(31, current.channels.single().readStateMaxReadSeq)
         blockedRefresh.release()
@@ -3791,7 +3798,14 @@ class SharedHomeStoreTest {
             )
         )
 
-        awaitCondition { api.calls.count { it == "channels:server-1" } == 2 }
+        awaitCondition {
+            api.calls.count { it == "channels:server-1" } == 2 &&
+                (store.state.value.content as? SharedHomeContentState.Content)
+                    ?.snapshot
+                    ?.channels
+                    ?.single()
+                    ?.readStateMaxReadSeq == 20L
+        }
         val current = (store.state.value.content as SharedHomeContentState.Content).snapshot
         assertEquals(3, current.channels.single().unreadCount)
         assertEquals(2, current.channels.single().mentionCount)
@@ -4119,7 +4133,14 @@ class SharedHomeStoreTest {
                     )
             )
         )
-        awaitCondition { api.calls.count { it == "channels:server-1" } == 3 }
+        awaitCondition {
+            api.calls.count { it == "channels:server-1" } == 3 &&
+                (store.state.value.content as? SharedHomeContentState.Content)
+                    ?.snapshot
+                    ?.channels
+                    ?.single()
+                    ?.readStateMaxReadSeq == 5L
+        }
 
         val rewound = (store.state.value.content as SharedHomeContentState.Content).snapshot
         assertEquals(4, rewound.channels.single().unreadCount)
