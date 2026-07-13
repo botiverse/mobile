@@ -5333,6 +5333,105 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun emptyInitialLoadShowsRetryableErrorAtDeadlineAndStillAppliesLateContent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val diagnostics = mutableListOf<String>()
+        val repository =
+            FakeConversationRepository(
+                threadDelayMillis = 100L,
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(messages = listOf(message(id = "m1", seq = 1, body = "late content")))
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                diagnosticsLogger = diagnostics::add
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = diagnostics::add,
+                initialLoadDeadlineMillis = 10L
+            )
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+
+        withTimeout(1_000L) {
+            while (store.state.value.payload.errorCode != "thread_initial_load_timeout") {
+                delay(5L)
+            }
+        }
+        assertEquals("error", store.state.value.payload.status)
+        assertEquals(emptyList(), store.state.value.payload.messages)
+        assertTrue(
+            diagnostics.any {
+                it.startsWith("thread_initial_load_deadline ") &&
+                    it.contains("threadId=channel-1") &&
+                    it.contains("deadlineMs=10")
+            }
+        )
+
+        withTimeout(1_000L) {
+            while (store.state.value.payload.messages.singleOrNull()?.id != "m1") {
+                delay(5L)
+            }
+        }
+        assertEquals("content", store.state.value.payload.status)
+        assertEquals(null, store.state.value.payload.errorCode)
+        assertEquals("late content", store.state.value.payload.messages.single().body)
+        scope.cancel()
+    }
+
+    @Test
+    fun warmContentStaysVisiblePastInitialLoadDeadlineDuringSlowRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val diagnostics = mutableListOf<String>()
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "cached content"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                diagnosticsLogger = diagnostics::add
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = diagnostics::add,
+                initialLoadDeadlineMillis = 10L
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        repository.threadDelayMillis = 100L
+        repository.threadResult = DataResult.Content(threadSnapshot(body = "refreshed content"))
+        store.dispatch(SharedThreadIntent.Refresh)
+
+        delay(30L)
+        assertEquals("content", store.state.value.payload.status)
+        assertEquals("cached content", store.state.value.payload.messages.single().body)
+        assertEquals(null, store.state.value.payload.errorCode)
+        assertTrue(diagnostics.none { it.startsWith("thread_initial_load_deadline ") })
+
+        withTimeout(1_000L) {
+            while (store.state.value.payload.messages.singleOrNull()?.body != "refreshed content") {
+                delay(5L)
+            }
+        }
+        assertEquals("content", store.state.value.payload.status)
+        assertEquals(null, store.state.value.payload.errorCode)
+        scope.cancel()
+    }
+
+    @Test
     fun refreshWithUnchangedSnapshotKeepsTimelineList() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -8383,6 +8482,7 @@ class SharedThreadStoreTest {
         var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
         var threadResultsById: Map<ThreadId, DataResult<ThreadSnapshot>> = emptyMap(),
         var threadResultProvider: ((ThreadId, Boolean, Int) -> DataResult<ThreadSnapshot>)? = null,
+        var threadDelayMillis: Long = 0L,
         var olderResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "older repo body", id = "m5", seq = 5)),
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
         var messageContextResult: DataResult<ThreadSnapshot> =
@@ -8430,6 +8530,9 @@ class SharedThreadStoreTest {
             getThreadLimits += limit
             getThreadStarted?.complete(Unit)
             releaseGetThread?.await()
+            if (threadDelayMillis > 0L) {
+                delay(threadDelayMillis)
+            }
             return threadResultProvider?.invoke(threadId, includeFollowedSummaries, limit)
                 ?: threadResultsById[threadId]
                 ?: threadResult
