@@ -581,6 +581,39 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentProfileLoadNoticeStaysInsideProfileTab() {
+        assertTrue(
+            membersAgentDetailShowsProfileStateNotice(
+                selectedTab = MembersAgentDetailTab.Profile,
+                avatarManagementMode = false
+            )
+        )
+        listOf(
+            MembersAgentDetailTab.Activity,
+            MembersAgentDetailTab.Chat,
+            MembersAgentDetailTab.Reminders,
+            MembersAgentDetailTab.Workspace,
+            MembersAgentDetailTab.Apps
+        ).forEach { tab ->
+            assertEquals(
+                false,
+                membersAgentDetailShowsProfileStateNotice(
+                    selectedTab = tab,
+                    avatarManagementMode = false
+                ),
+                "profile API notice leaked into $tab"
+            )
+        }
+        assertEquals(
+            false,
+            membersAgentDetailShowsProfileStateNotice(
+                selectedTab = MembersAgentDetailTab.Profile,
+                avatarManagementMode = true
+            )
+        )
+    }
+
+    @Test
     fun agentLifecyclePrimaryActionFollowsRuntimeStatus() {
         assertEquals(
             MembersAgentLifecycleAction.Start,
