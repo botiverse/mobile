@@ -89,9 +89,6 @@ val slockAndroidVersionCode =
             slockAndroidVersionPatch * 100 +
             slockAndroidVersionBuild)
 val slockAndroidVersionSuffix = slockBuildConfigRawString("versionSuffix", "SLOCK_ANDROID_VERSION_SUFFIX")
-val slockAndroidApplicationIdSuffix =
-    slockBuildConfigRawString("SLOCK_ANDROID_APPLICATION_ID_SUFFIX")
-        ?.let { suffix -> if (suffix.startsWith(".")) suffix else ".$suffix" }
 val slockAndroidVersionName =
     slockBuildConfigRawString("versionName", "SLOCK_ANDROID_VERSION_NAME")
         ?: buildString {
@@ -376,8 +373,14 @@ android {
 
     buildTypes {
         getByName("debug") {
-            slockAndroidApplicationIdSuffix?.let { applicationIdSuffix = it }
             buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
+        }
+        create("alpha") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".alpha"
+            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
+            buildConfigField("String", "QUIVER_CHANNEL", "\"debug\"")
+            matchingFallbacks += listOf("debug")
         }
         create("connectedTest") {
             initWith(getByName("debug"))

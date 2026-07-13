@@ -76,9 +76,7 @@ jobs:
         run: |
           ./gradlew \
             :shared:generateSqlDelightInterface \
-            :androidApp:assembleDebug \
-            -PSLOCK_ANDROID_APPLICATION_ID_SUFFIX=.alpha \
-            -PSLOCK_SHOW_TEST_BUILD_BADGE=true \
+            :androidApp:assembleAlpha \
             -PversionSuffix=alpha \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain
 
@@ -87,12 +85,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find compose/androidApp/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          APK="$(find compose/androidApp/build/outputs/apk/alpha -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
           test -n "$APK"
           BT="${ANDROID_HOME}/build-tools/36.0.0"
           "${BT}/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-verify.log
           "${BT}/aapt" dump badging "$APK" | tee aapt-badging.log
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
+          grep -q "application-label:'Raft Alpha'" aapt-badging.log
           grep -q "versionName='[^']*-alpha'" aapt-badging.log
           SOURCE_SHA="${{ steps.source.outputs.sha }}"
           cp "$APK" androidApp-alpha-${SOURCE_SHA::9}.apk
