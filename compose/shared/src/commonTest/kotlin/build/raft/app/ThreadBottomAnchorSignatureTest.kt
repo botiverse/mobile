@@ -268,6 +268,45 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun focusedAnchorSessionTreatsExplicitViewportReplacementAsUserOverride() {
+        val targetIdentity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+        val staleSessionIdentity = focusedMessageAnchorIdentity(messageId = "m1", requestNonce = 1)
+
+        // Hands edecc106: BackToBottom retires the Activity-focused anchor
+        // before scrolling. Even when scrollToItem has already settled and
+        // isScrollInProgress is false, that retired identity must interrupt
+        // the stabilization session instead of re-anchoring the old target.
+        assertEquals(
+            targetIdentity,
+            focusedAnchorIdentityForViewportReplacement(
+                pendingIdentity = targetIdentity,
+                sessionIdentity = staleSessionIdentity
+            )
+        )
+        assertEquals(
+            staleSessionIdentity,
+            focusedAnchorIdentityForViewportReplacement(
+                pendingIdentity = null,
+                sessionIdentity = staleSessionIdentity
+            )
+        )
+        assertTrue(
+            focusedAnchorSessionUserOverrideActive(
+                isScrollInProgress = false,
+                targetIdentity = targetIdentity,
+                scrollInterruptedIdentity = targetIdentity
+            )
+        )
+        assertFalse(
+            focusedAnchorSessionUserOverrideActive(
+                isScrollInProgress = false,
+                targetIdentity = targetIdentity,
+                scrollInterruptedIdentity = focusedMessageAnchorIdentity("other", 1)
+            )
+        )
+    }
+
+    @Test
     fun focusedAnchorSessionHardCapConsumesEvenWhileDrifting() {
         assertEquals(
             FocusedAnchorSessionAction.Consume,
