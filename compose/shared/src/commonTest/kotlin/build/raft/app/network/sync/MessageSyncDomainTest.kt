@@ -450,13 +450,12 @@ class MessageSyncDomainTest {
     }
 
     @Test
-    fun realtimeFirstSameWatermarkAuthoritativeRebaselineInstallsCoverageThroughRealCore() {
-        val core = createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain())))
+    fun realtimeFirstSameWatermarkAuthoritativeRebaselineInstallsCoverageThroughDomainHost() {
+        val host = MessageDomainSyncHost()
         val realtime = row("m14", seq = 14, senderId = "u2")
         assertEquals(
             SyncIngestOutcome.MaxAdvanced("c1", 14),
-            core.ingestFrame(
-                MESSAGES_SYNC_DOMAIN,
+            host.ingestFrame(
                 SyncFrame(
                     scopeId = "c1",
                     seq = 14,
@@ -465,24 +464,23 @@ class MessageSyncDomainTest {
                 ),
             ),
         )
-        val sparse = core.state(MESSAGES_SYNC_DOMAIN, "c1") as MessageDomainState
+        val sparse = host.state("c1")
         assertNull(sparse.scopeCoverage["c1"])
 
         val authoritative = baseline(state = sparse, rows = listOf(realtime), coveredFromSeq = 14)
         assertEquals(
             SyncIngestOutcome.Applied("c1", 14),
-            core.ingestSnapshot(
-                MESSAGES_SYNC_DOMAIN,
+            host.ingestAuthoritativeSnapshot(
                 SyncSnapshot(
                     scopeId = "c1",
                     watermark = 14,
                     epoch = "e1",
                     state = authoritative,
-                    rebaselineGeneration = 1,
                 ),
+                generation = 1,
             ),
         )
-        val installed = core.state(MESSAGES_SYNC_DOMAIN, "c1") as MessageDomainState
+        val installed = host.state("c1")
         assertTrue(project(installed, maxReadSeq = 13).complete)
 
         val staleState = baseline(
@@ -492,17 +490,16 @@ class MessageSyncDomainTest {
         )
         assertEquals(
             SyncIngestOutcome.DuplicateDropped("c1", 15),
-            core.ingestSnapshot(
-                MESSAGES_SYNC_DOMAIN,
+            host.ingestAuthoritativeSnapshot(
                 SyncSnapshot(
                     scopeId = "c1",
                     watermark = 15,
                     epoch = "e1",
                     state = staleState,
-                    rebaselineGeneration = 1,
                 ),
+                generation = 1,
             ),
         )
-        assertSame(installed, core.state(MESSAGES_SYNC_DOMAIN, "c1"))
+        assertSame(installed, host.state("c1"))
     }
 }

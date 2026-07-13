@@ -25,8 +25,8 @@ internal class SyncCoreMessageShadowFoldLane(
     private val adapter: FoldPersistenceAdapter,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit,
-    // A per-lane pure core (one owner = one shell/server selection). State is keyed by channel scope id.
-    private val core: SyncCore = createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain()))),
+    // One active message-domain core per owner/shell. The host also owns authoritative rebaseline swaps.
+    private val domainHost: MessageDomainSyncHost = MessageDomainSyncHost(),
 ) {
 
     fun isEnabled(): Boolean =
@@ -50,13 +50,12 @@ internal class SyncCoreMessageShadowFoldLane(
             val domainEvent: MessageDomainEvent =
                 if (updated) MessageDomainEvent.Updated(row, decoded.presentAggregates)
                 else MessageDomainEvent.New(row, decoded.presentAggregates)
-            core.ingestFrame(
-                MESSAGES_SYNC_DOMAIN,
+            domainHost.ingestFrame(
                 SyncFrame(scopeId = channelId, seq = row.seq, epoch = epoch, event = domainEvent),
             )
-            val facts = (core.state(MESSAGES_SYNC_DOMAIN, channelId) as? MessageDomainState)
-                ?.channelMessages
-                ?.get(channelId)
+            val facts = domainHost.state(channelId)
+                .channelMessages
+                .get(channelId)
                 .orEmpty()
             val frame = FoldPersistFrame(
                 scope = SyncScopeKey(resolvedServerId, channelId, SHADOW_SCOPE_KIND),
@@ -80,6 +79,13 @@ internal class SyncCoreMessageShadowFoldLane(
             logShadowFailure(resolvedServerId, throwable)
         }
     }
+
+    /** Authoritative conversation hydrate/rebaseline seam; caller serializes it with frame ingress. */
+    internal fun ingestAuthoritativeSnapshot(
+        snapshot: SyncSnapshot,
+        generation: Long,
+    ): SyncIngestOutcome =
+        domainHost.ingestAuthoritativeSnapshot(snapshot, generation)
 
     fun logShadowFailure(serverId: String, throwable: Throwable) {
         runCatching {

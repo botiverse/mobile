@@ -396,6 +396,51 @@ private fun restoreMessageDomainSnapshot(snapshot: SyncSnapshot): MessageDomainS
 }
 
 /**
+ * Mobile message-domain ingress boundary for authoritative hydrate/rebaseline flights.
+ *
+ * RFC043's generic [SyncCore] intentionally rejects a same-epoch snapshot at an already-applied
+ * watermark. Sparse message realtime can legitimately arrive before conversation hydrate, so this
+ * host owns the mobile-only generation fence and replaces its single active core with a freshly
+ * seeded core. Callers serialize access through their existing actor; the replacement becomes visible
+ * only after [SyncCore.ingestSnapshot] succeeds. Stale generations leave the active core untouched.
+ */
+class MessageDomainSyncHost {
+    private var activeCore: SyncCore = newMessageDomainSyncCore()
+    private var acceptedRebaselineGeneration: Long? = null
+
+    fun ingestFrame(frame: SyncFrame): SyncIngestOutcome =
+        activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+
+    fun ingestAuthoritativeSnapshot(
+        snapshot: SyncSnapshot,
+        generation: Long,
+    ): SyncIngestOutcome {
+        val currentGeneration = acceptedRebaselineGeneration
+        if (generation <= 0L || (currentGeneration != null && generation <= currentGeneration)) {
+            return SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+        }
+
+        val replacement = newMessageDomainSyncCore()
+        val outcome = replacement.ingestSnapshot(MESSAGES_SYNC_DOMAIN, snapshot)
+        if (outcome is SyncIngestOutcome.Applied) {
+            activeCore = replacement
+            acceptedRebaselineGeneration = generation
+        }
+        return outcome
+    }
+
+    fun state(scopeId: SyncScopeId): MessageDomainState =
+        activeCore.state(MESSAGES_SYNC_DOMAIN, scopeId) as? MessageDomainState
+            ?: createInitialMessageDomainState()
+
+    fun scopeSyncState(scopeId: SyncScopeId): SyncScopeState? =
+        activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, scopeId)
+}
+
+private fun newMessageDomainSyncCore(): SyncCore =
+    createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain())))
+
+/**
  * The registered messages domain. `density = Sparse` is the compat slice: production delivery still
  * owns gap repair. Unknown event shapes fold to the unchanged state (pure + total).
  */
