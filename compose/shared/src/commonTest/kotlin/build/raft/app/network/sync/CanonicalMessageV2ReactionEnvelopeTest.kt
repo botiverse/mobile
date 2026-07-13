@@ -1,6 +1,7 @@
 package build.raft.app.network.sync
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -12,6 +13,42 @@ class CanonicalMessageV2ReactionEnvelopeTest {
     fun acceptsOnlyExactCanonicalReactionEnvelope() {
         assertTrue(isCanonicalMessageV2ReactionEnvelopeSoleApplyEligible(valid))
         assertFalse(CANONICAL_FACT_SOLE_APPLY_ELIGIBLE, "V1 shadow envelope must remain ineligible")
+    }
+
+    @Test
+    fun singleFlagTruthTableKeepsShadowAndSoleApplyMechanicallySeparate() {
+        assertEquals(
+            NormalizedReactionRolloutMode.Off,
+            normalizedReactionRolloutMode(
+                syncCoreMessagesEnabled = false,
+                envelopeSoleApplyEligible = true,
+                globalSoleApplyEligible = true,
+            ),
+        )
+        assertEquals(
+            NormalizedReactionRolloutMode.ShadowOnly,
+            normalizedReactionRolloutMode(
+                syncCoreMessagesEnabled = true,
+                envelopeSoleApplyEligible = true,
+            ),
+            "the production global eligibility switch is still false",
+        )
+        assertEquals(
+            NormalizedReactionRolloutMode.ShadowOnly,
+            normalizedReactionRolloutMode(
+                syncCoreMessagesEnabled = true,
+                envelopeSoleApplyEligible = false,
+                globalSoleApplyEligible = true,
+            ),
+        )
+        assertEquals(
+            NormalizedReactionRolloutMode.SoleApply,
+            normalizedReactionRolloutMode(
+                syncCoreMessagesEnabled = true,
+                envelopeSoleApplyEligible = true,
+                globalSoleApplyEligible = true,
+            ),
+        )
     }
 
     @Test

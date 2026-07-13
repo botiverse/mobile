@@ -25,6 +25,29 @@ data class CanonicalMessageV2ReactionEnvelope(
     val fact: CanonicalMessageV2ReactionFact,
 )
 
+/** One product flag, with normalized-schema eligibility as a separate mechanical apply gate. */
+enum class NormalizedReactionRolloutMode {
+    Off,
+    ShadowOnly,
+    SoleApply,
+}
+
+/**
+ * Pins the single-flag truth table. Schema/envelope eligibility never creates a second rollout lane:
+ * the existing sync-core flag enables observation, while sole-apply additionally requires both the global
+ * eligibility switch and an exact normalized envelope.
+ */
+fun normalizedReactionRolloutMode(
+    syncCoreMessagesEnabled: Boolean,
+    envelopeSoleApplyEligible: Boolean,
+    globalSoleApplyEligible: Boolean = CANONICAL_FACT_SOLE_APPLY_ELIGIBLE,
+): NormalizedReactionRolloutMode =
+    when {
+        !syncCoreMessagesEnabled -> NormalizedReactionRolloutMode.Off
+        globalSoleApplyEligible && envelopeSoleApplyEligible -> NormalizedReactionRolloutMode.SoleApply
+        else -> NormalizedReactionRolloutMode.ShadowOnly
+    }
+
 private val canonicalMessageV2TripwireJson = Json {
     ignoreUnknownKeys = false
     isLenient = false
