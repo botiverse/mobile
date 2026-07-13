@@ -867,11 +867,8 @@ internal fun threadHeaderProjectionServerId(
     sessionServerId: String?,
     scopeInitialServerId: String?
 ): String? =
-    // A standalone page is bound to the server captured by its shell scope. The auth
-    // session arrives asynchronously and may already point at another selected server;
-    // letting it replace the scope id would drop the page's cached parent projection.
-    scopeInitialServerId?.trim()?.takeIf { it.isNotBlank() }
-        ?: sessionServerId?.trim()?.takeIf { it.isNotBlank() }
+    sessionServerId?.trim()?.takeIf { it.isNotBlank() }
+        ?: scopeInitialServerId?.trim()?.takeIf { it.isNotBlank() }
 
 internal fun threadHeaderInitialProjectionMap(
     provider: SharedConversationIdentityProvider?,

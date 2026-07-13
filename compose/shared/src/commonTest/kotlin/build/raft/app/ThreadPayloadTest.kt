@@ -2493,17 +2493,10 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            "server-from-scope",
-            threadHeaderProjectionServerId(
-                sessionServerId = "server-from-session",
-                scopeInitialServerId = "server-from-scope"
-            )
-        )
-        assertEquals(
             "server-from-session",
             threadHeaderProjectionServerId(
                 sessionServerId = "server-from-session",
-                scopeInitialServerId = null
+                scopeInitialServerId = "server-from-scope"
             )
         )
     }
