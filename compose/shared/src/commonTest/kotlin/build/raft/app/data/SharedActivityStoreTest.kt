@@ -13,6 +13,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
+import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -26,7 +27,10 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -35,8 +39,12 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -1072,6 +1080,491 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun messageNewPatchesExistingActivityRowImmediatelyAndDedupesByMessageId() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 2)),
+                            totalCount = 1,
+                            totalUnreadCount = 1
+                        )
+                    )
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 60_000L
+            )
+        val event =
+            MessageNew(
+                message(
+                    id = "message-new",
+                    channelId = "thread-channel-1",
+                    body = "Realtime preview",
+                    timestamp = "2026-07-13T03:01:00Z",
+                    conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+                )
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+
+        val patched = store.state.value.items.single()
+        assertEquals(MessageId("message-new"), patched.latestActivityMessageId)
+        assertEquals("Realtime preview", patched.latestActivityPreview)
+        assertEquals("User user-2", patched.latestActivitySenderName)
+        assertEquals(3, patched.replyCount)
+        assertEquals(1, patched.unreadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
+        assertEquals(1, inbox.initialLoadCount)
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+
+        assertEquals(3, store.state.value.items.single().replyCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun threadMessagePatchUpdatesAndReordersExistingThreadRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val thread = threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 3)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(
+                                snapshot(
+                                    listOf(activityItem("channel-1"), thread),
+                                    totalCount = 2,
+                                    totalUnreadCount = 1
+                                )
+                            )
+                    ),
+                realtimeReconcileDelayMillis = 60_000L
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "reply-new",
+                        channelId = "thread-channel-1",
+                        body = "New reply",
+                        timestamp = "2026-07-13T03:02:00Z",
+                        conversationContext =
+                            MessageConversationContext(
+                                channelKind = ConversationKind.Thread,
+                                parentMessageId = MessageId("parent-message"),
+                                parentChannelId = ChannelId("parent-channel"),
+                                parentChannelKind = ConversationKind.Channel
+                            )
+                    )
+                )
+            )
+        )
+
+        val patched = store.state.value.items.first()
+        assertEquals("thread:thread-channel-1", patched.key)
+        assertEquals(MessageId("reply-new"), patched.latestActivityMessageId)
+        assertEquals("New reply", patched.latestActivityPreview)
+        assertEquals(4, patched.replyCount)
+        assertEquals(1, patched.unreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun threadUpdatedPatchesOnlyMonotonicReplyActivityMetadata() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(
+                                snapshot(
+                                    listOf(
+                                        threadItem("thread-channel-1", unreadCount = 1)
+                                            .copy(replyCount = 2, latestActivityAt = "2026-07-13T03:00:00Z")
+                                    ),
+                                    totalUnreadCount = 1
+                                )
+                            )
+                    ),
+                realtimeReconcileDelayMillis = 60_000L
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-channel-1"),
+                    replyCount = 3,
+                    lastReplyAt = "2026-07-13T03:05:00Z",
+                    participantIds = emptyList(),
+                    unreadCount = 9,
+                    firstUnreadMessageId = MessageId("server-first-unread")
+                )
+            )
+        )
+
+        val patched = store.state.value.items.single()
+        assertEquals(3, patched.replyCount)
+        assertEquals("2026-07-13T03:05:00Z", patched.latestActivityAt)
+        assertEquals(1, patched.unreadCount)
+        assertEquals(MessageId("first-thread-channel-1"), patched.firstUnreadMessageId)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-channel-1"),
+                    replyCount = 2,
+                    lastReplyAt = "2026-07-13T03:01:00Z",
+                    participantIds = emptyList()
+                )
+            )
+        )
+
+        assertEquals(3, store.state.value.items.single().replyCount)
+        assertEquals("2026-07-13T03:05:00Z", store.state.value.items.single().latestActivityAt)
+        scope.cancel()
+    }
+
+    @Test
+    fun unknownMessageRowFallsBackToCanonicalRealtimeReconcile() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1"))),
+                        snapshot(listOf(activityItem("channel-2"), activityItem("channel-1")))
+                    )
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 0L
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "channel-2"))
+            )
+        )
+
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(listOf("channel:channel-2", "channel:channel-1"), store.state.value.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
+    fun messagePatchSurvivesStaleInFlightRefreshAndTriggersFollowUpReconcile() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 2)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "Realtime preview",
+                latestActivityAt = "2026-07-13T03:03:00Z",
+                replyCount = 3
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "message-new",
+                        channelId = "thread-channel-1",
+                        body = "Realtime preview",
+                        timestamp = "2026-07-13T03:03:00Z",
+                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+                    )
+                )
+            )
+        )
+
+        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(3, store.state.value.items.single().replyCount)
+
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
+
+        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(3, store.state.value.items.single().replyCount)
+        assertEquals(1, inbox.pendingCount)
+
+        inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
+
+        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(false, store.state.value.refreshing)
+        assertEquals(0, inbox.pendingCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeHighWaterPreservesLocallyClearedUnreadState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 60_000L
+            )
+        val stale = threadItem("thread-channel-1", unreadCount = 2).copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 2))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "message-new",
+                        channelId = "thread-channel-1",
+                        body = "Realtime preview",
+                        timestamp = "2026-07-13T03:03:00Z",
+                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+                    )
+                )
+            )
+        )
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        store.dispatch(SharedActivityIntent.Refresh)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 2))
+
+        val reconciled = store.state.value.items.single()
+        assertEquals(MessageId("message-new"), reconciled.latestActivityMessageId)
+        assertEquals("Realtime preview", reconciled.latestActivityPreview)
+        assertEquals(3, reconciled.replyCount)
+        assertEquals(0, reconciled.unreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeBurstDuringRefreshCoalescesToOneFollowUpReconcile() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-1", channelId = "thread-channel-1"))
+            )
+        )
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-2", channelId = "thread-channel-1"))
+            )
+        )
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-3", channelId = "thread-channel-1"))
+            )
+        )
+
+        assertEquals(1, inbox.pendingCount)
+        assertEquals(5, store.state.value.items.single().replyCount)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+
+        assertEquals(1, inbox.pendingCount)
+        assertEquals(5, store.state.value.items.single().replyCount)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-3"),
+                latestActivityPreview = "message message-3",
+                replyCount = 5
+            )
+        inbox.completeNextSnapshot(snapshot(listOf(canonical)))
+
+        assertEquals(3, inbox.initialLoadCount)
+        assertEquals(0, inbox.pendingCount)
+        assertEquals(MessageId("message-3"), store.state.value.items.single().latestActivityMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeEventAfterTerminalDecisionStartsSuccessorReconcile() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val inbox = DeferredInboxRepository()
+        lateinit var store: SharedActivityStore
+        var injectAtTerminal = true
+        store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 0L,
+                afterRealtimeReconcileTerminalDecision = {
+                    if (injectAtTerminal) {
+                        injectAtTerminal = false
+                        store.dispatch(
+                            SharedActivityIntent.ApplyRealtimeEvent(
+                                MessageNew(message("message-2", channelId = "thread-channel-1"))
+                            )
+                        )
+                    }
+                }
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        awaitState(store) { state -> state.loaded && !state.refreshing }
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-1", channelId = "thread-channel-1"))
+            )
+        )
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+
+        awaitPendingCount(inbox, 1)
+        assertEquals(4, store.state.value.items.single().replyCount)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-2"),
+                latestActivityPreview = "message message-2",
+                replyCount = 4
+            )
+        inbox.completeNextSnapshot(snapshot(listOf(canonical)))
+        awaitState(store) { state ->
+            !state.refreshing && state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-2")
+        }
+
+        assertEquals(3, inbox.initialLoadCount)
+        assertEquals(0, inbox.pendingCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimePatchCannotEnterOwnerDuringStaleLoadFoldAndKeepsHighWater() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val inbox = DeferredInboxRepository()
+        lateinit var store: SharedActivityStore
+        val foldHeld = CompletableDeferred<Unit>()
+        val releaseFold = CompletableDeferred<Unit>()
+        val secondPatchEnteredOwner = CompletableDeferred<Unit>()
+        val patchEntryLock = SynchronizedObject()
+        var loadResultCount = 0
+        var patchEntryCount = 0
+        store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 60_000L,
+                beforeRealtimeHighWaterFold = {
+                    loadResultCount += 1
+                    if (loadResultCount == 2) {
+                        foldHeld.complete(Unit)
+                        runBlocking { releaseFold.await() }
+                    }
+                },
+                onRealtimePatchOwnerEntered = {
+                    synchronized(patchEntryLock) {
+                        patchEntryCount += 1
+                        if (patchEntryCount == 2) secondPatchEnteredOwner.complete(Unit)
+                    }
+                }
+            )
+        val stale = threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
+        awaitState(store) { state -> state.loaded && !state.refreshing }
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "message-1",
+                        channelId = "thread-channel-1",
+                        body = "First realtime preview"
+                    )
+                )
+            )
+        )
+        assertEquals(MessageId("message-1"), store.state.value.items.single().latestActivityMessageId)
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
+        withTimeout(2_000L) { foldHeld.await() }
+
+        val secondPatch =
+            scope.launch {
+                store.dispatch(
+                    SharedActivityIntent.ApplyRealtimeEvent(
+                        MessageNew(
+                            message(
+                                id = "message-new",
+                                channelId = "thread-channel-1",
+                                body = "Realtime preview"
+                            )
+                        )
+                    )
+                )
+            }
+        val enteredWhileFoldHeld =
+            withTimeoutOrNull(200L) {
+                secondPatchEnteredOwner.await()
+            }
+        assertEquals(null, enteredWhileFoldHeld)
+
+        releaseFold.complete(Unit)
+        secondPatch.join()
+        awaitState(store) { state ->
+            !state.refreshing && state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new")
+        }
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
+        awaitState(store) { state ->
+            !state.refreshing && state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new")
+        }
+
+        val reconciled = store.state.value.items.single()
+        assertEquals("Realtime preview", reconciled.latestActivityPreview)
+        assertEquals(4, reconciled.replyCount)
+        assertEquals(1, reconciled.unreadCount)
+        assertTrue(secondPatchEnteredOwner.isCompleted)
+        scope.cancel()
+    }
+
+    @Test
     fun homeSummaryRealtimeIncrementsUnreadWithoutRefreshingActivityRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
@@ -1627,7 +2120,11 @@ class SharedActivityStoreTest {
             DataResult.Empty(EmptyReason.NoMessages)
         },
         tailPrewarmDepthCap: Int = 20,
-        onUnreadCountsChanged: () -> Unit = {}
+        onUnreadCountsChanged: () -> Unit = {},
+        realtimeReconcileDelayMillis: Long = 150L,
+        afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
+        beforeRealtimeHighWaterFold: () -> Unit = {},
+        onRealtimePatchOwnerEntered: () -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
             authStore = authStore,
@@ -1642,7 +2139,11 @@ class SharedActivityStoreTest {
             prewarmReplyThread = prewarmReplyThread,
             tailPrewarmDepthCap = tailPrewarmDepthCap,
             onUnreadCountsChanged = onUnreadCountsChanged,
-            scope = scope
+            scope = scope,
+            realtimeReconcileDelayMillis = realtimeReconcileDelayMillis,
+            afterRealtimeReconcileTerminalDecision = afterRealtimeReconcileTerminalDecision,
+            beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
+            onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered
         )
 
     private fun readStateEvent(
@@ -1777,7 +2278,13 @@ class SharedActivityStoreTest {
     }
 
     private inner class DeferredInboxRepository : InboxRepository {
+        private val lock = SynchronizedObject()
         private val pending = mutableListOf<CompletableDeferred<DataResult<InboxSnapshot>>>()
+        private var initialLoads = 0
+        val initialLoadCount: Int
+            get() = synchronized(lock) { initialLoads }
+        val pendingCount: Int
+            get() = synchronized(lock) { pending.size }
 
         override suspend fun loadInitial(
             serverId: ServerId,
@@ -1785,7 +2292,10 @@ class SharedActivityStoreTest {
             limit: Int
         ): DataResult<InboxSnapshot> {
             val result = CompletableDeferred<DataResult<InboxSnapshot>>()
-            pending += result
+            synchronized(lock) {
+                initialLoads += 1
+                pending += result
+            }
             return withContext(NonCancellable) { result.await() }
         }
 
@@ -1805,7 +2315,8 @@ class SharedActivityStoreTest {
         }
 
         fun completeNextSnapshot(snapshot: InboxSnapshot) {
-            pending.removeAt(0).complete(DataResult.Content(snapshot))
+            val next = synchronized(lock) { pending.removeAt(0) }
+            next.complete(DataResult.Content(snapshot))
         }
     }
 
@@ -1974,7 +2485,11 @@ class SharedActivityStoreTest {
     private fun message(
         id: String,
         channelId: String = "channel-1",
-        authorId: String = "user-2"
+        authorId: String = "user-2",
+        body: String = "message $id",
+        timestamp: String = "2026-07-13T03:00:00Z",
+        seq: Long? = null,
+        conversationContext: MessageConversationContext? = null
     ): Message =
         Message(
             id = MessageId(id),
@@ -1987,8 +2502,10 @@ class SharedActivityStoreTest {
                     handle = authorId,
                     kind = MemberKind.Human
                 ),
-            timestampLabel = "now",
-            body = "message $id"
+            timestampLabel = timestamp,
+            body = body,
+            seq = seq,
+            conversationContext = conversationContext
         )
 
     private fun mentionActionItem(resolutionId: String): InboxItem =
@@ -2049,6 +2566,28 @@ class SharedActivityStoreTest {
             hasMore = hasMore,
             nextOffset = nextOffset
         )
+
+    private suspend fun awaitPendingCount(
+        inbox: DeferredInboxRepository,
+        expected: Int
+    ) {
+        withTimeout(5_000L) {
+            while (inbox.pendingCount != expected) {
+                delay(1L)
+            }
+        }
+    }
+
+    private suspend fun awaitState(
+        store: SharedActivityStore,
+        predicate: (SharedActivityState) -> Boolean
+    ) {
+        withTimeout(5_000L) {
+            while (!predicate(store.state.value)) {
+                delay(1L)
+            }
+        }
+    }
 
     private fun homeSnapshot(
         conversation: ConversationSummary,

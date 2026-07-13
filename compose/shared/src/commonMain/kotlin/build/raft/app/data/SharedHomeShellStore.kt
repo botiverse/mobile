@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.model.Message
+import build.raft.app.model.MessageNew
 import build.raft.app.model.RealtimeEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -195,7 +197,12 @@ class SharedHomeShellStore(
         dispatchHome(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
         val current = _state.value
         if (current.destination == SharedHomeShellDestinationActivity) {
-            dispatchActivity(SharedActivityIntent.ApplyRealtimeEvent(event))
+            dispatchActivity(
+                SharedActivityIntent.ApplyRealtimeEvent(
+                    event = event,
+                    allowLocalPatch = current.home.allowsLocalActivityPatch(event)
+                )
+            )
         } else if (current.primarySurfaceVisible) {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
@@ -234,6 +241,30 @@ class SharedHomeShellStore(
             refreshBadgeSummaries()
         }
     }
+}
+
+private fun SharedHomeState.allowsLocalActivityPatch(event: RealtimeEvent): Boolean =
+    when (event) {
+        is MessageNew -> allowsLocalActivityPatch(event.message)
+        else -> true
+    }
+
+private fun SharedHomeState.allowsLocalActivityPatch(message: Message): Boolean {
+    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return false
+    val sourceChannelId =
+        message.conversationContext?.parentChannelId?.value
+            ?: message.channelId?.value
+            ?: return false
+    val conversation =
+        (snapshot.channels.asSequence() + snapshot.directMessages.asSequence())
+            .firstOrNull { row ->
+                row.channelId?.value == sourceChannelId || row.threadId.value == sourceChannelId
+            }
+            ?: return false
+    if (!conversation.activityMuted) return true
+    val muteFromSeq = conversation.muteFromSeq ?: return false
+    val messageSeq = message.seq ?: return false
+    return messageSeq < muteFromSeq
 }
 
 private fun SharedHomeShellIntent.toSharedHomeShellIntentDiagnosticsLabel(): String =

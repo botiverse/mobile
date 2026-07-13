@@ -21,14 +21,17 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
-import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
+import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +44,17 @@ import kotlin.time.TimeSource
 private const val SharedActivityPageSize = 30
 private const val SharedActivityReplyPrewarmConcurrency = 2
 private const val SharedActivityTailPrewarmDepthCap = 20
+private const val SharedActivityRealtimeReconcileDelayMillis = 150L
+
+private data class ActivityRealtimeHighWater(
+    val marker: MessageId?,
+    val replyCount: Int
+)
+
+private data class ActivityRealtimeReconcileResult(
+    val items: List<InboxItem>,
+    val totalUnreadDelta: Int = 0
+)
 
 data class ActivityReplyThreadPrewarmKey(
     val serverId: String,
@@ -70,7 +84,11 @@ class SharedActivityStore internal constructor(
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
     private val scope: CoroutineScope,
-    private var diagnosticsLogger: (String) -> Unit = {}
+    private var diagnosticsLogger: (String) -> Unit = {},
+    private val realtimeReconcileDelayMillis: Long = SharedActivityRealtimeReconcileDelayMillis,
+    private val afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
+    private val beforeRealtimeHighWaterFold: () -> Unit = {},
+    private val onRealtimePatchOwnerEntered: () -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -91,6 +109,11 @@ class SharedActivityStore internal constructor(
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
     private var tailDrainBarrier: Job? = null
+    private var realtimeReconcileJob: Job? = null
+    private var realtimeReconcileDirty = false
+    private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
+    // One owner for live row patches, version ledger changes, load folds, and scheduler lifecycle.
+    private val realtimeOwnerLock = SynchronizedObject()
 
     internal fun updateRuntimeIntegrations(
         authStore: SlockAuthSessionStore = this.authStore,
@@ -138,17 +161,23 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
-            is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.event)
+            is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
         }
     }
 
     fun clear() {
-        loadGeneration += 1L
-        loadJob?.cancel()
-        loadJob = null
-        pendingReadStateFacts = emptyMap()
+        synchronized(realtimeOwnerLock) {
+            loadGeneration += 1L
+            loadJob?.cancel()
+            loadJob = null
+            realtimeReconcileJob?.cancel()
+            realtimeReconcileJob = null
+            realtimeReconcileDirty = false
+            realtimeHighWater.clear()
+            pendingReadStateFacts = emptyMap()
+        }
         clearReplyPrewarmState()
     }
 
@@ -156,8 +185,10 @@ class SharedActivityStore internal constructor(
         clear()
         unreadClearOverrides = emptyMap()
         doneOverrides = emptyMap()
-        reconciledReadStateFacts = emptyMap()
-        _state.value = SharedActivityState()
+        synchronized(realtimeOwnerLock) {
+            reconciledReadStateFacts = emptyMap()
+            _state.value = SharedActivityState()
+        }
     }
 
     private fun prewarmVisibleReplyThreads(markers: Set<ActivityReplyThreadPrewarmMarker>) {
@@ -353,32 +384,194 @@ class SharedActivityStore internal constructor(
     }
 
     private fun setFilter(filter: InboxFilter) {
-        if (_state.value.selectedFilter == filter) return
-        _state.value =
-            SharedActivityState(
-                selectedFilter = filter,
-                loading = true
-            )
+        val changed =
+            synchronized(realtimeOwnerLock) {
+                if (_state.value.selectedFilter == filter) return@synchronized false
+                realtimeHighWater.clear()
+                _state.value =
+                    SharedActivityState(
+                        selectedFilter = filter,
+                        loading = true
+                    )
+                true
+            }
+        if (!changed) return
         load(refresh = true, intent = SharedActivityIntent.SetFilter(filter))
     }
 
     private fun clearSummary() {
-        _state.value =
-            SharedActivityState(
-                selectedFilter = _state.value.selectedFilter
+        synchronized(realtimeOwnerLock) {
+            realtimeHighWater.clear()
+            _state.value =
+                SharedActivityState(
+                    selectedFilter = _state.value.selectedFilter
+                )
+        }
+    }
+
+    private fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
+        if (intent.event is PerReceiverReadStateChanged) {
+            applyPerReceiverReadStateChanged(intent.event)
+            return
+        }
+        val (shouldRefresh, reconcileJobToStart) =
+            synchronized(realtimeOwnerLock) {
+                applyRealtimeEventLocked(intent) to
+                    realtimeReconcileJob?.takeIf { job -> !job.isActive && !job.isCompleted }
+            }
+        reconcileJobToStart?.start()
+        if (shouldRefresh) {
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+        }
+    }
+
+    private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
+        val event = intent.event
+        if (!event.refreshesActivity()) return false
+        if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated) {
+            if (intent.allowLocalPatch && _state.value.selectedFilter != InboxFilter.Mentions) {
+                when (event) {
+                    is MessageNew -> applyMessageNewPatch(event.message, intent)
+                    is ThreadUpdated -> applyThreadUpdatedPatch(event, intent)
+                    else -> Unit
+                }
+            }
+            scheduleRealtimeReconcileLocked()
+            return false
+        }
+        val current = _state.value
+        return !current.loading && !current.refreshing && (!current.loaded || current.snapshot != null)
+    }
+
+    private fun applyMessageNewPatch(
+        message: Message,
+        intent: SharedActivityIntent.ApplyRealtimeEvent
+    ): Boolean {
+        onRealtimePatchOwnerEntered()
+        val current = _state.value
+        val snapshot = current.snapshot ?: return false
+        val streamChannelId = message.channelId ?: message.threadChannelId ?: return false
+        val existingIndex =
+            snapshot.items.indexOfFirst { item ->
+                item.kind == InboxItemKind.Thread &&
+                    (item.threadChannelId == streamChannelId || item.channelId == streamChannelId)
+            }
+        if (existingIndex < 0) return false
+        val existing = snapshot.items[existingIndex]
+        if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) return true
+
+        val patched =
+            existing.copy(
+                latestActivityMessageId = message.id,
+                latestActivityPreview = message.body,
+                latestActivityAt = message.timestampLabel,
+                latestActivitySenderName = message.author.displayName,
+                latestActivitySenderId = message.author.id.value,
+                latestActivitySenderKind = message.author.kind,
+                latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
+                replyCount = existing.replyCount + 1
+            )
+        rememberRealtimeHighWater(patched)
+        applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
+        return true
+    }
+
+    private fun applyThreadUpdatedPatch(
+        event: ThreadUpdated,
+        intent: SharedActivityIntent.ApplyRealtimeEvent
+    ): Boolean {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return false
+        val existingIndex =
+            snapshot.items.indexOfFirst { item ->
+                item.kind == InboxItemKind.Thread &&
+                    (item.threadChannelId == event.threadChannelId || item.channelId == event.threadChannelId)
+            }
+        if (existingIndex < 0) return false
+        val existing = snapshot.items[existingIndex]
+        if (event.replyCount < existing.replyCount) return true
+        val patched =
+            existing.copy(
+                replyCount = event.replyCount,
+                latestActivityAt =
+                    if (event.replyCount > existing.replyCount && event.lastReplyAt != null) {
+                        event.lastReplyAt
+                    } else {
+                        existing.latestActivityAt
+                    }
+            )
+        if (patched == existing) return true
+        rememberRealtimeHighWater(patched)
+        applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
+        return true
+    }
+
+    private fun applyPatchedActivityItem(
+        patched: InboxItem,
+        existingIndex: Int,
+        current: SharedActivityState,
+        snapshot: InboxSnapshot,
+        intent: SharedActivityIntent.ApplyRealtimeEvent
+    ) {
+        val previous = snapshot.items[existingIndex]
+        val items = listOf(patched) + snapshot.items.filterIndexed { index, _ -> index != existingIndex }
+        reduceState(
+            intent,
+            current.copy(
+                snapshot =
+                    snapshot.copy(
+                        items = items,
+                        totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + patched.unreadCount - previous.unreadCount)
+                    ),
+                errorCode = null
+            )
+        )
+    }
+
+    private fun rememberRealtimeHighWater(item: InboxItem) {
+        val previous = realtimeHighWater[item.key]
+        if (previous != null && item.replyCount < previous.replyCount) return
+        realtimeHighWater[item.key] =
+            ActivityRealtimeHighWater(
+                marker = item.latestActivityMessageId,
+                replyCount = item.replyCount
             )
     }
 
-    private fun applyRealtimeEvent(event: RealtimeEvent) {
-        if (event is PerReceiverReadStateChanged) {
-            applyPerReceiverReadStateChanged(event)
-            return
-        }
-        if (!event.refreshesActivity()) return
-        val current = _state.value
-        if (current.loading || current.refreshing) return
-        if (!current.loaded || current.snapshot != null) {
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+    private fun scheduleRealtimeReconcileLocked() {
+        realtimeReconcileDirty = true
+        if (realtimeReconcileJob != null) return
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                delay(realtimeReconcileDelayMillis.coerceAtLeast(0L))
+                while (true) {
+                    val shouldReconcile =
+                        synchronized(realtimeOwnerLock) {
+                            if (realtimeReconcileDirty) {
+                                realtimeReconcileDirty = false
+                                true
+                            } else {
+                                realtimeReconcileJob = null
+                                false
+                            }
+                        }
+                    if (!shouldReconcile) {
+                        afterRealtimeReconcileTerminalDecision()
+                        return@launch
+                    }
+                    awaitCurrentLoadIdle()
+                    load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+                    awaitCurrentLoadIdle()
+                }
+            }
+        realtimeReconcileJob = job
+    }
+
+    private suspend fun awaitCurrentLoadIdle() {
+        while (true) {
+            val observed = synchronized(realtimeOwnerLock) { loadJob }
+            observed?.join()
+            if (synchronized(realtimeOwnerLock) { loadJob === observed }) return
         }
     }
 
@@ -417,39 +610,41 @@ class SharedActivityStore internal constructor(
             val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return@launch
             var shouldReconcile = false
             var acceptedHere = false
-            event.scopes.forEach { readScope ->
-                val maxReadSeq = readScope.maxReadSeq ?: return@forEach
-                val projectionKey =
-                    ActivityReadStateProjectionKey(
-                        serverId = serverId,
-                        memberId = memberId,
-                        scopeId = readScope.scopeId
+            synchronized(realtimeOwnerLock) {
+                event.scopes.forEach { readScope ->
+                    val maxReadSeq = readScope.maxReadSeq ?: return@forEach
+                    val projectionKey =
+                        ActivityReadStateProjectionKey(
+                            serverId = serverId,
+                            memberId = memberId,
+                            scopeId = readScope.scopeId
+                        )
+                    val checkpoint =
+                        PerReceiverReadStateCheckpoint(
+                            version = readScope.readStateVersion,
+                            maxReadSeq = maxReadSeq
+                        )
+                    val result =
+                        perReceiverStateVersionStore.applyOrObserveReadStateFact(
+                            serverId = serverId,
+                            memberId = memberId,
+                            scopeId = readScope.scopeId,
+                            incomingVersion = readScope.readStateVersion,
+                            incomingMaxReadSeq = maxReadSeq
+                        )
+                    diagnosticsLogger(
+                        "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
+                            "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
                     )
-                val checkpoint =
-                    PerReceiverReadStateCheckpoint(
-                        version = readScope.readStateVersion,
-                        maxReadSeq = maxReadSeq
-                    )
-                val result =
-                    perReceiverStateVersionStore.applyOrObserveReadStateFact(
-                        serverId = serverId,
-                        memberId = memberId,
-                        scopeId = readScope.scopeId,
-                        incomingVersion = readScope.readStateVersion,
-                        incomingMaxReadSeq = maxReadSeq
-                    )
-                diagnosticsLogger(
-                    "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
-                        "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
-                )
-                val alreadyScheduledOrReconciled =
-                    pendingReadStateFacts[projectionKey] == checkpoint ||
-                        reconciledReadStateFacts[projectionKey] == checkpoint
-                if (result != PerReceiverReadStateFactResult.Stale && !alreadyScheduledOrReconciled) {
-                    pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
-                    shouldReconcile = true
+                    val alreadyScheduledOrReconciled =
+                        pendingReadStateFacts[projectionKey] == checkpoint ||
+                            reconciledReadStateFacts[projectionKey] == checkpoint
+                    if (result != PerReceiverReadStateFactResult.Stale && !alreadyScheduledOrReconciled) {
+                        pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
+                        shouldReconcile = true
+                    }
+                    acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
                 }
-                acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
             }
             if (shouldReconcile) {
                 diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
@@ -464,18 +659,24 @@ class SharedActivityStore internal constructor(
         pullRefresh: Boolean = false,
         intent: SharedActivityIntent
     ) {
-        val current = _state.value
-        if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) return
-        val generation = ++loadGeneration
-        loadJob?.cancel()
-        loadJob =
-            scope.launch {
-                val startedAt = TimeSource.Monotonic.markNow()
-                val previous = _state.value
-                val filter = previous.selectedFilter
-                try {
-                    val session = authStore.readSession()
-                        ?: return@launch setLoadError("unauthenticated", append = !refresh).also {
+        val job =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) {
+                    return@synchronized null
+                }
+                val generation = ++loadGeneration
+                loadJob?.cancel()
+                scope.launch(start = CoroutineStart.LAZY) {
+                    val startedAt = TimeSource.Monotonic.markNow()
+                    val previous = _state.value
+                    val filter = previous.selectedFilter
+                    try {
+                        val session = authStore.readSession()
+                        if (session == null) {
+                            synchronized(realtimeOwnerLock) {
+                                setLoadError("unauthenticated", append = !refresh)
+                            }
                             logActivityLoad(
                                 result = "error",
                                 code = "unauthenticated",
@@ -484,9 +685,13 @@ class SharedActivityStore internal constructor(
                                 filter = filter,
                                 durationMs = startedAt.elapsedNow().inWholeMilliseconds
                             )
+                            return@launch
                         }
-                    val serverId = session.currentServerId?.let(::ServerId)
-                        ?: return@launch setLoadError("server_missing", append = !refresh).also {
+                        val serverId = session.currentServerId?.let(::ServerId)
+                        if (serverId == null) {
+                            synchronized(realtimeOwnerLock) {
+                                setLoadError("server_missing", append = !refresh)
+                            }
                             logActivityLoad(
                                 result = "error",
                                 code = "server_missing",
@@ -495,97 +700,124 @@ class SharedActivityStore internal constructor(
                                 filter = filter,
                                 durationMs = startedAt.elapsedNow().inWholeMilliseconds
                             )
+                            return@launch
                         }
-                    val userId = session.user.id
-                    val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
-                        ?: return@launch setLoadError("server_missing", append = !refresh)
-                    val stateBeforeOwner = _state.value
-                    val ownerChanged =
-                        stateBeforeOwner.ownerServerId?.let { it != serverId.value } == true ||
-                            stateBeforeOwner.ownerUserId?.let { it != userId } == true
-                    val stateForOwner =
-                        if (ownerChanged) {
-                            SharedActivityState(selectedFilter = stateBeforeOwner.selectedFilter)
-                        } else {
-                            stateBeforeOwner
+                        val userId = session.user.id
+                        val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
+                        if (server == null) {
+                            synchronized(realtimeOwnerLock) {
+                                setLoadError("server_missing", append = !refresh)
+                            }
+                            return@launch
                         }
-                    reduceState(
-                        intent,
-                        stateForOwner.copy(
-                            ownerServerId = serverId.value,
-                            ownerUserId = userId
-                        )
-                    )
-                    val stateBeforeRequest = _state.value
-                    val stateWithLocalProfiles =
-                        if (refresh && stateBeforeRequest.snapshot != null) {
-                            stateBeforeRequest.copy(
-                                senderProfiles = stateBeforeRequest.senderProfiles + currentSenderProfiles(serverId)
+                        synchronized(realtimeOwnerLock) {
+                            val stateBeforeOwner = _state.value
+                            val ownerChanged =
+                                stateBeforeOwner.ownerServerId?.let { it != serverId.value } == true ||
+                                    stateBeforeOwner.ownerUserId?.let { it != userId } == true
+                            if (ownerChanged) realtimeHighWater.clear()
+                            val stateForOwner =
+                                if (ownerChanged) {
+                                    SharedActivityState(selectedFilter = stateBeforeOwner.selectedFilter)
+                                } else {
+                                    stateBeforeOwner
+                                }
+                            reduceState(
+                                intent,
+                                stateForOwner.copy(
+                                    ownerServerId = serverId.value,
+                                    ownerUserId = userId
+                                )
                             )
-                        } else {
-                            stateBeforeRequest
-                        }
-                    reduceState(
-                        intent,
-                        stateWithLocalProfiles.copy(
-                            loading = refresh && stateWithLocalProfiles.snapshot == null,
-                            refreshing = refresh && stateWithLocalProfiles.snapshot != null,
-                            pullRefreshing = refresh && pullRefresh && stateWithLocalProfiles.snapshot != null,
-                            loadingMore = !refresh,
-                            errorCode = null,
-                            loadMoreErrorCode = null
-                        )
-                    )
-                    val result =
-                        if (refresh) {
-                            inboxRepository.loadInitial(serverId, filter, SharedActivityPageSize)
-                        } else {
-                            inboxRepository.loadMore(
-                                serverId,
-                                filter,
-                                previous.nextOffset ?: previous.items.size,
-                                SharedActivityPageSize
+                            val stateBeforeRequest = _state.value
+                            val stateWithLocalProfiles =
+                                if (refresh && stateBeforeRequest.snapshot != null) {
+                                    stateBeforeRequest.copy(
+                                        senderProfiles = stateBeforeRequest.senderProfiles + currentSenderProfiles(serverId)
+                                    )
+                                } else {
+                                    stateBeforeRequest
+                                }
+                            reduceState(
+                                intent,
+                                stateWithLocalProfiles.copy(
+                                    loading = refresh && stateWithLocalProfiles.snapshot == null,
+                                    refreshing = refresh && stateWithLocalProfiles.snapshot != null,
+                                    pullRefreshing = refresh && pullRefresh && stateWithLocalProfiles.snapshot != null,
+                                    loadingMore = !refresh,
+                                    errorCode = null,
+                                    loadMoreErrorCode = null
+                                )
                             )
                         }
-                    val senderProfiles = loadSenderProfiles(serverId)
-                    if (generation != loadGeneration) return@launch
-                    applyLoadResult(
-                        result = result,
-                        server = server,
-                        append = !refresh,
-                        senderProfiles = senderProfiles,
-                        intent = intent
-                    )
-                    completeReadStateReconcile(
-                        successful = result is DataResult.Content || result is DataResult.Empty
-                    )
-                    logActivityLoad(
-                        result = result.activityDiagnosticsResult(),
-                        code = null,
-                        refresh = refresh,
-                        append = !refresh,
-                        filter = filter,
-                        durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                    )
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    if (generation != loadGeneration) return@launch
-                    completeReadStateReconcile(successful = false)
-                    setLoadError("activity_network", append = !refresh)
-                    logActivityLoad(
-                        result = "exception",
-                        code = "activity_network",
-                        refresh = refresh,
-                        append = !refresh,
-                        filter = filter,
-                        durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                    )
-                }
+                        val result =
+                            if (refresh) {
+                                inboxRepository.loadInitial(serverId, filter, SharedActivityPageSize)
+                            } else {
+                                inboxRepository.loadMore(
+                                    serverId,
+                                    filter,
+                                    previous.nextOffset ?: previous.items.size,
+                                    SharedActivityPageSize
+                                )
+                            }
+                        val senderProfiles = loadSenderProfiles(serverId)
+                        val applied =
+                            synchronized(realtimeOwnerLock) {
+                                if (generation != loadGeneration) {
+                                    false
+                                } else {
+                                    applyLoadResult(
+                                        result = result,
+                                        server = server,
+                                        append = !refresh,
+                                        senderProfiles = senderProfiles,
+                                        intent = intent
+                                    )
+                                    completeReadStateReconcileLocked(
+                                        successful = result is DataResult.Content || result is DataResult.Empty
+                                    )
+                                    true
+                                }
+                            }
+                        if (!applied) return@launch
+                        logActivityLoad(
+                            result = result.activityDiagnosticsResult(),
+                            code = null,
+                            refresh = refresh,
+                            append = !refresh,
+                            filter = filter,
+                            durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        val handled =
+                            synchronized(realtimeOwnerLock) {
+                                if (generation != loadGeneration) {
+                                    false
+                                } else {
+                                    completeReadStateReconcileLocked(successful = false)
+                                    setLoadError("activity_network", append = !refresh)
+                                    true
+                                }
+                            }
+                        if (!handled) return@launch
+                        logActivityLoad(
+                            result = "exception",
+                            code = "activity_network",
+                            refresh = refresh,
+                            append = !refresh,
+                            filter = filter,
+                            durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                        )
+                    }
+                }.also { loadJob = it }
             }
+        job?.start()
     }
 
-    private fun completeReadStateReconcile(successful: Boolean) {
+    private fun completeReadStateReconcileLocked(successful: Boolean) {
         if (pendingReadStateFacts.isEmpty()) return
         if (successful) {
             reconciledReadStateFacts = reconciledReadStateFacts + pendingReadStateFacts
@@ -623,12 +855,21 @@ class SharedActivityStore internal constructor(
                             .withActivityThreadTaskProjection(result.data.server.id.value, tasksDataStore)
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter)
                             .reconcileLocallyDoneItems()
+                    beforeRealtimeHighWaterFold()
+                    val realtimeReconcile = reconcileRealtimeHighWater(pageItems.items, append)
                     val items =
                         if (append) {
-                            (current.items + pageItems.items).dedupeActivityItems()
+                            (current.items + realtimeReconcile.items).dedupeActivityItems()
                         } else {
-                            pageItems.items.dedupeActivityItems()
+                            realtimeReconcile.items.dedupeActivityItems()
                         }
+                    val canonicalUnreadCount =
+                        maxOf(
+                            0,
+                            result.data.totalUnreadCount -
+                                pageItems.suppressedUnreadCount -
+                                pageItems.suppressedDoneUnreadCount
+                        )
                     val nextState =
                         current.copy(
                             snapshot =
@@ -641,12 +882,7 @@ class SharedActivityStore internal constructor(
                                             maxOf(0, result.data.totalCount - pageItems.removedDoneRows)
                                         },
                                     totalUnreadCount =
-                                        maxOf(
-                                            0,
-                                            result.data.totalUnreadCount -
-                                                pageItems.suppressedUnreadCount -
-                                                pageItems.suppressedDoneUnreadCount
-                                        ),
+                                        maxOf(0, canonicalUnreadCount + realtimeReconcile.totalUnreadDelta),
                                     hasMore = result.data.hasMore,
                                     nextOffset = result.data.nextOffset
                                 ),
@@ -662,6 +898,7 @@ class SharedActivityStore internal constructor(
                     nextState
                 }
                 is DataResult.Empty -> {
+                    if (!append) realtimeHighWater.clear()
                     val snapshot =
                         if (append) {
                             current.snapshot?.copy(hasMore = false, nextOffset = null)
@@ -703,6 +940,50 @@ class SharedActivityStore internal constructor(
                     )
             }
         reduceState(intent, nextState)
+    }
+
+    private fun reconcileRealtimeHighWater(
+        canonicalItems: List<InboxItem>,
+        append: Boolean
+    ): ActivityRealtimeReconcileResult {
+        if (append || realtimeHighWater.isEmpty()) {
+            return ActivityRealtimeReconcileResult(items = canonicalItems)
+        }
+        val currentThreads =
+            _state.value.items
+                .asSequence()
+                .filter { item -> item.kind == InboxItemKind.Thread }
+                .associateBy { item -> item.key }
+        val canonicalKeys = canonicalItems.mapTo(mutableSetOf()) { item -> item.key }
+        var totalUnreadDelta = 0
+        val reconciled =
+            canonicalItems.map { canonical ->
+                val localVersion = realtimeHighWater[canonical.key] ?: return@map canonical
+                val current = currentThreads[canonical.key]
+                if (current == null) {
+                    realtimeHighWater.remove(canonical.key)
+                    return@map canonical
+                }
+                if (canonical.replyCount > localVersion.replyCount) {
+                    rememberRealtimeHighWater(canonical)
+                    return@map canonical
+                }
+                if (
+                    canonical.replyCount == localVersion.replyCount &&
+                    canonical.latestActivityMessageId == localVersion.marker
+                ) {
+                    return@map canonical
+                }
+                totalUnreadDelta += current.unreadCount - canonical.unreadCount
+                current
+            }
+        realtimeHighWater.keys.toList().forEach { key ->
+            if (key !in canonicalKeys) realtimeHighWater.remove(key)
+        }
+        return ActivityRealtimeReconcileResult(
+            items = reconciled,
+            totalUnreadDelta = totalUnreadDelta
+        )
     }
 
     private fun markAllRead() {
@@ -1169,7 +1450,10 @@ sealed interface SharedActivityIntent {
     data class PrewarmActivityTail(
         val orderedMarkers: List<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
-    data class ApplyRealtimeEvent(val event: RealtimeEvent) : SharedActivityIntent
+    data class ApplyRealtimeEvent(
+        val event: RealtimeEvent,
+        val allowLocalPatch: Boolean = true
+    ) : SharedActivityIntent
     data class ApplyRealtimeSummaryEvent(
         val event: RealtimeEvent,
         val activeConversationId: String?
