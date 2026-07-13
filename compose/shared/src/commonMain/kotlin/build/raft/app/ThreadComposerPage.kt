@@ -1070,19 +1070,23 @@ internal fun ThreadComposerContent(
     }
     val memberRankingRequest =
         remember(suggestionTrigger, indexedMemberSuggestions, state.memberSuggestions) {
-            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)?.let { trigger ->
-                indexedMemberSuggestions
-                    ?.takeIf { indexed -> indexed.matches(state.memberSuggestions) }
-                    ?.let { indexed -> ThreadComposerSuggestionRankingRequest(trigger.query, indexed.entries) }
-            }
+            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)
+                ?.takeIf { trigger -> trigger.query.isNotBlank() }
+                ?.let { trigger ->
+                    indexedMemberSuggestions
+                        ?.takeIf { indexed -> indexed.matches(state.memberSuggestions) }
+                        ?.let { indexed -> ThreadComposerSuggestionRankingRequest(trigger.query, indexed.entries) }
+                }
         }
     val channelRankingRequest =
         remember(suggestionTrigger, indexedChannelSuggestions, state.channelSuggestions) {
-            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)?.let { trigger ->
-                indexedChannelSuggestions
-                    ?.takeIf { indexed -> indexed.matches(state.channelSuggestions) }
-                    ?.let { indexed -> ThreadComposerSuggestionRankingRequest(trigger.query, indexed.entries) }
-            }
+            (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)
+                ?.takeIf { trigger -> trigger.query.isNotBlank() }
+                ?.let { trigger ->
+                    indexedChannelSuggestions
+                        ?.takeIf { indexed -> indexed.matches(state.channelSuggestions) }
+                        ?.let { indexed -> ThreadComposerSuggestionRankingRequest(trigger.query, indexed.entries) }
+                }
         }
     var memberRankingResult by remember(state.instanceId) {
         mutableStateOf<ThreadComposerSuggestionRankingResult<KuiklyComposerMemberItem>?>(null)
@@ -1124,16 +1128,38 @@ internal fun ThreadComposerContent(
         memberRankingRequest != null && memberRankingResult?.request === memberRankingRequest
     val channelRankingReady =
         channelRankingRequest != null && channelRankingResult?.request === channelRankingRequest
-    val filteredMemberSuggestions = memberRankingResult?.suggestions.takeIf { memberRankingReady }.orEmpty()
-    val filteredChannelSuggestions = channelRankingResult?.suggestions.takeIf { channelRankingReady }.orEmpty()
+    val immediateMemberSuggestions =
+        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)
+            ?.let { trigger -> immediateThreadComposerSuggestions(trigger.query, state.memberSuggestions) }
+            .orEmpty()
+    val immediateChannelSuggestions =
+        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)
+            ?.let { trigger -> immediateThreadComposerSuggestions(trigger.query, state.channelSuggestions) }
+            .orEmpty()
+    val filteredMemberSuggestions =
+        if (memberRankingReady) memberRankingResult?.suggestions.orEmpty() else immediateMemberSuggestions
+    val filteredChannelSuggestions =
+        if (channelRankingReady) channelRankingResult?.suggestions.orEmpty() else immediateChannelSuggestions
+    val memberUsesImmediateSuggestions =
+        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)?.query?.isBlank() == true
+    val channelUsesImmediateSuggestions =
+        (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)?.query?.isBlank() == true
     val effectiveMemberSuggestionsStatus =
-        if (suggestionTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger && !memberRankingReady) {
+        if (
+            suggestionTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger &&
+            !memberRankingReady &&
+            !memberUsesImmediateSuggestions
+        ) {
             SharedMembersLoadStatus.InFlight
         } else {
             state.memberSuggestionsStatus
         }
     val effectiveChannelSuggestionsStatus =
-        if (suggestionTrigger is KuiklyComposerSuggestionTrigger.ChannelTrigger && !channelRankingReady) {
+        if (
+            suggestionTrigger is KuiklyComposerSuggestionTrigger.ChannelTrigger &&
+            !channelRankingReady &&
+            !channelUsesImmediateSuggestions
+        ) {
             SharedMembersLoadStatus.InFlight
         } else {
             state.channelSuggestionsStatus

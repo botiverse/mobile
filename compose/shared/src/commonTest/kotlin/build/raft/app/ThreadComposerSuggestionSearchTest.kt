@@ -148,6 +148,17 @@ class ThreadComposerSuggestionSearchTest {
     }
 
     @Test
+    fun blankQueryCanRenderImmediatePreviewWithoutIndexing() {
+        val suggestions = (0 until 100).map { index -> "candidate-$index" }
+
+        assertEquals(
+            (0 until 30).map { index -> "candidate-$index" },
+            immediateThreadComposerSuggestions("", suggestions)
+        )
+        assertEquals(emptyList(), immediateThreadComposerSuggestions("can", suggestions))
+    }
+
+    @Test
     fun tenThousandCandidateRankingKeepsBoundedTopThirtyWithinBudget() {
         val suggestions =
             (0 until 10_000).map { index ->
