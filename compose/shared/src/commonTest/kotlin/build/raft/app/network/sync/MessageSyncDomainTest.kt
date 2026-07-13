@@ -472,6 +472,7 @@ class MessageSyncDomainTest {
         assertNull(sparse.scopeCoverage["c1"])
 
         val authoritative = baseline(state = sparse, rows = listOf(realtime), coveredFromSeq = 14)
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 1))
         assertEquals(
             SyncIngestOutcome.Applied("c1", 14),
             host.ingestAuthoritativeSnapshot(
@@ -492,6 +493,7 @@ class MessageSyncDomainTest {
             rows = listOf(realtime, row("stale", seq = 15, senderId = "u3")),
             remoteHighWaterSeq = 15,
         )
+        assertFalse(host.beginAuthoritativeRebaseline("c1", generation = 1))
         assertEquals(
             SyncIngestOutcome.DuplicateDropped("c1", 15),
             host.ingestAuthoritativeSnapshot(
@@ -522,6 +524,7 @@ class MessageSyncDomainTest {
         val c2CursorBefore = host.scopeSyncState("c2")
 
         val c1Authoritative = baseline(state = host.state("c1"), rows = listOf(c1Row), scopeId = "c1")
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 2))
         assertEquals(
             SyncIngestOutcome.Applied("c1", 11),
             host.ingestAuthoritativeSnapshot(
@@ -539,6 +542,7 @@ class MessageSyncDomainTest {
             coveredFromSeq = 21,
             remoteHighWaterSeq = 21,
         )
+        assertTrue(host.beginAuthoritativeRebaseline("c2", generation = 1))
         assertEquals(
             SyncIngestOutcome.Applied("c2", 21),
             host.ingestAuthoritativeSnapshot(
@@ -549,6 +553,7 @@ class MessageSyncDomainTest {
         assertTrue(project(host.state("c2"), scopeId = "c2", maxReadSeq = 20).complete)
 
         val c1Installed = host.state("c1")
+        assertFalse(host.beginAuthoritativeRebaseline("c1", generation = 1))
         assertEquals(
             SyncIngestOutcome.DuplicateDropped("c1", 12),
             host.ingestAuthoritativeSnapshot(
@@ -557,6 +562,132 @@ class MessageSyncDomainTest {
             ),
         )
         assertSame(c1Installed, host.state("c1"))
+    }
+
+    @Test
+    fun realtimeAfterSnapshotRequestIsReplayedAboveSnapshotWatermark() {
+        val host = MessageDomainSyncHost()
+        val m14 = row("m14", seq = 14, senderId = "u1")
+        val m15 = row("m15", seq = 15, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val snapshotAt14 = baseline(state = host.state("c1"), rows = listOf(m14), coveredFromSeq = 14)
+
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 2))
+        host.ingestFrame(
+            SyncFrame("c1", seq = 15, epoch = "e1", event = MessageDomainEvent.New(m15, MESSAGE_NEW)),
+        )
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotAt14),
+                generation = 2,
+            ),
+        )
+
+        val finalState = host.state("c1")
+        assertEquals(listOf("m14", "m15"), ids(finalState))
+        assertEquals(15, host.scopeSyncState("c1")?.appliedSeq)
+        assertTrue(project(finalState, maxReadSeq = 13).complete)
+        assertEquals(2, project(finalState, maxReadSeq = 13).unreadCount)
+    }
+
+    @Test
+    fun snapshotOlderThanPreexistingUnretainedTailIsZeroMutation() {
+        val host = MessageDomainSyncHost()
+        val m14 = row("m14", seq = 14, senderId = "u1")
+        val m15 = row("m15", seq = 15, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val snapshotAt14 = baseline(state = host.state("c1"), rows = listOf(m14), coveredFromSeq = 14)
+        host.ingestFrame(
+            SyncFrame("c1", seq = 15, epoch = "e1", event = MessageDomainEvent.New(m15, MESSAGE_NEW)),
+        )
+        val before = host.state("c1")
+
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 1))
+        assertEquals(
+            SyncIngestOutcome.DuplicateDropped("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotAt14),
+                generation = 1,
+            ),
+        )
+        assertSame(before, host.state("c1"))
+        assertEquals(listOf("m14", "m15"), ids(host.state("c1")))
+        assertFalse(project(host.state("c1"), maxReadSeq = 13).complete)
+    }
+
+    @Test
+    fun newerGenerationSupersedesPendingOlderCompletionWithoutRollback() {
+        val host = MessageDomainSyncHost()
+        val m14 = row("m14", seq = 14, senderId = "u1")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val snapshotAt14 = baseline(state = host.state("c1"), rows = listOf(m14), coveredFromSeq = 14)
+
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 1))
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 2))
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotAt14),
+                generation = 2,
+            ),
+        )
+        val installed = host.state("c1")
+
+        assertEquals(
+            SyncIngestOutcome.DuplicateDropped("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotAt14),
+                generation = 1,
+            ),
+        )
+        assertSame(installed, host.state("c1"))
+    }
+
+    @Test
+    fun mismatchedOuterAndInnerSnapshotEnvelopeIsZeroMutation() {
+        val host = MessageDomainSyncHost()
+        val m14 = row("m14", seq = 14, senderId = "u1")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val before = host.state("c1")
+        val valid = baseline(state = before, rows = listOf(m14), coveredFromSeq = 14)
+        val wrongScope = baseline(
+            rows = listOf(row("c2-m14", channel = "c2", seq = 14)),
+            scopeId = "c2",
+            coveredFromSeq = 14,
+        )
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 1))
+
+        listOf(
+            SyncSnapshot("c1", watermark = 15, epoch = "e1", state = valid),
+            SyncSnapshot("c1", watermark = 14, epoch = "e2", state = valid),
+            SyncSnapshot("c1", watermark = 14, epoch = "e1", state = wrongScope),
+            SyncSnapshot("c2", watermark = 14, epoch = "e1", state = valid),
+        ).forEach { invalid ->
+            assertEquals(
+                SyncIngestOutcome.DuplicateDropped(invalid.scopeId, invalid.watermark),
+                host.ingestAuthoritativeSnapshot(invalid, generation = 1),
+            )
+            assertSame(before, host.state("c1"))
+            assertNull(host.state("c1").scopeCoverage["c1"])
+        }
+
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = valid),
+                generation = 1,
+            ),
+        )
+        assertTrue(project(host.state("c1"), maxReadSeq = 13).complete)
     }
 
     @Test
@@ -581,6 +712,7 @@ class MessageSyncDomainTest {
             SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
         )
         val authoritative = baseline(state = host.state("c1"), rows = listOf(m14), coveredFromSeq = 14)
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 1))
 
         val snapshotResult = async(Dispatchers.Default) {
             host.ingestAuthoritativeSnapshot(

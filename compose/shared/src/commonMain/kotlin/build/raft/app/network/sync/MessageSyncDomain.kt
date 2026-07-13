@@ -416,6 +416,12 @@ internal class MessageDomainSyncHost(
         val lock: SynchronizedObject = SynchronizedObject(),
         var activeCore: SyncCore = newMessageDomainSyncCore(),
         var acceptedRebaselineGeneration: Long? = null,
+        var pendingRebaseline: PendingRebaseline? = null,
+    )
+
+    private data class PendingRebaseline(
+        val generation: Long,
+        val postBeginFrames: MutableList<SyncFrame> = mutableListOf(),
     )
 
     private val ownersLock = SynchronizedObject()
@@ -428,7 +434,28 @@ internal class MessageDomainSyncHost(
         val scopeOwner = owner(frame.scopeId)
         beforeFrameLock?.invoke(frame)
         return synchronized(scopeOwner.lock) {
-            scopeOwner.activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+            val outcome = scopeOwner.activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+            scopeOwner.pendingRebaseline?.postBeginFrames?.add(frame)
+            outcome
+        }
+    }
+
+    /** Start the host generation before issuing the server snapshot request. */
+    fun beginAuthoritativeRebaseline(scopeId: SyncScopeId, generation: Long): Boolean {
+        val scopeOwner = owner(scopeId)
+        return synchronized(scopeOwner.lock) {
+            val accepted = scopeOwner.acceptedRebaselineGeneration
+            val pending = scopeOwner.pendingRebaseline?.generation
+            if (
+                generation <= 0L ||
+                (accepted != null && generation <= accepted) ||
+                (pending != null && generation <= pending)
+            ) {
+                false
+            } else {
+                scopeOwner.pendingRebaseline = PendingRebaseline(generation)
+                true
+            }
         }
     }
 
@@ -438,17 +465,40 @@ internal class MessageDomainSyncHost(
     ): SyncIngestOutcome {
         val scopeOwner = owner(snapshot.scopeId)
         return synchronized(scopeOwner.lock) {
-            val currentGeneration = scopeOwner.acceptedRebaselineGeneration
-            if (generation <= 0L || (currentGeneration != null && generation <= currentGeneration)) {
+            val pending = scopeOwner.pendingRebaseline
+            if (pending == null || pending.generation != generation || !snapshot.hasMatchingMessageCoverageEnvelope()) {
+                return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+            }
+            val activeWatermark =
+                scopeOwner.activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, snapshot.scopeId)?.appliedSeq ?: 0L
+            val retainedTailWatermark = pending.postBeginFrames.maxOfOrNull { it.seq } ?: snapshot.watermark
+            if (activeWatermark > snapshot.watermark && retainedTailWatermark < activeWatermark) {
                 return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
             }
 
             val replacement = newMessageDomainSyncCore()
             val outcome = replacement.ingestSnapshot(MESSAGES_SYNC_DOMAIN, snapshot)
             if (outcome is SyncIngestOutcome.Applied) {
+                val replaySucceeded =
+                    pending.postBeginFrames
+                        .asSequence()
+                        .filter { it.scopeId == snapshot.scopeId && it.seq > snapshot.watermark }
+                        .sortedBy { it.seq }
+                        .all { frame ->
+                            when (replacement.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)) {
+                                is SyncIngestOutcome.Applied,
+                                is SyncIngestOutcome.MaxAdvanced,
+                                is SyncIngestOutcome.DuplicateDropped -> true
+                                else -> false
+                            }
+                        }
+                if (!replaySucceeded) {
+                    return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+                }
                 beforeSnapshotSwap?.invoke()
                 scopeOwner.activeCore = replacement
                 scopeOwner.acceptedRebaselineGeneration = generation
+                scopeOwner.pendingRebaseline = null
             }
             outcome
         }
@@ -468,6 +518,15 @@ internal class MessageDomainSyncHost(
             scopeOwner.activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, scopeId)
         }
     }
+}
+
+private fun SyncSnapshot.hasMatchingMessageCoverageEnvelope(): Boolean {
+    val domainState = state as? MessageDomainState ?: return false
+    val coverage = domainState.scopeCoverage[scopeId] ?: return false
+    if (coverage.scopeId != scopeId || coverage.epoch != epoch || coverage.remoteHighWaterSeq != watermark) return false
+    if (domainState.scopeCoverage.keys.any { it != scopeId }) return false
+    if (domainState.channelMessages.keys.any { it != scopeId }) return false
+    return domainState.channelMessages[scopeId].orEmpty().all { it.channelId == scopeId && it.seq <= watermark }
 }
 
 private fun newMessageDomainSyncCore(): SyncCore =

@@ -80,7 +80,11 @@ internal class SyncCoreMessageShadowFoldLane(
         }
     }
 
-    /** Authoritative conversation hydrate/rebaseline seam; caller serializes it with frame ingress. */
+    /** Start the per-scope generation before the host issues the authoritative snapshot request. */
+    internal fun beginAuthoritativeRebaseline(scopeId: SyncScopeId, generation: Long): Boolean =
+        domainHost.beginAuthoritativeRebaseline(scopeId, generation)
+
+    /** Complete a begun authoritative conversation hydrate/rebaseline generation. */
     internal fun ingestAuthoritativeSnapshot(
         snapshot: SyncSnapshot,
         generation: Long,
