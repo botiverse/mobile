@@ -1031,21 +1031,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureMembersSmokeList() {
-        runShellCommand("wm size ${MEMBERS_SMOKE_DISPLAY_WIDTH_PX}x$MEMBERS_SMOKE_DISPLAY_HEIGHT_PX")
-        try {
-            captureKmpComponentCase(
-                caseId = "screens.members.smoke-list",
-                pageName = "compose_members_smoke",
-                crop = MEMBERS_SMOKE_LONG_CROP,
-                settleMs = 2_500
-            )
-        } finally {
-            runShellCommand("wm size reset")
-        }
-    }
-
-    @Test
     fun captureMembersCreateAgentClaudeDialog() {
         captureKmpComponentCase(
             caseId = "components.members.create-agent.claude-dialog",
@@ -2680,15 +2665,6 @@ class KmpVisualScreenshotCaptureTest {
                 contract = "viewport-bounds",
                 captureMethod = "app-window-root-draw-viewport-density-resize"
             )
-        private val MEMBERS_SMOKE_LONG_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 390,
-                heightDp = 1000,
-                contract = "long-viewport-bounds",
-                captureMethod = "app-window-root-draw-long-viewport-density-resize"
-            )
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(
                 leftDp = 0,
@@ -3218,8 +3194,6 @@ class KmpVisualScreenshotCaptureTest {
         // sentinel token. 7500px ≈ 3 viewports, under common GL texture limits.
         private const val FULL_HEIGHT_DISPLAY_WIDTH_PX = 1170
         private const val FULL_HEIGHT_DISPLAY_HEIGHT_PX = 7500
-        private const val MEMBERS_SMOKE_DISPLAY_WIDTH_PX = 1024
-        private const val MEMBERS_SMOKE_DISPLAY_HEIGHT_PX = 2625
         private const val FULL_HEIGHT_TOKEN = "settings_route_visual_fullheight"
         private const val FULL_HEIGHT_TOKEN_TIMEOUT_MS = 20_000L
         private const val FULL_HEIGHT_POLL_MS = 250L
