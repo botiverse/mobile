@@ -556,14 +556,23 @@ internal class SharedThreadDataSource(
         return payload.withKnownMarkdownChannelNames(session)
     }
 
-    suspend fun withHomeConversationContext(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
-        val session = readSession() ?: return payload
-        val home = currentHomeSnapshot(session) ?: return payload
+    suspend fun homeConversationContextResolution(
+        payload: KuiklyThreadScreenPayload
+    ): ThreadHomeContextResolution {
+        val session = readSession() ?: return ThreadHomeContextResolution(payload = payload)
+        val home = currentHomeSnapshot(session) ?: return ThreadHomeContextResolution(payload = payload)
         val accessFallback = resolveConversationAccessFallback(payload, home)
-        return payload
-            .withConversationAccessFallback(accessFallback)
-            .withKnownMarkdownChannelNames(home)
+        return ThreadHomeContextResolution(
+            payload =
+                payload
+                    .withConversationAccessFallback(accessFallback)
+                    .withKnownMarkdownChannelNames(home),
+            accessCandidate = accessFallback
+        )
     }
+
+    suspend fun withHomeConversationContext(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+        homeConversationContextResolution(payload).payload
 
     private fun cachedReplyThreadStreamId(parentChannelId: String, parentMessageId: String): String? =
         replyThreadResolveCache[ReplyThreadResolveKey(parentChannelId, parentMessageId)]
@@ -2695,12 +2704,17 @@ internal object SharedThreadPaging {
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
+private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata> = payload.toThreadReplyMetadataMap(),
     val highlightedMentions: Set<String> = emptySet(),
+    val accessResolution: ThreadAccessResolution = ThreadAccessResolution.Loading,
+    val canonicalAccessResolved: Boolean = false,
+    val initialHomeAccessLookupComplete: Boolean = false,
+    val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
     /**
      * Key (typically source thread id) the [membersLoadStatus] is bound to.
@@ -2709,6 +2723,41 @@ internal data class SharedThreadState(
      */
     val membersLoadKey: String? = null
 )
+
+internal enum class ThreadAccessResolution {
+    Loading,
+    Resolved,
+    Error,
+    NoPermission
+}
+
+internal data class ThreadHomeContextResolution(
+    val payload: KuiklyThreadScreenPayload,
+    val accessCandidate: ConversationAccessCandidate? = null
+)
+
+/**
+ * UI-owned projection that keeps access/composer facts and timeline load facts
+ * in the same StateFlow emission. Collecting these fields independently can
+ * briefly pair a resolved membership payload with a still-loading timeline (or
+ * vice versa), which makes the footer and LazyColumn change on separate frames.
+ */
+internal data class SharedThreadRenderSlice(
+    val payload: KuiklyThreadScreenPayload,
+    val timelineSlice: ThreadTimelineSlice,
+    val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    val highlightedMentions: Set<String>,
+    val accessResolution: ThreadAccessResolution
+)
+
+private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
+    SharedThreadRenderSlice(
+        payload = payload.withoutThreadTimelineContent(),
+        timelineSlice = timelineSlice,
+        replyMetadataByParentId = replyMetadataByParentId,
+        highlightedMentions = highlightedMentions,
+        accessResolution = accessResolution
+    )
 
 /**
  * Per-thread members load status. Keyed by [SharedThreadState.membersLoadKey]
@@ -2826,6 +2875,11 @@ internal class SharedThreadStore(
             .map { threadState -> threadState.payload.withoutThreadTimelineContent() }
             .distinctUntilChanged()
 
+    fun renderSliceFlow(): Flow<SharedThreadRenderSlice> =
+        state
+            .map { threadState -> threadState.toRenderSlice() }
+            .distinctUntilChanged()
+
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> =
         state
             .map { threadState -> threadState.timelineSlice }
@@ -2843,6 +2897,7 @@ internal class SharedThreadStore(
 
     private var loadJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
+    private var initialAccessResolutionJob: Job? = null
     private var homeContextHydrationJob: Job? = null
     private var backgroundMembersHydrationJob: Job? = null
     private var readInFlightMarker: ThreadVisibleReadMarker? = null
@@ -2852,6 +2907,7 @@ internal class SharedThreadStore(
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
+    private val initialAccessStateMutex = Mutex()
     private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
 
     fun dispatch(intent: SharedThreadIntent) {
@@ -2859,6 +2915,10 @@ internal class SharedThreadStore(
             is SharedThreadIntent.Start,
             SharedThreadIntent.Refresh -> {
                 loadJob?.cancel()
+                if (intent is SharedThreadIntent.Start) {
+                    initialAccessResolutionJob?.cancel()
+                    initialAccessResolutionJob = null
+                }
                 secondaryTimelineRefreshJob?.cancel()
                 secondaryTimelineRefreshJob = null
                 homeContextHydrationJob?.cancel()
@@ -2978,6 +3038,8 @@ internal class SharedThreadStore(
         loadJob = null
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob = null
+        initialAccessResolutionJob?.cancel()
+        initialAccessResolutionJob = null
         homeContextHydrationJob?.cancel()
         homeContextHydrationJob = null
         backgroundMembersHydrationJob?.cancel()
@@ -3032,14 +3094,17 @@ internal class SharedThreadStore(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
                 "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
         )
-        reduceState(
-            SharedThreadState(
-                payload = visiblePayload,
-                highlightedMentions = emptySet()
+        initialAccessStateMutex.withLock {
+            reduceState(
+                SharedThreadState(
+                    payload = visiblePayload,
+                    highlightedMentions = emptySet(),
+                    accessResolution = ThreadAccessResolution.Loading,
+                    canonicalAccessResolved = false,
+                    initialHomeAccessLookupComplete = false,
+                    initialHomeAccessCandidate = null
+                )
             )
-        )
-        if (visiblePayload.hasRenderableThreadContent()) {
-            launchBackgroundHomeContextHydration(routeContextPayload)
         }
         delay(SharedThreadFirstFrameDelayMillis)
         if (
@@ -3063,7 +3128,10 @@ internal class SharedThreadStore(
             )
             return
         }
-        advanceRouteStaleToken()
+        // Same-identity intent updates (tab/focus/nonce) do not invalidate the
+        // in-flight canonical content/access generation. Content projection
+        // deliberately does not own those intent fields, so the latest intent
+        // remains intact when the current generation completes.
         lastRoutePayload =
             (lastRoutePayload ?: currentPayload)
                 .withRouteIntentFrom(routeCandidatePayload)
@@ -3079,7 +3147,25 @@ internal class SharedThreadStore(
         reusePrewarm: Boolean = false
     ) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
-        val existing = _state.value.payload
+        var refreshStartState = _state.value
+        val resolvingInitialAccessAtStart =
+            refreshStartState.accessResolution != ThreadAccessResolution.Resolved
+        if (resolvingInitialAccessAtStart) {
+            initialAccessStateMutex.withLock {
+                val latest = _state.value
+                reduceState(
+                    latest.copy(
+                        accessResolution = ThreadAccessResolution.Loading,
+                        canonicalAccessResolved = false,
+                        initialHomeAccessLookupComplete = false,
+                        initialHomeAccessCandidate = null
+                    )
+                )
+                refreshStartState = _state.value
+            }
+            launchInitialAccessResolution(basePayload, staleToken)
+        }
+        val existing = refreshStartState.payload
         if (!routeStillCurrent(basePayload, "thread_refresh", "start", existing)) {
             return
         }
@@ -3153,20 +3239,54 @@ internal class SharedThreadStore(
                     latest.asRefreshNoPermission(basePayload, result.blocker.code)
                 }
             }.copy(backgroundRefreshing = false)
-        val emitted =
-            reducePayloadPatch(cachePayload = visiblePayload != null) { currentPayload ->
-                if (!routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)) {
-                    return@reducePayloadPatch currentPayload
+        initialAccessStateMutex.withLock {
+            val currentState = _state.value
+            val currentPayload = currentState.payload
+            if (
+                staleTokenStillCurrent(staleToken, "thread_refresh", "access_apply", basePayload, currentPayload) &&
+                routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)
+            ) {
+                val resolvingInitialAccess = currentState.accessResolution != ThreadAccessResolution.Resolved
+                val projectedPayload =
+                    currentPayload
+                        .withThreadContentProjectionFrom(nextPayload)
+                        .let { payload ->
+                            if (resolvingInitialAccess && result is DataResult.Content) {
+                                payload.withCanonicalConversationAccessFrom(nextPayload)
+                            } else {
+                                payload
+                            }
+                        }
+                        .withInitialHomeConversationAccessFallback(currentState.initialHomeAccessCandidate)
+                val canonicalAccessResolved =
+                    currentState.canonicalAccessResolved || (resolvingInitialAccess && result is DataResult.Content)
+                val projectedAccessResolution =
+                    currentState.accessResolution.afterRefreshResult(
+                        result = result,
+                        canonicalAccessResolved = canonicalAccessResolved,
+                        homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                        homeAccessCandidate = currentState.initialHomeAccessCandidate
+                    )
+                val didEmit =
+                    reduceState(
+                        currentState.copy(
+                            payload = projectedPayload,
+                            accessResolution = projectedAccessResolution,
+                            canonicalAccessResolved = canonicalAccessResolved
+                        )
+                    )
+                if (didEmit && visiblePayload != null) {
+                    dataSource.cachePayload(projectedPayload)
                 }
-                currentPayload.withThreadContentProjectionFrom(nextPayload)
             }
+        }
         diagnosticsLogger?.invoke(
             "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
                 "result=${result.threadDiagnosticsResult()} messages=${nextPayload.messages.size} " +
                 "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds} " +
                 nextPayload.originDiagnostics()
         )
-        if (!hasRenderableContent) {
+        if (!resolvingInitialAccessAtStart) {
             launchBackgroundHomeContextHydration(basePayload)
         }
         if (visiblePayload != null &&
@@ -3178,6 +3298,75 @@ internal class SharedThreadStore(
         if (nextPayload.hasRenderableThreadContent()) {
             launchBackgroundMembersHydration(basePayload)
         }
+    }
+
+    private fun launchInitialAccessResolution(
+        routePayload: KuiklyThreadScreenPayload,
+        staleToken: MviStaleToken
+    ) {
+        initialAccessResolutionJob?.cancel()
+        initialAccessResolutionJob =
+            scope.launch {
+                val homeResolution =
+                    withTimeoutOrNull(ThreadInitialAccessLookupTimeoutMillis) {
+                        try {
+                            dataSource.homeConversationContextResolution(routePayload)
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    }
+                val candidate = homeResolution?.accessCandidate
+                initialAccessStateMutex.withLock {
+                    val currentState = _state.value
+                    val currentPayload = currentState.payload
+                    if (
+                        !staleTokenStillCurrent(
+                            staleToken,
+                            "thread_access_resolution",
+                            "apply",
+                            routePayload,
+                            currentPayload
+                        ) ||
+                        !routeStillCurrent(routePayload, "thread_access_resolution", "apply", currentPayload)
+                    ) {
+                        return@withLock
+                    }
+                    val projectedPayload =
+                        currentPayload
+                            .let { payload ->
+                                homeResolution?.payload?.let { homePayload ->
+                                    payload.withHomeContextProjectionFrom(homePayload)
+                                } ?: payload
+                            }
+                            .withInitialHomeConversationAccessFallback(candidate)
+                    val nextResolution =
+                        when {
+                            currentState.accessResolution == ThreadAccessResolution.NoPermission ->
+                                ThreadAccessResolution.NoPermission
+                            currentState.accessResolution == ThreadAccessResolution.Error ->
+                                ThreadAccessResolution.Error
+                            currentState.canonicalAccessResolved ->
+                                ThreadAccessResolution.Resolved
+                            candidate != null && currentPayload.status == "empty" ->
+                                ThreadAccessResolution.Resolved
+                            currentPayload.status == "error" ->
+                                ThreadAccessResolution.Error
+                            currentPayload.status == "empty" ->
+                                ThreadAccessResolution.Error
+                            else -> ThreadAccessResolution.Loading
+                        }
+                    reduceState(
+                        currentState.copy(
+                            payload = projectedPayload,
+                            accessResolution = nextResolution,
+                            initialHomeAccessLookupComplete = true,
+                            initialHomeAccessCandidate = candidate
+                        )
+                    )
+                }
+            }
     }
 
     private fun launchBackgroundHomeContextHydration(routePayload: KuiklyThreadScreenPayload) {
@@ -3220,7 +3409,7 @@ internal class SharedThreadStore(
                     diagnosticsLogger?.invoke(
                         "thread_home_context_applied threadId=${routePayload.sourceThreadId.orEmpty()} " +
                             "knownMarkdownChannels=${hydratedPayload.knownMarkdownChannelNames.size} " +
-                            "joined=${hydratedPayload.joined} canSend=${hydratedPayload.canSend}"
+                            "accessMutation=false"
                     )
                 }
             }
@@ -4247,8 +4436,12 @@ internal class SharedThreadViewModel(
         get() = store.state.value.replyMetadataByParentId
     val currentHighlightedMentions: Set<String>
         get() = store.state.value.highlightedMentions
+    val currentRenderSlice: SharedThreadRenderSlice
+        get() = store.state.value.toRenderSlice()
 
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> = store.payloadFlow()
+
+    fun renderSliceFlow(): Flow<SharedThreadRenderSlice> = store.renderSliceFlow()
 
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> = store.timelineSliceFlow()
 
@@ -4417,22 +4610,10 @@ private fun KuiklyThreadScreenPayload.withHomeContextProjectionFrom(
     val knownNames =
         patch.knownMarkdownChannelNames.takeIf { it.isNotEmpty() && it != knownMarkdownChannelNames }
             ?: knownMarkdownChannelNames
-    val matchesConversation =
-        surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
-            surfaceKind == patch.surfaceKind &&
-            conversationHeaderLookupIds().any(patch.conversationHeaderLookupIds()::contains)
-    val accessPatchApplies = matchesConversation && !patch.joined
-    return copy(
-        knownMarkdownChannelNames = knownNames,
-        joined = if (accessPatchApplies) false else joined,
-        canSend = if (accessPatchApplies) patch.canSend else canSend,
-        composer =
-            if (accessPatchApplies) {
-                composer.copy(enabled = patch.composer.enabled)
-            } else {
-                composer
-            }
-    )
+    // Access is resolved exactly once by launchInitialAccessResolution and is
+    // emitted atomically with ThreadAccessResolution.Resolved. Background Home
+    // enrichment must never flip an already-mounted Composer into Join later.
+    return copy(knownMarkdownChannelNames = knownNames)
 }
 
 private fun KuiklyThreadScreenPayload.withResolvedReplyThreadRouteIntentFrom(
@@ -5539,6 +5720,58 @@ internal fun KuiklyThreadScreenPayload.withThreadContentProjectionFrom(
     withResolvedReplyThreadIdentityFrom(patch)
         .withContentSliceFrom(patch)
         .withTaskSliceFrom(patch)
+
+internal fun KuiklyThreadScreenPayload.withCanonicalConversationAccessFrom(
+    patch: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload =
+    copy(
+        joined = patch.joined,
+        canSend = patch.canSend,
+        composer = composer.copy(enabled = patch.composer.enabled)
+    )
+
+internal fun KuiklyThreadScreenPayload.withInitialHomeConversationAccessFallback(
+    candidate: ConversationAccessCandidate?
+): KuiklyThreadScreenPayload {
+    candidate ?: return this
+    if (candidate.joined) return this
+    val acceptsCandidate =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            conversationHeaderLookupIds().any(candidate.ids::contains)
+        } else {
+            acceptsConversationAccessCandidate(candidate)
+        }
+    if (!acceptsCandidate) return this
+    return copy(
+        joined = false,
+        canSend = candidate.permissions.canSend,
+        composer = composer.copy(enabled = false)
+    )
+}
+
+private fun ThreadAccessResolution.afterRefreshResult(
+    result: DataResult<*>,
+    canonicalAccessResolved: Boolean,
+    homeLookupComplete: Boolean,
+    homeAccessCandidate: ConversationAccessCandidate?
+): ThreadAccessResolution =
+    when (result) {
+        is DataResult.Content ->
+            if (this == ThreadAccessResolution.Resolved || (canonicalAccessResolved && homeLookupComplete)) {
+                ThreadAccessResolution.Resolved
+            } else {
+                ThreadAccessResolution.Loading
+            }
+        is DataResult.Empty ->
+            when {
+                this == ThreadAccessResolution.Resolved -> ThreadAccessResolution.Resolved
+                homeAccessCandidate != null -> ThreadAccessResolution.Resolved
+                homeLookupComplete -> ThreadAccessResolution.Error
+                else -> ThreadAccessResolution.Loading
+            }
+        is DataResult.NoPermission -> ThreadAccessResolution.NoPermission
+        is DataResult.Error -> if (this == ThreadAccessResolution.Resolved) this else ThreadAccessResolution.Error
+    }
 
 internal fun KuiklyThreadScreenPayload.withTaskSliceFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(tasks = patch.tasks)
