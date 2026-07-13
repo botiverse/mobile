@@ -150,6 +150,26 @@ work through Slock task threads, commits, and pushes. These rules apply on top
 of the API contract and MVI rules above; they exist so other agents and humans
 can verify any task in this repo from its thread alone, without reading code.
 
+### Prefer hosted CI on Jiacheng's Mac (2026-07-13)
+
+Agents running on Jiacheng's Mac should send Gradle, Kotlin/Native/Konan, APK,
+and other resource-heavy builds/tests to hosted CI whenever the repository has
+an applicable workflow. Concurrent local Gradle/Konan jobs compete for limited
+CPU and memory and can slow down the owner's active work and other agents.
+
+Keep local validation lightweight by default: source inspection,
+`git diff --check`, YAML/static checks, and similarly cheap commands. Push a
+signed exact head and use hosted workflows for compilation and test suites.
+Run a heavy local build only when the owner explicitly requests it or no hosted
+lane exists, and state that exception in the task thread.
+
+For installable Android validation packages, prefer the cloud-hosted
+`Android Alpha Validation` workflow. The `alpha` build type must remain
+co-installable with production (`applicationId = build.raft.app.alpha`), use the
+launcher label `Raft Alpha`, include the test-build badge, and publish a verified
+APK artifact. Do not create temporary local Gradle edits just to add an `.alpha`
+suffix or rename the app.
+
 ### Lightweight in_review handoff (2026-06-21)
 
 When moving a task from `in_progress` to `in_review`, the task's thread should

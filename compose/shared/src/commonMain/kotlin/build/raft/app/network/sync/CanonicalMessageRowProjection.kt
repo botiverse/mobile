@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.MemberKindWireContract
 import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
@@ -29,6 +30,9 @@ import build.raft.app.model.MessageType
 import build.raft.app.model.Presence
 import build.raft.app.model.ThreadId
 import build.raft.app.parseConversationKindOrNull
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictMessageTypeOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -51,13 +55,22 @@ private val canonicalProjectionJson = Json {
  * `updatedAtLabel` is synthesized from the canonical row; sync identity/order uses epoch + seq + id.
  */
 fun CanonicalMessageRow.toAppMessage(
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
     memberHydration: CanonicalMemberHydration = { it },
-): Message {
+): Message? {
+    val resolvedMessageType = messageType.strictMessageTypeOrNull("canonical_message_type", diagnostics) ?: return null
+    val senderKind =
+        senderType.strictMemberKindOrNull(
+            source = "canonical_message_sender",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.InternalActor,
+        ) ?: return null
+    val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val fallbackAuthor = MemberProfile(
         id = MemberId(senderId),
         displayName = senderName.ifBlank { senderId },
         handle = senderName.ifBlank { senderId },
-        kind = senderMemberKind(),
+        kind = authorKind,
         description = senderDescription,
         avatarLabel = senderName.ifBlank { senderId }.take(1).uppercase(),
         presence = Presence.Offline,
@@ -75,7 +88,7 @@ fun CanonicalMessageRow.toAppMessage(
         author = memberHydration(fallbackAuthor),
         timestampLabel = createdAt,
         body = content,
-        messageType = if (messageType.equals("system", ignoreCase = true)) MessageType.System else MessageType.Chat,
+        messageType = resolvedMessageType,
         metadata = action.metadata,
         attachments = attachments.map(CanonicalAttachmentWire::toAppAttachment),
         deliveryState = MessageDeliveryState.Sent,
@@ -89,13 +102,6 @@ fun CanonicalMessageRow.toAppMessage(
         randomId = randomId?.takeIf { it.isNotBlank() },
     )
 }
-
-private fun CanonicalMessageRow.senderMemberKind(): MemberKind =
-    when {
-        senderType.equals("agent", ignoreCase = true) -> MemberKind.Agent
-        messageType.equals("system", ignoreCase = true) -> MemberKind.System
-        else -> MemberKind.Human
-    }
 
 private fun CanonicalAttachmentWire.toAppAttachment(): Attachment = Attachment(
     id = AttachmentId(id),

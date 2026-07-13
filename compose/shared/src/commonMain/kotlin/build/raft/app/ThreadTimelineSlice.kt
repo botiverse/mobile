@@ -311,16 +311,18 @@ internal fun ThreadTimelineSlice.findThreadAuthorProfile(memberId: String): Memb
         .firstOrNull { it.authorId == memberId }
         ?.toThreadAuthorProfile()
 
-private fun KuiklyThreadMessageItem.toThreadAuthorProfile(): MemberProfile =
-    MemberProfile(
+private fun KuiklyThreadMessageItem.toThreadAuthorProfile(): MemberProfile? {
+    val kind = authorKind.projectedMemberKindOrNull() ?: return null
+    return MemberProfile(
         id = MemberId(authorId),
         displayName = authorName.ifBlank { authorId },
         handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
-        kind = if (authorKind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
+        kind = kind,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
         agentStatus = AgentStatus.fromWireValue(authorAgentStatus)
     )
+}
 
 internal fun ThreadTimelineSlice.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val messageCandidates = (listOfNotNull(originMessage) + messages).distinctBy { it.id }

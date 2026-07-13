@@ -39,6 +39,8 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
@@ -75,8 +77,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -2421,6 +2426,160 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun activityReplyThreadKeepsParentChromeAfterLoadedPayloadTransition() {
+        val request =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("reply-thread-1"),
+                channelName = "reply-thread",
+                threadChannelId = ChannelId("reply-thread-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("message-1"),
+                latestActivityMessageId = MessageId("reply-message-1")
+            ).toHomeMessageOpenRequestForTest()
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = request.conversationIdentity,
+                timeContext = null,
+                anchorMessageId = request.anchorMessageId
+            )
+        val initial =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "activity-reply-thread"
+            )
+        val loaded =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = initial.copy(showOpenInChannelAction = false),
+                page =
+                    ThreadMessagesPage(
+                        messages = emptyList(),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = false
+                    ),
+                session = null
+            )
+        val parentProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "general"
+            )
+        val headerDisplay =
+            loaded
+                .threadHeaderProjectionInput()
+                .displayModel(parentProjection, loaded)
+
+        assertEquals("#general", headerDisplay.subtitle)
+        assertTrue(loaded.threadHeaderOpenInParentActionVisible())
+        assertEquals("channel-1", loaded.parentChannelId)
+        assertEquals("message-1", loaded.parentMessageId)
+    }
+
+    @Test
+    fun threadHeaderProjectionUsesScopeServerBeforeAsyncSessionReadCompletes() {
+        assertEquals(
+            "server-from-scope",
+            threadHeaderProjectionServerId(
+                sessionServerId = null,
+                scopeInitialServerId = "server-from-scope"
+            )
+        )
+        assertEquals(
+            "server-from-session",
+            threadHeaderProjectionServerId(
+                sessionServerId = "server-from-session",
+                scopeInitialServerId = "server-from-scope"
+            )
+        )
+    }
+
+    @Test
+    fun threadHeaderInitialProjectionReadsCachedParentBeforeFlowCollection() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "reply-thread-1",
+                streamChannelId = "reply-thread-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel
+            )
+        val parentProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "general"
+            )
+        val provider =
+            object : SharedConversationIdentityProvider {
+                override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
+                    flowOf(SharedConversationDirectoryState())
+
+                override fun projectionFlow(
+                    serverId: ServerId,
+                    ids: Collection<String>
+                ): Flow<Map<String, SharedConversationDirectoryProjection>> = flowOf(emptyMap())
+
+                override fun resolveProjection(
+                    serverId: ServerId,
+                    id: String
+                ): SharedConversationDirectoryProjection? =
+                    parentProjection.takeIf { serverId.value == "server-1" && id == "channel-1" }
+            }
+        val input = payload.threadHeaderProjectionInput()
+        val initialMap =
+            threadHeaderInitialProjectionMap(
+                provider = provider,
+                serverId = ServerId("server-1"),
+                input = input
+            )
+        val owner = ThreadHeaderProjectionStateOwner(input, initialMap)
+        val initialDisplay = input.displayModel(owner.selectedProjection(), payload)
+
+        owner.accept(emptyMap())
+        val incompleteParentProjection =
+            parentProjection.copy(
+                title = "",
+                subtitle = null
+            )
+        val incompleteOutcome = owner.accept(mapOf("channel-1" to incompleteParentProjection))
+        val secondaryProjection =
+            parentProjection.copy(
+                canonicalChannelId = "reply-thread-1",
+                aliases = setOf("reply-thread-1"),
+                title = "secondary"
+            )
+        owner.accept(mapOf("reply-thread-1" to secondaryProjection))
+        val loadedPayload = payload.copy(status = "content", showOpenInChannelAction = false)
+        val loadedDisplay = input.displayModel(owner.selectedProjection(), loadedPayload)
+
+        assertEquals("#general", initialDisplay.subtitle)
+        assertEquals("#general", initialDisplay.threadComposerMentionScopeChannelLabel())
+        assertEquals("channel-1", payload.composer.mentionChannelId ?: payload.parentChannelId)
+        assertEquals("#general", loadedDisplay.subtitle)
+        assertEquals("#general", loadedDisplay.threadComposerMentionScopeChannelLabel())
+        assertTrue(loadedPayload.threadHeaderOpenInParentActionVisible())
+        assertEquals(setOf("channel-1", "reply-thread-1"), owner.state.value.keys)
+        assertEquals(parentProjection, owner.selectedProjection())
+        assertEquals(
+            ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection,
+            incompleteOutcome
+        )
+    }
+
+    @Test
     fun replyThreadPayloadHidesActivityMuteBellEvenWhenProjectionIsParentChannel() {
         val payload =
             KuiklyThreadScreenPayload(
@@ -3762,7 +3921,7 @@ class ThreadPayloadTest {
                 )
             ).threadLinkedTasksByMessageId()
         val linkedMessage = payload.messages.first().withLinkedTask(linkedTasks["message-240"])
-        assertEquals("InReview", linkedMessage.taskStatus)
+        assertEquals("in_review", linkedMessage.taskStatus)
         assertEquals("Android Developer", linkedMessage.taskAssigneeName)
         assertEquals("#240 @Android Developer", threadMessageTaskMetaLabel(linkedMessage, linkedMessage.taskAssigneeName))
     }
@@ -4729,6 +4888,8 @@ class ThreadPayloadTest {
                                         ),
                                     taskStatus = "in_review",
                                     taskNumber = 42,
+                                    taskAssigneeType = "agent",
+                                    taskAssigneeId = "agent-ad2",
                                     claimedByName = "Android-Developer-2",
                                     attachments =
                                         listOf(
@@ -4772,6 +4933,197 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadWireProjectionRejectsUnknownMessageIdentityAndDropsOnlyInvalidTaskSubprojections() {
+        val logs = mutableListOf<String>()
+        val payload =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload =
+                    KuiklyThreadScreenPayload(
+                        sourceThreadId = "channel-1",
+                        status = "loading",
+                    ),
+                session =
+                    StoredAuthSession(
+                        user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                        accessToken = "access",
+                        refreshToken = "refresh",
+                    ),
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "secret-invalid-sender-id",
+                                    channelId = "channel-1",
+                                    senderType = "future-member",
+                                    senderId = "secret-sender-id",
+                                    senderName = "Secret Sender",
+                                    messageType = "chat",
+                                    content = "private sender body",
+                                ),
+                                WireMessage(
+                                    id = "invalid-system-sender",
+                                    channelId = "channel-1",
+                                    senderType = "system",
+                                    senderId = "system",
+                                    senderName = "System",
+                                    messageType = "chat",
+                                    content = "invalid frontend sender",
+                                ),
+                                WireMessage(
+                                    id = "secret-invalid-type-id",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    messageType = "future-message",
+                                    content = "private type body",
+                                ),
+                                WireMessage(
+                                    id = "task-invalid-status",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    messageType = "chat",
+                                    content = "keep message without invalid task",
+                                    taskNumber = 1,
+                                    taskStatus = "future-status",
+                                ),
+                                WireMessage(
+                                    id = "task-invalid-assignee",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    messageType = "chat",
+                                    content = "keep task without invalid assignee",
+                                    taskNumber = 2,
+                                    taskStatus = "todo",
+                                    taskAssigneeType = "future-member",
+                                    taskAssigneeId = "secret-assignee-id",
+                                    taskAssigneeName = "Secret Assignee",
+                                ),
+                                WireMessage(
+                                    id = "valid-message",
+                                    channelId = "channel-1",
+                                    senderType = "agent",
+                                    senderId = "agent-1",
+                                    senderName = "Agent One",
+                                    messageType = "chat",
+                                    content = "keep valid message",
+                                ),
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = false,
+                    ),
+                diagnostics = logs::add,
+            )
+
+        assertEquals(
+            listOf("task-invalid-status", "task-invalid-assignee", "valid-message"),
+            payload.messages.map { it.id },
+        )
+        val invalidStatus = payload.messages[0]
+        assertNull(invalidStatus.taskId)
+        assertNull(invalidStatus.taskStatus)
+        val invalidAssignee = payload.messages[1]
+        assertEquals("task-invalid-assignee", invalidAssignee.taskId)
+        assertEquals("todo", invalidAssignee.taskStatus)
+        assertNull(invalidAssignee.taskAssigneeId)
+        assertNull(invalidAssignee.taskAssigneeKind)
+        assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_sender field=member_kind value=future-member" })
+        assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_sender field=member_kind value=system" })
+        assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_message field=message_type value=future-message" })
+        assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_task field=task_status value=future-status" })
+        assertTrue(logs.any { it == "projection_value_rejected source=thread_wire_task_assignee field=member_kind value=future-member" })
+        assertTrue(
+            logs.none {
+                "secret-invalid" in it || "secret-sender-id" in it || "secret-assignee-id" in it ||
+                    "private sender body" in it || "Secret Assignee" in it
+            },
+        )
+    }
+
+    @Test
+    fun threadItemReconstructionRejectsUnknownAuthorKindWithBoundedDiagnostic() {
+        val logs = mutableListOf<String>()
+
+        val message =
+            KuiklyThreadMessageItem(
+                id = "secret-message-id",
+                authorId = "secret-author-id",
+                authorName = "Secret Author",
+                authorKind = "future-member",
+                messageType = "Chat",
+                body = "private body",
+            ).toMessage(
+                threadId = ThreadId("thread-1"),
+                channelId = ChannelId("channel-1"),
+                diagnostics = logs::add,
+            )
+
+        assertNull(message)
+        assertEquals(
+            listOf("projection_value_rejected source=thread_item_author field=member_kind value=future-member"),
+            logs,
+        )
+        assertTrue(logs.none { "secret-message-id" in it || "secret-author-id" in it || "private body" in it })
+    }
+
+    @Test
+    fun taskStatusRoundTripsThroughMessageAndLinkedTaskProjectionForEveryWireValue() {
+        val author =
+            MemberProfile(
+                id = MemberId("user-artin"),
+                displayName = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human,
+            )
+
+        TaskStatus.entries.forEachIndexed { index, status ->
+            val task =
+                TaskSummary(
+                    id = TaskId("task-$index"),
+                    title = "Task $index",
+                    status = status,
+                    taskNumber = index + 1,
+                    messageId = MessageId("message-$index"),
+                    updatedAtLabel = "now",
+                )
+            val message =
+                Message(
+                    id = MessageId("message-$index"),
+                    threadId = ThreadId("thread-1"),
+                    channelId = ChannelId("channel-1"),
+                    author = author,
+                    timestampLabel = "now",
+                    body = "Task $index",
+                    task = task,
+                )
+
+            val messageItem = message.toKuiklyThreadMessageItem(currentUserId = null)
+            assertEquals(status.toWireValue(), messageItem.taskStatus, status.name)
+            assertEquals(
+                status,
+                messageItem.toMessage(ThreadId("thread-1"), ChannelId("channel-1"))?.task?.status,
+                status.name,
+            )
+
+            val linkedItem =
+                messageItem
+                    .copy(taskId = null, taskNumber = null, taskStatus = null)
+                    .withLinkedTask(task)
+            assertEquals(status.toWireValue(), linkedItem.taskStatus, status.name)
+            assertEquals(
+                status,
+                linkedItem.toMessage(ThreadId("thread-1"), ChannelId("channel-1"))?.task?.status,
+                status.name,
+            )
+        }
+    }
+
+    @Test
     fun replyThreadMessagesPageRequiresResolvedThreadMembership() {
         val base =
             KuiklyThreadScreenPayload(
@@ -4803,6 +5155,7 @@ class ThreadPayloadTest {
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
+                                    messageType = "chat",
                                     content = "parent row",
                                     threadSummary = WireThreadSummary(threadChannelId = "thread-m1")
                                 ),
@@ -4811,6 +5164,7 @@ class ThreadPayloadTest {
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
+                                    messageType = "chat",
                                     content = "missing row identity"
                                 ),
                                 WireMessage(
@@ -4819,6 +5173,7 @@ class ThreadPayloadTest {
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
+                                    messageType = "chat",
                                     content = "reply row"
                                 )
                             ),
@@ -5014,7 +5369,7 @@ class ThreadPayloadTest {
                                     senderType = "agent",
                                     senderId = "agent-cindy",
                                     senderName = "Cindy",
-                                    messageType = "system",
+                                    messageType = "chat",
                                     content = "Approve Quiver for @KMP-专家",
                                     createdAt = "2026-07-07T03:00:00Z",
                                     actionMetadata =
@@ -5087,6 +5442,7 @@ class ThreadPayloadTest {
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
+                                    messageType = "chat",
                                     content = "directory author",
                                     createdAt = "2026-05-19T16:00:00Z"
                                 )
@@ -5157,6 +5513,7 @@ class ThreadPayloadTest {
                                     senderType = "agent",
                                     senderId = "agent-android",
                                     senderName = "Android Developer",
+                                    messageType = "chat",
                                     content = "agent visual row",
                                     createdAt = "2026-05-19T16:00:00Z"
                                 )
@@ -5212,6 +5569,7 @@ class ThreadPayloadTest {
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
+                                    messageType = "chat",
                                     content = "sent from shared composer",
                                     createdAt = "2026-05-19T16:00:00Z"
                                 )
@@ -5458,9 +5816,9 @@ class ThreadPayloadTest {
         val byTaskId = taskIdMessage.withLinkedTask(linkedTasks.threadLinkedTaskForMessage(taskIdMessage))
         val byTaskNumber = taskNumberMessage.withLinkedTask(linkedTasks.threadLinkedTaskForMessage(taskNumberMessage))
 
-        assertEquals("InReview", byTaskId.taskStatus)
+        assertEquals("in_review", byTaskId.taskStatus)
         assertEquals("Android Developer", byTaskId.taskAssigneeName)
-        assertEquals("InReview", byTaskNumber.taskStatus)
+        assertEquals("in_review", byTaskNumber.taskStatus)
         assertEquals("Android Developer", byTaskNumber.taskAssigneeName)
     }
 
@@ -5493,7 +5851,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("message-240", actionMessage?.taskId)
-        assertEquals("InReview", actionMessage?.taskStatus)
+        assertEquals("in_review", actionMessage?.taskStatus)
         assertEquals(240, actionMessage?.taskNumber)
     }
 
@@ -5860,7 +6218,7 @@ class ThreadPayloadTest {
 
         assertEquals(true, projection.authoritative)
         assertEquals(null, projection.lookup.threadLinkedTaskForMessage(message.copy(taskId = null, taskNumber = 241)))
-        assertEquals("Done", linkedMessage.taskStatus)
+        assertEquals("done", linkedMessage.taskStatus)
         assertEquals("Android Developer", linkedMessage.taskAssigneeName)
     }
 
@@ -5903,7 +6261,7 @@ class ThreadPayloadTest {
 
         assertEquals(warmSharedLookup, selectedLookup.lookup)
         assertNotEquals(fallbackLookup, selectedLookup.lookup)
-        assertEquals("InReview", linkedMessage.taskStatus)
+        assertEquals("in_review", linkedMessage.taskStatus)
         assertEquals("Android Developer", linkedMessage.taskAssigneeName)
     }
 
@@ -5950,7 +6308,7 @@ class ThreadPayloadTest {
                 )
             )
 
-        assertEquals("Done", projected.messages.single().taskStatus)
+        assertEquals("done", projected.messages.single().taskStatus)
         assertEquals("Todo", payload.tasks.single().status)
     }
 
@@ -6151,9 +6509,11 @@ class ThreadPayloadTest {
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
+                                    messageType = "chat",
                                     content = "please ship #236",
                                     taskNumber = 236,
-                                    taskStatus = "InReview",
+                                    taskStatus = "in_review",
+                                    taskAssigneeType = "agent",
                                     taskAssigneeId = assigneeId
                                 )
                             ),

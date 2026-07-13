@@ -1603,13 +1603,15 @@ fun SlockMarkdownBody(
         )
     }
     if (performanceKey != null) {
-        performanceLogger(
-            "thread_markdown_body key=$performanceKey contentLength=${content.length} " +
-                "parserHash=${parserContent.hashCode().toString(16)} highlighted=${highlightedMentions.size} " +
-                "tokenCount=${richTextDocument.inlineTokens.size} tagTokens=${richTextDocument.actions.size} " +
-                "inlineCode=${richTextDocument.inlineTokens.count { it.kind == SlockRichTextInlineKind.InlineCode }} " +
-                "scope=${inlineContentScope.orEmpty()}"
-        )
+        LaunchedEffect(performanceKey, parserContent, highlightedMentions, richTextDocument, inlineContentScope) {
+            performanceLogger(
+                "thread_markdown_body key=$performanceKey contentLength=${content.length} " +
+                    "parserHash=${parserContent.hashCode().toString(16)} highlighted=${highlightedMentions.size} " +
+                    "tokenCount=${richTextDocument.inlineTokens.size} tagTokens=${richTextDocument.actions.size} " +
+                    "inlineCode=${richTextDocument.inlineTokens.count { it.kind == SlockRichTextInlineKind.InlineCode }} " +
+                    "scope=${inlineContentScope.orEmpty()}"
+            )
+        }
     }
     if (performanceKey != null) {
         logMarkdownSpike(

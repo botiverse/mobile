@@ -155,6 +155,7 @@ class ForwardMessageParserTest {
                     senderType = "user",
                     senderId = "user-1",
                     senderName = "Ada",
+                    messageType = "chat",
                     content = "",
                     createdAt = "2026-07-06T13:00:00.000Z",
                     forwardBundle =

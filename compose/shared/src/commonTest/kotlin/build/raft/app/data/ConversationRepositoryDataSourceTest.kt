@@ -465,6 +465,44 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun sendMessageRejectsUnknownProjectedSenderInsteadOfInventingCurrentUserMessage() = runBlocking {
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "POST messages" to
+                            """
+                            {
+                              "id": "secret-message-id",
+                              "channelId": "channel-1",
+                              "senderType": "future-member",
+                              "senderId": "secret-sender-id",
+                              "senderName": "Secret Sender",
+                              "messageType": "chat",
+                              "content": "private body"
+                            }
+                            """.trimIndent(),
+                    ),
+            )
+        val repository = RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+
+        val result =
+            repository.sendMessage(
+                channelId = ChannelId("channel-1"),
+                body = "local draft",
+                attachmentIds = emptyList(),
+                asTask = false,
+                randomId = "random-1",
+            )
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("network_parse_failed", error.error.code)
+        assertTrue(logs.any { it == "projection_value_rejected source=rest_message_sender field=member_kind value=future-member" })
+        assertTrue(logs.none { "secret-message-id" in it || "secret-sender-id" in it || "private body" in it })
+    }
+
+    @Test
     fun pagingContextFilesAndUploadConsumeCanonicalDtos() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -603,7 +641,7 @@ class ConversationRepositoryDataSourceTest {
             content: String = "hello"
         ): String =
             buildString {
-                append("""{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"user-1","senderName":"Artin","content":"$content","createdAt":"2026-05-22T10:00:00.000Z"""")
+                append("""{"id":"$id","seq":$seq,"channelId":"$channelId","senderType":"user","senderId":"user-1","senderName":"Artin","messageType":"chat","content":"$content","createdAt":"2026-05-22T10:00:00.000Z"""")
                 if (threadId != null) append(""","threadId":"$threadId"""")
                 append("}")
             }

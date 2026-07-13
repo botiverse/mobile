@@ -1,13 +1,16 @@
 package build.raft.app.data
 
+import build.raft.app.MemberKindWireContract
 import build.raft.app.parseConversationKindOrNull
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
-import build.raft.app.model.TaskStatus
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -120,13 +123,16 @@ data class SharedThreadListItems(
  * thread record/map fallback here; `GET /api/channels/:id/threads` has its own
  * endpoint parser below.
  */
-fun parseFollowedThreadListResponse(bodyText: String): SharedThreadListItems? = runCatching {
+fun parseFollowedThreadListResponse(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedThreadListItems? = runCatching {
     val root = inboxJson.parseToJsonElement(bodyText) as? JsonObject ?: return@runCatching null
     if ("threads" !in root) return@runCatching null
     val decoded = inboxJson.decodeFromJsonElement(WireThreadListResponse.serializer(), root)
     val items = decoded.threads
         .map { it.copy(kind = "thread") }
-        .mapNotNull { it.toThreadDomain() }
+        .mapNotNull { it.toThreadDomain(diagnostics) }
         .distinctBy { it.key }
     SharedThreadListItems(
         items = items,
@@ -142,7 +148,10 @@ fun parseFollowedThreadListResponse(bodyText: String): SharedThreadListItems? = 
  * The endpoint returns a `parentMessageId -> summary` record. Do not add
  * followed-thread `{threads:[...]}` fallback here; that is a different route.
  */
-fun parseChannelThreadSummaryRecord(bodyText: String): SharedThreadListItems? = runCatching {
+fun parseChannelThreadSummaryRecord(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedThreadListItems? = runCatching {
     val root = inboxJson.parseToJsonElement(bodyText) as? JsonObject ?: return@runCatching null
     if ("threads" in root) return@runCatching null
     if (root.values.any { it !is JsonObject }) return@runCatching null
@@ -153,7 +162,7 @@ fun parseChannelThreadSummaryRecord(bodyText: String): SharedThreadListItems? = 
             inboxJson.decodeFromJsonElement(WireInboxItem.serializer(), record)
                 .copy(kind = "thread", parentMessageId = parentMessageId)
         }
-        .mapNotNull { it.toThreadDomain() }
+        .mapNotNull { it.toThreadDomain(diagnostics) }
         .distinctBy { it.key }
         .toList()
     SharedThreadListItems(
@@ -171,9 +180,12 @@ data class SharedInboxSnapshot(
     val totalUnreadCount: Int,
 )
 
-fun parseSharedInboxSnapshot(bodyText: String): SharedInboxSnapshot? = runCatching {
+fun parseSharedInboxSnapshot(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedInboxSnapshot? = runCatching {
     val decoded = inboxJson.decodeFromString(WireInboxResponse.serializer(), bodyText)
-    val items = decoded.items.mapNotNull { it.toDomain() }.distinctBy { it.key }
+    val items = decoded.items.mapNotNull { it.toDomain(diagnostics) }.distinctBy { it.key }
     val derivedCount = items.size
     val derivedUnread = items.sumOf { it.unreadCount }
     SharedInboxSnapshot(
@@ -184,14 +196,14 @@ fun parseSharedInboxSnapshot(bodyText: String): SharedInboxSnapshot? = runCatchi
     )
 }.getOrNull()
 
-private fun WireInboxItem.toDomain(): InboxItem? = when (kind) {
-    "channel", "dm" -> toChannelOrDmDomain()
-    "thread" -> toThreadDomain()
+private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = when (kind) {
+    "channel", "dm" -> toChannelOrDmDomain(diagnostics)
+    "thread" -> toThreadDomain(diagnostics)
     "mention_action" -> toMentionActionDomain()
     else -> null
 }
 
-private fun WireInboxItem.toChannelOrDmDomain(): InboxItem? {
+private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): InboxItem? {
     val id = channelId ?: return null
     val name = channelName ?: id
     val itemKind =
@@ -219,11 +231,16 @@ private fun WireInboxItem.toChannelOrDmDomain(): InboxItem? {
         lastMessageAt = lastMessageAt,
         lastMessageSenderName = lastMessageSenderName,
         lastMessageSenderId = lastMessageSenderId,
-        lastMessageSenderKind = lastMessageSenderType.toSenderKind(),
+        lastMessageSenderKind =
+            lastMessageSenderType.toSenderKind(
+                source = "inbox_last_message_sender",
+                diagnostics = diagnostics,
+                contract = MemberKindWireContract.InboxActor,
+            ),
     )
 }
 
-private fun WireInboxItem.toThreadDomain(): InboxItem? {
+private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxItem? {
     val threadId = threadChannelId ?: return null
     return InboxItem(
         key = "thread:$threadId",
@@ -240,17 +257,29 @@ private fun WireInboxItem.toThreadDomain(): InboxItem? {
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessagePreview,
         parentMessageSenderId = parentMessageSenderId,
-        parentMessageSenderKind = parentMessageSenderType.toSenderKind(),
+        parentMessageSenderKind =
+            parentMessageSenderType.toSenderKind(
+                source = "inbox_parent_message_sender",
+                diagnostics = diagnostics,
+                contract = MemberKindWireContract.InboxActor,
+            ),
         latestActivityMessageId = latestActivityMessageId?.let(::MessageId),
         latestActivityPreview = latestActivityPreview,
         latestActivityAt = lastActivityAt ?: lastReplyAt,
         latestActivitySenderName = latestActivitySenderName,
         latestActivitySenderId = latestActivitySenderId,
-        latestActivitySenderKind = latestActivitySenderType.toSenderKind(),
+        latestActivitySenderKind =
+            latestActivitySenderType.toSenderKind(
+                source = "inbox_latest_activity_sender",
+                diagnostics = diagnostics,
+                contract = MemberKindWireContract.InboxActor,
+            ),
         replyCount = replyCount,
         participantIds = participantIds.mapNotNull { id -> id.takeIf { it.isNotBlank() }?.let(::MemberId) },
         taskNumber = taskNumber,
-        taskStatus = TaskStatus.fromWireValue(taskStatus),
+        taskStatus =
+            taskStatus?.takeIf { it.isNotBlank() }
+                ?.strictTaskStatusOrNull("inbox_task", diagnostics),
         taskClaimedByName = taskClaimedByName,
     )
 }
@@ -299,11 +328,17 @@ private fun WireInboxPendingMentionAction.toDomain(): PendingMentionAction? {
     )
 }
 
-private fun String?.toSenderKind(): MemberKind? = when {
-    equals("agent", ignoreCase = true) -> MemberKind.Agent
-    equals("user", ignoreCase = true) || equals("human", ignoreCase = true) -> MemberKind.Human
-    else -> null
-}
+private fun String?.toSenderKind(
+    source: String,
+    diagnostics: (String) -> Unit,
+    contract: MemberKindWireContract,
+): MemberKind? =
+    takeIf { !it.isNullOrBlank() }
+        ?.strictMemberKindOrNull(
+            source = source,
+            diagnostics = diagnostics,
+            contract = contract,
+        )
 
 // -----------------------------------------------------------------------------
 // Saved messages — GET /api/saved
@@ -344,9 +379,12 @@ data class SharedSavedItems(
     val totalCount: Int,
 )
 
-fun parseSharedSavedItems(bodyText: String): SharedSavedItems? = runCatching {
+fun parseSharedSavedItems(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedSavedItems? = runCatching {
     val decoded = inboxJson.decodeFromString(WireSavedResponse.serializer(), bodyText)
-    val items = decoded.saved.mapNotNull { it.toInboxItem() }.distinctBy { it.key }
+    val items = decoded.saved.mapNotNull { it.toInboxItem(diagnostics) }.distinctBy { it.key }
     SharedSavedItems(
         items = items,
         hasMore = decoded.hasMore,
@@ -370,7 +408,7 @@ fun parseSharedSavedMessageStatus(bodyText: String): SavedMessageStatusSnapshot?
     )
 }.getOrNull()
 
-private fun WireSavedEntry.toInboxItem(): InboxItem? {
+private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem? {
     val conversationKind = parseConversationKindOrNull(channelType)
     val itemKind = conversationKind.toInboxItemKind() ?: return null
     val key = "saved:$messageId"
@@ -385,7 +423,12 @@ private fun WireSavedEntry.toInboxItem(): InboxItem? {
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,
         lastMessageSenderId = senderId,
-        lastMessageSenderKind = senderType.toSenderKind(),
+        lastMessageSenderKind =
+            senderType.toSenderKind(
+                source = "saved_message_sender",
+                diagnostics = diagnostics,
+                contract = MemberKindWireContract.InternalActor,
+            ),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = parentChannelId?.let(::ChannelId),
         parentChannelName = parentChannelName,
@@ -436,13 +479,16 @@ data class SharedSearchItems(
     val hasMore: Boolean,
 )
 
-fun parseSharedSearchItems(bodyText: String): SharedSearchItems? = runCatching {
+fun parseSharedSearchItems(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedSearchItems? = runCatching {
     val decoded = inboxJson.decodeFromString(WireSearchResponse.serializer(), bodyText)
-    val items = decoded.results.mapNotNull { it.toInboxItem() }.distinctBy { it.key }
+    val items = decoded.results.mapNotNull { it.toInboxItem(diagnostics) }.distinctBy { it.key }
     SharedSearchItems(items = items, hasMore = decoded.hasMore)
 }.getOrNull()
 
-private fun WireSearchResult.toInboxItem(): InboxItem? {
+private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxItem? {
     val conversationKind = parseConversationKindOrNull(channelType)
     val itemKind = conversationKind.toInboxItemKind() ?: return null
     val key = when (itemKind) {
@@ -461,7 +507,12 @@ private fun WireSearchResult.toInboxItem(): InboxItem? {
         lastMessageAt = createdAt,
         lastMessageSenderName = senderName,
         lastMessageSenderId = senderId,
-        lastMessageSenderKind = senderType.toSenderKind(),
+        lastMessageSenderKind =
+            senderType.toSenderKind(
+                source = "search_message_sender",
+                diagnostics = diagnostics,
+                contract = MemberKindWireContract.InternalActor,
+            ),
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = ChannelId(parentChannelId),
         parentChannelName = parentChannelName,

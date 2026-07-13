@@ -30,6 +30,8 @@ internal sealed interface ThreadHeaderProjectionInput {
 
     fun accepts(projection: SharedConversationDirectoryProjection): Boolean
 
+    fun acceptsForDisplay(projection: SharedConversationDirectoryProjection): Boolean
+
     fun displayModel(
         projection: SharedConversationDirectoryProjection?,
         contentPayload: KuiklyThreadScreenPayload
@@ -76,15 +78,15 @@ internal fun ThreadHeaderProjectionInput.stableProjection(
     current: SharedConversationDirectoryProjection?,
     previous: SharedConversationDirectoryProjection?
 ): SharedConversationDirectoryProjection? =
-    current?.takeIf(::accepts) ?: previous?.takeIf(::accepts)
+    current?.takeIf(::acceptsForDisplay) ?: previous?.takeIf(::acceptsForDisplay)
 
 internal fun ThreadHeaderProjectionInput.stableProjectionSource(
     current: SharedConversationDirectoryProjection?,
     previous: SharedConversationDirectoryProjection?
 ): String =
     when {
-        current?.takeIf(::accepts) != null -> "current"
-        previous?.takeIf(::accepts) != null -> "previous"
+        current?.takeIf(::acceptsForDisplay) != null -> "current"
+        previous?.takeIf(::acceptsForDisplay) != null -> "previous"
         else -> "fallback"
     }
 
@@ -175,11 +177,15 @@ private data class DirectMessageThreadHeaderProjectionInput(
     override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
         routePayload.acceptsConversationHeaderProjection(projection)
 
+    override fun acceptsForDisplay(projection: SharedConversationDirectoryProjection): Boolean =
+        accepts(projection) &&
+            threadHeaderSafeTitleOrNull(projection.title, lookupIds.toSet()) != null
+
     override fun displayModel(
         projection: SharedConversationDirectoryProjection?,
         contentPayload: KuiklyThreadScreenPayload
     ): ThreadHeaderDisplayModel =
-        projection?.takeIf(::accepts)
+        projection?.takeIf(::acceptsForDisplay)
             ?.let(routePayload::threadHeaderDisplayModelFromDirectory)
             ?: contentPayload.threadHeaderFallbackDisplayModel()
 }
@@ -193,11 +199,15 @@ private data class ChannelThreadHeaderProjectionInput(
     override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
         routePayload.acceptsConversationHeaderProjection(projection)
 
+    override fun acceptsForDisplay(projection: SharedConversationDirectoryProjection): Boolean =
+        accepts(projection) &&
+            threadHeaderSafeTitleOrNull(projection.title, lookupIds.toSet()) != null
+
     override fun displayModel(
         projection: SharedConversationDirectoryProjection?,
         contentPayload: KuiklyThreadScreenPayload
     ): ThreadHeaderDisplayModel =
-        projection?.takeIf(::accepts)
+        projection?.takeIf(::acceptsForDisplay)
             ?.let(routePayload::threadHeaderDisplayModelFromDirectory)
             ?: contentPayload.threadHeaderFallbackDisplayModel()
 }
@@ -211,11 +221,14 @@ private data class ReplyThreadHeaderProjectionInput(
     override fun accepts(projection: SharedConversationDirectoryProjection): Boolean =
         routePayload.acceptsThreadHeaderDirectoryProjection(projection)
 
+    override fun acceptsForDisplay(projection: SharedConversationDirectoryProjection): Boolean =
+        accepts(projection) && projection.replyThreadParentSubtitle() != null
+
     override fun displayModel(
         projection: SharedConversationDirectoryProjection?,
         contentPayload: KuiklyThreadScreenPayload
     ): ThreadHeaderDisplayModel =
-        projection?.takeIf(::accepts)
+        projection?.takeIf(::acceptsForDisplay)
             ?.let(routePayload::threadHeaderDisplayModelFromDirectory)
             ?: contentPayload.threadHeaderFallbackDisplayModel()
 }

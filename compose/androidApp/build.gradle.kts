@@ -352,7 +352,11 @@ android {
         versionName = slockAndroidVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
+        buildConfigField(
+            "Boolean",
+            "SHOW_TEST_BUILD_BADGE",
+            slockBuildConfigBoolean("SLOCK_SHOW_TEST_BUILD_BADGE", false).toString()
+        )
         buildConfigField(
             "Boolean",
             "ENABLE_MULTI_SERVER_REALTIME_SESSIONS",
@@ -370,6 +374,13 @@ android {
     buildTypes {
         getByName("debug") {
             buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
+        }
+        create("alpha") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".alpha"
+            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
+            buildConfigField("String", "QUIVER_CHANNEL", "\"debug\"")
+            matchingFallbacks += listOf("debug")
         }
         create("connectedTest") {
             initWith(getByName("debug"))

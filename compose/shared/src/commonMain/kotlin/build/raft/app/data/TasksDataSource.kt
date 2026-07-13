@@ -1,9 +1,13 @@
 package build.raft.app.data
 
+import build.raft.app.MemberKindWireContract
+import build.raft.app.projectionRejectingDiagnosticsLogger
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
-import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
@@ -27,7 +31,7 @@ private val tasksJson = Json {
 
 class SharedTasksDataSource(
     private val api: SlockTasksApi,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : SharedTasksRemoteDataSource {
     private val typedApi = SlockTasksApiClient(api, diagnosticsLogger)
 
@@ -279,7 +283,7 @@ data class TasksCreateRequestBody(val tasks: List<TaskCreateRequestBody>)
 data class TaskConvertRequestBody(val messageId: String)
 
 fun TaskStatus.toTaskStatusUpdateRequestBody(): TaskStatusUpdateRequestBody =
-    TaskStatusUpdateRequestBody(status = toApiValue())
+    TaskStatusUpdateRequestBody(status = toWireValue())
 
 fun TaskCreateDraft.toTaskCreateRequestBody(): TaskCreateRequestBody =
     TaskCreateRequestBody(
@@ -298,7 +302,7 @@ fun buildSharedTaskConvertBody(messageId: MessageId): String =
 
 internal class SlockTasksApiClient(
     private val transport: SlockTasksApi,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) {
     suspend fun serverTasks(
         serverId: ServerId,
@@ -327,7 +331,10 @@ internal class SlockTasksApiClient(
         taskNumber: Int,
         priority: DataRequestPriority
     ): DataResult<TaskActionResult> =
-        transport.taskByNumber(channelId, taskNumber, priority).toTaskActionResult(source = "tasks_by_number")
+        transport.taskByNumber(channelId, taskNumber, priority).toTaskActionResult(
+            source = "tasks_by_number",
+            diagnostics = diagnosticsLogger,
+        )
 
     suspend fun createTasks(
         channelId: ChannelId,
@@ -340,16 +347,22 @@ internal class SlockTasksApiClient(
         )
 
     suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> =
-        transport.claimTask(taskId).toTaskActionResult(source = "tasks_claim")
+        transport.claimTask(taskId).toTaskActionResult(source = "tasks_claim", diagnostics = diagnosticsLogger)
 
     suspend fun convertMessage(messageId: MessageId): DataResult<TaskActionResult> =
-        transport.convertMessage(messageId).toTaskActionResult(source = "tasks_convert_message")
+        transport.convertMessage(messageId).toTaskActionResult(
+            source = "tasks_convert_message",
+            diagnostics = diagnosticsLogger,
+        )
 
     suspend fun unclaimTask(taskId: TaskId): DataResult<TaskActionResult> =
-        transport.unclaimTask(taskId).toTaskActionResult(source = "tasks_unclaim")
+        transport.unclaimTask(taskId).toTaskActionResult(source = "tasks_unclaim", diagnostics = diagnosticsLogger)
 
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult> =
-        transport.updateTaskStatus(taskId, status).toTaskActionResult(source = "tasks_status")
+        transport.updateTaskStatus(taskId, status).toTaskActionResult(
+            source = "tasks_status",
+            diagnostics = diagnosticsLogger,
+        )
 
     suspend fun deleteTask(taskId: TaskId): DataResult<Unit> =
         transport.deleteTask(taskId).toTaskDeleteResult()
@@ -357,7 +370,8 @@ internal class SlockTasksApiClient(
 
 internal fun HomeNetworkResponse.toTasksResult(
     filter: TaskFilter = TaskFilter(),
-    source: String = "tasks"
+    source: String = "tasks",
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): DataResult<TaskSnapshot> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     if (code == 401 || code == 403) {
@@ -370,7 +384,7 @@ internal fun HomeNetworkResponse.toTasksResult(
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
     val envelope = runCatching { tasksJson.decodeFromString<TasksListEnvelope>(body) }.getOrNull()
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
-    val tasks = envelope.tasks.map { it.toTaskSummary() }
+    val tasks = envelope.tasks.mapNotNull { it.toTaskSummary(diagnostics) }
     val snapshot = TaskSnapshot(tasks = tasks, summaryCounts = tasks.summaryCounts()).filteredBy(filter)
     return if (snapshot.tasks.isEmpty()) {
         DataResult.Empty(EmptyReason.NoTasks)
@@ -382,7 +396,7 @@ internal fun HomeNetworkResponse.toTasksResult(
 internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
     filter: TaskFilter = TaskFilter(),
     source: String = "tasks",
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ): DataResult<TaskSnapshot> {
     val responseBytes = bodyText?.encodeToByteArray()?.size ?: 0
     diagnosticsLogger(
@@ -396,7 +410,7 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
     )
     val result =
         withContext(SlockJsonParseDispatcher) {
-            toTasksResult(filter = filter, source = source)
+            toTasksResult(filter = filter, source = source, diagnostics = diagnosticsLogger)
         }
     val durationMs = parseStartedAt.elapsedNow().inWholeMilliseconds
     val taskCount = (result as? DataResult.Content)?.data?.tasks?.size ?: 0
@@ -418,7 +432,10 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
     return result
 }
 
-internal fun HomeNetworkResponse.toTaskActionResult(source: String = "tasks_action"): DataResult<TaskActionResult> {
+internal fun HomeNetworkResponse.toTaskActionResult(
+    source: String = "tasks_action",
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): DataResult<TaskActionResult> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
@@ -432,7 +449,9 @@ internal fun HomeNetworkResponse.toTaskActionResult(source: String = "tasks_acti
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
     val task = envelope.task
         ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
-    return DataResult.Content(TaskActionResult(task.toTaskSummary()))
+    val summary = task.toTaskSummary(diagnostics)
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    return DataResult.Content(TaskActionResult(summary))
 }
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
@@ -536,22 +555,25 @@ internal data class TaskWireDto(
     val updatedAt: String? = null
 )
 
-internal fun TaskWireDto.toTaskSummary(): TaskSummary {
+internal fun TaskWireDto.toTaskSummary(
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): TaskSummary? {
     val displayTitle = title?.trim().orEmpty().ifBlank { taskNumber?.let { "#$it" }.orEmpty() }
     val resolvedMessageId = (messageId ?: id).let(::MessageId)
     val resolvedThreadId = threadId?.let(::ThreadId)
+    val resolvedStatus = status.strictTaskStatusOrNull("task_wire", diagnostics) ?: return null
     return TaskSummary(
         id = TaskId(id),
         title = displayTitle,
-        status = status?.let { TaskStatus.fromWireValue(it) } ?: TaskStatus.Todo,
+        status = resolvedStatus,
         taskNumber = taskNumber,
         messageId = resolvedMessageId,
         parentMessageId = resolvedMessageId,
         channelId = channelId?.let(::ChannelId),
         threadId = resolvedThreadId,
         isThreadTask = channelType == KuiklyThreadSurfaceKind.ReplyThread,
-        assignee = memberFrom(claimedByType, claimedById, claimedByName),
-        creator = memberFrom(createdByType, createdById, createdByName),
+        assignee = memberFrom(claimedByType, claimedById, claimedByName, "task_assignee", diagnostics),
+        creator = memberFrom(createdByType, createdById, createdByName, "task_creator", diagnostics),
         channelName = channelName,
         updatedAtLabel = (updatedAt ?: createdAt ?: claimedAt ?: completedAt).orEmpty(),
         canClaim = true,
@@ -559,27 +581,30 @@ internal fun TaskWireDto.toTaskSummary(): TaskSummary {
     )
 }
 
-private fun memberFrom(type: String?, id: String?, name: String?): MemberProfile? {
+private fun memberFrom(
+    type: String?,
+    id: String?,
+    name: String?,
+    source: String,
+    diagnostics: (String) -> Unit,
+): MemberProfile? {
     if (id.isNullOrBlank()) return null
     val label = name?.trim().orEmpty().ifBlank { id }
+    val kind =
+        type.strictMemberKindOrNull(
+            source = source,
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.InternalActor,
+        ) ?: return null
     return MemberProfile(
         id = MemberId(id),
         displayName = label,
         handle = label,
-        kind = if (type == "agent") MemberKind.Agent else MemberKind.Human,
+        kind = kind,
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline
     )
 }
-
-private fun TaskStatus.toApiValue(): String =
-    when (this) {
-        TaskStatus.Todo -> "todo"
-        TaskStatus.InProgress -> "in_progress"
-        TaskStatus.InReview -> "in_review"
-        TaskStatus.Done -> "done"
-        TaskStatus.Closed -> "closed"
-    }
 
 private data class TaskServerContext(val currentUserId: String)
 

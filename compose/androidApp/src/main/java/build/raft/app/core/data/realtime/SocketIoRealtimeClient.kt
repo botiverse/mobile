@@ -29,6 +29,7 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerPlanUpdated
@@ -59,6 +60,7 @@ class SocketIoRealtimeClient(
     private var authRefreshProvider: ((String) -> RealtimeAuth?)? = null
     private var lastHeartbeatAtMillis: Long? = null
     private var lastInboundEventAtMillis: Long? = null
+    private var resumeProjectionRetryLastSeq: Long? = null
     private var watchdogTimer: Timer? = null
     var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         private set
@@ -74,6 +76,7 @@ class SocketIoRealtimeClient(
         }
         currentAuth = request.auth
         cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
+        resumeProjectionRetryLastSeq = null
         state = RealtimeConnectionState.Connecting
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = null
@@ -269,6 +272,9 @@ class SocketIoRealtimeClient(
                     "event_received eventName=$eventName serverId=${connectedServerId.orEmpty()} mapped=${event?.realtimeDiagnosticName().orEmpty()} ${event?.realtimeDiagnosticFields().orEmpty()} payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
                 )
                 val cursorUpdate = event?.let(::dispatch)
+                if (eventName == RealtimeSocketEvents.SyncResumeResponse && event is Heartbeat) {
+                    requestResumeAfterProjectionRejection()
+                }
                 if (shouldFanOutRawEvent(eventName, cursorUpdate?.serverAhead == true)) {
                     rawListeners.toList().forEach { it(eventName, payload) }
                 }
@@ -294,6 +300,7 @@ class SocketIoRealtimeClient(
         val nextEpoch = "${reason}-${clockMillis()}"
         val update = RealtimeCursorPolicy.rebaseline(cursor, nextEpoch)
         cursor = update.state
+        resumeProjectionRetryLastSeq = null
         logger(
             "cursor_rebaseline reason=$reason serverId=${connectedServerId.orEmpty()} " +
                 "epoch=${cursor.epoch} rebaselineRequired=${update.rebaselineRequired}"
@@ -305,6 +312,27 @@ class SocketIoRealtimeClient(
         if (resumeLastSeq <= 0) return
         logger("sync_resume_emit serverId=${connectedServerId.orEmpty()} lastSeq=$resumeLastSeq reason=$reason")
         transport.emit(RealtimeSocketEvents.SyncResume, RealtimeResumeRequest(resumeLastSeq).toWireMap())
+    }
+
+    private fun requestResumeAfterProjectionRejection() {
+        val resumeLastSeq = cursor.resumeLastSeq
+        if (resumeLastSeq <= 0L) {
+            logger("sync_resume_recovery_skip reason=no_applied_cursor")
+            return
+        }
+        if (resumeProjectionRetryLastSeq == resumeLastSeq) {
+            logger("sync_resume_recovery_escalate reason=repeat_projection_rejection lastSeq=$resumeLastSeq")
+            dispatch(
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Home,
+                    reason = "sync_resume_projection_rejected_repeatedly",
+                    serverId = connectedServerId?.let(::ServerId),
+                )
+            )
+            return
+        }
+        resumeProjectionRetryLastSeq = resumeLastSeq
+        emitSyncResume(reason = "projection_rejected")
     }
 
     private fun startHeartbeatWatchdog() {
@@ -359,8 +387,12 @@ class SocketIoRealtimeClient(
     }
 
     private fun dispatch(event: RealtimeEvent): RealtimeCursorUpdate {
+        val previousAppliedSeq = cursor.appliedLastSeq
         val cursorUpdate = RealtimeCursorPolicy.updateFromEvent(cursor, event)
         cursor = cursorUpdate.state
+        if (cursor.appliedLastSeq > previousAppliedSeq) {
+            resumeProjectionRetryLastSeq = null
+        }
         if (event is Heartbeat && cursorUpdate.serverAhead) {
             logger(
                 "heartbeat_gap_detected serverId=${connectedServerId.orEmpty()} " +

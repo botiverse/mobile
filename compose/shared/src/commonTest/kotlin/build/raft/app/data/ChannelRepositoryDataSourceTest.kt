@@ -179,12 +179,12 @@ class ChannelRepositoryDataSourceTest {
         assertEquals("Design system", rich.subtitle)
         assertEquals("agent", rich.directMessagePeerType)
 
-        network.responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"human","peerId":"agent-1","peerName":"dm-1"}]"""
+        network.responseBody = """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"user","peerId":"user-1","peerName":"dm-1"}]"""
         val generic = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(serverId)).data.directMessages.single()
 
         assertEquals("dm-1", generic.name)
         assertEquals(null, generic.subtitle)
-        assertEquals("human", generic.directMessagePeerType)
+        assertEquals("user", generic.directMessagePeerType)
     }
 
     @Test
@@ -194,7 +194,7 @@ class ChannelRepositoryDataSourceTest {
                 pathResponses =
                     mapOf(
                         "channels" to """[{"id":"channel-1","name":"general","type":"channel","joined":true,"activityMuted":true,"muteFromSeq":42,"activityMuteSupported":true}]""",
-                        "channels/dm" to """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"human","peerId":"user-2","peerName":"Cindy","activityMuted":false,"muteFromSeq":null,"activityMuteSupported":true}]"""
+                        "channels/dm" to """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"user","peerId":"user-2","peerName":"Cindy","activityMuted":false,"muteFromSeq":null,"activityMuteSupported":true}]"""
                     )
             )
         val repository = RealChannelRepository(sampleStore(), network)

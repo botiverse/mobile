@@ -45,7 +45,7 @@ class ReactionConcurrencyFoldTest {
         id = id,
         channelId = channel,
         seq = seq,
-        senderType = "human",
+        senderType = "user",
         senderId = "u1",
         content = "b",
         messageType = "chat",

@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.model.TaskStatus
+import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.model.TaskSummary
 import kotlinx.serialization.json.Json
 
@@ -29,14 +29,20 @@ private val taskParserJson = Json {
 
 data class SharedTasksPayload(val tasks: List<TaskSummary>)
 
-fun parseSharedServerTasksPayload(body: String): SharedTasksPayload? {
+fun parseSharedServerTasksPayload(
+    body: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedTasksPayload? {
     val envelope = runCatching { taskParserJson.decodeFromString<TasksListEnvelope>(body) }.getOrNull()
         ?: return null
-    return SharedTasksPayload(tasks = envelope.tasks.map { it.toTaskSummary() })
+    return SharedTasksPayload(tasks = envelope.tasks.mapNotNull { it.toTaskSummary(diagnostics) })
 }
 
-fun parseSharedTaskActionPayload(body: String): TaskSummary? {
+fun parseSharedTaskActionPayload(
+    body: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): TaskSummary? {
     val envelope = runCatching { taskParserJson.decodeFromString<TaskEnvelope>(body) }.getOrNull()
         ?: return null
-    return envelope.task?.toTaskSummary()
+    return envelope.task?.toTaskSummary(diagnostics)
 }

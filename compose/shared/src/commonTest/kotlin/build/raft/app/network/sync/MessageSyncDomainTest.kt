@@ -45,7 +45,7 @@ class MessageSyncDomainTest {
         id = id,
         channelId = channel,
         seq = seq,
-        senderType = "human",
+        senderType = "user",
         senderId = "u1",
         content = content,
         messageType = "chat",

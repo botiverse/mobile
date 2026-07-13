@@ -247,6 +247,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -853,6 +855,80 @@ internal fun KuiklyThreadScreenPayload.threadHeaderSearchAction(): ThreadHeaderS
         else -> null
     }
 
+internal fun KuiklyThreadScreenPayload.threadHeaderOpenInParentActionVisible(): Boolean =
+    showOpenInChannelAction ||
+        (
+            resolveThreadRouteIdentity().surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                parentChannelId?.isNotBlank() == true &&
+                (parentMessageId?.isNotBlank() == true || originParentMessageId?.isNotBlank() == true)
+            )
+
+internal fun threadHeaderProjectionServerId(
+    sessionServerId: String?,
+    scopeInitialServerId: String?
+): String? =
+    sessionServerId?.trim()?.takeIf { it.isNotBlank() }
+        ?: scopeInitialServerId?.trim()?.takeIf { it.isNotBlank() }
+
+internal fun threadHeaderInitialProjectionMap(
+    provider: SharedConversationIdentityProvider?,
+    serverId: ServerId?,
+    input: ThreadHeaderProjectionInput
+): Map<String, SharedConversationDirectoryProjection> {
+    if (provider == null || serverId == null) return emptyMap()
+    return input.lookupIds
+        .mapNotNull { id ->
+            provider.resolveProjection(serverId, id)
+                ?.takeIf(input::acceptsForDisplay)
+                ?.let { projection -> id to projection }
+        }
+        .toMap()
+}
+
+internal class ThreadHeaderProjectionStateOwner(
+    private val input: ThreadHeaderProjectionInput,
+    initialProjections: Map<String, SharedConversationDirectoryProjection>
+) {
+    private val _state = MutableStateFlow(input.acceptedHeaderProjectionMap(initialProjections))
+    val state: StateFlow<Map<String, SharedConversationDirectoryProjection>> = _state.asStateFlow()
+    private var lastRejectedProjections: Map<String, SharedConversationDirectoryProjection>? = null
+
+    fun accept(
+        projections: Map<String, SharedConversationDirectoryProjection>
+    ): ThreadHeaderProjectionAcceptance? {
+        val accepted = input.acceptedHeaderProjectionMap(projections)
+        if (accepted.isEmpty()) {
+            if (lastRejectedProjections == projections) return null
+            lastRejectedProjections = projections
+            return ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection
+        }
+        lastRejectedProjections = null
+        val merged = _state.value + accepted
+        if (_state.value == merged) return null
+        _state.value = merged
+        return ThreadHeaderProjectionAcceptance.AcceptedDisplayValidProjection
+    }
+
+    fun selectedProjection(): SharedConversationDirectoryProjection? =
+        input.lookupIds.firstNotNullOfOrNull(_state.value::get)
+}
+
+internal enum class ThreadHeaderProjectionAcceptance {
+    AcceptedDisplayValidProjection,
+    PreservedNoDisplayValidProjection
+}
+
+private fun ThreadHeaderProjectionInput.acceptedHeaderProjectionMap(
+    projections: Map<String, SharedConversationDirectoryProjection>
+): Map<String, SharedConversationDirectoryProjection> =
+    lookupIds
+        .mapNotNull { id ->
+            projections[id]
+                ?.takeIf(::acceptsForDisplay)
+                ?.let { projection -> id to projection }
+        }
+        .toMap()
+
 internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
     val channelId = threadChannelSearchChannelId() ?: return null
     return JSONObject().apply {
@@ -979,6 +1055,7 @@ internal data class KuiklyThreadMessageItem(
     val taskId: String? = null,
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
+    val taskAssigneeKind: String? = null,
     val taskAssigneeId: String? = null,
     val taskAssigneeName: String? = null,
     val reactions: List<KuiklyThreadReactionItem> = emptyList(),
@@ -3240,30 +3317,74 @@ internal fun SharedThreadRouteContent(
     val conversationDirectoryLookupIds = headerProjectionInput.lookupIds
     val emptyConversationDirectoryProjectionFlow =
         remember { MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>()) }
-    val directoryConversationProjections by remember(
+    val headerProjectionServerId =
+        remember(currentSession?.currentServerId, storeScope.initialServerId) {
+            threadHeaderProjectionServerId(
+                sessionServerId = currentSession?.currentServerId,
+                scopeInitialServerId = storeScope.initialServerId
+            )?.let(::ServerId)
+        }
+    val initialDirectoryConversationProjections =
+        remember(
+            conversationIdentityProvider,
+            headerProjectionServerId,
+            conversationDirectoryLookupIds
+        ) {
+            threadHeaderInitialProjectionMap(
+                provider = conversationIdentityProvider,
+                serverId = headerProjectionServerId,
+                input = headerProjectionInput
+            )
+        }
+    val directoryConversationProjectionFlow = remember(
         conversationIdentityProvider,
-        currentSession?.currentServerId,
+        headerProjectionServerId,
         headerProjectionInput.surfaceKind,
         conversationDirectoryLookupIds
     ) {
-        val serverId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         if (
             conversationIdentityProvider != null &&
-            serverId != null &&
+            headerProjectionServerId != null &&
             conversationDirectoryLookupIds.isNotEmpty()
         ) {
             conversationIdentityProvider
-                .projectionFlow(serverId, conversationDirectoryLookupIds)
+                .projectionFlow(headerProjectionServerId, conversationDirectoryLookupIds)
         } else {
             emptyConversationDirectoryProjectionFlow
         }
-    }.collectAsState(emptyMap())
+    }
+    val headerProjectionStateOwner =
+        remember(headerProjectionInput, initialDirectoryConversationProjections) {
+            ThreadHeaderProjectionStateOwner(
+                input = headerProjectionInput,
+                initialProjections = initialDirectoryConversationProjections
+            )
+        }
+    LaunchedEffect(headerProjectionStateOwner, directoryConversationProjectionFlow) {
+        directoryConversationProjectionFlow.collect { projections ->
+            val outcome = headerProjectionStateOwner.accept(projections)
+            if (
+                outcome != null &&
+                headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+            ) {
+                bridge.log(
+                    "thread_header_reply_diag stage=owner_accept " +
+                        "serverId=${headerProjectionServerId?.value ?: "null"} " +
+                        "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                        "incoming=${projections.headerProjectionMapDiagnostics()} " +
+                        "outcome=${outcome.name} " +
+                        "selected=${headerProjectionStateOwner.selectedProjection().headerProjectionDiagnostics()}"
+                )
+            }
+        }
+    }
+    val directoryConversationProjections by headerProjectionStateOwner.state.collectAsState()
     val directoryConversationProjection =
         remember(headerProjectionInput, conversationDirectoryLookupIds, directoryConversationProjections) {
             conversationDirectoryLookupIds
                 .firstNotNullOfOrNull { id ->
                     directoryConversationProjections[id]?.takeIf { projection ->
-                        headerProjectionInput.accepts(projection)
+                        headerProjectionInput.acceptsForDisplay(projection)
                     }
                 }
         }
@@ -3286,10 +3407,20 @@ internal fun SharedThreadRouteContent(
         }
     LaunchedEffect(headerProjectionInput, directoryConversationProjection) {
         val previous = lastAcceptedHeaderProjection
-        val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::accepts)
+        val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::acceptsForDisplay)
         if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
             bridge.log(
                 "thread_header_dm_diag stage=accept_check " +
+                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
+                    "previous=${previous.headerProjectionDiagnostics()} " +
+                    "accepted=${accepted != null}"
+            )
+        }
+        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            bridge.log(
+                "thread_header_reply_diag stage=accept_check " +
+                    "serverId=${headerProjectionServerId?.value ?: "null"} " +
                     "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
                     "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
                     "previous=${previous.headerProjectionDiagnostics()} " +
@@ -3345,6 +3476,21 @@ internal fun SharedThreadRouteContent(
             bridge.log(
                 "thread_header_dm_diag stage=render " +
                     "serverId=${currentSession?.currentServerId ?: "null"} " +
+                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                    "initialRoute=$initialHeaderRouteDiagnostics " +
+                    "stateRoute=$payloadHeaderRouteDiagnostics " +
+                    "projectionMap=$headerProjectionMapDiagnostics " +
+                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
+                    "previous=${lastAcceptedHeaderProjection.headerProjectionDiagnostics()} " +
+                    "stableSource=$headerProjectionSource " +
+                    "stable=${stableHeaderProjection.headerProjectionDiagnostics()} " +
+                    "final=${headerDisplayModel.headerDisplayDiagnostics()}"
+            )
+        }
+        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            bridge.log(
+                "thread_header_reply_diag stage=render " +
+                    "serverId=${headerProjectionServerId?.value ?: "null"} " +
                     "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
                     "initialRoute=$initialHeaderRouteDiagnostics " +
                     "stateRoute=$payloadHeaderRouteDiagnostics " +
@@ -9720,7 +9866,7 @@ private fun ThreadPageHeader(
                 (activityMuteState != null && onToggleActivityMute != null) ||
                 payload.showSettingsAction ||
                 payload.showMembersAction ||
-                payload.showOpenInChannelAction
+                payload.threadHeaderOpenInParentActionVisible()
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -9741,7 +9887,7 @@ private fun ThreadPageHeader(
                     if (payload.showMembersAction) {
                         ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
                     }
-                    if (payload.showOpenInChannelAction) {
+                    if (payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
                     }
                 }
@@ -13660,12 +13806,16 @@ private fun ThreadMessageCard(
                                                 message.copy(body = bodyForRender).threadMarkdownRenderSignature()
                                             }
                                         }
-                                    diagnosticsLogger(
-                                        "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                            "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                            "sourceBodyLen=${renderedBody.length} collapsed=${showLongMessageToggle && !longMessageExpanded} " +
-                                            "bodyHash=${bodyForRender.hashCode().toString(16)} context=$markdownTagContextSignature"
-                                    )
+                                    LaunchedEffect(markdownRenderSignature, markdownTagContextSignature) {
+                                        diagnosticsLogger(
+                                            "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
+                                                "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
+                                                "sourceBodyLen=${renderedBody.length} " +
+                                                "collapsed=${showLongMessageToggle && !longMessageExpanded} " +
+                                                "bodyHash=${bodyForRender.hashCode().toString(16)} " +
+                                                "context=$markdownTagContextSignature"
+                                        )
+                                    }
                                     key(markdownRenderSignature, markdownTagContextSignature, activeMarkdownTagKey) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
@@ -14733,9 +14883,11 @@ private fun Modifier.threadMessageLongPressActions(
 
 internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     if (threadAuthorBadgeLabel() != null) return null
-    val isAgent = isThreadAgentAuthor()
+    // Avatar slot styling consumes the already-normalized Thread projection. It must not infer a
+    // human author from unknown presentation data or from the legacy agent-id heuristic.
+    val authorMemberKind = authorKind.projectedMemberKindOrNull() ?: return null
     val resolution = resolveAvatarSlot(
-        kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
+        kind = authorMemberKind,
         id = authorId.ifBlank { authorName },
         avatarWireValue = avatarWireValue
     )

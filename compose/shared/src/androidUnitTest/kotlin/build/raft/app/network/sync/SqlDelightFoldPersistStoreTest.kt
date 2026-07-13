@@ -69,7 +69,7 @@ class SqlDelightFoldPersistStoreTest {
         id = id,
         channelId = scopeKey.scopeId,
         seq = seq,
-        senderType = "human",
+        senderType = "user",
         senderId = "u1",
         content = "body-$id",
         messageType = "chat",
