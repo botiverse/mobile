@@ -170,6 +170,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "build-tools;36.0.0"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
@@ -208,6 +211,84 @@ jobs:
           ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
             :androidApp:assembleConnectedTest :androidApp:assembleConnectedTestAndroidTest
 
+      - name: Sign connected test APKs with stable release identity
+        env:
+          KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.SLOCK_KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.SLOCK_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.SLOCK_KEY_PASS }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_FILE_B64 KEYSTORE_PASS KEY_ALIAS KEY_PASS; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required connected-test signing secret: ${name}" >&2
+              exit 1
+            fi
+          done
+          APP_APK="$(find compose/androidApp/build/outputs/apk/connectedTest -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          TEST_APK="$(find compose/androidApp/build/outputs/apk/androidTest/connectedTest -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          test -n "${APP_APK}"
+          test -n "${TEST_APK}"
+          KEYSTORE_FILE="$(mktemp -t raft-connectedtest-keystore-XXXXXX.jks)"
+          WORK_DIR="$(mktemp -d -t raft-connectedtest-signing-XXXXXX)"
+          cleanup() {
+            rm -f "${KEYSTORE_FILE}"
+            rm -rf "${WORK_DIR}"
+          }
+          trap cleanup EXIT
+          echo "${KEYSTORE_FILE_B64}" | base64 -d > "${KEYSTORE_FILE}"
+          BT="${ANDROID_HOME}/build-tools/36.0.0"
+          : > connectedtest-signers.log
+          sign_and_verify() {
+            local label="$1"
+            local apk="$2"
+            local aligned="${WORK_DIR}/${label}-aligned.apk"
+            local signed="${WORK_DIR}/${label}-signed.apk"
+            local verify_log="${WORK_DIR}/${label}-verify.log"
+            "${BT}/zipalign" -p -f 4 "${apk}" "${aligned}"
+            "${BT}/apksigner" sign \
+              --ks "${KEYSTORE_FILE}" \
+              --ks-key-alias "${KEY_ALIAS}" \
+              --ks-pass "pass:${KEYSTORE_PASS}" \
+              --key-pass "pass:${KEY_PASS}" \
+              --v2-signing-enabled true \
+              --v3-signing-enabled true \
+              --out "${signed}" \
+              "${aligned}"
+            cp "${signed}" "${apk}"
+            "${BT}/zipalign" -c -p 4 "${apk}"
+            "${BT}/apksigner" verify --verbose --print-certs "${apk}" 2>&1 | tee "${verify_log}"
+            grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "${verify_log}"
+            grep -q "Verified using v3 scheme (APK Signature Scheme v3): true" "${verify_log}"
+            if grep -q "CN=Android Debug" "${verify_log}"; then
+              echo "${label} APK still uses the ephemeral Android Debug signer" >&2
+              exit 1
+            fi
+            local digest
+            digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "${verify_log}" | head -n 1)"
+            test -n "${digest}"
+            echo "${label}=${digest}" | tee -a connectedtest-signers.log
+          }
+          sign_and_verify app "${APP_APK}"
+          sign_and_verify instrumentation "${TEST_APK}"
+          APP_SIGNER="$(sed -n 's/^app=//p' connectedtest-signers.log)"
+          TEST_SIGNER="$(sed -n 's/^instrumentation=//p' connectedtest-signers.log)"
+          if [ "${APP_SIGNER}" != "${TEST_SIGNER}" ]; then
+            echo "Connected-test app and instrumentation APK signer mismatch" >&2
+            exit 1
+          fi
+          "${BT}/aapt" dump badging "${APP_APK}" > "${WORK_DIR}/app-badging.log"
+          "${BT}/aapt" dump badging "${TEST_APK}" > "${WORK_DIR}/instrumentation-badging.log"
+          grep -q "package: name='build.raft.app.connectedtest'" "${WORK_DIR}/app-badging.log"
+          grep -q "package: name='build.raft.app.connectedtest.test'" "${WORK_DIR}/instrumentation-badging.log"
+          grep -q "targetPackage='build.raft.app.connectedtest'" "${WORK_DIR}/instrumentation-badging.log"
+          {
+            echo "## Connected-test stable signing"
+            echo "- App package: \`build.raft.app.connectedtest\`"
+            echo "- Instrumentation package: \`build.raft.app.connectedtest.test\`"
+            echo "- Shared signer certificate SHA-256: \`${APP_SIGNER}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
@@ -215,6 +296,7 @@ jobs:
           path: |
             compose/androidApp/build/outputs/apk/connectedTest/*.apk
             compose/androidApp/build/outputs/apk/androidTest/connectedTest/*.apk
+            connectedtest-signers.log
           if-no-files-found: error
 
   android-capture:
