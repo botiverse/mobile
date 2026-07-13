@@ -224,6 +224,53 @@ internal fun settingsFeedbackShareEnvironmentSection(exportText: String): String
         .joinToString("\n")
 }
 
+internal fun handsFeedbackAttachmentNames(attachmentNames: List<String>): List<String> =
+    attachmentNames
+        .asSequence()
+        .map { name ->
+            name.substringAfterLast('/').substringAfterLast('\\')
+                .replace(Regex("[\\r\\n]+"), " ")
+                .trim()
+        }
+        .filter { it.isNotBlank() }
+        .toList()
+
+internal fun handsFeedbackAttachmentBlock(attachmentNames: List<String>): String? {
+    val normalizedNames = handsFeedbackAttachmentNames(attachmentNames)
+    if (normalizedNames.isEmpty()) return null
+    return (listOf("attachments:") + normalizedNames).joinToString("\n")
+}
+
+internal fun formatHandsFeedbackShareText(
+    ticketId: String,
+    description: String,
+    environment: String,
+    utcTime: String,
+    localTime: String,
+    appSlug: String,
+    channel: String,
+    attachmentNames: List<String>
+): String =
+    buildString {
+        append("Hands feedback ").append(ticketId.take(8))
+        appendLine()
+        append("Ticket: ").append(ticketId)
+        appendLine()
+        handsFeedbackAttachmentBlock(attachmentNames)?.let { block -> appendLine(block) }
+        append("Submitted: ").append(utcTime).append(" (local ").append(localTime).append(")")
+        appendLine()
+        append("Hands: slug=").append(appSlug).append(", channel=").append(channel)
+        appendLine()
+        appendLine()
+        appendLine("Environment:")
+        appendLine(environment.ifBlank { "--" })
+        appendLine()
+        appendLine()
+        append("Feedback:")
+        appendLine()
+        append(description)
+    }
+
 private fun Map<String, Any>.diagnosticsStringValue(key: String): String =
         this[key]?.toString().orEmpty()
 
@@ -3817,13 +3864,19 @@ internal class SlockKuiklyBridgeModule(
                     attachments = attachments,
             )
             // Shareable reference the user can paste into the community channel.
-            val shareText = buildQuiverFeedbackShareText(ticketId, description)
+            val attachmentNames = handsFeedbackAttachmentNames(attachments.map(File::getName))
+            val shareText = buildQuiverFeedbackShareText(ticketId, description, attachmentNames)
             withContext(Dispatchers.Main) {
                 copyText("Hands feedback", shareText)
                 Toast.makeText(appContext, "Copied — paste it in the community.", Toast.LENGTH_LONG).show()
             }
             SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
-            mapOf<String, Any>("status" to "ok", "ticketId" to ticketId, "shareText" to shareText)
+            mapOf<String, Any>(
+                    "status" to "ok",
+                    "ticketId" to ticketId,
+                    "shareText" to shareText,
+                    "attachment_names" to attachmentNames
+            )
         }.getOrElse {
             SlockAppLog.record(
                     "SlockDiagnostics",
@@ -3840,7 +3893,11 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun buildQuiverFeedbackShareText(ticketId: String, description: String): String {
+    private fun buildQuiverFeedbackShareText(
+            ticketId: String,
+            description: String,
+            attachmentNames: List<String>
+    ): String {
         val environment = settingsFeedbackShareEnvironmentSection(buildMergedSettingsDiagnosticsExportText())
         val utcTime =
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
@@ -3849,25 +3906,16 @@ internal class SlockKuiklyBridgeModule(
         val localTime =
                 SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US)
                         .format(Date())
-        return buildString {
-            append("Hands feedback ").append(ticketId.take(8))
-            appendLine()
-            append("Ticket: ").append(ticketId)
-            appendLine()
-            append("Submitted: ").append(utcTime).append(" (local ").append(localTime).append(")")
-            appendLine()
-            append("Hands: slug=").append(BuildConfig.QUIVER_APP_SLUG)
-                .append(", channel=").append(BuildConfig.QUIVER_CHANNEL)
-            appendLine()
-            appendLine()
-            appendLine("Environment:")
-            appendLine(environment.ifBlank { "--" })
-            appendLine()
-            appendLine()
-            append("Feedback:")
-            appendLine()
-            append(description)
-        }
+        return formatHandsFeedbackShareText(
+                ticketId = ticketId,
+                description = description,
+                environment = environment,
+                utcTime = utcTime,
+                localTime = localTime,
+                appSlug = BuildConfig.QUIVER_APP_SLUG,
+                channel = BuildConfig.QUIVER_CHANNEL,
+                attachmentNames = attachmentNames
+        )
     }
 
     /** Native description prompt; returns null when cancelled or left blank. */
