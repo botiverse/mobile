@@ -1,5 +1,7 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.MessageAggregateField
+import build.raft.app.canonical.message.TaskDomainFields
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add

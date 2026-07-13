@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.model.MessageId
 
 /**

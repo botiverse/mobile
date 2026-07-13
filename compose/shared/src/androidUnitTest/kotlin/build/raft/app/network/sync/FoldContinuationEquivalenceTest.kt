@@ -17,9 +17,12 @@
 package build.raft.app.network.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalMessageCarry
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.data.SlockSqlDatabase
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -44,8 +47,8 @@ class FoldContinuationEquivalenceTest {
 
     /** Resolved initial row: a non-null commentRef and a non-empty reactions list to be preserved/overwritten. */
     private fun initialRow() = CanonicalMessageRow(
-        id = MessageId("m1"),
-        channelId = ChannelId(scope.scopeId),
+        id = "m1",
+        channelId = scope.scopeId,
         seq = 1,
         senderType = "human",
         senderId = "u1",
@@ -78,7 +81,7 @@ class FoldContinuationEquivalenceTest {
 
     private fun bucket(state: MessageDomainState) = state.channelMessages[scope.scopeId].orEmpty()
 
-    private fun foldUpdated(state: MessageDomainState, decoded: DecodedCanonicalMessage) =
+    private fun foldUpdated(state: MessageDomainState, decoded: CanonicalMessageCarry) =
         applyMessageDomainEvent(state, MessageDomainEvent.Updated(decoded.row, decoded.presentAggregates))
 
     /** Path B middle: durably commit the state's facts through the REAL one-txn applyFrame, then restore. */

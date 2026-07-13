@@ -1,7 +1,8 @@
 /*
- * Shadow-observer isolation (AD2 #700 BLOCK): the flag-gated shadow-compare hook must NEVER affect the
- * authoritative realtime event. A throwing observer (flag lookup / canonical pipeline / logger) must be
- * swallowed at the mapper boundary so the legacy MessageNew/MessageUpdated still reaches store/UI unchanged.
+ * Shadow-gateway isolation (AD2 #700 BLOCK): the flag-gated canonical projection gateway must NEVER affect
+ * the authoritative realtime event. A throwing gateway (flag lookup / canonical pipeline / logger) must be
+ * swallowed at the mapper boundary so the legacy MessageNew/MessageUpdated still reaches store/UI unchanged
+ * — with a null carry (fail-open), identical to the NoOp gateway.
  */
 package build.raft.app.data.realtime
 
@@ -14,6 +15,7 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RealtimeEventMapperShadowIsolationTest {
@@ -45,6 +47,7 @@ class RealtimeEventMapperShadowIsolationTest {
         assertNotNull(withThrowing, "authoritative MessageNew must still be produced")
         assertTrue(withThrowing is MessageNew)
         assertEquals(noOp, withThrowing, "throwing shadow observer must not alter the authoritative event")
+        assertNull((withThrowing as MessageNew).decodedCanonical, "a throwing gateway must fail open to a null carry")
     }
 
     @Test

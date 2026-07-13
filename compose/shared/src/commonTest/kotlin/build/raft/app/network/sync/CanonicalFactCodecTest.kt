@@ -14,8 +14,13 @@
  */
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
+import build.raft.app.canonical.message.CanonicalAttachmentWire
+import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalMentionWire
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.Test
@@ -27,8 +32,8 @@ class CanonicalFactCodecTest {
 
     /** Every field distinct + all nested populated: a dropped envelope field loses its value here. */
     private fun fullyPopulatedRow() = CanonicalMessageRow(
-        id = MessageId("m-1"),
-        channelId = ChannelId("c-1"),
+        id = "m-1",
+        channelId = "c-1",
         seq = 42,
         senderType = "agent",
         senderId = "u-1",
@@ -96,7 +101,7 @@ class CanonicalFactCodecTest {
         // order, explicitNulls/encodeDefaults, added/renamed field) reshapes this string = RED. Re-pin ONLY
         // with an explicit version bump.
         val row = CanonicalMessageRow(
-            id = MessageId("m1"), channelId = ChannelId("c1"), seq = 1,
+            id = "m1", channelId = "c1", seq = 1,
             senderType = "human", senderId = "u1", content = "hi", messageType = "chat",
             createdAt = "t", senderName = "A",
         )

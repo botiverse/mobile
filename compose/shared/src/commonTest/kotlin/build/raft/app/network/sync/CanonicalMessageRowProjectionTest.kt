@@ -1,9 +1,14 @@
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
+import build.raft.app.canonical.message.CanonicalAttachmentWire
+import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalMentionWire
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
-import build.raft.app.model.MessageId
 import build.raft.app.model.MessageType
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -25,8 +30,8 @@ class CanonicalMessageRowProjectionTest {
         conversationContext: CanonicalConversationContextWire? = null,
         commentRef: CanonicalCommentRefWire? = null,
     ) = CanonicalMessageRow(
-        id = MessageId("m1"),
-        channelId = ChannelId("c1"),
+        id = "m1",
+        channelId = "c1",
         seq = 42,
         senderType = senderType,
         senderId = "u1",

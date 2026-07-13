@@ -1,8 +1,7 @@
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
-import kotlinx.serialization.json.JsonElement
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.MessageAggregateField
 
 /**
  * #491 A-minimal T-message-fold — the KMP messages-domain fold, a behavioral mirror of the web
@@ -27,112 +26,12 @@ import kotlinx.serialization.json.JsonElement
  *
  * MemberProfile / MessageType enum / metadata map / ForwardMessageBundle / TaskSummary are all derived
  * at the PROJECTION layer (row → app `Message`), not stored here.
+ *
+ * The PURE DATA contract types ([CanonicalMessageRow] + its nested wire DTOs, [MessageAggregateField])
+ * live in the neutral `build.raft.app.canonical.message` package (#607); the fold behavior stays here.
  */
 const val MESSAGES_SYNC_DOMAIN: SyncDomainName = "messages"
 const val SYNC_CORE_MESSAGES_FLAG_KEY: String = "sync_core_messages_v0"
-
-// ── Wire-shaped nested DTOs (manifest v4 nestedWireShapes; raw types, no app-domain projection) ──
-
-/** attachment (7) — raw wire; sizeBytes NOT formatted sizeLabel; NO commentCount (viewer overlay). */
-data class CanonicalAttachmentWire(
-    val id: String,
-    val filename: String,
-    val mimeType: String,
-    val sizeBytes: Long,
-    val width: Int? = null,
-    val height: Int? = null,
-    val thumbnailUrl: String? = null,
-)
-
-/** commentRef host source (6) — raw wire; type/routeKind are string-union-raw. */
-data class CanonicalCommentHostSourceWire(
-    val type: String,
-    val routeKind: String,
-    val channelId: String,
-    val parentMessageId: String? = null,
-    val threadChannelId: String? = null,
-    val rootThreadChannelId: String? = null,
-)
-
-/** commentRef (6) — raw wire; includes anchorQuote (app MessageCommentRef lacks it). */
-data class CanonicalCommentRefWire(
-    val attachmentId: String,
-    val filename: String,
-    val hostMessageId: String? = null,
-    val hostSource: CanonicalCommentHostSourceWire? = null,
-    val anchorLabel: String? = null,
-    val anchorQuote: String? = null,
-)
-
-/** conversationContext (4) — raw string-union kind values, NOT parsed enums (unknown-preserving). */
-data class CanonicalConversationContextWire(
-    val channelType: String,
-    val parentChannelId: String? = null,
-    val parentChannelType: String? = null,
-    val parentMessageId: String? = null,
-)
-
-/** mention (3) — raw wire; type is string-union-raw. */
-data class CanonicalMentionWire(
-    val id: String,
-    val name: String,
-    val type: String,
-)
-
-/**
- * reaction (4) — raw wire. A dedicated wire DTO (NOT the app-domain `MessageReaction`): the canonical
- * fold row must stay wire-shaped so no UI-convenience field can silently change the persisted canonical
- * shape (LiBai §6.3). Field-identical to the manifest `nestedWireShapes.reaction`.
- */
-data class CanonicalReactionWire(
-    val emoji: String,
-    val count: Int,
-    val reactorIds: List<String> = emptyList(),
-    val reactorNames: List<String> = emptyList(),
-)
-
-/**
- * The OptionalAggregate fields (manifest v4 `optionalAggregate`). The incoming event names which of
- * these were present on the wire frame (raw-JSON presence). Merge honors the presence set + each
- * field's mergePolicy; a bare task-status frame omits all but [SenderName]/[ActionMetadata].
- */
-enum class MessageAggregateField {
-    SenderName, SenderDescription, SenderMembershipStatus, Mentions, Attachments, Reactions, CommentRef,
-    ActionMetadata, ConversationContext,
-}
-
-/**
- * The canonical fold row — the WIRE canonical shape (manifest v4). Both web and KMP build this from
- * the same socket frame; each projects to its own domain type afterward. Raw types throughout.
- *
- * CanonicalRequired (10) — 8 non-null + randomId/threadId nullable; threadId is the WIRE anchor
- * (raw, ≠ app nav ThreadId); createdAt is raw (≠ collapsed timestampLabel); messageType is a raw
- * string-union (≠ MessageType enum which maps unknown→Chat).
- * OptionalAggregate (9) — actionMetadata is raw structured JSON (unknown-key-preserving).
- */
-data class CanonicalMessageRow(
-    // -- CanonicalRequired (mergePolicy = overwrite) --
-    val id: MessageId,
-    val channelId: ChannelId,
-    val seq: Long,
-    val senderType: String,
-    val senderId: String,
-    val content: String,
-    val messageType: String,
-    val createdAt: String,
-    val randomId: String? = null,
-    val threadId: String? = null,
-    // -- OptionalAggregate --
-    val senderName: String,
-    val senderDescription: String? = null,
-    val senderMembershipStatus: String? = null,
-    val mentions: List<CanonicalMentionWire> = emptyList(),
-    val attachments: List<CanonicalAttachmentWire> = emptyList(),
-    val reactions: List<CanonicalReactionWire> = emptyList(),
-    val commentRef: CanonicalCommentRefWire? = null,
-    val actionMetadata: JsonElement? = null,
-    val conversationContext: CanonicalConversationContextWire? = null,
-)
 
 sealed interface MessageDomainEvent {
     val row: CanonicalMessageRow
@@ -220,7 +119,7 @@ private fun CanonicalMessageRow.withAbsentAggregatesCleared(present: Set<Message
 
 /** Server-backed order: seq orders, ties break by id. (All canonical rows have a non-null seq.) */
 private fun List<CanonicalMessageRow>.sortedByCanonicalOrder(): List<CanonicalMessageRow> =
-    sortedWith(compareBy({ it.seq }, { it.id.value }))
+    sortedWith(compareBy({ it.seq }, { it.id }))
 
 private fun MessageDomainState.withBucket(channelId: String, bucket: List<CanonicalMessageRow>): MessageDomainState =
     copy(channelMessages = channelMessages + (channelId to bucket))
@@ -230,7 +129,7 @@ private fun applyMessageNew(
     row: CanonicalMessageRow,
     present: Set<MessageAggregateField>,
 ): MessageDomainState {
-    val channelId = row.channelId.value
+    val channelId = row.channelId
     val bucket = state.channelMessages[channelId] ?: emptyList()
     val existingIndex = bucket.indexOfFirst { it.id == row.id }
     if (existingIndex >= 0) {
@@ -246,7 +145,7 @@ private fun applyMessageUpdated(
     row: CanonicalMessageRow,
     present: Set<MessageAggregateField>,
 ): MessageDomainState {
-    val channelId = row.channelId.value
+    val channelId = row.channelId
     val bucket = state.channelMessages[channelId] ?: return state
     var changed = false
     val mergedBucket = bucket.map { r ->

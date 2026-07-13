@@ -1,7 +1,12 @@
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
+import build.raft.app.canonical.message.CanonicalAttachmentWire
+import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalMentionWire
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -14,7 +19,7 @@ import kotlinx.serialization.json.JsonElement
  *
  * This is the restore/continuation SOLE source of truth. It is a DEDICATED versioned envelope
  * ([CanonicalMessagePersistedV1]) — NOT a bare serialization of the fold domain [CanonicalMessageRow]
- * (which carries value-class ids + a raw JsonElement). Decoupling means the stored shape only changes with
+ * (which carries a raw JsonElement). Decoupling means the stored shape only changes with
  * an explicit envelope edit. Drift is caught NOT by the compiler — a new default-valued canonical field
  * compiles fine and would silently drop (named-arg mapping is not exhaustive) — but by the GATE TRIANGLE:
  * G6 pins fold-row == manifest, the (甲) gate ([CanonicalFactEnvelopeManifestGateTest]) pins
@@ -136,8 +141,8 @@ data class CanonicalConversationContextV1(
 //    NOT the compiler — a new default-valued field would compile and silently drop) ──
 
 fun CanonicalMessageRow.toPersistedV1(): CanonicalMessagePersistedV1 = CanonicalMessagePersistedV1(
-    id = id.value,
-    channelId = channelId.value,
+    id = id,
+    channelId = channelId,
     seq = seq,
     senderType = senderType,
     senderId = senderId,
@@ -173,8 +178,8 @@ fun CanonicalMessageRow.toPersistedV1(): CanonicalMessagePersistedV1 = Canonical
 )
 
 fun CanonicalMessagePersistedV1.toCanonicalRow(): CanonicalMessageRow = CanonicalMessageRow(
-    id = MessageId(id),
-    channelId = ChannelId(channelId),
+    id = id,
+    channelId = channelId,
     seq = seq,
     senderType = senderType,
     senderId = senderId,

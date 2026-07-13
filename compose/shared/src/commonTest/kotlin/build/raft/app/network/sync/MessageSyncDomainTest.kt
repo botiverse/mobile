@@ -17,8 +17,12 @@
  */
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
+import build.raft.app.canonical.message.CanonicalAttachmentWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
+import build.raft.app.canonical.message.MessageAggregateField
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,8 +42,8 @@ class MessageSyncDomainTest {
         attachments: List<CanonicalAttachmentWire> = emptyList(),
         commentRef: CanonicalCommentRefWire? = null,
     ): CanonicalMessageRow = CanonicalMessageRow(
-        id = MessageId(id),
-        channelId = ChannelId(channel),
+        id = id,
+        channelId = channel,
         seq = seq,
         senderType = "human",
         senderId = "u1",
@@ -62,7 +66,7 @@ class MessageSyncDomainTest {
     private val TASK = MessageDomainEvent.PRESENT_TASK_STATUS_UPDATED
 
     private fun bucket(s: MessageDomainState, channel: String = "c1") = s.channelMessages[channel].orEmpty()
-    private fun ids(s: MessageDomainState, channel: String = "c1") = bucket(s, channel).map { it.id.value }
+    private fun ids(s: MessageDomainState, channel: String = "c1") = bucket(s, channel).map { it.id }
     private fun new(s: MessageDomainState, r: CanonicalMessageRow, p: Set<MessageAggregateField> = MESSAGE_NEW) =
         applyMessageDomainEvent(s, MessageDomainEvent.New(r, p))
     private fun updated(s: MessageDomainState, r: CanonicalMessageRow, p: Set<MessageAggregateField>) =
@@ -201,11 +205,11 @@ class MessageSyncDomainTest {
             state0,
             MessageDomainEvent.Updated(row("m1", seq = 5, content = "edited-after-restore"), TASK),
         )
-        val m1 = edited.channelMessages.getValue("c1").first { it.id == MessageId("m1") }
+        val m1 = edited.channelMessages.getValue("c1").first { it.id == "m1" }
         assertEquals("edited-after-restore", m1.content) // reached restored row
         assertEquals(listOf(reaction()), m1.reactions) // aggregate preserved across restore+edit
         assertEquals("a1", m1.commentRef?.attachmentId) // viewer overlay preserved
-        assertEquals("orig2", edited.channelMessages.getValue("c1").first { it.id == MessageId("m2") }.content)
+        assertEquals("orig2", edited.channelMessages.getValue("c1").first { it.id == "m2" }.content)
     }
 
     @Test

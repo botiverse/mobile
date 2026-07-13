@@ -1,7 +1,7 @@
 package build.raft.app.model
 
+import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SettingsServerSidebarPinnedItem
-import build.raft.app.network.sync.DecodedCanonicalMessage
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -465,16 +465,16 @@ sealed interface RealtimeEvent
 data class MessageNew(
     val message: Message,
     // In-process carry (sync_core_messages_v0): the raw-wire canonical decode produced ONCE by the
-    // RealtimeEventMapper, threaded to the SharedRealtimeDomainEventOwner shadow fold+persist lane so it
-    // is not re-decoded there. @Transient — never serialized (not part of the wire/cache shape), so a
-    // deserialized event carries null and the shadow lane simply skips it (fail-open).
-    @Transient val decodedCanonical: DecodedCanonicalMessage? = null,
+    // flag-gated projection gateway (MessageShadowObserver), threaded to the SharedRealtimeDomainEventOwner
+    // shadow fold+persist lane so it is not re-decoded there. @Transient — never serialized (not part of the
+    // wire/cache shape), so a deserialized event carries null and the shadow lane simply skips it (fail-open).
+    @Transient val decodedCanonical: CanonicalMessageCarry? = null,
 ) : RealtimeEvent
 
 @Serializable
 data class MessageUpdated(
     val message: Message,
-    @Transient val decodedCanonical: DecodedCanonicalMessage? = null,
+    @Transient val decodedCanonical: CanonicalMessageCarry? = null,
 ) : RealtimeEvent
 
 @Serializable

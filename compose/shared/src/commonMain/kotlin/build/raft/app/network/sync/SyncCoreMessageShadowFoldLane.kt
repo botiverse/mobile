@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SlockSqlDatabase
@@ -39,13 +40,13 @@ internal class SyncCoreMessageShadowFoldLane(
      */
     fun foldAndPersist(
         resolvedServerId: String,
-        decoded: DecodedCanonicalMessage,
+        decoded: CanonicalMessageCarry,
         updated: Boolean,
         epoch: SyncEpoch?,
     ) {
         try {
             val row = decoded.row
-            val channelId = row.channelId.value
+            val channelId = row.channelId
             val domainEvent: MessageDomainEvent =
                 if (updated) MessageDomainEvent.Updated(row, decoded.presentAggregates)
                 else MessageDomainEvent.New(row, decoded.presentAggregates)

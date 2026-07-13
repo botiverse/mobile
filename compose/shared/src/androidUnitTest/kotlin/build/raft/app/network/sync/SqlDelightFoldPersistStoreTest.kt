@@ -16,9 +16,14 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.canonical.message.CanonicalAttachmentWire
+import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalMentionWire
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.data.SlockSqlDatabase
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -61,8 +66,8 @@ class SqlDelightFoldPersistStoreTest {
         DefaultFoldPersistenceAdapter(SqlDelightFoldPersistTransactionRunner(db), faultStore ?: store(db))
 
     private fun row(id: String, seq: Long, scopeKey: SyncScopeKey = scope) = CanonicalMessageRow(
-        id = MessageId(id),
-        channelId = ChannelId(scopeKey.scopeId),
+        id = id,
+        channelId = scopeKey.scopeId,
         seq = seq,
         senderType = "human",
         senderId = "u1",
@@ -74,8 +79,8 @@ class SqlDelightFoldPersistStoreTest {
 
     /** Every canonical field + every nested shape populated distinctly — a dropped field fails round-trip. */
     private fun fullRow(scopeKey: SyncScopeKey = scope) = CanonicalMessageRow(
-        id = MessageId("full"),
-        channelId = ChannelId(scopeKey.scopeId),
+        id = "full",
+        channelId = scopeKey.scopeId,
         seq = 42,
         senderType = "agent",
         senderId = "u1",
@@ -124,8 +129,8 @@ class SqlDelightFoldPersistStoreTest {
         adapter(db).applyFrame(frame(scope, row("m1", 5)))
         val stored = db.queries.selectServerBackedMessagesForChannel("s1", "channel", "c1").executeAsList().single()
         val decoded = decodeCanonicalFact(stored.canonicalFactJson)!!
-        assertEquals(stored.id, decoded.id.value)
-        assertEquals(stored.channelId, decoded.channelId.value)
+        assertEquals(stored.id, decoded.id)
+        assertEquals(stored.channelId, decoded.channelId)
         assertEquals(stored.seq, decoded.seq)
         assertEquals(stored.createdAt, decoded.createdAt)
     }
@@ -141,7 +146,7 @@ class SqlDelightFoldPersistStoreTest {
         assertTrue(store(db).readFacts(SyncScopeKey("s2", "c1", "channel")).isEmpty(), "different server must be isolated")
         // Different channelId must not see it.
         assertTrue(store(db).readFacts(SyncScopeKey("s1", "c2", "channel")).isEmpty(), "different channelId must be isolated")
-        assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id.value })
+        assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id })
     }
 
     @Test
@@ -162,7 +167,7 @@ class SqlDelightFoldPersistStoreTest {
         assertFailsWith<FoldPersistScopeConflict> {
             adapter(db).applyFrame(frame(other, row("dup", 2, other)))
         }
-        assertEquals(listOf("dup"), store(db).readFacts(scope).map { it.id.value }, "the original scope's fact is untouched")
+        assertEquals(listOf("dup"), store(db).readFacts(scope).map { it.id }, "the original scope's fact is untouched")
         assertTrue(store(db).readFacts(other).isEmpty(), "the conflicting frame rolled back")
     }
 
@@ -177,7 +182,7 @@ class SqlDelightFoldPersistStoreTest {
         }
         assertFailsWith<RuntimeException> { adapter(db, faultStore = dying).applyFrame(frame(scope, row("m2", 2))) }
         assertEquals(beforeRollback + 1, driver.rollback, "mid-block death must be one real ROLLBACK")
-        assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id.value }, "rolled back to the complete pre-frame state")
+        assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id }, "rolled back to the complete pre-frame state")
     }
 
     @Test
@@ -211,9 +216,9 @@ class SqlDelightFoldPersistStoreTest {
         val (db, _) = freshDb()
         // Resolved three states the fold can produce: null nullable + empty list; and a populated value.
         val nulls = row("nulls", 1).copy(commentRef = null, conversationContext = null, reactions = emptyList())
-        val values = fullRow().copy(id = MessageId("values"), channelId = ChannelId("c1"))
+        val values = fullRow().copy(id = "values", channelId = "c1")
         adapter(db).applyFrame(FoldPersistFrame(scope, listOf(nulls, values), PersistedCursor(2, 1, 2, epoch = "e1")))
-        val restored = store(db).readFacts(scope).associateBy { it.id.value }
+        val restored = store(db).readFacts(scope).associateBy { it.id }
         assertNull(restored["nulls"]!!.commentRef, "resolved null must survive as null (not [] or a value)")
         assertEquals(emptyList(), restored["nulls"]!!.reactions, "resolved empty must survive as empty")
         assertEquals(values, restored["values"], "a fully-populated resolved fact round-trips exactly")
