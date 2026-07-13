@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.MembersAgentLifecycleAction
+import build.raft.app.seedRemoteAgentProfile
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
@@ -156,6 +157,28 @@ class SharedAgentDetailStoreTest {
 
         assertEquals("Agent One", s.state.value.detail?.summary?.name)
         assertEquals("Online", s.state.value.detail?.summary?.status)
+    }
+
+    @Test
+    fun remoteProfileSeedReplacesSameIdDetailFromAnotherServer() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
+
+        seedRemoteAgentProfile(
+            s,
+            MemberProfile(
+                id = testMemberId,
+                displayName = "Remote Agent",
+                handle = "remote-agent",
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Offline
+            )
+        )
+
+        assertEquals("remote-agent", s.state.value.detail?.summary?.name)
+        assertEquals("Remote Agent", s.state.value.detail?.summary?.displayName)
+        assertEquals("Offline", s.state.value.detail?.summary?.status)
     }
 
     @Test

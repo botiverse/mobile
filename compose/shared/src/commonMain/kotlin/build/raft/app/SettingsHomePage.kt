@@ -13097,9 +13097,12 @@ private fun SharedMembersScreen(
                 agentStatusResolver = agentStatusResolver,
                 onOpenMemberDetail = { member ->
                     routeScope.launch {
+                        val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
+                        val remoteProfileOnly = memberDetailUsesRemoteProfileOnly(identity, serverId)
                         val launchPayload =
                             if (
                                 member.kind == MemberKind.Agent &&
+                                    !remoteProfileOnly &&
                                     (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
                             ) {
                                 loadAgentPanelTabOrderForSharedMembers()
@@ -13118,7 +13121,7 @@ private fun SharedMembersScreen(
                             }
                         val pageData =
                             launchPayload.toMemberDetailPageData(
-                                MemberDetailIdentity(member.id, member.kind, member.serverId)
+                                identity
                             )
                         if (pageData == null) {
                             bridge.toast("Unable to open profile")
