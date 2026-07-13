@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.parseSharedAgentActivity
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
@@ -18,6 +19,26 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SharedMembersParserTest {
+    @Test
+    fun cachedAgentDetailUsesBackgroundRefreshWithoutVisibleLoading() {
+        assertEquals(
+            MemberDetailLoadPlan(
+                priority = DataRequestPriority.Background,
+                showInitialLoading = false,
+                keepCachedContentOnFailure = true
+            ),
+            memberDetailLoadPlan(hasCachedDetail = true)
+        )
+        assertEquals(
+            MemberDetailLoadPlan(
+                priority = DataRequestPriority.Visible,
+                showInitialLoading = true,
+                keepCachedContentOnFailure = false
+            ),
+            memberDetailLoadPlan(hasCachedDetail = false)
+        )
+    }
+
     @Test
     fun agentsEndpointArrayParsesAsAgentMembers() {
         val agents =

@@ -1449,6 +1449,27 @@ private sealed interface MemberDetailRouteState {
     ) : MemberDetailRouteState
 }
 
+internal data class MemberDetailLoadPlan(
+    val priority: DataRequestPriority,
+    val showInitialLoading: Boolean,
+    val keepCachedContentOnFailure: Boolean
+)
+
+internal fun memberDetailLoadPlan(hasCachedDetail: Boolean): MemberDetailLoadPlan =
+    if (hasCachedDetail) {
+        MemberDetailLoadPlan(
+            priority = DataRequestPriority.Background,
+            showInitialLoading = false,
+            keepCachedContentOnFailure = true
+        )
+    } else {
+        MemberDetailLoadPlan(
+            priority = DataRequestPriority.Visible,
+            showInitialLoading = true,
+            keepCachedContentOnFailure = false
+        )
+    }
+
 private data class MemberDetailVisualSeed(
     val member: MemberProfile,
     val agentDetailState: MembersAgentDetailLoadState,
@@ -1518,11 +1539,14 @@ private class MemberDetailRouteProvider(
     ): MemberDetailRouteState {
         val state = agentDetailStore.state.value
         val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
+        val loadPlan = memberDetailLoadPlan(hasMatchingDetail)
         if (!hasMatchingDetail) {
             agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
         }
-        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
-        when (val detailResult = memberRepository.getAgentDetail(DataRequestPriority.Visible, selectedId)) {
+        if (loadPlan.showInitialLoading) {
+            agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
+        }
+        when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
@@ -1533,16 +1557,34 @@ private class MemberDetailRouteProvider(
                 )
             }
             is DataResult.Empty -> {
+                if (loadPlan.keepCachedContentOnFailure) {
+                    bridge.log("member_detail_background_refresh_kept_cached agentId=${selectedId.value} result=empty")
+                    return MemberDetailRouteState.Agent(server = server, currentUserId = currentUserId)
+                }
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
                 return MemberDetailRouteState.Error("member_not_found")
             }
             is DataResult.Error -> {
+                if (loadPlan.keepCachedContentOnFailure) {
+                    bridge.log(
+                        "member_detail_background_refresh_kept_cached agentId=${selectedId.value} " +
+                            "result=error code=${detailResult.error.code}"
+                    )
+                    return MemberDetailRouteState.Agent(server = server, currentUserId = currentUserId)
+                }
                 agentDetailStore.dispatch(
                     SharedAgentDetailIntent.SetDetailError(selectedId, detailResult.error.code)
                 )
                 return MemberDetailRouteState.Error(detailResult.error.code)
             }
             is DataResult.NoPermission -> {
+                if (loadPlan.keepCachedContentOnFailure) {
+                    bridge.log(
+                        "member_detail_background_refresh_kept_cached agentId=${selectedId.value} " +
+                            "result=no_permission code=${detailResult.blocker.code}"
+                    )
+                    return MemberDetailRouteState.Agent(server = server, currentUserId = currentUserId)
+                }
                 agentDetailStore.dispatch(
                     SharedAgentDetailIntent.SetDetailNoPermission(selectedId, detailResult.blocker.code)
                 )

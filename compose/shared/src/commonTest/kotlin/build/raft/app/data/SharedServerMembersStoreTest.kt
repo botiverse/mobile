@@ -1,10 +1,12 @@
 package build.raft.app.data
 
 import build.raft.app.model.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -598,13 +600,15 @@ class SharedServerMembersStoreTest {
             )
         )
         val emissions = mutableListOf<SharedServerMemberStatus?>()
+        val firstEmission = CompletableDeferred<Unit>()
         val collectJob =
             launch {
                 store.memberStatusFlow(ServerId("server-1"), "agent-1")
+                    .onEach { firstEmission.complete(Unit) }
                     .take(2)
                     .toList(emissions)
             }
-        yield()
+        firstEmission.await()
 
         store.applyPresence(
             MemberPresenceUpdated(
@@ -697,13 +701,15 @@ class SharedServerMembersStoreTest {
             )
         )
         val emissions = mutableListOf<MemberProfile?>()
+        val firstEmission = CompletableDeferred<Unit>()
         val collectJob =
             launch {
                 store.memberProfileFlow(ServerId("server-1"), "u1")
+                    .onEach { firstEmission.complete(Unit) }
                     .take(2)
                     .toList(emissions)
             }
-        yield()
+        firstEmission.await()
 
         store.seed(
             MemberSnapshot(
@@ -729,6 +735,91 @@ class SharedServerMembersStoreTest {
         collectJob.join()
 
         assertEquals(listOf("pixel:robot", "pixel:spark"), emissions.map { it?.avatar?.wireValue })
+    }
+
+    @Test
+    fun scopedMemberFlowsIgnoreUnrelatedPresenceFacts() = runBlocking {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent One").copy(
+                        kind = MemberKind.Agent,
+                        avatar = AvatarReference.fromWireValue("pixel:robot"),
+                        agentStatus = AgentStatus.Online,
+                        presence = Presence.Active
+                    ),
+                    member("agent-2", "Agent Two").copy(
+                        kind = MemberKind.Agent,
+                        avatar = AvatarReference.fromWireValue("pixel:paint"),
+                        agentStatus = AgentStatus.Idle,
+                        presence = Presence.Away
+                    )
+                )
+            )
+        )
+        val avatarEmissions = mutableListOf<MemberProfile?>()
+        val statusEmissions = mutableListOf<SharedServerMemberStatus?>()
+        val avatarFirstEmission = CompletableDeferred<Unit>()
+        val statusFirstEmission = CompletableDeferred<Unit>()
+        val avatarJob =
+            launch {
+                store.memberProfileFlow(ServerId("server-1"), "agent-1")
+                    .onEach { avatarFirstEmission.complete(Unit) }
+                    .take(2)
+                    .toList(avatarEmissions)
+            }
+        val statusJob =
+            launch {
+                store.memberStatusFlow(ServerId("server-1"), "agent-1")
+                    .onEach { statusFirstEmission.complete(Unit) }
+                    .take(2)
+                    .toList(statusEmissions)
+            }
+        avatarFirstEmission.await()
+        statusFirstEmission.await()
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-2"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working
+            )
+        )
+        yield()
+
+        assertEquals(1, avatarEmissions.size)
+        assertEquals(1, statusEmissions.size)
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working
+            )
+        )
+        store.seedProfiles(
+            serverId = ServerId("server-1"),
+            profiles =
+                listOf(
+                    member("agent-1", "Agent One").copy(
+                        kind = MemberKind.Agent,
+                        avatar = AvatarReference.fromWireValue("pixel:spark")
+                    )
+                )
+        )
+        avatarJob.join()
+        statusJob.join()
+
+        assertEquals(listOf("pixel:robot", "pixel:spark"), avatarEmissions.map { it?.avatar?.wireValue })
+        assertEquals(
+            listOf(AgentStatus.Online, AgentStatus.Working),
+            statusEmissions.map { it?.status }
+        )
     }
 
     @Test
