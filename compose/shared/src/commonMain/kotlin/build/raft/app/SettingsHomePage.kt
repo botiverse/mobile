@@ -3994,6 +3994,7 @@ private fun SlockAppShellContent(
                                 pager.openReleaseNotesPage(releaseNotesVersionCode, storeScope)
                             },
                             onOpenBilling = { pager.openSettingsBillingPage(storeScope) },
+                            onOpenConnectedApps = { pager.openSettingsMarketplacePage(storeScope) },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
                             },
@@ -4214,6 +4215,7 @@ private fun SettingsAppShellContent(
     onOpenRouter: () -> Unit,
     onOpenReleaseNotes: () -> Unit,
     onOpenBilling: () -> Unit,
+    onOpenConnectedApps: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -4484,6 +4486,7 @@ private fun SettingsAppShellContent(
                     SettingsDestinationRouter -> onOpenRouter()
                     SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
                     SettingsDestinationBilling -> onOpenBilling()
+                    SettingsDestinationConnectedApps -> onOpenConnectedApps()
                     else -> onDestinationChange(key)
                 }
             }
@@ -19147,6 +19150,7 @@ private fun SettingsRouteVisualScreen() {
         onOpenRouter = {},
         onOpenReleaseNotes = {},
         onOpenBilling = {},
+        onOpenConnectedApps = {},
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
