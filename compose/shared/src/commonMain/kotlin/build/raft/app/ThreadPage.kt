@@ -879,7 +879,7 @@ internal fun threadHeaderInitialProjectionMap(
     return input.lookupIds
         .mapNotNull { id ->
             provider.resolveProjection(serverId, id)
-                ?.takeIf(input::accepts)
+                ?.takeIf(input::acceptsForDisplay)
                 ?.let { projection -> id to projection }
         }
         .toMap()
@@ -891,16 +891,31 @@ internal class ThreadHeaderProjectionStateOwner(
 ) {
     private val _state = MutableStateFlow(input.acceptedHeaderProjectionMap(initialProjections))
     val state: StateFlow<Map<String, SharedConversationDirectoryProjection>> = _state.asStateFlow()
+    private var lastRejectedProjections: Map<String, SharedConversationDirectoryProjection>? = null
 
-    fun accept(projections: Map<String, SharedConversationDirectoryProjection>) {
+    fun accept(
+        projections: Map<String, SharedConversationDirectoryProjection>
+    ): ThreadHeaderProjectionAcceptance? {
         val accepted = input.acceptedHeaderProjectionMap(projections)
-        if (accepted.isNotEmpty()) {
-            _state.value = accepted
+        if (accepted.isEmpty()) {
+            if (lastRejectedProjections == projections) return null
+            lastRejectedProjections = projections
+            return ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection
         }
+        lastRejectedProjections = null
+        val merged = _state.value + accepted
+        if (_state.value == merged) return null
+        _state.value = merged
+        return ThreadHeaderProjectionAcceptance.AcceptedDisplayValidProjection
     }
 
     fun selectedProjection(): SharedConversationDirectoryProjection? =
         input.lookupIds.firstNotNullOfOrNull(_state.value::get)
+}
+
+internal enum class ThreadHeaderProjectionAcceptance {
+    AcceptedDisplayValidProjection,
+    PreservedNoDisplayValidProjection
 }
 
 private fun ThreadHeaderProjectionInput.acceptedHeaderProjectionMap(
@@ -909,7 +924,7 @@ private fun ThreadHeaderProjectionInput.acceptedHeaderProjectionMap(
     lookupIds
         .mapNotNull { id ->
             projections[id]
-                ?.takeIf(::accepts)
+                ?.takeIf(::acceptsForDisplay)
                 ?.let { projection -> id to projection }
         }
         .toMap()
@@ -3346,7 +3361,22 @@ internal fun SharedThreadRouteContent(
             )
         }
     LaunchedEffect(headerProjectionStateOwner, directoryConversationProjectionFlow) {
-        directoryConversationProjectionFlow.collect(headerProjectionStateOwner::accept)
+        directoryConversationProjectionFlow.collect { projections ->
+            val outcome = headerProjectionStateOwner.accept(projections)
+            if (
+                outcome != null &&
+                headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+            ) {
+                bridge.log(
+                    "thread_header_reply_diag stage=owner_accept " +
+                        "serverId=${headerProjectionServerId?.value ?: "null"} " +
+                        "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                        "incoming=${projections.headerProjectionMapDiagnostics()} " +
+                        "outcome=${outcome.name} " +
+                        "selected=${headerProjectionStateOwner.selectedProjection().headerProjectionDiagnostics()}"
+                )
+            }
+        }
     }
     val directoryConversationProjections by headerProjectionStateOwner.state.collectAsState()
     val directoryConversationProjection =
@@ -3354,7 +3384,7 @@ internal fun SharedThreadRouteContent(
             conversationDirectoryLookupIds
                 .firstNotNullOfOrNull { id ->
                     directoryConversationProjections[id]?.takeIf { projection ->
-                        headerProjectionInput.accepts(projection)
+                        headerProjectionInput.acceptsForDisplay(projection)
                     }
                 }
         }
@@ -3377,10 +3407,20 @@ internal fun SharedThreadRouteContent(
         }
     LaunchedEffect(headerProjectionInput, directoryConversationProjection) {
         val previous = lastAcceptedHeaderProjection
-        val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::accepts)
+        val accepted = directoryConversationProjection?.takeIf(headerProjectionInput::acceptsForDisplay)
         if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
             bridge.log(
                 "thread_header_dm_diag stage=accept_check " +
+                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
+                    "previous=${previous.headerProjectionDiagnostics()} " +
+                    "accepted=${accepted != null}"
+            )
+        }
+        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            bridge.log(
+                "thread_header_reply_diag stage=accept_check " +
+                    "serverId=${headerProjectionServerId?.value ?: "null"} " +
                     "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
                     "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
                     "previous=${previous.headerProjectionDiagnostics()} " +
@@ -3436,6 +3476,21 @@ internal fun SharedThreadRouteContent(
             bridge.log(
                 "thread_header_dm_diag stage=render " +
                     "serverId=${currentSession?.currentServerId ?: "null"} " +
+                    "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
+                    "initialRoute=$initialHeaderRouteDiagnostics " +
+                    "stateRoute=$payloadHeaderRouteDiagnostics " +
+                    "projectionMap=$headerProjectionMapDiagnostics " +
+                    "current=${directoryConversationProjection.headerProjectionDiagnostics()} " +
+                    "previous=${lastAcceptedHeaderProjection.headerProjectionDiagnostics()} " +
+                    "stableSource=$headerProjectionSource " +
+                    "stable=${stableHeaderProjection.headerProjectionDiagnostics()} " +
+                    "final=${headerDisplayModel.headerDisplayDiagnostics()}"
+            )
+        }
+        if (headerProjectionInput.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            bridge.log(
+                "thread_header_reply_diag stage=render " +
+                    "serverId=${headerProjectionServerId?.value ?: "null"} " +
                     "input=${headerProjectionInput.headerProjectionDiagnostics()} " +
                     "initialRoute=$initialHeaderRouteDiagnostics " +
                     "stateRoute=$payloadHeaderRouteDiagnostics " +

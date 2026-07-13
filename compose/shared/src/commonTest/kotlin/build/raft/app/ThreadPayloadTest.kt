@@ -2549,6 +2549,19 @@ class ThreadPayloadTest {
         val initialDisplay = input.displayModel(owner.selectedProjection(), payload)
 
         owner.accept(emptyMap())
+        val incompleteParentProjection =
+            parentProjection.copy(
+                title = "",
+                subtitle = null
+            )
+        val incompleteOutcome = owner.accept(mapOf("channel-1" to incompleteParentProjection))
+        val secondaryProjection =
+            parentProjection.copy(
+                canonicalChannelId = "reply-thread-1",
+                aliases = setOf("reply-thread-1"),
+                title = "secondary"
+            )
+        owner.accept(mapOf("reply-thread-1" to secondaryProjection))
         val loadedPayload = payload.copy(status = "content", showOpenInChannelAction = false)
         val loadedDisplay = input.displayModel(owner.selectedProjection(), loadedPayload)
 
@@ -2558,7 +2571,12 @@ class ThreadPayloadTest {
         assertEquals("#general", loadedDisplay.subtitle)
         assertEquals("#general", loadedDisplay.threadComposerMentionScopeChannelLabel())
         assertTrue(loadedPayload.threadHeaderOpenInParentActionVisible())
-        assertEquals(setOf("channel-1"), owner.state.value.keys)
+        assertEquals(setOf("channel-1", "reply-thread-1"), owner.state.value.keys)
+        assertEquals(parentProjection, owner.selectedProjection())
+        assertEquals(
+            ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection,
+            incompleteOutcome
+        )
     }
 
     @Test
