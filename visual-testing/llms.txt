@@ -1,31 +1,31 @@
 # Raft Visual Testing
 
-Generated: 2026-07-12 22:13:35 UTC
-Latest run: 0dcd91e-20260712220551
-Latest commit: 0dcd91e-20260712220551
-Commit subject: docs(projection): §6 Ruling 1 — key-set closure ≠ value-set closure (#786)
+Generated: 2026-07-13 22:09:03 UTC
+Latest run: c1d1e21-20260713220645
+Latest commit: c1d1e21-20260713220645
+Commit subject: Open image annotation before composer upload (#854)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 90, same 0, pass 0, basic-pass 1, different 85, missing 4
-AI analysis: ready 86 / total 90, pending 4
-Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
+Summary: total 95, same 0, pass 0, basic-pass 1, different 89, missing 5
+AI analysis: ready 69 / total 95, pending 26
+Visual coverage matrix: active 96 / total 115, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 90, same 0, pass 0, basic-pass 1, different 85, missing 4
-- react__ios: total 90, same 0, pass 11, basic-pass 11, different 57, missing 11
-- android__ios: total 90, same 0, pass 14, basic-pass 20, different 48, missing 8
+- react__android: total 95, same 0, pass 0, basic-pass 1, different 89, missing 5
+- react__ios: total 95, same 0, pass 11, basic-pass 11, different 61, missing 12
+- android__ios: total 95, same 0, pass 14, basic-pass 19, different 54, missing 8
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 77, pending 2, total 81
+- Components Parity (component-fixture): active 82, pending 2, total 86
 - Screens Parity (real-screen): active 14, pending 14, total 29
 
 ## Provider Coverage
 
-- react: active 91, pending 13, unsupported 0
-- android: active 85, pending 19, unsupported 0
-- harmony: active 0, pending 84, unsupported 0
+- react: active 96, pending 13, unsupported 0
+- android: active 90, pending 19, unsupported 0
+- harmony: active 0, pending 89, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
@@ -38,6 +38,11 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.message-menu.task: Real React MessageItem right-click menu for a linked task message plus Android shared ThreadMessageMenuChrome task-state action variant.
 - components.thread.message-row.deleted-human: Real React MessageItem vs Android shared ThreadMessageCard fixture for deleted human authors. Protects muted uploaded-avatar styling and gray-border Deleted sender tag.
 - components.thread.message-row.long-inline-code: Inline-code cross-platform net (task #400): real React MessageItem vs Android shared long_inline_code thread fixture. Covers compact short inline-code chips, char-level wrapping of long paths/commands (#58), trailing-edge inline-code border (#228), and markdown flow around code spans. OHOS leg pending self-hosted capture harness.
+- components.thread.message-row.md-wrap-adjacent: Adjacent-chip acceptance (task #60): real React MessageItem vs Android md_wrap_adjacent fixture; '#31 / #521' two chips + slash on one line. OHOS leg pending self-hosted capture harness.
+- components.thread.message-row.md-wrap-clarify: Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_clarify thread fixture. Reproduces the Android inline-box line-wrap bug where a task chip wraps to the next line. OHOS leg pending self-hosted capture harness.
+- components.thread.message-row.md-wrap-slice1: Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_slice1 thread fixture. Reproduces the Android inline-box line-wrap bug where a channel/task chip wraps to the next line. OHOS leg pending self-hosted capture harness.
+- components.thread.message-row.md-wrap-status606: Agent-status markdown specimen: thread-ref chip + long-hex inline code coverage. OHOS leg pending self-hosted capture harness.
+- components.thread.message-row.md-wrap-task607: Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_task607 thread fixture. Reproduces the Android inline-box line-wrap bug where a channel/task chip wraps to the next line. OHOS leg pending self-hosted capture harness.
 - components.thread.message-row.rich-content: Real React MessageItem vs Android shared ThreadMessageCard component fixture. Fixture covers long markdown body, @mention, #channel, task #222, URL link, two attachment chips, task footer, reply footer, and reaction footer.
 - components.thread.message-share.preview: React source of truth uses SelectShareLightbox with a real captureSelectedMessages image. Android app flow now calls a native screenshot/export bridge, but the visual fixture remains pending until it can drive that real export path instead of instantiating the modal directly.
 - components.thread.message-share.selection: Android shared/KMP selected-message rows and bottom shared-message toolbar. React source of truth is SelectModeToolbar; KMP adds Generate to seed an editable composer draft.
@@ -118,6 +123,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- c1d1e21-20260713220645: react vs android, total 95, pass 0, basic-pass 1, different 89, matrix runs/c1d1e21-20260713220645/component-matrix.json, page runs/c1d1e21-20260713220645/
 - 0dcd91e-20260712220551: react vs android, total 90, pass 0, basic-pass 1, different 85, matrix runs/0dcd91e-20260712220551/component-matrix.json, page runs/0dcd91e-20260712220551/
 - 7bd2af9-20260711220607: react vs android, total 90, pass 0, basic-pass 1, different 85, matrix runs/7bd2af9-20260711220607/component-matrix.json, page runs/7bd2af9-20260711220607/
 - ea5a365-20260711052840: react vs android, total 90, pass 0, basic-pass 4, different 82, matrix runs/ea5a365-20260711052840/component-matrix.json, page runs/ea5a365-20260711052840/

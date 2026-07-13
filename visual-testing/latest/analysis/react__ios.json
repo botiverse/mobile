@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-12T22:13:30.289Z",
+  "generatedAt": "2026-07-13T22:08:58.066Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 90,
-    "ready": 79,
-    "pending": 11
+    "total": 95,
+    "ready": 70,
+    "pending": 25
   },
   "cases": [
     {
@@ -282,31 +282,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-07-11T22:11:10.633Z",
-      "severity": "low",
-      "summary": [
-        "Dot colors, sizes, and arrangement match between React and iOS baselines.",
-        "Typography weight and size for the 'Waiting pulse' label appear consistent across both renderings.",
-        "Vertical spacing between the colored dot row and the 'Waiting pulse' label is consistent.",
-        "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, indicating negligible visual deviation."
-      ],
-      "likelyCauses": [
-        "Minor antialiasing differences between web and native rendering pipelines.",
-        "Possible sub-pixel rounding on iOS due to higher device pixel ratio."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required — differences are within acceptable visual tolerance.",
-        "If desired, snap dot positions to integer points on iOS to further reduce sub-pixel variance."
-      ],
-      "intentional": [
-        "Cross-platform rendering fidelity is within the configured tolerance."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-07-13T22:08:56.594Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -673,40 +657,16 @@
     },
     {
       "id": "components.auth.register.inputs",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe000000000000000030000000fe7f0000fe7ffffff81ffe7ff81ffe7f9ffff81f80fcdfff8000c0fb9fffc00383fcdf038000c3fb8fffc00380fccfff8000c003a81fc003f01fc40f8000c0038000c003f3fff01ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-12T22:10:24.241Z",
-      "severity": "medium",
-      "summary": [
-        "Header banner height differs: iOS header is ~2× taller than React, making the RAFT logo appear shifted down.",
-        "Top header logo position differs: React logo is top-left with tight margin; iOS logo is offset downward and inward with larger top padding.",
-        "Input fields in iOS use noticeably thicker black borders compared to the thinner borders in React.",
-        "Text content (labels, body, button) in iOS appears slightly heavier/bolder weight than React.",
-        "Checkbox in iOS is rendered as a larger outlined square vs the smaller filled square in React."
-      ],
-      "likelyCauses": [
-        "iOS is not applying the compact header height token used by the React baseline.",
-        "Border-width token mismatch between platforms (iOS rendering default thicker stroke).",
-        "Font-weight fallback on iOS not matching React's specified weight (e.g., 400 vs 500/600).",
-        "Checkbox component implemented natively on iOS without size normalization to React's spec.",
-        "Different vertical rhythm/spacing scale between the two component implementations."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Normalize the auth header banner height across React and iOS using a shared spacing token.",
-        "Standardize input border-width (e.g., 1px) via a shared design token on both platforms.",
-        "Align font-weight values (label/body/button) using a shared typography scale.",
-        "Resize the iOS checkbox to match React's dimensions and stroke style.",
-        "Re-run the visual snapshot after applying tokens to confirm mismatch drops below 2%."
-      ],
-      "intentional": [
-        "RAFT logo glyph and overall layout order are consistent between platforms.",
-        "Pink CTA button color and 'Sign In' link color are consistent."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1995588096298997
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-13T22:08:56.683Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     },
     {
       "id": "components.navigation.tabbar.states",
@@ -809,7 +769,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.024Z",
+      "generatedAt": "2026-07-13T22:08:56.745Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -894,7 +854,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.078Z",
+      "generatedAt": "2026-07-13T22:08:56.764Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -906,7 +866,7 @@
     {
       "id": "components.thread.files.list",
       "status": "ready",
-      "imageHash": "p1:1ffc1ffc003e083e801000208b800fe00f8e000e00700060006000e00fee0fce00100020000008600ff00ff0fc1e781efc1e781e00027c3e83e0fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:1ffc1ffc003e003e801020208b800fe00f8e000e00700060006000e00fee0fce00100020000008600ff00ff0fc1e781efc1e781e00027c3e83e0fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-09T08:43:10.857Z",
       "severity": "medium",
       "summary": [
@@ -938,7 +898,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06793859116133993
+      "metricMismatch": 0.06730667962895454
     },
     {
       "id": "components.thread.header.states",
@@ -1008,7 +968,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04672499696196375
+      "metricMismatch": 0.04665579724821434
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1048,7 +1008,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ce07efc1e001efc0e001efc00009efc1e0fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff009effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ce07efc1e001efc0e001efc00009efc1e0fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff009effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
       "generatedAt": "2026-07-09T14:36:55.551Z",
       "severity": "high",
       "summary": [
@@ -1077,7 +1037,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09604987780343233
+      "metricMismatch": 0.09569341488772765
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1110,7 +1070,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10734293352776769
+      "metricMismatch": 0.107006724186819
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1147,36 +1107,16 @@
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000000000000000002ffc00007ffc00003ffc7ffc3ffc7ffc3ffc7ffc1ffc7ffc1ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe1ffc7ffe7ffc7ffe7ffc7ffe3ffc3ffc7ffc3ffc7ffc3ffc7fc03ffc7f007ffc000000000000000000000000000000000000ffffffff",
-      "generatedAt": "2026-07-09T08:43:25.747Z",
-      "severity": "high",
-      "summary": [
-        "Title typography differs: React uses uppercase 'FORWARD' (bold), iOS uses title-case 'Forward' (regular weight).",
-        "Subtitle copy differs: React shows '2 selected from #design', iOS shows '2 selected' (omits the source channel).",
-        "Search field placeholder differs: React uses 'Search targets' with magnifier icon, iOS uses plain 'Search' with no icon.",
-        "Target list rendering diverges: React shows a vertical list of selectable targets (@artin, @Cindy, #android-artifacts) inside the modal, iOS shows a richer 'Destinations' list with avatars/icons, sub-labels, and a checkmark on the selected 'design' row.",
-        "Message preview/forwarded block differs: React shows full quoted messages with author/timestamp/date headers ('FORWARDED 2 messages from #design', '@artin · Jun 25, 05:55 AM'), iOS condenses this to a single 'NOTE' field reading 'FORWARDED 2 MESSAGES' with no per-message preview."
-      ],
-      "likelyCauses": [
-        "Independent redesign of the iOS forward modal that did not mirror the React/web spec.",
-        "Missing parity spec or shared design tokens for the forward-modal component between web and iOS teams.",
-        "iOS implementation introduced a destinations picker pattern and a dedicated note/send action area not present on web.",
-        "React build may be an older or draft version missing the richer destinations UI and send affordance."
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Reconcile the two variants in a single spec: pick one title casing rule, one subtitle copy pattern, and one search field treatment.",
-        "Define a shared 'Forwarded messages' preview block (author, timestamp, source channel) and render it on both platforms.",
-        "Add a 'Destinations' / target list component with consistent row anatomy (icon, title, sub-label, selection indicator) on both sides.",
-        "Standardize the footer: decide between inline composer + Cancel vs. Cancel + Send, and apply the chosen pattern to iOS.",
-        "Align modal padding, max-width, and close button styling against the shared token set."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.23546468451681724
+      "status": "pending",
+      "imageHash": "p1:bffeffff0000dfff000097ff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fcffff07fc9fff07fcffff00fc9eff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
+      "generatedAt": "2026-07-13T22:08:57.033Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3889172438935472
     },
     {
       "id": "components.thread.comment-anchor",
@@ -1316,7 +1256,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2657110354977653
+      "metricMismatch": 0.2657262256788323
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1352,7 +1292,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2708054846680439
+      "metricMismatch": 0.27080852270425726
     },
     {
       "id": "components.home.saved.results",
@@ -1386,7 +1326,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11582816867177059
+      "metricMismatch": 0.11588184064487383
     },
     {
       "id": "components.home.activity.results",
@@ -1419,12 +1359,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09051592606094971
+      "metricMismatch": 0.09051052510768154
     },
     {
       "id": "components.tasks.panel.states",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ffc87e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc823680149ff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8ffe808cffe0ffe1a00080019fff9fff9fff9ffdfffc807c803effe0bff00000ffffffff",
+      "imageHash": "p1:3ffe3ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ffc87e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0ffe1a00080019fff9fff9fff9ffdfffc807c803cffe0bff00000ffffffff",
       "generatedAt": "2026-07-09T08:43:43.198Z",
       "severity": "low",
       "summary": [
@@ -1450,7 +1390,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18164587299658386
+      "metricMismatch": 0.18156924697209054
     },
     {
       "id": "components.tasks.status-menu",
@@ -1519,75 +1459,35 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:9fffdfff000000003ffc2dfc2bf82df83e6c3ffc006c00fc3ffc2bfc27fc3ffc3ffc3ffc2ffc00040ffc03fc3dfc3ffc23fc3ffc27fc3ff43dfc7ffc3ffc3ffc27fc07fc3ffc3ffc3ffc3ffc0ffc80003ffcce730ffcffff0ffcffff27fcfffe27fc1ff83ffc1ff82ffc0ff00ffc0fe03ffc80013ffc80013ffc8001ffffffff",
-      "generatedAt": "2026-07-12T22:10:34.885Z",
-      "severity": "high",
-      "summary": [
-        "iOS view has the system software keyboard overlaid covering the bottom portion of the form (MODEL, REASONING, MODE fields are obscured/missing).",
-        "iOS view is missing the orange/peach 'Agent limit reached (2/2 on Free plan)' banner notice shown above the COMPUTER field in React.",
-        "iOS screenshot has a scaled-up/larger canvas (1170×2532) versus React's 390×844, making typography and spacing appear proportionally larger.",
-        "iOS shows an iOS text caret ('Product-QA-Bot|' with visible text input bar) and a 'Suggested computer: computer-mbp' helper line absent from React baseline.",
-        "Vertical spacing between fields is compressed on iOS relative to React baseline."
-      ],
-      "likelyCauses": [
-        "iOS render was captured with the on-screen keyboard visible, clipping lower form fields.",
-        "React baseline omits the limit-reached notice (likely conditional state not triggered) while iOS captured a limit-reached state, or vice-versa.",
-        "Different viewport sizes and content-driven layout shifts between web and mobile breakpoints.",
-        "iOS native dialog auto-scrolled to a focused Name field, pushing content up and hiding lower controls."
-      ],
-      "suggestedOwner": "components/members create-agent dialog owner (mobile/iOS team)",
-      "suggestedFixes": [
-        "Recapture iOS screenshot with keyboard dismissed to reveal full form (MODEL, REASONING, MODE).",
-        "Ensure 'Agent limit reached' banner parity across React and iOS implementations and snapshot tests.",
-        "Normalize viewport/scale when comparing web 390×844 vs iOS 1170×2532; consider cropping iOS to element bounds.",
-        "Match field vertical spacing/padding between React and iOS using shared design tokens.",
-        "Add a regression test that the dialog scrolls to the active field rather than hiding lower fields behind the keyboard."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4305275381104765
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007dfc3ffc7df83ffc7ffc3ffc39fc006c7ffc21fc7ffc3ffc3ffc3ffc000428fc3ffc1ffc3ffc3ffc3ffc3ffc3ffc27fc7ffc3ffc7ffc3ffc07fc3ffc7ffc3ffc7ffc3ffc80012ffcfff737fcffff2ffcffff3ffcffff37fcbff83ffc3ff83ffc8ff03d000ff038008181000090010000fffdffffffff",
+      "generatedAt": "2026-07-13T22:08:57.249Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.48325704486841925
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:8fffcfff000000003ffc2dfc2bf82df83e6c3ffc006c00fc3ffc2bfc27fc3ffc3ffc3ffc2ffc00040ffc03fc3dfc3ffc23fc3ffc27fc3ff43dfc7ffc3ffc3ffc27fc07fc3ffc3ffc3ffc3ffc0ffc80003bfcce7327fcffff0ffcffff2ffcfffe3ffc1ff83ffc1ff80ffc0ff03ffc0fe027fc800107fc80013ffc8001ffffffff",
-      "generatedAt": "2026-07-12T22:12:10.597Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows the Create Agent modal scrolled to a different position than React baseline, exposing NAME, DESCRIPTION, RUNTIME, and MODEL fields while React shows COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, MODEL, and REASONING fields at the top.",
-        "React baseline displays a prominent pink/peach 'Agent limit reached (2/2 on Free plan). Upgrade for more' error banner at the top of the form; iOS version is missing this alert/banner entirely.",
-        "iOS screen has the on-screen iOS keyboard occupying the lower half of the viewport, occluding fields like MODEL and any submit/CTA area; React does not show a keyboard.",
-        "Form field ordering and content differs: iOS Runtime shows 'Codex CLI' vs React's 'Claude Code'; iOS Model field is partially hidden behind keyboard vs React showing 'Claude Opus'; iOS has no visible PROVIDER or REASONING sections at the rendered scroll position.",
-        "iOS header close (×) button is rendered as a small bordered square top-right, whereas React renders a similar square but at a smaller visual size relative to viewport due to scale differences."
-      ],
-      "likelyCauses": [
-        "iOS capture was taken with the software keyboard open, shifting the scroll position and occluding lower form fields.",
-        "iOS implementation is missing the 'Agent limit reached' error/warning banner component that exists in the React baseline.",
-        "Different default values or selected runtime/model on iOS (Codex CLI) vs React (Claude Code) indicate state divergence, not just a visual diff.",
-        "Modal scroll position and form field order/states are not aligned between platforms prior to capture."
-      ],
-      "suggestedOwner": "iOS engineer (Create Agent dialog component owner), with React team consulted for canonical field order and error banner spec.",
-      "suggestedFixes": [
-        "Dismiss the iOS keyboard before capturing the screenshot so the full form is visible and comparable to the React baseline.",
-        "Re-add the 'Agent limit reached' alert/banner component in the iOS Create Agent dialog to match the React error/limit-reached UI.",
-        "Align the default runtime selection to 'Claude Code' (or document intended platform-specific defaults) so the captured state matches.",
-        "Ensure the iOS modal's initial scroll position matches the React baseline (top of form) and verify field order: COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, MODEL, REASONING.",
-        "Add scroll-to-top on dialog open and keyboard avoidance so required fields like MODEL and submit CTA remain visible when typing."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:8fffcfff000000003ffc2dfc2bf82df83e6c3ffc006c00fc3ffc2bfc27fc3ffc3ffc3ffc2ffc00040ffc03fc3dfc3ffc23fc3ffc27fc3ff43dfc7ffc3ffc3ffc27fc07fc3ffc3ffc3ffc3ffc0ffc80003bfcce7327fcffff0ffcffff2ffcfffe3ffc1ff83ffc1ff80ffc0ff037fc0fe02ffc80013ffc80013d008001ffffffff",
+      "generatedAt": "2026-07-13T22:08:57.275Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.43312202103671293
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.477Z",
+      "generatedAt": "2026-07-13T22:08:57.167Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2132,35 +2032,16 @@
     },
     {
       "id": "components.settings.administration.onboarding",
-      "status": "ready",
-      "imageHash": "p1:07fe07fec7fe07fe830080fe807c1f06807c0016800800128000000680fc0002809c1ff2800403f29ff803f28000000287fc0006800007f6ffff0602ffff0206ffff0202fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-07-12T22:10:53.308Z",
-      "severity": "high",
-      "summary": [
-        "iOS (right) shows the Administration/Profile/Danger Zone view, while React (left) shows the Onboarding settings — these are different screens being compared, not the same component.",
-        "React Onboarding card has 'Human Onboarding Agent' select set to '@cindy (Cindy)' and 'New Agent Greeting' select set to 'Yes'; iOS has no onboarding form fields at all.",
-        "iOS header is 'Administration' with a back arrow icon; React header is 'ONBOARDING' with a different icon — page-level navigation and title differ.",
-        "iOS Save Profile button appears disabled/styled pink while React Save button uses a similar pink style; both are visually muted, but iOS additionally shows a prominent red 'Delete Server' destructive button absent on React."
-      ],
-      "likelyCauses": [
-        "Wrong component or route captured on the iOS baseline — 'components.settings.administration.onboarding' was mapped to the Profile/Danger Zone screen instead of the Onboarding settings.",
-        "Possible navigation/state mismatch: iOS landed on Administration → Profile rather than the Onboarding sub-section.",
-        "Component name 'onboarding' may be misrouted in the iOS settings screen registry."
-      ],
-      "suggestedOwner": "iOS settings/administration feature owner",
-      "suggestedFixes": [
-        "Re-capture the iOS snapshot after navigating to the Onboarding settings sub-section to match the React baseline.",
-        "Verify the settings navigation map: 'components.settings.administration.onboarding' must route to the Onboarding card, not Administration → Profile.",
-        "If the Onboarding view does not exist on iOS, either implement it or update the snapshot contract to reflect the actual iOS equivalent.",
-        "Confirm the iOS page title and header icon align with the design system spec for the Onboarding screen."
-      ],
-      "intentional": [
-        "Use of pink/disabled button style for Save in both platforms may be intentional disabled state."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.14746323976181797
+      "status": "pending",
+      "imageHash": "p1:07fe07fec7fe07fe838080fe807c1f0e807c00d6806800128000000680fc000280bc3ff280040ff29ff803f28000000287fc8006800007f687c00602a1c0020680000202ffff0006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
+      "generatedAt": "2026-07-13T22:08:57.595Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.15567370140829861
     },
     {
       "id": "components.settings.administration.member-permissions",
@@ -2326,7 +2207,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18002592457568756
+      "metricMismatch": 0.18000938415630363
     },
     {
       "id": "components.settings.notifications.page",
@@ -2401,45 +2282,22 @@
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "ready",
-      "imageHash": "p1:fffe3ffe0000000000000000ffff0000ffff0000fffffffffffffe7ffe7ffe7ffe7ffe7ffe7fffffffffc7ff9fffc1fb81fccfff8fffdfff9ffec0038000c0038001c0038001fffbc3e3f81bffffc003b00c80038000c0038000fd9fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-      "generatedAt": "2026-07-12T22:10:56.633Z",
-      "severity": "medium",
-      "summary": [
-        "Header banner height differs: React header band is shorter (less vertical padding) than iOS header band",
-        "Sign In title vertical position is higher on iOS (closer to header) vs React, where it sits further down with more top whitespace",
-        "Form field vertical spacing is tighter on iOS: Email/Password inputs and labels are more compact than React",
-        "Button spacing (Signing in… → OR divider → Google → GitHub) is more compressed on iOS; React has larger gaps between controls",
-        "GitHub button uses a slightly darker/larger black fill on iOS, with a more prominent GitHub icon size relative to label"
-      ],
-      "likelyCauses": [
-        "iOS layout uses tighter SafeArea/insets and a larger dynamic-type font scale, compressing vertical rhythm",
-        "React (web) baseline renders at 390 CSS px with web font metrics; iOS uses native UIFont metrics, producing different line-heights and padding",
-        "Inconsistent design-token parity between web (Tailwind/CSS vars) and iOS (SwiftUI/UIKit constants) for spacing and typography scales",
-        "Header banner component uses different padding values per platform (pt vs px) without normalization"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Unify spacing tokens: map web px and iOS pt to a shared scale (e.g., 4/8/12/16/24) and apply identically to header, form, and buttons on both platforms",
-        "Normalize typography: use a shared type ramp with platform-aware font families but identical font-size/weight/line-height tokens",
-        "Audit header banner padding to match height across platforms; align Sign In title to a consistent top offset",
-        "Standardize input field height, internal padding, and inter-field vertical gap on iOS to match React baseline",
-        "Recompute GitHub button background/icon proportions so the black fill and icon size match the React reference"
-      ],
-      "intentional": [
-        "Higher native iOS resolution (1170×2532) vs web capture (390×844) producing proportional scaling of assets",
-        "Possible intentional platform-specific safe-area insets affecting header height and top offsets"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.28367899434250143
+      "status": "pending",
+      "imageHash": "p1:3ffe1ffe0000000000000000f8000000ffff0000fffffffffffffe7ffe7ffe7ffe7ffe7ffe7fdfffffffc1ff9ffec00381fccfff8e03dfff8ffec0038000c0038001c0038001fffbfffbd81bfffe8003800080038000c0038000f18fc001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-07-13T22:08:57.757Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.25293946881624607
     },
     {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.966Z",
+      "generatedAt": "2026-07-13T22:08:57.668Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2452,7 +2310,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.966Z",
+      "generatedAt": "2026-07-13T22:08:57.668Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2465,7 +2323,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.966Z",
+      "generatedAt": "2026-07-13T22:08:57.668Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2478,7 +2336,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.966Z",
+      "generatedAt": "2026-07-13T22:08:57.668Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2491,7 +2349,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.966Z",
+      "generatedAt": "2026-07-13T22:08:57.668Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2504,7 +2362,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:29.966Z",
+      "generatedAt": "2026-07-13T22:08:57.668Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2515,35 +2373,16 @@
     },
     {
       "id": "screens.members.human.profile",
-      "status": "ready",
-      "imageHash": "p1:03fe07fc03f803fe01f803fe0000000003fe7ffe0ffe7ffe8ffe7ffe87fe7ffe9ffe7ffefffe7ffebffe7ffe8ffe7ffe8ffe7ffe83fe7ffe83fe7ffe87fe7e7ec7fe7e7e83fe700ec3fe7afefffe7ffedffe7ffe80007ffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-12T22:10:58.916Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows an error state ('Could not load member' with 'member_identity_missing') while React displays a fully populated member profile (avatar, name, description, info, role, email, joined date, created agents, remove action).",
-        "Header titles differ: React renders the member name 'artin' next to the avatar; iOS renders a generic two-line title 'Member / Profile'.",
-        "iOS is missing the trailing chat/message icon button present in the React header.",
-        "The entire body content (avatar tile, DESCRIPTION, INFO block with Role/Email/Joined, CREATED AGENTS section, and Remove Member action) is absent on iOS."
-      ],
-      "likelyCauses": [
-        "iOS client failed to fetch or resolve the member identity, triggering the error fallback instead of the profile view.",
-        "Member identity is missing or not passed in the navigation/route params on iOS.",
-        "API/data source mismatch between React and iOS for member detail endpoint.",
-        "Possible auth/token issue preventing iOS from loading member data."
-      ],
-      "suggestedOwner": "iOS engineer (members/profile flow)",
-      "suggestedFixes": [
-        "Verify the member identity is correctly passed to the iOS profile route and that the API call returns valid data.",
-        "Inspect the iOS error handling so that 'member_identity_missing' is not thrown for valid members; add logging.",
-        "Align iOS header layout with React: show member name inline with avatar and include the chat/message icon when applicable.",
-        "Ensure iOS renders the same fallback loading/empty state as React when data is unavailable instead of a generic error.",
-        "Add an integration test covering the member profile load on iOS to catch missing identity regressions."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09273065446051232
+      "status": "pending",
+      "imageHash": "p1:03fe07fc03f803fe01f803fe0000000003fe7ffe0ffe7ffe8ffe7ffe87fe7ffe9ffe7ffefffe7ffebffe7ffe8ffe7ffe8ffe7ffe87fe7ffe8bfe7ffe93fe7e7ed7fe7e7e83fe700ec3fe7afefffe7ffedffe7ffe80007ffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-13T22:08:57.816Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09265504111475675
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -2722,42 +2561,21 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffec3fec7fe83fe9ffebffe9ffebffe9ffecffe9ffe8ffebffebffec1ffbffe9ffebffe9ffebffe9ffe81fefffe81fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe1fff",
-      "generatedAt": "2026-07-12T22:11:01.953Z",
-      "severity": "high",
-      "summary": [
-        "React renders a bottom tab bar (Home/Tasks/Members/Settings) with bold filled icons and a yellow active highlight on Home; iOS bottom tabs overlap main content with faded/un-styled labels and icons, indicating tab bar is missing or not styled.",
-        "React shows a full sidebar with sections in this order: Search, Activity, Saved, JOINT CHANNELS, CHANNELS, DIRECT MESSAGES; iOS shows Search, Activity, Saved, CHANNELS, DIRECT MESSAGES — JOINT CHANNELS section is missing on iOS.",
-        "React has 2 skeleton rows under JOINT CHANNELS, 4 under CHANNELS, 3 under DIRECT MESSAGES; iOS has 4 under CHANNELS and 3 under DIRECT MESSAGES but no JOINT CHANNELS group at all.",
-        "Section count badge on iOS uses a plain '0' with no circular background, while React renders the count inside a light-gray circular pill.",
-        "'+' (add) icon is present next to React's CHANNELS and JOINT CHANNELS headers; on iOS it only appears next to CHANNELS."
-      ],
-      "likelyCauses": [
-        "iOS implementation is missing the JOINT CHANNELS section in the sidebar data source or template.",
-        "iOS bottom navigation bar is not using the shared TabBar component — tabs are rendered without icon fill, active state color, or correct z-index/positioning.",
-        "Layout differences: React baseline is cropped to 390×844 viewport-with-portal, while iOS renders full 1170×2532, causing vertical overflow and tab bar overlap.",
-        "iOS count badge styling not applied (missing pill/circle background).",
-        "Inconsistent component ordering or data binding between platforms for sidebar sections."
-      ],
-      "suggestedOwner": "Mobile (iOS) engineer",
-      "suggestedFixes": [
-        "Add JOINT CHANNELS section to iOS sidebar between Saved and CHANNELS, matching React's order and skeleton row count (2).",
-        "Wrap iOS bottom tabs in the shared TabBar component: apply yellow active background on Home, filled black icons, and bold labels matching React.",
-        "Set iOS screenshot crop to viewport (390×844) or ensure the tab bar uses position: fixed/absolute at bottom with content padding-bottom equal to tab bar height to prevent overlap.",
-        "Apply the circular pill style to section count badges ('0') on iOS to match React.",
-        "Ensure '+' add icon is rendered next to all collapsible section headers that support adding items, not only CHANNELS."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20502997529063882
+      "status": "pending",
+      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffec7fe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffec1ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
+      "generatedAt": "2026-07-13T22:08:57.925Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1930739525526255
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfbfee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-07-09T22:22:14.971Z",
       "severity": "medium",
       "summary": [
@@ -2786,12 +2604,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10357846909979607
+      "metricMismatch": 0.10204932420572232
     },
     {
       "id": "components.thread.message-row.long-inline-code",
       "status": "ready",
-      "imageHash": "p1:fffeffff1fffffff07ff9fffffff9d5feffff3ffefffe2efec3fe3ffe001e01fe0cfefffc039fc07e1ffe00febffe03fe07fe67fefffe81fe3ffffffe163e7ffe007e003e003e0ffe003e0ffe003e003e003e001e007e001e003e001e003e001efffe003e01fe1ffe003e001e001e001e001e001e001e001e03fe00fffffffff",
+      "imageHash": "p1:fffeffff1fffffff07ff9fffffff9d5feffff3ffefffe2efec3fe3ffe001e01fe0cfefffc039fc07e1ffe00febffe03fe07fe67fefffe01fe3ffffffe163e7ffe007e003e003e0ffe003e0ffe003e003e003e001e007e001e003e001e003e001efffe003e01fe1ffe003e001e001e001e001e001e001e001e03fe00fffffffff",
       "generatedAt": "2026-07-09T22:24:10.654Z",
       "severity": "medium",
       "summary": [
@@ -2821,13 +2639,78 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3716801015379214
+      "metricMismatch": 0.37037745912153497
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-slice1",
+      "status": "pending",
+      "imageHash": "p1:65f02ffe87f7ffff800c1fffe07401ffe0df83fff00780fff00780fff007807ff01f80fff41f80fff00f89fff07f83fff017c1fff01788fff03780fff07780fff00f85fff00f81fff03780fff01f80fff6df80fff01fc0fff00f88fff3079ffff6d780fff01780fff01f80fff17f8fffe03780ffe01f83ffe017c4feffffffff",
+      "generatedAt": "2026-07-13T22:08:57.975Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2003051538596562
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-clarify",
+      "status": "pending",
+      "imageHash": "p1:00e007fc07f3fffe001410fee11400fee003047ee01700fee00703fee00781fee01700fee00701fee00700fee01300fee00703fee02701fe001700feffff00feffff03fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
+      "generatedAt": "2026-07-13T22:08:57.999Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09431549668516492
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-adjacent",
+      "status": "pending",
+      "imageHash": "p1:0124000400ce4ffe001e00024006001e4006400200006402fffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "generatedAt": "2026-07-13T22:08:58.016Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04233300927613726
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-status606",
+      "status": "pending",
+      "imageHash": "p1:03fe03fc07fe7ffe00010032c03e0006c0006000c0006001c0066000c01e6000c0066006e0026002e0066002c086680a0078fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
+      "generatedAt": "2026-07-13T22:08:58.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.13000972171588288
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-task607",
+      "status": "pending",
+      "imageHash": "p1:00e007fc03f3fffe00340dfee00400fee003007ee0033ffee01300fee00300fee003007ee00300fee6f300fe000700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
+      "generatedAt": "2026-07-13T22:08:58.050Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06717030555893111
     },
     {
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:30.138Z",
+      "generatedAt": "2026-07-13T22:08:57.978Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2840,7 +2723,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-12T22:13:30.138Z",
+      "generatedAt": "2026-07-13T22:08:57.978Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

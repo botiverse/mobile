@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-07-12T22:13:35.475Z",
-  "runId": "0dcd91e-20260712220551",
+  "generatedAt": "2026-07-13T22:09:03.541Z",
+  "runId": "c1d1e21-20260713220645",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 110,
-    "active": 91,
+    "total": 115,
+    "active": 96,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 81,
-        "active": 77,
+        "total": 86,
+        "active": 82,
         "pending": 2,
         "skipped": 2
       },
@@ -24,22 +24,22 @@
     },
     "providers": {
       "react": {
-        "active": 91,
+        "active": 96,
         "pending": 13,
         "unsupported": 0,
-        "total": 104
+        "total": 109
       },
       "android": {
-        "active": 85,
+        "active": 90,
         "pending": 19,
         "unsupported": 0,
-        "total": 104
+        "total": 109
       },
       "harmony": {
         "active": 0,
-        "pending": 84,
+        "pending": 89,
         "unsupported": 0,
-        "total": 84
+        "total": 89
       },
       "ios": {
         "active": 0,
@@ -80,7 +80,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9004600835577199,
+        "rgbSimilarity": 0.9007661468425956,
         "pixelPerfectSimilarity": 0.7524358299239816,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.comment-anchor.side-by-side.png"
       }
@@ -102,8 +102,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8516084780139106,
-        "pixelPerfectSimilarity": 0.5069847828141667,
+        "rgbSimilarity": 0.7600592428091871,
+        "pixelPerfectSimilarity": 0.6092666855700031,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.forward-modal.side-by-side.png"
       }
     },
@@ -229,8 +229,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8577779308925545,
-        "pixelPerfectSimilarity": 0.7470686326136563,
+        "rgbSimilarity": 0.8577862670697722,
+        "pixelPerfectSimilarity": 0.7470696452923941,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png"
       }
     },
@@ -288,8 +288,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9205423960269956,
-        "pixelPerfectSimilarity": 0.5288333265821418,
+        "rgbSimilarity": 0.9205595855315322,
+        "pixelPerfectSimilarity": 0.5288100349711724,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
     },
@@ -347,8 +347,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.916514752500855,
-        "pixelPerfectSimilarity": 0.5177168145177624,
+        "rgbSimilarity": 0.9165181201540695,
+        "pixelPerfectSimilarity": 0.5176945355855308,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png"
       }
     },
@@ -457,9 +457,284 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8200172826110659,
-        "pixelPerfectSimilarity": 0.490627995841266,
+        "rgbSimilarity": 0.8200189439337009,
+        "pixelPerfectSimilarity": 0.4905955901216565,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-adjacent",
+      "title": "Thread Message Row Markdown Adjacent Chips",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.md-wrap-adjacent.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowMdWrapAdjacent",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Adjacent-chip acceptance (task #60): real React MessageItem vs Android md_wrap_adjacent fixture; '#31 / #521' two chips + slash on one line. OHOS leg pending self-hosted capture harness.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.880797717267515,
+        "pixelPerfectSimilarity": 0.1281440299212811,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-adjacent.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-clarify",
+      "title": "Thread Message Row Markdown Wrap Clarify",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.md-wrap-clarify.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowMdWrapClarify",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_clarify thread fixture. Reproduces the Android inline-box line-wrap bug where a task chip wraps to the next line. OHOS leg pending self-hosted capture harness.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.860856075582637,
+        "pixelPerfectSimilarity": 0.4458394094057601,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-clarify.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-slice1",
+      "title": "Thread Message Row Markdown Wrap Slice-1",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.md-wrap-slice1.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowMdWrapSlice1",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_slice1 thread fixture. Reproduces the Android inline-box line-wrap bug where a channel/task chip wraps to the next line. OHOS leg pending self-hosted capture harness.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.843378860853929,
+        "pixelPerfectSimilarity": 0.6609242718839875,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-slice1.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-status606",
+      "title": "Thread Message Row Markdown Status606",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.md-wrap-status606.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowMdWrapStatus606",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Agent-status markdown specimen: thread-ref chip + long-hex inline code coverage. OHOS leg pending self-hosted capture harness.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8496159692774865,
+        "pixelPerfectSimilarity": 0.28916703798220383,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-status606.side-by-side.png"
+      }
+    },
+    {
+      "id": "components.thread.message-row.md-wrap-task607",
+      "title": "Thread Message Row Markdown Wrap Task607",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.md-wrap-task607.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowMdWrapTask607",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Narrow (260px) markdown message-row wrap net: real React MessageItem vs Android shared md_wrap_task607 thread fixture. Reproduces the Android inline-box line-wrap bug where a channel/task chip wraps to the next line. OHOS leg pending self-hosted capture harness.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8621395042401242,
+        "pixelPerfectSimilarity": 0.36051059261959734,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-task607.side-by-side.png"
       }
     },
     {
@@ -512,8 +787,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8870146482207999,
-        "pixelPerfectSimilarity": 0.7496165682112783,
+        "rgbSimilarity": 0.8874553341983478,
+        "pixelPerfectSimilarity": 0.7511214349089493,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
     },
@@ -615,8 +890,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9171703832197471,
-        "pixelPerfectSimilarity": 0.2932349684719353,
+        "rgbSimilarity": 0.9171701736239299,
+        "pixelPerfectSimilarity": 0.29323564359109383,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
       }
     },
@@ -1287,8 +1562,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9777787663956593,
-        "pixelPerfectSimilarity": 0.8561179816572396,
+        "rgbSimilarity": 0.9548281869158868,
+        "pixelPerfectSimilarity": 0.8248596597748166,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.slug-input.states.side-by-side.png"
       }
     },
@@ -1369,7 +1644,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9854605122364604,
+        "rgbSimilarity": 0.9854708478488909,
         "pixelPerfectSimilarity": 0.9597882588919965,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png"
       }
@@ -1495,8 +1770,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8459137578957232,
-        "pixelPerfectSimilarity": 0.7468762236534748,
+        "rgbSimilarity": 0.8504678946420431,
+        "pixelPerfectSimilarity": 0.7494416764558944,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"
       }
     },
@@ -1650,8 +1925,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8197911251894828,
-        "pixelPerfectSimilarity": 0.6611507066276803,
+        "rgbSimilarity": 0.8092648425787519,
+        "pixelPerfectSimilarity": 0.647161306042885,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.channel-suggestions.side-by-side.png"
       }
     },
@@ -1980,8 +2255,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8517134334788523,
-        "pixelPerfectSimilarity": 0.6595833058251359,
+        "rgbSimilarity": 0.8518250772062004,
+        "pixelPerfectSimilarity": 0.6595420435289716,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
     },
@@ -2077,12 +2352,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "different",
-        "rawStatus": "different",
+        "status": "missing",
+        "rawStatus": "missing",
         "acceptance": "",
-        "rgbSimilarity": 0.9137533333455106,
-        "pixelPerfectSimilarity": 0.8338670150281524,
-        "sideBySideImage": "visual-testing-results/diff/react__android/components.auth.register.inputs.side-by-side.png"
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
       }
     },
     {
@@ -2196,7 +2471,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9025402893905433,
+        "rgbSimilarity": 0.90254044824211,
         "pixelPerfectSimilarity": 0.8474291462443121,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.channel.members.panel.side-by-side.png"
       }
@@ -2314,8 +2589,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9180375114545721,
-        "pixelPerfectSimilarity": 0.8381578947368421,
+        "rgbSimilarity": 0.91803323306586,
+        "pixelPerfectSimilarity": 0.8381631348382905,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png"
       }
     },
@@ -2428,8 +2703,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9314367815331073,
-        "pixelPerfectSimilarity": 0.27945106061219804,
+        "rgbSimilarity": 0.9270563176459463,
+        "pixelPerfectSimilarity": 0.2713762979165823,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.notification-center.states.side-by-side.png"
       }
     },
@@ -2489,8 +2764,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9039405473844392,
-        "pixelPerfectSimilarity": 0.8065941436626213,
+        "rgbSimilarity": 0.9039124919497823,
+        "pixelPerfectSimilarity": 0.8065129220901717,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.saved.results.side-by-side.png"
       }
     },
@@ -2547,8 +2822,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8804914571829773,
-        "pixelPerfectSimilarity": 0.7300009451668219,
+        "rgbSimilarity": 0.8804868310723512,
+        "pixelPerfectSimilarity": 0.729990818379444,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png"
       }
     },
@@ -2608,8 +2883,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.890351585290654,
-        "pixelPerfectSimilarity": 0.7353600410472448,
+        "rgbSimilarity": 0.8903401647455156,
+        "pixelPerfectSimilarity": 0.7353458635449157,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png"
       }
     },
@@ -2788,8 +3063,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8483154537067272,
-        "pixelPerfectSimilarity": 0.7784140775846937,
+        "rgbSimilarity": 0.8190005888979153,
+        "pixelPerfectSimilarity": 0.667192922050742,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png"
       }
     },
@@ -3131,8 +3406,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.916128574193403,
-        "pixelPerfectSimilarity": 0.6944792130811088,
+        "rgbSimilarity": 0.9156460554994464,
+        "pixelPerfectSimilarity": 0.6886701502815247,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.admins.side-by-side.png"
       }
     },
@@ -3363,8 +3638,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9145310092820855,
-        "pixelPerfectSimilarity": 0.7292586516520165,
+        "rgbSimilarity": 0.90827028735288,
+        "pixelPerfectSimilarity": 0.7228564966716625,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.onboarding.side-by-side.png"
       }
     },
@@ -3538,8 +3813,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9290625974896609,
-        "pixelPerfectSimilarity": 0.7017647614804013,
+        "rgbSimilarity": 0.9282354860633167,
+        "pixelPerfectSimilarity": 0.6951799867676645,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
       }
     },
@@ -4012,8 +4287,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8749260484180965,
-        "pixelPerfectSimilarity": 0.7988917919012706,
+        "rgbSimilarity": 0.8752898092395422,
+        "pixelPerfectSimilarity": 0.8000992425163042,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.panel.states.side-by-side.png"
       }
     },
@@ -4125,8 +4400,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8953772632193062,
-        "pixelPerfectSimilarity": 0.8110026907249129,
+        "rgbSimilarity": 0.8953715517651561,
+        "pixelPerfectSimilarity": 0.8110058562836341,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.files.list.side-by-side.png"
       }
     },
@@ -4317,8 +4592,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8281983196506534,
-        "pixelPerfectSimilarity": 0.7271681451776238,
+        "rgbSimilarity": 0.8601640835197157,
+        "pixelPerfectSimilarity": 0.7582823618368643,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.auth.login.signing.side-by-side.png"
       }
     },
@@ -4452,8 +4727,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9614419044961434,
-        "pixelPerfectSimilarity": 0.8225057722688054,
+        "rgbSimilarity": 0.95718348229639,
+        "pixelPerfectSimilarity": 0.8431539541729115,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -4550,8 +4825,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9481859808550164,
-        "pixelPerfectSimilarity": 0.9048000972171588,
+        "rgbSimilarity": 0.9481703750123501,
+        "pixelPerfectSimilarity": 0.9048092113257991,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
     },
@@ -4608,8 +4883,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9158939266015744,
-        "pixelPerfectSimilarity": 0.8975753095421342,
+        "rgbSimilarity": 0.9190242083610115,
+        "pixelPerfectSimilarity": 0.8925443215727575,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png"
       }
     },
@@ -4724,7 +4999,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8999210944556704,
+        "rgbSimilarity": 0.8999083797115186,
         "pixelPerfectSimilarity": 0.8197992195622528,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
@@ -4782,8 +5057,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9668654601360646,
-        "pixelPerfectSimilarity": 0.9385992627698789,
+        "rgbSimilarity": 0.9678274219811543,
+        "pixelPerfectSimilarity": 0.9400598830693617,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png"
       }
     },
@@ -4840,8 +5115,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9737895665055466,
-        "pixelPerfectSimilarity": 0.9527139790172966,
+        "rgbSimilarity": 0.9714342531456778,
+        "pixelPerfectSimilarity": 0.9498676766449279,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png"
       }
     },
@@ -4898,8 +5173,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9468992377153886,
-        "pixelPerfectSimilarity": 0.8940687406327217,
+        "rgbSimilarity": 0.9469704261625,
+        "pixelPerfectSimilarity": 0.894155493444593,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.human.profile.side-by-side.png"
       }
     },
@@ -4993,8 +5268,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8508533501831279,
-        "pixelPerfectSimilarity": 0.6970921059064584,
+        "rgbSimilarity": 0.8444791571619392,
+        "pixelPerfectSimilarity": 0.7018718476909926,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.administration.full-height.side-by-side.png"
       }
     },
@@ -5129,8 +5404,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9330231196104629,
-        "pixelPerfectSimilarity": 0.7578597372436235,
+        "rgbSimilarity": 0.9349618262037896,
+        "pixelPerfectSimilarity": 0.758125734192085,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.computer-detail.side-by-side.png"
       }
     },
