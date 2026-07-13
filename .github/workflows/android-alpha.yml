@@ -80,15 +80,68 @@ jobs:
             -PversionSuffix=alpha \
             --no-daemon --max-workers=${{ env.GRADLE_MAX_WORKERS }} --console=plain
 
+      - name: Locate alpha APK
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find compose/androidApp/build/outputs/apk/alpha -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          test -n "${APK}"
+          echo "apk=${APK}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign alpha APK with stable release identity
+        env:
+          KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.SLOCK_KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.SLOCK_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.SLOCK_KEY_PASS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_FILE_B64 KEYSTORE_PASS KEY_ALIAS KEY_PASS; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required stable Alpha signing secret: ${name}" >&2
+              exit 1
+            fi
+          done
+          KEYSTORE_FILE="$(mktemp -t raft-alpha-keystore-XXXXXX.jks)"
+          ALIGNED="$(mktemp -t raft-alpha-aligned-XXXXXX.apk)"
+          SIGNED="$(mktemp -t raft-alpha-signed-XXXXXX.apk)"
+          cleanup() {
+            rm -f "${KEYSTORE_FILE}" "${ALIGNED}" "${SIGNED}"
+          }
+          trap cleanup EXIT
+          echo "${KEYSTORE_FILE_B64}" | base64 -d > "${KEYSTORE_FILE}"
+          BT="${ANDROID_HOME}/build-tools/36.0.0"
+          APK="${{ steps.locate.outputs.apk }}"
+          "${BT}/zipalign" -p -f 4 "${APK}" "${ALIGNED}"
+          "${BT}/apksigner" sign \
+            --ks "${KEYSTORE_FILE}" \
+            --ks-key-alias "${KEY_ALIAS}" \
+            --ks-pass "pass:${KEYSTORE_PASS}" \
+            --key-pass "pass:${KEY_PASS}" \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "${SIGNED}" \
+            "${ALIGNED}"
+          cp "${SIGNED}" "${APK}"
+
       - name: Verify alpha package
         id: verify
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find compose/androidApp/build/outputs/apk/alpha -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
-          test -n "$APK"
+          APK="${{ steps.locate.outputs.apk }}"
           BT="${ANDROID_HOME}/build-tools/36.0.0"
-          "${BT}/apksigner" verify --verbose --print-certs "$APK" | tee apksigner-verify.log
+          "${BT}/zipalign" -c -p 4 "$APK"
+          "${BT}/apksigner" verify --verbose --print-certs "$APK" 2>&1 | tee apksigner-verify.log
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apksigner-verify.log
+          if grep -q "CN=Android Debug" apksigner-verify.log; then
+            echo "Alpha APK still uses the ephemeral Android Debug signer" >&2
+            exit 1
+          fi
+          SIGNER_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' apksigner-verify.log | head -n 1)"
+          test -n "${SIGNER_SHA256}"
           "${BT}/aapt" dump badging "$APK" | tee aapt-badging.log
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
@@ -97,6 +150,7 @@ jobs:
           cp "$APK" androidApp-alpha-${SOURCE_SHA::9}.apk
           echo "apk=androidApp-alpha-${SOURCE_SHA::9}.apk" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "androidApp-alpha-${SOURCE_SHA::9}.apk" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=${SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
 
       - name: Upload alpha APK
         uses: actions/upload-artifact@v4
@@ -116,6 +170,7 @@ jobs:
             echo "## Android .alpha validation package"
             echo "- Ref: \`${{ steps.source.outputs.sha }}\`"
             echo "- Package: \`build.raft.app.alpha\`"
+            echo "- Stable signer certificate SHA-256: \`${{ steps.verify.outputs.signer_sha256 }}\`"
             echo "- APK SHA-256: \`${{ steps.verify.outputs.sha256 }}\`"
             echo "- Artifact retention: 7 days"
           } >> "$GITHUB_STEP_SUMMARY"
