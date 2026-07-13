@@ -868,6 +868,21 @@ internal fun threadHeaderProjectionServerId(
     sessionServerId?.trim()?.takeIf { it.isNotBlank() }
         ?: scopeInitialServerId?.trim()?.takeIf { it.isNotBlank() }
 
+internal fun threadHeaderInitialProjectionMap(
+    provider: SharedConversationIdentityProvider?,
+    serverId: ServerId?,
+    input: ThreadHeaderProjectionInput
+): Map<String, SharedConversationDirectoryProjection> {
+    if (provider == null || serverId == null) return emptyMap()
+    return input.lookupIds
+        .mapNotNull { id ->
+            provider.resolveProjection(serverId, id)
+                ?.takeIf(input::accepts)
+                ?.let { projection -> id to projection }
+        }
+        .toMap()
+}
+
 internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
     val channelId = threadChannelSearchChannelId() ?: return null
     return JSONObject().apply {
@@ -3256,28 +3271,42 @@ internal fun SharedThreadRouteContent(
     val conversationDirectoryLookupIds = headerProjectionInput.lookupIds
     val emptyConversationDirectoryProjectionFlow =
         remember { MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>()) }
-    val directoryConversationProjections by remember(
-        conversationIdentityProvider,
-        currentSession?.currentServerId,
-        headerProjectionInput.surfaceKind,
-        conversationDirectoryLookupIds
-    ) {
-        val serverId =
+    val headerProjectionServerId =
+        remember(currentSession?.currentServerId, storeScope.initialServerId) {
             threadHeaderProjectionServerId(
                 sessionServerId = currentSession?.currentServerId,
                 scopeInitialServerId = storeScope.initialServerId
             )?.let(::ServerId)
+        }
+    val initialDirectoryConversationProjections =
+        remember(
+            conversationIdentityProvider,
+            headerProjectionServerId,
+            conversationDirectoryLookupIds
+        ) {
+            threadHeaderInitialProjectionMap(
+                provider = conversationIdentityProvider,
+                serverId = headerProjectionServerId,
+                input = headerProjectionInput
+            )
+        }
+    val directoryConversationProjections by remember(
+        conversationIdentityProvider,
+        headerProjectionServerId,
+        headerProjectionInput.surfaceKind,
+        conversationDirectoryLookupIds
+    ) {
         if (
             conversationIdentityProvider != null &&
-            serverId != null &&
+            headerProjectionServerId != null &&
             conversationDirectoryLookupIds.isNotEmpty()
         ) {
             conversationIdentityProvider
-                .projectionFlow(serverId, conversationDirectoryLookupIds)
+                .projectionFlow(headerProjectionServerId, conversationDirectoryLookupIds)
         } else {
             emptyConversationDirectoryProjectionFlow
         }
-    }.collectAsState(emptyMap())
+    }.collectAsState(initialDirectoryConversationProjections)
     val directoryConversationProjection =
         remember(headerProjectionInput, conversationDirectoryLookupIds, directoryConversationProjections) {
             conversationDirectoryLookupIds

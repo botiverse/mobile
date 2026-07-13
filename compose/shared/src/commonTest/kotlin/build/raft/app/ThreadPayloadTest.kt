@@ -39,6 +39,8 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
@@ -78,6 +80,8 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -2495,6 +2499,57 @@ class ThreadPayloadTest {
                 scopeInitialServerId = "server-from-scope"
             )
         )
+    }
+
+    @Test
+    fun threadHeaderInitialProjectionReadsCachedParentBeforeFlowCollection() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "reply-thread-1",
+                streamChannelId = "reply-thread-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel
+            )
+        val parentProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "general"
+            )
+        val provider =
+            object : SharedConversationIdentityProvider {
+                override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
+                    flowOf(SharedConversationDirectoryState())
+
+                override fun projectionFlow(
+                    serverId: ServerId,
+                    ids: Collection<String>
+                ): Flow<Map<String, SharedConversationDirectoryProjection>> = flowOf(emptyMap())
+
+                override fun resolveProjection(
+                    serverId: ServerId,
+                    id: String
+                ): SharedConversationDirectoryProjection? =
+                    parentProjection.takeIf { serverId.value == "server-1" && id == "channel-1" }
+            }
+        val input = payload.threadHeaderProjectionInput()
+        val initialMap =
+            threadHeaderInitialProjectionMap(
+                provider = provider,
+                serverId = ServerId("server-1"),
+                input = input
+            )
+        val initialProjection = input.lookupIds.firstNotNullOfOrNull(initialMap::get)
+        val initialDisplay = input.displayModel(initialProjection, payload)
+
+        assertEquals("#general", initialDisplay.subtitle)
+        assertEquals(setOf("channel-1"), initialMap.keys)
     }
 
     @Test
