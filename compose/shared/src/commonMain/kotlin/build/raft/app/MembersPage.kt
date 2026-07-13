@@ -148,6 +148,7 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.requiredWidth
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
@@ -4887,7 +4888,7 @@ private fun MembersAgentTabBar(
                 val dragging = tab == draggedTab
                 Row(
                     modifier = Modifier
-                        .width(spec.width)
+                        .widthIn(min = spec.width)
                         .fillMaxHeight()
                         .background(
                             when {
@@ -4935,8 +4936,7 @@ private fun MembersAgentTabBar(
                         text = spec.label,
                         style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 1
                     )
                 }
                 Box(
@@ -4975,16 +4975,18 @@ private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDet
         key = this,
         label = localizedLabel(),
         iconName = iconName,
-        width =
-            when (this) {
-                MembersAgentDetailTab.Profile,
-                MembersAgentDetailTab.Activity,
-                MembersAgentDetailTab.Apps -> 84.dp
-                MembersAgentDetailTab.Chat -> 78.dp
-                MembersAgentDetailTab.Reminders,
-                MembersAgentDetailTab.Workspace -> 112.dp
-            }
+        width = membersAgentTabMinimumWidth(this)
     )
+
+internal fun membersAgentTabMinimumWidth(tab: MembersAgentDetailTab): Dp =
+    when (tab) {
+        MembersAgentDetailTab.Profile,
+        MembersAgentDetailTab.Activity,
+        MembersAgentDetailTab.Apps -> SlockTopTabBarDefaults.TabWidth
+        MembersAgentDetailTab.Chat -> 78.dp
+        MembersAgentDetailTab.Reminders,
+        MembersAgentDetailTab.Workspace -> 112.dp
+    }
 
 @Composable
 private fun MembersAgentDetailStateNotice(

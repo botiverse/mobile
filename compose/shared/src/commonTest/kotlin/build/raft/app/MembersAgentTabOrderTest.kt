@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.model.MemberKind
+import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -145,6 +146,14 @@ class MembersAgentTabOrderTest {
         assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Profile))
         assertEquals(1, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Chat))
         assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Activity))
+    }
+
+    @Test
+    fun shortAgentTabsUseSharedTopTabMinimumWidth() {
+        assertEquals(98.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Activity))
+        assertEquals(98.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Profile))
+        assertEquals(98.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Apps))
+        assertEquals(112.dp, membersAgentTabMinimumWidth(MembersAgentDetailTab.Reminders))
     }
 
     @Test
