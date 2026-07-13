@@ -853,6 +853,21 @@ internal fun KuiklyThreadScreenPayload.threadHeaderSearchAction(): ThreadHeaderS
         else -> null
     }
 
+internal fun KuiklyThreadScreenPayload.threadHeaderOpenInParentActionVisible(): Boolean =
+    showOpenInChannelAction ||
+        (
+            resolveThreadRouteIdentity().surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                parentChannelId?.isNotBlank() == true &&
+                (parentMessageId?.isNotBlank() == true || originParentMessageId?.isNotBlank() == true)
+            )
+
+internal fun threadHeaderProjectionServerId(
+    sessionServerId: String?,
+    scopeInitialServerId: String?
+): String? =
+    sessionServerId?.trim()?.takeIf { it.isNotBlank() }
+        ?: scopeInitialServerId?.trim()?.takeIf { it.isNotBlank() }
+
 internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
     val channelId = threadChannelSearchChannelId() ?: return null
     return JSONObject().apply {
@@ -3247,7 +3262,11 @@ internal fun SharedThreadRouteContent(
         headerProjectionInput.surfaceKind,
         conversationDirectoryLookupIds
     ) {
-        val serverId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val serverId =
+            threadHeaderProjectionServerId(
+                sessionServerId = currentSession?.currentServerId,
+                scopeInitialServerId = storeScope.initialServerId
+            )?.let(::ServerId)
         if (
             conversationIdentityProvider != null &&
             serverId != null &&
@@ -9721,7 +9740,7 @@ private fun ThreadPageHeader(
                 (activityMuteState != null && onToggleActivityMute != null) ||
                 payload.showSettingsAction ||
                 payload.showMembersAction ||
-                payload.showOpenInChannelAction
+                payload.threadHeaderOpenInParentActionVisible()
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -9742,7 +9761,7 @@ private fun ThreadPageHeader(
                     if (payload.showMembersAction) {
                         ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
                     }
-                    if (payload.showOpenInChannelAction) {
+                    if (payload.threadHeaderOpenInParentActionVisible()) {
                         ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
                     }
                 }

@@ -2422,6 +2422,82 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun activityReplyThreadKeepsParentChromeAfterLoadedPayloadTransition() {
+        val request =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("reply-thread-1"),
+                channelName = "reply-thread",
+                threadChannelId = ChannelId("reply-thread-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("message-1"),
+                latestActivityMessageId = MessageId("reply-message-1")
+            ).toHomeMessageOpenRequestForTest()
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = request.conversationIdentity,
+                timeContext = null,
+                anchorMessageId = request.anchorMessageId
+            )
+        val initial =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "activity-reply-thread"
+            )
+        val loaded =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = initial.copy(showOpenInChannelAction = false),
+                page =
+                    ThreadMessagesPage(
+                        messages = emptyList(),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = false
+                    ),
+                session = null
+            )
+        val parentProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "general"
+            )
+        val headerDisplay =
+            loaded
+                .threadHeaderProjectionInput()
+                .displayModel(parentProjection, loaded)
+
+        assertEquals("#general", headerDisplay.subtitle)
+        assertTrue(loaded.threadHeaderOpenInParentActionVisible())
+        assertEquals("channel-1", loaded.parentChannelId)
+        assertEquals("message-1", loaded.parentMessageId)
+    }
+
+    @Test
+    fun threadHeaderProjectionUsesScopeServerBeforeAsyncSessionReadCompletes() {
+        assertEquals(
+            "server-from-scope",
+            threadHeaderProjectionServerId(
+                sessionServerId = null,
+                scopeInitialServerId = "server-from-scope"
+            )
+        )
+        assertEquals(
+            "server-from-session",
+            threadHeaderProjectionServerId(
+                sessionServerId = "server-from-session",
+                scopeInitialServerId = "server-from-scope"
+            )
+        )
+    }
+
+    @Test
     fun replyThreadPayloadHidesActivityMuteBellEvenWhenProjectionIsParentChannel() {
         val payload =
             KuiklyThreadScreenPayload(
