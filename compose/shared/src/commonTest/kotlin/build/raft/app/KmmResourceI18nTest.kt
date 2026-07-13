@@ -421,6 +421,22 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun settingsFeedbackFailureResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_feedback_submission_network_body,
+            MR.strings.settings_feedback_submission_rate_limited_body,
+            MR.strings.settings_feedback_submission_attachment_read_body,
+            MR.strings.settings_feedback_submission_attachment_too_large_body,
+            MR.strings.settings_feedback_submission_auth_body
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "Settings feedback failure copy must use KMM Resource strings"
+            )
+        }
+    }
+
+    @Test
     fun settingsAccountStringResourcesAreGenerated() {
         listOf(
             MR.strings.settings_account_profile_section,

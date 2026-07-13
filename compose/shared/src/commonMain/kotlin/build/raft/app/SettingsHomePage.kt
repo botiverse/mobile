@@ -9256,6 +9256,7 @@ private fun SharedQuiverFeedbackContent(
     var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var pendingRetryRequest by remember { mutableStateOf<SettingsQuiverFeedbackRetryRequest?>(null) }
     var composerSyncNonce by remember { mutableStateOf(0) }
     var nextEntryId by remember { mutableStateOf(1) }
     var entries by remember {
@@ -9323,17 +9324,25 @@ private fun SharedQuiverFeedbackContent(
         }
     }
 
-    fun submitFeedback() {
+    fun submitFeedback(explicitRetryRequest: SettingsQuiverFeedbackRetryRequest? = null) {
+        val currentAttachments = attachments.take(attachmentLimit)
+        val retryRequest =
+            explicitRetryRequest
+                ?: pendingRetryRequest?.takeIf { request ->
+                    request.matches(normalizedMessage, currentAttachments)
+                }
+        val submittedMessage = retryRequest?.message ?: normalizedMessage
+        val submittedAttachments = retryRequest?.attachments ?: currentAttachments
         settingsCapabilities.log(
             "settings_quiver_feedback_submit_click busy=$busy " +
-                "messageLength=${message.length} trimmedLength=${normalizedMessage.length} " +
-                "attachmentCount=${attachments.size}"
+                "messageLength=${submittedMessage.length} retry=${retryRequest != null} " +
+                "attachmentCount=${submittedAttachments.size}"
         )
         if (busy) {
             settingsCapabilities.log("settings_quiver_feedback_submit_ignored reason=busy")
             return
         }
-        if (normalizedMessage.isBlank()) {
+        if (submittedMessage.isBlank()) {
             settingsCapabilities.log("settings_quiver_feedback_submit_blocked reason=blank_message")
             error = copy.messageRequired
             return
@@ -9341,22 +9350,45 @@ private fun SharedQuiverFeedbackContent(
         settingsCapabilities.log("settings_quiver_feedback_submit_enter")
         busy = true
         error = null
-        val submittedMessage = normalizedMessage
-        val submittedAttachments = attachments.take(attachmentLimit)
+        pendingRetryRequest = null
+        entries = entries.filterNot { it.retryRequest != null }
+        attachments = submittedAttachments
         messageFieldValue = TextFieldValue("")
         composerSyncNonce += 1
-        entries =
-            entries +
-                SettingsQuiverFeedbackEntry(
-                    id = nextConversationEntryId(),
-                    kind = SettingsQuiverFeedbackEntryKind.User,
-                    title = copy.you,
-                    body = submittedMessage,
-                    detail =
-                        submittedAttachments
-                            .takeIf { it.isNotEmpty() }
-                            ?.joinToString { it.fileName.ifBlank { copy.attachment } }
-                )
+        if (retryRequest == null) {
+            entries =
+                entries +
+                    SettingsQuiverFeedbackEntry(
+                        id = nextConversationEntryId(),
+                        kind = SettingsQuiverFeedbackEntryKind.User,
+                        title = copy.you,
+                        body = submittedMessage,
+                        detail =
+                            submittedAttachments
+                                .takeIf { it.isNotEmpty() }
+                                ?.joinToString { it.fileName.ifBlank { copy.attachment } }
+                    )
+        }
+        val submittedRequest = SettingsQuiverFeedbackRetryRequest(submittedMessage, submittedAttachments)
+
+        fun appendFailure(failure: SettingsQuiverFeedbackFailurePresentation) {
+            val nextRetryRequest = submittedRequest.takeIf { failure.retryable }
+            pendingRetryRequest = nextRetryRequest
+            messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
+            composerSyncNonce += 1
+            attachments = submittedAttachments
+            error = failure.composerStatus
+            entries =
+                entries +
+                    SettingsQuiverFeedbackEntry(
+                        id = nextConversationEntryId(),
+                        kind = SettingsQuiverFeedbackEntryKind.Error,
+                        title = failure.title,
+                        body = failure.body,
+                        retryRequest = nextRetryRequest
+                    )
+        }
+
         scope.launch {
             try {
                 when (val result = settingsCapabilities.submitQuiverFeedback(submittedMessage, submittedAttachments)) {
@@ -9364,6 +9396,7 @@ private fun SharedQuiverFeedbackContent(
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=ok ticket=${result.data.ticketId.take(8)}"
                         )
+                        pendingRetryRequest = null
                         entries =
                             entries +
                                 result.data.toQuiverFeedbackEntry(
@@ -9375,47 +9408,19 @@ private fun SharedQuiverFeedbackContent(
                     }
                     is DataResult.Empty -> {
                         settingsCapabilities.log("settings_quiver_feedback_submit_result status=empty")
-                        error = copy.submissionUnavailable
-                        entries =
-                            entries +
-                                SettingsQuiverFeedbackEntry(
-                                    id = nextConversationEntryId(),
-                                    kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = copy.title,
-                                    body = copy.submissionUnavailable
-                                )
+                        appendFailure(copy.submissionUnavailableFailure())
                     }
                     is DataResult.Error -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=error code=${result.error.code}"
                         )
-                        val failure = copy.submissionFailure(result.error.code)
-                        error = failure.composerStatus
-                        entries =
-                            entries +
-                                SettingsQuiverFeedbackEntry(
-                                    id = nextConversationEntryId(),
-                                    kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = failure.title,
-                                    body = failure.body,
-                                    detail = failure.diagnosticDetail
-                                )
+                        appendFailure(copy.submissionFailure(result.error.code, result.error.retryable))
                     }
                     is DataResult.NoPermission -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=no_permission code=${result.blocker.code}"
                         )
-                        val failure = copy.submissionPermissionFailure(result.blocker.code)
-                        error = failure.composerStatus
-                        entries =
-                            entries +
-                                SettingsQuiverFeedbackEntry(
-                                    id = nextConversationEntryId(),
-                                    kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = failure.title,
-                                    body = failure.body,
-                                    detail = failure.diagnosticDetail
-                                )
+                        appendFailure(copy.submissionPermissionFailure())
                     }
                 }
             } catch (throwable: Throwable) {
@@ -9423,17 +9428,7 @@ private fun SharedQuiverFeedbackContent(
                         "settings_quiver_feedback_submit_exception error=${throwable::class.simpleName} " +
                         "message=${throwable.message.orEmpty()}"
                 )
-                val failure = copy.submissionFailure()
-                error = failure.composerStatus
-                entries =
-                    entries +
-                        SettingsQuiverFeedbackEntry(
-                            id = nextConversationEntryId(),
-                            kind = SettingsQuiverFeedbackEntryKind.Error,
-                            title = failure.title,
-                            body = failure.body,
-                            detail = failure.diagnosticDetail
-                        )
+                appendFailure(copy.submissionFailure())
             } finally {
                 settingsCapabilities.log("settings_quiver_feedback_submit_finished")
                 busy = false
@@ -9455,7 +9450,8 @@ private fun SharedQuiverFeedbackContent(
                         copy = copy,
                         onCopy = { shareText ->
                             settingsCapabilities.bridgeCopyToClipboard(shareText)
-                        }
+                        },
+                        onRetry = { request -> submitFeedback(request) }
                     )
                 }
             }
@@ -9470,7 +9466,8 @@ private fun SharedQuiverFeedbackContent(
                                 body = copy.submitting
                             ),
                         copy = copy,
-                        onCopy = {}
+                        onCopy = {},
+                        onRetry = {}
                     )
                 }
             }
@@ -9547,7 +9544,8 @@ private data class SettingsQuiverFeedbackEntry(
     val body: String,
     val detail: String? = null,
     val ticketId: String? = null,
-    val shareText: String? = null
+    val shareText: String? = null,
+    val retryRequest: SettingsQuiverFeedbackRetryRequest? = null
 )
 
 internal data class SettingsQuiverFeedbackCopy(
@@ -9564,40 +9562,72 @@ internal data class SettingsQuiverFeedbackCopy(
     val submissionUnavailable: String = "Feedback is unavailable right now. Please try again.",
     val submissionFailedTitle: String = "Feedback failed",
     val submissionFailedBody: String = "We could not send your feedback. Please try again.",
+    val submissionNetworkBody: String = "Could not reach Hands. Check your connection and try again.",
+    val submissionRateLimitedBody: String = "Too many feedback requests were sent. Wait a moment and try again.",
+    val submissionAttachmentReadBody: String = "An attachment could not be read. Remove it and attach the file again.",
+    val submissionAttachmentTooLargeBody: String = "An attachment is too large. Remove it or choose a smaller file.",
+    val submissionAuthBody: String = "Feedback authentication failed. Update the app or contact support.",
     val submissionPermissionTitle: String = "Permission needed",
     val submissionPermissionBody: String = "You do not have permission to send feedback.",
     val submissionSucceeded: (String) -> String = { ticket -> "Submitted $ticket." },
     val referenceCopied: String = "Reference copied automatically.",
     val submitting: String = "Submitting feedback and preparing the copied reference...",
     val placeholder: String = "Share feedback",
-    val copyResult: String = "Copy result"
+    val copyResult: String = "Copy result",
+    val retry: String = "Retry"
 )
 
 internal data class SettingsQuiverFeedbackFailurePresentation(
     val composerStatus: String,
     val title: String,
     val body: String,
-    val diagnosticDetail: String?
+    val retryable: Boolean
 )
 
 internal fun SettingsQuiverFeedbackCopy.submissionFailure(
-    diagnosticCode: String? = null
-): SettingsQuiverFeedbackFailurePresentation =
-    SettingsQuiverFeedbackFailurePresentation(
-        composerStatus = submissionFailedBody,
+    diagnosticCode: String? = null,
+    retryable: Boolean = true
+): SettingsQuiverFeedbackFailurePresentation {
+    val body =
+        when (diagnosticCode) {
+            "settings_feedback_network_failed" -> submissionNetworkBody
+            "settings_feedback_server_unavailable" -> submissionUnavailable
+            "settings_feedback_rate_limited" -> submissionRateLimitedBody
+            "settings_feedback_attachment_read_failed" -> submissionAttachmentReadBody
+            "settings_feedback_attachment_too_large" -> submissionAttachmentTooLargeBody
+            "settings_feedback_auth_failed" -> submissionAuthBody
+            else -> submissionFailedBody
+        }
+    val canRetry =
+        retryable &&
+            diagnosticCode !in
+                setOf(
+                    "settings_feedback_attachment_read_failed",
+                    "settings_feedback_attachment_too_large",
+                    "settings_feedback_auth_failed"
+                )
+    return SettingsQuiverFeedbackFailurePresentation(
+        composerStatus = body,
         title = submissionFailedTitle,
-        body = submissionFailedBody,
-        diagnosticDetail = diagnosticCode?.takeIf { it.isNotBlank() }
+        body = body,
+        retryable = canRetry
+    )
+}
+
+internal fun SettingsQuiverFeedbackCopy.submissionUnavailableFailure(): SettingsQuiverFeedbackFailurePresentation =
+    SettingsQuiverFeedbackFailurePresentation(
+        composerStatus = submissionUnavailable,
+        title = submissionFailedTitle,
+        body = submissionUnavailable,
+        retryable = true
     )
 
-internal fun SettingsQuiverFeedbackCopy.submissionPermissionFailure(
-    diagnosticCode: String
-): SettingsQuiverFeedbackFailurePresentation =
+internal fun SettingsQuiverFeedbackCopy.submissionPermissionFailure(): SettingsQuiverFeedbackFailurePresentation =
     SettingsQuiverFeedbackFailurePresentation(
         composerStatus = submissionPermissionBody,
         title = submissionPermissionTitle,
         body = submissionPermissionBody,
-        diagnosticDetail = diagnosticCode.takeIf { it.isNotBlank() }
+        retryable = false
     )
 
 @Composable
@@ -9620,15 +9650,34 @@ private fun settingsQuiverFeedbackCopy(): SettingsQuiverFeedbackCopy {
         submissionUnavailable = stringResource(MR.strings.settings_feedback_submission_unavailable),
         submissionFailedTitle = stringResource(MR.strings.settings_feedback_submission_failed_title),
         submissionFailedBody = stringResource(MR.strings.settings_feedback_submission_failed_body),
+        submissionNetworkBody = stringResource(MR.strings.settings_feedback_submission_network_body),
+        submissionRateLimitedBody = stringResource(MR.strings.settings_feedback_submission_rate_limited_body),
+        submissionAttachmentReadBody = stringResource(MR.strings.settings_feedback_submission_attachment_read_body),
+        submissionAttachmentTooLargeBody = stringResource(MR.strings.settings_feedback_submission_attachment_too_large_body),
+        submissionAuthBody = stringResource(MR.strings.settings_feedback_submission_auth_body),
         submissionPermissionTitle = stringResource(MR.strings.settings_feedback_submission_permission_title),
         submissionPermissionBody = stringResource(MR.strings.settings_feedback_submission_permission_body),
         submissionSucceeded = { ticket -> submissionSucceededTemplate.replaceLocalizedFormatArgs(ticket) },
         referenceCopied = stringResource(MR.strings.settings_feedback_reference_copied),
         submitting = stringResource(MR.strings.settings_feedback_submitting),
         placeholder = stringResource(MR.strings.settings_feedback_placeholder),
-        copyResult = stringResource(MR.strings.settings_feedback_copy_result)
+        copyResult = stringResource(MR.strings.settings_feedback_copy_result),
+        retry = stringResource(MR.strings.common_retry)
     )
 }
+
+internal data class SettingsQuiverFeedbackRetryRequest(
+    val message: String,
+    val attachments: List<PlatformFile>
+)
+
+internal fun SettingsQuiverFeedbackRetryRequest.matches(
+    message: String,
+    attachments: List<PlatformFile>
+): Boolean =
+    this.message == message.trim() &&
+        this.attachments.map { it.feedbackComposerAttachmentId() } ==
+        attachments.map { it.feedbackComposerAttachmentId() }
 
 internal fun String.replaceLocalizedFormatArgs(vararg args: Any): String =
     args.foldIndexed(this) { index, value, argument ->
@@ -9678,7 +9727,8 @@ private fun PlatformFile.feedbackComposerAttachmentId(): String =
 private fun SettingsQuiverFeedbackConversationRow(
     entry: SettingsQuiverFeedbackEntry,
     copy: SettingsQuiverFeedbackCopy,
-    onCopy: (String) -> Unit
+    onCopy: (String) -> Unit,
+    onRetry: (SettingsQuiverFeedbackRetryRequest) -> Unit
 ) {
     val isUser = entry.kind == SettingsQuiverFeedbackEntryKind.User
     Row(
@@ -9729,6 +9779,15 @@ private fun SettingsQuiverFeedbackConversationRow(
                     label = copy.copyResult,
                     onClick = { onCopy(shareText) },
                     leadingIcon = SlockLucideIconName.Clipboard,
+                    modifier = Modifier.fillMaxWidth(),
+                    minWidth = 0.dp
+                )
+            }
+            entry.retryRequest?.let { retryRequest ->
+                SlockBrutalActionButton(
+                    label = copy.retry,
+                    onClick = { onRetry(retryRequest) },
+                    leadingIcon = SlockLucideIconName.RefreshCw,
                     modifier = Modifier.fillMaxWidth(),
                     minWidth = 0.dp
                 )
