@@ -1595,12 +1595,12 @@ private class MemberDetailRouteProvider(
         if (loadPlan.showInitialLoading) {
             agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
         }
-        when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
+        return when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
                 serverMembersStore.applyAgentDetailSnapshot(detailResult.data)
-                return MemberDetailRouteState.Agent(
+                MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
                 )
