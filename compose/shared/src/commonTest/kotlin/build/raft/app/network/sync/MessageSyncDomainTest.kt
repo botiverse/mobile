@@ -579,7 +579,7 @@ class MessageSyncDomainTest {
             SyncFrame("c1", seq = 15, epoch = "e1", event = MessageDomainEvent.New(m15, MESSAGE_NEW)),
         )
         assertEquals(
-            SyncIngestOutcome.Applied("c1", 14),
+            SyncIngestOutcome.Applied("c1", 15),
             host.ingestAuthoritativeSnapshot(
                 SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotAt14),
                 generation = 2,
@@ -591,6 +591,49 @@ class MessageSyncDomainTest {
         assertEquals(15, host.scopeSyncState("c1")?.appliedSeq)
         assertTrue(project(finalState, maxReadSeq = 13).complete)
         assertEquals(2, project(finalState, maxReadSeq = 13).unreadCount)
+    }
+
+    @Test
+    fun postCutUpdateWithCreationSeqBelowWatermarkIsFoldedIntoReplacementState() {
+        val host = MessageDomainSyncHost()
+        val m10Old = row("m10", seq = 10, content = "old", senderId = "u1")
+        val m14 = row("m14", seq = 14, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 10, epoch = "e1", event = MessageDomainEvent.New(m10Old, MESSAGE_NEW)),
+        )
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val snapshotAt14 = baseline(
+            state = host.state("c1"),
+            rows = listOf(m10Old, m14),
+            coveredFromSeq = 10,
+            remoteHighWaterSeq = 14,
+        )
+
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 2))
+        assertEquals(
+            SyncIngestOutcome.DuplicateDropped("c1", 10),
+            host.ingestFrame(
+                SyncFrame(
+                    "c1",
+                    seq = 10,
+                    epoch = "e1",
+                    event = MessageDomainEvent.Updated(m10Old.copy(content = "new"), ENRICHED),
+                ),
+            ),
+        )
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotAt14),
+                generation = 2,
+            ),
+        )
+
+        val finalState = host.state("c1")
+        assertEquals("new", finalState.channelMessages.getValue("c1").first { it.id == "m10" }.content)
+        assertTrue(project(finalState, maxReadSeq = 9).complete)
     }
 
     @Test

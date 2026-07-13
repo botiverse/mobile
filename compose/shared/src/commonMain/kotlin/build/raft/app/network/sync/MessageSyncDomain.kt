@@ -476,25 +476,36 @@ internal class MessageDomainSyncHost(
                 return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
             }
 
-            val replacement = newMessageDomainSyncCore()
-            val outcome = replacement.ingestSnapshot(MESSAGES_SYNC_DOMAIN, snapshot)
-            if (outcome is SyncIngestOutcome.Applied) {
-                val replaySucceeded =
-                    pending.postBeginFrames
-                        .asSequence()
-                        .filter { it.scopeId == snapshot.scopeId && it.seq > snapshot.watermark }
-                        .sortedBy { it.seq }
-                        .all { frame ->
-                            when (replacement.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)) {
-                                is SyncIngestOutcome.Applied,
-                                is SyncIngestOutcome.MaxAdvanced,
-                                is SyncIngestOutcome.DuplicateDropped -> true
-                                else -> false
-                            }
-                        }
-                if (!replaySucceeded) {
+            var replacementState = snapshot.state as MessageDomainState
+            var replacementWatermark = snapshot.watermark
+            for (frame in pending.postBeginFrames) {
+                if (frame.scopeId != snapshot.scopeId || frame.epoch != snapshot.epoch) {
                     return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
                 }
+                val event = frame.event as? MessageDomainEvent
+                    ?: return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+                if (event.row.channelId != snapshot.scopeId) {
+                    return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+                }
+                if (
+                    event is MessageDomainEvent.Updated &&
+                    replacementState.channelMessages[snapshot.scopeId].orEmpty().none { it.id == event.row.id }
+                ) {
+                    return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+                }
+                replacementState = applyMessageDomainEvent(replacementState, event)
+                if (event is MessageDomainEvent.New) {
+                    replacementWatermark = maxOf(replacementWatermark, frame.seq)
+                }
+            }
+
+            val replacement = newMessageDomainSyncCore()
+            val outcome =
+                replacement.ingestSnapshot(
+                    MESSAGES_SYNC_DOMAIN,
+                    snapshot.copy(watermark = replacementWatermark, state = replacementState),
+                )
+            if (outcome is SyncIngestOutcome.Applied) {
                 beforeSnapshotSwap?.invoke()
                 scopeOwner.activeCore = replacement
                 scopeOwner.acceptedRebaselineGeneration = generation
