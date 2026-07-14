@@ -416,7 +416,7 @@ internal fun homePullToRefreshEnabled(
     contentRefreshEnabled && HomePullToRefreshEnabled && platformSupportsPullToRefresh
 
 internal fun homeHeaderRefreshIndicatorVisible(contentRefreshing: Boolean, pullRefreshing: Boolean): Boolean =
-    contentRefreshing && !pullRefreshing
+    contentRefreshing || pullRefreshing
 
 @Composable
 private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
@@ -1263,6 +1263,7 @@ internal fun SlockStructuralHomeShell(
                                 pullToRefreshItem(
                                     state = pullToRefreshState,
                                     scrollState = listState,
+                                    holdRefreshInset = false,
                                     onRefresh = {
                                         pullRefreshActive = true
                                         onRefresh()

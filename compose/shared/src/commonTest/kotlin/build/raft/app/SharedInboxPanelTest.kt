@@ -79,6 +79,31 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityPullRefreshKeepsRowsStationaryAndMovesProgressToHeader() {
+        assertEquals(
+            ActivityRefreshPresentation(
+                headerRefreshing = true,
+                pullRefreshing = true
+            ),
+            activityRefreshPresentation(refreshing = true, pullRefreshing = true)
+        )
+        assertEquals(
+            ActivityRefreshPresentation(
+                headerRefreshing = true,
+                pullRefreshing = false
+            ),
+            activityRefreshPresentation(refreshing = true, pullRefreshing = false)
+        )
+        assertEquals(
+            ActivityRefreshPresentation(
+                headerRefreshing = false,
+                pullRefreshing = false
+            ),
+            activityRefreshPresentation(refreshing = false, pullRefreshing = false)
+        )
+    }
+
+    @Test
     fun activityPendingUpdateIncrementCountsPrependedRowsWhenAwayFromTop() {
         val previous =
             listOf(

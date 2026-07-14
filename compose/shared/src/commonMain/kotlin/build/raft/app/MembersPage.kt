@@ -3139,6 +3139,7 @@ internal fun MembersListContent(
                 pullToRefreshItem(
                     state = pullToRefreshState,
                     scrollState = listState,
+                    holdRefreshInset = false,
                     onRefresh = {
                         pullRefreshActive = true
                         onRefresh()

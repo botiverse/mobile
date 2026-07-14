@@ -731,14 +731,18 @@ class SharedActivityStoreTest {
         assertEquals(false, store.state.value.pullRefreshing)
         inbox.completeNext(activityItem("channel-2"))
 
+        val staleSnapshot = store.state.value.snapshot
         store.dispatch(SharedActivityIntent.PullRefresh)
 
         assertEquals(false, store.state.value.loading)
         assertEquals(true, store.state.value.refreshing)
         assertEquals(true, store.state.value.pullRefreshing)
+        assertEquals(staleSnapshot, store.state.value.snapshot)
+        assertEquals(listOf("channel-2"), store.state.value.items.map { it.channelId.value })
         inbox.completeNext(activityItem("channel-3"))
         assertEquals(false, store.state.value.refreshing)
         assertEquals(false, store.state.value.pullRefreshing)
+        assertEquals(listOf("channel-3"), store.state.value.items.map { it.channelId.value })
         scope.cancel()
     }
 
