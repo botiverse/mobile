@@ -163,7 +163,7 @@ internal fun settingsMarketplaceWebViewUrl(
             ?.takeIf { it.isNotBlank() }
             ?.let { "s/$it/settings/integrations" }
             ?: "settings/integrations"
-    return sharedSettingsWebUrl(webBaseUrl, path)
+    return sharedSettingsHostShellWebUrl(webBaseUrl, path)
 }
 
 internal fun settingsMarketplaceWebViewInjectedJavaScript(session: StoredAuthSession?): String {
@@ -184,66 +184,12 @@ internal fun settingsMarketplaceWebViewInjectedJavaScript(session: StoredAuthSes
         (function() {
           try {
             $writes;
-            ${settingsMarketplaceMobileWebViewChromeScript()}
           } catch (error) {
             console.error("slock_mobile_marketplace_injected_js_error", error && (error.stack || error.message || error));
           }
         })();
     """.trimIndent()
 }
-
-private fun settingsMarketplaceMobileWebViewChromeScript(): String =
-    """
-        var mobileMarketplaceStyleId = "slock-mobile-marketplace-webview-style";
-        var mobileMarketplaceStyle = document.getElementById(mobileMarketplaceStyleId);
-        if (!mobileMarketplaceStyle) {
-          mobileMarketplaceStyle = document.createElement("style");
-          mobileMarketplaceStyle.id = mobileMarketplaceStyleId;
-          mobileMarketplaceStyle.textContent = [
-            "[data-slock-mobile-marketplace-webview=\"true\"] [data-slock-mobile-marketplace-hidden-header=\"true\"] { display: none !important; height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; }",
-            "[data-slock-mobile-marketplace-webview=\"true\"] [data-slock-mobile-marketplace-content=\"true\"] { padding-top: 0 !important; margin-top: 0 !important; scroll-padding-top: 0 !important; }",
-            "[data-slock-mobile-marketplace-webview=\"true\"] [data-slock-mobile-marketplace-content=\"true\"] > :first-child { margin-top: 0 !important; }"
-          ].join("\n");
-          document.head.appendChild(mobileMarketplaceStyle);
-        }
-        document.documentElement.setAttribute("data-slock-mobile-marketplace-webview", "true");
-        var applyMobileMarketplaceChrome = function() {
-          var headers = Array.prototype.slice.call(document.querySelectorAll(".h-panel-header"));
-          for (var index = 0; index < headers.length; index += 1) {
-            var header = headers[index];
-            var text = (header.textContent || "").replace(/\s+/g, " ").trim();
-            var isMarketplaceHeader = header.getAttribute("data-slock-settings-tab") === "integrations";
-            if (!isMarketplaceHeader && text.indexOf("Connected Apps") === -1 && text.indexOf("连接的应用") === -1) {
-              continue;
-            }
-            header.setAttribute("data-slock-mobile-marketplace-hidden-header", "true");
-            header.style.display = "none";
-            header.style.height = "0px";
-            header.style.minHeight = "0px";
-            header.style.margin = "0px";
-            header.style.padding = "0px";
-            header.style.borderWidth = "0px";
-            var content = header.nextElementSibling;
-            if (content && content.classList && content.classList.contains("overflow-y-auto")) {
-              content.setAttribute("data-slock-mobile-marketplace-content", "true");
-              content.style.paddingTop = "0px";
-              content.style.marginTop = "0px";
-              content.style.scrollPaddingTop = "0px";
-              if (content.firstElementChild) {
-                content.firstElementChild.style.marginTop = "0px";
-              }
-              if (content.scrollTop > 0 && content.scrollTop < 96) {
-                content.scrollTop = 0;
-              }
-            }
-          }
-        };
-        applyMobileMarketplaceChrome();
-        if (typeof MutationObserver !== "undefined" && !window.__slockMobileMarketplaceChromeObserver) {
-          window.__slockMobileMarketplaceChromeObserver = new MutationObserver(applyMobileMarketplaceChrome);
-          window.__slockMobileMarketplaceChromeObserver.observe(document.documentElement, { childList: true, subtree: true });
-        }
-    """.trimIndent()
 
 private val settingsMarketplaceWebViewJson = Json
 

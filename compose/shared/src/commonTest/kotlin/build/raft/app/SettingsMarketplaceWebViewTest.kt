@@ -6,6 +6,7 @@ import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class SettingsMarketplaceWebViewTest {
     @Test
@@ -13,7 +14,7 @@ class SettingsMarketplaceWebViewTest {
         val session = marketplaceSession()
 
         assertEquals(
-            "https://app.raft.build/s/workspace/settings/integrations",
+            "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host",
             settingsMarketplaceWebViewUrl("https://app.raft.build/", session)
         )
     }
@@ -21,22 +22,22 @@ class SettingsMarketplaceWebViewTest {
     @Test
     fun marketplaceUrlFallsBackToUnscopedIntegrationsRouteWithoutServerSlug() {
         assertEquals(
-            "https://app.raft.build/settings/integrations",
+            "https://app.raft.build/settings/integrations?embed=raft-settings-v1&shell=host",
             settingsMarketplaceWebViewUrl("https://app.raft.build", null)
         )
     }
 
     @Test
-    fun marketplaceBootstrapProvidesSessionAndHidesDuplicateWebHeader() {
+    fun marketplaceBootstrapProvidesSessionWithoutDomChromeInjection() {
         val script = settingsMarketplaceWebViewInjectedJavaScript(marketplaceSession())
 
         assertContains(script, "slock_access_token")
         assertContains(script, "slock_refresh_token")
         assertContains(script, "slock_last_server_slug")
-        assertContains(script, "data-slock-settings-tab")
-        assertContains(script, "integrations")
-        assertContains(script, "Connected Apps")
-        assertContains(script, "连接的应用")
+        assertFalse(script.contains(".h-panel-header"))
+        assertFalse(script.contains("MutationObserver"))
+        assertFalse(script.contains("createElement(\"style\")"))
+        assertFalse(script.contains("hidden-header"))
     }
 
     private fun marketplaceSession() =

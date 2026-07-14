@@ -203,13 +203,14 @@ internal fun settingsAdministrationWebViewUrl(
         ?.takeIf { it.isNotBlank() }
         ?.let { "s/$it/settings/administration" }
         ?: "settings/administration"
-    // embed=1: the web SettingsPanel drops its own panel header when embedded
-    // in the app WebView (proper contract; the injected chrome script below
-    // stays as a fallback for older web builds).
-    return "${sharedSettingsWebUrl(webBaseUrl, path)}?lang=$localeTag&embed=1"
+    return sharedSettingsHostShellWebUrl(
+        webUrl = webBaseUrl,
+        path = path,
+        extraQueryParameters = listOf("lang" to localeTag)
+    )
 }
 
-private fun settingsAdministrationWebViewInjectedJavaScript(session: StoredAuthSession?): String {
+internal fun settingsAdministrationWebViewInjectedJavaScript(session: StoredAuthSession?): String {
     if (session == null) return ""
     val currentServerSlug = session.selectedServerSlug
         ?: session.servers.firstOrNull { it.id == session.currentServerId }?.slug
@@ -227,71 +228,12 @@ private fun settingsAdministrationWebViewInjectedJavaScript(session: StoredAuthS
         (function() {
           try {
             $writes;
-            ${settingsAdministrationMobileWebViewChromeScript()}
           } catch (error) {
             console.error("slock_mobile_administration_injected_js_error", error && (error.stack || error.message || error));
           }
         })();
     """.trimIndent()
 }
-
-// Hide the web page's own panel header inside the embed — the native pager
-// already draws the Administration header, so the web `.h-panel-header` for the
-// administration tab would double it. Mirrors the Billing chrome script; the
-// primary matcher is the `data-slock-settings-tab` attribute PanelHeader sets,
-// with a text fallback for older web builds.
-private fun settingsAdministrationMobileWebViewChromeScript(): String =
-    """
-        var mobileAdminStyleId = "slock-mobile-administration-webview-style";
-        var mobileAdminStyle = document.getElementById(mobileAdminStyleId);
-        if (!mobileAdminStyle) {
-          mobileAdminStyle = document.createElement("style");
-          mobileAdminStyle.id = mobileAdminStyleId;
-          mobileAdminStyle.textContent = [
-            "[data-slock-mobile-administration-webview=\"true\"] [data-slock-mobile-administration-hidden-header=\"true\"] { display: none !important; height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; }",
-            "[data-slock-mobile-administration-webview=\"true\"] [data-slock-mobile-administration-content=\"true\"] { padding-top: 0 !important; margin-top: 0 !important; scroll-padding-top: 0 !important; }",
-            "[data-slock-mobile-administration-webview=\"true\"] [data-slock-mobile-administration-content=\"true\"] > :first-child { margin-top: 0 !important; }"
-          ].join("\n");
-          document.head.appendChild(mobileAdminStyle);
-        }
-        document.documentElement.setAttribute("data-slock-mobile-administration-webview", "true");
-        var applyMobileAdminChrome = function() {
-          var headers = Array.prototype.slice.call(document.querySelectorAll(".h-panel-header"));
-          for (var index = 0; index < headers.length; index += 1) {
-            var header = headers[index];
-            var text = (header.textContent || "").replace(/\s+/g, " ").trim();
-            var isAdminHeader = header.getAttribute("data-slock-settings-tab") === "administration";
-            if (!isAdminHeader && text.indexOf("Administration") === -1 && text.indexOf("管理") === -1) {
-              continue;
-            }
-            header.setAttribute("data-slock-mobile-administration-hidden-header", "true");
-            header.style.display = "none";
-            header.style.height = "0px";
-            header.style.minHeight = "0px";
-            header.style.margin = "0px";
-            header.style.padding = "0px";
-            header.style.borderWidth = "0px";
-            var content = header.nextElementSibling;
-            if (content && content.classList && content.classList.contains("overflow-y-auto")) {
-              content.setAttribute("data-slock-mobile-administration-content", "true");
-              content.style.paddingTop = "0px";
-              content.style.marginTop = "0px";
-              content.style.scrollPaddingTop = "0px";
-              if (content.firstElementChild) {
-                content.firstElementChild.style.marginTop = "0px";
-              }
-              if (content.scrollTop > 0 && content.scrollTop < 96) {
-                content.scrollTop = 0;
-              }
-            }
-          }
-        };
-        applyMobileAdminChrome();
-        if (typeof MutationObserver !== "undefined" && !window.__slockMobileAdminChromeObserver) {
-          window.__slockMobileAdminChromeObserver = new MutationObserver(applyMobileAdminChrome);
-          window.__slockMobileAdminChromeObserver.observe(document.documentElement, { childList: true, subtree: true });
-        }
-    """.trimIndent()
 
 private fun settingsAdministrationLocalStorageWrite(key: String, value: String): String =
     "window.localStorage.setItem(${settingsAdministrationWebViewJson.encodeToString(key)}, ${settingsAdministrationWebViewJson.encodeToString(value)})"
