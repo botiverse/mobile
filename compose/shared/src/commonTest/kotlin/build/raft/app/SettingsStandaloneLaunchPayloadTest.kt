@@ -1,7 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.SlockShellStoreScope
-import build.raft.app.model.SlockTimeContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlin.test.Test
@@ -35,14 +33,6 @@ class SettingsStandaloneLaunchPayloadTest {
         assertDescriptorExcludes(
             descriptor = WireSettingsStorageLaunchPayload.serializer().descriptor,
             fields = listOf("rows", "totalSize", "safeClearNote", "feedback")
-        )
-        assertDescriptorExcludes(
-            descriptor = WireSettingsComputersLaunchPayload.serializer().descriptor,
-            fields = listOf("computers", "canAddComputer", "latestDaemonVersion", "latestComputerVersion", "emptyTitle")
-        )
-        assertDescriptorExcludes(
-            descriptor = WireSettingsComputerDetailLaunchPayload.serializer().descriptor,
-            fields = listOf("computer", "computerName", "workspaces", "agents", "canOpenAgents", "canManageMachines")
         )
     }
 
@@ -209,66 +199,6 @@ class SettingsStandaloneLaunchPayloadTest {
     }
 
     @Test
-    fun explicitComputersContentPayloadIsTreatedAsLaunchOnly() {
-        val payload =
-            parseSettingsComputersPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "settings-computers-explicit",
-                      "computers": [
-                        {"id":"machine-1","name":"Stale Machine","online":true}
-                      ],
-                      "latestDaemonVersion": "9.9.9",
-                      "latestComputerVersion": "9.9.8",
-                      "canAddComputer": true
-                    }
-                    """.trimIndent(),
-                fallbackPageData = """{"instanceId":"fallback"}""",
-                instanceId = "fallback"
-            )
-
-        assertEquals("settings-computers-explicit", payload.instanceId)
-        assertEquals("loading", payload.status)
-        assertEquals(emptyList(), payload.computers)
-        assertEquals(null, payload.latestDaemonVersion)
-        assertEquals(null, payload.latestComputerVersion)
-        assertEquals(false, payload.canAddComputer)
-    }
-
-    @Test
-    fun explicitComputerDetailContentPayloadKeepsOnlyLaunchIdentity() {
-        val payload =
-            parseSettingsComputerDetailPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "settings-computer-detail-explicit",
-                      "computerId": "machine-1",
-                      "computerName": "Build Host",
-                      "computer": {"id":"other","name":"Wrong Host"},
-                      "workspaces": [
-                        {"id":"workspace-1","name":"Stale Workspace"}
-                      ],
-                      "agents": [
-                        {"id":"agent-1","name":"Stale Agent"}
-                      ],
-                      "canManageMachines": true
-                    }
-                    """.trimIndent(),
-                fallbackPageData = """{"instanceId":"fallback"}""",
-                instanceId = "fallback"
-            )
-
-        assertEquals("settings-computer-detail-explicit", payload.instanceId)
-        assertEquals("machine-1", payload.computer.id)
-        assertEquals("Computer", payload.computer.name)
-        assertEquals(emptyList(), payload.workspaces)
-        assertEquals(emptyList(), payload.agents)
-        assertEquals(false, payload.canManageMachines)
-    }
-
-    @Test
     fun settingsBillingLaunchIgnoresTopLevelPlanContent() {
         val payload =
             parseSettingsBillingPayload(
@@ -314,87 +244,6 @@ class SettingsStandaloneLaunchPayloadTest {
         assertEquals("settings-storage-launch", payload.instanceId)
         assertEquals("0 B", payload.totalSize)
         assertEquals(emptyList(), payload.rows)
-    }
-
-    @Test
-    fun settingsComputersLaunchIgnoresTopLevelComputerLists() {
-        val payload =
-            parseSettingsComputersPayload(
-                payload = "",
-                fallbackPageData =
-                    """
-                    {
-                      "instanceId": "settings-computers-launch",
-                      "computers": [
-                        {"id":"machine-1","name":"Stale Machine","online":true}
-                      ],
-                      "latestDaemonVersion": "9.9.9",
-                      "canAddComputer": true
-                    }
-                    """.trimIndent(),
-                instanceId = "fallback"
-            )
-
-        assertEquals("settings-computers-launch", payload.instanceId)
-        assertEquals("loading", payload.status)
-        assertEquals(emptyList(), payload.computers)
-        assertEquals(null, payload.latestDaemonVersion)
-        assertEquals(false, payload.canAddComputer)
-    }
-
-    @Test
-    fun settingsComputerDetailLaunchKeepsIdentityAndDropsLists() {
-        val payload =
-            parseSettingsComputerDetailPayload(
-                payload = "",
-                fallbackPageData =
-                    """
-                    {
-                      "instanceId": "settings-computer-detail-launch",
-                      "computerId": "machine-1",
-                      "computerName": "Build Host",
-                      "workspaces": [
-                        {"id":"workspace-1","name":"Stale Workspace"}
-                      ],
-                      "agents": [
-                        {"id":"agent-1","name":"Stale Agent"}
-                      ],
-                      "canManageMachines": true
-                    }
-                    """.trimIndent(),
-                instanceId = "fallback"
-            )
-
-        assertEquals("settings-computer-detail-launch", payload.instanceId)
-        assertEquals("machine-1", payload.computer.id)
-        assertEquals("Computer", payload.computer.name)
-        assertEquals(emptyList(), payload.workspaces)
-        assertEquals(emptyList(), payload.agents)
-        assertEquals(false, payload.canManageMachines)
-    }
-
-    @Test
-    fun settingsComputerDetailPageDataCarriesIdentityOnly() {
-        val pageData =
-            settingsComputerDetailPageData(
-                computerId = "machine-1",
-                timeContext = SlockTimeContext(localOffsetMinutes = 480, todayEpochDay = 20628, nowEpochMillis = 1_782_222_000_000),
-                storeScope = SlockShellStoreScope.create("shell-a", "server-a"),
-            )
-
-        assertEquals(SETTINGS_COMPUTER_DETAIL_PAGE, pageData.optString("pageName"))
-        assertEquals("machine-1", pageData.optString("computerId"))
-        assertEquals("machine-1", pageData.optString("machineId"))
-        assertEquals("shell-a", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("server-a", pageData.optString(SLOCK_SHELL_SERVER_ID))
-        assertEquals("480", pageData.optString("localOffsetMinutes"))
-        assertEquals("20628", pageData.optString("todayEpochDay"))
-        assertEquals("1782222000000", pageData.optString("nowEpochMillis"))
-        assertEquals("24h", pageData.optString("timeFormat"))
-        assertEquals("", pageData.optString("payload"))
-        assertEquals("", pageData.optString("computerName"))
-        assertEquals("", pageData.optString("workspaces"))
-        assertEquals("", pageData.optString("agents"))
     }
 
     @OptIn(ExperimentalSerializationApi::class)

@@ -26,18 +26,6 @@ internal data class WireSettingsStorageLaunchPayload(
     val instanceId: String = ""
 )
 
-@Serializable
-internal data class WireSettingsComputersLaunchPayload(
-    val instanceId: String = ""
-)
-
-@Serializable
-internal data class WireSettingsComputerDetailLaunchPayload(
-    val instanceId: String = "",
-    val computerId: String? = null,
-    val machineId: String? = null
-)
-
 internal fun parseSettingsHomePayload(
     payload: String,
     fallbackPageData: String,
@@ -95,44 +83,6 @@ internal fun parseSettingsStoragePayload(
         default = WireSettingsStorageLaunchPayload(instanceId = instanceId)
     )
     return KuiklySettingsStoragePayload(instanceId = launch.instanceId.ifBlank { instanceId })
-}
-
-internal fun parseSettingsComputersPayload(
-    payload: String,
-    fallbackPageData: String,
-    instanceId: String
-): KuiklySettingsComputersPayload {
-    val launch = parseSettingsLaunchPayload(
-        payload = payload,
-        fallbackPageData = fallbackPageData,
-        serializer = WireSettingsComputersLaunchPayload.serializer(),
-        default = WireSettingsComputersLaunchPayload(instanceId = instanceId)
-    )
-    return KuiklySettingsComputersPayload(
-        instanceId = launch.instanceId.ifBlank { instanceId },
-        status = "loading"
-    )
-}
-
-internal fun parseSettingsComputerDetailPayload(
-    payload: String,
-    fallbackPageData: String,
-    instanceId: String
-): KuiklySettingsComputerDetailPayload {
-    val launch = parseSettingsLaunchPayload(
-        payload = payload,
-        fallbackPageData = fallbackPageData,
-        serializer = WireSettingsComputerDetailLaunchPayload.serializer(),
-        default = WireSettingsComputerDetailLaunchPayload(instanceId = instanceId)
-    )
-    val computerId = launch.computerId?.takeIf { it.isNotBlank() } ?: launch.machineId?.takeIf { it.isNotBlank() }
-    return KuiklySettingsComputerDetailPayload(
-        instanceId = launch.instanceId.ifBlank { instanceId },
-        computer = KuiklySettingsComputerItem(
-            id = computerId.orEmpty(),
-            name = "Computer"
-        )
-    )
 }
 
 private fun safeSettingsAccountLaunchPayload(instanceId: String): KuiklySettingsAccountPayload =

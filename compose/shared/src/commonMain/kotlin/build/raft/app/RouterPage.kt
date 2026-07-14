@@ -120,8 +120,6 @@ private val DeveloperRouteGroups =
                         detail = "Account settings fixture",
                         payloadProvider = { routerPreviewJson.encodeToString(settingsAccountSmokePayload) }
                     ),
-                    DeveloperRouteItem("Settings Computers", SETTINGS_COMPUTERS_PAGE, "Computer list page"),
-                    DeveloperRouteItem("Settings Computer Detail", SETTINGS_COMPUTER_DETAIL_PAGE, "Computer detail page"),
                     DeveloperRouteItem("Settings Storage", SETTINGS_STORAGE_PAGE, "Storage settings page"),
                     DeveloperRouteItem(
                         title = "Settings Billing Preview",

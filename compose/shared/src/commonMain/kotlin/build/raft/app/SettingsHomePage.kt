@@ -290,16 +290,6 @@ import build.raft.app.data.SettingsConnectedAppRegisterRequest
 import build.raft.app.data.SettingsConnectedAppSecretSnapshot
 import build.raft.app.data.SettingsConnectedAppUpdateRequest
 import build.raft.app.data.SettingsConnectedAppsSnapshot
-import build.raft.app.data.SettingsComputerActionResult
-import build.raft.app.data.SettingsComputerDetailSnapshot
-import build.raft.app.data.SettingsComputerKeyRotationResult
-import build.raft.app.data.SettingsComputerRegisterRequest
-import build.raft.app.data.SettingsComputerRegistrationResult
-import build.raft.app.data.SettingsComputerRenameRequest
-import build.raft.app.data.SettingsComputerRuntimeModelsSnapshot
-import build.raft.app.data.SettingsComputerSnapshot
-import build.raft.app.data.SettingsComputerWorkspaceDeleteRequest
-import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileSelectionOptionSnapshot
@@ -4304,9 +4294,6 @@ private fun SlockAppShellContent(
                                     settingsHeaderTapCount = nextTapCount
                                 }
                             },
-                            onOpenComputer = { computerId ->
-                                pager.openSettingsComputerDetailPage(computerId, threadTimeContext, storeScope)
-                            },
                             onOpenRouter = { jumpPage(pager, "router") },
                             onOpenReleaseNotes = {
                                 val releaseNotesVersionCode =
@@ -4537,7 +4524,6 @@ private fun SettingsAppShellContent(
     selectedDestination: String,
     onDestinationChange: (String) -> Unit,
     onSettingsHeaderClick: () -> Unit,
-    onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
     onOpenReleaseNotes: () -> Unit,
     onOpenBilling: () -> Unit,
@@ -4570,7 +4556,8 @@ private fun SettingsAppShellContent(
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
             SettingsDestinationOpenSourceLicenses ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.OpenSourceLicenses))
-            SettingsDestinationComputers -> Unit
+            SettingsDestinationComputers ->
+                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
             else ->
                 selectedDestination.toSharedSettingsDestination()?.let { destination ->
                     onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
@@ -4603,9 +4590,6 @@ private fun SettingsAppShellContent(
             }
             is SharedSettingsEffect.CopyText -> {
                 settingsCapabilities.bridgeCopyToClipboard(effect.text)
-            }
-            is SharedSettingsEffect.OpenComputer -> {
-                onOpenComputer(effect.machineId)
             }
             SharedSettingsEffect.CopyDiagnostics -> {
                 val ok = settingsCapabilities.copyDiagnostics()
@@ -4838,19 +4822,7 @@ private fun SettingsAppShellContent(
                 else -> onDestinationChange(SettingsDestinationHome)
             }
         },
-        trailingContent =
-            if (selectedDestination == SettingsDestinationComputers && settingsState.computers.canShowAddComputerHeaderAction()) {
-                {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Plus,
-                        onClick = { onSettingsIntent(SharedSettingsIntent.ShowAddComputerDialog) },
-                        size = 36.dp,
-                        shadowOffset = 3.dp
-                    )
-                }
-            } else {
-                null
-            }
+        trailingContent = null
     ) {
         when (selectedDestination) {
             SettingsDestinationAccount ->
@@ -4905,25 +4877,11 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationComputers -> {
-                LaunchedEffect(selectedDestination) {
-                    onSettingsIntent(SharedSettingsIntent.RefreshComputers)
-                }
-                SettingsComputersContent(
-                    settingsState.computers.toComputersPayload(
-                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers),
-                        timeContext = timeContext
-                    ),
-                    bottomContentPadding = bottomContentPadding,
-                ) { action, itemId ->
-                    when (action) {
-                        "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let(onOpenComputer)
-                        "addComputer" -> onSettingsIntent(SharedSettingsIntent.ShowAddComputerDialog)
-                        else -> onSettingsAction(action, itemId)
-                    }
-                }
-                settingsState.addComputerDialog?.let { dialogState ->
-                    AddComputerDialog(state = dialogState, onIntent = onSettingsIntent)
-                }
+                SettingsComputersWebViewContent(
+                    session = session,
+                    webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+                    bottomContentPadding = bottomContentPadding
+                )
             }
             SettingsDestinationStorage ->
                 SettingsStorageContent(
@@ -10204,9 +10162,6 @@ private fun SettingsDetailShell(
         }
     }
 }
-
-private fun ScreenLoadState<SettingsComputersSnapshot>.canShowAddComputerHeaderAction(): Boolean =
-    (this as? ScreenLoadState.Content)?.data?.canAddComputer == true
 
 @Composable
 private fun SettingsDetailBackButton(onBack: () -> Unit) {
@@ -19493,7 +19448,6 @@ private fun SettingsRouteVisualScreen() {
         selectedDestination = route.destination,
         onDestinationChange = {},
         onSettingsHeaderClick = {},
-        onOpenComputer = {},
         onOpenRouter = {},
         onOpenReleaseNotes = {},
         onOpenBilling = {},
