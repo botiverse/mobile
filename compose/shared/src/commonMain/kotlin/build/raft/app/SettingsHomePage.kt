@@ -656,6 +656,23 @@ internal fun sharedSettingsWebUrl(webUrl: String?, path: String): String {
     return if (cleanPath.isBlank()) baseUrl else "$baseUrl/$cleanPath"
 }
 
+internal const val SharedSettingsEmbedContract = "raft-settings-v1"
+internal const val SharedSettingsEmbedHostShell = "host"
+
+internal fun sharedSettingsHostShellWebUrl(
+    webUrl: String?,
+    path: String,
+    extraQueryParameters: List<Pair<String, String>> = emptyList()
+): String {
+    val queryParameters =
+        listOf(
+            "embed" to SharedSettingsEmbedContract,
+            "shell" to SharedSettingsEmbedHostShell
+        ) + extraQueryParameters
+    val query = queryParameters.joinToString(separator = "&") { (key, value) -> "$key=$value" }
+    return "${sharedSettingsWebUrl(webUrl, path)}?$query"
+}
+
 internal fun ScreenLoadState<SharedSettingsDeveloperSnapshot>.configuredWebBaseUrlOrNull(): String? =
     (this as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl
 

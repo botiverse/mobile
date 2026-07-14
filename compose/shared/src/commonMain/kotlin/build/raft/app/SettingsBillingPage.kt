@@ -427,10 +427,14 @@ internal fun settingsBillingWebViewUrl(
         ?.takeIf { it.isNotBlank() }
         ?.let { "s/$it/settings/billing" }
         ?: "settings/billing"
-    return "${sharedSettingsWebUrl(webBaseUrl, path)}?lang=$localeTag"
+    return sharedSettingsHostShellWebUrl(
+        webUrl = webBaseUrl,
+        path = path,
+        extraQueryParameters = listOf("lang" to localeTag)
+    )
 }
 
-private fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?): String {
+internal fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?): String {
     if (session == null) return ""
     val currentServerSlug = session.selectedServerSlug
         ?: session.servers.firstOrNull { it.id == session.currentServerId }?.slug
@@ -448,66 +452,12 @@ private fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?
         (function() {
           try {
             $writes;
-            ${settingsBillingMobileWebViewChromeScript()}
           } catch (error) {
             console.error("slock_mobile_billing_injected_js_error", error && (error.stack || error.message || error));
           }
         })();
     """.trimIndent()
 }
-
-private fun settingsBillingMobileWebViewChromeScript(): String =
-    """
-        var mobileBillingStyleId = "slock-mobile-billing-webview-style";
-        var mobileBillingStyle = document.getElementById(mobileBillingStyleId);
-        if (!mobileBillingStyle) {
-          mobileBillingStyle = document.createElement("style");
-          mobileBillingStyle.id = mobileBillingStyleId;
-          mobileBillingStyle.textContent = [
-            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-hidden-header=\"true\"] { display: none !important; height: 0 !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; }",
-            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-content=\"true\"] { padding-top: 0 !important; margin-top: 0 !important; scroll-padding-top: 0 !important; }",
-            "[data-slock-mobile-billing-webview=\"true\"] [data-slock-mobile-billing-content=\"true\"] > :first-child { margin-top: 0 !important; }"
-          ].join("\n");
-          document.head.appendChild(mobileBillingStyle);
-        }
-        document.documentElement.setAttribute("data-slock-mobile-billing-webview", "true");
-        var applyMobileBillingChrome = function() {
-          var headers = Array.prototype.slice.call(document.querySelectorAll(".h-panel-header"));
-          for (var index = 0; index < headers.length; index += 1) {
-            var header = headers[index];
-            var text = (header.textContent || "").replace(/\s+/g, " ").trim();
-            var isBillingHeader = header.getAttribute("data-slock-settings-tab") === "billing";
-            if (!isBillingHeader && text.indexOf("Plan & Billing") === -1 && text.indexOf("套餐与账单") === -1) {
-              continue;
-            }
-            header.setAttribute("data-slock-mobile-billing-hidden-header", "true");
-            header.style.display = "none";
-            header.style.height = "0px";
-            header.style.minHeight = "0px";
-            header.style.margin = "0px";
-            header.style.padding = "0px";
-            header.style.borderWidth = "0px";
-            var content = header.nextElementSibling;
-            if (content && content.classList && content.classList.contains("overflow-y-auto")) {
-              content.setAttribute("data-slock-mobile-billing-content", "true");
-              content.style.paddingTop = "0px";
-              content.style.marginTop = "0px";
-              content.style.scrollPaddingTop = "0px";
-              if (content.firstElementChild) {
-                content.firstElementChild.style.marginTop = "0px";
-              }
-              if (content.scrollTop > 0 && content.scrollTop < 96) {
-                content.scrollTop = 0;
-              }
-            }
-          }
-        };
-        applyMobileBillingChrome();
-        if (typeof MutationObserver !== "undefined" && !window.__slockMobileBillingChromeObserver) {
-          window.__slockMobileBillingChromeObserver = new MutationObserver(applyMobileBillingChrome);
-          window.__slockMobileBillingChromeObserver.observe(document.documentElement, { childList: true, subtree: true });
-        }
-    """.trimIndent()
 
 private fun settingsBillingLocalStorageWrite(key: String, value: String): String =
     "window.localStorage.setItem(${settingsBillingWebViewJson.encodeToString(key)}, ${settingsBillingWebViewJson.encodeToString(value)})"
