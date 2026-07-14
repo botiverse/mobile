@@ -11,6 +11,7 @@
 #import <stdatomic.h>
 #import <string.h>
 #import <time.h>
+#import <UserNotifications/UserNotifications.h>
 
 #if __has_include("RaftIosBuildMetadata.h")
 #import "RaftIosBuildMetadata.h"
@@ -1891,7 +1892,20 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     if (!callback) {
         return;
     }
-    callback([self slock_settingsCapabilityResultForAction:SlockBridgeString(params[@"action"]) params:params]);
+    NSString *action = SlockBridgeString(params[@"action"]);
+    if ([action isEqualToString:@"getNotificationPermissionStatus"]) {
+        [self slock_getNotificationPermissionStatusWithCallback:callback];
+        return;
+    }
+    if ([action isEqualToString:@"requestNotificationPermission"]) {
+        [self slock_requestNotificationPermissionWithCallback:callback];
+        return;
+    }
+    if ([action isEqualToString:@"openNotificationSettings"]) {
+        [self slock_openNotificationSettingsWithCallback:callback];
+        return;
+    }
+    callback([self slock_settingsCapabilityResultForAction:action params:params]);
 }
 
 - (void)threadAttachmentUpload:(NSDictionary *)args {
@@ -2141,6 +2155,131 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     };
 }
 
+- (NSDictionary *)slock_notificationPermissionResultForSettings:(UNNotificationSettings *)settings {
+    switch (settings.authorizationStatus) {
+        case UNAuthorizationStatusAuthorized:
+            return @{
+                @"status" : @"ok",
+                @"code" : @"permission_authorized",
+                @"authorizationStatus" : @"authorized",
+                @"message" : @"System notifications can show alerts, sounds, and badges."
+            };
+        case UNAuthorizationStatusProvisional:
+            return @{
+                @"status" : @"ok",
+                @"code" : @"permission_provisional",
+                @"authorizationStatus" : @"provisional",
+                @"message" : @"Notifications are provisionally allowed and may be delivered quietly."
+            };
+        case UNAuthorizationStatusEphemeral:
+            return @{
+                @"status" : @"ok",
+                @"code" : @"permission_ephemeral",
+                @"authorizationStatus" : @"ephemeral",
+                @"message" : @"Notifications are temporarily allowed."
+            };
+        case UNAuthorizationStatusDenied:
+            return @{
+                @"status" : @"error",
+                @"code" : @"permission_denied",
+                @"authorizationStatus" : @"denied",
+                @"message" : @"Notification permission is denied. Open iOS Settings to enable it."
+            };
+        case UNAuthorizationStatusNotDetermined:
+            return @{
+                @"status" : @"ok",
+                @"code" : @"permission_not_determined",
+                @"authorizationStatus" : @"not_determined",
+                @"message" : @"Raft will ask for notification permission after login."
+            };
+    }
+    return @{
+        @"status" : @"error",
+        @"code" : @"permission_status_unknown",
+        @"authorizationStatus" : @"unknown",
+        @"message" : @"The iOS notification permission status is unknown."
+    };
+}
+
+- (void)slock_getNotificationPermissionStatusWithCallback:(KuiklyRenderCallback)callback {
+    [[UNUserNotificationCenter currentNotificationCenter]
+        getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+            NSDictionary *result = [self slock_notificationPermissionResultForSettings:settings];
+            SlockBridgeRunOnMain(^{
+                callback(result);
+            });
+        }];
+}
+
+- (void)slock_requestNotificationPermissionWithCallback:(KuiklyRenderCallback)callback {
+    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
+        if (settings.authorizationStatus != UNAuthorizationStatusNotDetermined &&
+            settings.authorizationStatus != UNAuthorizationStatusProvisional) {
+            NSDictionary *result = [self slock_notificationPermissionResultForSettings:settings];
+            SlockBridgeRunOnMain(^{
+                callback(result);
+            });
+            return;
+        }
+        UNAuthorizationOptions options = UNAuthorizationOptionAlert | UNAuthorizationOptionBadge | UNAuthorizationOptionSound;
+        [center requestAuthorizationWithOptions:options
+                              completionHandler:^(BOOL granted, NSError *error) {
+            if (error) {
+                SlockDiagnosticsRecord(@"warn", @"SlockIosPush", @"notification_permission_request_failed source=settings");
+                SlockBridgeRunOnMain(^{
+                    callback(@{
+                        @"status" : @"error",
+                        @"code" : @"permission_request_failed",
+                        @"message" : @"The iOS notification permission request failed."
+                    });
+                });
+                return;
+            }
+            SlockDiagnosticsRecord(
+                @"info",
+                @"SlockIosPush",
+                [NSString stringWithFormat:@"notification_permission_request_finished source=settings granted=%@", granted ? @"true" : @"false"]
+            );
+            [self slock_getNotificationPermissionStatusWithCallback:callback];
+        }];
+    }];
+}
+
+- (void)slock_openNotificationSettingsWithCallback:(KuiklyRenderCallback)callback {
+    SlockBridgeRunOnMain(^{
+        NSString *settingsUrlString = UIApplicationOpenSettingsURLString;
+        if (@available(iOS 16.0, *)) {
+            settingsUrlString = UIApplicationOpenNotificationSettingsURLString;
+        }
+        NSURL *settingsUrl = [NSURL URLWithString:settingsUrlString];
+        if (!settingsUrl) {
+            callback(@{
+                @"status" : @"error",
+                @"code" : @"notification_settings_url_unavailable",
+                @"message" : @"iOS notification settings are unavailable."
+            });
+            return;
+        }
+        [[UIApplication sharedApplication]
+            openURL:settingsUrl
+            options:@{}
+            completionHandler:^(BOOL success) {
+                callback(success
+                    ? @{
+                        @"status" : @"ok",
+                        @"code" : @"notification_settings_opened",
+                        @"message" : @"iOS notification settings were opened."
+                    }
+                    : @{
+                        @"status" : @"error",
+                        @"code" : @"notification_settings_open_failed",
+                        @"message" : @"iOS notification settings could not be opened."
+                    });
+            }];
+    });
+}
+
 - (NSDictionary *)slock_settingsCapabilityResultForAction:(NSString *)action params:(NSDictionary *)params {
     if (action.length == 0) {
         return [self slock_unsupportedResultWithCode:@"settings_capability_unknown"
@@ -2227,9 +2366,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
         return [self slock_unsupportedResultWithCode:@"settings_developer_environment_unsupported"
                                              message:@"API environment switching is not wired on iOS P0"];
     }
-    if ([action isEqualToString:@"requestNotificationPermission"] ||
-        [action isEqualToString:@"openNotificationSettings"] ||
-        [action isEqualToString:@"sendTestNotification"] ||
+    if ([action isEqualToString:@"sendTestNotification"] ||
         [action isEqualToString:@"postUnreadNotification"] ||
         [action isEqualToString:@"cancelTestNotification"] ||
         [action isEqualToString:@"cancelNotification"]) {

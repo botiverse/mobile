@@ -368,6 +368,15 @@ internal class BridgeSettingsPlatformCapabilities(
         }
     }
 
+    override suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? {
+        val response = settingsCapability(JSONObject().put("action", "getNotificationPermissionStatus"))
+            ?: return null
+        return systemNotificationPermissionSnapshot(
+            code = response.optString("code"),
+            message = response.optString("message")
+        )
+    }
+
     suspend fun requestNotificationPermission(): SystemNotificationActionResult =
         systemNotificationAction("requestNotificationPermission")
 
@@ -491,6 +500,26 @@ internal class BridgeSettingsPlatformCapabilities(
             message = optString("message")
         )
     }
+}
+
+internal fun systemNotificationPermissionSnapshot(
+    code: String,
+    message: String
+): SettingsMobileActionSnapshot? {
+    val statusLabel =
+        when (code) {
+            "permission_authorized" -> "Allowed"
+            "permission_provisional" -> "Provisional"
+            "permission_ephemeral" -> "Allowed"
+            "permission_denied" -> "Denied"
+            "permission_not_determined" -> "Not requested"
+            else -> return null
+        }
+    return SettingsMobileActionSnapshot(
+        available = code != "permission_denied",
+        statusLabel = statusLabel,
+        detail = message.ifBlank { statusLabel }
+    )
 }
 
 internal fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
