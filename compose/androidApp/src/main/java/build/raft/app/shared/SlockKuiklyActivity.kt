@@ -417,7 +417,7 @@ open class SlockKuiklyActivity :
         if (resolvedPageName(intent) != PAGE_APP_SHELL) return
         val target = androidShellLaunchTargetFromPageData(appShellPageDataFromIntent(intent)) ?: return
         androidShellLaunchTarget = target
-        AndroidShellWindowRegistry.register(target)
+        AndroidShellWindowRegistry.register(target, taskId = taskId)
         SlockAppLog.record(
             "SlockKuiklyActivity",
             "shell_window_registered shellInstanceId=${target.shellInstanceId} " +

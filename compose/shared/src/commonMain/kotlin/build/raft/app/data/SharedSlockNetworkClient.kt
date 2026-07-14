@@ -395,6 +395,9 @@ class SharedSlockAuthTransport internal constructor(
     override suspend fun resendVerification(authorization: String): AuthNetworkResponse =
         request(path = "auth/resend-verification", method = "POST", authorization = authorization)
 
+    override suspend fun verifyEmail(bodyText: String): AuthNetworkResponse =
+        request(path = "auth/verify-email", method = "POST", bodyText = bodyText)
+
     override suspend fun currentUser(authorization: String): AuthNetworkResponse =
         request(path = "auth/me", method = "GET", authorization = authorization)
 

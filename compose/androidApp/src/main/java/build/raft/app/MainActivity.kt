@@ -5,6 +5,7 @@ import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
+import build.raft.app.shared.AndroidShellWindowRegistry
 import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.shared.resolveAndroidShellLaunchTarget
@@ -14,8 +15,10 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.data.SharedAuthResult
+import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.StoredAuthSession
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -39,7 +42,12 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        if (!handleMobileOAuthCallback(intent) && !handleSocialAuthCallback(intent)) {
+        if (
+            !handleMobileOAuthCallback(intent) &&
+            !handleSocialAuthCallback(intent) &&
+            !handleEmailVerificationLink(intent) &&
+            !handleUnsupportedSlockWebLink(intent)
+        ) {
             openSharedShell(intent)
         }
     }
@@ -54,9 +62,71 @@ class MainActivity : ComponentActivity() {
                 "clearTask=${intent.shouldClearTaskForSharedShell()} " +
                 "data=${intent.safeDataString()}"
         )
-        if (!handleMobileOAuthCallback(intent) && !handleSocialAuthCallback(intent)) {
+        if (
+            !handleMobileOAuthCallback(intent) &&
+            !handleSocialAuthCallback(intent) &&
+            !handleEmailVerificationLink(intent) &&
+            !handleUnsupportedSlockWebLink(intent)
+        ) {
             openSharedShell(intent)
         }
+    }
+
+    /**
+     * The manifest intentionally receives the whole Raft web origin so typed callbacks can be
+     * added without another install. Anything not consumed above must stay on the web instead of
+     * silently opening an empty app shell. The browser component is explicit so Android App Links
+     * cannot resolve the fallback straight back to this activity.
+     */
+    private fun handleUnsupportedSlockWebLink(intent: Intent?): Boolean {
+        if (!intent.shouldOpenUnsupportedSlockWebLinkExternally()) return false
+        val uri = checkNotNull(intent?.data)
+        setIntent(Intent(this, MainActivity::class.java))
+        val browserIntent = externalBrowserIntent(uri)
+        if (browserIntent == null) {
+            SlockAppLog.w(
+                "SlockBoot",
+                "app_web_link_external_fallback result=no_external_handler " +
+                    "target=${uri.safeWebLinkTarget()}"
+            )
+            Toast.makeText(this, "No browser is available to open this link", Toast.LENGTH_SHORT).show()
+        } else {
+            SlockAppLog.d(
+                "SlockBoot",
+                "app_web_link_external_fallback result=opened " +
+                    "target=${uri.safeWebLinkTarget()} package=${browserIntent.component?.packageName.orEmpty()}"
+            )
+            startActivity(browserIntent)
+        }
+        finish()
+        return true
+    }
+
+    private fun externalBrowserIntent(uri: Uri): Intent? {
+        val implicit =
+            Intent(Intent.ACTION_VIEW, uri)
+                .addCategory(Intent.CATEGORY_BROWSABLE)
+        val candidates =
+            packageManager.queryIntentActivities(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+        val defaultPackage =
+            packageManager
+                .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo
+                ?.packageName
+        val selectedPackage =
+            selectExternalWebHandlerPackage(
+                ownPackage = packageName,
+                defaultPackage = defaultPackage,
+                candidatePackages = candidates.map { it.activityInfo.packageName }
+            ) ?: return null
+        val selected =
+            candidates.firstOrNull { candidate ->
+                candidate.activityInfo.packageName == selectedPackage
+            } ?: return null
+        return implicit.setClassName(
+            selected.activityInfo.packageName,
+            selected.activityInfo.name
+        )
     }
 
     private fun openSharedShell(launchIntent: Intent? = intent) {
@@ -70,6 +140,68 @@ class MainActivity : ComponentActivity() {
             documentShellId = taskLaunch.documentShellId,
         )
         finish()
+    }
+
+    private fun handleEmailVerificationLink(intent: Intent?): Boolean {
+        val token = intent.emailVerificationToken() ?: return false
+        val hasLiveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
+        // Remove the token-bearing URL from the retained Activity intent before any async work.
+        setIntent(Intent(this, MainActivity::class.java))
+        lifecycleScope.launch {
+            val result =
+                withContext(Dispatchers.IO) {
+                    SharedAuthDataSource(
+                        api = AndroidAuthApiFactory.createAuthApi(applicationContext),
+                        sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
+                        diagnosticsLogger = ::logSharedAuthDiagnostics
+                    ).verifyEmail(token)
+            }
+            when (result) {
+                is SharedEmailVerificationResult.Verified -> {
+                    Toast.makeText(this@MainActivity, "Email verified", Toast.LENGTH_SHORT).show()
+                    when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.Verified)) {
+                        EmailVerificationNavigation.FinishTrampoline -> finish()
+                        EmailVerificationNavigation.OpenPostLoginDestination -> openPostLoginDestination(result.session)
+                        EmailVerificationNavigation.OpenAuthShell -> error("Success must not open the auth shell")
+                    }
+                }
+                is SharedEmailVerificationResult.Failure -> {
+                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
+                    when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.Failure)) {
+                        EmailVerificationNavigation.FinishTrampoline -> finish()
+                        EmailVerificationNavigation.OpenAuthShell ->
+                            openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
+                        EmailVerificationNavigation.OpenPostLoginDestination ->
+                            error("Failure must not open a post-login destination")
+                    }
+                }
+                is SharedEmailVerificationResult.RefreshPending -> {
+                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
+                    when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.RefreshPending)) {
+                        EmailVerificationNavigation.FinishTrampoline -> finish()
+                        EmailVerificationNavigation.OpenAuthShell ->
+                            openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
+                        EmailVerificationNavigation.OpenPostLoginDestination ->
+                            error("Pending verification refresh must not open a post-login destination")
+                    }
+                }
+                SharedEmailVerificationResult.LoginRequired -> {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Email verified. Sign in to continue.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.LoginRequired)) {
+                        EmailVerificationNavigation.FinishTrampoline -> finish()
+                        EmailVerificationNavigation.OpenAuthShell ->
+                            openSharedShell(Intent(this@MainActivity, MainActivity::class.java))
+                        EmailVerificationNavigation.OpenPostLoginDestination ->
+                            error("Unauthenticated verification must not open a post-login destination")
+                    }
+                }
+            }
+        }
+        return true
     }
 
     private fun handleSocialAuthCallback(intent: Intent?): Boolean {
@@ -343,6 +475,84 @@ internal fun slockLaunchSource(
         else -> action.ifBlank { "unknown" }
     }
 
+internal fun Intent?.shouldOpenUnsupportedSlockWebLinkExternally(): Boolean =
+    shouldOpenUnsupportedSlockWebLinkExternally(
+        action = this?.action,
+        dataScheme = this?.data?.scheme,
+        dataHost = this?.data?.host,
+        dataPath = this?.data?.path,
+        verifyToken = this?.data?.getQueryParameter("verify")
+    )
+
+internal fun shouldOpenUnsupportedSlockWebLinkExternally(
+    action: String?,
+    dataScheme: String?,
+    dataHost: String?,
+    dataPath: String? = null,
+    verifyToken: String? = null
+): Boolean =
+    action == Intent.ACTION_VIEW &&
+        isSlockAppWebLink(dataScheme, dataHost) &&
+        emailVerificationToken(action, dataScheme, dataHost, dataPath, verifyToken) == null
+
+internal fun Intent?.emailVerificationToken(): String? =
+    emailVerificationToken(
+        action = this?.action,
+        dataScheme = this?.data?.scheme,
+        dataHost = this?.data?.host,
+        dataPath = this?.data?.path,
+        verifyToken = this?.data?.getQueryParameter("verify")
+    )
+
+internal fun emailVerificationToken(
+    action: String?,
+    dataScheme: String?,
+    dataHost: String?,
+    dataPath: String?,
+    verifyToken: String?
+): String? =
+    verifyToken?.takeIf {
+        it.isNotBlank() &&
+            action == Intent.ACTION_VIEW &&
+            isSlockAppWebLink(dataScheme, dataHost) &&
+            isRootWebPath(dataPath)
+    }
+
+internal enum class EmailVerificationOutcome {
+    Verified,
+    Failure,
+    RefreshPending,
+    LoginRequired,
+}
+
+internal enum class EmailVerificationNavigation {
+    FinishTrampoline,
+    OpenPostLoginDestination,
+    OpenAuthShell,
+}
+
+internal fun emailVerificationNavigation(
+    hasLiveShellInTask: Boolean,
+    result: EmailVerificationOutcome,
+): EmailVerificationNavigation =
+    when {
+        hasLiveShellInTask -> EmailVerificationNavigation.FinishTrampoline
+        result == EmailVerificationOutcome.Verified -> EmailVerificationNavigation.OpenPostLoginDestination
+        else -> EmailVerificationNavigation.OpenAuthShell
+    }
+
+private fun isRootWebPath(path: String?): Boolean = path.isNullOrEmpty() || path == "/"
+
+internal fun selectExternalWebHandlerPackage(
+    ownPackage: String,
+    defaultPackage: String?,
+    candidatePackages: List<String>
+): String? {
+    val externalPackages = candidatePackages.filter { it.isNotBlank() && it != ownPackage }
+    return defaultPackage?.takeIf { it in externalPackages }
+        ?: externalPackages.firstOrNull()
+}
+
 private fun Intent?.isAppShellPageDataIntent(): Boolean =
     this?.getStringExtra(SlockKuiklyActivity.KEY_PAGE_NAME) == SlockKuiklyActivity.PAGE_APP_SHELL
 
@@ -358,6 +568,9 @@ private fun isSlockAppWebLink(scheme: String?, host: String?): Boolean =
 
 private fun Intent?.safeDataString(): String =
     this?.data?.buildUpon()?.clearQuery()?.fragment(null)?.build()?.toString().orEmpty()
+
+private fun Uri.safeWebLinkTarget(): String =
+    buildUpon().clearQuery().fragment(null).build().toString()
 
 private fun Uri.isSlockSocialAuthCallback(): Boolean =
     scheme == "https" &&

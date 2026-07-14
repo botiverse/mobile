@@ -573,6 +573,218 @@ class AuthDataSourceTest {
         assertEquals("Email already verified", result.message)
     }
 
+    @Test
+    fun verifyEmailConsumesExactTokenThenRefreshesAndPersistsCanonicalUser() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                storedSession().copy(
+                    user = StoredAuthUser(
+                        id = "user-1",
+                        email = "user@slock.ai",
+                        emailVerified = false
+                    )
+                )
+            )
+        val api =
+            FakeAuthApi(
+                currentUserResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(
+                                200,
+                                """{"id":"user-1","email":"user@slock.ai","emailVerified":true}"""
+                            )
+                        )
+                    )
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.verifyEmail("email-token-123")
+
+        assertTrue(result is SharedEmailVerificationResult.Verified)
+        assertEquals("""{"token":"email-token-123"}""", api.verifyEmailBody)
+        assertEquals("Bearer access-token", api.currentUserAuthorization)
+        assertEquals(true, store.readSession()?.user?.emailVerified)
+        assertEquals("access-token", store.readSession()?.accessToken)
+        assertEquals("refresh-token", store.readSession()?.refreshToken)
+    }
+
+    @Test
+    fun verifyEmailFailureDoesNotRefreshOrFabricateVerifiedSessionState() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                storedSession().copy(
+                    user = StoredAuthUser(
+                        id = "user-1",
+                        email = "user@slock.ai",
+                        emailVerified = false
+                    )
+                )
+            )
+        val api =
+            FakeAuthApi(
+                verifyEmailResponse =
+                    AuthNetworkResponse(400, null, """{"error":"Invalid or expired verification token"}""")
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.verifyEmail("expired-token")
+
+        assertTrue(result is SharedEmailVerificationResult.Failure)
+        assertEquals("Invalid or expired verification token", result.message)
+        assertEquals("""{"token":"expired-token"}""", api.verifyEmailBody)
+        assertEquals(null, api.currentUserAuthorization)
+        assertEquals(false, store.readSession()?.user?.emailVerified)
+    }
+
+    @Test
+    fun verifyEmailRejectsBlankTokenBeforeTransport() = runBlocking {
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = InMemorySlockAuthSessionStore())
+
+        val result = source.verifyEmail("   ")
+
+        assertTrue(result is SharedEmailVerificationResult.Failure)
+        assertEquals(SharedAuthErrorCode.Validation, result.code)
+        assertEquals(null, api.verifyEmailBody)
+    }
+
+    @Test
+    fun verifyEmailCurrentUserExceptionReturnsRefreshPendingWithoutChangingCachedUser() = runBlocking {
+        val store = unverifiedSessionStore()
+        val api = FakeAuthApi(throwCurrentUser = true)
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.verifyEmail("one-time-token")
+
+        assertTrue(result is SharedEmailVerificationResult.RefreshPending)
+        assertEquals(1, api.verifyEmailRequestCount)
+        assertEquals(1, api.currentUserRequestCount)
+        assertEquals(false, store.readSession()?.user?.emailVerified)
+    }
+
+    @Test
+    fun verifyEmailServerFailureCanRetryCanonicalRefreshWithoutReplayingToken() = runBlocking {
+        val store = unverifiedSessionStore()
+        val currentUserResponses =
+            ArrayDeque(
+                listOf(
+                    AuthNetworkResponse(503, null, """{"error":"temporarily unavailable"}"""),
+                    AuthNetworkResponse(
+                        200,
+                        """{"id":"user-1","email":"user@slock.ai","emailVerified":true}"""
+                    )
+                )
+            )
+        val api = FakeAuthApi(currentUserResponses = currentUserResponses)
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val initial = source.verifyEmail("one-time-token")
+        assertTrue(initial is SharedEmailVerificationResult.RefreshPending)
+        assertEquals(false, store.readSession()?.user?.emailVerified)
+
+        val retried = source.refreshEmailVerificationStatus()
+
+        assertTrue(retried is SharedEmailVerificationResult.Verified)
+        assertEquals(1, api.verifyEmailRequestCount)
+        assertEquals(2, api.currentUserRequestCount)
+        assertEquals(true, store.readSession()?.user?.emailVerified)
+    }
+
+    @Test
+    fun verifyEmailCurrentUserContractMismatchIsRefreshPendingNotCachedSuccess() = runBlocking {
+        val store = unverifiedSessionStore()
+        val api =
+            FakeAuthApi(
+                currentUserResponses =
+                    ArrayDeque(
+                        listOf(AuthNetworkResponse(200, """{"unexpected":true}"""))
+                    )
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.verifyEmail("one-time-token")
+
+        assertTrue(result is SharedEmailVerificationResult.RefreshPending)
+        assertEquals(1, api.verifyEmailRequestCount)
+        assertEquals(1, api.currentUserRequestCount)
+        assertEquals(false, store.readSession()?.user?.emailVerified)
+    }
+
+    @Test
+    fun verifyEmailBlankRefreshSnapshotDoesNotClearConcurrentLogin() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                storedSession(accessToken = "stale-access").copy(
+                    refreshToken = "",
+                    user = StoredAuthUser("user-1", "user@slock.ai", emailVerified = false)
+                )
+            )
+        val successor =
+            storedSession(accessToken = "successor-access").copy(
+                refreshToken = "successor-refresh",
+                user = StoredAuthUser("user-1", "user@slock.ai", emailVerified = true)
+            )
+        val api =
+            FakeAuthApi(
+                currentUserResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null),
+                            AuthNetworkResponse(
+                                200,
+                                """{"id":"user-1","email":"user@slock.ai","emailVerified":true}"""
+                            )
+                        )
+                    ),
+                onCurrentUserRequest = { requestCount ->
+                    if (requestCount == 1) store.replaceAuthenticatedSession(successor)
+                }
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.verifyEmail("one-time-token")
+
+        assertTrue(result is SharedEmailVerificationResult.Verified)
+        assertEquals("successor-access", store.readSession()?.accessToken)
+        assertEquals("successor-refresh", store.readSession()?.refreshToken)
+        assertEquals(1, api.verifyEmailRequestCount)
+    }
+
+    @Test
+    fun verifyEmailSecondCurrentUserUnauthorizedDoesNotClearConcurrentTokenRotation() = runBlocking {
+        val store = unverifiedSessionStore()
+        val api =
+            FakeAuthApi(
+                currentUserResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null),
+                            AuthNetworkResponse(401, null)
+                        )
+                    ),
+                refreshResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"accessToken":"refreshed-access","refreshToken":"refreshed-refresh"}"""
+                    ),
+                onCurrentUserRequest = { requestCount ->
+                    if (requestCount == 2) {
+                        store.updateTokens("successor-access", "successor-refresh")
+                    }
+                }
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.verifyEmail("one-time-token")
+
+        assertTrue(result is SharedEmailVerificationResult.RefreshPending)
+        assertEquals("successor-access", store.readSession()?.accessToken)
+        assertEquals("successor-refresh", store.readSession()?.refreshToken)
+        assertEquals(1, api.verifyEmailRequestCount)
+        assertEquals(2, api.currentUserRequestCount)
+    }
+
 
     @Test
     fun restoreSessionRefreshesUnauthorizedCurrentUserInSharedLayer() = runBlocking {
@@ -1032,6 +1244,17 @@ class AuthDataSourceTest {
             servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
         )
 
+    private fun unverifiedSessionStore(): InMemorySlockAuthSessionStore =
+        InMemorySlockAuthSessionStore(
+            storedSession().copy(
+                user = StoredAuthUser(
+                    id = "user-1",
+                    email = "user@slock.ai",
+                    emailVerified = false
+                )
+            )
+        )
+
     private class FakeAuthApi(
         private val loginResponse: AuthNetworkResponse =
             AuthNetworkResponse(
@@ -1091,6 +1314,9 @@ class AuthDataSourceTest {
         private val throwCurrentUser: Boolean = false,
         private val resendVerificationResponse: AuthNetworkResponse =
             AuthNetworkResponse(200, """{"ok":true}"""),
+        private val verifyEmailResponse: AuthNetworkResponse =
+            AuthNetworkResponse(200, """{"ok":true}"""),
+        private val onCurrentUserRequest: suspend (Int) -> Unit = {},
         private val onServersRequest: suspend () -> Unit = {},
         private val onLogoutRequest: suspend () -> Unit = {}
     ) : SlockAuthTransport {
@@ -1123,6 +1349,12 @@ class AuthDataSourceTest {
         var currentUserAuthorization: String? = null
             private set
         var resendVerificationAuthorization: String? = null
+            private set
+        var verifyEmailBody: String? = null
+            private set
+        var verifyEmailRequestCount: Int = 0
+            private set
+        var currentUserRequestCount: Int = 0
             private set
         var serversAuthorization: String? = null
             private set
@@ -1189,8 +1421,16 @@ class AuthDataSourceTest {
             return resendVerificationResponse
         }
 
+        override suspend fun verifyEmail(bodyText: String): AuthNetworkResponse {
+            verifyEmailBody = bodyText
+            verifyEmailRequestCount += 1
+            return verifyEmailResponse
+        }
+
         override suspend fun currentUser(authorization: String): AuthNetworkResponse {
             currentUserAuthorization = authorization
+            currentUserRequestCount += 1
+            onCurrentUserRequest(currentUserRequestCount)
             if (throwCurrentUser) error("bridge not ready")
             return if (currentUserResponses.size > 1) currentUserResponses.removeFirst() else currentUserResponses.first()
         }

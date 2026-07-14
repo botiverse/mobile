@@ -259,4 +259,26 @@ internal class SlockShellAuthSessionStore(
         delegate.clearSession(reason, source)
         onProcessSessionCleared()
     }
+
+    override suspend fun clearSessionIfMatches(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): Boolean {
+        val cleared =
+            delegate.clearSessionIfMatches(
+                expectedAccountId = expectedAccountId,
+                expectedAccessToken = expectedAccessToken,
+                expectedRefreshToken = expectedRefreshToken,
+                reason = reason,
+                source = source,
+            )
+        if (cleared) {
+            selectedServerStore.clearSelection()
+            onProcessSessionCleared()
+        }
+        return cleared
+    }
 }

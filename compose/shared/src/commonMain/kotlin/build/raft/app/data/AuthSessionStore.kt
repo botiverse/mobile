@@ -30,6 +30,29 @@ interface SlockAuthSessionStore {
     suspend fun updateSelectedServer(serverId: String?, serverSlug: String?)
     suspend fun clearSession(reason: String = "local", source: String = "unknown")
 
+    /**
+     * Atomically clears only the exact captured account/token generation. Auth-loss paths must use
+     * this instead of check-then-[clearSession], so a concurrent login or token rotation survives.
+     */
+    suspend fun clearSessionIfMatches(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): Boolean {
+        val current = readSession() ?: return false
+        if (
+            current.user.id != expectedAccountId ||
+            current.accessToken != expectedAccessToken ||
+            current.refreshToken != expectedRefreshToken
+        ) {
+            return false
+        }
+        clearSession(reason, source)
+        return true
+    }
+
     // --- Atomic session-write primitives (#466 lost-update fix) ---
     // All session read-modify-writes MUST go through these. A stale captured snapshot must
     // never be able to clobber a concurrently-committed token rotation (the auth_restore
@@ -333,6 +356,30 @@ class InMemorySlockAuthSessionStore(
     override suspend fun clearSession(reason: String, source: String) {
         mutex.withLock { session = null }
         invalidations.emit(Unit)
+    }
+
+    override suspend fun clearSessionIfMatches(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): Boolean {
+        val cleared =
+            mutex.withLock {
+                val current = session ?: return@withLock false
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken
+                ) {
+                    return@withLock false
+                }
+                session = null
+                true
+            }
+        if (cleared) invalidations.emit(Unit)
+        return cleared
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
@@ -679,6 +726,40 @@ class KeyValueAuthSessionStore(
         storeEvents.emit(AuthSessionEvent.Cleared(generation, classifyAuthSessionClearReason(reason)))
         diagnosticsLogger("auth_session_clear reason=$safeReason source=$safeSource hadSession=${previousSession != null}")
         invalidations.emit(Unit)
+    }
+
+    override suspend fun clearSessionIfMatches(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String,
+    ): Boolean {
+        val safeReason = reason.toSafeAuthSessionDiagnosticsToken()
+        val safeSource = source.toSafeAuthSessionDiagnosticsToken()
+        var removedGeneration: Long? = null
+        val cleared =
+            mutex.withLock {
+                val current = readSessionRecordLocked() ?: return@withLock false
+                if (
+                    current.user.id != expectedAccountId ||
+                    current.accessToken != expectedAccessToken ||
+                    current.refreshToken != expectedRefreshToken
+                ) {
+                    return@withLock false
+                }
+                clearSessionRecordLocked()
+                removedGeneration = nextGenerationLocked()
+                true
+            }
+        removedGeneration?.let {
+            storeEvents.emit(AuthSessionEvent.Cleared(it, classifyAuthSessionClearReason(reason)))
+        }
+        diagnosticsLogger(
+            "auth_session_clear_if_matches reason=$safeReason source=$safeSource cleared=$cleared"
+        )
+        if (cleared) invalidations.emit(Unit)
+        return cleared
     }
 
     suspend fun clearSessionFromSessionClearedNotify(

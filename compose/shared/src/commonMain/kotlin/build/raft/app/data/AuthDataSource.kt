@@ -483,11 +483,60 @@ class SharedAuthDataSource(
         }
     }
 
+    /**
+     * Consumes the server-issued email verification token, then refreshes the persisted session
+     * from the canonical current-user endpoint. Verification itself is intentionally independent
+     * of local auth state; local `emailVerified` is never fabricated from possession of the link.
+     */
+    suspend fun verifyEmail(token: String): SharedEmailVerificationResult {
+        if (token.isBlank()) {
+            return SharedEmailVerificationResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Email verification token is required."
+            )
+        }
+        when (val response = api.verifyEmail(token)) {
+            is AuthApiResult.Success -> Unit
+            is AuthApiResult.Failure -> {
+                val failure = response.toSharedAuthFailure()
+                return SharedEmailVerificationResult.Failure(failure.code, failure.message)
+            }
+        }
+        return refreshEmailVerificationStatus()
+    }
+
+    /** Retries only canonical account refresh after the one-time token was already consumed. */
+    suspend fun refreshEmailVerificationStatus(): SharedEmailVerificationResult =
+        when (val refreshed = restoreSession(allowRecoverableCachedSession = false)) {
+            is SharedAuthResult.Success ->
+                if (refreshed.data.user.emailVerified == true) {
+                    SharedEmailVerificationResult.Verified(refreshed.data)
+                } else {
+                    SharedEmailVerificationResult.RefreshPending(
+                        "Email verification is complete, but account status is still updating. Refresh again shortly."
+                    )
+                }
+            SharedAuthResult.Unauthenticated -> SharedEmailVerificationResult.LoginRequired
+            is SharedAuthResult.Failure ->
+                SharedEmailVerificationResult.RefreshPending(
+                    if (refreshed.code == SharedAuthErrorCode.Network) {
+                        "Email verified. Refresh your account status when you're back online."
+                    } else {
+                        "Email verified, but your account status could not be refreshed. Refresh it in the app."
+                    }
+                )
+        }
+
     suspend fun currentSession(): SharedAuthResult<StoredAuthSession> =
         sessionStore.readSession()?.let { SharedAuthResult.Success(it) }
             ?: SharedAuthResult.Unauthenticated
 
-    suspend fun restoreSession(): SharedAuthResult<StoredAuthSession> {
+    suspend fun restoreSession(): SharedAuthResult<StoredAuthSession> =
+        restoreSession(allowRecoverableCachedSession = true)
+
+    private suspend fun restoreSession(
+        allowRecoverableCachedSession: Boolean
+    ): SharedAuthResult<StoredAuthSession> {
         diagnosticsLogger("auth_restore_start")
         val session =
             runCatchingPreservingCancellation { sessionStore.readSession() }
@@ -561,7 +610,7 @@ class SharedAuthDataSource(
                                 SharedAuthResult.Unauthenticated
                             }
                             is SharedAuthResult.Failure ->
-                                if (refreshedCurrent.isRecoverableRestoreFailure()) {
+                                if (allowRecoverableCachedSession && refreshedCurrent.isRecoverableRestoreFailure()) {
                                     diagnosticsLogger(
                                         "auth_restore_result result=success source=cached_after_refresh_current_user_failure " +
                                             "recoverableCode=${refreshedCurrent.code} " +
@@ -578,7 +627,7 @@ class SharedAuthDataSource(
                         }
                     }
                     is SharedAuthResult.Failure ->
-                        if (refreshed.isRecoverableRestoreFailure()) {
+                        if (allowRecoverableCachedSession && refreshed.isRecoverableRestoreFailure()) {
                             diagnosticsLogger(
                                 "auth_restore_result result=success source=cached_after_refresh_failure " +
                                     "recoverableCode=${refreshed.code} recoverableMessage=${refreshed.message.authDiagnosticsToken()}"
@@ -598,7 +647,7 @@ class SharedAuthDataSource(
                 }
             }
             is SharedAuthResult.Failure ->
-                if (current.isRecoverableRestoreFailure()) {
+                if (allowRecoverableCachedSession && current.isRecoverableRestoreFailure()) {
                     diagnosticsLogger(
                         "auth_restore_result result=success source=cached_after_current_user_failure " +
                             "recoverableCode=${current.code} recoverableMessage=${current.message.authDiagnosticsToken()}"
@@ -622,7 +671,19 @@ class SharedAuthDataSource(
     ): SharedAuthResult<StoredAuthSession> {
         if (failedSession.refreshToken.isBlank()) {
             if (clearOnUnauthorized) {
-                sessionStore.clearSession(reason = "missing_refresh_token", source = "auth_data_source_refresh")
+                val cleared =
+                    sessionStore.clearSessionIfMatches(
+                        expectedAccountId = failedSession.user.id,
+                        expectedAccessToken = failedSession.accessToken,
+                        expectedRefreshToken = failedSession.refreshToken,
+                        reason = "missing_refresh_token",
+                        source = "auth_data_source_refresh",
+                    )
+                if (!cleared) {
+                    return sessionStore.readSession()
+                        ?.let { SharedAuthResult.Success(it) }
+                        ?: SharedAuthResult.Unauthenticated
+                }
             }
             return SharedAuthResult.Unauthenticated
         }
@@ -876,7 +937,19 @@ class SharedAuthDataSource(
                 is AuthApiResult.Failure -> {
                     if (response.code == 401) {
                         if (clearOnUnauthorized) {
-                            sessionStore.clearSession(reason = "current_user_http_401", source = "auth_data_source_current_user")
+                            val cleared =
+                                sessionStore.clearSessionIfMatches(
+                                    expectedAccountId = session.user.id,
+                                    expectedAccessToken = session.accessToken,
+                                    expectedRefreshToken = session.refreshToken,
+                                    reason = "current_user_http_401",
+                                    source = "auth_data_source_current_user",
+                                )
+                            if (!cleared) {
+                                return sessionStore.readSession()
+                                    ?.let { SharedAuthResult.Success(it) }
+                                    ?: SharedAuthResult.Unauthenticated
+                            }
                         }
                         return SharedAuthResult.Unauthenticated
                     }
@@ -1052,6 +1125,7 @@ interface SlockAuthApi {
     suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun forgotPassword(email: String): AuthApiResult<Unit>
     suspend fun resendVerification(authorization: String): AuthApiResult<Unit>
+    suspend fun verifyEmail(token: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
     suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse>
     suspend fun logout(refreshToken: String): AuthApiResult<Unit>
@@ -1212,6 +1286,16 @@ class SlockAuthApiClient(
         ) { Unit }
     }
 
+    override suspend fun verifyEmail(token: String): AuthApiResult<Unit> {
+        val response = transport.verifyEmail(authJson.encodeToString(AuthVerifyEmailRequestBody(token = token)))
+        if (!response.isSuccessful) return response.toAuthApiFailure()
+        return response.mapAuthBody(
+            "auth_verify_email_contract_mismatch",
+            AuthOkResponseDto.serializer(),
+            diagnosticsLogger
+        ) { Unit }
+    }
+
     override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
         transport.currentUser(authorization)
             .mapAuthBody(AUTH_ME_CONTRACT_MISMATCH, StoredAuthUser.serializer(), diagnosticsLogger) { it }
@@ -1309,6 +1393,16 @@ sealed interface SharedAuthResult<out T> {
     ) : SharedAuthResult<Nothing>
 }
 
+sealed interface SharedEmailVerificationResult {
+    data class Verified(val session: StoredAuthSession) : SharedEmailVerificationResult
+    data object LoginRequired : SharedEmailVerificationResult
+    data class RefreshPending(val message: String) : SharedEmailVerificationResult
+    data class Failure(
+        val code: SharedAuthErrorCode,
+        val message: String
+    ) : SharedEmailVerificationResult
+}
+
 enum class SharedAuthErrorCode {
     Validation,
     InvalidCredentials,
@@ -1380,6 +1474,11 @@ data class AuthRegisterRequestBody(
 @kotlinx.serialization.Serializable
 data class AuthForgotPasswordRequestBody(
     val email: String
+)
+
+@kotlinx.serialization.Serializable
+private data class AuthVerifyEmailRequestBody(
+    val token: String
 )
 
 @kotlinx.serialization.Serializable
