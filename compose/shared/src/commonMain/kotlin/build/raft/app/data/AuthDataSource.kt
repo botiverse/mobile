@@ -22,7 +22,8 @@ private val authJson = Json {
 class SharedAuthDataSource(
     private val api: SlockAuthApi,
     private val sessionStore: SlockAuthSessionStore,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
 ) {
     private val serverSelectionMemory = sessionStore as? SlockAuthServerSelectionMemory
     private val authMiddleware =
@@ -30,17 +31,20 @@ class SharedAuthDataSource(
             sessionStore = sessionStore,
             authApi = api,
             logger = diagnosticsLogger,
-            warningLogger = diagnosticsLogger
+            warningLogger = diagnosticsLogger,
+            criticalLogger = criticalDiagnosticsLogger
         )
 
     constructor(
         transport: SlockAuthTransport,
         sessionStore: SlockAuthSessionStore,
-        diagnosticsLogger: (String) -> Unit = {}
+        diagnosticsLogger: (String) -> Unit = {},
+        criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
     ) : this(
         api = SlockAuthApiClient(transport, diagnosticsLogger),
         sessionStore = sessionStore,
-        diagnosticsLogger = diagnosticsLogger
+        diagnosticsLogger = diagnosticsLogger,
+        criticalDiagnosticsLogger = criticalDiagnosticsLogger
     )
 
     fun logDiagnostics(message: String) {
@@ -729,7 +733,9 @@ class SharedAuthDataSource(
             }
             is SharedAuthRefreshResult.Failure -> {
                 val failure = result.response.toSharedAuthFailure()
-                diagnosticsLogger("auth_realtime_refresh_result result=failure reason=$reason code=${failure.code}")
+                criticalDiagnosticsLogger(
+                    "auth_realtime_refresh_result result=failure reason=$reason code=${failure.code}"
+                )
                 // Realtime reconnect attempts are background recovery. Preserve the cached
                 // session on unauthorized so the visible auth gate decides whether to clear it.
                 failure
@@ -753,7 +759,9 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
                     if (response.code == 401) {
-                        diagnosticsLogger("auth_servers_load_result result=unauthorized source=access_token action=refresh")
+                        criticalDiagnosticsLogger(
+                            "auth_servers_load_result result=unauthorized source=access_token action=refresh"
+                        )
                         return loadServersAfterRefresh(session)
                     }
                     val failure = response.toSharedAuthFailure()

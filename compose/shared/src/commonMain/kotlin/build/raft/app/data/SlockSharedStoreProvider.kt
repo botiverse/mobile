@@ -8,6 +8,7 @@ import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
+import build.raft.app.SlockPlatformLogHint
 import build.raft.app.data.realtime.MessageSeqEnvelope
 import build.raft.app.data.realtime.MessageShadowObserver
 import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
@@ -60,19 +61,31 @@ private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
 private const val PixelAvatarRefreshDelayMinMs = 10_000L
 private const val PixelAvatarRefreshDelayMaxMs = 60_000L
 
-private fun BridgeModule.logSharedAuthDiagnostic(prefix: String, message: String) {
+private fun BridgeModule.logSharedAuthDiagnostic(
+    prefix: String,
+    message: String,
+    hint: SlockPlatformLogHint = SlockPlatformLogHint.None
+) {
     val line = "$prefix $message"
-    slockLogInfo(SHARED_AUTH_LOG_TAG, line)
+    slockLogInfo(SHARED_AUTH_LOG_TAG, line, hint)
 }
 
-private fun sharedInfoLogger(tag: String, prefix: String = ""): (String) -> Unit =
+private fun sharedInfoLogger(
+    tag: String,
+    prefix: String = "",
+    hint: SlockPlatformLogHint = SlockPlatformLogHint.None
+): (String) -> Unit =
     { message ->
-        slockLogInfo(tag, if (prefix.isBlank()) message else "$prefix $message")
+        slockLogInfo(tag, if (prefix.isBlank()) message else "$prefix $message", hint)
     }
 
-private fun sharedWarnLogger(tag: String, prefix: String = ""): (String) -> Unit =
+private fun sharedWarnLogger(
+    tag: String,
+    prefix: String = "",
+    hint: SlockPlatformLogHint = SlockPlatformLogHint.None
+): (String) -> Unit =
     { message ->
-        slockLogWarn(tag, if (prefix.isBlank()) message else "$prefix $message")
+        slockLogWarn(tag, if (prefix.isBlank()) message else "$prefix $message", hint)
     }
 
 private fun sharedErrorLogger(tag: String, prefix: String = ""): (String) -> Unit =
@@ -532,6 +545,13 @@ internal class SlockSharedStoreProvider private constructor(
                     store = authKeyValueStore,
                     diagnosticsLogger = { message ->
                         bridge.logSharedAuthDiagnostic("shared_auth_session", message)
+                    },
+                    criticalDiagnosticsLogger = { message ->
+                        bridge.logSharedAuthDiagnostic(
+                            "shared_auth_session",
+                            message,
+                            SlockPlatformLogHint.AuthCritical
+                        )
                     }
                 )
             val sharedPreferenceStoreBinding =
@@ -590,6 +610,12 @@ internal class SlockSharedStoreProvider private constructor(
                     sessionStore = sessionStore,
                     baseUrlProvider = { apiEnvironmentStore.current().apiBaseUrl },
                     warningLogger = networkWarningLogger,
+                    criticalWarningLogger =
+                        sharedWarnLogger(
+                            "SlockSharedNetwork",
+                            "shared_network",
+                            SlockPlatformLogHint.AuthCritical
+                        ),
                     requestScheduler = networkRequestScheduler,
                     platformFileResolver = platformFileResolver,
                     executor = networkExecutor
@@ -728,12 +754,19 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
             }
         )
     },
-    diagnosticsLogger: (String) -> Unit = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "shared_auth")
+    diagnosticsLogger: (String) -> Unit = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "shared_auth"),
+    criticalDiagnosticsLogger: (String) -> Unit =
+        sharedInfoLogger(
+            SHARED_AUTH_LOG_TAG,
+            "shared_auth",
+            SlockPlatformLogHint.AuthCritical
+        )
 ): SharedAuthDataSource =
     SharedAuthDataSource(
         transport = transportFactory { apiEnvironmentStore.current().apiBaseUrl },
         sessionStore = authStore,
-        diagnosticsLogger = diagnosticsLogger
+        diagnosticsLogger = diagnosticsLogger,
+        criticalDiagnosticsLogger = criticalDiagnosticsLogger
     )
 
 internal class AppShellActivePagerOwner {

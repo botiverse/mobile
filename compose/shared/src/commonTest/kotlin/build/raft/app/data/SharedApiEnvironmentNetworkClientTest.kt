@@ -6,6 +6,8 @@ import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class SharedApiEnvironmentNetworkClientTest {
@@ -91,6 +93,45 @@ class SharedApiEnvironmentNetworkClientTest {
             ),
             executor.urls
         )
+    }
+
+    @Test
+    fun sharedNetworkClientReservesOnlyHttp401EndpointDiagnostics() = runBlocking {
+        val normal = mutableListOf<String>()
+        val critical = mutableListOf<String>()
+
+        suspend fun requestWith(code: Int) {
+            val sessionStore =
+                InMemorySlockAuthSessionStore(
+                    StoredAuthSession(
+                        user = StoredAuthUser(id = "user-$code", email = "user-$code@raft.build"),
+                        accessToken = "access-$code",
+                        refreshToken = "refresh-$code",
+                        selectedServerId = "server-1",
+                        servers = listOf(StoredAuthServer(id = "server-1", name = "Raft"))
+                    )
+                )
+            SharedSlockNetworkClient(
+                sessionStore = sessionStore,
+                warningLogger = normal::add,
+                criticalWarningLogger = critical::add,
+                executor = RecordingHttpExecutor(responseCode = code)
+            ).request(
+                priority = DataRequestPriority.Foreground,
+                path = "channels",
+                method = "GET",
+                query = emptyList(),
+                serverIdOverride = null,
+                bodyText = null
+            )
+        }
+
+        requestWith(401)
+        requestWith(403)
+
+        assertTrue(critical.any { "endpoint category=channels" in it && "code=401" in it })
+        assertFalse(critical.any { "endpoint category=channels" in it && "code=403" in it })
+        assertTrue(normal.any { "endpoint category=channels" in it && "code=403" in it })
     }
 
     private class RecordingHttpExecutor(

@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -1134,6 +1135,7 @@ class AuthDataSourceTest {
     @Test
     fun loadServersRefreshesUnauthorizedAccessTokenBeforeSigningOut() = runBlocking {
         val logs = mutableListOf<String>()
+        val criticalLogs = mutableListOf<String>()
         val store =
             InMemorySlockAuthSessionStore(
                 StoredAuthSession(
@@ -1158,7 +1160,8 @@ class AuthDataSourceTest {
             SharedAuthDataSource(
                 transport = api,
                 sessionStore = store,
-                diagnosticsLogger = logs::add
+                diagnosticsLogger = logs::add,
+                criticalDiagnosticsLogger = criticalLogs::add
             )
 
         val result = source.loadServers()
@@ -1168,7 +1171,8 @@ class AuthDataSourceTest {
         assertEquals("fresh-refresh", store.readSession()?.refreshToken)
         assertEquals(listOf("server-2"), store.readSession()?.servers?.map { it.id })
         assertEquals(listOf("Bearer expired-token", "Bearer fresh-token"), api.serversAuthorizations)
-        assertContains(logs, "auth_servers_load_result result=unauthorized source=access_token action=refresh")
+        assertContains(criticalLogs, "auth_servers_load_result result=unauthorized source=access_token action=refresh")
+        assertFalse(logs.contains("auth_servers_load_result result=unauthorized source=access_token action=refresh"))
         assertTrue(
             logs.any {
                 it.startsWith("auth_servers_load_result result=success source=refresh_retry serversCount=1 selectedServer=false")

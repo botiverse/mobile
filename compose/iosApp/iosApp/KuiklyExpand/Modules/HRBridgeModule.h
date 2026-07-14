@@ -8,6 +8,21 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 FOUNDATION_EXTERN void SlockIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message);
+FOUNDATION_EXTERN void SlockIosDiagnosticsRecordWithContext(
+    NSString *level,
+    NSString *tag,
+    NSString *message,
+    int64_t timestampMillis,
+    BOOL emitConsole,
+    BOOL forceCritical
+);
+FOUNDATION_EXTERN void SlockIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message);
+FOUNDATION_EXTERN void SlockIosDiagnosticsRecordUnhandledException(
+    NSString *pageName,
+    NSInteger mode,
+    NSString *reason,
+    NSString *stack
+);
 FOUNDATION_EXTERN void SlockIosInstallHandsReporting(void);
 FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPaths(NSString *reason);
 FOUNDATION_EXTERN NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis);

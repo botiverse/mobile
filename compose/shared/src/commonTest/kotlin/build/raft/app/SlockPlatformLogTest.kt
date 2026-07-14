@@ -8,6 +8,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SlockPlatformLogTest {
     @Test
@@ -52,6 +53,25 @@ class SlockPlatformLogTest {
     }
 
     @Test
+    fun typedRecordSinkReceivesTimestampAndHint() = runBlocking {
+        val entries = mutableListOf<SlockPlatformLogRecord>()
+        installSlockPlatformLogRecordSink(entries::add)
+        try {
+            slockLogWarn("SlockTest", "typed", hint = SlockPlatformLogHint.AuthCritical)
+            flushSlockPlatformLogsForTest()
+        } finally {
+            installSlockPlatformLogRecordSink(null)
+        }
+
+        val entry = entries.single()
+        assertEquals("warn", entry.level)
+        assertEquals("SlockTest", entry.tag)
+        assertEquals("typed", entry.message)
+        assertEquals(SlockPlatformLogHint.AuthCritical, entry.hint)
+        assertTrue(entry.timestampMillis > 0L)
+    }
+
+    @Test
     fun sharedLoggerDoesNotBlockProducerOnSlowSink() = runBlocking {
         val sinkEntered = CompletableDeferred<Unit>()
         val releaseSink = CompletableDeferred<Unit>()
@@ -72,5 +92,113 @@ class SlockPlatformLogTest {
             releaseSink.complete(Unit)
             installSlockPlatformLogSink(null)
         }
+    }
+
+    @Test
+    fun acceptedEntriesKeepGlobalOrderAcrossNormalAndCriticalLanes() = runBlocking {
+        val sinkEntered = CompletableDeferred<Unit>()
+        val releaseSink = CompletableDeferred<Unit>()
+        val messages = mutableListOf<String>()
+        installSlockPlatformLogRecordSink { record ->
+            messages += record.message
+            if (record.message == "held") {
+                sinkEntered.complete(Unit)
+                runBlocking { releaseSink.await() }
+            }
+        }
+        try {
+            slockLogInfo("SlockTest", "held")
+            withTimeout(1_000) { sinkEntered.await() }
+            slockLogInfo("SlockTest", "normal-1")
+            slockLogWarn("SlockTest", "critical-2", hint = SlockPlatformLogHint.AuthCritical)
+            slockLogInfo("SlockTest", "normal-3")
+            releaseSink.complete(Unit)
+            flushSlockPlatformLogsForTest()
+        } finally {
+            releaseSink.complete(Unit)
+            flushSlockPlatformLogsForTest()
+            installSlockPlatformLogRecordSink(null)
+        }
+
+        assertEquals(listOf("held", "normal-1", "critical-2", "normal-3"), messages)
+    }
+
+    @Test
+    fun normalSaturationDoesNotConsumeAuthCriticalReserve() = runBlocking {
+        val sinkEntered = CompletableDeferred<Unit>()
+        val releaseSink = CompletableDeferred<Unit>()
+        val captured = mutableListOf<Pair<String, SlockPlatformLogHint>>()
+        installSlockPlatformLogRecordSink { record ->
+            captured += record.message to record.hint
+            if (record.message == "held") {
+                sinkEntered.complete(Unit)
+                runBlocking { releaseSink.await() }
+            }
+        }
+        try {
+            slockLogInfo("SlockTest", "held")
+            withTimeout(1_000) { sinkEntered.await() }
+            repeat(600) { index -> slockLogInfo("SlockTest", "normal-$index") }
+            slockLogWarn("SlockTest", "auth-critical", hint = SlockPlatformLogHint.AuthCritical)
+            releaseSink.complete(Unit)
+            flushSlockPlatformLogsForTest()
+        } finally {
+            releaseSink.complete(Unit)
+            flushSlockPlatformLogsForTest()
+            installSlockPlatformLogRecordSink(null)
+        }
+
+        assertTrue(captured.contains("auth-critical" to SlockPlatformLogHint.AuthCritical))
+        assertTrue(
+            captured.any { (message, _) ->
+                message.startsWith("slock_platform_log_queue_dropped lane=normal ") &&
+                    "overflow=104" in message
+            }
+        )
+    }
+
+    @Test
+    fun authCriticalOverflowIsDropNewAndObservable() = runBlocking {
+        val sinkEntered = CompletableDeferred<Unit>()
+        val releaseSink = CompletableDeferred<Unit>()
+        val captured = mutableListOf<Triple<String, String, SlockPlatformLogHint>>()
+        installSlockPlatformLogRecordSink { record ->
+            captured += Triple(record.tag, record.message, record.hint)
+            if (record.message == "held") {
+                sinkEntered.complete(Unit)
+                runBlocking { releaseSink.await() }
+            }
+        }
+        try {
+            slockLogInfo("SlockTest", "held")
+            withTimeout(1_000) { sinkEntered.await() }
+            repeat(17) { index ->
+                slockLogWarn(
+                    "SlockTest",
+                    "critical-$index",
+                    hint = SlockPlatformLogHint.AuthCritical
+                )
+            }
+            releaseSink.complete(Unit)
+            flushSlockPlatformLogsForTest()
+        } finally {
+            releaseSink.complete(Unit)
+            flushSlockPlatformLogsForTest()
+            installSlockPlatformLogRecordSink(null)
+        }
+
+        assertEquals(
+            (0 until 16).map { "critical-$it" },
+            captured.map { it.second }.filter { it.startsWith("critical-") }
+        )
+        assertTrue(
+            captured.any { (tag, message, hint) ->
+                tag == "SlockPlatformLog" &&
+                    hint == SlockPlatformLogHint.AuthCritical &&
+                    message ==
+                    "slock_platform_log_queue_dropped lane=auth_critical count=1 " +
+                    "overflow=1 admissionBusy=0 capacity=16"
+            }
+        )
     }
 }

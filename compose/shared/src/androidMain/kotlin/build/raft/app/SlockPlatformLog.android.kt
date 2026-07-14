@@ -4,7 +4,8 @@ internal actual fun slockPlatformLog(
     level: SlockLogLevel,
     tag: String,
     message: String,
-    timestampMillis: Long
+    timestampMillis: Long,
+    hint: SlockPlatformLogHint
 ) {
     try {
         when (level) {

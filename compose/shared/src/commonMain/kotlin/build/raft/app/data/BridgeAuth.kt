@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
+import build.raft.app.flushSlockPlatformLogs
 import build.raft.app.model.TaskStatus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -275,7 +276,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
-        val response = settingsCapability(JSONObject().put("action", "loadDiagnostics"))
+        val response = diagnosticsSettingsCapability("loadDiagnostics")
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_diagnostics_unavailable" }))
         }
@@ -283,13 +284,13 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     suspend fun copyDiagnostics(): Boolean =
-        settingsCapability(JSONObject().put("action", "copyDiagnostics"))?.optString("status") == "ok"
+        diagnosticsSettingsCapability("copyDiagnostics")?.optString("status") == "ok"
 
     suspend fun shareDiagnostics(): Boolean =
-        settingsCapability(JSONObject().put("action", "shareDiagnostics"))?.optString("status") == "ok"
+        diagnosticsSettingsCapability("shareDiagnostics")?.optString("status") == "ok"
 
     suspend fun clearDiagnostics(): Boolean =
-        settingsCapability(JSONObject().put("action", "clearDiagnostics"))?.optString("status") == "ok"
+        diagnosticsSettingsCapability("clearDiagnostics")?.optString("status") == "ok"
 
     override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
         val response =
@@ -310,7 +311,7 @@ internal class BridgeSettingsPlatformCapabilities(
         settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
 
     suspend fun prepareDiagnosticsFeedback(): SettingsDiagnosticsFeedbackDraft? =
-        settingsCapability(JSONObject().put("action", "prepareDiagnosticsFeedback"))
+        diagnosticsSettingsCapability("prepareDiagnosticsFeedback")
             ?.toDiagnosticsFeedbackDraft()
 
     suspend fun pickFeedbackAttachment(imageOnly: Boolean): DataResult<List<PlatformFile>> {
@@ -407,6 +408,12 @@ internal class BridgeSettingsPlatformCapabilities(
         onBridgeCallContext {
             bridge.settingsCapability(command)
         }
+
+    private suspend fun diagnosticsSettingsCapability(action: String): JSONObject? {
+        val command = JSONObject().put("action", action)
+        flushSlockPlatformLogs()
+        return settingsCapability(command)
+    }
 
     private suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JSONObject? =
         onBridgeCallContext {
