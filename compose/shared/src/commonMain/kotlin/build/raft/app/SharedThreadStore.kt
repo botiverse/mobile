@@ -258,6 +258,11 @@ internal class SharedThreadPayloadStore(
     private val prewarmStartMutex = Mutex()
     private val prewarmInFlight = mutableMapOf<SharedThreadPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
     private val prewarmReady = mutableSetOf<SharedThreadPayloadCacheKey>()
+    private val prewarmFailures = mutableMapOf<SharedThreadPayloadCacheKey, DataResult<KuiklyThreadScreenPayload>>()
+    private val failedPrewarmTakeovers =
+        mutableMapOf<SharedThreadPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
+    private val failedPrewarmTakeoverResults =
+        mutableMapOf<SharedThreadPayloadCacheKey, DataResult<KuiklyThreadScreenPayload>>()
     private var lastPrewarmStartedAt: TimeMark? = null
 
     fun get(serverId: String, threadId: String): KuiklyThreadScreenPayload? =
@@ -296,6 +301,7 @@ internal class SharedThreadPayloadStore(
         val deferred =
             prewarmMutex.withLock {
                 prewarmInFlight[key]
+                    ?: failedPrewarmTakeovers[key]
                     ?: scope.async(start = CoroutineStart.LAZY) {
                         try {
                             val result =
@@ -304,7 +310,13 @@ internal class SharedThreadPayloadStore(
                                     fetch()
                                 }
                             if (result is DataResult.Content) {
-                                prewarmMutex.withLock { prewarmReady += key }
+                                prewarmMutex.withLock {
+                                    prewarmReady += key
+                                    prewarmFailures.remove(key)
+                                    failedPrewarmTakeoverResults.remove(key)
+                                }
+                            } else {
+                                prewarmMutex.withLock { prewarmFailures[key] = result }
                             }
                             result
                         } finally {
@@ -316,6 +328,8 @@ internal class SharedThreadPayloadStore(
                             }
                         }
                     }.also { candidate ->
+                        prewarmFailures.remove(key)
+                        failedPrewarmTakeoverResults.remove(key)
                         prewarmInFlight[key] = candidate
                         created = candidate
                     }
@@ -337,8 +351,92 @@ internal class SharedThreadPayloadStore(
                 SharedThreadPrewarmLookup(cached = cached, inFlight = prewarmInFlight[key])
             }
         lookup.cached?.let { return DataResult.Content(it) }
-        return lookup.inFlight?.await()
+        return lookup.inFlight?.await() ?: prewarmMutex.withLock { prewarmFailures[key] }
     }
+
+    suspend fun takeOverFailedPrewarm(
+        serverId: String,
+        threadId: String,
+        fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
+    ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
+        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+        var immediate: DataResult<KuiklyThreadScreenPayload>? = null
+        var fetchDirectly = false
+        var created: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
+        val deferred =
+            prewarmMutex.withLock {
+                payloads.value[key]?.let { payload ->
+                    immediate = DataResult.Content(payload)
+                    return@withLock null
+                }
+                failedPrewarmTakeoverResults[key]?.let { result ->
+                    immediate = result
+                    return@withLock null
+                }
+                failedPrewarmTakeovers[key]
+                    ?: prewarmInFlight[key]
+                    ?: if (prewarmFailures[key] != null) {
+                        prewarmMutexTakeover(key, fetch).also { candidate ->
+                            failedPrewarmTakeovers[key] = candidate
+                            prewarmReady.remove(key)
+                            prewarmInFlight.remove(key)
+                            created = candidate
+                        }
+                    } else {
+                        fetchDirectly = true
+                        null
+                    }
+            }
+        immediate?.let { return@coroutineScope it }
+        if (fetchDirectly) return@coroutineScope fetch()
+        val shared = deferred ?: error("failed prewarm takeover lookup missing")
+        created?.start()
+        shared.await()
+    }
+
+    suspend fun recordCanonicalSuccess(serverId: String, threadId: String) {
+        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+        prewarmMutex.withLock {
+            prewarmFailures.remove(key)
+            failedPrewarmTakeoverResults.remove(key)
+            // An explicit canonical retry is the manual escape from a failed
+            // prewarm generation. Detach any older app-scope takeover so its
+            // later completion cannot make that terminal failure sticky again.
+            failedPrewarmTakeovers.remove(key)
+        }
+    }
+
+    private fun prewarmMutexTakeover(
+        key: SharedThreadPayloadCacheKey,
+        fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
+    ): Deferred<DataResult<KuiklyThreadScreenPayload>> =
+        failedPrewarmTakeovers[key]
+            ?: scope.async(start = CoroutineStart.LAZY) {
+                try {
+                    val result = fetch()
+                    prewarmMutex.withLock {
+                        val currentJob = currentCoroutineContext()[Job]
+                        if (failedPrewarmTakeovers[key] === currentJob) {
+                            if (result is DataResult.Content) {
+                                payloads.update { current -> current + (key to result.data) }
+                                prewarmReady += key
+                                prewarmFailures.remove(key)
+                                failedPrewarmTakeoverResults.remove(key)
+                            } else {
+                                failedPrewarmTakeoverResults[key] = result
+                            }
+                        }
+                    }
+                    result
+                } finally {
+                    val currentJob = currentCoroutineContext()[Job]
+                    prewarmMutex.withLock {
+                        if (failedPrewarmTakeovers[key] === currentJob) {
+                            failedPrewarmTakeovers.remove(key)
+                        }
+                    }
+                }
+            }
 
     private suspend fun awaitPrewarmStartRateLimit() {
         if (prewarmStartIntervalMillis <= 0L) return
@@ -357,8 +455,12 @@ internal class SharedThreadPayloadStore(
 
     internal fun clearForTest() {
         prewarmInFlight.values.forEach { it.cancel() }
+        failedPrewarmTakeovers.values.forEach { it.cancel() }
         prewarmInFlight.clear()
         prewarmReady.clear()
+        prewarmFailures.clear()
+        failedPrewarmTakeovers.clear()
+        failedPrewarmTakeoverResults.clear()
         lastPrewarmStartedAt = null
         payloads.value = emptyMap()
     }
@@ -1012,6 +1114,7 @@ internal class SharedThreadDataSource(
         val threadId =
             resolvedBasePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: resolvedBasePayload.streamChannelId?.takeIf { it.isNotBlank() }
+        var failedPrewarm = false
         if (reusePrewarm && threadId != null) {
             when (val warmed = payloadCache.joinOrConsumePrewarm(session.currentServerId.orEmpty(), threadId)) {
                 is DataResult.Content -> {
@@ -1020,11 +1123,11 @@ internal class SharedThreadDataSource(
                 }
                 is DataResult.Empty,
                 is DataResult.Error,
-                is DataResult.NoPermission,
+                is DataResult.NoPermission -> failedPrewarm = true
                 null -> Unit
             }
         }
-        val payloadResult =
+        suspend fun fetchCanonicalPayload(): DataResult<KuiklyThreadScreenPayload> =
             if (conversationRepository != null) {
                 if (shouldFetchReplyByParent) {
                     fetchInitialReplyThreadPayloadFromRepository(
@@ -1068,6 +1171,16 @@ internal class SharedThreadDataSource(
                     )
                 )
             }
+        val payloadResult =
+            if (failedPrewarm && threadId != null) {
+                payloadCache.takeOverFailedPrewarm(
+                    serverId = session.currentServerId.orEmpty(),
+                    threadId = threadId,
+                    fetch = { fetchCanonicalPayload() }
+                )
+            } else {
+                fetchCanonicalPayload()
+            }
         val payload =
             when (payloadResult) {
                 is DataResult.Content -> payloadResult.data
@@ -1081,8 +1194,11 @@ internal class SharedThreadDataSource(
                     }
                 is DataResult.Error -> return payloadResult
                 is DataResult.NoPermission -> return payloadResult
-            }
+        }
         cacheReplyThreadResolution(payload)
+        if (threadId != null) {
+            payloadCache.recordCanonicalSuccess(session.currentServerId.orEmpty(), threadId)
+        }
         if (persistResult) {
             cachePayload(payload)
         }

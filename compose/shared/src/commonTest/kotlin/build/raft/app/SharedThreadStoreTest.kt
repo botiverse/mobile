@@ -114,11 +114,13 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -514,6 +516,180 @@ class SharedThreadStoreTest {
 
         assertEquals("completed prewarm body", (result as DataResult.Content).data.messages.single().body)
         assertEquals(emptyList(), repository.getReplyThreadRequests)
+        appScope.cancel()
+    }
+
+    @Test
+    fun failedPrewarmTakeoverIsSingleFlightAcrossVisibleStores() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("channel-1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        payloadStore.prewarm("server-1", "thread-m1") {
+            DataResult.Error(ScreenError(code = "prewarm_offline", retryable = true))
+        }
+        val takeoverStarted = CompletableDeferred<Unit>()
+        val releaseTakeover = CompletableDeferred<Unit>()
+        repository.getReplyThreadStarted = takeoverStarted
+        repository.releaseGetReplyThread = releaseTakeover
+        suspend fun dataSource(shellId: String): SharedThreadDataSource {
+            val dataSource = SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+            dataSource.readSession()
+            return dataSource
+        }
+        val firstStore = dataSource("failed-prewarm-first")
+        val secondStore = dataSource("failed-prewarm-second")
+
+        val first = async { firstStore.fetchThreadPayload(route, reusePrewarm = true) }
+        takeoverStarted.await()
+        val second = async { secondStore.fetchThreadPayload(route, reusePrewarm = true) }
+
+        assertEquals(1, repository.getReplyThreadRequests.size)
+        releaseTakeover.complete(Unit)
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(first.await())
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(second.await())
+        assertEquals(1, repository.getReplyThreadRequests.size)
+        appScope.cancel()
+    }
+
+    @Test
+    fun manualRetrySuccessClearsTerminalFailedPrewarmGeneration() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope)
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Error(ScreenError(code = "takeover_offline", retryable = true))
+            )
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        payloadStore.prewarm("server-1", "thread-m1") {
+            DataResult.Error(ScreenError(code = "prewarm_offline", retryable = true))
+        }
+        suspend fun dataSource(shellId: String): SharedThreadDataSource {
+            val dataSource = SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+            dataSource.readSession()
+            return dataSource
+        }
+
+        assertIs<DataResult.Error>(
+            dataSource("failed-prewarm-terminal").fetchThreadPayload(
+                basePayload = route,
+                persistResult = false,
+                reusePrewarm = true
+            )
+        )
+        assertEquals(1, repository.getReplyThreadRequests.size)
+
+        repository.threadResult =
+            DataResult.Content(
+                threadSnapshot(
+                    threadId = "thread-m1",
+                    conversation =
+                        conversationSummary("thread-m1").copy(
+                            kind = ConversationKind.Thread,
+                            channelId = ChannelId("channel-1"),
+                            thread =
+                                ThreadConversation(
+                                    parentChannelId = ChannelId("channel-1"),
+                                    parentMessageId = MessageId("m1"),
+                                    streamChannelId = ChannelId("thread-m1")
+                                )
+                        )
+                )
+            )
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            dataSource("failed-prewarm-manual-retry").fetchThreadPayload(
+                basePayload = route,
+                persistResult = false,
+                reusePrewarm = false
+            )
+        )
+        assertEquals(2, repository.getReplyThreadRequests.size)
+
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            dataSource("failed-prewarm-reopen").fetchThreadPayload(
+                basePayload = route,
+                persistResult = false,
+                reusePrewarm = true
+            )
+        )
+        assertEquals(3, repository.getReplyThreadRequests.size)
+        appScope.cancel()
+    }
+
+    @Test
+    fun failedPrewarmTakeoverJoinsNewPrewarmStartedDuringHandoff() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope)
+        payloadStore.prewarm("server-1", "thread-m1") {
+            DataResult.Error(ScreenError(code = "prewarm_offline", retryable = true))
+        }
+        val replacementStarted = CompletableDeferred<Unit>()
+        val releaseReplacement = CompletableDeferred<Unit>()
+        val replacementPayload =
+            contentPayloadForRoute(
+                base = replyPayload(parentMessageId = "m1", threadId = "thread-m1"),
+                body = "replacement prewarm body",
+                id = "replacement-prewarm",
+                channelId = "thread-m1"
+            )
+        val replacement =
+            async {
+                payloadStore.prewarm("server-1", "thread-m1") {
+                    replacementStarted.complete(Unit)
+                    releaseReplacement.await()
+                    DataResult.Content(replacementPayload)
+                }
+            }
+        replacementStarted.await()
+        var directFetches = 0
+        val takeover =
+            async {
+                payloadStore.takeOverFailedPrewarm("server-1", "thread-m1") {
+                    directFetches += 1
+                    DataResult.Error(ScreenError(code = "duplicate_fresh", retryable = true))
+                }
+            }
+
+        yield()
+        assertEquals(0, directFetches)
+        releaseReplacement.complete(Unit)
+        assertEquals(
+            "replacement prewarm body",
+            (takeover.await() as DataResult.Content).data.messages.single().body
+        )
+        replacement.await()
+        assertEquals(0, directFetches)
         appScope.cancel()
     }
 
