@@ -177,6 +177,7 @@ internal object SlockType {
     val Caption = slockTextStyle(FontWeight.Normal, 12.sp, 16.sp, 0.sp)
     val Button = slockTextStyle(FontWeight.Medium, 14.sp, 18.sp, 0.sp)
     val ButtonBold = slockTextStyle(FontWeight.Bold, 14.sp, 18.sp, 0.sp)
-    val TabLabel = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.sp)
+    // web MobileTabBar: text-[10px] font-bold tracking-wider (0.05em = 0.5px @10px)
+    val TabLabel = slockTextStyle(FontWeight.Bold, 10.sp, 12.sp, 0.5.sp)
     val Input = slockTextStyle(FontWeight.Normal, 14.sp, 20.sp, 0.sp)
 }

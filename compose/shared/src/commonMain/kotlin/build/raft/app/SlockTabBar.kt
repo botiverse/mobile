@@ -191,7 +191,10 @@ internal fun SlockBottomTabBar(
         Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             items.forEachIndexed { index, item ->
                 val selected = item.selected
-                val label = remember(item.label) { item.label.uppercase() }
+                // Web's MobileTabBar renders labels as provided ("Home", not
+                // "HOME") — casing belongs to the string resource, not the
+                // component (drift #720).
+                val label = item.label
                 Column(
                     modifier = Modifier
                         .weight(1f)

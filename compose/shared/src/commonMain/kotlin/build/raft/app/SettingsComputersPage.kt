@@ -1733,6 +1733,10 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
         computers =
             listOf(
                 visualPrimaryComputer(),
+                // Mirrors the React visualMachines fixture exactly: TWO
+                // computers — primary (0.0.48, upgrade to 0.0.50 available)
+                // and the offline Studio rig already on latest with a
+                // description line. No legacy daemon card (drift #764).
                 KuiklySettingsComputerItem(
                     id = "computer-studio",
                     name = "Studio Test Rig",
@@ -1742,25 +1746,12 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
                     online = false,
                     hostname = null,
                     platform = "linux",
+                    description = "Design QA and preview capture",
                     lastSeenLabel = "Jun 26, 2026, 4:10 PM",
                     runtimes = listOf("codex"),
                     createdAt = "Jun 19, 2026",
                     apiKeyPrefix = "slock_lab",
                     statusVersion = 3
-                ),
-                KuiklySettingsComputerItem(
-                    id = "machine-legacy",
-                    name = "Legacy daemon",
-                    daemonVersion = "0.65.0",
-                    isComputer = false,
-                    online = true,
-                    hostname = null,
-                    platform = "linux",
-                    lastSeenLabel = "Active now",
-                    runtimes = listOf("claude"),
-                    createdAt = "Jun 17, 2026",
-                    apiKeyPrefix = "slock_legacy",
-                    statusVersion = 4
                 )
             ),
         canAddComputer = true,
@@ -2126,7 +2117,16 @@ private fun SettingsComputerCard(
                     )
                     OnlineDot(item.online)
                 }
-                val runLabel = settingsComputerRunLabel(item)
+                item.description?.takeIf { it.isNotBlank() }?.let { description ->
+                    Text(
+                        text = description,
+                        style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 15.sp, color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                val runLabel = settingsComputerRunLabel(item, latestComputerVersion)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = runLabel.text,
@@ -2169,7 +2169,10 @@ private data class SettingsComputerRunLabel(
 )
 
 @Composable
-private fun settingsComputerRunLabel(item: KuiklySettingsComputerItem): SettingsComputerRunLabel {
+private fun settingsComputerRunLabel(
+    item: KuiklySettingsComputerItem,
+    latestComputerVersion: String?
+): SettingsComputerRunLabel {
     val kind =
         if (item.isComputer) {
             stringResource(MR.strings.settings_computers_kind_computer)
@@ -2179,8 +2182,12 @@ private fun settingsComputerRunLabel(item: KuiklySettingsComputerItem): Settings
     val version =
         if (item.isComputer) item.computerVersion?.takeIf { it.isNotBlank() }
         else item.daemonVersion.takeIf { it.isNotBlank() }
+    // Web appends "→ v<latest>" only when an upgrade is actually available —
+    // never the machine's own current version, and never keyed off the online
+    // state (drift #764).
+    val upgradeText =
+        if (item.computerUpgradeAvailable(latestComputerVersion)) "→ v$latestComputerVersion" else null
     if (!item.online) {
-        val upgradeText = version?.let { "-> v$it" }
         return SettingsComputerRunLabel(
             MR.strings.settings_computers_run_offline.format(listOf(kind)).localized(),
             isOffline = true,
@@ -2190,18 +2197,31 @@ private fun settingsComputerRunLabel(item: KuiklySettingsComputerItem): Settings
     return if (version != null) {
         SettingsComputerRunLabel(
             MR.strings.settings_computers_run_version.format(listOf(kind, version)).localized(),
-            isOffline = false
+            isOffline = false,
+            upgradeText = upgradeText
         )
     } else {
         SettingsComputerRunLabel(
             MR.strings.settings_computers_run_online.format(listOf(kind)).localized(),
-            isOffline = false
+            isOffline = false,
+            upgradeText = upgradeText
         )
     }
 }
 
+// Web: `upgradeAvailable = machine.isComputer && machine.computerUpgradeAvailable`.
+// The mobile payload has no server-computed flag, so derive it from the version
+// pair; online state is irrelevant (drift #764 — the old !online rule pinned
+// the dot on offline machines and never on the one that actually needs the
+// upgrade).
+private fun KuiklySettingsComputerItem.computerUpgradeAvailable(latestComputerVersion: String?): Boolean =
+    isComputer &&
+        !computerVersion.isNullOrBlank() &&
+        !latestComputerVersion.isNullOrBlank() &&
+        computerVersion != latestComputerVersion
+
 private fun KuiklySettingsComputerItem.shouldShowComputerAttentionDot(latestComputerVersion: String?): Boolean =
-    isComputer && !online && latestComputerVersion?.isNotBlank() == true
+    computerUpgradeAvailable(latestComputerVersion)
 
 @Composable
 private fun SettingsInlineError(title: String, errorCode: String, retryable: Boolean, onRetry: () -> Unit) {

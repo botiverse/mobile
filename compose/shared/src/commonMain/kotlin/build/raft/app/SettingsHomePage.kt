@@ -1642,11 +1642,13 @@ private val settingsPageVisualPayload: KuiklySharedSettingsPayload
         )
     }
 
+// Mirrors web MobileTabBar's fixture state: Title Case labels, Home active
+// (the React tabbar case routes to the server root = chat tab; drift #720).
 private val bottomTabBarSmokeItems = listOf(
-    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House),
-    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = true),
-    SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users),
-    SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
+    SlockBottomTabItemPayload("home", "Home", SlockLucideIconName.House, selected = true),
+    SlockBottomTabItemPayload("tasks", "Tasks", SlockLucideIconName.SquareCheckBig),
+    SlockBottomTabItemPayload("members", "Members", SlockLucideIconName.Users),
+    SlockBottomTabItemPayload("settings", "Settings", SlockLucideIconName.Settings)
 )
 
 internal fun appShellBottomTabs(
