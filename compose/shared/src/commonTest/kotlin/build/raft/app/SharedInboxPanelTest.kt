@@ -31,6 +31,17 @@ import kotlin.test.assertNotEquals
 
 class SharedInboxPanelTest {
     @Test
+    fun activityThreadIconUsesTheSameMutedToneAsReadPrimaryText() {
+        val readThread = activityItem(key = "thread:read").copy(kind = InboxItemKind.Thread)
+        val unreadThread = readThread.copy(key = "thread:unread", unreadCount = 1)
+        val readChannel = activityItem(key = "channel:read")
+
+        assertTrue(readThread.activityPrimaryContentMuted())
+        assertEquals(false, unreadThread.activityPrimaryContentMuted())
+        assertEquals(false, readChannel.activityPrimaryContentMuted())
+    }
+
+    @Test
     fun activityDoneClickIdentityTracksLazyRowIdentity() {
         val first = activityItem(key = "channel:first")
         val second = activityItem(key = "channel:second")
