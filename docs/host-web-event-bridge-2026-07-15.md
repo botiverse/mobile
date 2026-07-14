@@ -55,7 +55,7 @@ That is the SINGLE authority. No static per-environment list. `initialSrc` for a
 
 Platform implementations MUST:
 
-- **Android**: pin `trustedOrigin` at attach time from the WebView's initial URL. `WebMessagePort.postMessage(..., targetOrigin = trustedOrigin)`; never `Uri.EMPTY` or a wildcard. Attach the port only on the main frame.
+- **Android**: pin `trustedOrigin` at attach time from the WebView's initial URL. Bridge is installed via `WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(trustedOrigin))` and messages arrive via `WebViewCompat.addWebMessageListener(webView, "raftHostPort", setOf(trustedOrigin), listener)` — both use the SAME exact-origin `allowedOriginRules` set. The listener's `onPostMessage` MUST additionally verify `sourceOrigin.toString() == trustedOrigin` AND `isMainFrame == true` before dispatching; the `allowedOriginRules` filter is a first line, the callback-side re-check is the second.
 - **iOS**: pin `trustedOrigin` at the WebView owner. Register the `WKUserScript` with `injectionTime = .atDocumentStart` and `forMainFrameOnly = true`. In `WKScriptMessageHandler.userContentController(_:didReceive:)`, reject any message whose `message.frameInfo.request.URL.origin` is not equal to `trustedOrigin`.
 - **OHOS**: pin `trustedOrigin` on the web component. Install the proxy for the main frame only; gate inbound on origin.
 
@@ -77,7 +77,7 @@ Cleanly separated:
 
 - **iOS**: two `WKUserScript`s. Bridge script → `injectionTime = .atDocumentStart`, `forMainFrameOnly = true`. Auth-seed script → whatever the existing `mobile-webview-server-contract-2026-07-02.md` bootstrap requires (currently after document-start). The two are separate registrations; iOS makes their relative ordering explicit.
 - **OHOS**: analogous — two independent document-start caller-JS registrations, bridge first.
-- **Android**: bridge is injected via bootstrap HTML AND/OR document-start capable path (whichever the current renderer uses for privileged scripts); auth seed continues to run via `page-finished evaluate`. The bridge MUST have run before `page-finished`.
+- **Android**: bridge is injected via `WebViewCompat.addDocumentStartJavaScript` — the sole qualifying path. **Bootstrap HTML and `onPageFinished evaluate` do NOT qualify** and MUST NOT be used to install the bridge script: bootstrap HTML dies at `window.location.replace(targetUrl)`, and `onPageFinished` fires after the target document's React reads `window.RaftHost`. Auth seed continues to run via `onPageFinished evaluate`; it runs strictly after the bridge script (which is document-start on the target document).
 
 **Non-clobber requirement.** The auth-seed script MUST NOT overwrite `window.RaftHost`, `window.RaftHost.version`, or `window.RaftHost.emit`. The bridge script defines `RaftHost` with `Object.defineProperty(..., { writable: false, configurable: false })` and freezes the object; a later script attempting to reassign gets a strict-mode throw or silent no-op in sloppy mode. Tests below verify this.
 
@@ -200,7 +200,13 @@ Per platform:
 
   This is the load-bearing choice @MingQi r3 flagged: the current renderer's *bootstrap HTML* is a transient document that dies at `window.location.replace(targetUrl)`, so `window.RaftHost` installed inside it does NOT survive into the target document. `onPageFinished evaluate` runs AFTER the target's React reads the global — too late. Only `addDocumentStartJavaScript` runs on the target document, before React, with an exact-origin rule. `addJavascriptInterface` is rejected on two counts: it exposes an entire Java object (wider attack surface) and it runs at the whole-webview level (no per-target-document isolation).
 
-  **Support / fallback.** `addDocumentStartJavaScript` requires `WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)` (backed by AndroidX WebKit + a recent WebView provider). If the feature check returns false, `hostEventsEnabled=true` MUST resolve to a no-op — the bridge is NOT installed, and the WebView-owner surface MUST NOT allow session-mutating flows on that device. This is a "fail-closed on old WebView" contract, verified in a red gate that stubs the feature-support probe to `false` and asserts the bridge is absent from the target document. Do not silently degrade to a later-running seam.
+  **Support / fallback.** Both AndroidX WebKit features are required and MUST both be probed at attach time:
+  - `WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)` — needed to inject the bridge script.
+  - `WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)` — needed to receive messages back.
+
+  If EITHER feature is unsupported, `hostEventsEnabled=true` MUST resolve to a no-op — the bridge is NOT installed, no listener is registered, and the WebView-owner surface MUST NOT allow session-mutating flows on that device. Probing only one leaves a "half-bridge" (script injected but no receive channel, or receive channel with no script — both silently broken). This is the fail-closed contract; the gate below exercises each of the three possible support states.
+
+  **New dependency.** The mobile repo does not yet include AndroidX WebKit. Implementation MUST add a version-catalog entry — a pinned `androidx.webkit:webkit` — and route it through the existing `compose/androidApp/build.gradle.kts` KMP shared-target dependency block. Hosted Android compile and Android unit tests are the acceptance gates for that addition; no local install per @artin's workflow.
 
 - **iOS** (`SlockSandboxWebView.m`): the seam is `WKUserContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))` for the bridge script, and `addScriptMessageHandler(handler, name: "raftHost")` for the inbound channel. Inbound: reject any `WKScriptMessage` whose `message.frameInfo.request.URL.origin` is not equal to `trustedOrigin`. Dispatch through Kuikly with `@{@"message": raw}`.
 
@@ -297,7 +303,13 @@ If any of these change scope, do NOT extend this document — write a new one:
 - One end-to-end scenario, CI-driven: web calls `emitHostEvent("session:logout")` inside a WebView with `hostEventsEnabled=true` whose `initialSrc` origin was captured as `trustedOrigin` → the shared consumer receives `("session:logout", {})`.
 - **Document-start ordering gate** (per platform): a page loaded into the WebView observes `window.RaftHost.version === "raft-host-v1"` from JS that runs BEFORE any React render / any user-code `emit` call. Verified by a probe script that reads the global at document-start and reports via the bridge itself; the absence of that report is the red signal.
 - **Non-clobber gate** (per platform): a page attempting to reassign `window.RaftHost = {}` after document-start leaves the original bridge intact and continues to deliver events. Frozen `defineProperty` is the mechanism; the gate proves the mechanism.
-- **Android WebView-feature fallback gate**: stubbing `WebViewFeature.isFeatureSupported(DOCUMENT_START_SCRIPT)` to `false` → `hostEventsEnabled=true` becomes a no-op; the target document does NOT see `window.RaftHost`. Verified as a red gate — the counterfactual (silently degrading to a later seam) would land as green here and is what this gate exists to prevent.
+- **Android WebView-feature fallback gates** (3 cases, covering the full support matrix):
+  1. `DOCUMENT_START_SCRIPT=false, WEB_MESSAGE_LISTENER=true` → `hostEventsEnabled=true` is a no-op; target document does NOT see `window.RaftHost` and no listener is registered.
+  2. `DOCUMENT_START_SCRIPT=true, WEB_MESSAGE_LISTENER=false` → same fail-closed no-op; no half-bridge in which the script exists but its channel is deaf.
+  3. `DOCUMENT_START_SCRIPT=true, WEB_MESSAGE_LISTENER=true` (positive) → bridge installed, listener registered, end-to-end emit path works.
+
+  Each case stubs the `WebViewFeature.isFeatureSupported` probe deterministically. The two negative cases guard against the "half-bridge" silent degradation that the r3-delta hardened for.
+- **Android dependency gate**: the version catalog carries a pinned `androidx.webkit:webkit`; the shared-target dependency block wires it into the Android configuration. Hosted Android compile + unit tests pass. No new floating semver ranges.
 - Non-goals for cross-origin frames, oversized payloads, and torn-down renderers each have a red gate as described in §Safety limits.
 
 ## Owners and review
@@ -316,6 +328,11 @@ If any of these change scope, do NOT extend this document — write a new one:
 
 ## Changelog
 
+- **r3 delta v2 (2026-07-15):** addresses @MingQi CHANGES_REQUESTED on `e968221…`. Four mechanical fidelity fixes:
+  (1) **Trust-boundary Android bullet** rewritten to use `WebViewCompat.addDocumentStartJavaScript` + `WebViewCompat.addWebMessageListener` with SAME `allowedOriginRules`, plus callback-side `sourceOrigin == trustedOrigin` + `isMainFrame == true` re-check. Removed the earlier `WebMessagePort.postMessage(targetOrigin)` language that contradicted the Native seams section.
+  (2) **Composition Android bullet** no longer says "bootstrap HTML AND/OR document-start capable path". Sole qualifying path is `WebViewCompat.addDocumentStartJavaScript`; bootstrap HTML and `onPageFinished evaluate` are explicitly disqualified with the reasons.
+  (3) **Feature probe** now covers BOTH `DOCUMENT_START_SCRIPT` AND `WEB_MESSAGE_LISTENER`. Either false → no-op. Probing only one leaves a "half-bridge" silent-degradation path.
+  (4) **New Android dependency** — `androidx.webkit:webkit` — called out in scope with hosted-CI acceptance. Fallback gates in acceptance section now cover the full 2×2 support matrix (both true positive, either false → fail-closed).
 - **r3 (2026-07-15, superseded 2 minutes later by r3 delta below):** initial delta addressed @MingQi r2. Original three fixes:
   (1) `trustedOrigin = origin(initialSrc)` replaces the static allowlist.
   (2) KMP shared owns contract, not shared JS blob; bridge script + auth-seed script are independent privileged registrations per platform.
