@@ -26,7 +26,8 @@ internal class SharedAuthRefreshCoordinator(
     private val authApi: SlockAuthApi,
     private val clockMillis: () -> Long,
     private val logger: (String) -> Unit = {},
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val criticalLogger: (String) -> Unit = warningLogger
 ) {
     suspend fun refreshSession(
         failedAccessToken: String? = null,
@@ -90,7 +91,7 @@ internal class SharedAuthRefreshCoordinator(
         val exchange =
             when (selection) {
                 is FlightSelection.Completed -> {
-                    warningLogger(
+                    criticalLogger(
                         "refresh_skip reason=recent_unauthorized_session_preserved " +
                             "caller=$safeCaller requestReason=$safeReason"
                     )
@@ -142,7 +143,7 @@ internal class SharedAuthRefreshCoordinator(
                                 safeReason = safeReason
                             )
                         is AuthApiResult.Failure -> {
-                            warningLogger(
+                            criticalLogger(
                                 "refresh_failed status=${response.code} " +
                                     "reason=$safeReason caller=$safeCaller"
                             )
@@ -290,13 +291,13 @@ internal class SharedAuthRefreshCoordinator(
                 recentUnauthorizedByRefreshToken.remove(exchange.originalSession.refreshToken)
             }
             if (cleared) {
-                warningLogger(
+                criticalLogger(
                     "refresh_unauthorized_session_cleared status=$code " +
                         "reason=$safeReason caller=$safeCaller"
                 )
             }
         } else {
-            warningLogger(
+            criticalLogger(
                 "refresh_unauthorized_session_preserved status=$code " +
                     "reason=$safeReason caller=$safeCaller"
             )

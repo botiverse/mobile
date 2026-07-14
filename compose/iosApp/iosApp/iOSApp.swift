@@ -155,7 +155,9 @@ private enum SlockIosSharedLogBridge {
             let level = userInfo["level"] as? String ?? "info"
             let tag = userInfo["tag"] as? String ?? "SlockShared"
             let message = userInfo["message"] as? String ?? ""
-            SlockIosDiagnosticsRecord(level, tag, message)
+            let timestampMillis = (userInfo["timestampMillis"] as? NSNumber)?.int64Value ?? 0
+            let forceCritical = (userInfo["critical"] as? NSNumber)?.boolValue ?? false
+            SlockIosDiagnosticsRecordWithContext(level, tag, message, timestampMillis, true, forceCritical)
         }
     }
 }

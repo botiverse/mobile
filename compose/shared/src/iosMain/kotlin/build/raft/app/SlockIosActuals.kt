@@ -12,7 +12,8 @@ internal actual fun slockPlatformLog(
     level: SlockLogLevel,
     tag: String,
     message: String,
-    timestampMillis: Long
+    timestampMillis: Long,
+    hint: SlockPlatformLogHint
 ) {
     NSNotificationCenter.defaultCenter.postNotificationName(
         aName = SlockIosSharedLogNotificationName,
@@ -22,10 +23,10 @@ internal actual fun slockPlatformLog(
                 "level" to level.wireValue,
                 "tag" to tag,
                 "message" to message,
-                "timestampMillis" to timestampMillis
+                "timestampMillis" to timestampMillis,
+                "critical" to (hint == SlockPlatformLogHint.AuthCritical)
             )
     )
-    println("[$tag][${level.name}] $message")
 }
 
 private const val SlockIosSharedLogNotificationName = "slockSharedLog"

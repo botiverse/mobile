@@ -20,6 +20,7 @@ internal class SharedSlockNetworkClient(
     private val baseUrl: String = SLOCK_API_BASE_URL,
     private val baseUrlProvider: () -> String = { baseUrl },
     private val warningLogger: (String) -> Unit = {},
+    private val criticalWarningLogger: (String) -> Unit = warningLogger,
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
     private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
@@ -29,7 +30,8 @@ internal class SharedSlockNetworkClient(
             sessionStore = sessionStore,
             authApi = SlockAuthApiClient(SharedSlockAuthTransport(currentBaseUrl(), executor, warningLogger)),
             logger = warningLogger,
-            warningLogger = warningLogger
+            warningLogger = warningLogger,
+            criticalLogger = criticalWarningLogger
         )
 
     override suspend fun request(
@@ -64,7 +66,7 @@ internal class SharedSlockNetworkClient(
                             jsonBody = bodyText != null
                         ).toHomeNetworkResponse()
                     }
-                warningLogger(
+                val endpointDiagnostic =
                     "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
                         "queryKeys=${query.networkDiagnosticsQueryKeys()} " +
                         "queryMeta=${query.networkDiagnosticsQueryMeta()} " +
@@ -76,7 +78,11 @@ internal class SharedSlockNetworkClient(
                         response.errorBodyLogSuffix() +
                         response.requestIdLogSuffix() +
                         response.transportDiagnosticsLogSuffix()
-                )
+                if (response.code == 401) {
+                    criticalWarningLogger(endpointDiagnostic)
+                } else {
+                    warningLogger(endpointDiagnostic)
+                }
                 response
             }
         } catch (timeout: SlockRequestTimeoutException) {

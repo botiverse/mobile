@@ -14,6 +14,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SharedAuthTokenProviderTest {
     @Test
@@ -297,6 +298,7 @@ class SharedAuthTokenProviderTest {
     @Test
     fun clearsSessionWhenRefreshTokenIsUnauthorized() = runBlocking {
         val warnings = mutableListOf<String>()
+        val criticalWarnings = mutableListOf<String>()
         val store =
             InMemorySlockAuthSessionStore(
                 sampleSession(accessToken = "old-access", refreshToken = "old-refresh")
@@ -311,9 +313,10 @@ class SharedAuthTokenProviderTest {
                             listOf(
                                 AuthApiResult.Failure(code = 401, errorBodyText = """{"error":"invalid refresh"}""")
                             )
-                    ),
+                ),
                 clockMillis = { 0L },
-                warningLogger = warnings::add
+                warningLogger = warnings::add,
+                criticalLogger = criticalWarnings::add
             )
 
         assertNull(provider.refreshSession(failedAccessToken = "old-access"))
@@ -323,8 +326,9 @@ class SharedAuthTokenProviderTest {
                 "refresh_failed status=401 reason=unknown caller=unknown",
                 "refresh_unauthorized_session_cleared status=401 reason=unknown caller=unknown"
             ),
-            warnings
+            criticalWarnings
         )
+        assertTrue(warnings.isEmpty())
     }
 
     @Test

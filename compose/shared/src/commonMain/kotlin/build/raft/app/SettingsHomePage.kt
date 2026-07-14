@@ -2249,7 +2249,11 @@ private fun SlockAppShellContent(
                 if (authSessionEvents.isLocalSource(signal)) {
                     return@addSessionClearedListener
                 }
-                slockLogInfo("SlockSharedAuth", "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
+                slockLogInfo(
+                    "SlockSharedAuth",
+                    "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}",
+                    SlockPlatformLogHint.AuthCritical
+                )
                 appShellCoroutineScope.launch {
                     runCatchingPreservingCancellation {
                         authStore.clearSessionFromSessionClearedNotify(
@@ -2260,13 +2264,15 @@ private fun SlockAppShellContent(
                         slockLogInfo(
                             "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
-                                "source=${signal.source} reason=${signal.reason}"
+                                "source=${signal.source} reason=${signal.reason}",
+                            SlockPlatformLogHint.AuthCritical
                         )
                     }.onFailure { throwable ->
                         slockLogWarn(
                             "SlockSharedAuth",
                             "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
-                                "reason=${signal.reason} error=${throwable.message.orEmpty()}"
+                                "reason=${signal.reason} error=${throwable.message.orEmpty()}",
+                            SlockPlatformLogHint.AuthCritical
                         )
                     }
                 }
@@ -3648,11 +3654,19 @@ private fun SlockAppShellContent(
                 }
                 SharedAuthResult.Unauthenticated -> {
                     bridge.realtimeAuthRefreshFinished(reason, success = false)
-                    bridge.log("shared_realtime_auth_refresh_failed reason=$reason result=unauthenticated")
+                    slockLogInfo(
+                        "SlockSharedAuth",
+                        "shared_realtime_auth_refresh_failed reason=$reason result=unauthenticated",
+                        SlockPlatformLogHint.AuthCritical
+                    )
                 }
                 is SharedAuthResult.Failure -> {
                     bridge.realtimeAuthRefreshFinished(reason, success = false)
-                    bridge.log("shared_realtime_auth_refresh_failed reason=$reason code=${result.code}")
+                    slockLogInfo(
+                        "SlockSharedAuth",
+                        "shared_realtime_auth_refresh_failed reason=$reason code=${result.code}",
+                        SlockPlatformLogHint.AuthCritical
+                    )
                 }
             }
         }

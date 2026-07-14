@@ -475,7 +475,8 @@ class InMemorySlockAuthSessionStore(
 
 class KeyValueAuthSessionStore(
     private val store: SlockKeyValueStore,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val criticalDiagnosticsLogger: (String) -> Unit = diagnosticsLogger
 ) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthSessionEventSource, SlockAuthServerSelectionMemory {
     // #466: the serialization lock is SHARED across every KeyValueAuthSessionStore instance
     // (they all back the same MMKV namespace), so cross-instance / cross-subsystem session
@@ -724,7 +725,9 @@ class KeyValueAuthSessionStore(
                 current
             }
         storeEvents.emit(AuthSessionEvent.Cleared(generation, classifyAuthSessionClearReason(reason)))
-        diagnosticsLogger("auth_session_clear reason=$safeReason source=$safeSource hadSession=${previousSession != null}")
+        criticalDiagnosticsLogger(
+            "auth_session_clear reason=$safeReason source=$safeSource hadSession=${previousSession != null}"
+        )
         invalidations.emit(Unit)
     }
 
@@ -755,9 +758,8 @@ class KeyValueAuthSessionStore(
         removedGeneration?.let {
             storeEvents.emit(AuthSessionEvent.Cleared(it, classifyAuthSessionClearReason(reason)))
         }
-        diagnosticsLogger(
-            "auth_session_clear_if_matches reason=$safeReason source=$safeSource cleared=$cleared"
-        )
+        val log = if (cleared) criticalDiagnosticsLogger else diagnosticsLogger
+        log("auth_session_clear_if_matches reason=$safeReason source=$safeSource cleared=$cleared")
         if (cleared) invalidations.emit(Unit)
         return cleared
     }
@@ -780,7 +782,7 @@ class KeyValueAuthSessionStore(
                     current.authSessionClearFingerprint() == previousSessionFingerprint -> {
                         clearSessionRecordLocked()
                         removedGeneration = nextGenerationLocked()
-                        diagnosticsLogger(
+                        criticalDiagnosticsLogger(
                             "auth_session_clear_notify reason=$reason current=matched result=removed"
                         )
                         true

@@ -5,7 +5,8 @@ class SharedAuthTokenProvider(
     private val authApi: SlockAuthApi,
     private val clockMillis: () -> Long,
     private val logger: (String) -> Unit = {},
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val criticalLogger: (String) -> Unit = warningLogger
 ) {
     private val refreshCoordinator =
         SharedAuthRefreshCoordinator(
@@ -13,7 +14,8 @@ class SharedAuthTokenProvider(
             authApi = authApi,
             clockMillis = clockMillis,
             logger = logger,
-            warningLogger = warningLogger
+            warningLogger = warningLogger,
+            criticalLogger = criticalLogger
         )
 
     suspend fun currentSession(): StoredAuthSession? = sessionStore.readSession()

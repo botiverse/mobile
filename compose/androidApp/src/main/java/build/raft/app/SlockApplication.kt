@@ -17,11 +17,12 @@ class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         SlockAndroidLocalDiagnostics.init(this)
-        installSlockPlatformLogSink { level, tag, message ->
-            if (tag == "SlockSharedAuth" || message.startsWith("shared_realtime_auth_refresh_")) {
-                SlockAndroidLocalDiagnostics.recordAuthLog(level, tag, message)
-            } else {
-                SlockAndroidLocalDiagnostics.recordLog(level, tag, message)
+        installSlockPlatformLogRecordSink { record ->
+            when (record.hint) {
+                SlockPlatformLogHint.AuthCritical ->
+                    SlockAndroidLocalDiagnostics.recordCriticalLog(record.level, record.tag, record.message)
+                SlockPlatformLogHint.None ->
+                    SlockAndroidLocalDiagnostics.recordLog(record.level, record.tag, record.message)
             }
         }
         installAndroidAppScopeSharedKeyValueStores(this)

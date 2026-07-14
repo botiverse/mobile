@@ -5,6 +5,12 @@
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
+#import <mach/mach_time.h>
+#import <os/lock.h>
+#import <pthread.h>
+#import <stdatomic.h>
+#import <string.h>
+#import <time.h>
 
 #if __has_include("RaftIosBuildMetadata.h")
 #import "RaftIosBuildMetadata.h"
@@ -32,8 +38,56 @@ static NSUInteger const SlockDiagnosticsRecentMaxChars = 120000;
 static unsigned long long const SlockDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
 static NSUInteger const SlockDiagnosticsLogMaxFiles = 4;
 static NSUInteger const SlockDiagnosticsAttachmentMaxLogFiles = 6;
-static NSUInteger const SlockDiagnosticsFeedbackFileKeepCount = 5;
+static NSUInteger const SlockDiagnosticsMinimumRetainedSnapshotCount = 5;
+static NSTimeInterval const SlockDiagnosticsFeedbackPruneMinimumAgeSeconds = 24.0 * 60.0 * 60.0;
+static NSUInteger const SlockDiagnosticsOutstandingLimit = 512;
+static NSUInteger const SlockDiagnosticsOrdinaryOutstandingLimit = 496;
+static NSUInteger const SlockDiagnosticsRawLevelMaxChars = 16;
+static NSUInteger const SlockDiagnosticsRawTagMaxChars = 128;
+static NSUInteger const SlockDiagnosticsRawMessageMaxChars = 4096;
+static NSUInteger const SlockDiagnosticsThreadNameMaxChars = 64;
+static NSUInteger const SlockDiagnosticsQueueLabelMaxChars = 96;
+static NSUInteger const SlockDiagnosticsExceptionPageMaxChars = 128;
+static NSUInteger const SlockDiagnosticsExceptionReasonMaxChars = 1024;
+static NSUInteger const SlockDiagnosticsExceptionStackMaxChars = 2048;
 static char SlockDiagnosticsWriterQueueSpecificKey;
+static os_unfair_lock SlockDiagnosticsAdmissionLock = OS_UNFAIR_LOCK_INIT;
+static NSUInteger SlockDiagnosticsOutstandingCount = 0;
+static uint64_t SlockDiagnosticsNextSequence = 0;
+static atomic_uint_fast64_t SlockDiagnosticsAttemptedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsAcceptedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsAcceptedCriticalCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsDroppedOrdinaryCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsDroppedCriticalCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsDroppedContentionCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsRejectedInvalidCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsProcessedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsWrittenCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsCriticalSynchronizedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsWriteFailedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsRotationFailedCount = ATOMIC_VAR_INIT(0);
+static atomic_uint_fast64_t SlockDiagnosticsMaxOutstandingCount = ATOMIC_VAR_INIT(0);
+
+@interface SlockDiagnosticsCapture : NSObject
+
+@property(nonatomic, copy) NSString *rawLevel;
+@property(nonatomic, copy) NSString *rawTag;
+@property(nonatomic, copy) NSString *rawMessage;
+@property(nonatomic, copy) NSString *threadName;
+@property(nonatomic, copy) NSString *queueLabel;
+@property(nonatomic) uint64_t sequence;
+@property(nonatomic) uint64_t monotonicTicks;
+@property(nonatomic) uint64_t threadId;
+@property(nonatomic) int64_t timestampMillis;
+@property(nonatomic) BOOL mainThread;
+@property(nonatomic) BOOL rawMessageTruncated;
+@property(nonatomic) BOOL critical;
+@property(nonatomic) BOOL emitConsole;
+
+@end
+
+@implementation SlockDiagnosticsCapture
+@end
 
 static NSDictionary *SlockBridgeDictionaryFromValue(id value) {
     if ([value isKindOfClass:NSDictionary.class]) {
@@ -65,6 +119,16 @@ static NSString *SlockBridgeString(id value) {
     }
     if ([value respondsToSelector:@selector(stringValue)]) {
         return [[value stringValue] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    }
+    return @"";
+}
+
+static NSString *SlockBridgeRawString(id value) {
+    if ([value isKindOfClass:NSString.class]) {
+        return (NSString *)value;
+    }
+    if ([value respondsToSelector:@selector(stringValue)]) {
+        return [value stringValue] ?: @"";
     }
     return @"";
 }
@@ -186,30 +250,344 @@ static NSDictionary *SlockBridgeIdentityPageData(NSDictionary *pageData) {
     return sanitized;
 }
 
-static NSString *SlockBridgeSanitizedLogString(NSString *content) {
-    NSString *sanitized = content ?: @"";
-    NSArray<NSString *> *patterns = @[
-        @"(?i)(bearer\\s+)[A-Za-z0-9._~+\\-/]+=*",
-        @"(?i)(sk_(agent|machine)_[A-Za-z0-9_\\-]+)",
-        @"(?i)((accessToken|refreshToken|token|authorization|cookie|password|secret)\\s*[:=]\\s*)[^\\s,}]+"
-    ];
-    NSArray<NSString *> *templates = @[
-        @"$1<redacted>",
-        @"sk_<redacted>",
-        @"$1<redacted>"
-    ];
-    for (NSUInteger index = 0; index < patterns.count; index++) {
-        NSRegularExpression *regex =
-            [NSRegularExpression regularExpressionWithPattern:patterns[index] options:0 error:nil];
-        if (!regex) {
+static BOOL SlockDiagnosticsIsAsciiIdentifierCharacter(unichar character) {
+    return (character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') ||
+        (character >= '0' && character <= '9') ||
+        character == '_' || character == '-';
+}
+
+static BOOL SlockDiagnosticsIsWhitespace(unichar character) {
+    return [[NSCharacterSet whitespaceAndNewlineCharacterSet] characterIsMember:character];
+}
+
+static NSInteger SlockDiagnosticsHexValue(unichar character) {
+    if (character >= '0' && character <= '9') {
+        return character - '0';
+    }
+    if (character >= 'a' && character <= 'f') {
+        return character - 'a' + 10;
+    }
+    if (character >= 'A' && character <= 'F') {
+        return character - 'A' + 10;
+    }
+    return -1;
+}
+
+static NSString *SlockDiagnosticsNormalizedCredentialKey(NSString *key) {
+    NSMutableString *normalized = [NSMutableString stringWithCapacity:key.length];
+    for (NSUInteger index = 0; index < key.length; index++) {
+        unichar character = [key characterAtIndex:index];
+        if (character == '\\' && index + 5 < key.length &&
+            ([key characterAtIndex:index + 1] == 'u' || [key characterAtIndex:index + 1] == 'U')) {
+            NSInteger decoded = 0;
+            BOOL validEscape = YES;
+            for (NSUInteger offset = 2; offset < 6; offset++) {
+                NSInteger digit = SlockDiagnosticsHexValue([key characterAtIndex:index + offset]);
+                if (digit < 0) {
+                    validEscape = NO;
+                    break;
+                }
+                decoded = (decoded << 4) | digit;
+            }
+            if (validEscape) {
+                character = (unichar)decoded;
+                index += 5;
+            }
+        }
+        if (character >= 'A' && character <= 'Z') {
+            character = (unichar)(character - 'A' + 'a');
+        }
+        if ((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')) {
+            [normalized appendFormat:@"%C", character];
+        }
+    }
+    return normalized;
+}
+
+static BOOL SlockDiagnosticsIsCredentialKey(NSString *key) {
+    static NSSet<NSString *> *keys;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        keys = [NSSet setWithArray:@[
+            @"accesstoken",
+            @"refreshtoken",
+            @"idtoken",
+            @"sessiontoken",
+            @"authtoken",
+            @"apitoken",
+            @"oauthtoken",
+            @"token",
+            @"authorization",
+            @"proxyauthorization",
+            @"cookie",
+            @"setcookie",
+            @"password",
+            @"passwd",
+            @"secret",
+            @"clientkey",
+            @"clientsecret",
+            @"apikey",
+            @"apisecret",
+            @"privatekey"
+        ]];
+    });
+    NSString *canonicalKey = SlockDiagnosticsNormalizedCredentialKey(key);
+    if ([keys containsObject:canonicalKey]) {
+        return YES;
+    }
+    return canonicalKey.length > 1 && [canonicalKey hasPrefix:@"x"] &&
+        [keys containsObject:[canonicalKey substringFromIndex:1]];
+}
+
+static BOOL SlockDiagnosticsParseAssignmentAtIndex(
+    NSString *text,
+    NSUInteger index,
+    BOOL requireCredentialKey,
+    NSUInteger *valueStart,
+    NSString **normalizedKey,
+    BOOL *jsonStyle
+) {
+    if (index >= text.length) {
+        return NO;
+    }
+    if (index > 0 && SlockDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:index - 1])) {
+        return NO;
+    }
+    NSUInteger cursor = index;
+    NSUInteger keyStart = cursor;
+    NSUInteger keyEnd = cursor;
+    BOOL keyWasQuoted = NO;
+    unichar quote = [text characterAtIndex:cursor];
+    if (quote == '"' || quote == '\'') {
+        keyWasQuoted = YES;
+        keyStart = ++cursor;
+        BOOL escaped = NO;
+        while (cursor < text.length) {
+            unichar character = [text characterAtIndex:cursor];
+            if (escaped) {
+                escaped = NO;
+            } else if (character == '\\') {
+                escaped = YES;
+            } else if (character == quote) {
+                break;
+            }
+            cursor++;
+        }
+        if (cursor >= text.length) {
+            return NO;
+        }
+        keyEnd = cursor;
+        cursor++;
+    } else {
+        if (!SlockDiagnosticsIsAsciiIdentifierCharacter(quote)) {
+            return NO;
+        }
+        while (cursor < text.length) {
+            while (cursor < text.length && SlockDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:cursor])) {
+                cursor++;
+            }
+            keyEnd = cursor;
+            NSUInteger nextWord = cursor;
+            while (nextWord < text.length && SlockDiagnosticsIsWhitespace([text characterAtIndex:nextWord])) {
+                nextWord++;
+            }
+            if (!requireCredentialKey || nextWord == cursor || nextWord >= text.length ||
+                !SlockDiagnosticsIsAsciiIdentifierCharacter([text characterAtIndex:nextWord])) {
+                break;
+            }
+            cursor = nextWord;
+        }
+    }
+    while (cursor < text.length && SlockDiagnosticsIsWhitespace([text characterAtIndex:cursor])) {
+        cursor++;
+    }
+    if (cursor >= text.length) {
+        return NO;
+    }
+    unichar separator = [text characterAtIndex:cursor];
+    if (separator != ':' && separator != '=' && separator != 0xFF1A && separator != 0xFF1D) {
+        return NO;
+    }
+    NSString *key = [text substringWithRange:NSMakeRange(keyStart, keyEnd - keyStart)];
+    NSString *canonicalKey = SlockDiagnosticsNormalizedCredentialKey(key);
+    if (requireCredentialKey && !SlockDiagnosticsIsCredentialKey(canonicalKey)) {
+        return NO;
+    }
+    cursor++;
+    while (cursor < text.length && SlockDiagnosticsIsWhitespace([text characterAtIndex:cursor])) {
+        cursor++;
+    }
+    if (valueStart) {
+        *valueStart = cursor;
+    }
+    if (normalizedKey) {
+        *normalizedKey = canonicalKey;
+    }
+    if (jsonStyle) {
+        *jsonStyle = keyWasQuoted && separator == ':';
+    }
+    return YES;
+}
+
+static NSUInteger SlockDiagnosticsJsonContainerEnd(NSString *text, NSUInteger start) {
+    if (start >= text.length) {
+        return start;
+    }
+    unichar opening = [text characterAtIndex:start];
+    if (opening != '{' && opening != '[') {
+        return start;
+    }
+    NSMutableArray<NSNumber *> *stack = [NSMutableArray arrayWithObject:@(opening)];
+    unichar quote = 0;
+    BOOL escaped = NO;
+    for (NSUInteger cursor = start + 1; cursor < text.length; cursor++) {
+        unichar character = [text characterAtIndex:cursor];
+        if (quote != 0) {
+            if (escaped) {
+                escaped = NO;
+            } else if (character == '\\') {
+                escaped = YES;
+            } else if (character == quote) {
+                quote = 0;
+            }
             continue;
         }
+        if (character == '"' || character == '\'') {
+            quote = character;
+            continue;
+        }
+        if (character == '{' || character == '[') {
+            [stack addObject:@(character)];
+            continue;
+        }
+        if (character != '}' && character != ']') {
+            continue;
+        }
+        unichar expectedOpening = character == '}' ? '{' : '[';
+        if (stack.lastObject.unsignedShortValue != expectedOpening) {
+            return text.length;
+        }
+        [stack removeLastObject];
+        if (stack.count == 0) {
+            return cursor + 1;
+        }
+    }
+    return text.length;
+}
+
+static NSString *SlockDiagnosticsRedactCredentialAssignments(NSString *content) {
+    NSMutableString *result = [content mutableCopy] ?: [NSMutableString string];
+    NSUInteger index = 0;
+    while (index < result.length) {
+        NSUInteger valueStart = 0;
+        NSString *normalizedKey = nil;
+        BOOL jsonStyle = NO;
+        if (!SlockDiagnosticsParseAssignmentAtIndex(result, index, YES, &valueStart, &normalizedKey, &jsonStyle)) {
+            index++;
+            continue;
+        }
+        NSUInteger valueEnd = valueStart;
+        BOOL quoted = NO;
+        unichar valueQuote = 0;
+        if (valueStart < result.length) {
+            valueQuote = [result characterAtIndex:valueStart];
+            quoted = valueQuote == '"' || valueQuote == '\'';
+        }
+        if (quoted) {
+            NSUInteger cursor = valueStart + 1;
+            BOOL escaped = NO;
+            while (cursor < result.length) {
+                unichar character = [result characterAtIndex:cursor];
+                if (escaped) {
+                    escaped = NO;
+                } else if (character == '\\') {
+                    escaped = YES;
+                } else if (character == valueQuote) {
+                    break;
+                }
+                cursor++;
+            }
+            BOOL hasClosingQuote = cursor < result.length;
+            NSUInteger contentStart = valueStart + 1;
+            valueEnd = cursor;
+            [result replaceCharactersInRange:NSMakeRange(contentStart, valueEnd - contentStart)
+                                   withString:@"<redacted>"];
+            index = contentStart + @"<redacted>".length + (hasClosingQuote ? 1 : 0);
+            continue;
+        }
+        BOOL consumeWholeHeader = [normalizedKey isEqualToString:@"cookie"] ||
+            [normalizedKey isEqualToString:@"setcookie"];
+        NSUInteger cursor = valueStart;
+        if (jsonStyle && cursor < result.length &&
+            ([result characterAtIndex:cursor] == '{' || [result characterAtIndex:cursor] == '[')) {
+            cursor = SlockDiagnosticsJsonContainerEnd(result, cursor);
+        } else {
+            while (cursor < result.length) {
+                unichar character = [result characterAtIndex:cursor];
+                if (character == '\n' || character == '\r' ||
+                    (jsonStyle && (character == '}' || character == ']'))) {
+                    break;
+                }
+                if (jsonStyle && character == ',') {
+                    break;
+                }
+                if (!consumeWholeHeader &&
+                    (SlockDiagnosticsIsWhitespace(character) || character == ',' || character == ';' || character == '&')) {
+                    NSUInteger candidate = cursor + (SlockDiagnosticsIsWhitespace(character) ? 0 : 1);
+                    while (candidate < result.length && SlockDiagnosticsIsWhitespace([result characterAtIndex:candidate])) {
+                        candidate++;
+                    }
+                    if (candidate >= result.length ||
+                        SlockDiagnosticsParseAssignmentAtIndex(result, candidate, NO, NULL, NULL, NULL)) {
+                        break;
+                    }
+                }
+                cursor++;
+            }
+        }
+        valueEnd = cursor;
+        NSString *replacement = jsonStyle ? @"\"<redacted>\"" : @"<redacted>";
+        [result replaceCharactersInRange:NSMakeRange(valueStart, valueEnd - valueStart)
+                               withString:replacement];
+        index = valueStart + replacement.length;
+    }
+    return result;
+}
+
+static NSString *SlockBridgeSanitizedLogString(NSString *content) {
+    NSString *sanitized = [content isKindOfClass:NSString.class] ? content : @"";
+    static NSArray<NSDictionary<NSString *, id> *> *tokenRules;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSArray<NSDictionary<NSString *, NSString *> *> *specs = @[
+            @{
+                @"pattern" : @"(?i)(bearer\\s+)[A-Za-z0-9._~+\\-/]+=*",
+                @"template" : @"$1<redacted>"
+            },
+            @{
+                @"pattern" : @"(?i)sk_(agent|machine)_[A-Za-z0-9_.=+\\-/]+",
+                @"template" : @"sk_$1_<redacted>"
+            }
+        ];
+        NSMutableArray<NSDictionary<NSString *, id> *> *compiled = [NSMutableArray arrayWithCapacity:specs.count];
+        for (NSDictionary<NSString *, NSString *> *spec in specs) {
+            NSRegularExpression *regex =
+                [NSRegularExpression regularExpressionWithPattern:spec[@"pattern"] options:0 error:nil];
+            if (regex) {
+                [compiled addObject:@{ @"regex" : regex, @"template" : spec[@"template"] }];
+            }
+        }
+        tokenRules = [compiled copy];
+    });
+    for (NSDictionary<NSString *, id> *rule in tokenRules) {
+        NSRegularExpression *regex = rule[@"regex"];
         sanitized = [regex stringByReplacingMatchesInString:sanitized
                                                     options:0
                                                       range:NSMakeRange(0, sanitized.length)
-                                               withTemplate:templates[index]];
+                                               withTemplate:rule[@"template"]];
     }
-    return sanitized;
+    return SlockDiagnosticsRedactCredentialAssignments(sanitized);
 }
 
 static void SlockBridgeRunOnMain(dispatch_block_t block) {
@@ -220,20 +598,28 @@ static void SlockBridgeRunOnMain(dispatch_block_t block) {
     }
 }
 
-static NSMutableArray<NSDictionary *> *SlockDiagnosticsMemoryEntries(void) {
-    static NSMutableArray<NSDictionary *> *entries;
+static NSUInteger SlockDiagnosticsMemoryStart = 0;
+static NSUInteger SlockDiagnosticsMemoryCount = 0;
+
+static NSMutableArray *SlockDiagnosticsMemorySlots(void) {
+    static NSMutableArray *slots;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        entries = [NSMutableArray arrayWithCapacity:SlockDiagnosticsMemoryEntryLimit];
+        slots = [NSMutableArray arrayWithCapacity:SlockDiagnosticsMemoryEntryLimit];
+        for (NSUInteger index = 0; index < SlockDiagnosticsMemoryEntryLimit; index++) {
+            [slots addObject:NSNull.null];
+        }
     });
-    return entries;
+    return slots;
 }
 
-static dispatch_queue_t SlockDiagnosticsWriterQueue(void) {
+static dispatch_queue_t SlockDiagnosticsOwnerQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("build.raft.app.ios.diagnostics.writer", DISPATCH_QUEUE_SERIAL);
+        dispatch_queue_attr_t attributes =
+            dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0);
+        queue = dispatch_queue_create("build.raft.app.ios.diagnostics.owner", attributes);
         dispatch_queue_set_specific(
             queue,
             &SlockDiagnosticsWriterQueueSpecificKey,
@@ -244,14 +630,28 @@ static dispatch_queue_t SlockDiagnosticsWriterQueue(void) {
     return queue;
 }
 
-static void SlockDiagnosticsFlushWriterQueue(void) {
+static id SlockDiagnosticsPerformOwnerOperation(id (^operation)(void)) {
     if (dispatch_get_specific(&SlockDiagnosticsWriterQueueSpecificKey) == &SlockDiagnosticsWriterQueueSpecificKey) {
-        return;
+        return operation ? operation() : nil;
     }
-    dispatch_sync(SlockDiagnosticsWriterQueue(), ^{});
+    dispatch_semaphore_t completion = dispatch_semaphore_create(0);
+    __block id result = nil;
+    os_unfair_lock_lock(&SlockDiagnosticsAdmissionLock);
+    dispatch_async(SlockDiagnosticsOwnerQueue(), ^{
+        @autoreleasepool {
+            @try {
+                result = operation ? operation() : nil;
+            } @finally {
+                dispatch_semaphore_signal(completion);
+            }
+        }
+    });
+    os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+    dispatch_semaphore_wait(completion, DISPATCH_TIME_FOREVER);
+    return result;
 }
 
-static NSString *SlockDiagnosticsTimestamp(void) {
+static NSString *SlockDiagnosticsTimestampForMillis(int64_t timestampMillis) {
     static NSDateFormatter *formatter;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -259,9 +659,8 @@ static NSString *SlockDiagnosticsTimestamp(void) {
         formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
         formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ";
     });
-    @synchronized (formatter) {
-        return [formatter stringFromDate:[NSDate date]];
-    }
+    NSDate *date = [NSDate dateWithTimeIntervalSince1970:((NSTimeInterval)timestampMillis / 1000.0)];
+    return [formatter stringFromDate:date];
 }
 
 static NSString *SlockDiagnosticsDirectoryPath(void) {
@@ -274,11 +673,202 @@ static NSString *SlockDiagnosticsActiveLogPath(void) {
     return [SlockDiagnosticsDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsLogFileName];
 }
 
-static NSString *SlockDiagnosticsClippedString(NSString *value, NSUInteger maxLength) {
-    if (value.length <= maxLength) {
-        return value ?: @"";
+static BOOL SlockDiagnosticsIsHighSurrogate(unichar character) {
+    return character >= 0xD800 && character <= 0xDBFF;
+}
+
+static BOOL SlockDiagnosticsIsLowSurrogate(unichar character) {
+    return character >= 0xDC00 && character <= 0xDFFF;
+}
+
+static NSString *SlockDiagnosticsStringByReplacingInvalidSurrogates(NSString *source) {
+    NSMutableString *result = [NSMutableString stringWithCapacity:source.length];
+    for (NSUInteger index = 0; index < source.length; index++) {
+        unichar character = [source characterAtIndex:index];
+        if (SlockDiagnosticsIsHighSurrogate(character)) {
+            if (index + 1 < source.length) {
+                unichar next = [source characterAtIndex:index + 1];
+                if (SlockDiagnosticsIsLowSurrogate(next)) {
+                    [result appendFormat:@"%C%C", character, next];
+                    index++;
+                    continue;
+                }
+            }
+            [result appendString:@"\uFFFD"];
+            continue;
+        }
+        if (SlockDiagnosticsIsLowSurrogate(character)) {
+            [result appendString:@"\uFFFD"];
+            continue;
+        }
+        [result appendFormat:@"%C", character];
     }
-    return [value substringToIndex:maxLength];
+    return result;
+}
+
+static NSUInteger SlockDiagnosticsSafePrefixEnd(NSString *source, NSUInteger maxLength) {
+    NSUInteger end = MIN(source.length, maxLength);
+    if (end < source.length && end > 0) {
+        unichar previous = [source characterAtIndex:end - 1];
+        unichar next = [source characterAtIndex:end];
+        if (SlockDiagnosticsIsHighSurrogate(previous) && SlockDiagnosticsIsLowSurrogate(next)) {
+            end--;
+        }
+        if (end > 0) {
+            @try {
+                NSRange composed = [source rangeOfComposedCharacterSequenceAtIndex:end - 1];
+                if (NSMaxRange(composed) > end) {
+                    end = composed.location;
+                }
+            } @catch (__unused NSException *exception) {
+                // Invalid UTF-16 is normalized below.
+            }
+        }
+    }
+    return end;
+}
+
+static NSUInteger SlockDiagnosticsRawPrefixEnd(NSString *source, NSUInteger maxLength) {
+    NSUInteger end = MIN(source.length, maxLength);
+    if (end < source.length && end > 0) {
+        unichar previous = [source characterAtIndex:end - 1];
+        unichar next = [source characterAtIndex:end];
+        if (SlockDiagnosticsIsHighSurrogate(previous) && SlockDiagnosticsIsLowSurrogate(next)) {
+            end--;
+        }
+    }
+    return end;
+}
+
+static NSString *SlockDiagnosticsValidClippedString(NSString *value, NSUInteger maxLength) {
+    NSString *source = [value isKindOfClass:NSString.class] ? value : @"";
+    NSUInteger end = SlockDiagnosticsSafePrefixEnd(source, maxLength);
+    NSString *clipped = end < source.length ? [source substringToIndex:end] : source;
+    return SlockDiagnosticsStringByReplacingInvalidSurrogates(clipped);
+}
+
+static NSString *SlockDiagnosticsClippedString(NSString *value, NSUInteger maxLength) {
+    return SlockDiagnosticsValidClippedString(value, maxLength);
+}
+
+static NSString *SlockDiagnosticsClippedCopy(NSString *value, NSUInteger maxLength) {
+    NSString *source = [value isKindOfClass:NSString.class] ? value : @"";
+    NSUInteger end = SlockDiagnosticsRawPrefixEnd(source, maxLength);
+    return [(end < source.length ? [source substringToIndex:end] : source) copy] ?: @"";
+}
+
+static BOOL SlockDiagnosticsContainsNonWhitespace(NSString *value) {
+    for (NSUInteger index = 0; index < value.length; index++) {
+        if (!SlockDiagnosticsIsWhitespace([value characterAtIndex:index])) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static NSString *SlockDiagnosticsValidSuffixString(NSString *value, NSUInteger maxLength) {
+    NSString *source = SlockDiagnosticsStringByReplacingInvalidSurrogates(
+        [value isKindOfClass:NSString.class] ? value : @""
+    );
+    if (source.length <= maxLength) {
+        return source;
+    }
+    NSUInteger start = source.length - maxLength;
+    if (start < source.length && start > 0 &&
+        SlockDiagnosticsIsLowSurrogate([source characterAtIndex:start]) &&
+        SlockDiagnosticsIsHighSurrogate([source characterAtIndex:start - 1])) {
+        start++;
+    }
+    if (start < source.length) {
+        @try {
+            NSRange composed = [source rangeOfComposedCharacterSequenceAtIndex:start];
+            if (composed.location < start) {
+                start = NSMaxRange(composed);
+            }
+        } @catch (__unused NSException *exception) {
+            // Invalid UTF-16 was normalized above; retain the surrogate-safe boundary.
+        }
+    }
+    return start < source.length ? [source substringFromIndex:start] : @"";
+}
+
+static NSString *SlockDiagnosticsBoundedUTF8String(const char *value, NSUInteger maxLength, NSString *fallback) {
+    if (!value || maxLength == 0) {
+        return fallback ?: @"";
+    }
+    size_t length = strnlen(value, maxLength);
+    if (length == 0) {
+        return fallback ?: @"";
+    }
+    NSString *result = [[NSString alloc] initWithBytes:value length:length encoding:NSUTF8StringEncoding];
+    return result.length > 0 ? result : (fallback ?: @"");
+}
+
+static int64_t SlockDiagnosticsNowMillis(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+        return (int64_t)(NSDate.date.timeIntervalSince1970 * 1000.0);
+    }
+    return ((int64_t)now.tv_sec * 1000LL) + ((int64_t)now.tv_nsec / 1000000LL);
+}
+
+static BOOL SlockDiagnosticsRawRecordIsCritical(NSString *level, NSString *tag, NSString *message, BOOL forceCritical) {
+    (void)tag;
+    (void)message;
+    NSString *normalizedLevel = [level stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (forceCritical ||
+        [normalizedLevel caseInsensitiveCompare:@"warn"] == NSOrderedSame ||
+        [normalizedLevel caseInsensitiveCompare:@"error"] == NSOrderedSame ||
+        [normalizedLevel caseInsensitiveCompare:@"fatal"] == NSOrderedSame) {
+        return YES;
+    }
+    return NO;
+}
+
+static SlockDiagnosticsCapture *SlockDiagnosticsCreateCapture(
+    NSString *level,
+    NSString *tag,
+    NSString *message,
+    int64_t timestampMillis,
+    BOOL emitConsole,
+    BOOL forceCritical
+) {
+    NSString *rawLevel = SlockDiagnosticsClippedCopy(level ?: @"info", SlockDiagnosticsRawLevelMaxChars);
+    NSString *rawTag = SlockDiagnosticsClippedCopy(tag ?: @"", SlockDiagnosticsRawTagMaxChars);
+    NSString *rawMessage = SlockDiagnosticsClippedCopy(message ?: @"", SlockDiagnosticsRawMessageMaxChars);
+    if (rawTag.length == 0 || rawMessage.length == 0 || !SlockDiagnosticsContainsNonWhitespace(rawMessage)) {
+        return nil;
+    }
+    char threadNameBuffer[128] = {0};
+    pthread_getname_np(pthread_self(), threadNameBuffer, sizeof(threadNameBuffer));
+    BOOL mainThread = pthread_main_np() != 0;
+    NSString *threadName = SlockDiagnosticsBoundedUTF8String(
+        threadNameBuffer,
+        SlockDiagnosticsThreadNameMaxChars,
+        mainThread ? @"main" : @"background"
+    );
+    const char *queueLabelValue = dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL);
+    NSString *queueLabel = SlockDiagnosticsBoundedUTF8String(
+        queueLabelValue,
+        SlockDiagnosticsQueueLabelMaxChars,
+        mainThread ? @"com.apple.main-thread" : @"unknown"
+    );
+    uint64_t threadId = 0;
+    pthread_threadid_np(NULL, &threadId);
+    SlockDiagnosticsCapture *capture = [[SlockDiagnosticsCapture alloc] init];
+    capture.rawLevel = rawLevel;
+    capture.rawTag = rawTag;
+    capture.rawMessage = rawMessage;
+    capture.threadName = threadName;
+    capture.queueLabel = queueLabel;
+    capture.monotonicTicks = mach_continuous_time();
+    capture.threadId = threadId;
+    capture.timestampMillis = timestampMillis > 0 ? timestampMillis : SlockDiagnosticsNowMillis();
+    capture.mainThread = mainThread;
+    capture.rawMessageTruncated = (message.length > SlockDiagnosticsRawMessageMaxChars);
+    capture.critical = SlockDiagnosticsRawRecordIsCritical(rawLevel, rawTag, rawMessage, forceCritical);
+    capture.emitConsole = emitConsole;
+    return capture;
 }
 
 static NSString *SlockDiagnosticsEventName(NSString *message) {
@@ -290,29 +880,39 @@ static NSString *SlockDiagnosticsEventName(NSString *message) {
     return SlockDiagnosticsClippedString(event, 96);
 }
 
-static NSString *SlockDiagnosticsJsonLine(NSDictionary *entry) {
-    NSData *data = [NSJSONSerialization dataWithJSONObject:entry options:0 error:nil];
+static NSString * _Nullable SlockDiagnosticsJsonLine(NSDictionary *entry) {
+    NSError *error = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:entry options:0 error:&error];
     if (!data) {
-        return @"{}";
+        return nil;
     }
-    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"{}";
+    return [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
 }
 
 static void SlockDiagnosticsRemember(NSDictionary *entry) {
-    NSMutableArray<NSDictionary *> *entries = SlockDiagnosticsMemoryEntries();
-    @synchronized (entries) {
-        while (entries.count >= SlockDiagnosticsMemoryEntryLimit) {
-            [entries removeObjectAtIndex:0];
-        }
-        [entries addObject:entry];
+    NSMutableArray *slots = SlockDiagnosticsMemorySlots();
+    NSUInteger index = 0;
+    if (SlockDiagnosticsMemoryCount < SlockDiagnosticsMemoryEntryLimit) {
+        index = (SlockDiagnosticsMemoryStart + SlockDiagnosticsMemoryCount) % SlockDiagnosticsMemoryEntryLimit;
+        SlockDiagnosticsMemoryCount++;
+    } else {
+        index = SlockDiagnosticsMemoryStart;
+        SlockDiagnosticsMemoryStart = (SlockDiagnosticsMemoryStart + 1) % SlockDiagnosticsMemoryEntryLimit;
     }
+    [slots replaceObjectAtIndex:index withObject:entry];
 }
 
 static NSArray<NSDictionary *> *SlockDiagnosticsSnapshotMemoryEntries(void) {
-    NSMutableArray<NSDictionary *> *entries = SlockDiagnosticsMemoryEntries();
-    @synchronized (entries) {
-        return [entries copy];
+    NSMutableArray *slots = SlockDiagnosticsMemorySlots();
+    NSMutableArray<NSDictionary *> *entries = [NSMutableArray arrayWithCapacity:SlockDiagnosticsMemoryCount];
+    for (NSUInteger offset = 0; offset < SlockDiagnosticsMemoryCount; offset++) {
+        NSUInteger index = (SlockDiagnosticsMemoryStart + offset) % SlockDiagnosticsMemoryEntryLimit;
+        id value = slots[index];
+        if ([value isKindOfClass:NSDictionary.class]) {
+            [entries addObject:value];
+        }
     }
+    return entries;
 }
 
 static NSArray<NSString *> *SlockDiagnosticsLogFiles(void) {
@@ -337,10 +937,14 @@ static NSArray<NSString *> *SlockDiagnosticsLogFiles(void) {
     return paths;
 }
 
-static void SlockDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
+static BOOL SlockDiagnosticsRemoveItemIfPresent(NSFileManager *fileManager, NSString *path) {
+    return ![fileManager fileExistsAtPath:path] || [fileManager removeItemAtPath:path error:nil];
+}
+
+static BOOL SlockDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
     NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:activePath error:nil];
     if ([attributes[NSFileSize] unsignedLongLongValue] < SlockDiagnosticsLogMaxBytes) {
-        return;
+        return YES;
     }
     NSString *dir = [activePath stringByDeletingLastPathComponent];
     NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -351,75 +955,314 @@ static void SlockDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
             continue;
         }
         if ((NSUInteger)index == SlockDiagnosticsLogMaxFiles - 1) {
-            [fileManager removeItemAtPath:source error:nil];
+            if (!SlockDiagnosticsRemoveItemIfPresent(fileManager, source)) {
+                return NO;
+            }
         } else {
-            [fileManager removeItemAtPath:target error:nil];
-            [fileManager moveItemAtPath:source toPath:target error:nil];
+            if (!SlockDiagnosticsRemoveItemIfPresent(fileManager, target)) {
+                return NO;
+            }
+            if (![fileManager moveItemAtPath:source toPath:target error:nil]) {
+                return NO;
+            }
         }
     }
     NSString *rotated = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.1", SlockDiagnosticsLogFileName]];
-    [fileManager removeItemAtPath:rotated error:nil];
-    [fileManager moveItemAtPath:activePath toPath:rotated error:nil];
+    if (!SlockDiagnosticsRemoveItemIfPresent(fileManager, rotated)) {
+        return NO;
+    }
+    return [fileManager moveItemAtPath:activePath toPath:rotated error:nil];
 }
 
-static void SlockDiagnosticsAppendEntry(NSDictionary *entry) {
-    dispatch_async(SlockDiagnosticsWriterQueue(), ^{
+static BOOL SlockDiagnosticsAppendEntry(NSDictionary *entry, BOOL synchronize) {
+    @try {
         NSString *dir = SlockDiagnosticsDirectoryPath();
         NSFileManager *fileManager = [NSFileManager defaultManager];
-        [fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        NSError *directoryError = nil;
+        if (![fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&directoryError]) {
+            return NO;
+        }
         NSString *activePath = SlockDiagnosticsActiveLogPath();
-        SlockDiagnosticsRotateLogsIfNeeded(activePath);
-        NSString *line = [SlockDiagnosticsJsonLine(entry) stringByAppendingString:@"\n"];
-        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
-        if (![fileManager fileExistsAtPath:activePath]) {
-            [data writeToFile:activePath atomically:YES];
-            return;
+        if (!SlockDiagnosticsRotateLogsIfNeeded(activePath)) {
+            atomic_fetch_add_explicit(&SlockDiagnosticsRotationFailedCount, 1, memory_order_relaxed);
+        }
+        NSString *jsonLine = SlockDiagnosticsJsonLine(entry);
+        if (!jsonLine) {
+            return NO;
+        }
+        NSString *line = [jsonLine stringByAppendingString:@"\n"];
+        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+        if (!data) {
+            return NO;
+        }
+        BOOL fileExisted = [fileManager fileExistsAtPath:activePath];
+        if (!fileExisted) {
+            NSError *writeError = nil;
+            if (![data writeToFile:activePath options:NSDataWritingAtomic error:&writeError]) {
+                return NO;
+            }
+            if (!synchronize) {
+                return YES;
+            }
         }
         NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:activePath];
+        if (!handle) {
+            return NO;
+        }
         [handle seekToEndOfFile];
-        [handle writeData:data];
+        if (fileExisted) {
+            [handle writeData:data];
+        }
+        if (synchronize) {
+            [handle synchronizeFile];
+        }
         [handle closeFile];
-    });
+        return YES;
+    } @catch (__unused NSException *exception) {
+        return NO;
+    }
 }
 
-static void SlockDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
-    NSString *safeTag = SlockDiagnosticsClippedString(SlockBridgeSanitizedLogString(tag ?: @""), 48);
-    NSString *safeMessage = SlockBridgeSanitizedLogString(message ?: @"");
+static NSString *SlockDiagnosticsProcessSessionIdentifier(void) {
+    static NSString *identifier;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        identifier = NSUUID.UUID.UUIDString.lowercaseString;
+    });
+    return identifier;
+}
+
+static void SlockDiagnosticsProcessCapture(SlockDiagnosticsCapture *capture) {
+    NSString *normalizedTag = [SlockBridgeSanitizedLogString(
+        SlockDiagnosticsStringByReplacingInvalidSurrogates(capture.rawTag)
+    ) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeTag = SlockDiagnosticsClippedString(
+        normalizedTag.length > 0 ? normalizedTag : SlockBridgeDefaultLogTag,
+        48
+    );
+    NSString *safeMessage = [SlockBridgeSanitizedLogString(
+        SlockDiagnosticsStringByReplacingInvalidSurrogates(capture.rawMessage)
+    ) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (safeTag.length == 0 || safeMessage.length == 0) {
         return;
     }
-    NSString *normalizedLevel = [[level ?: @"info" lowercaseString] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *normalizedLevel = [[capture.rawLevel lowercaseString]
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([normalizedLevel isEqualToString:@"fatal"]) {
+        normalizedLevel = @"error";
+    }
     if (![@[@"debug", @"info", @"warn", @"error"] containsObject:normalizedLevel]) {
         normalizedLevel = @"info";
     }
-    BOOL truncated = safeMessage.length > SlockDiagnosticsMessageMaxChars;
+    BOOL truncated = capture.rawMessageTruncated || safeMessage.length > SlockDiagnosticsMessageMaxChars;
+    NSString *finalMessage = SlockDiagnosticsClippedString(safeMessage, SlockDiagnosticsMessageMaxChars);
+    NSString *safeThread = SlockDiagnosticsClippedString(
+        SlockBridgeSanitizedLogString(capture.threadName),
+        SlockDiagnosticsThreadNameMaxChars
+    );
+    NSString *safeQueue = SlockDiagnosticsClippedString(
+        SlockBridgeSanitizedLogString(capture.queueLabel),
+        SlockDiagnosticsQueueLabelMaxChars
+    );
+    uint64_t droppedOrdinary = atomic_load_explicit(&SlockDiagnosticsDroppedOrdinaryCount, memory_order_relaxed);
+    uint64_t droppedCritical = atomic_load_explicit(&SlockDiagnosticsDroppedCriticalCount, memory_order_relaxed);
     NSDictionary *entry = @{
-        @"ts" : SlockDiagnosticsTimestamp(),
+        @"ts" : SlockDiagnosticsTimestampForMillis(capture.timestampMillis),
+        @"timestampMillis" : @(capture.timestampMillis),
         @"level" : normalizedLevel,
         @"tag" : safeTag,
-        @"event" : SlockDiagnosticsEventName(safeMessage),
-        @"message" : SlockDiagnosticsClippedString(safeMessage, SlockDiagnosticsMessageMaxChars),
-        @"thread" : NSThread.currentThread.name.length > 0 ? NSThread.currentThread.name : ([NSThread isMainThread] ? @"main" : @"background"),
-        @"seq" : @((long long)(NSDate.date.timeIntervalSince1970 * 1000000.0)),
-        @"dropped" : @0,
-        @"truncated" : @(truncated)
+        @"event" : SlockDiagnosticsEventName(finalMessage),
+        @"message" : finalMessage,
+        @"thread" : safeThread,
+        @"threadId" : @(capture.threadId),
+        @"queue" : safeQueue,
+        @"mainThread" : @(capture.mainThread),
+        @"processId" : @(NSProcessInfo.processInfo.processIdentifier),
+        @"processSession" : SlockDiagnosticsProcessSessionIdentifier(),
+        @"seq" : @(capture.sequence),
+        @"monotonicTicks" : @(capture.monotonicTicks),
+        @"dropped" : @(droppedOrdinary + droppedCritical),
+        @"droppedOrdinary" : @(droppedOrdinary),
+        @"droppedCritical" : @(droppedCritical),
+        @"truncated" : @(truncated),
+        @"critical" : @(capture.critical)
     };
     SlockDiagnosticsRemember(entry);
-    SlockDiagnosticsAppendEntry(entry);
+    if (capture.emitConsole) {
+        NSLog(@"[%@][%@] %@", safeTag, normalizedLevel, finalMessage);
+    }
+    if (SlockDiagnosticsAppendEntry(entry, capture.critical)) {
+        atomic_fetch_add_explicit(&SlockDiagnosticsWrittenCount, 1, memory_order_relaxed);
+        if (capture.critical) {
+            atomic_fetch_add_explicit(&SlockDiagnosticsCriticalSynchronizedCount, 1, memory_order_relaxed);
+        }
+    } else {
+        atomic_fetch_add_explicit(&SlockDiagnosticsWriteFailedCount, 1, memory_order_relaxed);
+    }
+}
+
+static uint64_t SlockDiagnosticsRecordWithContext(
+    NSString *level,
+    NSString *tag,
+    NSString *message,
+    int64_t timestampMillis,
+    BOOL emitConsole,
+    BOOL forceCritical
+) {
+    atomic_fetch_add_explicit(&SlockDiagnosticsAttemptedCount, 1, memory_order_relaxed);
+    SlockDiagnosticsCapture *capture = SlockDiagnosticsCreateCapture(
+        level,
+        tag,
+        message,
+        timestampMillis,
+        emitConsole,
+        forceCritical
+    );
+    if (!capture) {
+        atomic_fetch_add_explicit(&SlockDiagnosticsRejectedInvalidCount, 1, memory_order_relaxed);
+        return 0;
+    }
+    if (!os_unfair_lock_trylock(&SlockDiagnosticsAdmissionLock)) {
+        atomic_fetch_add_explicit(&SlockDiagnosticsDroppedContentionCount, 1, memory_order_relaxed);
+        atomic_fetch_add_explicit(
+            capture.critical ? &SlockDiagnosticsDroppedCriticalCount : &SlockDiagnosticsDroppedOrdinaryCount,
+            1,
+            memory_order_relaxed
+        );
+        return 0;
+    }
+    NSUInteger limit = capture.critical
+        ? SlockDiagnosticsOutstandingLimit
+        : SlockDiagnosticsOrdinaryOutstandingLimit;
+    if (SlockDiagnosticsOutstandingCount >= limit) {
+        atomic_fetch_add_explicit(
+            capture.critical ? &SlockDiagnosticsDroppedCriticalCount : &SlockDiagnosticsDroppedOrdinaryCount,
+            1,
+            memory_order_relaxed
+        );
+        os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+        return 0;
+    }
+    capture.sequence = ++SlockDiagnosticsNextSequence;
+    SlockDiagnosticsOutstandingCount++;
+    uint64_t maxOutstanding = atomic_load_explicit(&SlockDiagnosticsMaxOutstandingCount, memory_order_relaxed);
+    if (SlockDiagnosticsOutstandingCount > maxOutstanding) {
+        atomic_store_explicit(
+            &SlockDiagnosticsMaxOutstandingCount,
+            SlockDiagnosticsOutstandingCount,
+            memory_order_relaxed
+        );
+    }
+    atomic_fetch_add_explicit(&SlockDiagnosticsAcceptedCount, 1, memory_order_relaxed);
+    if (capture.critical) {
+        atomic_fetch_add_explicit(&SlockDiagnosticsAcceptedCriticalCount, 1, memory_order_relaxed);
+    }
+    dispatch_async(SlockDiagnosticsOwnerQueue(), ^{
+        @autoreleasepool {
+            @try {
+                SlockDiagnosticsProcessCapture(capture);
+            } @finally {
+                atomic_fetch_add_explicit(&SlockDiagnosticsProcessedCount, 1, memory_order_relaxed);
+                os_unfair_lock_lock(&SlockDiagnosticsAdmissionLock);
+                if (SlockDiagnosticsOutstandingCount > 0) {
+                    SlockDiagnosticsOutstandingCount--;
+                }
+                os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+            }
+        }
+    });
+    uint64_t sequence = capture.sequence;
+    os_unfair_lock_unlock(&SlockDiagnosticsAdmissionLock);
+    return sequence;
+}
+
+static void SlockDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
+    SlockDiagnosticsRecordWithContext(level, tag, message, 0, NO, NO);
 }
 
 void SlockIosDiagnosticsRecord(NSString *level, NSString *tag, NSString *message) {
-    SlockDiagnosticsRecord(level, tag, message);
+    SlockDiagnosticsRecordWithContext(level, tag, message, 0, NO, NO);
+}
+
+void SlockIosDiagnosticsRecordWithContext(
+    NSString *level,
+    NSString *tag,
+    NSString *message,
+    int64_t timestampMillis,
+    BOOL emitConsole,
+    BOOL forceCritical
+) {
+    SlockDiagnosticsRecordWithContext(level, tag, message, timestampMillis, emitConsole, forceCritical);
+}
+
+void SlockIosDiagnosticsRecordCriticalSynchronously(NSString *tag, NSString *message) {
+    NSString *boundedTag = SlockDiagnosticsClippedCopy(
+        tag ?: SlockBridgeDefaultLogTag,
+        SlockDiagnosticsRawTagMaxChars
+    );
+    NSString *boundedMessage = SlockDiagnosticsClippedCopy(
+        message ?: @"",
+        SlockDiagnosticsRawMessageMaxChars
+    );
+    NSString *safeTag = SlockDiagnosticsClippedString(
+        [SlockBridgeSanitizedLogString(
+            SlockDiagnosticsStringByReplacingInvalidSurrogates(boundedTag)
+        )
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet],
+        48
+    );
+    NSString *safeMessage = SlockDiagnosticsClippedString(
+        [SlockBridgeSanitizedLogString(SlockDiagnosticsStringByReplacingInvalidSurrogates(boundedMessage))
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet],
+        SlockDiagnosticsMessageMaxChars
+    );
+    if (safeMessage.length == 0) {
+        return;
+    }
+    if (safeTag.length == 0) {
+        safeTag = SlockBridgeDefaultLogTag;
+    }
+    NSLog(@"[%@][error] %@", safeTag, safeMessage);
+    SlockDiagnosticsRecordWithContext(@"error", safeTag, safeMessage, 0, NO, YES);
+}
+
+void SlockIosDiagnosticsRecordUnhandledException(
+    NSString *pageName,
+    NSInteger mode,
+    NSString *reason,
+    NSString *stack
+) {
+    NSString *boundedPage = SlockDiagnosticsClippedCopy(
+        pageName ?: @"unknown",
+        SlockDiagnosticsExceptionPageMaxChars
+    );
+    NSString *boundedReason = SlockDiagnosticsClippedCopy(
+        reason ?: @"KuiklyUnhandledException",
+        SlockDiagnosticsExceptionReasonMaxChars
+    );
+    NSString *boundedStack = SlockDiagnosticsClippedCopy(
+        stack ?: @"",
+        SlockDiagnosticsExceptionStackMaxChars
+    );
+    NSString *message = [NSString stringWithFormat:@"kuikly_unhandled_exception page=%@ mode=%ld reason=%@ stack=%@",
+        boundedPage,
+        (long)mode,
+        boundedReason,
+        boundedStack];
+    SlockIosDiagnosticsRecordCriticalSynchronously(@"SlockKuikly", message);
 }
 
 static NSString *SlockDiagnosticsExportRecentJsonl(NSUInteger maxChars) {
     NSMutableArray<NSString *> *lines = [NSMutableArray array];
     for (NSDictionary *entry in SlockDiagnosticsSnapshotMemoryEntries()) {
-        [lines addObject:SlockDiagnosticsJsonLine(entry)];
+        NSString *line = SlockDiagnosticsJsonLine(entry);
+        if (line) {
+            [lines addObject:line];
+        }
     }
     NSString *text = [lines componentsJoinedByString:@"\n"];
     if (text.length > maxChars) {
-        return [text substringFromIndex:text.length - maxChars];
+        return SlockDiagnosticsValidSuffixString(text, maxChars);
     }
     return text;
 }
@@ -429,44 +1272,63 @@ static NSString *SlockDiagnosticsReadTail(NSString *path, NSUInteger maxChars) {
     NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
     text = SlockBridgeSanitizedLogString(text);
     if (text.length > maxChars) {
-        return [text substringFromIndex:text.length - maxChars];
+        return SlockDiagnosticsValidSuffixString(text, maxChars);
     }
     return text;
 }
 
 static NSString *SlockDiagnosticsExportRecentText(NSUInteger maxChars) {
-    SlockDiagnosticsFlushWriterQueue();
-    NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
-    NSMutableString *text = [NSMutableString string];
-    [text appendString:@"App-owned recent diagnostics\n"];
-    [text appendFormat:@"Files: %lu\n", (unsigned long)files.count];
-    NSString *memoryJsonl = SlockDiagnosticsExportRecentJsonl(maxChars / 2);
-    if (memoryJsonl.length > 0) {
-        [text appendString:@"\n### recent-memory.jsonl\n"];
-        [text appendString:memoryJsonl];
-        [text appendString:@"\n"];
-    }
-    NSUInteger fileBudget = MAX((NSInteger)maxChars - (NSInteger)text.length, 1000);
-    NSUInteger fileCount = MIN(files.count, 6);
-    for (NSUInteger index = 0; index < fileCount; index++) {
-        NSString *path = files[index];
-        NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
-        [text appendFormat:@"\n### %@ (%llu bytes)\n", path.lastPathComponent, [attributes[NSFileSize] unsignedLongLongValue]];
-        [text appendString:SlockDiagnosticsReadTail(path, MAX(fileBudget / MAX(fileCount, 1), 1000))];
-    }
-    if (text.length > maxChars) {
-        return [text substringFromIndex:text.length - maxChars];
-    }
-    return text;
+    NSString *result = SlockDiagnosticsPerformOwnerOperation(^id{
+        NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
+        NSMutableString *text = [NSMutableString string];
+        [text appendString:@"App-owned recent diagnostics\n"];
+        [text appendFormat:@"Files: %lu\n", (unsigned long)files.count];
+        [text appendFormat:
+            @"Queue: attempted=%llu accepted=%llu acceptedCritical=%llu rejectedInvalid=%llu processed=%llu written=%llu criticalSynchronized=%llu writeFailed=%llu rotationFailed=%llu droppedOrdinary=%llu droppedCritical=%llu droppedContention=%llu maxDepth=%lu\n",
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsAttemptedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsAcceptedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsAcceptedCriticalCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsRejectedInvalidCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsProcessedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsWrittenCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsCriticalSynchronizedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsWriteFailedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsRotationFailedCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsDroppedOrdinaryCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsDroppedCriticalCount, memory_order_relaxed),
+            (unsigned long long)atomic_load_explicit(&SlockDiagnosticsDroppedContentionCount, memory_order_relaxed),
+            (unsigned long)atomic_load_explicit(&SlockDiagnosticsMaxOutstandingCount, memory_order_relaxed)
+        ];
+        NSString *memoryJsonl = SlockDiagnosticsExportRecentJsonl(maxChars / 2);
+        if (memoryJsonl.length > 0) {
+            [text appendString:@"\n### recent-memory.jsonl\n"];
+            [text appendString:memoryJsonl];
+            [text appendString:@"\n"];
+        }
+        NSUInteger fileBudget = MAX((NSInteger)maxChars - (NSInteger)text.length, 1000);
+        NSUInteger fileCount = MIN(files.count, 6);
+        for (NSUInteger index = 0; index < fileCount; index++) {
+            NSString *path = files[index];
+            NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+            [text appendFormat:@"\n### %@ (%llu bytes)\n", path.lastPathComponent, [attributes[NSFileSize] unsignedLongLongValue]];
+            [text appendString:SlockDiagnosticsReadTail(path, MAX(fileBudget / MAX(fileCount, 1), 1000))];
+        }
+        if (text.length > maxChars) {
+            return SlockDiagnosticsValidSuffixString(text, maxChars);
+        }
+        return text;
+    });
+    return result ?: @"";
 }
 
 static void SlockDiagnosticsClear(void) {
-    NSMutableArray<NSDictionary *> *entries = SlockDiagnosticsMemoryEntries();
-    @synchronized (entries) {
-        [entries removeAllObjects];
-    }
-    SlockDiagnosticsFlushWriterQueue();
-    dispatch_sync(SlockDiagnosticsWriterQueue(), ^{
+    SlockDiagnosticsPerformOwnerOperation(^id{
+        NSMutableArray *slots = SlockDiagnosticsMemorySlots();
+        for (NSUInteger index = 0; index < SlockDiagnosticsMemoryEntryLimit; index++) {
+            [slots replaceObjectAtIndex:index withObject:NSNull.null];
+        }
+        SlockDiagnosticsMemoryStart = 0;
+        SlockDiagnosticsMemoryCount = 0;
         NSString *dir = SlockDiagnosticsDirectoryPath();
         NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
         for (NSString *name in names) {
@@ -474,6 +1336,7 @@ static void SlockDiagnosticsClear(void) {
                 [[NSFileManager defaultManager] removeItemAtPath:[dir stringByAppendingPathComponent:name] error:nil];
             }
         }
+        return NSNull.null;
     });
 }
 
@@ -529,12 +1392,93 @@ static NSString *SlockDiagnosticsFeedbackDirectoryPath(void) {
     return [SlockDiagnosticsDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsFeedbackDirName];
 }
 
+static id SlockDiagnosticsSanitizedJsonValue(id value) {
+    if ([value isKindOfClass:NSString.class]) {
+        return SlockBridgeSanitizedLogString((NSString *)value);
+    }
+    if ([value isKindOfClass:NSArray.class]) {
+        NSMutableArray *sanitized = [NSMutableArray arrayWithCapacity:[(NSArray *)value count]];
+        for (id item in (NSArray *)value) {
+            [sanitized addObject:SlockDiagnosticsSanitizedJsonValue(item) ?: NSNull.null];
+        }
+        return sanitized;
+    }
+    if ([value isKindOfClass:NSDictionary.class]) {
+        NSMutableDictionary *sanitized = [NSMutableDictionary dictionaryWithCapacity:[(NSDictionary *)value count]];
+        [(NSDictionary *)value enumerateKeysAndObjectsUsingBlock:^(id key, id item, BOOL *stop) {
+            (void)stop;
+            NSString *stringKey = [key isKindOfClass:NSString.class] ? key : [key description];
+            if (SlockDiagnosticsIsCredentialKey(stringKey)) {
+                sanitized[stringKey] = @"<redacted>";
+            } else {
+                sanitized[stringKey] = SlockDiagnosticsSanitizedJsonValue(item) ?: NSNull.null;
+            }
+        }];
+        return sanitized;
+    }
+    return value ?: NSNull.null;
+}
+
+static BOOL SlockDiagnosticsWriteSanitizedSnapshotLog(NSString *sourcePath, NSString *destinationPath) {
+    NSData *sourceData = [NSData dataWithContentsOfFile:sourcePath];
+    if (!sourceData) {
+        return NO;
+    }
+    NSString *sourceText = [[NSString alloc] initWithData:sourceData encoding:NSUTF8StringEncoding];
+    if (!sourceText) {
+        return NO;
+    }
+    NSMutableArray<NSString *> *sanitizedLines = [NSMutableArray array];
+    __block NSUInteger omittedLineCount = 0;
+    [sourceText enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
+        (void)stop;
+        NSData *lineData = [line dataUsingEncoding:NSUTF8StringEncoding];
+        id object = lineData ? [NSJSONSerialization JSONObjectWithData:lineData options:0 error:nil] : nil;
+        id sanitizedObject = SlockDiagnosticsSanitizedJsonValue(object);
+        if (!sanitizedObject || ![NSJSONSerialization isValidJSONObject:sanitizedObject]) {
+            omittedLineCount++;
+            return;
+        }
+        NSData *sanitizedLineData = [NSJSONSerialization dataWithJSONObject:sanitizedObject options:0 error:nil];
+        NSString *sanitizedLine = sanitizedLineData
+            ? [[NSString alloc] initWithData:sanitizedLineData encoding:NSUTF8StringEncoding]
+            : nil;
+        if (sanitizedLine) {
+            [sanitizedLines addObject:sanitizedLine];
+        } else {
+            omittedLineCount++;
+        }
+    }];
+    if (omittedLineCount > 0) {
+        NSString *omissionLine = SlockDiagnosticsJsonLine(@{
+            @"event" : @"snapshot_invalid_jsonl_omitted",
+            @"count" : @(omittedLineCount)
+        });
+        if (omissionLine) {
+            [sanitizedLines addObject:omissionLine];
+        }
+    }
+    NSString *sanitizedText = sanitizedLines.count > 0
+        ? [[sanitizedLines componentsJoinedByString:@"\n"] stringByAppendingString:@"\n"]
+        : @"";
+    NSData *sanitizedData = [sanitizedText dataUsingEncoding:NSUTF8StringEncoding];
+    if (!sanitizedData) {
+        return NO;
+    }
+    return [sanitizedData writeToFile:destinationPath atomically:YES];
+}
+
 static void SlockDiagnosticsPruneFeedbackFiles(NSString *dir) {
     NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
     NSMutableArray<NSString *> *paths = [NSMutableArray array];
     for (NSString *name in names) {
-        if ([name hasPrefix:SlockDiagnosticsFeedbackFilePrefix]) {
-            [paths addObject:[dir stringByAppendingPathComponent:name]];
+        if (![name hasPrefix:SlockDiagnosticsFeedbackFilePrefix]) {
+            continue;
+        }
+        NSString *path = [dir stringByAppendingPathComponent:name];
+        BOOL isDirectory = NO;
+        if ([[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDirectory] && isDirectory) {
+            [paths addObject:path];
         }
     }
     [paths sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
@@ -542,69 +1486,105 @@ static void SlockDiagnosticsPruneFeedbackFiles(NSString *dir) {
         NSDate *rightDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:right error:nil] fileModificationDate] ?: NSDate.distantPast;
         return [rightDate compare:leftDate];
     }];
-    if (paths.count <= SlockDiagnosticsFeedbackFileKeepCount) {
-        return;
-    }
-    for (NSUInteger index = SlockDiagnosticsFeedbackFileKeepCount; index < paths.count; index++) {
-        [[NSFileManager defaultManager] removeItemAtPath:paths[index] error:nil];
+    NSDate *now = NSDate.date;
+    for (NSUInteger index = SlockDiagnosticsMinimumRetainedSnapshotCount; index < paths.count; index++) {
+        NSString *path = paths[index];
+        NSDate *modifiedAt = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil] fileModificationDate]
+            ?: NSDate.distantPast;
+        if ([now timeIntervalSinceDate:modifiedAt] >= SlockDiagnosticsFeedbackPruneMinimumAgeSeconds) {
+            [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        }
     }
 }
 
 static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about, NSString *reason, BOOL includeBodyBase64) {
-    SlockDiagnosticsFlushWriterQueue();
-    NSString *summaryText = SlockDiagnosticsBuildExportText(about ?: @{});
-    NSString *safeReason = SlockBridgeSanitizedLogString(reason ?: @"diagnostics").lowercaseString;
-    NSData *summaryData = [summaryText dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
-    NSString *dir = SlockDiagnosticsFeedbackDirectoryPath();
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    [fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    SlockDiagnosticsPruneFeedbackFiles(dir);
-    long long timestampMs = (long long)(NSDate.date.timeIntervalSince1970 * 1000.0);
-    NSString *snapshotDir =
-        [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@%lld", SlockDiagnosticsFeedbackFilePrefix, timestampMs]];
-    [fileManager createDirectoryAtPath:snapshotDir withIntermediateDirectories:YES attributes:nil error:nil];
-    NSString *fileName = SlockDiagnosticsSummaryFileName;
-    NSString *path = [snapshotDir stringByAppendingPathComponent:fileName];
-    if (![summaryData writeToFile:path atomically:YES]) {
-        return @{
-            @"status" : @"error",
-            @"code" : @"diagnostics_summary_write_failed",
-            @"message" : @"Unable to write diagnostics summary."
-        };
-    }
-    NSMutableArray<NSString *> *attachmentPaths = [NSMutableArray arrayWithObject:path];
-    NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
-    NSUInteger fileCount = MIN(files.count, SlockDiagnosticsAttachmentMaxLogFiles);
-    for (NSUInteger index = 0; index < fileCount; index++) {
-        NSString *logPath = files[index];
-        if ([[NSFileManager defaultManager] isReadableFileAtPath:logPath]) {
-            [attachmentPaths addObject:logPath];
+    NSDictionary *result = SlockDiagnosticsPerformOwnerOperation(^id{
+        NSString *summaryText = SlockDiagnosticsStringByReplacingInvalidSurrogates(
+            SlockBridgeSanitizedLogString(SlockDiagnosticsBuildExportText(about ?: @{}))
+        );
+        NSString *safeReason = SlockBridgeSanitizedLogString(reason ?: @"diagnostics").lowercaseString;
+        NSData *summaryData = [summaryText dataUsingEncoding:NSUTF8StringEncoding];
+        if (!summaryData) {
+            return @{
+                @"status" : @"error",
+                @"code" : @"diagnostics_summary_encoding_failed",
+                @"message" : @"Unable to encode diagnostics summary."
+            };
         }
+        NSString *dir = SlockDiagnosticsFeedbackDirectoryPath();
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        [fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        long long timestampMs = SlockDiagnosticsNowMillis();
+        NSString *snapshotIdentifier = NSUUID.UUID.UUIDString.lowercaseString;
+        NSString *snapshotDir =
+            [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@%lld-%@",
+                SlockDiagnosticsFeedbackFilePrefix,
+                timestampMs,
+                snapshotIdentifier]];
+        if (![fileManager createDirectoryAtPath:snapshotDir
+                     withIntermediateDirectories:YES
+                                      attributes:nil
+                                           error:nil]) {
+            return @{
+                @"status" : @"error",
+                @"code" : @"diagnostics_snapshot_directory_failed",
+                @"message" : @"Unable to create diagnostics snapshot directory."
+            };
+        }
+        NSString *fileName = SlockDiagnosticsSummaryFileName;
+        NSString *path = [snapshotDir stringByAppendingPathComponent:fileName];
+        if (![summaryData writeToFile:path atomically:YES]) {
+            [fileManager removeItemAtPath:snapshotDir error:nil];
+            return @{
+                @"status" : @"error",
+                @"code" : @"diagnostics_summary_write_failed",
+                @"message" : @"Unable to write diagnostics summary."
+            };
+        }
+        NSMutableArray<NSString *> *attachmentPaths = [NSMutableArray arrayWithObject:path];
+        NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
+        NSUInteger fileCount = MIN(files.count, SlockDiagnosticsAttachmentMaxLogFiles);
+        for (NSUInteger index = 0; index < fileCount; index++) {
+            NSString *logPath = files[index];
+            if (![fileManager isReadableFileAtPath:logPath]) {
+                continue;
+            }
+            NSString *snapshotLogPath = [snapshotDir stringByAppendingPathComponent:logPath.lastPathComponent];
+            if (SlockDiagnosticsWriteSanitizedSnapshotLog(logPath, snapshotLogPath)) {
+                [attachmentPaths addObject:snapshotLogPath];
+            }
+        }
+        SlockDiagnosticsPruneFeedbackFiles(dir);
+        NSMutableDictionary *prepared = [@{
+            @"status" : @"ok",
+            @"reason" : safeReason.length > 0 ? safeReason : @"diagnostics",
+            @"fileName" : fileName,
+            @"mimeType" : @"text/plain",
+            @"sizeBytes" : @(summaryData.length),
+            @"filePath" : path,
+            @"attachmentPaths" : [attachmentPaths copy],
+            @"logFileCount" : @(attachmentPaths.count > 0 ? attachmentPaths.count - 1 : 0)
+        } mutableCopy];
+        if (includeBodyBase64) {
+            prepared[@"bodyBase64"] = [summaryData base64EncodedStringWithOptions:0];
+        }
+        return prepared;
+    });
+    if ([result[@"status"] isEqualToString:@"ok"]) {
+        NSArray *paths = [result[@"attachmentPaths"] isKindOfClass:NSArray.class] ? result[@"attachmentPaths"] : @[];
+        SlockDiagnosticsRecord(
+            @"info",
+            @"SlockDiagnostics",
+            [NSString stringWithFormat:@"diagnostics_attachments_prepared reason=%@ summary=%@ bytes=%@ paths=%lu",
+                result[@"reason"] ?: @"diagnostics",
+                result[@"fileName"] ?: SlockDiagnosticsSummaryFileName,
+                result[@"sizeBytes"] ?: @0,
+                (unsigned long)paths.count]
+        );
     }
-    NSMutableDictionary *result = [@{
-        @"status" : @"ok",
-        @"reason" : safeReason.length > 0 ? safeReason : @"diagnostics",
-        @"fileName" : fileName,
-        @"mimeType" : @"text/plain",
-        @"sizeBytes" : @(summaryData.length),
-        @"filePath" : path,
-        @"attachmentPaths" : [attachmentPaths copy],
-        @"logFileCount" : @(attachmentPaths.count > 0 ? attachmentPaths.count - 1 : 0)
-    } mutableCopy];
-    if (includeBodyBase64) {
-        result[@"bodyBase64"] = [summaryData base64EncodedStringWithOptions:0];
-    }
-    SlockDiagnosticsRecord(
-        @"info",
-        @"SlockDiagnostics",
-        [NSString stringWithFormat:@"diagnostics_attachments_prepared reason=%@ summary=%@ bytes=%lu paths=%lu",
-            result[@"reason"],
-            fileName,
-            (unsigned long)summaryData.length,
-            (unsigned long)attachmentPaths.count]
-    );
     return result;
 }
+
 
 static NSDictionary *SlockDiagnosticsCrashAbout(long long crashAtMillis) {
     NSMutableDictionary *about = [SlockDiagnosticsCurrentEnvironmentAbout() mutableCopy];
@@ -727,23 +1707,19 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 
 - (void)log:(NSDictionary *)args {
     NSDictionary *params = SlockBridgeParams(args);
-    NSString *content = SlockBridgeSanitizedLogString(SlockBridgeString(params[@"content"]));
+    NSString *content = SlockBridgeRawString(params[@"content"]);
     if (content.length == 0) {
         return;
     }
-    NSString *level = [[SlockBridgeString(params[@"level"]) lowercaseString] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (![@[@"debug", @"info", @"warn", @"error", @"fatal"] containsObject:level]) {
+    NSString *level = SlockBridgeRawString(params[@"level"]);
+    if (level.length == 0) {
         level = @"info";
     }
-    if ([level isEqualToString:@"fatal"]) {
-        level = @"error";
-    }
-    NSString *tag = SlockBridgeString(params[@"tag"]);
+    NSString *tag = SlockBridgeRawString(params[@"tag"]);
     if (tag.length == 0) {
         tag = SlockBridgeDefaultLogTag;
     }
-    NSLog(@"[%@][%@] %@", tag, level, content);
-    SlockDiagnosticsRecord(level, tag, content);
+    SlockDiagnosticsRecordWithContext(level, tag, content, 0, YES, NO);
 }
 
 - (void)openPage:(NSDictionary *)args {

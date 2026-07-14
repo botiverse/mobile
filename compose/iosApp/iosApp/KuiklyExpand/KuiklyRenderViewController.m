@@ -193,13 +193,12 @@ static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
 - (void)onUnhandledException:(NSString *)exReason stack:(NSString *)callstackStr mode:(KuiklyContextMode)mode {
     NSString *reason = exReason.length > 0 ? exReason : @"KuiklyUnhandledException";
     NSString *stack = callstackStr ?: @"";
-    NSString *message = [NSString stringWithFormat:@"kuikly_unhandled_exception page=%@ mode=%ld reason=%@ stack=%@",
-                         _pageName.length > 0 ? _pageName : @"unknown",
-                         (long)mode,
-                         reason,
-                         stack];
-    NSLog(@"[SlockKuikly][error] %@", message);
-    SlockIosDiagnosticsRecord(@"error", @"SlockKuikly", message);
+    SlockIosDiagnosticsRecordUnhandledException(
+        _pageName.length > 0 ? _pageName : @"unknown",
+        (NSInteger)mode,
+        reason,
+        stack
+    );
 }
 
 - (void)dealloc {

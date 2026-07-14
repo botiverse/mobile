@@ -6,7 +6,8 @@ internal class SlockNetworkAuthMiddleware(
     private val sessionStore: SlockAuthSessionStore,
     authApi: SlockAuthApi,
     logger: (String) -> Unit = {},
-    warningLogger: (String) -> Unit = {}
+    warningLogger: (String) -> Unit = {},
+    criticalLogger: (String) -> Unit = warningLogger
 ) {
     private val refreshCoordinator =
         SharedAuthRefreshCoordinator(
@@ -14,7 +15,8 @@ internal class SlockNetworkAuthMiddleware(
             authApi = authApi,
             clockMillis = { defaultNowMillis() },
             logger = logger,
-            warningLogger = warningLogger
+            warningLogger = warningLogger,
+            criticalLogger = criticalLogger
         )
 
     suspend fun request(

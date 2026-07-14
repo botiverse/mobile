@@ -26,16 +26,18 @@ internal actual fun slockPlatformLog(
     level: SlockLogLevel,
     tag: String,
     message: String,
-    timestampMillis: Long
+    timestampMillis: Long,
+    hint: SlockPlatformLogHint
 ) {
-    SlockOhosAsyncPlatformLogSink.enqueue(level, tag, message, timestampMillis)
+    SlockOhosAsyncPlatformLogSink.enqueue(level, tag, message, timestampMillis, hint)
 }
 
 private data class SlockOhosPendingLog(
     val level: SlockLogLevel,
     val tag: String,
     val message: String,
-    val timestampMillis: Long
+    val timestampMillis: Long,
+    val hint: SlockPlatformLogHint
 )
 
 private object SlockOhosAsyncPlatformLogSink {
@@ -64,7 +66,8 @@ private object SlockOhosAsyncPlatformLogSink {
                             level = SlockLogLevel.Warn,
                             tag = QueueTag,
                             message = "slock_ohos_log_queue_dropped count=$dropped capacity=$QueueCapacity",
-                            timestampMillis = batch.last().timestampMillis
+                            timestampMillis = batch.last().timestampMillis,
+                            hint = SlockPlatformLogHint.AuthCritical
                         )
                 }
                 recordBatch(batch)
@@ -72,8 +75,14 @@ private object SlockOhosAsyncPlatformLogSink {
         }
     }
 
-    fun enqueue(level: SlockLogLevel, tag: String, message: String, timestampMillis: Long) {
-        val result = queue.trySend(SlockOhosPendingLog(level, tag, message, timestampMillis))
+    fun enqueue(
+        level: SlockLogLevel,
+        tag: String,
+        message: String,
+        timestampMillis: Long,
+        hint: SlockPlatformLogHint
+    ) {
+        val result = queue.trySend(SlockOhosPendingLog(level, tag, message, timestampMillis, hint))
         if (result.isSuccess) return
 
         droppedCount.incrementAndGet()
@@ -89,6 +98,7 @@ private object SlockOhosAsyncPlatformLogSink {
                             put("tag", entry.tag)
                             put("message", entry.message)
                             put("timestampMillis", entry.timestampMillis)
+                            put("critical", entry.hint == SlockPlatformLogHint.AuthCritical)
                         }
                     )
                 }
