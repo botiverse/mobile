@@ -41,6 +41,21 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
+    fun notificationServerReusesDefaultShellAlreadyShowingThatServer() {
+        AndroidShellWindowRegistry.register(
+            AndroidShellLaunchTarget("android-default-app-shell", "server-2", documentShell = false)
+        )
+
+        val target = resolveAndroidShellLaunchTarget(
+            JSONObject().put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
+        )
+
+        assertEquals("android-default-app-shell", target.shellInstanceId)
+        assertEquals("server-2", target.serverId)
+        assertFalse(target.documentShell)
+    }
+
+    @Test
     fun ordinaryLauncherUsesDefaultNonDocumentShell() {
         val target = resolveAndroidShellLaunchTarget(JSONObject())
         AndroidShellWindowRegistry.register(target)
