@@ -235,6 +235,8 @@ import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
+import build.raft.app.data.SharedConversationIdentitySupplementSource
+import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeSavedPanelState
@@ -822,7 +824,8 @@ private data class HomeSecondaryRouteEnvironment(
     val threadRowAffordances: Set<ThreadRowAffordancePreference>,
     val storeScope: SlockShellStoreScope,
     val shellScope: SlockAppShellScope,
-    val conversationIdentityProvider: SharedConversationIdentityProvider?
+    val conversationIdentityProvider: SharedConversationIdentityProvider?,
+    val sharedHomeStore: SharedHomeStore?
 )
 
 @Composable
@@ -900,7 +903,8 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             threadRowAffordances = threadRowAffordances,
             storeScope = storeScope,
             shellScope = shellScope,
-            conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope)
+            conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
+            sharedHomeStore = sharedStores.sharedHomeStore(storeScope)
         )
     }
 }
@@ -1060,6 +1064,27 @@ private fun HomeSearchRouterContent(
                 ?: flowOf(SharedConversationDirectoryState())
         }
     val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
+    val searchConversationDirectory =
+        remember(searchServerId, searchSavedState.search.items) {
+            searchServerId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::ServerId)
+                ?.let { serverId -> searchSavedState.search.items.toSharedConversationDirectoryState(serverId) }
+                ?: SharedConversationDirectoryState()
+        }
+    val openConversationDirectory =
+        remember(searchConversationDirectory, conversationDirectory) {
+            listOf(searchConversationDirectory, conversationDirectory)
+                .mergedSharedConversationDirectoryState()
+        }
+    LaunchedEffect(environment.sharedHomeStore, searchServerId, searchSavedState.search.items) {
+        val serverId = searchServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@LaunchedEffect
+        environment.sharedHomeStore?.supplementConversationIdentity(
+            serverId = serverId,
+            source = SharedConversationIdentitySupplementSource.Search,
+            items = searchSavedState.search.items
+        )
+    }
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = homeState,
@@ -1073,7 +1098,7 @@ private fun HomeSearchRouterContent(
                 val resolution =
                     item.toHomeMessageOpenRequest(
                         serverId = searchServerId.orEmpty(),
-                        conversationDirectory = conversationDirectory
+                        conversationDirectory = openConversationDirectory
                     )
             ) {
                 is ConversationOpenResolution.Resolved ->
@@ -1161,6 +1186,27 @@ private fun HomeSavedRouterContent(
                 ?: flowOf(SharedConversationDirectoryState())
         }
     val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
+    val savedConversationDirectory =
+        remember(savedServerId, searchSavedState.saved.items) {
+            savedServerId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::ServerId)
+                ?.let { serverId -> searchSavedState.saved.items.toSharedConversationDirectoryState(serverId) }
+                ?: SharedConversationDirectoryState()
+        }
+    val openConversationDirectory =
+        remember(savedConversationDirectory, conversationDirectory) {
+            listOf(savedConversationDirectory, conversationDirectory)
+                .mergedSharedConversationDirectoryState()
+        }
+    LaunchedEffect(environment.sharedHomeStore, savedServerId, searchSavedState.saved.items) {
+        val serverId = savedServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@LaunchedEffect
+        environment.sharedHomeStore?.supplementConversationIdentity(
+            serverId = serverId,
+            source = SharedConversationIdentitySupplementSource.Saved,
+            items = searchSavedState.saved.items
+        )
+    }
     SharedHomeSavedPanel(
         state = searchSavedState.saved,
         memberAvatarResolver = memberAvatarResolver,
@@ -1172,7 +1218,7 @@ private fun HomeSavedRouterContent(
                 val resolution =
                     item.toHomeMessageOpenRequest(
                         serverId = savedServerId.orEmpty(),
-                        conversationDirectory = conversationDirectory
+                        conversationDirectory = openConversationDirectory
                     )
             ) {
                 is ConversationOpenResolution.Resolved ->
@@ -2893,11 +2939,33 @@ private fun SlockAppShellContent(
                     "app_shell_auth_pending_open_consume type=thread serverId=$serverId " +
                         "threadId=${request.sourceThreadId.orEmpty()} parentMessageId=${request.parentMessageId.orEmpty()}"
                 )
-                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-                    .openPage(
-                        THREAD_PAGE,
-                        request.toWireThreadLaunchPayload().toThreadPageData()
+                val resolution =
+                    resolveOpenRequest(
+                        serverId = serverId,
+                        sourceMessageIdentity = request.toConversationOpenSourceMessageIdentity(),
+                        conversationDirectory = appShellConversationDirectory,
+                        diagnosticsLogger = bridge::log
                     )
+                val openRequest = (resolution as? ConversationOpenResolution.Resolved)?.request
+                val launchPayload =
+                    openRequest?.let {
+                        buildStandaloneConversationThreadLaunchPayload(
+                            conversation = it.conversationIdentity,
+                            timeContext = threadTimeContext,
+                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                            compactConsecutiveMessages = compactConsecutiveMessages,
+                            threadRowAffordances = threadRowAffordances,
+                            anchorMessageId = it.anchorMessageId,
+                            originFallback = it.originFallback,
+                            onWarn = bridge::logWarn
+                        )
+                    }
+                if (launchPayload == null) {
+                    bridge.logWarn("app_shell_auth_pending_open_rejected reason=identity_unresolved serverId=$serverId")
+                    bridge.toast("Conversation isn't ready yet — try again")
+                } else {
+                    pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
+                }
             }
             null -> Unit
         }
@@ -2937,7 +3005,7 @@ private fun SlockAppShellContent(
                 onWarn = { bridge.logWarn(it) },
                 anchorMessageId = anchorMessageId,
                 originFallback = originFallback
-            )
+            ) ?: return
         bridge.log(
             "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
                 "sourceThreadId=${launchPayload.sourceThreadId.orEmpty()} surface=${launchPayload.surfaceKind} " +
@@ -3134,10 +3202,10 @@ private fun SlockAppShellContent(
                             compactConsecutiveMessages = compactConsecutiveMessages,
                             onWarn = { bridge.logWarn(it) },
                             threadRowAffordances = threadRowAffordances
-                        ).withDiagnosticsFeedbackDraft(
+                        )?.withDiagnosticsFeedbackDraft(
                             draft = draft,
                             composerSeedText = diagnosticsComposerSeed
-                        )
+                        ) ?: return@launch
                     composerDraftPersistSlice.stageUploadedAttachments(
                         draftKey = launchPayload.threadComposerDraftKey(),
                         attachments = uploadedAttachments
@@ -3778,6 +3846,8 @@ private fun SlockAppShellContent(
                             onOpenTask = { task ->
                                 pager.openStandaloneTaskThreadPage(
                                     task = task,
+                                    serverId = readyServerId.orEmpty(),
+                                    conversationDirectory = appShellConversationDirectory,
                                     timeContext = threadTimeContext,
                                     alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                     compactConsecutiveMessages = compactConsecutiveMessages,
@@ -17071,10 +17141,14 @@ internal fun buildAppShellThreadPayload(
     originFallback: ThreadLaunchOriginFallback? = null,
     accessState: ThreadLaunchAccessState = ThreadLaunchAccessState(),
     onWarn: (String) -> Unit = {}
-): KuiklyThreadScreenPayload {
+): KuiklyThreadScreenPayload? {
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    if (isReplyThread && !routeIdentity.hasCompleteReplyIdentity) {
+        onWarn("thread_launch_rejected reason=reply_identity_incomplete source=app_shell threadId=${conversation.threadId.value}")
+        return null
+    }
     val streamChannelId =
         if (isReplyThread) {
             conversation.threadStreamChannelId()
@@ -17100,9 +17174,6 @@ internal fun buildAppShellThreadPayload(
             // t5/#419). A null here means a caller bypassed the resolver — log loudly; if
             // this ever fires it escalates to a t8 hardening item.
             conversation.threadParentSurfaceKind()
-                ?: KuiklyThreadSurfaceKind.Channel.also {
-                    onWarn("thread_launch_parent_kind_defaulted source=app_shell threadId=${conversation.threadId.value}")
-                }
         } else {
             null
         }
@@ -17199,6 +17270,8 @@ internal data class ThreadLaunchAccessState(
 
 private fun Pager.openStandaloneTaskThreadPage(
     task: TaskSummary,
+    serverId: String,
+    conversationDirectory: SharedConversationDirectoryState,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
@@ -17208,6 +17281,8 @@ private fun Pager.openStandaloneTaskThreadPage(
     val launchPayload =
         buildStandaloneTaskThreadLaunchPayload(
             task = task,
+            serverId = serverId,
+            conversationDirectory = conversationDirectory,
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
@@ -17324,7 +17399,7 @@ private fun Pager.openStandaloneHomeConversation(
             anchorMessageId = anchorMessageId,
             originFallback = originFallback,
             onWarn = { bridge.logWarn(it) }
-        )
+        ) ?: return
     bridge.log(
         "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
             "sourceThreadId=${launchPayload.sourceThreadId.orEmpty()} surface=${launchPayload.surfaceKind} " +
@@ -17388,12 +17463,15 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null,
     instanceIdOverride: String? = null,
-    defaultMissingReplyParentKind: Boolean = true,
     onWarn: (String) -> Unit = {}
-): WireThreadLaunchPayload {
+): WireThreadLaunchPayload? {
     val routeIdentity = conversation.resolveThreadRouteIdentity()
     val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    if (isReplyThread && !routeIdentity.hasCompleteReplyIdentity) {
+        onWarn("thread_launch_rejected reason=reply_identity_incomplete source=standalone threadId=${conversation.threadId.value}")
+        return null
+    }
     val streamChannelId =
         if (isReplyThread) {
             conversation.threadStreamChannelId()
@@ -17427,13 +17505,6 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
                 // Defensive (see buildAppShellThreadPayload): null parent kind here means a
                 // resolver bypass — log loudly, never silently.
                 conversation.threadParentSurfaceKind()
-                    ?: if (defaultMissingReplyParentKind) {
-                        KuiklyThreadSurfaceKind.Channel.also {
-                            onWarn("thread_launch_parent_kind_defaulted source=standalone threadId=${conversation.threadId.value}")
-                        }
-                    } else {
-                        null
-                    }
             } else {
                 null
             },
@@ -17473,16 +17544,18 @@ private fun Set<ThreadRowAffordancePreference>.showInlineSaveAction(): Boolean =
 
 internal fun buildStandaloneTaskThreadLaunchPayload(
     task: TaskSummary,
+    serverId: String,
+    conversationDirectory: SharedConversationDirectoryState,
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default
 ): WireThreadLaunchPayload? {
-    val target = task.toTaskThreadLaunchTarget() ?: return null
+    val request = task.resolveTaskThreadOpenRequest(serverId, conversationDirectory) ?: return null
     return buildStandaloneConversationThreadLaunchPayload(
-        conversation = target.conversation,
+        conversation = request.conversationIdentity,
         timeContext = timeContext,
-        anchorMessageId = target.focusedMessageId,
+        anchorMessageId = request.anchorMessageId,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         threadRowAffordances = threadRowAffordances

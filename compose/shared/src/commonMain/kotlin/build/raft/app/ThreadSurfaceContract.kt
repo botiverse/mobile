@@ -63,6 +63,18 @@ internal fun ConversationKind?.threadParentSurfaceKindOrNull(): String? =
 internal fun String?.parsedThreadParentSurfaceKindOrNull(): String? =
     parseConversationKindOrNull(this).threadParentSurfaceKindOrNull()
 
+internal fun typedReplyParentConversationKindOrNull(
+    parentSurfaceKind: String?,
+    parentChannelKind: String?
+): ConversationKind? {
+    val channelKind = parseConversationKindOrNull(parentChannelKind)
+        ?.takeIf { it == ConversationKind.Channel || it == ConversationKind.Joint || it == ConversationKind.DirectMessage }
+    if (channelKind != null) return channelKind
+    return ConversationKind.DirectMessage.takeIf {
+        parseConversationKindOrNull(parentSurfaceKind) == ConversationKind.DirectMessage
+    }
+}
+
 internal fun ConversationSummary.threadStreamChannelId(): String? =
     toThreadLaunchConversationIdentity().threadStreamChannelId()
 

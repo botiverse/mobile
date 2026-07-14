@@ -108,8 +108,14 @@ internal fun HomeSnapshot.toSharedConversationDirectoryState(
 internal fun InboxSnapshot.toSharedConversationDirectoryState(
     logger: (String) -> Unit = {}
 ): SharedConversationDirectoryState =
+    items.toSharedConversationDirectoryState(server.id, logger)
+
+internal fun Iterable<InboxItem>.toSharedConversationDirectoryState(
+    serverId: ServerId,
+    logger: (String) -> Unit = {}
+): SharedConversationDirectoryState =
     sharedConversationDirectoryStateFromProjections(
-        projections = items.flatMap { item -> item.toSharedConversationDirectoryProjections(server.id, logger) },
+        projections = flatMap { item -> item.toSharedConversationDirectoryProjections(serverId, logger) },
         logger = logger
     )
 

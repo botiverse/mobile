@@ -1,11 +1,16 @@
 package build.raft.app
 
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.SlockTimeFormat12Hour
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -87,6 +92,20 @@ class MembersDirectMessageLaunchTest {
                     threadParentMessageId = "parent-message"
                 ).toMembersReminderThreadLaunchPayload(
                     messageId = "reply-message",
+                    server = ServerSummary(ServerId("server-1"), "Raft"),
+                    conversationIdentityProvider = null,
+                    conversationDirectory =
+                        listOf(
+                            SharedConversationDirectoryProjection(
+                                serverId = "server-1",
+                                canonicalChannelId = "channel-general",
+                                aliases = setOf("channel-general"),
+                                conversationKind = ConversationKind.Channel,
+                                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                                channelKind = KuiklyThreadSurfaceKind.Channel,
+                                title = "general"
+                            )
+                        ).toSharedConversationDirectoryState(),
                     timeContext =
                         SlockTimeContext(
                             localOffsetMinutes = 480,
@@ -113,6 +132,39 @@ class MembersDirectMessageLaunchTest {
     }
 
     @Test
+    fun humanMemberReminderChannelPermalinkUsesRouteServerDirectory() {
+        val payload =
+            requireNotNull(
+                SlockThreadWebLinkTarget(
+                    channelId = "channel-general",
+                    messageId = "channel-message"
+                ).toMembersReminderThreadLaunchPayload(
+                    messageId = "channel-message",
+                    server = ServerSummary(ServerId("server-1"), "Raft"),
+                    conversationIdentityProvider = null,
+                    conversationDirectory =
+                        listOf(
+                            SharedConversationDirectoryProjection(
+                                serverId = "server-1",
+                                canonicalChannelId = "channel-general",
+                                aliases = setOf("channel-general"),
+                                conversationKind = ConversationKind.Channel,
+                                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                                channelKind = KuiklyThreadSurfaceKind.Channel,
+                                title = "general"
+                            )
+                        ).toSharedConversationDirectoryState(),
+                    timeContext = SlockTimeContext(localOffsetMinutes = 0)
+                )
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("channel-general", payload.sourceThreadId)
+        assertEquals("channel-general", payload.streamChannelId)
+        assertEquals("channel-message", payload.focusedMessageId)
+    }
+
+    @Test
     fun membersReminderDmThreadPermalinkPreservesDirectMessageParentKind() {
         val payload =
             requireNotNull(
@@ -123,6 +175,8 @@ class MembersDirectMessageLaunchTest {
                     threadParentMessageId = "dm-parent-message"
                 ).toMembersReminderThreadLaunchPayload(
                     messageId = "dm-reply",
+                    server = ServerSummary(ServerId("server-1"), "Raft"),
+                    conversationIdentityProvider = null,
                     timeContext = SlockTimeContext(localOffsetMinutes = 0)
                 )
             )
@@ -147,6 +201,8 @@ class MembersDirectMessageLaunchTest {
                     routeKind = KuiklyThreadSurfaceKind.DirectMessage
                 ).toMembersReminderThreadLaunchPayload(
                     messageId = "dm-message",
+                    server = ServerSummary(ServerId("server-1"), "Raft"),
+                    conversationIdentityProvider = null,
                     timeContext = SlockTimeContext(localOffsetMinutes = 0)
                 )
             )

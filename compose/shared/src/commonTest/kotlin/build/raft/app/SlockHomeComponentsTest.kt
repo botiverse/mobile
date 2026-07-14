@@ -1533,7 +1533,36 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeConversationLaunchCarriesOnlyConversationIdentity() {
+    fun homeConversationLaunchCarriesOnlyTopLevelConversationIdentity() {
+        val payload =
+            SlockHomePayload(
+                instanceId = "home-page",
+                channels =
+                    listOf(
+                        SlockHomeConversationItem(
+                            id = "channel-1",
+                            name = "Display title must stay out",
+                            kind = "channel"
+                        )
+                    )
+            )
+
+        val launch = buildHomeConversationThreadLaunchPayload(payload, "channel-1")
+
+        assertEquals("home-page:channel-1", launch?.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launch?.surfaceKind)
+        assertEquals(null, launch?.threadId)
+        assertEquals("channel-1", launch?.sourceThreadId)
+        assertEquals("channel-1", launch?.streamChannelId)
+        assertEquals(null, launch?.parentChannelId)
+        assertEquals(null, launch?.parentMessageId)
+        assertEquals(null, launch?.parentSurfaceKind)
+        assertEquals(null, launch?.parentChannelKind)
+        assertEquals(null, launch?.originParentMessageId)
+    }
+
+    @Test
+    fun homeConversationLaunchDropsReplyThreadWithoutTypedParentIdentity() {
         val payload =
             SlockHomePayload(
                 instanceId = "home-page",
@@ -1547,18 +1576,7 @@ class SlockHomeComponentsTest {
                     )
             )
 
-        val launch = buildHomeConversationThreadLaunchPayload(payload, "thread-1")
-
-        assertEquals("home-page:thread-1", launch?.instanceId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch?.surfaceKind)
-        assertEquals("thread-1", launch?.threadId)
-        assertEquals("thread-1", launch?.sourceThreadId)
-        assertEquals("thread-1", launch?.streamChannelId)
-        assertEquals(null, launch?.parentChannelId)
-        assertEquals(null, launch?.parentMessageId)
-        assertEquals(null, launch?.parentSurfaceKind)
-        assertEquals(null, launch?.parentChannelKind)
-        assertEquals(null, launch?.originParentMessageId)
+        assertEquals(null, buildHomeConversationThreadLaunchPayload(payload, "thread-1"))
     }
 
     @Test

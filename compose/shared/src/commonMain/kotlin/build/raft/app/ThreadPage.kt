@@ -66,7 +66,9 @@ import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
@@ -871,6 +873,28 @@ internal fun KuiklyThreadScreenPayload.threadHeaderOpenInParentActionVisible(): 
                 (parentMessageId?.isNotBlank() == true || originParentMessageId?.isNotBlank() == true)
             )
 
+internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest(
+    serverId: String,
+    conversationIdentityProvider: SharedConversationIdentityProvider?
+): HomeMessageOpenRequest? {
+    val routeIdentity = resolveThreadRouteIdentity()
+    if (routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val parentId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val server = serverId.takeIf { it.isNotBlank() }?.let(::ServerId)
+    val directory =
+        listOfNotNull(server?.let { conversationIdentityProvider?.resolveProjection(it, parentId) })
+            .toSharedConversationDirectoryState()
+    val sourceIdentity =
+        ConversationOpenSourceMessageIdentity(
+            source = ConversationOpenSource.ParentConversation,
+            messageId = null,
+            channelId = parentId,
+            conversationKind = routeIdentity.parentConversationKind
+        )
+    return (resolveOpenRequest(serverId, sourceIdentity, directory) as? ConversationOpenResolution.Resolved)
+        ?.request
+}
+
 internal fun threadHeaderProjectionServerId(
     sessionServerId: String?,
     scopeInitialServerId: String?
@@ -1297,6 +1321,35 @@ internal data class SlockThreadWebLinkTarget(
     val threadParentMessageId: String? = null
 )
 
+internal fun SlockThreadWebLinkTarget.resolveMarkdownOpenRequest(
+    serverId: String,
+    conversationDirectory: SharedConversationDirectoryState
+): HomeMessageOpenRequest? {
+    val parentMessage = threadParentMessageId?.takeIf { it.isNotBlank() }
+    val kind =
+        when {
+            parentMessage != null -> ConversationKind.Thread
+            routeKind == KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+            else -> null
+        }
+    val sourceIdentity =
+        ConversationOpenSourceMessageIdentity(
+            source = ConversationOpenSource.Markdown,
+            messageId = messageId?.takeIf { it.isNotBlank() },
+            channelId = channelId.takeIf { it.isNotBlank() },
+            parentChannelId = channelId.takeIf { parentMessage != null && it.isNotBlank() },
+            parentMessageId = parentMessage,
+            conversationKind = kind,
+            parentConversationKind =
+                ConversationKind.DirectMessage.takeIf {
+                    parentMessage != null && routeKind == KuiklyThreadSurfaceKind.DirectMessage
+                }
+        )
+    return (resolveOpenRequest(serverId, sourceIdentity, conversationDirectory)
+        as? ConversationOpenResolution.Resolved)
+        ?.request
+}
+
 @Serializable
 internal data class KuiklyThreadTaskItem(
     val id: String,
@@ -1561,7 +1614,8 @@ internal suspend fun openMarkdownTaskNumberPayload(
     currentPayload: KuiklyThreadScreenPayload,
     currentTaskChannelId: ChannelId?,
     tasksDataSource: SharedTasksDataSource,
-    tasksDataStore: SharedTasksDataStore?
+    tasksDataStore: SharedTasksDataStore?,
+    conversationIdentityProvider: SharedConversationIdentityProvider? = null
 ): MarkdownTaskNumberOpenResult {
     currentTaskChannelId?.let { channelId ->
         when (
@@ -1575,7 +1629,11 @@ internal suspend fun openMarkdownTaskNumberPayload(
             is DataResult.Content -> {
                 val task = channelResult.data.task
                 val payload =
-                    currentPayload.markdownTaskNumberLaunchPayload(task)
+                    currentPayload.markdownTaskNumberLaunchPayload(
+                        task = task,
+                        serverId = serverId,
+                        conversationIdentityProvider = conversationIdentityProvider
+                    )
                         ?: return MarkdownTaskNumberOpenResult.Failed
                 tasksDataStore?.upsertTask(serverId.value, task)
                 return MarkdownTaskNumberOpenResult.Found(task, payload)
@@ -1621,7 +1679,11 @@ internal suspend fun openMarkdownTaskNumberPayload(
             }
         }
     val payload =
-        currentPayload.markdownTaskNumberLaunchPayload(selected)
+        currentPayload.markdownTaskNumberLaunchPayload(
+            task = selected,
+            serverId = serverId,
+            conversationIdentityProvider = conversationIdentityProvider
+        )
             ?: return MarkdownTaskNumberOpenResult.Failed
     tasksDataStore?.upsertTask(serverId.value, selected)
     return MarkdownTaskNumberOpenResult.Found(selected, payload)
@@ -1637,11 +1699,40 @@ private fun List<TaskSummary>.threadMarkdownTaskCandidates(currentTaskChannelId:
             .thenBy { task -> task.id.value }
     )
 
-internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(task: TaskSummary): KuiklyThreadScreenPayload? {
-    val target = task.toTaskThreadLaunchTarget() ?: return null
+internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(
+    task: TaskSummary,
+    serverId: ServerId,
+    conversationIdentityProvider: SharedConversationIdentityProvider? = null
+): KuiklyThreadScreenPayload? {
+    val taskIds = listOfNotNull(task.threadId?.value, task.channelId?.value).filter { it.isNotBlank() }
+    val directory =
+        taskIds
+            .mapNotNull { id -> conversationIdentityProvider?.resolveProjection(serverId, id) }
+            .distinctBy { it.canonicalChannelId }
+            .toSharedConversationDirectoryState()
+    val currentRoute = resolveThreadRouteIdentity()
+    val taskParentId = task.channelId?.value?.takeIf { it.isNotBlank() }
+    val currentParentKind =
+        if (taskParentId != null && taskParentId == currentRoute.timelineChannelId) {
+            parseConversationKindOrNull(currentRoute.routeKind)
+        } else if (
+            taskParentId != null &&
+            currentRoute.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            parentChannelId == taskParentId
+        ) {
+            currentRoute.parentConversationKind
+        } else {
+            null
+        }
+    val request =
+        task.resolveTaskThreadOpenRequest(
+            serverId = serverId.value,
+            conversationDirectory = directory,
+            parentConversationKind = currentParentKind
+        ) ?: return null
     val launchPayload =
         buildStandaloneConversationThreadLaunchPayload(
-            conversation = target.conversation,
+            conversation = request.conversationIdentity,
             timeContext =
                 SlockTimeContext(
                     localOffsetMinutes = localOffsetMinutes,
@@ -1649,10 +1740,10 @@ internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(task: Tas
                     nowEpochMillis = nowEpochMillis,
                     timeFormat = timeFormat
                 ),
-            anchorMessageId = target.focusedMessageId,
+            anchorMessageId = request.anchorMessageId,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages
-        )
+        ) ?: return null
     return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
 }
 
@@ -2071,17 +2162,27 @@ private fun ThreadPageScreen() {
         },
         onOpenThreadPayload = ::openStandaloneThreadPayload,
         onReplaceThreadPayload = {},
-        onOpenParentThread = {
-            if (payload.parentNavigationHint.threadParentNavigationHintOrNull() == ThreadParentNavigationPrevious) {
-                bridge.log(
-                    "thread_parent_navigation action=close_previous " +
-                        "threadId=${payload.sourceThreadId.orEmpty()} parentChannelId=${payload.parentChannelId.orEmpty()}"
-                )
-                routerModule.closePage()
-                true
-            } else {
-                false
-            }
+        onOpenParentThread = { currentPayload ->
+            val request =
+                currentPayload.resolveReplyParentConversationOpenRequest(
+                    serverId = storeScope.initialServerId.orEmpty(),
+                    conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope)
+                ) ?: return@SharedThreadRouteContent false
+            val parentPayload =
+                buildAppShellThreadPayload(
+                    conversation = request.conversationIdentity,
+                    timeContext = currentPayload.toSlockTimeContext(),
+                    alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
+                    compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
+                    threadRowAffordances =
+                        listOfNotNull(
+                            ThreadRowAffordancePreference.Reactions.takeIf { currentPayload.showReactionActions },
+                            ThreadRowAffordancePreference.Saved.takeIf { currentPayload.showInlineSaveAction }
+                        ).toSet(),
+                    onWarn = bridge::logWarn
+                ) ?: return@SharedThreadRouteContent false
+            openStandaloneThreadPayload(parentPayload)
+            true
         },
         onAuthRequired = { code ->
             bridge.logWarn("thread_auth_required code=$code route=standalone instanceId=${payload.instanceId}")
@@ -3257,7 +3358,7 @@ internal fun SharedThreadRouteContent(
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
-    onOpenParentThread: () -> Boolean = { false },
+    onOpenParentThread: (KuiklyThreadScreenPayload) -> Boolean = { false },
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
@@ -5288,7 +5389,7 @@ internal fun SharedThreadRouteContent(
         onBannerClick = { target ->
             foregroundMessageBanner = null
             val request = target.openRequest
-            onOpenThreadPayload(
+            val bannerPayload =
                 buildAppShellThreadPayload(
                     conversation = request.conversationIdentity,
                     timeContext = renderedPayload.toSlockTimeContext(),
@@ -5300,9 +5401,14 @@ internal fun SharedThreadRouteContent(
                             ThreadRowAffordancePreference.Saved.takeIf { renderedPayload.showInlineSaveAction }
                         ).toSet(),
                     anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
-                    originFallback = request.originFallback
+                    originFallback = request.originFallback,
+                    onWarn = bridge::logWarn
                 )
-            )
+            if (bannerPayload == null) {
+                bridge.logWarn("foreground_banner_open_rejected reason=reply_identity_incomplete")
+            } else {
+                onOpenThreadPayload(bannerPayload)
+            }
         },
         onBannerDismiss = {
             foregroundMessageBanner = null
@@ -5605,23 +5711,13 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openParentMessage" -> {
-                    if (!onOpenParentThread()) {
-                        val parentMessageId =
-                            itemId?.takeIf { it.isNotBlank() }
-                                ?: renderedThread.originParentMessageId?.takeIf { it.isNotBlank() }
-                                ?: renderedThread.parentMessageId?.takeIf { it.isNotBlank() }
-                        if (parentMessageId.isNullOrBlank()) {
-                            bridge.toast(unableToOpenParentMessageLabel)
-                            return@ThreadPageContent
-                        }
-                        val loadingPayload = renderedThread.parentMessageContextLoadingPayload(parentMessageId)
-                        bridge.log(
-                            "thread_route_open action=parent_message parentMessageId=$parentMessageId " +
-                                "targetThreadId=${loadingPayload.sourceThreadId.orEmpty()} " +
-                                "focusedMessageId=${loadingPayload.focusedMessageId.orEmpty()} " +
-                                "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
+                    if (!onOpenParentThread(renderedThread)) {
+                        bridge.logWarn(
+                            "thread_parent_navigation_rejected reason=parent_conversation_unresolved " +
+                                "threadId=${renderedThread.sourceThreadId.orEmpty()} " +
+                                "parentChannelId=${renderedThread.parentChannelId.orEmpty()}"
                         )
-                        onOpenThreadPayload(loadingPayload)
+                        bridge.toast(unableToOpenParentMessageLabel)
                     }
                 }
                 action == "openChannelSearch" -> {
@@ -5799,7 +5895,8 @@ internal fun SharedThreadRouteContent(
                                     currentPayload = renderedThread,
                                     currentTaskChannelId = taskChannelId,
                                     tasksDataSource = tasksDataSource,
-                                    tasksDataStore = tasksDataStore
+                                    tasksDataStore = tasksDataStore,
+                                    conversationIdentityProvider = conversationIdentityProvider
                                 )
                         ) {
                             is MarkdownTaskNumberOpenResult.Found -> {
@@ -5856,7 +5953,40 @@ internal fun SharedThreadRouteContent(
                     if (target == null) {
                         bridge.openUrl(itemId, null)
                     } else {
-                        val loadingPayload = renderedThread.webLinkLoadingPayload(target)
+                        val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                        val directory =
+                            listOfNotNull(
+                                serverId?.let { conversationIdentityProvider?.resolveProjection(it, target.channelId) }
+                            ).toSharedConversationDirectoryState()
+                        val request =
+                            target.resolveMarkdownOpenRequest(
+                                serverId = serverId?.value.orEmpty(),
+                                conversationDirectory = directory
+                            )
+                        val loadingPayload = request?.let { openRequest ->
+                            buildAppShellThreadPayload(
+                                conversation = openRequest.conversationIdentity,
+                                timeContext = renderedThread.toSlockTimeContext(),
+                                alignOwnMessagesRight = renderedThread.alignOwnMessagesRight,
+                                compactConsecutiveMessages = renderedThread.compactConsecutiveMessages,
+                                threadRowAffordances =
+                                    listOfNotNull(
+                                        ThreadRowAffordancePreference.Reactions.takeIf { renderedThread.showReactionActions },
+                                        ThreadRowAffordancePreference.Saved.takeIf { renderedThread.showInlineSaveAction }
+                                    ).toSet(),
+                                anchorMessageId = openRequest.anchorMessageId,
+                                originFallback = openRequest.originFallback,
+                                onWarn = bridge::logWarn
+                            )
+                        }
+                        if (loadingPayload == null) {
+                            bridge.logWarn(
+                                "thread_markdown_open_rejected reason=identity_unresolved " +
+                                    "channelId=${target.channelId} parentMessageId=${target.threadParentMessageId.orEmpty()}"
+                            )
+                            bridge.toast(localizedUnableToOpenTarget(target.channelId.take(32)))
+                            return@ThreadPageContent
+                        }
                         bridge.log(
                             "thread_route_open action=markdown_url routeKind=${target.routeKind} " +
                                 "targetChannelId=${target.channelId} messageId=${target.messageId.orEmpty()} " +
@@ -6642,7 +6772,15 @@ internal fun SharedThreadRouteContent(
                 currentTaskChannelId = taskChannelId,
                 onDismiss = { markdownTaskCandidateModalState = null },
                 onSelect = { task ->
-                    val loadingPayload = renderedThread.markdownTaskNumberLaunchPayload(task)
+                    val loadingPayload = currentServerId
+                        ?.let(::ServerId)
+                        ?.let { serverId ->
+                            renderedThread.markdownTaskNumberLaunchPayload(
+                                task = task,
+                                serverId = serverId,
+                                conversationIdentityProvider = conversationIdentityProvider
+                            )
+                        }
                     if (loadingPayload == null) {
                         bridge.toast(localizedUnableToOpenTaskNumber(modalState.taskNumber))
                     } else {
@@ -7216,89 +7354,6 @@ private fun String.slockPercentDecode(): String {
         index += 1
     }
     return builder.toString()
-}
-
-internal fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload {
-    val threadParentMessageId = target.threadParentMessageId?.takeIf { it.isNotBlank() }
-    if (threadParentMessageId != null) {
-        val focusedMessageId = target.messageId?.takeIf { it.isNotBlank() }
-        val composer =
-            buildThreadSurfaceComposerPayload(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                displayName = ThreadReplyPageTitle,
-                fallbackId = threadParentMessageId,
-                enabled = canSend,
-                mentionChannelId = target.channelId,
-                parentMessageId = threadParentMessageId,
-                streamChannelId = null
-            )
-        return copy(
-            instanceId = "shared-shell-thread-pending-$threadParentMessageId",
-            title = ThreadReplyPageTitle,
-            subtitle = replyThreadHeaderSubtitle(),
-            status = "loading",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-            sourceThreadId = null,
-            streamChannelId = null,
-            parentChannelId = target.channelId,
-            parentMessageId = threadParentMessageId,
-            parentSurfaceKind =
-                if (target.routeKind == KuiklyThreadSurfaceKind.DirectMessage) {
-                    KuiklyThreadSurfaceKind.DirectMessage
-                } else {
-                    KuiklyThreadSurfaceKind.Channel
-                },
-            parentChannelKind =
-                if (target.routeKind == KuiklyThreadSurfaceKind.DirectMessage) {
-                    KuiklyThreadSurfaceKind.DirectMessage
-                } else {
-                    KuiklyThreadSurfaceKind.Channel
-                },
-            originParentMessageId = threadParentMessageId,
-            focusedMessageId = focusedMessageId,
-            navigationLabel = "Back",
-            selectedTab = KuiklyThreadTab.Chat.wireValue,
-            showModeTabs = false,
-            showReplyActions = false,
-            showOpenInChannelAction = true,
-            originMessage = null,
-            originPreview = null,
-            originStatus = "loading",
-            originErrorCode = null,
-            messages = emptyList(),
-            canLoadMoreBefore = false,
-            canLoadMoreAfter = false,
-            errorCode = null,
-            composer = composer
-        ).withLaunchHeaderContext()
-    }
-    val composer =
-        KuiklyThreadComposerPayload(
-            surfaceKind = KuiklyThreadSurfaceKind.Channel,
-            enabled = canSend,
-            streamChannelId = target.channelId
-        )
-    return copy(
-        instanceId = "shared-shell-thread-${target.channelId}",
-        title = SharedThreadHeaderContextStore.launchContext(KuiklyThreadSurfaceKind.Channel, null).title,
-        subtitle = null,
-        status = "loading",
-        surfaceKind = KuiklyThreadSurfaceKind.Channel,
-        sourceThreadId = target.channelId,
-        streamChannelId = target.channelId,
-        parentChannelId = null,
-        parentMessageId = null,
-        focusedMessageId = target.messageId?.takeIf { it.isNotBlank() },
-        selectedTab = KuiklyThreadTab.Chat.wireValue,
-        messages = emptyList(),
-        originMessage = null,
-        originPreview = null,
-        originParentMessageId = null,
-        originStatus = "none",
-        originErrorCode = null,
-        errorCode = null,
-        composer = composer
-    ).withLaunchHeaderContext()
 }
 
 private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(

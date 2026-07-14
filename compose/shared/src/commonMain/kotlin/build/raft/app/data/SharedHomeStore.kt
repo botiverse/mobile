@@ -42,6 +42,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+internal enum class SharedConversationIdentitySupplementSource(val precedence: Int) {
+    Activity(10),
+    Search(20),
+    Saved(30),
+    Tasks(40),
+    ForegroundBanner(50)
+}
+
 internal class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private var dataSource: SharedHomeDataSource,
@@ -108,6 +116,9 @@ internal class SharedHomeStore(
 ) : SharedConversationIdentityProvider {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
+    private val homeConversationIdentityStates = linkedMapOf<String, SharedConversationDirectoryState>()
+    private val supplementalConversationIdentityStates =
+        linkedMapOf<String, MutableMap<SharedConversationIdentitySupplementSource, SharedConversationDirectoryState>>()
     private val conversationIdentityStates =
         MutableStateFlow<Map<String, SharedConversationDirectoryState>>(emptyMap())
 
@@ -234,8 +245,30 @@ internal class SharedHomeStore(
         sidebarOrderByServer.clear()
         contentByServer.clear()
         backgroundUnreadByScope.clear()
+        homeConversationIdentityStates.clear()
+        supplementalConversationIdentityStates.clear()
         conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
+    }
+
+    fun supplementConversationIdentity(snapshot: InboxSnapshot) {
+        supplementConversationIdentity(
+            serverId = snapshot.server.id,
+            source = SharedConversationIdentitySupplementSource.Activity,
+            items = snapshot.items
+        )
+    }
+
+    fun supplementConversationIdentity(
+        serverId: ServerId,
+        source: SharedConversationIdentitySupplementSource,
+        items: List<InboxItem>
+    ) {
+        val serverKey = serverId.value
+        supplementalConversationIdentityStates
+            .getOrPut(serverKey) { linkedMapOf() }[source] =
+            items.toSharedConversationDirectoryState(serverId, logger = diagnosticsLogger)
+        publishConversationIdentity(serverKey)
     }
 
     override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
@@ -1872,9 +1905,22 @@ internal class SharedHomeStore(
 
     private fun updateConversationIdentity(snapshot: HomeSnapshot) {
         val serverKey = snapshot.server.id.value
-        val next =
-            conversationIdentityStates.value +
-                (serverKey to snapshot.toSharedConversationDirectoryState(logger = diagnosticsLogger))
+        homeConversationIdentityStates[serverKey] =
+            snapshot.toSharedConversationDirectoryState(logger = diagnosticsLogger)
+        publishConversationIdentity(serverKey)
+    }
+
+    private fun publishConversationIdentity(serverKey: String) {
+        val supplements =
+            supplementalConversationIdentityStates[serverKey]
+                .orEmpty()
+                .entries
+                .sortedBy { it.key.precedence }
+                .map { it.value }
+        val merged =
+            (supplements + listOfNotNull(homeConversationIdentityStates[serverKey]))
+                .mergedSharedConversationDirectoryState(logger = diagnosticsLogger)
+        val next = conversationIdentityStates.value + (serverKey to merged)
         if (next != conversationIdentityStates.value) {
             conversationIdentityStates.value = next
         }
