@@ -43,32 +43,47 @@ fun hostEventsEnabled(value: Boolean): SlockSandboxWebViewAttr { /* default fals
 
 Only surfaces that can mutate session state set `hostEventsEnabled = true` (initially: server-settings embed, server-delete confirmation flow). Sandbox previews, marketplace, billing, etc. stay off. If `hostEventsEnabled` is false, no bridge script is injected, no message handler is registered, no channel exists — a WebView without a consumer never exposes the surface.
 
-**Trusted origin + main-frame-only (@MingQi #2).** The bridge is installed only when the initial navigation targets an approved HTTPS origin from an allowlist:
+**Trusted origin + main-frame-only (@MingQi r2 #1).** The trusted origin is derived from the WebView's own initial `src`, not from a document-level allowlist:
 
 ```
-prod:    https://app.slock.ai
-staging: https://slock-app-staging.botiverse.dev
-dev:     http://localhost:5173  (Vite)
+trustedOrigin = origin(initialSrc)     // scheme + host + effective port
 ```
+
+That is the SINGLE authority. No static per-environment list. `initialSrc` for a production WebView on today's stack is `https://app.raft.build/...`; on staging it is `https://raft-app-staging.botiverse.dev/s/botiverse/...`; in Developer mode it is whatever `webUrl` was configured. The OTHER two hostnames (`app.slock.ai`, `slock-app-staging.botiverse.dev`) currently 301/302 to those origins and are therefore never the effective initial `src`. Any static allowlist is by definition a second authority that will drift.
 
 Platform implementations MUST:
 
-- **Android**: `postMessage` uses the exact target origin string; never `Uri.EMPTY` or `"*"`. Attach the `WebMessagePort` only to the main frame. Detach the ports before allowing navigation to any URL whose origin is not in the allowlist.
-- **iOS**: register the `WKUserScript` with `injectionTime = .atDocumentStart` and `forMainFrameOnly = true`. In `WKScriptMessageHandler.userContentController(_:didReceive:)`, reject any message whose `frameInfo.request.URL.origin` is not in the allowlist. Remove the script handler before navigating away from an approved origin.
-- **OHOS**: equivalent — install the proxy only for the main frame, gate the message handler on origin, tear down before untrusted navigation.
+- **Android**: pin `trustedOrigin` at attach time from the WebView's initial URL. `WebMessagePort.postMessage(..., targetOrigin = trustedOrigin)`; never `Uri.EMPTY` or a wildcard. Attach the port only on the main frame.
+- **iOS**: pin `trustedOrigin` at the WebView owner. Register the `WKUserScript` with `injectionTime = .atDocumentStart` and `forMainFrameOnly = true`. In `WKScriptMessageHandler.userContentController(_:didReceive:)`, reject any message whose `message.frameInfo.request.URL.origin` is not equal to `trustedOrigin`.
+- **OHOS**: pin `trustedOrigin` on the web component. Install the proxy for the main frame only; gate inbound on origin.
 
-Without this pin, any page reached from an allowed WebView (including any iframe) could emit `session:*` events. That's a same-origin escape via the bridge.
+**Redirects and navigation.** If a navigation resolves to an origin != `trustedOrigin`, tear down the handler/port BEFORE the new document loads (Android `WebViewClient.shouldOverrideUrlLoading`; iOS `WKNavigationDelegate.decidePolicyFor navigationAction:`; OHOS equivalent). Re-attach only if a subsequent navigation returns exactly to `trustedOrigin`. Do NOT try to "widen" `trustedOrigin` after attach — a WebView whose initial `src` was `app.raft.build` never gains permission to send to a different origin.
+
+Without this pin, any page reached from a session-enabled WebView (or any iframe) could emit `session:*` events — a same-origin escape via the bridge.
 
 ## Contract
 
-### Ownership split (@MingQi #8)
+### Ownership split (@MingQi r1 #8, tightened r2 #2)
 
 Cleanly separated:
 
-- **Platform** owns `window.RaftHost` (the injected global). Each platform's WebView renderer injects the SAME bridge script at document-start into the main frame, only when `hostEventsEnabled = true` and the origin is trusted. The script sets `window.RaftHost = { version, emit }` where `emit` calls the platform-specific message-port / script-message-handler.
-- **Web** (`packages/web/src/embed/hostBridge.ts` in `botiverse/slock`) owns a safe HELPER that DETECTS and CALLS the injected global. Web does NOT provide `emit`; web calls it.
+- **Platform** owns `window.RaftHost` (the injected global). Each platform injects a bridge script AT DOCUMENT-START, into the MAIN FRAME, only when `hostEventsEnabled = true` and the WebView's `trustedOrigin` is set.
+- **KMP shared** owns the CONTRACT the bridge script implements — the `raft-host-v1` version string, the `window.RaftHost` object shape (`.version`, `.emit(kind, payload)`), and the wire schema. Shared publishes this as a template + constants, NOT as an executable JS blob. Reason: injection today is not a single shared code path — iOS/OHOS inject document-start caller JS through their WebView user-script APIs, while Android bootstraps via HTML plus `page-finished evaluate`. Pretending "one JS string, three platforms" would misdescribe production.
+- **Web** (`packages/web/src/embed/hostBridge.ts` in `botiverse/slock`) owns a safe HELPER — `hasRaftHostEventBridge()` and `emitHostEvent(...)`. Web does NOT provide the `emit` implementation; web calls the injected `window.RaftHost.emit`.
 
-Composition order with the existing auth `injectedJavaScript`: bridge script runs first (document-start), auth token seed runs later (per current `mobile-webview-server-contract-2026-07-02.md` bootstrap). Bridge script must be self-contained — no dependency on the auth seed running before it. Auth seed must not overwrite `window.RaftHost` or `.version`. Document this in the mobile-webview-server-contract update; the two `injectedJavaScript` snippets are concatenated in that order, in the KMP shared renderer, not composed independently by each platform.
+**Composition with the existing auth `injectedJavaScript`.** The bridge script and the auth-seed script are TWO SEPARATE privileged scripts. Each platform composes them per its own script model:
+
+- **iOS**: two `WKUserScript`s. Bridge script → `injectionTime = .atDocumentStart`, `forMainFrameOnly = true`. Auth-seed script → whatever the existing `mobile-webview-server-contract-2026-07-02.md` bootstrap requires (currently after document-start). The two are separate registrations; iOS makes their relative ordering explicit.
+- **OHOS**: analogous — two independent document-start caller-JS registrations, bridge first.
+- **Android**: bridge is injected via bootstrap HTML AND/OR document-start capable path (whichever the current renderer uses for privileged scripts); auth seed continues to run via `page-finished evaluate`. The bridge MUST have run before `page-finished`.
+
+**Non-clobber requirement.** The auth-seed script MUST NOT overwrite `window.RaftHost`, `window.RaftHost.version`, or `window.RaftHost.emit`. The bridge script defines `RaftHost` with `Object.defineProperty(..., { writable: false, configurable: false })` and freezes the object; a later script attempting to reassign gets a strict-mode throw or silent no-op in sloppy mode. Tests below verify this.
+
+**Test requirements per platform (see also §Safety limits):**
+
+- The web helper — before ANY React render or `emitHostEvent` call — observes `window.RaftHost.version === "raft-host-v1"` on the injected page. (Proves ordering: bridge before app JS.)
+- Attempting to reassign `window.RaftHost = {}` from the page's own JS leaves the original object intact. (Proves non-clobber.)
+- Removing the bridge script from the platform's registration (counterfactual) turns the helper's positive detection false. (Proves the gate is a real gate, not a tautology.)
 
 ### Web side
 
@@ -203,13 +218,22 @@ session:token-refresh-failed      (payload: {})
 
 The web app emits these as the visible user action succeeds (inside `authStore.logout()`, inside `serverService.leaveServer()` success handler, etc.). It does NOT emit them speculatively.
 
-## Safety limits and lifecycle (@MingQi #6)
+## Safety limits and lifecycle (@MingQi r1 #6, tightened r2 #3)
 
-**Input limits.** Enforced at the native parse boundary; violations are dropped with a `BridgeLogLevel.warn` log:
+**Responsibility split.** Two layers of enforcement, deliberately separated:
 
-- Raw message size ≤ 4 KB (`raw.length <= 4096`). Larger messages are dropped whole — no partial parse.
-- `kind` matches `^[a-z][a-z0-9]*(:[a-z][a-z0-9-]*)+$`, total length 4–64 chars. Prevents `kind` injection into log strings and pins the namespaced shape.
-- `payload` must be a JSON object (`{}` is fine, `null` / arrays / primitives are dropped).
+- **Native / platform layer** — runs BEFORE Kuikly event-bus dispatch. Enforces the boundary controls that require platform APIs:
+  - Origin gate (`message.origin === trustedOrigin`)
+  - Main-frame-only gate
+  - Lifecycle: detach on renderer destroy / on navigation off `trustedOrigin`; per-instance registration token to prevent ABA delivery
+  - **UTF-8 byte size cap: `raw.utf8Bytes <= 4096`** — measured on the wire-encoded bytes, not on JS string `.length` (which counts UTF-16 code units and would mis-cap CJK / emoji payloads). Oversized messages are dropped whole, no partial parse, warn log.
+- **Shared KMP layer** — runs INSIDE the Kuikly `hostMessage` handler on the params-map boundary. Enforces the semantic checks that are the same on all platforms:
+  - JSON parse of the `message` string field
+  - `kind` matches `^[a-z][a-z0-9]*(:[a-z][a-z0-9-]*)+$`, total length 4–64 chars
+  - `kind` is in the current known vocabulary — unknown kinds are dropped with a warn log (soft versioning: consumer must not receive kinds it did not declare support for)
+  - `payload` present and is a JSON object (`{}` fine; primitive/array/null dropped)
+
+The split matters because r1 conflated them: it described "native parse boundary" while placing the parser in `SlockSandboxWebViewEvent`. The corrected shape: native gates the CHANNEL, shared parses the CONTENT. Each layer's failures land in the same warn-log family but at different call sites, and platform tests exercise the native layer while a shared unit test exercises the parser.
 
 **Lifecycle / ABA safety.** Platform implementations MUST:
 
@@ -279,6 +303,10 @@ If any of these change scope, do NOT extend this document — write a new one:
 
 ## Changelog
 
+- **r3 (2026-07-15):** addresses @MingQi CHANGES_REQUESTED review on r2. Substantive fixes:
+  (1) **Origin authority** — replaced the static per-environment allowlist with `trustedOrigin = origin(initialSrc)` per WebView instance. Real prod is `app.raft.build`; static list was wrong AND would drift. Single authority now. `slock.ai` legacy hostnames 301 to the real origins and are never the effective initial `src`.
+  (2) **Injection lifecycle** aligned with actual production: iOS/OHOS use document-start caller JS through user-script APIs; Android uses bootstrap HTML + `page-finished evaluate`. KMP shared owns the CONTRACT (version, object shape, wire schema) as template + constants — NOT a shared JS blob. Bridge script + auth-seed script are two independent privileged registrations per platform, ordering + non-clobber explicit.
+  (3) **Responsibility split** tightened: native enforces channel-level controls (origin, frame, lifecycle, ABA, UTF-8 byte size cap) BEFORE Kuikly dispatch; shared KMP enforces content-level checks (JSON, kind pattern, vocabulary, payload shape) INSIDE the handler. Byte cap is UTF-8 bytes (`raw.utf8Bytes <= 4096`), not JS string `.length`.
 - **r2 (2026-07-15):** addresses @MingQi CHANGES_REQUESTED review on r1. Substantive additions:
   (1) `hostEventsEnabled` opt-in attr, (2) trusted-origin + main-frame-only requirement,
   (3) params-map boundary alignment (`{message: raw}`), (4) `seq`/`ts` removed from v1,
