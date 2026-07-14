@@ -12,7 +12,16 @@ object SlockAppLog {
     }
 
     fun d(tag: String, message: String) {
+        if (!verboseLoggingEnabled.get()) return
         SlockAndroidLocalDiagnostics.recordLog(
+            level = "debug",
+            tag = tag,
+            message = message,
+        )
+    }
+
+    fun auth(tag: String, message: String) {
+        SlockAndroidLocalDiagnostics.recordAuthLog(
             level = "debug",
             tag = tag,
             message = message,

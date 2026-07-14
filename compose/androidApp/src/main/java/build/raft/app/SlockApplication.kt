@@ -18,7 +18,11 @@ class SlockApplication : Application() {
         super.onCreate()
         SlockAndroidLocalDiagnostics.init(this)
         installSlockPlatformLogSink { level, tag, message ->
-            SlockAndroidLocalDiagnostics.recordLog(level, tag, message)
+            if (tag == "SlockSharedAuth" || message.startsWith("shared_realtime_auth_refresh_")) {
+                SlockAndroidLocalDiagnostics.recordAuthLog(level, tag, message)
+            } else {
+                SlockAndroidLocalDiagnostics.recordLog(level, tag, message)
+            }
         }
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)

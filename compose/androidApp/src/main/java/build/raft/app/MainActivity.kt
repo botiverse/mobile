@@ -433,7 +433,7 @@ internal fun mobileOAuthLegalAcceptancePageData(
         .put(SlockKuiklyRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
 
 private fun logSharedAuthDiagnostics(message: String) {
-    SlockAppLog.d("SlockKuikly", "shared_auth $message")
+    SlockAppLog.auth("SlockKuikly", "shared_auth $message")
 }
 
 internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =

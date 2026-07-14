@@ -23,6 +23,10 @@ class SlockAuthCriticalJournalTest {
             classifyAuthCriticalEvent("shared_auth auth_realtime_refresh_result result=failure code=403")
         )
         assertEquals(
+            "shared_realtime_auth_refresh_failed",
+            classifyAuthCriticalEvent("shared_realtime_auth_refresh_failed reason=resume code=403")
+        )
+        assertEquals(
             "auth_http_401",
             classifyAuthCriticalEvent("endpoint category=raw_absolute_url path=/api/auth/me code=401")
         )

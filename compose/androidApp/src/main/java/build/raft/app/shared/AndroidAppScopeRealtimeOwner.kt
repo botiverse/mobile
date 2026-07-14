@@ -829,7 +829,7 @@ internal object AndroidAppScopeRealtimeOwner {
                     )
                 ),
             clockMillis = { System.currentTimeMillis() },
-            logger = { message -> SlockAppLog.d(LOG_TAG, message) },
+            logger = { message -> SlockAppLog.auth(LOG_TAG, message) },
             warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
         )
     }

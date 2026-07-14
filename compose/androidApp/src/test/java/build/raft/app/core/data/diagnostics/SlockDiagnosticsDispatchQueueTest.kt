@@ -4,6 +4,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -18,15 +19,16 @@ class SlockDiagnosticsDispatchQueueTest {
         val queue =
             SlockDiagnosticsDispatchQueue(
                 capacity = 8,
+                initialSequence = 40L,
                 threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-writer") },
                 processor = { entry, _ ->
                     processed += Triple(entry.message, Thread.currentThread().name, entry.sequence)
                 },
             )
 
-        queue.enqueue(pending("first", sequence = 41L))
-        queue.enqueue(pending("second", sequence = 42L))
-        queue.flush()
+        queue.enqueue(pending("first"))
+        queue.enqueue(pending("second"))
+        assertTrue(queue.flush())
 
         assertEquals(listOf("first", "second"), processed.map { it.first })
         assertEquals(setOf("diagnostics-test-writer"), processed.map { it.second }.toSet())
@@ -39,6 +41,13 @@ class SlockDiagnosticsDispatchQueueTest {
         assertFalse(shouldEmitDiagnostic(includeNonCritical = false, authEvent = null))
         assertTrue(shouldEmitDiagnostic(includeNonCritical = false, authEvent = "auth_http_401"))
         assertTrue(shouldEmitDiagnostic(includeNonCritical = true, authEvent = null))
+    }
+
+    @Test
+    fun fixedCostAuthHintReservesOnlyKnownCriticalMarkers() {
+        assertFalse(hasFixedCostAuthCriticalHint("shared_auth auth_login_start provider=password"))
+        assertTrue(hasFixedCostAuthCriticalHint("shared_auth refresh_failed status=401"))
+        assertTrue(hasFixedCostAuthCriticalHint("shared_realtime_auth_refresh_failed reason=resume"))
     }
 
     @Test
@@ -66,9 +75,9 @@ class SlockDiagnosticsDispatchQueueTest {
         val enqueueMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
 
         releaseProcessor.countDown()
-        queue.flush()
+        assertTrue(queue.flush())
         queue.enqueue(pending("after-drop"))
-        queue.flush()
+        assertTrue(queue.flush())
 
         assertTrue("saturated enqueue blocked for ${enqueueMillis}ms", enqueueMillis < 100L)
         assertEquals(listOf("running", "queued", "after-drop"), processed.map { it.first })
@@ -76,13 +85,15 @@ class SlockDiagnosticsDispatchQueueTest {
     }
 
     @Test
-    fun saturationPreservesReleaseAuthCandidateInEmergencySlot() {
+    fun saturationKeepsTypedAuthCriticalWhenOrdinaryDebugDrops() {
         val processorStarted = CountDownLatch(1)
         val releaseProcessor = CountDownLatch(1)
         val processed = CopyOnWriteArrayList<Pair<String, Long>>()
         val queue =
             SlockDiagnosticsDispatchQueue(
                 capacity = 1,
+                criticalCapacity = 1,
+                initialSequence = 0L,
                 threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-writer") },
                 processor = { entry, dropped ->
                     processorStarted.countDown()
@@ -94,23 +105,69 @@ class SlockDiagnosticsDispatchQueueTest {
         queue.enqueue(pending("running"))
         assertTrue(processorStarted.await(1L, TimeUnit.SECONDS))
         queue.enqueue(pending("queued"))
-        queue.enqueue(pending("auth-candidate", includeNonCritical = false))
+        queue.enqueue(pending("ordinary-dropped"))
+        queue.enqueue(pending("auth-critical", criticalHint = DiagnosticCriticalHint.Auth))
 
         releaseProcessor.countDown()
-        queue.flush()
+        assertTrue(queue.flush())
 
-        assertEquals(listOf("running", "queued", "auth-candidate"), processed.map { it.first })
-        assertEquals(0L, processed.last().second)
+        assertEquals(listOf("running", "queued", "auth-critical"), processed.map { it.first })
+        assertEquals(1L, processed.last().second)
     }
 
     @Test
-    fun saturationEmergencySlotKeepsFirstCandidateAndCountsLaterOverflow() {
+    fun reservedLaneCannotBeOvertakenByLaterNormalEntry() {
+        val firstStarted = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val releaseSecond = CountDownLatch(1)
+        val processed = CopyOnWriteArrayList<Long>()
+        val queue =
+            SlockDiagnosticsDispatchQueue(
+                capacity = 1,
+                criticalCapacity = 1,
+                initialSequence = 0L,
+                threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-writer") },
+                processor = { entry, _ ->
+                    when (entry.sequence) {
+                        1L -> {
+                            firstStarted.countDown()
+                            releaseFirst.await(2L, TimeUnit.SECONDS)
+                        }
+                        2L -> {
+                            secondStarted.countDown()
+                            releaseSecond.await(2L, TimeUnit.SECONDS)
+                        }
+                    }
+                    processed += entry.sequence
+                },
+            )
+
+        queue.enqueue(pending("running"))
+        assertTrue(firstStarted.await(1L, TimeUnit.SECONDS))
+        queue.enqueue(pending("queued"))
+        queue.enqueue(pending("reserved", criticalHint = DiagnosticCriticalHint.Auth))
+
+        releaseFirst.countDown()
+        assertTrue(secondStarted.await(1L, TimeUnit.SECONDS))
+        queue.enqueue(pending("later-normal"))
+        releaseSecond.countDown()
+
+        assertTrue(queue.flush())
+
+        assertEquals(listOf(1L, 2L, 3L, 4L), processed)
+    }
+
+    @Test
+    fun reservedLaneCountsOverflowWithoutReplacingEarlierCriticalEntry() {
         val processorStarted = CountDownLatch(1)
         val releaseProcessor = CountDownLatch(1)
         val processed = CopyOnWriteArrayList<Pair<String, Long>>()
         val queue =
             SlockDiagnosticsDispatchQueue(
                 capacity = 1,
+                criticalCapacity = 1,
+                initialSequence = 0L,
                 threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-writer") },
                 processor = { entry, dropped ->
                     processorStarted.countDown()
@@ -119,23 +176,78 @@ class SlockDiagnosticsDispatchQueueTest {
                 },
             )
 
-        queue.enqueue(pending("running", sequence = 1L))
+        queue.enqueue(pending("running"))
         assertTrue(processorStarted.await(1L, TimeUnit.SECONDS))
-        queue.enqueue(pending("queued", sequence = 2L))
-        queue.enqueue(pending("first-emergency", includeNonCritical = false, sequence = 3L))
-        queue.enqueue(pending("later-overflow", includeNonCritical = false, sequence = 4L))
+        queue.enqueue(pending("first-critical", criticalHint = DiagnosticCriticalHint.Auth))
+        queue.enqueue(pending("later-critical", criticalHint = DiagnosticCriticalHint.Auth))
 
         releaseProcessor.countDown()
-        queue.flush()
+        assertTrue(queue.flush())
 
-        assertEquals(listOf("running", "queued", "first-emergency"), processed.map { it.first })
+        assertEquals(listOf("running", "first-critical"), processed.map { it.first })
         assertEquals(1L, processed.last().second)
+    }
+
+    @Test
+    fun flushReportsTimeoutAndLaterCompletion() {
+        val processorStarted = CountDownLatch(1)
+        val releaseProcessor = CountDownLatch(1)
+        val queue =
+            SlockDiagnosticsDispatchQueue(
+                capacity = 1,
+                criticalCapacity = 1,
+                threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-writer") },
+                processor = { _, _ ->
+                    processorStarted.countDown()
+                    releaseProcessor.await(2L, TimeUnit.SECONDS)
+                },
+            )
+
+        queue.enqueue(pending("slow"))
+        assertTrue(processorStarted.await(1L, TimeUnit.SECONDS))
+
+        assertFalse(queue.flush(timeoutMillis = 10L))
+        releaseProcessor.countDown()
+        assertTrue(queue.flush(timeoutMillis = 1_000L))
+    }
+
+    @Test
+    fun concurrentProducersReceiveStrictAcceptedSequenceOrder() {
+        val processed = CopyOnWriteArrayList<Long>()
+        val queue =
+            SlockDiagnosticsDispatchQueue(
+                capacity = 256,
+                criticalCapacity = 64,
+                initialSequence = 0L,
+                threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-writer") },
+                processor = { entry, _ -> processed += entry.sequence },
+            )
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val completed = CountDownLatch(2)
+        val producerId = AtomicInteger(0)
+
+        repeat(2) {
+            Thread {
+                val id = producerId.incrementAndGet()
+                ready.countDown()
+                start.await(1L, TimeUnit.SECONDS)
+                repeat(100) { index -> queue.enqueue(pending("producer-$id-$index")) }
+                completed.countDown()
+            }.start()
+        }
+
+        assertTrue(ready.await(1L, TimeUnit.SECONDS))
+        start.countDown()
+        assertTrue(completed.await(2L, TimeUnit.SECONDS))
+        assertTrue(queue.flush())
+        assertEquals((1L..200L).toList(), processed)
     }
 
     private fun pending(
         message: String,
         includeNonCritical: Boolean = true,
-        sequence: Long = message.length.toLong(),
+        criticalHint: DiagnosticCriticalHint = DiagnosticCriticalHint.None,
     ): PendingDiagnosticLog =
         PendingDiagnosticLog(
             level = "debug",
@@ -143,7 +255,8 @@ class SlockDiagnosticsDispatchQueueTest {
             message = message,
             timestampMillis = 123L,
             threadName = "original-caller",
-            sequence = sequence,
+            sequence = 0L,
             includeNonCritical = includeNonCritical,
+            criticalHint = criticalHint,
         )
 }
