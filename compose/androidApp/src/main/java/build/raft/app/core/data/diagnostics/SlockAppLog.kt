@@ -12,8 +12,12 @@ object SlockAppLog {
     }
 
     fun d(tag: String, message: String) {
-        if (!verboseLoggingEnabled.get() && !SlockAuthCriticalJournal.isCritical(message)) return
-        SlockAndroidLocalDiagnostics.recordLog("debug", tag, message)
+        SlockAndroidLocalDiagnostics.recordLog(
+            level = "debug",
+            tag = tag,
+            message = message,
+            includeNonCritical = verboseLoggingEnabled.get(),
+        )
     }
 
     fun i(tag: String, message: String) {
