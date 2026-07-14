@@ -191,6 +191,36 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellVisibilitySignalsDoNotReopenAnEvictedAppearance() {
+        val gate = AppShellVisibleRefreshGate()
+
+        (1..17).forEach { generation ->
+            assertTrue(
+                gate.shouldRefresh(
+                    AppShellVisibleRefreshSignal.PageDidAppear,
+                    pageVisibleTick = generation,
+                    target = "target-$generation"
+                )
+            )
+        }
+
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 0,
+                target = "target-1"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 18,
+                target = "target-18"
+            )
+        )
+    }
+
+    @Test
     fun appShellVisibilitySignalsPreserveAdjacentGenerationsAndDifferentTargets() {
         val gate = AppShellVisibleRefreshGate()
 

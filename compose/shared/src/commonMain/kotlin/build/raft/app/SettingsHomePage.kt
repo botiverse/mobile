@@ -1822,6 +1822,7 @@ internal class AppShellVisibleRefreshGate {
     private val seenSignalsByKey =
         mutableMapOf<AppShellVisibleRefreshKey, MutableSet<AppShellVisibleRefreshSignal>>()
     private val keyOrder = mutableListOf<AppShellVisibleRefreshKey>()
+    private var retiredThroughGeneration = Int.MIN_VALUE
 
     fun shouldRefresh(
         signal: AppShellVisibleRefreshSignal,
@@ -1837,6 +1838,9 @@ internal class AppShellVisibleRefreshGate {
                     },
                 target = target
             )
+        if (key.appearanceGeneration <= retiredThroughGeneration) {
+            return false
+        }
         val seenSignals = seenSignalsByKey[key]
         if (seenSignals != null) {
             seenSignals += signal
@@ -1845,7 +1849,9 @@ internal class AppShellVisibleRefreshGate {
         seenSignalsByKey[key] = mutableSetOf(signal)
         keyOrder += key
         while (keyOrder.size > MaxRememberedAppearanceKeys) {
-            seenSignalsByKey.remove(keyOrder.removeAt(0))
+            val retiredKey = keyOrder.removeAt(0)
+            seenSignalsByKey.remove(retiredKey)
+            retiredThroughGeneration = maxOf(retiredThroughGeneration, retiredKey.appearanceGeneration)
         }
         return true
     }
