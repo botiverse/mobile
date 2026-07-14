@@ -3019,7 +3019,41 @@ internal class SharedThreadStore(
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
     private val initialAccessStateMutex = Mutex()
+    private val realtimeGapRecoveryMutex = Mutex()
+    private var realtimeGapRecoveryState: RealtimeGapRecoveryState? = null
+    private var loadNewerState: LoadNewerState? = null
+    private var nextRealtimeGapRecoveryId: Long = 0L
+    private var nextLoadNewerId: Long = 0L
     private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
+
+    private data class RealtimeGapRecoveryState(
+        val id: Long,
+        val routeIdentity: ThreadRouteIdentity,
+        val staleToken: MviStaleToken,
+        var targetSeq: Long,
+        var targetVersion: Long,
+    )
+
+    private data class LoadNewerState(
+        val id: Long,
+        val routeIdentity: ThreadRouteIdentity,
+        val staleToken: MviStaleToken,
+        var pendingTargetSeq: Long? = null,
+    )
+
+    private fun KuiklyThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
+        resolveThreadRouteIdentity()
+
+    private data class RealtimeEventDecision(
+        val source: String,
+        val emitted: Boolean = false,
+        val messageCount: Int = 0,
+        val recoveryId: Long? = null,
+        val recoveryInitial: KuiklyThreadScreenPayload? = null,
+        val recoveryRequest: RealtimeVisibleStreamGapRequest? = null,
+        val replyCountGap: ReplyCountRealtimeGap? = null,
+        val dropped: Boolean = false,
+    )
 
     fun dispatch(intent: SharedThreadIntent) {
         when (intent) {
@@ -3157,6 +3191,13 @@ internal class SharedThreadStore(
         backgroundMembersHydrationJob = null
         lastRoutePayload = null
         advanceRouteStaleToken()
+        reducePayloadPatch(cachePayload = true) { currentPayload ->
+            if (currentPayload.newerMessagesStatus == "loading") {
+                currentPayload.copy(newerMessagesStatus = "idle")
+            } else {
+                currentPayload
+            }
+        }
         readInFlightMarker = null
         pendingReadMarker = null
         lastCompletedReadMarker = null
@@ -3737,88 +3778,197 @@ internal class SharedThreadStore(
         event: RealtimeEvent,
         activeReplyParentMessageId: MessageId? = null
     ) {
-        val existing = _state.value.payload
-        val realtimeGapServerSeq =
-            existing.realtimeNewerGapServerSeq(
-                event = event,
-                activeReplyParentMessageId = activeReplyParentMessageId
-            )
-        val rawMerged =
-            existing.applyRealtimeEvent(
-                event = event,
-                currentUserId = dataSource.readSession()?.user?.id,
-                activeReplyParentMessageId = activeReplyParentMessageId,
-                shouldPreserveReactionsForRealtime = { message, currentUserId ->
-                    shouldPreserveReactionsForRealtime(message, currentUserId)
+        val acceptedPayload = _state.value.payload
+        val eventStaleToken = routeStaleToken
+        val eventRouteIdentity = acceptedPayload.realtimeGapRouteIdentity()
+        val currentUserId = dataSource.readSession()?.user?.id
+        val decision =
+            realtimeGapRecoveryMutex.withLock {
+                val currentPayload = _state.value.payload
+                if (
+                    !eventStaleToken.isCurrent(routeStaleToken) ||
+                    currentPayload.realtimeGapRouteIdentity() != eventRouteIdentity ||
+                    !routeStillCurrent(
+                        acceptedPayload,
+                        "thread_realtime_event",
+                        "linearize",
+                        currentPayload,
+                    )
+                ) {
+                    return@withLock RealtimeEventDecision(
+                        source = "stale",
+                        messageCount = currentPayload.messages.size,
+                        dropped = true,
+                    )
                 }
-            )
-        val rawReplyCountGap =
-            rawMerged.realtimeReplyCountGap(
-                event = event,
-                previous = existing,
-                activeReplyParentMessageId = activeReplyParentMessageId
-            )
-        val merged = rawMerged
-        if (realtimeGapServerSeq != null) {
-            diagnosticsLogger?.invoke(
-                "thread_realtime_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
-                    "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
-                    "serverSeq=$realtimeGapServerSeq"
-            )
-            recoverRealtimeGap(realtimeGapServerSeq)
-            return
-        }
-        if (rawMerged === existing) {
-            if (rawReplyCountGap != null) {
-                diagnosticsLogger?.invoke(
-                    "thread_realtime_reply_count_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
-                        "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
-                        "loadedReplies=${existing.loadedReplyTimelineCount()} " +
-                        "replyCount=${rawReplyCountGap.replyCount}"
+                val realtimeGapServerSeq =
+                    currentPayload.realtimeNewerGapServerSeq(
+                        event = event,
+                        activeReplyParentMessageId = activeReplyParentMessageId,
+                    )
+                if (realtimeGapServerSeq != null) {
+                    val matchingRecovery =
+                        realtimeGapRecoveryState?.takeIf { state ->
+                            state.staleToken == eventStaleToken && state.routeIdentity == eventRouteIdentity
+                        }
+                    val matchingPagination =
+                        loadNewerState?.takeIf { state ->
+                            state.staleToken == eventStaleToken && state.routeIdentity == eventRouteIdentity
+                        }
+                    if (matchingRecovery != null || matchingPagination != null) {
+                        val missingThroughSeq = (realtimeGapServerSeq - 1L).coerceAtLeast(0L)
+                        if (matchingRecovery != null && missingThroughSeq > matchingRecovery.targetSeq) {
+                            matchingRecovery.targetSeq = missingThroughSeq
+                            matchingRecovery.targetVersion += 1L
+                        }
+                        if (
+                            matchingPagination != null &&
+                            missingThroughSeq > (matchingPagination.pendingTargetSeq ?: 0L)
+                        ) {
+                            matchingPagination.pendingTargetSeq = missingThroughSeq
+                        }
+                        val merged =
+                            currentPayload
+                                .copy(canLoadMoreAfter = false)
+                                .applyRealtimeEvent(
+                                    event = event,
+                                    currentUserId = currentUserId,
+                                    activeReplyParentMessageId = activeReplyParentMessageId,
+                                    shouldPreserveReactionsForRealtime = { message, userId ->
+                                        shouldPreserveReactionsForRealtime(message, userId)
+                                    },
+                                ).preserveStableTimelineFrom(
+                                    previous = currentPayload,
+                                    preserveSelectedReactions = false,
+                                ).copy(canLoadMoreAfter = currentPayload.canLoadMoreAfter)
+                        val emitted =
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.withThreadContentProjectionFrom(merged)
+                            }
+                        return@withLock RealtimeEventDecision(
+                            source = "in_flight_gap",
+                            emitted = emitted,
+                            messageCount = merged.messages.size,
+                        )
+                    }
+                    val streamChannelId =
+                        currentPayload.sourceThreadId
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(::ChannelId)
+                            ?: currentPayload.streamChannelId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let(::ChannelId)
+                            ?: return@withLock RealtimeEventDecision(
+                                source = "none",
+                                messageCount = currentPayload.messages.size,
+                            )
+                    val recoveryId = ++nextRealtimeGapRecoveryId
+                    realtimeGapRecoveryState =
+                        RealtimeGapRecoveryState(
+                            id = recoveryId,
+                            routeIdentity = eventRouteIdentity,
+                            staleToken = eventStaleToken,
+                            targetSeq = realtimeGapServerSeq,
+                            targetVersion = 1L,
+                        )
+                    reducePayloadPatch(cachePayload = true) { latestPayload ->
+                        latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
+                    }
+                    return@withLock RealtimeEventDecision(
+                        source = "gap",
+                        messageCount = currentPayload.messages.size,
+                        recoveryId = recoveryId,
+                        recoveryInitial = currentPayload,
+                        recoveryRequest =
+                            RealtimeVisibleStreamGapRequest(
+                                channelId = streamChannelId,
+                                sinceSeq = currentPayload.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L,
+                                serverSeq = realtimeGapServerSeq,
+                            ),
+                    )
+                }
+
+                val merged =
+                    currentPayload.applyRealtimeEvent(
+                        event = event,
+                        currentUserId = currentUserId,
+                        activeReplyParentMessageId = activeReplyParentMessageId,
+                        shouldPreserveReactionsForRealtime = { message, userId ->
+                            shouldPreserveReactionsForRealtime(message, userId)
+                        },
+                    )
+                val replyCountGap =
+                    merged.realtimeReplyCountGap(
+                        event = event,
+                        previous = currentPayload,
+                        activeReplyParentMessageId = activeReplyParentMessageId,
+                    )
+                if (merged === currentPayload) {
+                    return@withLock RealtimeEventDecision(
+                        source = "none",
+                        messageCount = currentPayload.messages.size,
+                        replyCountGap = replyCountGap,
+                    )
+                }
+                val stableSelected =
+                    merged.preserveStableTimelineFrom(
+                        previous = currentPayload,
+                        preserveSelectedReactions = false,
+                    )
+                // task #562 (agreed with KMP-专家/HanXin, adjusting #231's A'): the
+                // first-frame candidate is a read-only SNAPSHOT of the live store's
+                // merged state — a single merge algorithm, written through after the
+                // reduce. Every open still forces a refresh, so any snapshot drift
+                // lives only in the first-frame window and is corrected by the
+                // canonical fetch through this same reducer. Raw events are never
+                // written; durable local-store never rides this path.
+                val emitted =
+                    reducePayloadPatch(cachePayload = true) { latestPayload ->
+                        latestPayload.withThreadContentProjectionFrom(stableSelected)
+                    }
+                RealtimeEventDecision(
+                    source = "direct_latest",
+                    emitted = emitted,
+                    messageCount = stableSelected.messages.size,
+                    replyCountGap = replyCountGap,
                 )
-                recoverRealtimeGapFromVisibleTail(rawReplyCountGap)
-                return
             }
+
+        if (decision.dropped) return
+        val recoveryId = decision.recoveryId
+        val recoveryInitial = decision.recoveryInitial
+        val recoveryRequest = decision.recoveryRequest
+        if (recoveryId != null && recoveryInitial != null && recoveryRequest != null) {
             diagnosticsLogger?.invoke(
-                "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                    "source=none emitted=false messages=${existing.messages.size} reason=no_projection"
+                "thread_realtime_gap_detected threadId=${recoveryInitial.sourceThreadId.orEmpty()} " +
+                    "visibleMaxSeq=${recoveryRequest.sinceSeq} serverSeq=${recoveryRequest.serverSeq}"
+            )
+            runRealtimeGapRecovery(
+                initial = recoveryInitial,
+                initialRequest = recoveryRequest,
+                staleToken = eventStaleToken,
+                recoveryId = recoveryId,
             )
             return
         }
-        val stableSelected =
-            merged.preserveStableTimelineFrom(
-                previous = existing,
-                preserveSelectedReactions = false
+        if (decision.source == "none" && decision.replyCountGap == null) {
+            diagnosticsLogger?.invoke(
+                "thread_realtime_apply_result threadId=${acceptedPayload.sourceThreadId.orEmpty()} " +
+                    "source=none emitted=false messages=${decision.messageCount} reason=no_projection"
             )
-        // task #562 (agreed with KMP-专家/HanXin, adjusting #231's A'): the
-        // first-frame candidate is a read-only SNAPSHOT of the live store's
-        // merged state — a single merge algorithm, written through after the
-        // reduce. Every open still forces a refresh, so any snapshot drift
-        // lives only in the first-frame window and is corrected by the
-        // canonical fetch through this same reducer. Raw events are never
-        // written; durable local-store never rides this path.
-        val emitted =
-            reducePayloadPatch(cachePayload = true) { currentPayload ->
-                if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
-                    return@reducePayloadPatch currentPayload
-                }
-                currentPayload.withThreadContentProjectionFrom(stableSelected)
-            }
+            return
+        }
         diagnosticsLogger?.invoke(
-            "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                "source=direct emitted=$emitted messages=${stableSelected.messages.size} cacheWarmed=true"
+            "thread_realtime_apply_result threadId=${acceptedPayload.sourceThreadId.orEmpty()} " +
+                "source=${decision.source} emitted=${decision.emitted} " +
+                "messages=${decision.messageCount} cacheWarmed=${decision.emitted}"
         )
-        val replyCountGap =
-            stableSelected.realtimeReplyCountGap(
-                event = event,
-                previous = existing,
-                activeReplyParentMessageId = activeReplyParentMessageId
-            )
+        val replyCountGap = decision.replyCountGap
         if (replyCountGap != null) {
             diagnosticsLogger?.invoke(
-                "thread_realtime_reply_count_gap_detected threadId=${stableSelected.sourceThreadId.orEmpty()} " +
-                    "visibleMaxSeq=${stableSelected.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
-                    "loadedReplies=${stableSelected.loadedReplyTimelineCount()} " +
+                "thread_realtime_reply_count_gap_detected threadId=${_state.value.payload.sourceThreadId.orEmpty()} " +
+                    "visibleMaxSeq=${_state.value.payload.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                    "loadedReplies=${_state.value.payload.loadedReplyTimelineCount()} " +
                     "replyCount=${replyCountGap.replyCount}"
             )
             recoverRealtimeGapFromVisibleTail(replyCountGap)
@@ -3989,45 +4139,164 @@ internal class SharedThreadStore(
     }
 
     private suspend fun loadNewer() {
-        val existing = _state.value.payload
-        if (!existing.canLoadMoreAfter || existing.newerMessagesStatus == "loading") return
-        val afterSeq = existing.messages.mapNotNull { it.seq }.maxOrNull()
+        val initial = _state.value.payload
+        if (!initial.canLoadMoreAfter || initial.newerMessagesStatus == "loading") return
+        val afterSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()
         if (afterSeq == null) {
             reducePayloadPatch { currentPayload ->
                 currentPayload.copy(newerMessagesStatus = "error", errorCode = "missing_after_seq")
             }
             return
         }
-        reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
-        val result = dataSource.fetchNewerThreadPayload(existing, afterSeq)
-        val latest = _state.value.payload
-        if (!routeStillCurrent(existing, "thread_page", "newer_after_fetch", latest)) {
-            return
-        }
-        val nextPayload =
-            when (result) {
-                is DataResult.Content -> {
-                    val merged =
-                        latest
-                        .mergePagedMessages(result.data.messages, before = false)
-                        .preserveStableTimelineFrom(latest)
-                    dataSource
-                        .cacheCanonicalPayload(merged)
-                        .withRouteContext(existing)
-                        .preserveStableTimelineFrom(latest)
+        val staleToken = routeStaleToken
+        val routeIdentity = initial.realtimeGapRouteIdentity()
+        val loadId =
+            realtimeGapRecoveryMutex.withLock {
+                val currentPayload = _state.value.payload
+                val active = loadNewerState
+                val activeRecovery = realtimeGapRecoveryState
+                if (
+                    !staleToken.isCurrent(routeStaleToken) ||
+                    currentPayload.realtimeGapRouteIdentity() != routeIdentity ||
+                    (
+                        active != null &&
+                            active.routeIdentity == routeIdentity &&
+                            active.staleToken == staleToken
+                    ) ||
+                    (
+                        activeRecovery != null &&
+                            activeRecovery.routeIdentity == routeIdentity &&
+                            activeRecovery.staleToken == staleToken
+                    )
+                ) {
+                    null
+                } else {
+                    val id = ++nextLoadNewerId
+                    loadNewerState =
+                        LoadNewerState(
+                            id = id,
+                            routeIdentity = routeIdentity,
+                            staleToken = staleToken,
+                        )
+                    reducePayloadPatch(cachePayload = true) { latestPayload ->
+                        latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
+                    }
+                    id
                 }
-                is DataResult.Empty ->
-                    latest.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
-                is DataResult.Error ->
-                    latest.copy(newerMessagesStatus = "error", errorCode = result.error.code)
-                is DataResult.NoPermission ->
-                    latest.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
+            } ?: return
+        var successorRecovery: Pair<KuiklyThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
+        try {
+            val result = dataSource.fetchNewerThreadPayload(initial, afterSeq)
+            realtimeGapRecoveryMutex.withLock {
+                val active =
+                    loadNewerState
+                        ?.takeIf { state -> state.id == loadId }
+                        ?: return@withLock
+                val currentPayload = _state.value.payload
+                if (
+                    !staleTokenStillCurrent(
+                        staleToken,
+                        "thread_page",
+                        "newer_after_fetch",
+                        initial,
+                        currentPayload,
+                    ) ||
+                    !routeStillCurrent(
+                        initial,
+                        "thread_page",
+                        "newer_after_fetch",
+                        currentPayload,
+                    )
+                ) {
+                    loadNewerState = null
+                    return@withLock
+                }
+                val pageMaxSeq =
+                    when (result) {
+                        is DataResult.Content ->
+                            result.data.messages.mapNotNull { message -> message.seq }.maxOrNull() ?: afterSeq
+                        else -> afterSeq
+                    }
+                val nextPayload =
+                    when (result) {
+                        is DataResult.Content -> {
+                            val merged =
+                                currentPayload
+                                    .mergePagedMessages(result.data.messages, before = false)
+                                    .preserveStableTimelineFrom(currentPayload)
+                            dataSource
+                                .cacheCanonicalPayload(merged)
+                                .withRouteContext(initial)
+                                .preserveStableTimelineFrom(currentPayload)
+                        }
+                        is DataResult.Empty ->
+                            currentPayload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
+                        is DataResult.Error ->
+                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.error.code)
+                        is DataResult.NoPermission ->
+                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
+                    }
+                reducePayloadPatch(cachePayload = true) { latestPayload ->
+                    if (
+                        !staleTokenStillCurrent(
+                            staleToken,
+                            "thread_page",
+                            "newer_apply",
+                            initial,
+                            latestPayload,
+                        ) ||
+                        !routeStillCurrent(
+                            initial,
+                            "thread_page",
+                            "newer_apply",
+                            latestPayload,
+                        )
+                    ) {
+                        return@reducePayloadPatch latestPayload
+                    }
+                    latestPayload.withThreadContentProjectionFrom(nextPayload)
+                }
+                loadNewerState = null
+                val pendingTarget = active.pendingTargetSeq
+                if (pendingTarget != null && pendingTarget > pageMaxSeq) {
+                    val streamChannelId =
+                        currentPayload.sourceThreadId
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(::ChannelId)
+                            ?: currentPayload.streamChannelId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let(::ChannelId)
+                    if (streamChannelId != null) {
+                        successorRecovery =
+                            _state.value.payload to
+                                RealtimeVisibleStreamGapRequest(
+                                    channelId = streamChannelId,
+                                    sinceSeq = pageMaxSeq,
+                                    serverSeq = pendingTarget,
+                                )
+                    }
+                }
             }
-        reducePayloadPatch { currentPayload ->
-            if (!routeStillCurrent(existing, "thread_page", "newer_apply", currentPayload)) {
-                return@reducePayloadPatch currentPayload
+        } finally {
+            realtimeGapRecoveryMutex.withLock {
+                val active = loadNewerState?.takeIf { state -> state.id == loadId }
+                if (active != null) {
+                    loadNewerState = null
+                    val currentPayload = _state.value.payload
+                    if (
+                        active.staleToken == routeStaleToken &&
+                        active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
+                        currentPayload.newerMessagesStatus == "loading"
+                    ) {
+                        reducePayloadPatch(cachePayload = true) { latestPayload ->
+                            latestPayload.copy(newerMessagesStatus = "idle")
+                        }
+                    }
+                }
             }
-            currentPayload.withThreadContentProjectionFrom(nextPayload)
+        }
+        successorRecovery?.let { (successorInitial, request) ->
+            recoverRealtimeGap(successorInitial, request, staleToken)
         }
     }
 
@@ -4041,12 +4310,12 @@ internal class SharedThreadStore(
                 ?: initial.streamChannelId
                     ?.takeIf { it.isNotBlank() }
                     ?.let(::ChannelId)
-        var nextRequest =
+        val nextRequest =
             RealtimeVisibleStreamGapPolicy.syncRequest(
                 channelId = streamChannelId,
                 visibleMaxSeq = initial.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L,
                 serverSeq = serverSeq,
-                loading = initial.newerMessagesStatus == "loading"
+                loading = false,
             ) ?: return
         recoverRealtimeGap(initial, nextRequest, staleToken)
     }
@@ -4106,74 +4375,222 @@ internal class SharedThreadStore(
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken
     ) {
+        val routeIdentity = initial.realtimeGapRouteIdentity()
+        val recoveryId =
+            realtimeGapRecoveryMutex.withLock {
+                val currentPayload = _state.value.payload
+                if (
+                    !staleToken.isCurrent(routeStaleToken) ||
+                    currentPayload.realtimeGapRouteIdentity() != routeIdentity ||
+                    !routeStillCurrent(
+                        initial,
+                        "thread_realtime_gap",
+                        "start",
+                        currentPayload,
+                    )
+                ) {
+                    return@withLock null
+                }
+                val active = realtimeGapRecoveryState
+                val pagination = loadNewerState
+                if (
+                    active != null &&
+                    active.routeIdentity == routeIdentity &&
+                    active.staleToken == staleToken
+                ) {
+                    if (initialRequest.serverSeq > active.targetSeq) {
+                        active.targetSeq = initialRequest.serverSeq
+                        active.targetVersion += 1L
+                    }
+                    null
+                } else if (
+                    pagination != null &&
+                    pagination.routeIdentity == routeIdentity &&
+                    pagination.staleToken == staleToken
+                ) {
+                    if (initialRequest.serverSeq > (pagination.pendingTargetSeq ?: 0L)) {
+                        pagination.pendingTargetSeq = initialRequest.serverSeq
+                    }
+                    null
+                } else {
+                    val id = ++nextRealtimeGapRecoveryId
+                    realtimeGapRecoveryState =
+                        RealtimeGapRecoveryState(
+                            id = id,
+                            routeIdentity = routeIdentity,
+                            staleToken = staleToken,
+                            targetSeq = initialRequest.serverSeq,
+                            targetVersion = 1L,
+                        )
+                    reducePayloadPatch(cachePayload = true) { currentPayload ->
+                        currentPayload.copy(newerMessagesStatus = "loading", errorCode = null)
+                    }
+                    id
+                }
+            } ?: return
+        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId)
+    }
+
+    private suspend fun runRealtimeGapRecovery(
+        initial: KuiklyThreadScreenPayload,
+        initialRequest: RealtimeVisibleStreamGapRequest,
+        staleToken: MviStaleToken,
+        recoveryId: Long,
+    ) {
         var nextRequest = initialRequest
-        reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
-        while (true) {
-            val result = dataSource.fetchRealtimeGapThreadPayload(_state.value.payload, nextRequest.sinceSeq)
-            val latest = _state.value.payload
-            if (
-                !staleTokenStillCurrent(staleToken, "thread_realtime_gap", "after_fetch", initial, latest) ||
-                !routeStillCurrent(initial, "thread_realtime_gap", "after_fetch", latest)
-            ) {
-                return
-            }
-            val nextPayload =
-                when (result) {
-                    is DataResult.Content -> {
-                        val pageMessages = result.data.messages
-                        val merged =
-                            latest
-                                .mergePagedMessages(pageMessages, before = false)
-                                .preserveStableTimelineFrom(latest)
-                        val selected =
-                            dataSource
-                                .cacheCanonicalPayload(merged)
-                                .withRouteContext(initial)
-                                .preserveStableTimelineFrom(latest)
-                        reducePayloadPatch { currentPayload ->
-                            if (
-                                !staleTokenStillCurrent(
-                                    staleToken,
-                                    "thread_realtime_gap",
-                                    "apply",
-                                    initial,
-                                    currentPayload
-                                ) ||
-                                !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
-                            ) {
-                                return@reducePayloadPatch currentPayload
-                            }
-                            currentPayload.withThreadContentProjectionFrom(selected)
-                        }
-                        val nextSinceSeq = selected.messages.mapNotNull { it.seq }.maxOrNull() ?: nextRequest.sinceSeq
-                        val fetchedFullPage = pageMessages.size >= SharedThreadPaging.pageSize
-                        if (!fetchedFullPage || nextSinceSeq <= nextRequest.sinceSeq) {
-                            return
-                        }
-                        nextRequest =
-                            nextRequest.copy(
-                                sinceSeq = nextSinceSeq
+        try {
+            while (true) {
+                val requestSnapshot =
+                    realtimeGapRecoveryMutex.withLock {
+                        val active =
+                            realtimeGapRecoveryState
+                                ?.takeIf { state -> state.id == recoveryId }
+                                ?: return@withLock null
+                        val currentPayload = _state.value.payload
+                        if (
+                            !staleToken.isCurrent(routeStaleToken) ||
+                            active.routeIdentity != currentPayload.realtimeGapRouteIdentity() ||
+                            !routeStillCurrent(
+                                initial,
+                                "thread_realtime_gap",
+                                "before_fetch",
+                                currentPayload,
                             )
-                        null
-                    }
-                    is DataResult.Empty ->
-                        latest.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
-                    is DataResult.Error ->
-                        latest.copy(newerMessagesStatus = "error", errorCode = result.error.code)
-                    is DataResult.NoPermission ->
-                        latest.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
-                }
-            if (nextPayload != null) {
-                reducePayloadPatch { currentPayload ->
+                        ) {
+                            realtimeGapRecoveryState = null
+                            return@withLock null
+                        }
+                        active.targetVersion to currentPayload
+                    } ?: return
+                val requestTargetVersion = requestSnapshot.first
+                val requestPayload = requestSnapshot.second
+                val result = dataSource.fetchRealtimeGapThreadPayload(requestPayload, nextRequest.sinceSeq)
+                var shouldContinue = false
+                var nextSinceSeq = nextRequest.sinceSeq
+                realtimeGapRecoveryMutex.withLock {
+                    val recovery =
+                        realtimeGapRecoveryState
+                            ?.takeIf { state -> state.id == recoveryId }
+                            ?: return@withLock
+                    val currentPayload = _state.value.payload
                     if (
-                        !staleTokenStillCurrent(staleToken, "thread_realtime_gap", "apply", initial, currentPayload) ||
-                        !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
+                        !staleTokenStillCurrent(
+                            staleToken,
+                            "thread_realtime_gap",
+                            "after_fetch",
+                            initial,
+                            currentPayload,
+                        ) ||
+                        !routeStillCurrent(
+                            initial,
+                            "thread_realtime_gap",
+                            "after_fetch",
+                            currentPayload,
+                        )
                     ) {
-                        return@reducePayloadPatch currentPayload
+                        realtimeGapRecoveryState = null
+                        return@withLock
                     }
-                    currentPayload.withThreadContentProjectionFrom(nextPayload)
+                    when (result) {
+                        is DataResult.Content -> {
+                            val pageMessages = result.data.messages
+                            nextSinceSeq =
+                                pageMessages
+                                    .mapNotNull { message -> message.seq }
+                                    .maxOrNull()
+                                    ?: nextRequest.sinceSeq
+                            val madeProgress = nextSinceSeq > nextRequest.sinceSeq
+                            val fetchedFullPage = pageMessages.size >= SharedThreadPaging.pageSize
+                            val targetAdvancedDuringFetch = recovery.targetVersion > requestTargetVersion
+                            shouldContinue =
+                                madeProgress &&
+                                nextSinceSeq < recovery.targetSeq &&
+                                (fetchedFullPage || targetAdvancedDuringFetch)
+                            val merged =
+                                currentPayload
+                                    .mergePagedMessages(pageMessages, before = false)
+                                    .preserveStableTimelineFrom(currentPayload)
+                                    .copy(
+                                        canLoadMoreAfter = false,
+                                        newerMessagesStatus = if (shouldContinue) "loading" else "idle",
+                                    )
+                            val selected =
+                                dataSource
+                                    .cacheCanonicalPayload(merged)
+                                    .withRouteContext(initial)
+                                    .preserveStableTimelineFrom(currentPayload)
+                            reducePayloadPatch { latestPayload ->
+                                if (
+                                    !staleTokenStillCurrent(
+                                        staleToken,
+                                        "thread_realtime_gap",
+                                        "apply",
+                                        initial,
+                                        latestPayload,
+                                    ) ||
+                                    !routeStillCurrent(
+                                        initial,
+                                        "thread_realtime_gap",
+                                        "apply",
+                                        latestPayload,
+                                    )
+                                ) {
+                                    return@reducePayloadPatch latestPayload
+                                }
+                                latestPayload.withThreadContentProjectionFrom(selected)
+                            }
+                            if (!shouldContinue) {
+                                realtimeGapRecoveryState = null
+                            }
+                        }
+                        is DataResult.Empty -> {
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(
+                                    canLoadMoreAfter = false,
+                                    newerMessagesStatus = "idle",
+                                )
+                            }
+                            realtimeGapRecoveryState = null
+                        }
+                        is DataResult.Error -> {
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(
+                                    newerMessagesStatus = "error",
+                                    errorCode = result.error.code,
+                                )
+                            }
+                            realtimeGapRecoveryState = null
+                        }
+                        is DataResult.NoPermission -> {
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(
+                                    newerMessagesStatus = "error",
+                                    errorCode = result.blocker.code,
+                                )
+                            }
+                            realtimeGapRecoveryState = null
+                        }
+                    }
                 }
-                return
+                if (!shouldContinue) return
+                nextRequest = nextRequest.copy(sinceSeq = nextSinceSeq)
+            }
+        } finally {
+            realtimeGapRecoveryMutex.withLock {
+                val active = realtimeGapRecoveryState?.takeIf { state -> state.id == recoveryId }
+                if (active != null) {
+                    realtimeGapRecoveryState = null
+                    val currentPayload = _state.value.payload
+                    if (
+                        active.staleToken == routeStaleToken &&
+                        active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
+                        currentPayload.newerMessagesStatus == "loading"
+                    ) {
+                        reducePayloadPatch(cachePayload = true) { latestPayload ->
+                            latestPayload.copy(newerMessagesStatus = "idle")
+                        }
+                    }
+                }
             }
         }
     }

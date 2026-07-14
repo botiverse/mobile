@@ -4,6 +4,7 @@ import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.AgentActivitySnapshot
 import build.raft.app.data.AgentDetailSnapshot
@@ -8612,6 +8613,55 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeGapDuringManualLoadNewerHandsOffToRecoveryWithoutUsingLoadingAsOwner() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = messagesResponse("manual page", id = "m11", seq = 11, historyLimited = false),
+            )
+        api.afterMessagesStarted = CompletableDeferred()
+        api.releaseAfterMessages = CompletableDeferred()
+        api.syncBodyTexts.addLast(syncRangeResponse(12L..61L))
+        api.syncBodyTexts.addLast(syncRangeResponse(62L..99L))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
+
+        val pagination = launch { store.accept(SharedThreadIntent.LoadNewer) }
+        api.afterMessagesStarted?.await()
+        assertEquals("loading", store.state.value.payload.newerMessagesStatus)
+        assertEquals("loading", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+
+        val realtime = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m100", seq = 100, body = "future during manual pagination")),
+                ),
+            )
+        }
+        realtime.join()
+        api.releaseAfterMessages?.complete(Unit)
+        pagination.join()
+
+        assertEquals(listOf(10L), api.afterSeqs)
+        assertEquals(
+            listOf(11L, 61L),
+            api.syncSinceSeqs,
+            "manual pagination must hand its pending gap to a real recovery after the page commits",
+        )
+        assertEquals((10L..100L).toList(), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals((10L..100L).toList(), dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq })
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeGapRecoverySyncsFromVisiblePayloadSeqWhenPagingGateIsClosed() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
@@ -8691,6 +8741,723 @@ class SharedThreadStoreTest {
         assertEquals(listOf(10L), api.syncSinceSeqs)
         assertEquals(false, payload.canLoadMoreAfter)
         assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun currentRealtimeEventDuringGapRecoveryIsAbsorbedWithoutStartingDuplicateSync() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("recovered body", id = "m12", seq = 12),
+            )
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val first = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "gap trigger")),
+                ),
+            )
+        }
+        api.syncStarted?.await()
+        assertEquals("loading", store.state.value.payload.newerMessagesStatus)
+        assertEquals("loading", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+
+        val second = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m13", seq = 13, body = "arrived during recovery")),
+                ),
+            )
+        }
+        second.join()
+        assertEquals(
+            listOf(10L),
+            api.syncSinceSeqs,
+            "a current event must join the in-flight recovery instead of starting a second sync",
+        )
+        assertEquals("loading", store.state.value.payload.newerMessagesStatus)
+
+        api.releaseSync?.complete(Unit)
+        first.join()
+
+        assertEquals(
+            listOf(10L),
+            api.syncSinceSeqs,
+            "the absorbed event must not start a delayed duplicate sync after recovery completes",
+        )
+        assertEquals(1, store.state.value.payload.messages.count { it.id == "m12" })
+        assertEquals(
+            1,
+            store.state.value.payload.messages.count { it.id == "m13" },
+            "the event that arrived during recovery must land exactly once rather than being dropped",
+        )
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals(
+            listOf(10L, 12L, 13L),
+            dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq },
+        )
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeGapAfterSuccessfulTerminalStartsFreshRecoveryWithoutDuplicateOwner() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..12L))
+        api.syncBodyTexts.addLast(syncRangeResponse(13L..14L))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m12", seq = 12, body = "first gap")),
+            ),
+        )
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m14", seq = 14, body = "terminal-first successor")),
+            ),
+        )
+
+        assertEquals(
+            listOf(10L, 12L),
+            api.syncSinceSeqs,
+            "once the first terminal clears ownership, the next gap must start one fresh recovery",
+        )
+        assertEquals((10L..14L).toList(), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals((10L..14L).toList(), dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq })
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun duplicateAndOutOfOrderRealtimeEventsDoNotExtendActiveRecoveryTarget() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..12L))
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val recovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "gap trigger")),
+                ),
+            )
+        }
+        api.syncStarted?.await()
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m13", seq = 13, body = "current duplicate target")),
+            ),
+        )
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m13", seq = 13, body = "duplicate delivery")),
+            ),
+        )
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m10", seq = 10, body = "out of order duplicate")),
+            ),
+        )
+
+        api.releaseSync?.complete(Unit)
+        recovery.join()
+
+        assertEquals(
+            listOf(10L),
+            api.syncSinceSeqs,
+            "duplicate or lower realtime sequences must not bump target revision into another fetch",
+        )
+        assertEquals(1, store.state.value.payload.messages.count { it.id == "m10" })
+        assertEquals(1, store.state.value.payload.messages.count { it.id == "m13" })
+        assertEquals(listOf(10L, 11L, 12L, 13L), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals(
+            listOf(10L, 11L, 12L, 13L),
+            dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq },
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun nonGapRealtimeEventSuspendedBeforeLinearizationMergesIntoLatestRecoveryPayload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = ParkableReadSessionStore(sampleSession())
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("recovered body", id = "m12", seq = 12),
+            )
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val dataSource = SharedThreadDataSource(networkApi = api, sessionStore = sessionStore)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val recovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "gap trigger")),
+                ),
+            )
+        }
+        api.syncStarted?.await()
+
+        sessionStore.parkNextRead()
+        val nonGap = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m11", seq = 11, body = "non-gap while recovery lands")),
+                ),
+            )
+        }
+        sessionStore.nextReadStarted.await()
+
+        api.releaseSync?.complete(Unit)
+        recovery.join()
+        assertEquals(listOf(10L, 12L), store.state.value.payload.messages.mapNotNull { it.seq })
+
+        sessionStore.releaseNextRead.complete(Unit)
+        nonGap.join()
+
+        assertEquals(
+            listOf(10L, 11L, 12L),
+            store.state.value.payload.messages.mapNotNull { it.seq },
+            "a non-gap event must reduce against the latest recovery payload, not overwrite it from its pre-read snapshot",
+        )
+        assertEquals(1, store.state.value.payload.messages.count { it.id == "m11" })
+        assertEquals(1, store.state.value.payload.messages.count { it.id == "m12" })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals(
+            listOf(10L, 11L, 12L),
+            dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq },
+        )
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun futureRealtimeEventDoesNotAdvanceMultiPageRecoveryCursorPastFetchedPage() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..60L))
+        api.syncBodyTexts.addLast(syncRangeResponse(61L..99L))
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val recovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m61", seq = 61, body = "gap trigger")),
+                ),
+            )
+        }
+        api.syncStarted?.await()
+
+        val future = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m100", seq = 100, body = "future during recovery")),
+                ),
+            )
+        }
+        future.join()
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+
+        api.releaseSync?.complete(Unit)
+        recovery.join()
+
+        assertEquals(
+            listOf(10L, 60L),
+            api.syncSinceSeqs,
+            "a future live event must not move the recovery cursor beyond the max seq of the fetched full page",
+        )
+        assertEquals(
+            (10L..100L).toList(),
+            store.state.value.payload.messages.mapNotNull { it.seq },
+            "both recovery pages and the future realtime event must survive exactly once with no skipped middle range",
+        )
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals((10L..100L).toList(), dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq })
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun futureRealtimeEventExtendsRecoveryAfterShortSnapshotPage() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..12L))
+        api.syncBodyTexts.addLast(syncRangeResponse(13L..62L))
+        api.syncBodyTexts.addLast(syncRangeResponse(63L..99L))
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val recovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "initial gap target")),
+                ),
+            )
+        }
+        api.syncStarted?.await()
+
+        val future = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m100", seq = 100, body = "future after snapshot")),
+                ),
+            )
+        }
+        future.join()
+        api.releaseSync?.complete(Unit)
+        recovery.join()
+
+        assertEquals(
+            listOf(10L, 12L, 62L),
+            api.syncSinceSeqs,
+            "a target that advances while a short response is in flight must extend recovery from that page's max seq",
+        )
+        assertEquals(
+            (10L..100L).toList(),
+            store.state.value.payload.messages.mapNotNull { it.seq },
+            "the short snapshot page, follow-up range, and future event must all survive exactly once",
+        )
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals((10L..100L).toList(), dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq })
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun newGenerationRecoveryReplacesParkedOldGenerationBeforeOldTerminal() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val oldStarted = CompletableDeferred<Unit>()
+        val newStarted = CompletableDeferred<Unit>()
+        val releaseOld = CompletableDeferred<Unit>()
+        val releaseNew = CompletableDeferred<Unit>()
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("old baseline", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..12L))
+        api.syncBodyTexts.addLast(syncRangeResponse(21L..22L))
+        api.syncStartedSignals.addLast(oldStarted)
+        api.syncStartedSignals.addLast(newStarted)
+        api.syncReleases.addLast(releaseOld)
+        api.syncReleases.addLast(releaseNew)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val oldRecovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "old route gap")),
+                ),
+            )
+        }
+        oldStarted.await()
+
+        api.bodyText = messagesResponse("new baseline", id = "m20", seq = 20, historyLimited = false)
+        store.accept(SharedThreadIntent.Refresh)
+        assertEquals(listOf(20L), store.state.value.payload.messages.mapNotNull { it.seq })
+
+        val newRecovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m22", seq = 22, body = "new route gap")),
+                ),
+            )
+        }
+        newStarted.await()
+        assertEquals(
+            listOf(10L, 20L),
+            api.syncSinceSeqs,
+            "the new route generation must start its own recovery before the parked old generation terminates",
+        )
+
+        releaseNew.complete(Unit)
+        newRecovery.join()
+        assertEquals(listOf(20L, 21L, 22L), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+
+        releaseOld.complete(Unit)
+        oldRecovery.join()
+        assertEquals(
+            listOf(20L, 21L, 22L),
+            store.state.value.payload.messages.mapNotNull { it.seq },
+            "the old route terminal must neither clear nor overwrite the successor recovery state",
+        )
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals(
+            listOf(20L, 21L, 22L),
+            dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq },
+        )
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun newRouteRecoveryReplacesParkedOldRouteBeforeOldTerminal() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val oldStarted = CompletableDeferred<Unit>()
+        val newStarted = CompletableDeferred<Unit>()
+        val releaseOld = CompletableDeferred<Unit>()
+        val releaseNew = CompletableDeferred<Unit>()
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("old baseline", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.bodyTextByThreadId["channel-2"] =
+            messagesResponse(
+                "new route baseline",
+                id = "m20",
+                seq = 20,
+                historyLimited = false,
+                channelId = "channel-2",
+            )
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..12L))
+        api.syncBodyTexts.addLast(syncRangeResponse(21L..22L, channelId = "channel-2"))
+        api.syncStartedSignals.addLast(oldStarted)
+        api.syncStartedSignals.addLast(newStarted)
+        api.syncReleases.addLast(releaseOld)
+        api.syncReleases.addLast(releaseNew)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val oldRecovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "old route gap")),
+                ),
+            )
+        }
+        oldStarted.await()
+
+        val newRoute =
+            basePayload().copy(
+                instanceId = "shared-shell-thread-channel-2",
+                title = "channel-2",
+                sourceThreadId = "channel-2",
+                streamChannelId = "channel-2",
+                canLoadMoreAfter = false,
+            )
+        store.accept(SharedThreadIntent.Start(newRoute))
+        assertEquals(listOf(20L), store.state.value.payload.messages.mapNotNull { it.seq })
+
+        val newRecovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(
+                        message(
+                            threadId = "channel-2",
+                            id = "m22",
+                            seq = 22,
+                            body = "new route gap",
+                        ),
+                    ),
+                ),
+            )
+        }
+        newStarted.await()
+        assertEquals(listOf(10L, 20L), api.syncSinceSeqs)
+
+        releaseNew.complete(Unit)
+        newRecovery.join()
+        assertEquals(listOf(20L, 21L, 22L), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+
+        releaseOld.complete(Unit)
+        oldRecovery.join()
+        assertEquals(listOf(20L, 21L, 22L), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals(
+            listOf(20L, 21L, 22L),
+            dataSource.cachedPayload("channel-2")?.messages?.mapNotNull { it.seq },
+        )
+        assertEquals("idle", dataSource.cachedPayload("channel-2")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun cancelledRecoveryReleasesOwnershipAndRestoresIdleForSuccessor() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val oldStarted = CompletableDeferred<Unit>()
+        val oldRelease = CompletableDeferred<Unit>()
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..12L))
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..13L))
+        api.syncStartedSignals.addLast(oldStarted)
+        api.syncReleases.addLast(oldRelease)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val cancelled = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "cancelled gap")),
+                ),
+            )
+        }
+        oldStarted.await()
+        cancelled.cancel()
+        cancelled.join()
+
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m13", seq = 13, body = "successor gap")),
+            ),
+        )
+        assertEquals(listOf(10L, 10L), api.syncSinceSeqs)
+        assertEquals(listOf(10L, 11L, 12L, 13L), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals(
+            listOf(10L, 11L, 12L, 13L),
+            dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq },
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun clearInvalidatesParkedRecoveryAndRestoresVisibleAndCachedIdle() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncRangeResponse(11L..12L),
+            )
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        val recovery = launch {
+            store.accept(
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    MessageNew(message(id = "m12", seq = 12, body = "cleared gap")),
+                ),
+            )
+        }
+        api.syncStarted?.await()
+        assertEquals("loading", store.state.value.payload.newerMessagesStatus)
+        assertEquals("loading", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+
+        store.clear()
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+
+        api.releaseSync?.complete(Unit)
+        recovery.join()
+
+        assertEquals(
+            listOf(10L),
+            store.state.value.payload.messages.mapNotNull { it.seq },
+            "a response owned by the generation invalidated by clear must perform zero payload mutation",
+        )
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals(listOf(10L), dataSource.cachedPayload("channel-1")?.messages?.mapNotNull { it.seq })
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun emptyRecoveryResponseTerminatesIdleAndUpdatesCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = "[]",
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m12", seq = 12, body = "empty recovery")),
+            ),
+        )
+
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun errorRecoveryResponseReleasesStateForSuccessfulRetry() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        api.syncBodyTexts.addLast("{}")
+        api.syncResponseCodes.addLast(500)
+        api.syncBodyTexts.addLast(syncRangeResponse(11L..13L))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m12", seq = 12, body = "failing recovery")),
+            ),
+        )
+        assertEquals("error", store.state.value.payload.newerMessagesStatus)
+        assertEquals("error", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m13", seq = 13, body = "retry recovery")),
+            ),
+        )
+        assertEquals(listOf(10L, 10L), api.syncSinceSeqs)
+        assertEquals(listOf(10L, 11L, 12L, 13L), store.state.value.payload.messages.mapNotNull { it.seq })
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun fullRecoveryPageWithoutCursorProgressTerminatesWithoutLooping() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncRepeatedSeqResponse(count = 50, seq = 10L),
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m12", seq = 12, body = "no progress recovery")),
+            ),
+        )
+
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun noPermissionRecoveryResponseTerminatesAndUpdatesCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val auth = InMemorySlockAuthSessionStore(sampleSession())
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+            )
+        val dataSource = SharedThreadDataSource(networkApi = api, sessionStore = auth)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+        auth.clearSession()
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(message(id = "m12", seq = 12, body = "no permission recovery")),
+            ),
+        )
+
+        assertEquals(emptyList(), api.syncSinceSeqs)
+        assertEquals("error", store.state.value.payload.newerMessagesStatus)
+        assertEquals("error", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
         scope.cancel()
     }
 
@@ -8805,6 +9572,9 @@ class SharedThreadStoreTest {
         val payload = store.state.value.payload
         assertEquals(listOf("foreground body"), payload.messages.map { it.body })
         assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals("idle", payload.newerMessagesStatus)
+        assertEquals(listOf("foreground body"), dataSource.cachedPayload("channel-1")?.messages?.map { it.body })
+        assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
         assertTrue(logs.any { it.startsWith("thread_realtime_gap_stale_drop") && it.contains("reason=stale_token") })
         scope.cancel()
     }
@@ -8877,8 +9647,14 @@ class SharedThreadStoreTest {
         val releaseChannelMessagesByThreadId: MutableMap<String, CompletableDeferred<Unit>> = mutableMapOf()
         var channelMessagesStarted: CompletableDeferred<Unit>? = null
         var releaseChannelMessages: CompletableDeferred<Unit>? = null
+        var afterMessagesStarted: CompletableDeferred<Unit>? = null
+        var releaseAfterMessages: CompletableDeferred<Unit>? = null
         var syncStarted: CompletableDeferred<Unit>? = null
         var releaseSync: CompletableDeferred<Unit>? = null
+        val syncStartedSignals = ArrayDeque<CompletableDeferred<Unit>>()
+        val syncReleases = ArrayDeque<CompletableDeferred<Unit>>()
+        val syncBodyTexts = ArrayDeque<String>()
+        val syncResponseCodes = ArrayDeque<Int>()
 
         override suspend fun channelMessages(
             threadId: String,
@@ -8904,6 +9680,8 @@ class SharedThreadStoreTest {
                 }
                 afterSeq != null -> {
                     afterSeqs += afterSeq
+                    afterMessagesStarted?.complete(Unit)
+                    releaseAfterMessages?.await()
                     HomeNetworkResponse(code = 200, bodyText = newerBodyText)
                 }
                 else -> HomeNetworkResponse(code = channelMessagesResponseCode, bodyText = responseBody)
@@ -8911,11 +9689,15 @@ class SharedThreadStoreTest {
         }
 
         override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse {
+            val startedSignal = syncStartedSignals.removeFirstOrNull()
+            val callRelease = syncReleases.removeFirstOrNull()
+            val responseBody = syncBodyTexts.removeFirstOrNull() ?: newerBodyText
             syncSinceSeqs += sinceSeq
             syncLimits += limit
+            startedSignal?.complete(Unit)
             syncStarted?.complete(Unit)
-            releaseSync?.await()
-            return HomeNetworkResponse(code = 200, bodyText = newerBodyText)
+            (callRelease ?: releaseSync)?.await()
+            return HomeNetworkResponse(code = syncResponseCodes.removeFirstOrNull() ?: 200, bodyText = responseBody)
         }
 
         override suspend fun sendMessage(
@@ -9005,6 +9787,43 @@ class SharedThreadStoreTest {
             createdThreads += channelId to parentMessageId
             return HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"thread-$parentMessageId","parentMessageId":"$parentMessageId","created":true}""")
         }
+    }
+
+    private class ParkableReadSessionStore(
+        initialSession: StoredAuthSession,
+    ) : SlockAuthSessionStore {
+        private val delegate = InMemorySlockAuthSessionStore(initialSession)
+        private var parkRead = false
+        var nextReadStarted = CompletableDeferred<Unit>()
+            private set
+        var releaseNextRead = CompletableDeferred<Unit>()
+            private set
+
+        fun parkNextRead() {
+            parkRead = true
+            nextReadStarted = CompletableDeferred()
+            releaseNextRead = CompletableDeferred()
+        }
+
+        override suspend fun readSession(): StoredAuthSession? {
+            if (parkRead) {
+                parkRead = false
+                nextReadStarted.complete(Unit)
+                releaseNextRead.await()
+            }
+            return delegate.readSession()
+        }
+
+        override suspend fun saveSession(session: StoredAuthSession) = delegate.saveSession(session)
+
+        override suspend fun updateTokens(accessToken: String, refreshToken: String) =
+            delegate.updateTokens(accessToken, refreshToken)
+
+        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) =
+            delegate.updateSelectedServer(serverId, serverSlug)
+
+        override suspend fun clearSession(reason: String, source: String) =
+            delegate.clearSession(reason, source)
     }
 
     private class FakeSavedStatusRepository(
@@ -10233,6 +11052,46 @@ class SharedThreadStoreTest {
               }
             ]
             """.trimIndent()
+
+        private fun syncRangeResponse(
+            seqs: LongRange,
+            channelId: String = "channel-1",
+        ): String =
+            seqs.joinToString(prefix = "[", postfix = "]") { seq ->
+                """
+                {
+                  "id": "m$seq",
+                  "seq": $seq,
+                  "channelId": "$channelId",
+                  "content": "body-$seq",
+                  "createdAt": "2026-05-19T16:00:00Z",
+                  "senderId": "u1",
+                  "senderName": "Artin",
+                  "senderType": "user",
+                  "messageType": "chat"
+                }
+                """.trimIndent()
+            }
+
+        private fun syncRepeatedSeqResponse(
+            count: Int,
+            seq: Long,
+        ): String =
+            (1..count).joinToString(prefix = "[", postfix = "]") { index ->
+                """
+                {
+                  "id": "stale-$index",
+                  "seq": $seq,
+                  "channelId": "channel-1",
+                  "content": "stale-$index",
+                  "createdAt": "2026-05-19T16:00:00Z",
+                  "senderId": "u1",
+                  "senderName": "Artin",
+                  "senderType": "user",
+                  "messageType": "chat"
+                }
+                """.trimIndent()
+            }
 
         private fun syncSystemResponse(
             body: String,
