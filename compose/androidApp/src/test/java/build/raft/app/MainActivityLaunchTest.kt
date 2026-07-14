@@ -241,7 +241,6 @@ class MainActivityLaunchTest {
         )
 
         assertTrue(taskLaunch.clearTask)
-        assertEquals(null, taskLaunch.documentShellId)
         assertEquals("launcher", slockLaunchSource("android.intent.action.MAIN", null, null))
     }
 
