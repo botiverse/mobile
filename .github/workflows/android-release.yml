@@ -235,34 +235,59 @@ jobs:
         # scripts/publish_android_quiver_release.sh does not sign; that's a
         # known gap for KMP's helper follow-up).
         env:
-          KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}
-          KEYSTORE_PASS: ${{ secrets.SLOCK_KEYSTORE_PASS }}
-          KEY_ALIAS: ${{ secrets.SLOCK_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.SLOCK_KEY_PASS }}
+          LEGACY_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}
+          SLOCK_LEGACY_KEYSTORE_PASS: ${{ secrets.SLOCK_KEYSTORE_PASS }}
+          SLOCK_LEGACY_KEY_ALIAS: ${{ secrets.SLOCK_KEY_ALIAS }}
+          SLOCK_LEGACY_KEY_PASS: ${{ secrets.SLOCK_KEY_PASS }}
+          ROTATED_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_ROTATED_KEYSTORE_FILE_BASE64 }}
+          SLOCK_ROTATED_KEYSTORE_PASS: ${{ secrets.SLOCK_ROTATED_KEYSTORE_PASS }}
+          SLOCK_ROTATED_KEY_ALIAS: ${{ secrets.SLOCK_ROTATED_KEY_ALIAS }}
+          SLOCK_ROTATED_KEY_PASS: ${{ secrets.SLOCK_ROTATED_KEY_PASS }}
+          SIGNING_LINEAGE_B64: ${{ secrets.SLOCK_SIGNING_LINEAGE_BASE64 }}
         shell: bash
         run: |
           set -euo pipefail
-          KEYSTORE_FILE="$(mktemp -t slock-keystore-XXXXXX.jks)"
-          echo "${KEYSTORE_FILE_B64}" | base64 -d > "${KEYSTORE_FILE}"
-          export KEYSTORE_FILE
+          for name in \
+            LEGACY_KEYSTORE_FILE_B64 \
+            SLOCK_LEGACY_KEYSTORE_PASS \
+            SLOCK_LEGACY_KEY_ALIAS \
+            SLOCK_LEGACY_KEY_PASS \
+            ROTATED_KEYSTORE_FILE_B64 \
+            SLOCK_ROTATED_KEYSTORE_PASS \
+            SLOCK_ROTATED_KEY_ALIAS \
+            SLOCK_ROTATED_KEY_PASS \
+            SIGNING_LINEAGE_B64; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required rotated release signing secret: ${name}" >&2
+              exit 1
+            fi
+          done
+          SLOCK_LEGACY_KEYSTORE_FILE="$(mktemp -t raft-release-legacy-keystore-XXXXXX.jks)"
+          SLOCK_ROTATED_KEYSTORE_FILE="$(mktemp -t raft-release-rotated-keystore-XXXXXX.jks)"
+          SLOCK_SIGNING_LINEAGE_FILE="$(mktemp -t raft-release-signing-lineage-XXXXXX.bin)"
+          export SLOCK_LEGACY_KEYSTORE_FILE SLOCK_ROTATED_KEYSTORE_FILE SLOCK_SIGNING_LINEAGE_FILE
+          echo "${LEGACY_KEYSTORE_FILE_B64}" | base64 -d > "${SLOCK_LEGACY_KEYSTORE_FILE}"
+          echo "${ROTATED_KEYSTORE_FILE_B64}" | base64 -d > "${SLOCK_ROTATED_KEYSTORE_FILE}"
+          echo "${SIGNING_LINEAGE_B64}" | base64 -d > "${SLOCK_SIGNING_LINEAGE_FILE}"
           BT="${ANDROID_HOME}/build-tools/36.0.0"
           UNSIGNED="${{ steps.locate.outputs.apk_path }}"
-          ALIGNED="/tmp/androidApp-${{ needs.resolve.outputs.android_variant }}-aligned.apk"
           SIGNED="/tmp/androidApp-${{ needs.resolve.outputs.android_variant }}-signed.apk"
-          "${BT}/zipalign" -p -f 4 "${UNSIGNED}" "${ALIGNED}"
-          "${BT}/apksigner" sign \
-            --ks "${KEYSTORE_FILE}" \
-            --ks-key-alias "${KEY_ALIAS}" \
-            --ks-pass "pass:${KEYSTORE_PASS}" \
-            --key-pass "pass:${KEY_PASS}" \
-            --v2-signing-enabled true \
-            --v3-signing-enabled true \
-            --out "${SIGNED}" \
-            "${ALIGNED}"
+          cleanup() {
+            rm -f \
+              "${SLOCK_LEGACY_KEYSTORE_FILE}" \
+              "${SLOCK_ROTATED_KEYSTORE_FILE}" \
+              "${SLOCK_SIGNING_LINEAGE_FILE}" \
+              "${SIGNED}"
+          }
+          trap cleanup EXIT
+          scripts/sign_android_apk_with_rotation.sh \
+            --input "${UNSIGNED}" \
+            --output "${SIGNED}" \
+            --build-tools-dir "${BT}" \
+            --verify-log apksigner-rotation-verify.log
           # Replace the unsigned APK in the build outputs directory so the
           # downstream job can pick it up via the apk_path output.
           cp "${SIGNED}" "${UNSIGNED}"
-          rm -f "${KEYSTORE_FILE}" "${ALIGNED}" "${SIGNED}"
 
       - name: Verify APK
         id: verify

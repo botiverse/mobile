@@ -95,42 +95,56 @@ jobs:
           test -n "${APK}"
           echo "apk=${APK}" >> "$GITHUB_OUTPUT"
 
-      - name: Sign alpha APK with stable release identity
+      - name: Sign alpha APK with rotated release identity
         env:
-          KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}
-          KEYSTORE_PASS: ${{ secrets.SLOCK_KEYSTORE_PASS }}
-          KEY_ALIAS: ${{ secrets.SLOCK_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.SLOCK_KEY_PASS }}
+          LEGACY_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}
+          SLOCK_LEGACY_KEYSTORE_PASS: ${{ secrets.SLOCK_KEYSTORE_PASS }}
+          SLOCK_LEGACY_KEY_ALIAS: ${{ secrets.SLOCK_KEY_ALIAS }}
+          SLOCK_LEGACY_KEY_PASS: ${{ secrets.SLOCK_KEY_PASS }}
+          ROTATED_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_ROTATED_KEYSTORE_FILE_BASE64 }}
+          SLOCK_ROTATED_KEYSTORE_PASS: ${{ secrets.SLOCK_ROTATED_KEYSTORE_PASS }}
+          SLOCK_ROTATED_KEY_ALIAS: ${{ secrets.SLOCK_ROTATED_KEY_ALIAS }}
+          SLOCK_ROTATED_KEY_PASS: ${{ secrets.SLOCK_ROTATED_KEY_PASS }}
+          SIGNING_LINEAGE_B64: ${{ secrets.SLOCK_SIGNING_LINEAGE_BASE64 }}
         shell: bash
         run: |
           set -euo pipefail
-          for name in KEYSTORE_FILE_B64 KEYSTORE_PASS KEY_ALIAS KEY_PASS; do
+          for name in \
+            LEGACY_KEYSTORE_FILE_B64 \
+            SLOCK_LEGACY_KEYSTORE_PASS \
+            SLOCK_LEGACY_KEY_ALIAS \
+            SLOCK_LEGACY_KEY_PASS \
+            ROTATED_KEYSTORE_FILE_B64 \
+            SLOCK_ROTATED_KEYSTORE_PASS \
+            SLOCK_ROTATED_KEY_ALIAS \
+            SLOCK_ROTATED_KEY_PASS \
+            SIGNING_LINEAGE_B64; do
             if [ -z "${!name:-}" ]; then
-              echo "Missing required stable Alpha signing secret: ${name}" >&2
+              echo "Missing required rotated Alpha signing secret: ${name}" >&2
               exit 1
             fi
           done
-          KEYSTORE_FILE="$(mktemp -t raft-alpha-keystore-XXXXXX.jks)"
-          ALIGNED="$(mktemp -t raft-alpha-aligned-XXXXXX.apk)"
-          SIGNED="$(mktemp -t raft-alpha-signed-XXXXXX.apk)"
+          SLOCK_LEGACY_KEYSTORE_FILE="$(mktemp -t raft-alpha-legacy-keystore-XXXXXX.jks)"
+          SLOCK_ROTATED_KEYSTORE_FILE="$(mktemp -t raft-alpha-rotated-keystore-XXXXXX.jks)"
+          SLOCK_SIGNING_LINEAGE_FILE="$(mktemp -t raft-alpha-signing-lineage-XXXXXX.bin)"
+          export SLOCK_LEGACY_KEYSTORE_FILE SLOCK_ROTATED_KEYSTORE_FILE SLOCK_SIGNING_LINEAGE_FILE
           cleanup() {
-            rm -f "${KEYSTORE_FILE}" "${ALIGNED}" "${SIGNED}"
+            rm -f \
+              "${SLOCK_LEGACY_KEYSTORE_FILE}" \
+              "${SLOCK_ROTATED_KEYSTORE_FILE}" \
+              "${SLOCK_SIGNING_LINEAGE_FILE}"
           }
           trap cleanup EXIT
-          echo "${KEYSTORE_FILE_B64}" | base64 -d > "${KEYSTORE_FILE}"
+          echo "${LEGACY_KEYSTORE_FILE_B64}" | base64 -d > "${SLOCK_LEGACY_KEYSTORE_FILE}"
+          echo "${ROTATED_KEYSTORE_FILE_B64}" | base64 -d > "${SLOCK_ROTATED_KEYSTORE_FILE}"
+          echo "${SIGNING_LINEAGE_B64}" | base64 -d > "${SLOCK_SIGNING_LINEAGE_FILE}"
           BT="${ANDROID_HOME}/build-tools/36.0.0"
           APK="${{ steps.locate.outputs.apk }}"
-          "${BT}/zipalign" -p -f 4 "${APK}" "${ALIGNED}"
-          "${BT}/apksigner" sign \
-            --ks "${KEYSTORE_FILE}" \
-            --ks-key-alias "${KEY_ALIAS}" \
-            --ks-pass "pass:${KEYSTORE_PASS}" \
-            --key-pass "pass:${KEY_PASS}" \
-            --v2-signing-enabled true \
-            --v3-signing-enabled true \
-            --out "${SIGNED}" \
-            "${ALIGNED}"
-          cp "${SIGNED}" "${APK}"
+          scripts/sign_android_apk_with_rotation.sh \
+            --input "${APK}" \
+            --output "${APK}" \
+            --build-tools-dir "${BT}" \
+            --verify-log apksigner-verify.log
 
       - name: Verify alpha package
         id: verify
@@ -146,8 +160,10 @@ jobs:
             echo "Alpha APK still uses the ephemeral Android Debug signer" >&2
             exit 1
           fi
-          SIGNER_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' apksigner-verify.log | head -n 1)"
-          test -n "${SIGNER_SHA256}"
+          LEGACY_SIGNER_SHA256="$(sed -n 's/^Signer (minSdkVersion=[0-9][0-9]*, maxSdkVersion=32) certificate SHA-256 digest: //p' apksigner-verify.log | head -n 1)"
+          ROTATED_SIGNER_SHA256="$(sed -n 's/^Signer (minSdkVersion=33, maxSdkVersion=[0-9][0-9]*) certificate SHA-256 digest: //p' apksigner-verify.log | head -n 1)"
+          test -n "${LEGACY_SIGNER_SHA256}"
+          test -n "${ROTATED_SIGNER_SHA256}"
           "${BT}/aapt" dump badging "$APK" | tee aapt-badging.log
           grep -q "package: name='build.raft.app.alpha'" aapt-badging.log
           grep -q "application-label:'Raft Alpha'" aapt-badging.log
@@ -156,7 +172,8 @@ jobs:
           cp "$APK" androidApp-alpha-${SOURCE_SHA::9}.apk
           echo "apk=androidApp-alpha-${SOURCE_SHA::9}.apk" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "androidApp-alpha-${SOURCE_SHA::9}.apk" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "signer_sha256=${SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
+          echo "legacy_signer_sha256=${LEGACY_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
+          echo "rotated_signer_sha256=${ROTATED_SIGNER_SHA256}" >> "$GITHUB_OUTPUT"
 
       - name: Upload alpha APK
         uses: actions/upload-artifact@v4
@@ -176,7 +193,8 @@ jobs:
             echo "## Android .alpha validation package"
             echo "- Ref: \`${{ steps.source.outputs.sha }}\`"
             echo "- Package: \`build.raft.app.alpha\`"
-            echo "- Stable signer certificate SHA-256: \`${{ steps.verify.outputs.signer_sha256 }}\`"
+            echo "- API 24-32 signer SHA-256: \`${{ steps.verify.outputs.legacy_signer_sha256 }}\`"
+            echo "- API 33+ signer SHA-256: \`${{ steps.verify.outputs.rotated_signer_sha256 }}\`"
             echo "- APK SHA-256: \`${{ steps.verify.outputs.sha256 }}\`"
             echo "- Artifact retention: 7 days"
           } >> "$GITHUB_STEP_SUMMARY"
