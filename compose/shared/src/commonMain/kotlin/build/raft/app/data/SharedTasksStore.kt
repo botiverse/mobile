@@ -150,6 +150,7 @@ internal class SharedTasksViewModel(
     private val sharedTasksDataStore: SharedTasksDataStore? = null,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val staleWindowMs: Long = 15_000L,
+    private val runtimeScopeOverride: CoroutineScope? = null,
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
@@ -158,8 +159,11 @@ internal class SharedTasksViewModel(
         )
 ) : ViewModel(),
     SharedStateHolder<TasksUiState, SharedTasksRouteIntent, SharedTasksEvent> {
+    private val runtimeScope: CoroutineScope
+        get() = runtimeScopeOverride ?: viewModelScope
+
     private val store by lazy {
-        SharedTasksStore(scope = viewModelScope)
+        SharedTasksStore(scope = runtimeScope)
     }
     private val events = MviEffectEmitter<SharedTasksEvent>()
 
@@ -199,14 +203,14 @@ internal class SharedTasksViewModel(
                 }
                 statusJob?.cancel()
                 statusJob =
-                    viewModelScope.launch {
+                    runtimeScope.launch {
                         updateStatus(action.task, action.status)
                     }
             }
             is SharedTasksRouteIntent.ApplyTaskStatus -> {
                 if (store.accept(SharedTasksIntent.UpdateTaskStatus(action.taskId, action.status))) {
                     state.value.currentTaskSummary(action.taskId)?.let { task ->
-                        viewModelScope.launch {
+                        runtimeScope.launch {
                             publishSharedTaskUpdate(task, "external_task_status")
                         }
                     }
@@ -214,7 +218,7 @@ internal class SharedTasksViewModel(
             }
             is SharedTasksRouteIntent.ApplyTaskUpdate -> {
                 if (store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(action.task))) {
-                    viewModelScope.launch {
+                    runtimeScope.launch {
                         publishSharedTaskUpdate(action.task, "external_task_update")
                     }
                 }
@@ -222,7 +226,7 @@ internal class SharedTasksViewModel(
             is SharedTasksRouteIntent.CreateTasks -> {
                 createJob?.cancel()
                 createJob =
-                    viewModelScope.launch {
+                    runtimeScope.launch {
                         createTasks(action.channelId, action.titles)
                     }
             }
@@ -230,8 +234,10 @@ internal class SharedTasksViewModel(
                 store.dispatch(SharedTasksIntent.NavigationFailed(null))
             is SharedTasksRouteIntent.SeedContent -> {
                 if (store.accept(SharedTasksIntent.SeedContent(action.snapshot, state.value.selectedFilter))) {
-                    viewModelScope.launch {
-                        publishSharedTasksSnapshot(TaskFilter(), action.snapshot, "seed")
+                    runtimeScope.launch {
+                        action.snapshot.tasks.forEach { task ->
+                            publishSharedTaskUpdate(task, "seed")
+                        }
                     }
                 }
             }
@@ -299,13 +305,14 @@ internal class SharedTasksViewModel(
         store.accept(SharedTasksIntent.StartLoading(selectedFilter))
         loadJobPriority = request.priority
         loadJob =
-            viewModelScope.launch {
+            runtimeScope.launch {
                 try {
                     refreshTasks(
                         request = request,
                         selectedFilter = selectedFilter,
                         reason = reason,
-                        mergeResult = intent == SharedTasksRouteIntent.Refresh || hasSnapshot
+                        mergeResult = intent == SharedTasksRouteIntent.Refresh || hasSnapshot,
+                        forceSharedRefresh = forceRefresh
                     )
                 } finally {
                     if (loadJobPriority == request.priority) {
@@ -319,7 +326,8 @@ internal class SharedTasksViewModel(
         request: TasksLoadRequest,
         selectedFilter: TaskStatus?,
         reason: String,
-        mergeResult: Boolean
+        mergeResult: Boolean,
+        forceSharedRefresh: Boolean
     ) {
         val startedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
@@ -327,7 +335,26 @@ internal class SharedTasksViewModel(
                 "hasSnapshot=${state.value.hasCompletedTasksSnapshot()} priority=${request.priority.name}"
         )
         try {
-            val result = useCase.refreshTasks(request)
+            val sharedStore = sharedTasksDataStore
+            val sharedServerId =
+                if (sharedStore != null && request.filter.statuses.isEmpty()) {
+                    useCase.currentServerId()
+                } else {
+                    null
+                }
+            val usesSharedSnapshotLoad = sharedStore != null && sharedServerId != null
+            val result =
+                if (sharedStore != null && sharedServerId != null) {
+                    sharedStore.loadSnapshot(
+                        serverId = sharedServerId.value,
+                        scope = scope,
+                        forceRefresh = forceSharedRefresh
+                    ) {
+                        useCase.refreshTasks(request)
+                    }
+                } else {
+                    useCase.refreshTasks(request)
+                }
             val durationMs = startedAt.elapsedNow().inWholeMilliseconds
             diagnosticsLogger(
                 "tasks_refresh_result reason=$reason ${result.tasksDiagnosticsSummary()} durationMs=$durationMs"
@@ -336,10 +363,17 @@ internal class SharedTasksViewModel(
                 lastRefreshCompletedAt = TimeSource.Monotonic.markNow()
             }
             if (result is DataResult.Content) {
-                val published = publishSharedTasksSnapshot(request.filter, result.data, "refresh_result")
-                if (!published) {
+                if (usesSharedSnapshotLoad) {
                     if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
-                        diagnosticsLogger("tasks_snapshot_commit source=refresh_result ${result.tasksDiagnosticsSummary()}")
+                        diagnosticsLogger(
+                            "tasks_snapshot_commit source=shared_load_result ${result.tasksDiagnosticsSummary()}"
+                        )
+                    }
+                } else {
+                    if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
+                        diagnosticsLogger(
+                            "tasks_snapshot_commit source=refresh_result ${result.tasksDiagnosticsSummary()}"
+                        )
                     }
                 }
             } else {
@@ -359,22 +393,6 @@ internal class SharedTasksViewModel(
             events.emit(SharedTasksEvent.OperationFailed("tasks_network"))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
         }
-    }
-
-    private suspend fun publishSharedTasksSnapshot(
-        filter: TaskFilter,
-        snapshot: TaskSnapshot,
-        source: String
-    ): Boolean {
-        val sharedStore = sharedTasksDataStore ?: return false
-        if (filter.statuses.isNotEmpty()) {
-            diagnosticsLogger("tasks_projection_publish_skip source=$source reason=filtered")
-            return false
-        }
-        val serverId = useCase.currentServerId() ?: return false
-        sharedStore.publishSnapshot(serverId.value, scope, snapshot)
-        diagnosticsLogger("tasks_projection_publish source=$source scope=${scope.tasksScopeDiagnostics()} tasks=${snapshot.tasks.size}")
-        return true
     }
 
     private suspend fun publishSharedTaskUpdate(task: TaskSummary, source: String) {
@@ -410,7 +428,7 @@ internal class SharedTasksViewModel(
     private fun observeTasks(request: TasksLoadRequest, selectedFilter: TaskStatus?) {
         observeJob?.cancel()
         observeJob =
-            viewModelScope.launch {
+            runtimeScope.launch {
                 val sharedStore = sharedTasksDataStore
                 val serverId = useCase.currentServerId()
                 if (sharedStore != null && serverId != null) {

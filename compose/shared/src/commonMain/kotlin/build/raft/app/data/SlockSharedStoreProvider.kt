@@ -554,7 +554,6 @@ internal class SlockSharedStoreProvider private constructor(
                     store = relationalStore,
                     diagnosticsLogger = sharedInfoLogger("SlockLocalCache", "local_cache")
                 )
-            val tasksDataStore = SharedTasksDataStore()
             val authSessionEvents =
                 KuiklyAuthSessionEvents(
                     eventBus = eventBusRelay,
@@ -608,6 +607,24 @@ internal class SlockSharedStoreProvider private constructor(
                 SharedApiEnvironmentStore(
                     apiEnvironmentKeyValueStore
                 )
+            val tasksDataStore =
+                SharedTasksDataStore(
+                    ownerIdentityProvider = {
+                        authStore.readSession()?.let { session ->
+                            "${apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')}|${session.user.id}"
+                        }
+                    }
+                )
+            CoroutineScope(SupervisorJob()).launch {
+                authStore.authSessionEvents.collect { event ->
+                    when (event) {
+                        is AuthSessionEvent.Authenticated,
+                        is AuthSessionEvent.Cleared -> tasksDataStore.clearOwnerData()
+                        is AuthSessionEvent.BindingMetadataChanged,
+                        is AuthSessionEvent.TokensRotated -> Unit
+                    }
+                }
+            }
             val platformFileResolverBinding = SlockSharedPlatformFileResolverProvider.createBinding()
             val platformFileResolver = platformFileResolverBinding.resolver
             bridge.logSharedAuthDiagnostic(
