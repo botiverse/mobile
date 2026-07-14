@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 internal enum class DiagnosticCriticalHint {
     None,
-    Auth,
+    AuthCritical,
 }
 
 internal data class PendingDiagnosticLog(
@@ -49,6 +49,7 @@ internal class SlockDiagnosticsDispatchQueue(
     private val acceptedEntries = AtomicLong(0L)
     private val processedEntries = AtomicLong(0L)
     private val droppedEntries = AtomicLong(0L)
+    private val failedEntries = AtomicLong(0L)
     private val nextSequence = AtomicLong(initialSequence)
     private val enqueueLock = Any()
     private val flushMonitor = Object()
@@ -84,7 +85,7 @@ internal class SlockDiagnosticsDispatchQueue(
 
     fun flush(timeoutMillis: Long = 2_000L): Boolean {
         val target = acceptedEntries.get()
-        if (processedEntries.get() >= target) return true
+        if (processedEntries.get() >= target) return failedEntries.get() == 0L
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis.coerceAtLeast(0L))
         synchronized(flushMonitor) {
             while (processedEntries.get() < target) {
@@ -92,10 +93,15 @@ internal class SlockDiagnosticsDispatchQueue(
                 if (remainingNanos <= 0L) return false
                 val waitMillis = TimeUnit.NANOSECONDS.toMillis(remainingNanos)
                 val waitNanos = (remainingNanos - TimeUnit.MILLISECONDS.toNanos(waitMillis)).toInt()
-                flushMonitor.wait(waitMillis, waitNanos)
+                try {
+                    flushMonitor.wait(waitMillis, waitNanos)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return false
+                }
             }
         }
-        return true
+        return failedEntries.get() == 0L
     }
 
     private fun runLoop() {
@@ -110,6 +116,7 @@ internal class SlockDiagnosticsDispatchQueue(
                 processor(entry, droppedEntries.get())
             }.onFailure {
                 droppedEntries.incrementAndGet()
+                failedEntries.incrementAndGet()
             }
             processedEntries.incrementAndGet()
             synchronized(flushMonitor) {

@@ -65,7 +65,7 @@ object SlockAndroidLocalDiagnostics {
         message: String,
         includeNonCritical: Boolean = true,
     ) {
-        enqueueLog(level, tag, message, includeNonCritical, DiagnosticCriticalHint.Auth)
+        enqueueLog(level, tag, message, includeNonCritical, DiagnosticCriticalHint.AuthCritical)
     }
 
     internal fun recordAuthLog(
@@ -97,7 +97,7 @@ object SlockAndroidLocalDiagnostics {
                 criticalHint =
                     criticalHint
                         ?: if (hasFixedCostAuthCriticalHint(queuedMessage)) {
-                            DiagnosticCriticalHint.Auth
+                            DiagnosticCriticalHint.AuthCritical
                         } else {
                             DiagnosticCriticalHint.None
                         },
@@ -106,27 +106,25 @@ object SlockAndroidLocalDiagnostics {
     }
 
     private fun processPendingLog(entry: PendingDiagnosticLog, droppedBeforeDispatch: Long) {
-        runCatching {
-            val cleanTag = entry.tag.valueOrNull() ?: return
-            val cleanMessage = DiagnosticsSanitizer.sanitize(entry.message).takeIf { it.isNotBlank() } ?: return
-            val sanitized =
-                SanitizedDiagnosticLog(
-                    level = entry.level,
-                    tag = cleanTag,
-                    message = cleanMessage,
-                    timestampMillis = entry.timestampMillis,
-                    threadName = entry.threadName,
-                    sequence = entry.sequence,
-                    droppedBeforeDispatch = droppedBeforeDispatch,
-                )
-            val authEvent = classifyAuthCriticalEvent(sanitized.message)
-            if (!shouldEmitDiagnostic(entry.includeNonCritical, authEvent)) return
-            writeLogcat(sanitized.level, sanitized.tag, sanitized.message)
-            if (authEvent != null) {
-                SlockAuthCriticalJournal.record(sanitized, authEvent)
-            } else if (SlockPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
-                SlockGeneralLogRing.record(sanitized)
-            }
+        val cleanTag = entry.tag.valueOrNull() ?: return
+        val cleanMessage = DiagnosticsSanitizer.sanitize(entry.message).takeIf { it.isNotBlank() } ?: return
+        val sanitized =
+            SanitizedDiagnosticLog(
+                level = entry.level,
+                tag = cleanTag,
+                message = cleanMessage,
+                timestampMillis = entry.timestampMillis,
+                threadName = entry.threadName,
+                sequence = entry.sequence,
+                droppedBeforeDispatch = droppedBeforeDispatch,
+            )
+        val authEvent = classifyAuthCriticalEvent(sanitized.message)
+        if (!shouldEmitDiagnostic(entry.includeNonCritical, authEvent)) return
+        writeLogcat(sanitized.level, sanitized.tag, sanitized.message)
+        if (authEvent != null) {
+            SlockAuthCriticalJournal.record(sanitized, authEvent)
+        } else if (SlockPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
+            SlockGeneralLogRing.record(sanitized)
         }
     }
 

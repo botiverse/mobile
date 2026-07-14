@@ -106,7 +106,7 @@ class SlockDiagnosticsDispatchQueueTest {
         assertTrue(processorStarted.await(1L, TimeUnit.SECONDS))
         queue.enqueue(pending("queued"))
         queue.enqueue(pending("ordinary-dropped"))
-        queue.enqueue(pending("auth-critical", criticalHint = DiagnosticCriticalHint.Auth))
+        queue.enqueue(pending("auth-critical", criticalHint = DiagnosticCriticalHint.AuthCritical))
 
         releaseProcessor.countDown()
         assertTrue(queue.flush())
@@ -146,7 +146,7 @@ class SlockDiagnosticsDispatchQueueTest {
         queue.enqueue(pending("running"))
         assertTrue(firstStarted.await(1L, TimeUnit.SECONDS))
         queue.enqueue(pending("queued"))
-        queue.enqueue(pending("reserved", criticalHint = DiagnosticCriticalHint.Auth))
+        queue.enqueue(pending("reserved", criticalHint = DiagnosticCriticalHint.AuthCritical))
 
         releaseFirst.countDown()
         assertTrue(secondStarted.await(1L, TimeUnit.SECONDS))
@@ -178,8 +178,8 @@ class SlockDiagnosticsDispatchQueueTest {
 
         queue.enqueue(pending("running"))
         assertTrue(processorStarted.await(1L, TimeUnit.SECONDS))
-        queue.enqueue(pending("first-critical", criticalHint = DiagnosticCriticalHint.Auth))
-        queue.enqueue(pending("later-critical", criticalHint = DiagnosticCriticalHint.Auth))
+        queue.enqueue(pending("first-critical", criticalHint = DiagnosticCriticalHint.AuthCritical))
+        queue.enqueue(pending("later-critical", criticalHint = DiagnosticCriticalHint.AuthCritical))
 
         releaseProcessor.countDown()
         assertTrue(queue.flush())
@@ -209,6 +209,27 @@ class SlockDiagnosticsDispatchQueueTest {
         assertFalse(queue.flush(timeoutMillis = 10L))
         releaseProcessor.countDown()
         assertTrue(queue.flush(timeoutMillis = 1_000L))
+    }
+
+    @Test
+    fun processorFailureMakesBarrierFailWithoutStoppingLaterEntries() {
+        val processed = CopyOnWriteArrayList<String>()
+        val queue =
+            SlockDiagnosticsDispatchQueue(
+                capacity = 4,
+                criticalCapacity = 1,
+                threadFactory = ThreadFactory { runnable -> Thread(runnable, "diagnostics-test-writer") },
+                processor = { entry, _ ->
+                    if (entry.message == "broken") error("synthetic diagnostics failure")
+                    processed += entry.message
+                },
+            )
+
+        queue.enqueue(pending("broken"))
+        queue.enqueue(pending("after-failure"))
+
+        assertFalse(queue.flush())
+        assertEquals(listOf("after-failure"), processed)
     }
 
     @Test

@@ -71,7 +71,7 @@ object SlockAuthCriticalJournal {
     fun flush(): Boolean =
         runCatching {
             executor.submit { }.get(2L, TimeUnit.SECONDS)
-            true
+            droppedEntries.get() == 0L
         }.getOrDefault(false)
 
     fun hasFiles(context: Context): Boolean =
@@ -114,7 +114,10 @@ object SlockAuthCriticalJournal {
     }
 
     private fun append(line: String) {
-        val context = appContext ?: return
+        val context = appContext ?: run {
+            droppedEntries.incrementAndGet()
+            return
+        }
         runCatching {
             synchronized(fileLock) {
                 val file = journalFile(context)

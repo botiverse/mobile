@@ -95,7 +95,7 @@ object SlockGeneralLogRing {
     fun flush(): Boolean =
         runCatching {
             executor.submit { }.get(2L, TimeUnit.SECONDS)
-            true
+            droppedEntries.get() == 0L
         }.getOrDefault(false)
 
     fun logFiles(context: Context): List<File> =
@@ -168,7 +168,10 @@ object SlockGeneralLogRing {
         synchronized(memoryLock) { memoryEntries.toList() }
 
     private fun append(entry: DiagnosticEntry) {
-        val context = appContext ?: return
+        val context = appContext ?: run {
+            droppedEntries.incrementAndGet()
+            return
+        }
         runCatching {
             synchronized(fileLock) {
                 val dir = logDir(context).apply { mkdirs() }
