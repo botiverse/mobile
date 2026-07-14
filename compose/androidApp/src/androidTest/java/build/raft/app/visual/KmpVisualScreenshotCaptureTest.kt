@@ -1415,19 +1415,9 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Test
-    fun captureSettingsAdministrationFullRoute() {
-        captureKmpComponentCase(
-            caseId = "screens.settings.administration.full",
-            pageName = "compose_settings_route_visual",
-            pageData =
-                JSONObject()
-                    .put("destination", "administration")
-                    .put("fixtureKey", "canonical"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
+    // Administration cases retired: the app renders the WEB settings page in
+    // an in-app WebView (SettingsAdministrationPage, Billing pattern), so
+    // there is no native admin surface left to compare against React.
 
     @Test
     fun captureSettingsConnectedAppsFullRoute() {
@@ -1447,48 +1437,8 @@ class KmpVisualScreenshotCaptureTest {
     // whole route in one frame at content height, paired with React's
     // fullPage captures under the shared contract "full-height".
     @Test
-    fun captureSettingsAdministrationFullHeight() {
-        captureKmpFullHeightSettingsCase("screens.settings.administration.full-height", "administration")
-    }
-
-    @Test
     fun captureSettingsConnectedAppsFullHeight() {
         captureKmpFullHeightSettingsCase("screens.settings.connected-apps.full-height", "connected-apps")
-    }
-
-    @Test
-    fun captureSettingsAdministrationAdmins() {
-        captureKmpSettingsPageCase("components.settings.administration.admins", "administration-admins")
-    }
-
-    @Test
-    fun captureSettingsAdministrationInvites() {
-        captureKmpSettingsPageCase("components.settings.administration.invites", "administration-invites")
-    }
-
-    @Test
-    fun captureSettingsAdministrationJoinLinks() {
-        captureKmpSettingsPageCase("components.settings.administration.join-links", "administration-join-links")
-    }
-
-    @Test
-    fun captureSettingsAdministrationPreJoinAgreement() {
-        captureKmpSettingsPageCase("components.settings.administration.pre-join-agreement", "administration-pre-join-agreement")
-    }
-
-    @Test
-    fun captureSettingsAdministrationOnboarding() {
-        captureKmpSettingsPageCase("components.settings.administration.onboarding", "administration-onboarding")
-    }
-
-    @Test
-    fun captureSettingsAdministrationMemberPermissions() {
-        captureKmpSettingsPageCase("components.settings.administration.member-permissions", "administration-member-permissions")
-    }
-
-    @Test
-    fun captureSettingsAdministrationTranslation() {
-        captureKmpSettingsPageCase("components.settings.administration.translation", "administration-translation")
     }
 
     @Test

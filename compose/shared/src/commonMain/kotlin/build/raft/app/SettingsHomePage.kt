@@ -4064,6 +4064,7 @@ private fun SlockAppShellContent(
                                 pager.openReleaseNotesPage(releaseNotesVersionCode, storeScope)
                             },
                             onOpenBilling = { pager.openSettingsBillingPage(storeScope) },
+                            onOpenAdministration = { pager.openSettingsAdministrationPage(storeScope) },
                             onOpenConnectedApps = { pager.openSettingsMarketplacePage(storeScope) },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
@@ -4285,6 +4286,7 @@ private fun SettingsAppShellContent(
     onOpenRouter: () -> Unit,
     onOpenReleaseNotes: () -> Unit,
     onOpenBilling: () -> Unit,
+    onOpenAdministration: () -> Unit,
     onOpenConnectedApps: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
@@ -4556,6 +4558,10 @@ private fun SettingsAppShellContent(
                     SettingsDestinationRouter -> onOpenRouter()
                     SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
                     SettingsDestinationBilling -> onOpenBilling()
+                    // Administration is the WEB settings page in an in-app
+                    // WebView (own pager, Billing pattern) — not a native
+                    // child destination.
+                    SettingsDestinationAdministration -> onOpenAdministration()
                     SettingsDestinationConnectedApps -> onOpenConnectedApps()
                     else -> onDestinationChange(key)
                 }
@@ -4774,7 +4780,7 @@ private fun SettingsAppShellContent(
                                 onSettingsIntent(SharedSettingsIntent.UpdateServerProfile(SettingsServerProfileUpdateRequest(name = it)))
                             }
                         "openAdministration" ->
-                            onDestinationChange(SettingsDestinationAdministration)
+                            onOpenAdministration()
                         else -> onSettingsAction(action, itemId)
                     }
                 }
@@ -19223,6 +19229,7 @@ private fun SettingsRouteVisualScreen() {
         onOpenRouter = {},
         onOpenReleaseNotes = {},
         onOpenBilling = {},
+        onOpenAdministration = {},
         onOpenConnectedApps = {},
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
