@@ -372,7 +372,7 @@ jobs:
     name: Android compile & tests
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: kuikly-artifacts
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
@@ -459,6 +459,29 @@ jobs:
         working-directory: compose
         run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain
 
+      # Build once here, then let the emulator job below install the exact APKs
+      # without paying for a second Gradle/Kotlin build. The visual fixture gives
+      # the regression a deterministic empty Thread composer.
+      - name: Build Android connected-test APKs
+        working-directory: compose
+        run: |
+          ./gradlew \
+            -PslockVisualFixtures=true \
+            :androidApp:assembleConnectedTest \
+            :androidApp:assembleConnectedTestAndroidTest \
+            --no-daemon \
+            --console=plain
+
+      - name: Upload Android connected-test APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-connected-test-apks
+          path: |
+            compose/androidApp/build/outputs/apk/connectedTest/*.apk
+            compose/androidApp/build/outputs/apk/androidTest/connectedTest/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload unit test reports
         if: failure()
         uses: actions/upload-artifact@v4
@@ -469,6 +492,61 @@ jobs:
             compose/shared/build/test-results/testDebugUnitTest/
             compose/androidApp/build/reports/tests/testDebugUnitTest/
             compose/androidApp/build/test-results/testDebugUnitTest/
+          retention-days: 7
+
+  android-device:
+    name: Android first-character baseline (emulator)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: android
+    timeout-minutes: 30
+    steps:
+      - name: Free runner disk space for emulator
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download connected-test APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: android-connected-test-apks
+          path: android-connected-test-apks
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run first-character baseline regression
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6_pro
+          ram-size: 4096M
+          cores: 2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: |
+            adb wait-for-device
+            adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
+            adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
+            adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
+            cat first-character-baseline-instrumentation.txt
+            grep -Fq 'OK (1 test)' first-character-baseline-instrumentation.txt
+
+      - name: Upload instrumentation output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-character-baseline-instrumentation
+          path: first-character-baseline-instrumentation.txt
+          if-no-files-found: warn
           retention-days: 7
 
   ios:
