@@ -3467,19 +3467,31 @@ internal class SharedThreadStore(
         if (!beforeFetch.hasRenderableThreadContent()) {
             return
         }
-        val followedStartedAt = TimeSource.Monotonic.markNow()
-        val followedResult = dataSource.fetchFollowedThreadPayload(beforeFetch)
-        diagnosticsLogger?.invoke(
-            "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                "result=${followedResult.threadDiagnosticsResult()} " +
-                "durationMs=${followedStartedAt.elapsedNow().inWholeMilliseconds}"
-        )
         val followedPayload =
-            when (followedResult) {
-                is DataResult.Content -> followedResult.data
-                is DataResult.Empty,
-                is DataResult.Error,
-                is DataResult.NoPermission -> beforeFetch
+            if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                // ReplyThread loads are already scoped to a single canonical stream,
+                // and RealConversationRepository.getReplyThread does not attach
+                // followed-channel summaries. Re-running it here only duplicates the
+                // complete messages/context request after the first result is visible.
+                diagnosticsLogger?.invoke(
+                    "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                        "result=skipped:reply_thread durationMs=0"
+                )
+                beforeFetch
+            } else {
+                val followedStartedAt = TimeSource.Monotonic.markNow()
+                val followedResult = dataSource.fetchFollowedThreadPayload(beforeFetch)
+                diagnosticsLogger?.invoke(
+                    "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                        "result=${followedResult.threadDiagnosticsResult()} " +
+                        "durationMs=${followedStartedAt.elapsedNow().inWholeMilliseconds}"
+                )
+                when (followedResult) {
+                    is DataResult.Content -> followedResult.data
+                    is DataResult.Empty,
+                    is DataResult.Error,
+                    is DataResult.NoPermission -> beforeFetch
+                }
             }
         val enriched = dataSource.enrichSavedStatus(followedPayload)
         val latest = _state.value.payload

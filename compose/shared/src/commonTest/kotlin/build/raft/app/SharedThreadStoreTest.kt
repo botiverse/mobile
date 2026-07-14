@@ -4565,6 +4565,116 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun replyThreadStartJoinsActivityPrewarmWithoutSecondaryTimelineRefetchOrEmission() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "thread-m1",
+                                        id = "reply-1",
+                                        seq = 2,
+                                        body = "reply body"
+                                    )
+                                ),
+                            parentMessage =
+                                message(
+                                    threadId = "channel-1",
+                                    id = "m1",
+                                    seq = 1,
+                                    body = "parent body"
+                                ),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val replyFetchStarted = CompletableDeferred<Unit>()
+        val releaseReplyFetch = CompletableDeferred<Unit>()
+        repository.getReplyThreadStarted = replyFetchStarted
+        repository.releaseGetReplyThread = releaseReplyFetch
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-visible-start", "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        val marker =
+            ActivityReplyThreadPrewarmMarker(
+                key =
+                    ActivityReplyThreadPrewarmKey(
+                        serverId = "server-1",
+                        parentChannelId = "channel-1",
+                        parentMessageId = "m1",
+                        threadChannelId = "thread-m1"
+                    ),
+                activityVersion = "1:reply-1:reply-1"
+            )
+        val prewarm = async { dataSource.prewarmReplyThread(marker) }
+        replyFetchStarted.await()
+
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val logs = ConcurrentTestLogBuffer()
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        val visibleStart =
+            async {
+                store.accept(
+                    SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1"))
+                )
+            }
+
+        delay(20L)
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("m1")),
+            repository.getReplyThreadRequests,
+            "the visible Start must join the in-flight Activity prewarm instead of issuing another request"
+        )
+        releaseReplyFetch.complete(Unit)
+        assertTrue(prewarm.await() is DataResult.Content)
+        visibleStart.await()
+        withTimeout(1_000L) {
+            while (!logs.any { it.startsWith("thread_secondary_refresh_result") }) {
+                delay(10L)
+            }
+        }
+
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("m1")),
+            repository.getReplyThreadRequests
+        )
+        assertEquals(listOf(false), repository.getReplyThreadIncludeFollowedSummaries)
+        assertEquals(listOf(DataRequestPriority.Background), repository.getReplyThreadPriorities)
+        assertEquals("reply body", store.state.value.payload.messages.single().body)
+        assertTrue(
+            logs.any {
+                it.startsWith("thread_secondary_refresh_result") &&
+                    it.contains("emitted=false")
+            },
+            "an unchanged secondary payload must not emit a second state or trigger recomposition"
+        )
+        scope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
     fun fetchThreadPayloadCarriesRepositoryJointChannelKind() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
