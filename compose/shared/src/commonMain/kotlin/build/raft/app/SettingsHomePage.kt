@@ -1819,7 +1819,12 @@ internal data class AppShellVisibleRefreshKey(
 )
 
 internal class AppShellVisibleRefreshGate {
-    private var pendingLifecycleKey: AppShellVisibleRefreshKey? = null
+    private data class PendingSignal(
+        val signal: AppShellVisibleRefreshSignal,
+        val key: AppShellVisibleRefreshKey
+    )
+
+    private var pendingSignal: PendingSignal? = null
 
     fun shouldRefresh(
         signal: AppShellVisibleRefreshSignal,
@@ -1835,19 +1840,24 @@ internal class AppShellVisibleRefreshGate {
                     },
                 target = target
             )
-        return when (signal) {
-            AppShellVisibleRefreshSignal.Lifecycle -> {
-                val duplicate = pendingLifecycleKey == key
-                pendingLifecycleKey = key
-                !duplicate
+        val pairedSignal =
+            pendingSignal?.let { pending ->
+                pending.key == key && pending.signal != signal
+            } == true
+        pendingSignal =
+            if (pairedSignal) {
+                null
+            } else {
+                PendingSignal(signal = signal, key = key)
             }
-            AppShellVisibleRefreshSignal.PageDidAppear -> {
-                val pairedLifecycle = pendingLifecycleKey == key
-                pendingLifecycleKey = null
-                !pairedLifecycle
-            }
-        }
+        return !pairedSignal
     }
+}
+
+internal fun requestAppShellInitialAuthRestore(
+    dispatch: (SharedAuthGateIntent) -> Unit
+) {
+    dispatch(SharedAuthGateIntent.Restore)
 }
 
 private fun String.toHomeSecondaryOpenIntent(): SharedHomeShellIntent =
@@ -2213,8 +2223,7 @@ private fun SlockAppShellContent(
             consumedInitialAuthRestoreTick != initialAuthRestoreTick
         ) {
             consumedInitialAuthRestoreTick = initialAuthRestoreTick
-            authGateViewModel.accept(SharedAuthGateIntent.Restore)
-            authGateState = authGateViewModel.state.value
+            requestAppShellInitialAuthRestore(authGateViewModel::dispatch)
         }
     }
     var authGateMessage by remember { mutableStateOf<AuthGateMessage?>(null) }
@@ -3725,6 +3734,7 @@ private fun SlockAppShellContent(
         val callbackRef =
             realtimeEvents.addListener { rawEventData ->
                 val eventDataSnapshot = rawEventData.toString()
+                val pageVisibleTickAtDelivery = pageVisibleTick
                 appShellCoroutineScope.launch {
                     val eventData = JSONObject(eventDataSnapshot)
                     if (
@@ -3750,7 +3760,7 @@ private fun SlockAppShellContent(
                             refreshVisibleAppShellRoute(
                                 reason = "app_lifecycle_$event",
                                 signal = AppShellVisibleRefreshSignal.Lifecycle,
-                                visibleTick = pageVisibleTick
+                                visibleTick = pageVisibleTickAtDelivery
                             )
                             sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                         }

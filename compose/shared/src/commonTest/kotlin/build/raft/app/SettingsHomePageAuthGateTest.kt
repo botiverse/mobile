@@ -129,7 +129,7 @@ class SettingsHomePageAuthGateTest {
     }
 
     @Test
-    fun invalidationDuringRestoringCancelsCachedReadyAdmission() = runBlocking {
+    fun appShellInitialRestoreInvalidationCancelsCachedReadyAdmission() = runBlocking {
         val cachedReadStarted = CompletableDeferred<Unit>()
         val releaseCachedRead = CompletableDeferred<Unit>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -145,7 +145,7 @@ class SettingsHomePageAuthGateTest {
                 scope = scope
             )
 
-        gateStore.dispatch(SharedAuthGateIntent.Restore)
+        requestAppShellInitialAuthRestore(gateStore::dispatch)
         cachedReadStarted.await()
         assertEquals(SharedAuthGateState.Restoring, gateStore.state.value)
 
