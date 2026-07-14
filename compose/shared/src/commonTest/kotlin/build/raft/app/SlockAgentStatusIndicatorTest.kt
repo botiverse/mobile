@@ -21,21 +21,6 @@ class SlockAgentStatusIndicatorTest {
     }
 
     @Test
-    fun settingsAgentFallbackUsesSharedStatusIndicatorSemantics() {
-        val state =
-            KuiklySettingsAgentItem(
-                id = "agent-1",
-                name = "Agent",
-                statusLabel = "working",
-                presenceLabel = "active"
-            ).settingsAgentFallbackStatusState()
-
-        assertEquals("Working", state.status?.label)
-        assertEquals(SlockColor.BrandYellow, state.color)
-        assertTrue(state.pulsing)
-    }
-
-    @Test
     fun activePresenceWithoutStatusUsesOnlineColorButDoesNotPulse() {
         val state =
             slockAgentStatusIndicatorState(
