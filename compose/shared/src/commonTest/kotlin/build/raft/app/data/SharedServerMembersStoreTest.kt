@@ -911,6 +911,83 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun memberSuggestionsFailClosedWhenOnlyHandleIsOpaqueIdentity() = runBlocking {
+        val repository = FakeMemberRepository()
+        val memberId = "123e4567-e89b-12d3-a456-426614174000"
+        repository.membersByServer["server-1"] =
+            listOf(
+                member(memberId, "赵梓淇").copy(handle = memberId)
+            )
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(ServerId("server-1"))
+
+        assertEquals(
+            emptyList(),
+            store.state.value.memberSuggestionSlice(ServerId("server-1")).suggestions
+        )
+    }
+
+    @Test
+    fun channelCanonicalHandleSurvivesOpaqueRosterCandidate() = runBlocking {
+        val repository = FakeMemberRepository()
+        val memberId = "123e4567-e89b-12d3-a456-426614174000"
+        repository.membersByServer["server-1"] =
+            listOf(
+                member(memberId, "赵梓淇").copy(handle = memberId)
+            )
+        repository.channelMembersByChannel["channel-1"] =
+            listOf(
+                member(memberId, "赵梓淇").copy(handle = "赵梓淇")
+            )
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+
+        val suggestion =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions.single()
+        assertEquals("赵梓淇", suggestion.handle)
+        assertEquals("赵梓淇", suggestion.displayName)
+        assertEquals(true, suggestion.inMentionChannel)
+        assertEquals(memberId, suggestion.memberId)
+    }
+
+    @Test
+    fun channelSnapshotReplacesStaleRosterHandleByMemberIdentity() = runBlocking {
+        val repository = FakeMemberRepository()
+        val memberId = "member-zhao"
+        repository.membersByServer["server-1"] =
+            listOf(
+                member(memberId, "赵梓淇").copy(handle = "stale-zhao")
+            )
+        repository.channelMembersByChannel["channel-1"] =
+            listOf(
+                member(memberId, "赵梓淇").copy(handle = "赵梓淇")
+            )
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "channel-1"
+        )
+
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1"
+            ).suggestions
+        assertEquals(1, suggestions.size)
+        assertEquals("赵梓淇", suggestions.single().handle)
+        assertEquals(memberId, suggestions.single().memberId)
+    }
+
+    @Test
     fun memberSuggestionsRefreshScopedChannelMembership() = runBlocking {
         val repository = FakeMemberRepository()
         repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))

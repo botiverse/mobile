@@ -1608,9 +1608,7 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
 ): List<SharedMembersMemberSuggestion> {
     val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()
     for (member in this) {
-        val handle = member.handle.trim().removePrefix("@").takeIf { it.isNotBlank() }
-            ?: member.displayName.toServerMembersSuggestionToken()
-            ?: continue
+        val handle = member.serverMembersSuggestionHandle() ?: continue
         val key = handle.lowercase()
         if (!deduped.containsKey(key)) {
             val avatar = member.avatarSlotResolution()
@@ -1632,30 +1630,49 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
     return deduped.values.toList()
 }
 
+private fun MemberProfile.serverMembersSuggestionHandle(): String? {
+    val canonicalHandle = handle.trim().removePrefix("@").takeIf { it.isNotBlank() } ?: return null
+    return canonicalHandle.takeUnless { it.isOpaqueServerMembersIdentityHandle(id.value) }
+}
+
+private fun String.isOpaqueServerMembersIdentityHandle(memberId: String): Boolean {
+    val value = trim().removePrefix("@")
+    if (value.equals(memberId.trim().removePrefix("@"), ignoreCase = true)) return true
+    if (value.length != 36) return false
+    val dashPositions = setOf(8, 13, 18, 23)
+    return value.withIndex().all { (index, char) ->
+        if (index in dashPositions) {
+            char == '-'
+        } else {
+            char in '0'..'9' || char in 'a'..'f' || char in 'A'..'F'
+        }
+    }
+}
+
 private fun List<SharedMembersMemberSuggestion>.mergeServerMembersMentionChannelSuggestions(
     channelSuggestions: List<SharedMembersMemberSuggestion>
 ): List<SharedMembersMemberSuggestion> {
     if (channelSuggestions.isEmpty()) return this
     val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()
     for (suggestion in this + channelSuggestions) {
-        val key = suggestion.handle.lowercase()
+        val key = suggestion.memberSuggestionIdentityKey()
         val existing = deduped[key]
         deduped[key] =
             when {
                 existing == null -> suggestion
-                suggestion.inMentionChannel && !existing.inMentionChannel ->
-                    existing.copy(
-                        inMentionChannel = true,
-                        sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel,
-                        description = existing.description ?: suggestion.description,
-                        avatarWireValue = existing.avatarWireValue.preferServerMembersConcreteSuggestionAvatar(suggestion.avatarWireValue),
-                        memberId = existing.memberId ?: suggestion.memberId
-                    )
+                suggestion.inMentionChannel -> existing.mergePatchedSuggestion(suggestion)
                 else -> existing
             }
     }
     return deduped.values.toList()
 }
+
+private fun SharedMembersMemberSuggestion.memberSuggestionIdentityKey(): String =
+    memberId
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "${kind.name}:$it" }
+        ?: "${kind.name}:${handle.trim().lowercase()}"
 
 private fun List<SharedMembersMemberSuggestion>.patchMemberSuggestion(
     suggestion: SharedMembersMemberSuggestion,
@@ -1740,10 +1757,3 @@ private fun MemberProfile.serverMembersSourceServerLabel(localServerId: String?)
     if (localServerId != null && sourceId == localServerId) return null
     return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
-
-private fun String.toServerMembersSuggestionToken(): String? =
-    trim()
-        .lowercase()
-        .replace(Regex("""\s+"""), "-")
-        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
-        .takeIf { it.isNotBlank() }
