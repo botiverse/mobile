@@ -12,17 +12,11 @@ import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedAuthDataSource
-import build.raft.app.data.SharedComputersStore
-import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
-import build.raft.app.data.SlockAgentsApiClient
-import build.raft.app.data.SlockAgentsNetworkApi
-import build.raft.app.data.SlockComputersApiClient
-import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
@@ -38,8 +32,6 @@ import com.tencent.kuikly.core.pager.Pager
 internal data class StandaloneSettingsEnvironment(
     val dataSource: SharedSettingsDataSource,
     val authDataSource: SharedAuthDataSource,
-    val computersStore: SharedComputersStore,
-    val createAgentCoordinator: SharedCreateAgentCoordinator,
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val storeScope: SlockShellStoreScope,
@@ -62,41 +54,14 @@ internal fun rememberStandaloneSettingsEnvironment(
     val serverMembersStore = remember(sharedStores, storeScope) {
         sharedStores.serverMembersStore(storeScope)
     }
-    val computersApiClient =
-        remember(networkClient) {
-            SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
-        }
-    val agentsApiClient =
-        remember(networkClient) {
-            SlockAgentsApiClient(
-                transport = SlockAgentsNetworkApi(networkClient),
-                diagnosticsLogger = { message -> bridge.log("settings_standalone_agents_api $message") }
-            )
-        }
-    val createAgentCoordinator =
-        remember(agentsApiClient, computersApiClient) {
-            SharedCreateAgentCoordinator(
-                agentsApiClient = agentsApiClient,
-                computersApiClient = computersApiClient,
-                logger = { message -> bridge.log("settings_standalone_create_agent $message") }
-            )
-        }
     val scope = rememberCoroutineScope()
-    val computersStore =
-        remember(computersApiClient, scope) {
-            SharedComputersStore(
-                computersApiClient = computersApiClient,
-                scope = scope,
-                logger = { message -> bridge.log("settings_standalone_$message") }
-            )
-        }
     val settingsCapabilities =
         remember(bridge, scope) {
             BridgeSettingsPlatformCapabilities(bridge, scope.kuiklyBridgeCallContext())
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val dataSource =
-        remember(authStore, networkClient, computersStore, sharedPreferenceStore, settingsCapabilities) {
+        remember(authStore, networkClient, sharedPreferenceStore, settingsCapabilities) {
             SharedSettingsDataSource(
                 sessionStore = authStore,
                 settingsRepository =
@@ -106,7 +71,6 @@ internal fun rememberStandaloneSettingsEnvironment(
                         logger = { message -> bridge.log("settings_standalone_repository $message") },
                         warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") }
                     ),
-                computersSource = computersStore,
                 serverMembersStore = serverMembersStore,
                 localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
                 chatLayoutPreferenceRepository =
@@ -123,8 +87,6 @@ internal fun rememberStandaloneSettingsEnvironment(
     return remember(
         dataSource,
         authDataSource,
-        computersStore,
-        createAgentCoordinator,
         serverMembersStore,
         settingsCapabilities,
         storeScope,
@@ -132,8 +94,6 @@ internal fun rememberStandaloneSettingsEnvironment(
         StandaloneSettingsEnvironment(
             dataSource = dataSource,
             authDataSource = authDataSource,
-            computersStore = computersStore,
-            createAgentCoordinator = createAgentCoordinator,
             serverMembersStore = serverMembersStore,
             settingsCapabilities = settingsCapabilities,
             storeScope = storeScope,
@@ -167,9 +127,6 @@ internal fun StandaloneSettingsEffectHandler(
             }
             is SharedSettingsEffect.CopyText -> {
                 environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)
-            }
-            is SharedSettingsEffect.OpenComputer -> {
-                pager.openSettingsComputerDetailPage(effect.machineId, null, environment.storeScope)
             }
             is SharedSettingsEffect.ClearStorage -> {
                 val result = environment.settingsCapabilities.clearStorage(effect.target)
