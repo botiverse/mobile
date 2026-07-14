@@ -315,6 +315,8 @@ class MessageSoleApplyEngineTest {
                 override suspend fun restore(scope: SyncScopeKey): RestoredFoldState =
                     RestoredFoldState(emptyList(), null)
             },
+            ownerCommitGate = OwnerCommitGate(),
+            expectedOwnerGeneration = OwnerCommitGate.FIRST_GENERATION,
             fanOut = {},
             requestRebaseline = { _, _ -> },
             laneScope = CoroutineScope(EmptyCoroutineContext),

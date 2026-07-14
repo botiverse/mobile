@@ -135,6 +135,8 @@ class MessageSoleApplyLaneTest {
     ): MessageSoleApplyLane = MessageSoleApplyLane(
         scopeKey = scopeKey,
         adapter = adapter,
+        ownerCommitGate = OwnerCommitGate(),
+        expectedOwnerGeneration = OwnerCommitGate.FIRST_GENERATION,
         fanOut = { fannedOut += it },
         requestRebaseline = { scope, generation ->
             rebaselines += scope to generation

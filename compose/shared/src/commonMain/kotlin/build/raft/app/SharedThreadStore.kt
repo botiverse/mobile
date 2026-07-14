@@ -33,6 +33,8 @@ import build.raft.app.data.MessageReactionSummary
 import build.raft.app.data.MviStaleToken
 import build.raft.app.data.PendingMentionActionExecuteResult
 import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RealtimeOwnerEpoch
+import build.raft.app.data.RealtimeOwnerEnvelope
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
@@ -2854,14 +2856,19 @@ internal sealed interface SharedThreadIntent {
         val canLoadMoreBefore: Boolean,
         val canLoadMoreAfter: Boolean
     ) : SharedThreadIntent
-    data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
-        SharedThreadIntent
+    data class ApplyRealtimeEvent(
+        val envelope: RealtimeOwnerEnvelope<RealtimeEvent>,
+        val activeReplyParentMessageId: MessageId? = null,
+    ) : SharedThreadIntent
     data object MarkVisibleRead : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
     data object RefreshLatestAfterVisibleMaxSeq : SharedThreadIntent
-    data class RecoverRealtimeGap(val serverSeq: Long) : SharedThreadIntent
+    data class RecoverRealtimeGap(
+        val ownerToken: RealtimeOwnerEpoch,
+        val serverSeq: Long,
+    ) : SharedThreadIntent
 }
 
 internal class SharedThreadStore(
@@ -2869,6 +2876,10 @@ internal class SharedThreadStore(
     private val scope: CoroutineScope,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val initialLoadDeadlineMillis: Long = SharedThreadInitialLoadDeadlineMillis,
+    private val realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, block ->
+        block()
+        true
+    },
     initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload()
 ) {
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
@@ -2910,6 +2921,7 @@ internal class SharedThreadStore(
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
+    private var realtimeGapOwnerToken: RealtimeOwnerEpoch? = null
     private val initialAccessStateMutex = Mutex()
     private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
 
@@ -2961,7 +2973,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyRealtimeEvent -> {
                 scope.launch {
                     applyRealtimeEvent(
-                        event = intent.event,
+                        ownerToken = intent.envelope.owner,
+                        event = intent.envelope.payload,
                         activeReplyParentMessageId = intent.activeReplyParentMessageId
                     )
                 }
@@ -2982,7 +2995,7 @@ internal class SharedThreadStore(
                 scope.launch { refreshLatestAfterVisibleMaxSeq() }
             }
             is SharedThreadIntent.RecoverRealtimeGap -> {
-                scope.launch { recoverRealtimeGap(intent.serverSeq) }
+                scope.launch { recoverRealtimeGap(intent.ownerToken, intent.serverSeq) }
             }
         }
     }
@@ -3024,7 +3037,8 @@ internal class SharedThreadStore(
                 setPagingAvailability(intent.canLoadMoreBefore, intent.canLoadMoreAfter)
             is SharedThreadIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(
-                    event = intent.event,
+                    ownerToken = intent.envelope.owner,
+                    event = intent.envelope.payload,
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             SharedThreadIntent.MarkVisibleRead -> markVisibleRead()
@@ -3032,7 +3046,7 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
             SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> refreshLatestAfterVisibleMaxSeq()
-            is SharedThreadIntent.RecoverRealtimeGap -> recoverRealtimeGap(intent.serverSeq)
+            is SharedThreadIntent.RecoverRealtimeGap -> recoverRealtimeGap(intent.ownerToken, intent.serverSeq)
         }
     }
 
@@ -3667,19 +3681,31 @@ internal class SharedThreadStore(
     }
 
     private suspend fun applyRealtimeEvent(
+        ownerToken: RealtimeOwnerEpoch,
         event: RealtimeEvent,
         activeReplyParentMessageId: MessageId? = null
     ) {
-        val existing = _state.value.payload
+        var existing: KuiklyThreadScreenPayload? = null
+        if (
+            !realtimeOwnerMutationGuard(ownerToken) {
+                if (_state.value.payload.newerMessagesStatus == "loading") {
+                    reducePayloadPatch { it.copy(newerMessagesStatus = "idle") }
+                }
+                existing = _state.value.payload
+            }
+        ) return
+        val initialPayload = requireNotNull(existing)
         val realtimeGapServerSeq =
-            existing.realtimeNewerGapServerSeq(
+            initialPayload.realtimeNewerGapServerSeq(
                 event = event,
                 activeReplyParentMessageId = activeReplyParentMessageId
             )
+        val currentUserId = dataSource.readSession()?.user?.id
+        if (!realtimeOwnerMutationGuard(ownerToken) {}) return
         val rawMerged =
-            existing.applyRealtimeEvent(
+            initialPayload.applyRealtimeEvent(
                 event = event,
-                currentUserId = dataSource.readSession()?.user?.id,
+                currentUserId = currentUserId,
                 activeReplyParentMessageId = activeReplyParentMessageId,
                 shouldPreserveReactionsForRealtime = { message, currentUserId ->
                     shouldPreserveReactionsForRealtime(message, currentUserId)
@@ -3688,39 +3714,39 @@ internal class SharedThreadStore(
         val rawReplyCountGap =
             rawMerged.realtimeReplyCountGap(
                 event = event,
-                previous = existing,
+                previous = initialPayload,
                 activeReplyParentMessageId = activeReplyParentMessageId
             )
         val merged = rawMerged
         if (realtimeGapServerSeq != null) {
             diagnosticsLogger?.invoke(
-                "thread_realtime_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
-                    "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                    "thread_realtime_gap_detected threadId=${initialPayload.sourceThreadId.orEmpty()} " +
+                    "visibleMaxSeq=${initialPayload.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
                     "serverSeq=$realtimeGapServerSeq"
             )
-            recoverRealtimeGap(realtimeGapServerSeq)
+            recoverRealtimeGap(ownerToken, realtimeGapServerSeq)
             return
         }
-        if (rawMerged === existing) {
+        if (rawMerged === initialPayload) {
             if (rawReplyCountGap != null) {
                 diagnosticsLogger?.invoke(
-                    "thread_realtime_reply_count_gap_detected threadId=${existing.sourceThreadId.orEmpty()} " +
-                        "visibleMaxSeq=${existing.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
-                        "loadedReplies=${existing.loadedReplyTimelineCount()} " +
+                    "thread_realtime_reply_count_gap_detected threadId=${initialPayload.sourceThreadId.orEmpty()} " +
+                        "visibleMaxSeq=${initialPayload.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L} " +
+                        "loadedReplies=${initialPayload.loadedReplyTimelineCount()} " +
                         "replyCount=${rawReplyCountGap.replyCount}"
                 )
-                recoverRealtimeGapFromVisibleTail(rawReplyCountGap)
+                recoverRealtimeGapFromVisibleTail(ownerToken, rawReplyCountGap)
                 return
             }
             diagnosticsLogger?.invoke(
-                "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                    "source=none emitted=false messages=${existing.messages.size} reason=no_projection"
+                "thread_realtime_apply_result threadId=${initialPayload.sourceThreadId.orEmpty()} " +
+                    "source=none emitted=false messages=${initialPayload.messages.size} reason=no_projection"
             )
             return
         }
         val stableSelected =
             merged.preserveStableTimelineFrom(
-                previous = existing,
+                previous = initialPayload,
                 preserveSelectedReactions = false
             )
         // task #562 (agreed with KMP-专家/HanXin, adjusting #231's A'): the
@@ -3730,15 +3756,20 @@ internal class SharedThreadStore(
         // lives only in the first-frame window and is corrected by the
         // canonical fetch through this same reducer. Raw events are never
         // written; durable local-store never rides this path.
-        val emitted =
-            reducePayloadPatch(cachePayload = true) { currentPayload ->
-                if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
-                    return@reducePayloadPatch currentPayload
+        var emitted = false
+        val ownerApplied =
+            realtimeOwnerMutationGuard(ownerToken) {
+                emitted =
+                    reducePayloadPatch(cachePayload = true) { currentPayload ->
+                        if (!routeStillCurrent(initialPayload, "thread_realtime_event", "apply", currentPayload)) {
+                            return@reducePayloadPatch currentPayload
+                        }
+                        currentPayload.withThreadContentProjectionFrom(stableSelected)
+                    }
                 }
-                currentPayload.withThreadContentProjectionFrom(stableSelected)
-            }
+        if (!ownerApplied) return
         diagnosticsLogger?.invoke(
-            "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
+            "thread_realtime_apply_result threadId=${initialPayload.sourceThreadId.orEmpty()} " +
                 "source=direct emitted=$emitted messages=${stableSelected.messages.size} cacheWarmed=true"
         )
         val replyCountGap =
@@ -3754,7 +3785,7 @@ internal class SharedThreadStore(
                     "loadedReplies=${stableSelected.loadedReplyTimelineCount()} " +
                     "replyCount=${replyCountGap.replyCount}"
             )
-            recoverRealtimeGapFromVisibleTail(replyCountGap)
+            recoverRealtimeGapFromVisibleTail(ownerToken, replyCountGap)
         }
     }
 
@@ -3964,7 +3995,8 @@ internal class SharedThreadStore(
         }
     }
 
-    private suspend fun recoverRealtimeGap(serverSeq: Long) {
+    private suspend fun recoverRealtimeGap(ownerToken: RealtimeOwnerEpoch, serverSeq: Long) {
+        if (!realtimeOwnerMutationGuard(ownerToken) {}) return
         val initial = _state.value.payload
         val staleToken = routeStaleToken
         val streamChannelId =
@@ -3981,10 +4013,14 @@ internal class SharedThreadStore(
                 serverSeq = serverSeq,
                 loading = initial.newerMessagesStatus == "loading"
             ) ?: return
-        recoverRealtimeGap(initial, nextRequest, staleToken)
+        recoverRealtimeGap(ownerToken, initial, nextRequest, staleToken)
     }
 
-    private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
+    private suspend fun recoverRealtimeGapFromVisibleTail(
+        ownerToken: RealtimeOwnerEpoch,
+        replyCountGap: ReplyCountRealtimeGap,
+    ) {
+        if (!realtimeOwnerMutationGuard(ownerToken) {}) return
         val initial = _state.value.payload
         val staleToken = routeStaleToken
         val streamChannelId =
@@ -3998,6 +4034,7 @@ internal class SharedThreadStore(
         val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
         if (initial.newerMessagesStatus == "loading") return
         recoverRealtimeGap(
+            ownerToken = ownerToken,
             initial = initial,
             initialRequest =
                 RealtimeVisibleStreamGapRequest(
@@ -4023,6 +4060,7 @@ internal class SharedThreadStore(
         val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.takeIf { it > 0L } ?: return
         if (initial.newerMessagesStatus == "loading") return
         recoverRealtimeGap(
+            ownerToken = null,
             initial = initial,
             initialRequest =
                 RealtimeVisibleStreamGapRequest(
@@ -4035,14 +4073,26 @@ internal class SharedThreadStore(
     }
 
     private suspend fun recoverRealtimeGap(
+        ownerToken: RealtimeOwnerEpoch?,
         initial: KuiklyThreadScreenPayload,
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken
     ) {
         var nextRequest = initialRequest
-        reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
+        val started =
+            runRealtimeOwnerMutation(ownerToken) {
+                realtimeGapOwnerToken = ownerToken
+                reducePayloadPatch { currentPayload ->
+                    currentPayload.copy(newerMessagesStatus = "loading", errorCode = null)
+                }
+            }
+        if (!started) return
         while (true) {
             val result = dataSource.fetchRealtimeGapThreadPayload(_state.value.payload, nextRequest.sinceSeq)
+            if (!runRealtimeOwnerMutation(ownerToken) {}) {
+                recoverRejectedRealtimeGap(ownerToken)
+                return
+            }
             val latest = _state.value.payload
             if (
                 !staleTokenStillCurrent(staleToken, "thread_realtime_gap", "after_fetch", initial, latest) ||
@@ -4058,29 +4108,48 @@ internal class SharedThreadStore(
                             latest
                                 .mergePagedMessages(pageMessages, before = false)
                                 .preserveStableTimelineFrom(latest)
-                        val selected =
-                            dataSource
-                                .cacheCanonicalPayload(merged)
-                                .withRouteContext(initial)
-                                .preserveStableTimelineFrom(latest)
-                        reducePayloadPatch { currentPayload ->
-                            if (
-                                !staleTokenStillCurrent(
-                                    staleToken,
-                                    "thread_realtime_gap",
-                                    "apply",
-                                    initial,
-                                    currentPayload
-                                ) ||
-                                !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
-                            ) {
-                                return@reducePayloadPatch currentPayload
+                        val selectedCandidate =
+                            if (ownerToken == null) {
+                                dataSource.cacheCanonicalPayload(merged)
+                            } else {
+                                merged
                             }
-                            currentPayload.withThreadContentProjectionFrom(selected)
+                        var selected: KuiklyThreadScreenPayload? = null
+                        val applied =
+                            runRealtimeOwnerMutation(ownerToken) {
+                                if (ownerToken != null) {
+                                    dataSource.cachePayload(selectedCandidate)
+                                }
+                                selected =
+                                    selectedCandidate
+                                        .withRouteContext(initial)
+                                        .preserveStableTimelineFrom(latest)
+                                reducePayloadPatch { currentPayload ->
+                                    if (
+                                        !staleTokenStillCurrent(
+                                            staleToken,
+                                            "thread_realtime_gap",
+                                            "apply",
+                                            initial,
+                                            currentPayload
+                                        ) ||
+                                        !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
+                                    ) {
+                                        return@reducePayloadPatch currentPayload
+                                    }
+                                    currentPayload.withThreadContentProjectionFrom(requireNotNull(selected))
+                                }
+                            }
+                        if (!applied) {
+                            recoverRejectedRealtimeGap(ownerToken)
+                            return
                         }
-                        val nextSinceSeq = selected.messages.mapNotNull { it.seq }.maxOrNull() ?: nextRequest.sinceSeq
+                        val selectedPayload = requireNotNull(selected)
+                        val nextSinceSeq =
+                            selectedPayload.messages.mapNotNull { it.seq }.maxOrNull() ?: nextRequest.sinceSeq
                         val fetchedFullPage = pageMessages.size >= SharedThreadPaging.pageSize
                         if (!fetchedFullPage || nextSinceSeq <= nextRequest.sinceSeq) {
+                            realtimeGapOwnerToken = null
                             return
                         }
                         nextRequest =
@@ -4097,19 +4166,56 @@ internal class SharedThreadStore(
                         latest.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
                 }
             if (nextPayload != null) {
-                reducePayloadPatch { currentPayload ->
-                    if (
-                        !staleTokenStillCurrent(staleToken, "thread_realtime_gap", "apply", initial, currentPayload) ||
-                        !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
-                    ) {
-                        return@reducePayloadPatch currentPayload
+                val applied =
+                    runRealtimeOwnerMutation(ownerToken) {
+                        reducePayloadPatch { currentPayload ->
+                            if (
+                                !staleTokenStillCurrent(
+                                    staleToken,
+                                    "thread_realtime_gap",
+                                    "apply",
+                                    initial,
+                                    currentPayload
+                                ) ||
+                                !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
+                            ) {
+                                return@reducePayloadPatch currentPayload
+                            }
+                            currentPayload.withThreadContentProjectionFrom(nextPayload)
+                        }
                     }
-                    currentPayload.withThreadContentProjectionFrom(nextPayload)
+                if (!applied) {
+                    recoverRejectedRealtimeGap(ownerToken)
+                    return
                 }
+                realtimeGapOwnerToken = null
                 return
             }
         }
     }
+
+    private fun recoverRejectedRealtimeGap(ownerToken: RealtimeOwnerEpoch?) {
+        if (realtimeGapOwnerToken != ownerToken) return
+        realtimeGapOwnerToken = null
+        reducePayloadPatch { currentPayload ->
+            if (currentPayload.newerMessagesStatus == "loading") {
+                currentPayload.copy(newerMessagesStatus = "idle")
+            } else {
+                currentPayload
+            }
+        }
+    }
+
+    private fun runRealtimeOwnerMutation(
+        ownerToken: RealtimeOwnerEpoch?,
+        block: () -> Unit,
+    ): Boolean =
+        if (ownerToken == null) {
+            block()
+            true
+        } else {
+            realtimeOwnerMutationGuard(ownerToken, block)
+        }
 
     private suspend fun appendSentPage(page: ThreadMessagesPage) {
         if (page.messages.isEmpty()) return
@@ -4483,7 +4589,8 @@ internal class SharedThreadStore(
 internal class SharedThreadViewModel(
     private val dataSource: SharedThreadDataSource,
     private val initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    private val realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, _ -> false },
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
@@ -4491,6 +4598,7 @@ internal class SharedThreadViewModel(
                 dataSource = dataSource,
                 scope = viewModelScope,
                 diagnosticsLogger = diagnosticsLogger,
+                realtimeOwnerMutationGuard = realtimeOwnerMutationGuard,
                 initialPayload = initialPayload
             )
         }

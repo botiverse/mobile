@@ -29,7 +29,9 @@ import kotlinx.coroutines.selects.select
  */
 internal class MessageSoleApplyLane(
     private val scopeKey: SyncScopeKey,
-    private val adapter: FoldPersistenceAdapter,
+    adapter: FoldPersistenceAdapter,
+    ownerCommitGate: OwnerCommitGate,
+    private val expectedOwnerGeneration: Long,
     /** Post-commit delivery to the legacy sinks (executed for [SoleApplyCommand.FanOut] only). */
     private val fanOut: (RealtimeEvent) -> Unit,
     /** Surface a generation-fenced [SoleApplyCommand.RequestRebaseline] to the host. */
@@ -45,6 +47,7 @@ internal class MessageSoleApplyLane(
     // orchestration (restore + queued replay) is host wiring that lands with the activation slice.
     initialState: SoleApplyScopeState = SoleApplyScopeState(mode = SoleApplyMode.FOLD, generation = 1L),
 ) {
+    private val adapter = OwnerBoundFoldPersistenceAdapter(ownerCommitGate, adapter)
 
     /** One enqueued message frame: the sink-facing event plus its canonical decode (decoded ONCE upstream). */
     data class Frame(
@@ -239,7 +242,7 @@ internal class MessageSoleApplyLane(
 
     /** Build and fully seed a fresh core before publishing it; the old polluted core has no reuse path. */
     private suspend fun restoreFreshCore(): SyncCore {
-        val restored = adapter.restore(scopeKey)
+        val restored = adapter.restore(scopeKey, expectedOwnerGeneration)
         val cursor = requireNotNull(restored.cursor) { "rebaseline restore missing cursor" }
         require(restored.facts.all { it.channelId == scopeKey.scopeId }) {
             "rebaseline restore contained a fact outside scope ${scopeKey.scopeId}"
@@ -317,6 +320,7 @@ internal class MessageSoleApplyLane(
                 rebaseline = false,
                 prunedFactIds = emptyList(),
             ),
+            expectedOwnerGeneration,
         )
     }
 
@@ -365,6 +369,8 @@ internal class MessageSoleApplyLane(
             perScopeControl: Boolean,
             scopeKey: SyncScopeKey,
             adapter: FoldPersistenceAdapter,
+            ownerCommitGate: OwnerCommitGate,
+            expectedOwnerGeneration: Long,
             fanOut: (RealtimeEvent) -> Unit,
             requestRebaseline: (SyncScopeKey, Long) -> Unit,
             laneScope: CoroutineScope,
@@ -375,6 +381,8 @@ internal class MessageSoleApplyLane(
             return MessageSoleApplyLane(
                 scopeKey = scopeKey,
                 adapter = adapter,
+                ownerCommitGate = ownerCommitGate,
+                expectedOwnerGeneration = expectedOwnerGeneration,
                 fanOut = fanOut,
                 requestRebaseline = requestRebaseline,
                 laneScope = laneScope,

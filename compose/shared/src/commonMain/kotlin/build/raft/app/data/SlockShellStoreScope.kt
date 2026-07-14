@@ -146,6 +146,15 @@ internal class SelectedServerStore internal constructor(
         }
     }
 
+    internal suspend fun clearIfOwnedBy(expectedUserId: String): Boolean =
+        mutex.withLock {
+            if (ownerUserId != expectedUserId) return@withLock false
+            _selectedServerId.value = null
+            selectedServerSlug = null
+            selectionInitialized = true
+            true
+        }
+
     private fun selection(): SelectedServerSelection =
         SelectedServerSelection(
             serverId = selectedServerId.value,

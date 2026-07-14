@@ -54,14 +54,17 @@ import build.raft.app.data.MemberSnapshot
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MessageReactionSummary
 import build.raft.app.data.RemoveChannelMemberRequest
+import build.raft.app.data.RealtimeOwnerEpoch
 import build.raft.app.data.SendMessageResult
 import build.raft.app.data.SavedMessageStatusSnapshot
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedCreateAgentCoordinator
+import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.SlockAgentsApi
 import build.raft.app.data.SlockAgentsApiClient
+import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockComputersApi
 import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushApi
@@ -145,6 +148,31 @@ private class ConcurrentTestLogBuffer {
         }
         return seen.any(predicate)
     }
+}
+
+private val ThreadStoreRealtimeOwnerToken =
+    RealtimeOwnerEpoch(serverId = "server-1", memberId = "u1", connectionEpoch = 1L)
+
+private class PausingThreadAuthStore(
+    private val session: StoredAuthSession,
+) : SlockAuthSessionStore {
+    val readStarted = CompletableDeferred<Unit>()
+    val releaseRead = CompletableDeferred<Unit>()
+    private var shouldPause = true
+
+    override suspend fun readSession(): StoredAuthSession? {
+        if (shouldPause) {
+            shouldPause = false
+            readStarted.complete(Unit)
+            releaseRead.await()
+        }
+        return session
+    }
+
+    override suspend fun saveSession(session: StoredAuthSession) = Unit
+    override suspend fun updateTokens(accessToken: String, refreshToken: String) = Unit
+    override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) = Unit
+    override suspend fun clearSession(reason: String, source: String) = Unit
 }
 
 class SharedThreadStoreTest {
@@ -2682,7 +2710,8 @@ class SharedThreadStoreTest {
         )
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("server-1"),
                         threadId = ThreadId("channel-1"),
@@ -2705,6 +2734,52 @@ class SharedThreadStoreTest {
         val cachedMessages = dataSource.cachedPayload("channel-1")?.messages.orEmpty()
         assertFalse(cachedMessages.any { it.id == "local-send-channel-1-1" })
         assertEquals(1, cachedMessages.count { it.id == "server-1" })
+        scope.cancel()
+    }
+
+    @Test
+    fun queuedRealtimeMutationRechecksCentralOwnerAtActualStoreCommit() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val authStore = PausingThreadAuthStore(sampleSession())
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = authStore,
+            )
+        val owner = build.raft.app.data.testRealtimeDomainEventOwner()
+        val ownerA = owner.rotateOwner("server-1", "u1")
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                realtimeOwnerMutationGuard = owner::runIfCurrentOwner,
+                initialPayload = contentPayload("cached body"),
+            )
+        val eventA = MessageNew(message(id = "stale-a", seq = 11, body = "stale body"))
+
+        store.dispatch(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ownerToken = ownerA,
+                event = eventA,
+            )
+        )
+        authStore.readStarted.await()
+        val ownerB = owner.rotateOwner("server-1", "u2")
+        authStore.releaseRead.complete(Unit)
+
+        assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
+
+        store.dispatch(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ownerToken = ownerB,
+                event = MessageNew(message(id = "current-b", seq = 12, body = "current body")),
+            )
+        )
+
+        assertEquals(
+            listOf("cached body", "current body"),
+            store.state.value.payload.messages.map { it.body },
+        )
         scope.cancel()
     }
 
@@ -6110,7 +6185,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m2"),
                         threadId = ThreadId("channel-1"),
@@ -6172,7 +6248,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m-other"),
                         threadId = ThreadId("channel-other"),
@@ -6208,7 +6285,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m2"),
                         threadId = ThreadId("channel-1"),
@@ -6244,7 +6322,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     message(id = "m12", seq = 12, body = "latest across gap")
                 )
             )
@@ -6316,7 +6395,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m2"),
                         threadId = ThreadId("channel-1"),
@@ -6378,7 +6458,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = ThreadUpdated(
                     parentMessageId = MessageId("dm-parent-1"),
                     threadChannelId = ChannelId("dm-thread-1"),
                     replyCount = 1,
@@ -6408,7 +6489,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     message(
                         id = "sys-done-1",
                         seq = 44,
@@ -6446,7 +6528,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m2"),
                         threadId = ThreadId("channel-1"),
@@ -6486,7 +6569,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("other"),
                         threadId = ThreadId("other-channel"),
@@ -6608,7 +6692,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6637,7 +6722,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6678,7 +6764,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6741,7 +6828,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     message(
                         threadId = "thread-m1",
                         channelId = "channel-1",
@@ -6773,7 +6861,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6810,7 +6899,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6856,7 +6946,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6879,7 +6970,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6917,7 +7009,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageUpdated(
                     Message(
                         id = MessageId("m1"),
                         threadId = ThreadId("channel-1"),
@@ -6982,7 +7075,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = ThreadUpdated(
                     parentMessageId = MessageId("m1"),
                     threadChannelId = ChannelId("reply-thread"),
                     replyCount = 3,
@@ -6995,7 +7089,8 @@ class SharedThreadStoreTest {
         )
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                TaskUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = TaskUpdated(
                     TaskSummary(
                         id = TaskId("task-1"),
                         title = "Updated task",
@@ -7049,7 +7144,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                TaskUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = TaskUpdated(
                     TaskSummary(
                         id = TaskId("server-task"),
                         title = "Server task",
@@ -7090,7 +7186,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = ThreadUpdated(
                     parentMessageId = MessageId("m1"),
                     threadChannelId = ChannelId("reply-thread"),
                     replyCount = 1,
@@ -7169,7 +7266,8 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.MarkVisibleRead)
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m2"),
                         threadId = ThreadId("channel-1"),
@@ -7276,7 +7374,8 @@ class SharedThreadStoreTest {
         store.dispatch(SharedThreadIntent.MarkVisibleRead)
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m2"),
                         threadId = ThreadId("channel-1"),
@@ -7292,7 +7391,8 @@ class SharedThreadStoreTest {
         store.dispatch(SharedThreadIntent.MarkVisibleRead)
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(
                     Message(
                         id = MessageId("m3"),
                         threadId = ThreadId("channel-1"),
@@ -8295,7 +8395,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
-        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+        store.accept(SharedThreadIntent.RecoverRealtimeGap(ownerToken = ThreadStoreRealtimeOwnerToken, serverSeq = 90))
 
         val payload = store.state.value.payload
         assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
@@ -8350,7 +8450,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(message(id = "m12", seq = 12, body = "latest across gap"))
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = MessageNew(message(id = "m12", seq = 12, body = "latest across gap"))
             )
         )
 
@@ -8395,7 +8496,8 @@ class SharedThreadStoreTest {
 
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
+                ownerToken = ThreadStoreRealtimeOwnerToken,
+                event = ThreadUpdated(
                     threadChannelId = ChannelId("thread-m1"),
                     parentMessageId = MessageId("m1"),
                     replyCount = 2,
@@ -8435,7 +8537,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
-        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 10))
+        store.accept(SharedThreadIntent.RecoverRealtimeGap(ownerToken = ThreadStoreRealtimeOwnerToken, serverSeq = 10))
 
         assertEquals(emptyList(), api.syncSinceSeqs)
         assertEquals(listOf("current body"), store.state.value.payload.messages.map { it.body })
@@ -8462,7 +8564,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val gapJob = launch {
-            store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+            store.accept(SharedThreadIntent.RecoverRealtimeGap(ownerToken = ThreadStoreRealtimeOwnerToken, serverSeq = 90))
         }
         api.syncStarted?.await()
         api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)

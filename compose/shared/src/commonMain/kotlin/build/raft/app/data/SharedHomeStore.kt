@@ -31,6 +31,7 @@ import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -105,6 +108,7 @@ internal class SharedHomeStore(
      */
     private var pinUpdateFailureCallback: (String) -> Unit = {},
     private val persistSlices: List<MviPersistSlice<SharedHomeState, SharedHomeIntent>> = emptyList(),
+    private val realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, _ -> false },
     /**
      * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
      * tests can pin a deterministic clock; production passes a
@@ -140,6 +144,35 @@ internal class SharedHomeStore(
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
     private var stateDiagnosticsReason: String = "unknown"
     private var stateDiagnosticsIntent: SharedHomeIntent? = null
+    private val realtimeOwnerLock = SynchronizedObject()
+    private var realtimeOwnerJob: Job? = null
+
+    private fun <T> withRealtimeOwnerMutation(
+        ownerToken: RealtimeOwnerEpoch?,
+        rejected: T,
+        block: () -> T,
+    ): T {
+        if (ownerToken == null) return synchronized(realtimeOwnerLock, block)
+        var result = rejected
+        val accepted =
+            realtimeOwnerMutationGuard(ownerToken) {
+                synchronized(realtimeOwnerLock) {
+                    result = block()
+                }
+            }
+        return if (accepted) result else rejected
+    }
+
+    fun onRealtimeOwnerChanged() {
+        synchronized(realtimeOwnerLock) {
+            realtimeOwnerJob?.cancel()
+            realtimeOwnerJob = null
+            loadJob?.cancel()
+            loadJob = null
+            agentDirectMessageStatusJob?.cancel()
+            agentDirectMessageStatusJob = null
+        }
+    }
 
     fun updateRuntimeIntegrations(
         dataSource: SharedHomeDataSource,
@@ -189,6 +222,30 @@ internal class SharedHomeStore(
     }
 
     fun dispatch(intent: SharedHomeIntent) {
+        val intentOwnerToken =
+            when (intent) {
+                is SharedHomeIntent.ApplyRealtimeEvent -> intent.envelope.owner
+                is SharedHomeIntent.ApplyBackgroundServerUnreadEvent -> intent.envelope.owner
+                else -> null
+            }
+        if (intentOwnerToken != null) {
+            var jobToStart: Job? = null
+            val accepted =
+                realtimeOwnerMutationGuard(intentOwnerToken) {
+                    synchronized(realtimeOwnerLock) {
+                        val previous = realtimeOwnerJob
+                        val job =
+                            scope.launch(start = CoroutineStart.LAZY) {
+                                previous?.join()
+                                accept(intent)
+                            }
+                        realtimeOwnerJob = job
+                        jobToStart = job
+                    }
+                }
+            if (accepted) jobToStart?.start()
+            return
+        }
         if (intent.loadsHome) {
             diagnosticsLogger(
                 "home_dispatch_receive intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
@@ -249,6 +306,7 @@ internal class SharedHomeStore(
         supplementalConversationIdentityStates.clear()
         conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
+        onRealtimeOwnerChanged()
     }
 
     fun supplementConversationIdentity(snapshot: InboxSnapshot) {
@@ -343,9 +401,15 @@ internal class SharedHomeStore(
                     )
                 )
             is SharedHomeIntent.ApplyRealtimeEvent ->
-                applyRealtimeEvent(ServerId(intent.serverId), intent.event)
+                applyRealtimeEvent(intent.envelope)
             is SharedHomeIntent.ApplyBackgroundServerUnreadEvent ->
-                applyBackgroundServerUnreadEvent(ServerId(intent.serverId), intent.event)
+                withRealtimeOwnerMutation(intent.envelope.owner, rejected = false) {
+                    applyBackgroundServerUnreadEvent(
+                        ownerToken = intent.envelope.owner,
+                        serverId = ServerId(intent.envelope.owner.serverId),
+                        event = intent.envelope.payload,
+                    )
+                }
             SharedHomeIntent.RefreshNotifications ->
                 loadNotifications()
             is SharedHomeIntent.UpsertNotification ->
@@ -456,47 +520,64 @@ internal class SharedHomeStore(
         )
     }
 
-    private suspend fun applyRealtimeEvent(serverId: ServerId, event: RealtimeEvent) {
-        val current = _state.value.content
-        val currentContent = current as? SharedHomeContentState.Content
-        val visibleServerId = currentContent?.snapshot?.server?.id
-        if (visibleServerId != null && visibleServerId != serverId) {
-            return
-        }
-        if (!homeSurfaceVisible) {
-            applyRealtimeEventWhileHomeHidden(serverId, event)
+    private suspend fun applyRealtimeEvent(
+        envelope: RealtimeOwnerEnvelope<RealtimeEvent>
+    ) {
+        val ownerToken = envelope.owner
+        val serverId = ServerId(envelope.owner.serverId)
+        val event = envelope.payload
+        var directMessageReload: HomeServerSwitchState? = null
+        val handledSynchronously =
+            withRealtimeOwnerMutation(ownerToken, rejected = true) mutation@{
+                val current = _state.value.content
+                val currentContent = current as? SharedHomeContentState.Content
+                val visibleServerId = currentContent?.snapshot?.server?.id
+                if (visibleServerId != null && visibleServerId != serverId) return@mutation true
+                when {
+                    !homeSurfaceVisible -> {
+                        applyRealtimeEventWhileHomeHidden(serverId, event)
+                        true
+                    }
+                    event is RealtimeRefreshRequired -> false
+                    event is MemberPresenceUpdated -> true
+                    event is DirectMessageCreated -> {
+                        directMessageReload = _state.value.serverSwitchState.refresh()
+                        reduceState(_state.value.copy(serverSwitchState = directMessageReload!!))
+                        false
+                    }
+                    event is PerReceiverReadStateChanged -> {
+                        applyPerReceiverReadStateChanged(serverId, event)
+                        true
+                    }
+                    event is PerReceiverNotificationPrefsChanged -> {
+                        applyPerReceiverNotificationPrefsChanged(serverId, event)
+                        true
+                    }
+                    event is PerReceiverPinnedChanged -> {
+                        applyPerReceiverPinnedChanged(serverId, event)
+                        true
+                    }
+                    else -> {
+                        applyRealtimeHomeEventLocally(serverId, event)
+                        true
+                    }
+                }
+            }
+        if (handledSynchronously) return
+        directMessageReload?.let { nextSwitch ->
+            load(nextSwitch, showRefreshAffordance = false, ownerToken = ownerToken)
             return
         }
         if (event is RealtimeRefreshRequired) {
-            applyRealtimeRefresh(event)
-            return
+            applyRealtimeRefresh(ownerToken, event)
         }
-        if (event is MemberPresenceUpdated) return
-        if (event is DirectMessageCreated) {
-            val nextSwitch = _state.value.serverSwitchState.refresh()
-            reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-            load(
-                nextSwitch,
-                showRefreshAffordance = false
-            )
-            return
-        }
-        if (event is PerReceiverReadStateChanged) {
-            applyPerReceiverReadStateChanged(serverId, event)
-            return
-        }
-        if (event is PerReceiverNotificationPrefsChanged) {
-            applyPerReceiverNotificationPrefsChanged(serverId, event)
-            return
-        }
-        if (event is PerReceiverPinnedChanged) {
-            applyPerReceiverPinnedChanged(serverId, event)
-            return
-        }
-        applyRealtimeHomeEventLocally(serverId, event)
     }
 
-    private fun applyBackgroundServerUnreadEvent(serverId: ServerId, event: RealtimeEvent): Boolean {
+    private fun applyBackgroundServerUnreadEvent(
+        ownerToken: RealtimeOwnerEpoch,
+        serverId: ServerId,
+        event: RealtimeEvent,
+    ): Boolean {
         val current = _state.value
         val content = current.content as? SharedHomeContentState.Content ?: return false
         if (content.snapshot.server.id == serverId) return false
@@ -516,7 +597,7 @@ internal class SharedHomeStore(
                         scope = scope
                     ) || accepted
                 }
-                if (accepted) scheduleReadStateReconcile()
+                if (accepted) scheduleReadStateReconcile(ownerToken)
                 accepted
             }
             else -> false
@@ -628,6 +709,18 @@ internal class SharedHomeStore(
         dispatch(SharedHomeIntent.ForegroundRefresh)
     }
 
+    private fun scheduleReadStateReconcile(ownerToken: RealtimeOwnerEpoch) {
+        diagnosticsLogger("per_receiver_read_state_reconcile reason=incomplete_home_projection")
+        launchCoalescedRealtimeHomeReload(
+            ownerToken = ownerToken,
+            event =
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Home,
+                    reason = "per_receiver_read_state_reconcile",
+                ),
+        )
+    }
+
     private fun applyPerReceiverNotificationPrefsChanged(
         serverId: ServerId,
         event: PerReceiverNotificationPrefsChanged
@@ -676,7 +769,7 @@ internal class SharedHomeStore(
         )
     }
 
-    private suspend fun applyRealtimeEventWhileHomeHidden(serverId: ServerId, event: RealtimeEvent) {
+    private fun applyRealtimeEventWhileHomeHidden(serverId: ServerId, event: RealtimeEvent) {
         when (event) {
             is RealtimeRefreshRequired -> {
                 if (event.scope == RealtimeRefreshScope.Announcements) {
@@ -796,127 +889,154 @@ internal class SharedHomeStore(
         return changed
     }
 
-    private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
+    private suspend fun applyRealtimeRefresh(
+        ownerToken: RealtimeOwnerEpoch,
+        event: RealtimeRefreshRequired
+    ) {
+        if (!isCurrentRealtimeOwner(ownerToken)) return
         when (event.scope) {
             RealtimeRefreshScope.Announcements -> {
                 diagnosticsLogger("home_realtime_refresh_ignore scope=${event.scope} reason=${event.reason}")
             }
             RealtimeRefreshScope.Agents -> {
                 diagnosticsLogger("home_realtime_refresh_lightweight scope=${event.scope} reason=${event.reason}")
-                launchAgentDirectMessageStatusRefreshForCurrentSnapshot()
+                launchAgentDirectMessageStatusRefreshForCurrentSnapshot(ownerToken)
             }
             RealtimeRefreshScope.Machines -> {
                 diagnosticsLogger("home_realtime_refresh_lightweight scope=${event.scope} reason=${event.reason}")
-                loadNotifications()
+                loadNotifications(ownerToken)
             }
             RealtimeRefreshScope.Home,
             RealtimeRefreshScope.ChannelMembers,
             RealtimeRefreshScope.ServerMembers,
             RealtimeRefreshScope.Settings,
             RealtimeRefreshScope.Reminders -> {
-                launchCoalescedRealtimeHomeReload(event)
+                launchCoalescedRealtimeHomeReload(ownerToken, event)
             }
         }
     }
 
-    private fun launchCoalescedRealtimeHomeReload(event: RealtimeRefreshRequired) {
-        val activeLoad = loadJob?.takeIf { it.isActive }
-        if (activeLoad != null) {
-            diagnosticsLogger(
-                "home_realtime_refresh_coalesce scope=${event.scope} reason=${event.reason} " +
-                    "active=load"
-            )
-            return
-        }
-        diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
-        val nextSwitch = _state.value.serverSwitchState.refresh()
-        reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-        loadJob =
-            scope.launch {
-                val previousReason = stateDiagnosticsReason
-                stateDiagnosticsReason = "RealtimeRefresh"
-                try {
-                    load(
-                        nextSwitch,
-                        showRefreshAffordance = false
-                    )
-                } finally {
-                    stateDiagnosticsReason = previousReason
+    private fun launchCoalescedRealtimeHomeReload(
+        ownerToken: RealtimeOwnerEpoch,
+        event: RealtimeRefreshRequired
+    ) {
+        var jobToStart: Job? = null
+        withRealtimeOwnerMutation(ownerToken, rejected = false) {
+            val activeLoad = loadJob?.takeIf { it.isActive }
+            if (activeLoad != null) {
+                diagnosticsLogger(
+                    "home_realtime_refresh_coalesce scope=${event.scope} reason=${event.reason} " +
+                        "active=load"
+                )
+                return@withRealtimeOwnerMutation false
+            }
+            diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
+            val nextSwitch = _state.value.serverSwitchState.refresh()
+            reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+            val job =
+                scope.launch(start = CoroutineStart.LAZY) {
+                    val previousReason = stateDiagnosticsReason
+                    stateDiagnosticsReason = "RealtimeRefresh"
+                    try {
+                        load(
+                            nextSwitch,
+                            showRefreshAffordance = false,
+                            ownerToken = ownerToken
+                        )
+                    } finally {
+                        stateDiagnosticsReason = previousReason
+                    }
                 }
-            }
+            loadJob = job
+            jobToStart = job
+            true
+        }
+        jobToStart?.start()
     }
 
-    private fun launchAgentDirectMessageStatusRefreshForCurrentSnapshot() {
+    private fun launchAgentDirectMessageStatusRefreshForCurrentSnapshot(ownerToken: RealtimeOwnerEpoch) {
         val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
         launchAgentDirectMessageStatusRefresh(
             request = _state.value.serverSwitchState,
-            snapshot = currentContent.baseSnapshot
+            snapshot = currentContent.baseSnapshot,
+            ownerToken = ownerToken
         )
     }
 
     private suspend fun load(
         request: HomeServerSwitchState,
-        showRefreshAffordance: Boolean
+        showRefreshAffordance: Boolean,
+        ownerToken: RealtimeOwnerEpoch? = null
     ) {
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
-        val previous = _state.value.content
-        reduceState(
-            _state.value.copy(
-                content = previous.asRefreshing(showRefreshAffordance = showRefreshAffordance)
-            )
-        )
+        val previous =
+            withRealtimeOwnerMutation(ownerToken, rejected = null as SharedHomeContentState?) mutation@{
+                _state.value.content.also { current ->
+                    reduceState(
+                        _state.value.copy(
+                            content = current.asRefreshing(showRefreshAffordance = showRefreshAffordance)
+                        )
+                    )
+                }
+            } ?: return
         try {
             val session = authStore.readSession()
-            if (session == null) {
-                diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
-                reduceState(
-                    _state.value.copy(
-                        content = SharedHomeContentState.Error("unauthenticated"),
-                        // #81: clear badge on logout. The underlying
-                        // SharedHomeSnapshot.unreadTotal is preserved for
-                        // other surfaces (Home / Inbox), but the selected-
-                        // server badge projection must not show a count after
-                        // the user logs out.
-                        appBadgeCount = AppBadgeCount.DISABLED
-                    )
-                )
-                return
-            }
-            reduceState(
-                _state.value.copy(
-                    content = previous.asRefreshing(session, showRefreshAffordance)
-                )
-            )
+            val sessionAccepted =
+                withRealtimeOwnerMutation(ownerToken, rejected = false) mutation@{
+                    if (session == null) {
+                        diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
+                        reduceState(
+                            _state.value.copy(
+                                content = SharedHomeContentState.Error("unauthenticated"),
+                                appBadgeCount = AppBadgeCount.DISABLED
+                            )
+                        )
+                    } else {
+                        reduceState(
+                            _state.value.copy(
+                                content = previous.asRefreshing(session, showRefreshAffordance)
+                            )
+                        )
+                    }
+                    true
+                }
+            if (!sessionAccepted || session == null) return
 
             val requestedServerId = request.selectedServerId
             val switchingServers =
                 requestedServerId != null &&
                     requestedServerId != (previous as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
-            requestedServerId?.let { serverId ->
+            requestedServerId?.takeIf { ownerToken == null }?.let { serverId ->
                 val server = session.servers.firstOrNull { it.id == serverId }
                 authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
             }
+            if (!isCurrentRealtimeOwner(ownerToken)) return
 
             val activeSession = authStore.readSession() ?: session
             val activeServerId = requestedServerId ?: activeSession.currentServerId
-            reduceState(
-                _state.value.copy(
-                    content =
-                        if (switchingServers) {
-                            activeServerId
-                                ?.let(::ServerId)
-                                ?.let { serverId ->
-                                    contentByServer[serverId]?.copy(
-                                        session = activeSession,
-                                        contentRefreshing = showRefreshAffordance
-                                    )
-                                }
-                                ?: SharedHomeContentState.Loading(activeSession)
-                        } else {
-                            _state.value.content.asRefreshing(activeSession, showRefreshAffordance)
-                        }
+            val ownerStillCurrent =
+                withRealtimeOwnerMutation(ownerToken, rejected = false) mutation@{
+                    reduceState(
+                        _state.value.copy(
+                            content =
+                                if (switchingServers) {
+                                activeServerId
+                                    ?.let(::ServerId)
+                                    ?.let { serverId ->
+                                        contentByServer[serverId]?.copy(
+                                            session = activeSession,
+                                            contentRefreshing = showRefreshAffordance
+                                        )
+                                    }
+                                    ?: SharedHomeContentState.Loading(activeSession)
+                            } else {
+                                _state.value.content.asRefreshing(activeSession, showRefreshAffordance)
+                            }
+                    )
                 )
-            )
+                    true
+                }
+            if (!ownerStillCurrent) return
             val activeServer = activeServerId?.let(::ServerId)
             loadHomeFromNetwork(
                 request = request,
@@ -924,7 +1044,8 @@ internal class SharedHomeStore(
                 activeServer = activeServer,
                 priority = DataRequestPriority.Visible,
                 forceNetwork = false,
-                refreshNotificationsAfterLoad = true
+                refreshNotificationsAfterLoad = true,
+                ownerToken = ownerToken
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -932,7 +1053,9 @@ internal class SharedHomeStore(
             diagnosticsLogger(
                 "home_ui_exception source=shared_home_load errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
             )
-            reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
+            withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
+                reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
+            }
         }
     }
 
@@ -942,109 +1065,98 @@ internal class SharedHomeStore(
         activeServer: ServerId?,
         priority: DataRequestPriority,
         forceNetwork: Boolean,
-        refreshNotificationsAfterLoad: Boolean
+        refreshNotificationsAfterLoad: Boolean,
+        ownerToken: RealtimeOwnerEpoch? = null
     ) {
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
-        val previousContent = _state.value.content as? SharedHomeContentState.Content
-        val result =
-            when (dataResult) {
-                is DataResult.Content ->
-                    contentFromDurableSnapshot(
-                        snapshot = dataResult.data,
-                        session = activeSession,
-                        contentRefreshing = false,
-                        previousContent = previousContent
-                    )
-                is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
-                is DataResult.Error -> {
-                    diagnosticsLogger(
-                        "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
-                    )
-                    _state.value.content.asRefreshFailed(dataResult.error.code)
-                }
-                is DataResult.NoPermission -> {
-                    diagnosticsLogger(
-                        "home_ui_error source=shared_home_load code=${dataResult.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
-                    )
-                    _state.value.content.asRefreshFailed(dataResult.blocker.code)
-                }
-            }
-        val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
-            ?: activeServer
-        val latestSwitch = _state.value.serverSwitchState
-        if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
-            val nextContent = result
-            // #81: derive the badge projection from the fresh snapshot.
-            // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
-            //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
-            // - On Error / NoPermission: keep last value but flip isStale = true
-            //   so a future UI layer can hint staleness. lastUpdated MUST NOT
-            //   advance.
-            //
-            // #82: derive `freshSnapshot` from the **original** data source
-            // result (before the `asRefreshFailed` content transform). When
-            // the previous state is `Content`, `asRefreshFailed` returns
-            // `Content.copy(contentRefreshing = false)` — the failure case
-            // therefore produces a transformed `result` whose snapshot is
-            // non-null, and the old `(result as? Content)?.snapshot` check
-            // would mis-classify the failure as a fresh success and skip
-            // `isStale = true`. The original `dataResult` is the source of
-            // truth for whether the network actually succeeded.
-            val freshSnapshot = (dataResult as? DataResult.Content)?.data
-            val nextBadge =
-                if (freshSnapshot != null) {
-                    val next = snapshotToBadgeCount(freshSnapshot, selectedServerId = activeServer, isStale = false)
-                    // #81: don't bump lastUpdated (and therefore the state
-                    // itself) when the projection is structurally the same
-                    // as the previous one. Avoids spurious state emissions
-                    // for refresh-on-no-change paths.
-                    if (next.copy(lastUpdated = 0L) == _state.value.appBadgeCount.copy(lastUpdated = 0L)) {
-                        _state.value.appBadgeCount
-                    } else {
-                        next
+        val acceptedResult =
+            withRealtimeOwnerMutation(ownerToken, rejected = false to null) mutation@{
+                val previousContent = _state.value.content as? SharedHomeContentState.Content
+                val result =
+                    when (dataResult) {
+                        is DataResult.Content ->
+                            contentFromDurableSnapshot(
+                                snapshot = dataResult.data,
+                                session = activeSession,
+                                contentRefreshing = false,
+                                previousContent = previousContent
+                            )
+                        is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
+                        is DataResult.Error -> {
+                            diagnosticsLogger(
+                                "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                            )
+                            _state.value.content.asRefreshFailed(dataResult.error.code)
+                        }
+                        is DataResult.NoPermission -> {
+                            diagnosticsLogger(
+                                "home_ui_error source=shared_home_load code=${dataResult.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                            )
+                            _state.value.content.asRefreshFailed(dataResult.blocker.code)
+                        }
                     }
-                } else {
-                    val previous = _state.value.appBadgeCount
-                    previous.copy(isStale = true)
+                val resultServerId =
+                    (result as? SharedHomeContentState.Content)?.snapshot?.server?.id ?: activeServer
+                val latestSwitch = _state.value.serverSwitchState
+                if (resultServerId != null && !latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
+                    return@mutation false to null
                 }
-            if (freshSnapshot != null) {
-                // The server unread-summary is the canonical aggregate after
-                // cold start/reconnect/refresh. Drop only the local
-                // count-only deltas; persisted read-state checkpoints remain
-                // available to reject replayed messages and stale frames.
-                backgroundUnreadByScope.clear()
-            }
-            reduceState(
-                _state.value.copy(
-                    content = nextContent,
-                    serverSwitchState =
-                        if (resultServerId != null) {
-                            latestSwitch.complete(request.requestGeneration, resultServerId)
+                // The original data result, rather than a preserved previous snapshot,
+                // determines whether this load produced a fresh canonical badge.
+                val acceptedFreshSnapshot = (dataResult as? DataResult.Content)?.data
+                val nextBadge =
+                    if (acceptedFreshSnapshot != null) {
+                        val next = snapshotToBadgeCount(acceptedFreshSnapshot, selectedServerId = activeServer, isStale = false)
+                        if (next.copy(lastUpdated = 0L) == _state.value.appBadgeCount.copy(lastUpdated = 0L)) {
+                            _state.value.appBadgeCount
                         } else {
-                            latestSwitch
-                        },
-                    serverUnreadCounts = freshSnapshot?.serverUnreadCounts ?: _state.value.serverUnreadCounts,
-                    appBadgeCount = nextBadge
+                            next
+                        }
+                    } else {
+                        val previous = _state.value.appBadgeCount
+                        previous.copy(isStale = true)
+                    }
+                if (acceptedFreshSnapshot != null) {
+                    backgroundUnreadByScope.clear()
+                }
+                reduceState(
+                    _state.value.copy(
+                        content = result,
+                        serverSwitchState =
+                            if (resultServerId != null) {
+                                latestSwitch.complete(request.requestGeneration, resultServerId)
+                            } else {
+                                latestSwitch
+                            },
+                        serverUnreadCounts =
+                            acceptedFreshSnapshot?.serverUnreadCounts ?: _state.value.serverUnreadCounts,
+                        appBadgeCount = nextBadge
+                    )
                 )
+                true to acceptedFreshSnapshot
+            }
+        if (!acceptedResult.first) return
+        val freshSnapshot = acceptedResult.second
+        if (!isCurrentRealtimeOwner(ownerToken)) return
+        if (refreshNotificationsAfterLoad) {
+            loadNotifications(ownerToken)
+        } else {
+            diagnosticsLogger("home_notifications_refresh_skip reason=cached_refresh_already_loaded")
+        }
+        if (freshSnapshot != null) {
+            launchAgentDirectMessageStatusRefresh(
+                request = request,
+                snapshot = freshSnapshot,
+                ownerToken = ownerToken
             )
-            if (refreshNotificationsAfterLoad) {
-                loadNotifications()
-            } else {
-                diagnosticsLogger("home_notifications_refresh_skip reason=cached_refresh_already_loaded")
-            }
-            if (freshSnapshot != null) {
-                launchAgentDirectMessageStatusRefresh(
-                    request = request,
-                    snapshot = freshSnapshot
-                )
-                loadAndMergeSidebarOrder()
-            }
+            loadAndMergeSidebarOrder(ownerToken)
         }
     }
 
     private fun launchAgentDirectMessageStatusRefresh(
         request: HomeServerSwitchState,
-        snapshot: HomeSnapshot
+        snapshot: HomeSnapshot,
+        ownerToken: RealtimeOwnerEpoch? = null
     ) {
         if (snapshot.directMessages.none { it.isAgentDirectMessage } && !dataSource.projectsAgentStatusFromMemberStore) return
         if (dataSource.projectsAgentStatusFromMemberStore) {
@@ -1066,6 +1178,7 @@ internal class SharedHomeStore(
                         )
                         return@launch
                     }
+                if (!isCurrentRealtimeOwner(ownerToken)) return@launch
                 if (!patch.changed) return@launch
                 val latestSwitch = _state.value.serverSwitchState
                 if (!latestSwitch.isCurrent(request.requestGeneration, patch.snapshot.server.id)) {
@@ -1148,20 +1261,27 @@ internal class SharedHomeStore(
         )
     }
 
-    private suspend fun loadNotifications() {
+    private suspend fun loadNotifications(ownerToken: RealtimeOwnerEpoch? = null) {
         when (val result = dataSource.loadNotifications()) {
             is DataResult.Content ->
-                reduceState(
-                    _state.value.copy(
-                        notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
+                withRealtimeOwnerMutation(ownerToken, rejected = Unit) {
+                    reduceState(
+                        _state.value.copy(
+                            notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
+                        )
                     )
-                )
+                }
             is DataResult.Empty ->
-                reduceState(_state.value.copy(notifications = emptyList()))
+                withRealtimeOwnerMutation(ownerToken, rejected = Unit) {
+                    reduceState(_state.value.copy(notifications = emptyList()))
+                }
             is DataResult.Error,
             is DataResult.NoPermission -> Unit
         }
     }
+
+    private fun isCurrentRealtimeOwner(ownerToken: RealtimeOwnerEpoch?): Boolean =
+        ownerToken == null || realtimeOwnerMutationGuard(ownerToken) {}
 
     /**
      * #211: load the current server's sidebar-order snapshot and merge it
@@ -1171,12 +1291,15 @@ internal class SharedHomeStore(
      * Held under [sidebarOrderMutex] so it never races with a Pin/Unpin
      * dispatched before the initial load resolves.
      */
-    private suspend fun loadAndMergeSidebarOrder() {
+    private suspend fun loadAndMergeSidebarOrder(ownerToken: RealtimeOwnerEpoch? = null) {
         sidebarOrderMutex.withLock {
+            if (!isCurrentRealtimeOwner(ownerToken)) return@withLock
             val current = _state.value.content as? SharedHomeContentState.Content ?: return@withLock
             when (val result = loadSidebarOrder()) {
                 is DataResult.Content ->
-                    applySidebarOrderLocally(serverId = current.snapshot.server.id, next = result.data)
+                    withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
+                        applySidebarOrderLocally(serverId = current.snapshot.server.id, next = result.data)
+                    }
                 is DataResult.Empty,
                 is DataResult.Error,
                 is DataResult.NoPermission -> Unit
@@ -2204,9 +2327,12 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.SelectConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:select:$threadId"
         is SharedHomeIntent.SelectTopAction -> "${SharedHomeChannelFoldEvent.Patch.wireName}:top-action:$action"
         is SharedHomeIntent.SelectServer -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server:$serverId"
-        is SharedHomeIntent.ApplyRealtimeEvent -> "${event.toSharedHomeChannelFoldEvent().wireName}:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
+        is SharedHomeIntent.ApplyRealtimeEvent ->
+            "${envelope.payload.toSharedHomeChannelFoldEvent().wireName}:${envelope.owner.serverId}:" +
+                envelope.payload.toSharedHomeRealtimeEventDiagnosticsLabel()
         is SharedHomeIntent.ApplyBackgroundServerUnreadEvent ->
-            "${SharedHomeChannelFoldEvent.Patch.wireName}:background-unread:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
+            "${SharedHomeChannelFoldEvent.Patch.wireName}:background-unread:${envelope.owner.serverId}:" +
+                envelope.payload.toSharedHomeRealtimeEventDiagnosticsLabel()
         SharedHomeIntent.RefreshNotifications -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notifications-refresh"
         is SharedHomeIntent.UpsertNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification-dismiss:$id"
@@ -2659,8 +2785,10 @@ sealed interface SharedHomeIntent {
     data class SelectConversation(val threadId: String) : SharedHomeIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
-    data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
-    data class ApplyBackgroundServerUnreadEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
+    data class ApplyRealtimeEvent(val envelope: RealtimeOwnerEnvelope<RealtimeEvent>) : SharedHomeIntent
+    data class ApplyBackgroundServerUnreadEvent(
+        val envelope: RealtimeOwnerEnvelope<RealtimeEvent>
+    ) : SharedHomeIntent
     data object RefreshNotifications : SharedHomeIntent
     data class UpsertNotification(val notification: SharedHomeNotification) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent

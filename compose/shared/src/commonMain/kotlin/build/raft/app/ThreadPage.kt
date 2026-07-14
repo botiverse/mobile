@@ -96,6 +96,8 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeActiveThreadSink
+import build.raft.app.data.RealtimeOwnerEpoch
+import build.raft.app.data.RealtimeOwnerEnvelope
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
@@ -3466,7 +3468,10 @@ internal fun SharedThreadRouteContent(
             SharedThreadViewModel(
                 dataSource = dataSource,
                 initialPayload = initialPayload,
-                diagnosticsLogger = { bridge.log(it) }
+                diagnosticsLogger = { bridge.log(it) },
+                realtimeOwnerMutationGuard = { ownerToken, block ->
+                    realtimeDomainEventOwner.runIfCurrentOwner(ownerToken, block)
+                },
             )
         }
     val renderSlice by remember(threadViewModel) {
@@ -3728,10 +3733,10 @@ internal fun SharedThreadRouteContent(
         mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
     }
     val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
-    val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
-        { event ->
+    val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<(RealtimeOwnerEpoch, RealtimeEvent) -> Unit>(
+        { ownerToken, event ->
             if (event is Heartbeat) {
-                threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(event.seq))
+                threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(ownerToken, event.seq))
             } else {
                 val activeReplyParentMessageId =
                     initialPayload.originParentMessageId
@@ -3740,7 +3745,7 @@ internal fun SharedThreadRouteContent(
                 if (!event.isTaskProjectionEvent() && event !is MemberPresenceUpdated) {
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyRealtimeEvent(
-                            event = event,
+                            envelope = RealtimeOwnerEnvelope(ownerToken, event),
                             activeReplyParentMessageId = activeReplyParentMessageId
                         )
                     )
@@ -3799,7 +3804,10 @@ internal fun SharedThreadRouteContent(
     // behind the route's feature-surface gate.
     DisposableEffect(realtimeDomainEventOwner, authStore, coroutineScope) {
         val sink =
-            RealtimeActiveThreadSink { serverId, event ->
+            RealtimeActiveThreadSink { envelope ->
+                val ownerToken = envelope.owner
+                val serverId = envelope.owner.serverId
+                val event = envelope.payload
                 coroutineScope.launch {
                     val currentSessionServerId =
                         authStore.readSession()
@@ -3808,7 +3816,9 @@ internal fun SharedThreadRouteContent(
                             ?: return@launch
                     if (currentSessionServerId != serverId) return@launch
                     if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
-                    latestCoreThreadRealtimeEventHandler(event)
+                    realtimeDomainEventOwner.runIfCurrentOwner(ownerToken) {
+                        latestCoreThreadRealtimeEventHandler(ownerToken, event)
+                    }
                 }
             }
         realtimeDomainEventOwner.registerActiveThreadSink(sink)
@@ -4140,7 +4150,10 @@ internal fun SharedThreadRouteContent(
                     dataSource = tasksDataSource,
                     sharedTasksDataStore = tasksDataStore,
                     scope = SharedTasksScope.Channel(resolvedTaskChannelId),
-                    diagnosticsLogger = { bridge.log(it) }
+                    diagnosticsLogger = { bridge.log(it) },
+                    realtimeOwnerMutationGuard = { ownerToken, block ->
+                        realtimeDomainEventOwner.runIfCurrentOwner(ownerToken, block)
+                    },
                 )
             }
         }
@@ -4359,28 +4372,36 @@ internal fun SharedThreadRouteContent(
     // above already owns canonical Thread apply and gap recovery.
     DisposableEffect(realtimeDomainEventOwner, coroutineScope, currentServerId) {
         val sink =
-            RealtimeActiveThreadSink { serverId, event ->
+            RealtimeActiveThreadSink { envelope ->
+                val ownerToken = envelope.owner
+                val serverId = envelope.owner.serverId
+                val event = envelope.payload
                 coroutineScope.launch {
                     if (currentServerId != serverId) return@launch
                     if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
+                    if (!realtimeDomainEventOwner.runIfCurrentOwner(ownerToken) {}) return@launch
                     latestThreadFeatureRealtimeEventHandler(event)
-                    if (event is MessageNew) {
-                        val session = latestCurrentSession
-                        foregroundMessageBanner =
-                            if (foregroundMessageBannersEnabled()) {
-                                slockForegroundMessageBannerProjection(
-                                    serverId = serverId,
-                                    currentServerId = session?.currentServerId ?: currentServerId,
-                                    message = event.message,
-                                    currentMemberId = session?.user?.id,
-                                    visibleConversationKey = null,
-                                    visibleRouteIdentity = latestPayloadRouteIdentity,
-                                    conversationDirectory = latestForegroundConversationDirectory
-                                ) ?: foregroundMessageBanner
-                            } else {
-                                null
+                    val applied =
+                        realtimeDomainEventOwner.runIfCurrentOwner(ownerToken) {
+                            if (event is MessageNew) {
+                                val session = latestCurrentSession
+                                foregroundMessageBanner =
+                                    if (foregroundMessageBannersEnabled()) {
+                                        slockForegroundMessageBannerProjection(
+                                            serverId = serverId,
+                                            currentServerId = session?.currentServerId ?: currentServerId,
+                                            message = event.message,
+                                            currentMemberId = session?.user?.id,
+                                            visibleConversationKey = null,
+                                            visibleRouteIdentity = latestPayloadRouteIdentity,
+                                            conversationDirectory = latestForegroundConversationDirectory
+                                        ) ?: foregroundMessageBanner
+                                    } else {
+                                        null
+                                    }
                             }
-                    }
+                        }
+                    if (!applied) return@launch
                 }
             }
         realtimeDomainEventOwner.registerActiveThreadSink(sink)

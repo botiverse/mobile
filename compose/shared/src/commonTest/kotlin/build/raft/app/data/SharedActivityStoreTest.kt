@@ -772,7 +772,7 @@ class SharedActivityStoreTest {
 
             store.dispatch(SharedActivityIntent.LoadInitial)
             store.dispatch(
-                SharedActivityIntent.ApplyRealtimeEvent(
+                activityRealtimeIntent(
                     RealtimeRefreshRequired(
                         scope = refreshScope,
                         reason = "test"
@@ -784,6 +784,45 @@ class SharedActivityStoreTest {
             assertEquals(index + 2, store.state.value.totalUnreadCount, "scope=$refreshScope")
             scope.cancel()
         }
+    }
+
+    @Test
+    fun queuedRealtimeActivityIntentCannotMutateAfterOwnerRotation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val centralOwner = testRealtimeDomainEventOwner()
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1),
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)
+                    )
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeOwnerMutationGuard = centralOwner::runIfCurrentOwner,
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val before = store.state.value
+        val ownerA = centralOwner.rotateOwner("server-1", "user-1")
+        val staleIntent =
+            activityRealtimeIntent(
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Home,
+                        reason = "stale-owner"
+                    ),
+                ownerToken = ownerA
+            )
+
+        centralOwner.rotateOwner("server-1", "user-2")
+        store.dispatch(staleIntent)
+
+        assertEquals(before, store.state.value)
+        assertEquals(1, inbox.initialLoadCount)
+        scope.cancel()
     }
 
     @Test
@@ -801,7 +840,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 RealtimeRefreshRequired(
                     scope = RealtimeRefreshScope.Announcements,
                     reason = "announcement:new"
@@ -833,7 +872,7 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
             )
         )
@@ -866,12 +905,12 @@ class SharedActivityStoreTest {
         val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
             )
         )
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
             )
         )
@@ -909,7 +948,7 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.LoadInitial)
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 29)
             )
         )
@@ -942,7 +981,7 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.LoadInitial)
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 4, maxReadSeq = 40)
             )
         )
@@ -974,7 +1013,7 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.LoadInitial)
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 6, maxReadSeq = 20)
             )
         )
@@ -1002,7 +1041,7 @@ class SharedActivityStoreTest {
         val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 PerReceiverReadStateChanged(
                     serverId = ServerId("server-1"),
                     scopes =
@@ -1034,7 +1073,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
             )
         )
@@ -1062,7 +1101,7 @@ class SharedActivityStoreTest {
         inbox.completeNextSnapshot(snapshot(listOf(visibleUnread), totalUnreadCount = 3))
         store.dispatch(SharedActivityIntent.Refresh)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
             )
         )
@@ -1115,7 +1154,7 @@ class SharedActivityStoreTest {
             )
 
         store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+        store.dispatch(activityRealtimeIntent(event))
 
         val patched = store.state.value.items.single()
         assertEquals(MessageId("message-new"), patched.latestActivityMessageId)
@@ -1126,7 +1165,7 @@ class SharedActivityStoreTest {
         assertEquals(1, store.state.value.totalUnreadCount)
         assertEquals(1, inbox.initialLoadCount)
 
-        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+        store.dispatch(activityRealtimeIntent(event))
 
         assertEquals(3, store.state.value.items.single().replyCount)
         assertEquals(1, store.state.value.totalUnreadCount)
@@ -1156,7 +1195,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(
                     message(
                         id = "reply-new",
@@ -1208,7 +1247,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 ThreadUpdated(
                     parentMessageId = MessageId("parent-message"),
                     threadChannelId = ChannelId("thread-channel-1"),
@@ -1228,7 +1267,7 @@ class SharedActivityStoreTest {
         assertEquals(MessageId("first-thread-channel-1"), patched.firstUnreadMessageId)
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 ThreadUpdated(
                     parentMessageId = MessageId("parent-message"),
                     threadChannelId = ChannelId("thread-channel-1"),
@@ -1264,7 +1303,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(message("message-new", channelId = "channel-2"))
             )
         )
@@ -1297,7 +1336,7 @@ class SharedActivityStoreTest {
         inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
         store.dispatch(SharedActivityIntent.Refresh)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(
                     message(
                         id = "message-new",
@@ -1342,7 +1381,7 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.LoadInitial)
         inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 2))
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(
                     message(
                         id = "message-new",
@@ -1382,7 +1421,7 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.LoadInitial)
         inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 2))
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(
                     message(
                         id = "message-new",
@@ -1396,7 +1435,7 @@ class SharedActivityStoreTest {
         )
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 readStateEvent(scopeId = "thread-channel-1", version = 1, maxReadSeq = 10)
             )
         )
@@ -1431,17 +1470,17 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.LoadInitial)
         inbox.completeNextSnapshot(snapshot(listOf(stale)))
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(message("message-1", channelId = "thread-channel-1"))
             )
         )
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(message("message-2", channelId = "thread-channel-1"))
             )
         )
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(message("message-3", channelId = "thread-channel-1"))
             )
         )
@@ -1481,7 +1520,7 @@ class SharedActivityStoreTest {
                     if (injectAtTerminal) {
                         injectAtTerminal = false
                         store.dispatch(
-                            SharedActivityIntent.ApplyRealtimeEvent(
+                            activityRealtimeIntent(
                                 MessageNew(message("message-2", channelId = "thread-channel-1"))
                             )
                         )
@@ -1496,7 +1535,7 @@ class SharedActivityStoreTest {
         awaitState(store) { state -> state.loaded && !state.refreshing }
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(message("message-1", channelId = "thread-channel-1"))
             )
         )
@@ -1559,7 +1598,7 @@ class SharedActivityStoreTest {
         awaitState(store) { state -> state.loaded && !state.refreshing }
 
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 MessageNew(
                     message(
                         id = "message-1",
@@ -1579,7 +1618,7 @@ class SharedActivityStoreTest {
         val secondPatch =
             scope.launch {
                 store.dispatch(
-                    SharedActivityIntent.ApplyRealtimeEvent(
+                    activityRealtimeIntent(
                         MessageNew(
                             message(
                                 id = "message-new",
@@ -1632,7 +1671,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeSummaryEvent(
+            activityRealtimeSummaryIntent(
                 MessageNew(message("message-new", channelId = "channel-1", authorId = "user-2")),
                 activeConversationId = null
             )
@@ -1664,7 +1703,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(
-            SharedActivityIntent.ApplyRealtimeSummaryEvent(
+            activityRealtimeSummaryIntent(
                 SyncResumeResponse(
                     messages =
                         listOf(
@@ -2177,7 +2216,11 @@ class SharedActivityStoreTest {
         realtimeReconcileDelayMillis: Long = 150L,
         afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
         beforeRealtimeHighWaterFold: () -> Unit = {},
-        onRealtimePatchOwnerEntered: () -> Unit = {}
+        onRealtimePatchOwnerEntered: () -> Unit = {},
+        realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, block ->
+            block()
+            true
+        },
     ): SharedActivityStore =
         SharedActivityStore(
             authStore = authStore,
@@ -2196,7 +2239,8 @@ class SharedActivityStoreTest {
             realtimeReconcileDelayMillis = realtimeReconcileDelayMillis,
             afterRealtimeReconcileTerminalDecision = afterRealtimeReconcileTerminalDecision,
             beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
-            onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered
+            onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered,
+            realtimeOwnerMutationGuard = realtimeOwnerMutationGuard,
         )
 
     private fun readStateEvent(

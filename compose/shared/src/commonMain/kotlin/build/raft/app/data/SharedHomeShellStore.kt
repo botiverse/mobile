@@ -38,8 +38,10 @@ sealed interface SharedHomeShellIntent {
     data class SetSelectedConversation(val conversationId: String?) : SharedHomeShellIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeShellIntent
     data class DismissNotification(val id: String) : SharedHomeShellIntent
-    data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeShellIntent
-    data class ApplyBackgroundServerUnreadEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeShellIntent
+    data class ApplyRealtimeEvent(val envelope: RealtimeOwnerEnvelope<RealtimeEvent>) : SharedHomeShellIntent
+    data class ApplyBackgroundServerUnreadEvent(
+        val envelope: RealtimeOwnerEnvelope<RealtimeEvent>
+    ) : SharedHomeShellIntent
     data class Home(val intent: SharedHomeIntent) : SharedHomeShellIntent
     data class Activity(val intent: SharedActivityIntent) : SharedHomeShellIntent
     data class SearchSaved(val intent: SharedHomeSearchSavedIntent) : SharedHomeShellIntent
@@ -52,13 +54,14 @@ class SharedHomeShellStore(
     private val dispatchHome: (SharedHomeIntent) -> Unit,
     private val dispatchActivity: (SharedActivityIntent) -> Unit,
     private val dispatchSearchSaved: (SharedHomeSearchSavedIntent) -> Unit,
+    private val notifyHomeRealtimeOwnerChanged: () -> Unit = {},
+    private val notifyActivityRealtimeOwnerChanged: () -> Unit = {},
     private val resetActivity: () -> Unit = {},
     private val diagnosticsLogger: (String) -> Unit = {},
     private val scope: CoroutineScope
 ) {
     private var observedHomeServerId: String? = homeState.value.activeHomeServerId()
     private var pendingSavedSummaryRefreshServerId: String? = null
-
     private val _state =
         MutableStateFlow(
             SharedHomeShellState(
@@ -68,6 +71,11 @@ class SharedHomeShellStore(
             )
         )
     val state: StateFlow<SharedHomeShellState> = _state.asStateFlow()
+
+    fun onRealtimeOwnerChanged() {
+        notifyHomeRealtimeOwnerChanged()
+        notifyActivityRealtimeOwnerChanged()
+    }
 
     private val jobs =
         listOf(
@@ -140,9 +148,12 @@ class SharedHomeShellStore(
                 dispatchHome(SharedHomeIntent.SelectTopAction(intent.action))
             is SharedHomeShellIntent.DismissNotification ->
                 dispatchHome(SharedHomeIntent.DismissNotification(intent.id))
-            is SharedHomeShellIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
+            is SharedHomeShellIntent.ApplyRealtimeEvent ->
+                applyRealtimeEvent(intent.envelope)
             is SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent ->
-                dispatchHome(SharedHomeIntent.ApplyBackgroundServerUnreadEvent(intent.serverId, intent.event))
+                dispatchHome(
+                    SharedHomeIntent.ApplyBackgroundServerUnreadEvent(intent.envelope)
+                )
             is SharedHomeShellIntent.Home -> dispatchHomeIntent(intent.intent)
             is SharedHomeShellIntent.Activity -> dispatchActivity(intent.intent)
             is SharedHomeShellIntent.SearchSaved -> dispatchSearchSaved(intent.intent)
@@ -194,20 +205,26 @@ class SharedHomeShellStore(
         }
     }
 
-    private fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
-        dispatchHome(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
+    private fun applyRealtimeEvent(
+        envelope: RealtimeOwnerEnvelope<RealtimeEvent>
+    ) {
+        val serverId = envelope.owner.serverId
+        val event = envelope.payload
+        dispatchHome(
+            SharedHomeIntent.ApplyRealtimeEvent(envelope)
+        )
         val current = _state.value
         if (current.destination == SharedHomeShellDestinationActivity) {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeEvent(
-                    event = event,
+                    envelope = envelope,
                     allowLocalPatch = current.home.allowsLocalActivityPatch(event)
                 )
             )
         } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
-                    event = event,
+                    envelope = envelope,
                     activeConversationId = current.selectedConversationId
                 )
             )
@@ -280,8 +297,9 @@ private fun SharedHomeShellIntent.toSharedHomeShellIntentDiagnosticsLabel(): Str
         is SharedHomeShellIntent.SetSelectedConversation -> "SetSelectedConversation:${conversationId ?: "_"}"
         is SharedHomeShellIntent.SelectTopAction -> "SelectTopAction:$action"
         is SharedHomeShellIntent.DismissNotification -> "DismissNotification:$id"
-        is SharedHomeShellIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId"
-        is SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent -> "ApplyBackgroundServerUnreadEvent:$serverId"
+        is SharedHomeShellIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:${envelope.owner.serverId}"
+        is SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent ->
+            "ApplyBackgroundServerUnreadEvent:${envelope.owner.serverId}"
         is SharedHomeShellIntent.Home -> "Home:${intent.toSharedHomeShellHomeIntentDiagnosticsLabel()}"
         is SharedHomeShellIntent.Activity -> "Activity"
         is SharedHomeShellIntent.SearchSaved -> "SearchSaved"
@@ -297,8 +315,9 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.SelectConversation -> "patch:select:$threadId"
         is SharedHomeIntent.SelectTopAction -> "patch:top-action:$action"
         is SharedHomeIntent.SelectServer -> "hydrate:server:$serverId"
-        is SharedHomeIntent.ApplyRealtimeEvent -> "patch:realtime:$serverId"
-        is SharedHomeIntent.ApplyBackgroundServerUnreadEvent -> "patch:background-unread:$serverId"
+        is SharedHomeIntent.ApplyRealtimeEvent -> "patch:realtime:${envelope.owner.serverId}"
+        is SharedHomeIntent.ApplyBackgroundServerUnreadEvent ->
+            "patch:background-unread:${envelope.owner.serverId}"
         SharedHomeIntent.RefreshNotifications -> "patch:notifications-refresh"
         is SharedHomeIntent.UpsertNotification -> "patch:notification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "patch:notification-dismiss:$id"

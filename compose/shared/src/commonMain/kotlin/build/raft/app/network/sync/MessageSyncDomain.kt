@@ -430,6 +430,10 @@ internal class MessageDomainSyncHost(
     private val ownersLock = SynchronizedObject()
     private val owners = mutableMapOf<SyncScopeId, ScopeOwner>()
 
+    fun clearAll() {
+        synchronized(ownersLock) { owners.clear() }
+    }
+
     private fun owner(scopeId: SyncScopeId): ScopeOwner =
         synchronized(ownersLock) { owners.getOrPut(scopeId, ::ScopeOwner) }
 

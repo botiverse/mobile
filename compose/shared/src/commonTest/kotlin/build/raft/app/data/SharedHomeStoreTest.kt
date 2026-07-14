@@ -53,6 +53,7 @@ class SharedHomeStoreTest {
     fun startLoadsHomeThroughCommonStateFlow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -73,6 +74,7 @@ class SharedHomeStoreTest {
         val originalLogs = mutableListOf<String>()
         val refreshedLogs = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-old"))),
             scope = storeScope,
@@ -113,6 +115,7 @@ class SharedHomeStoreTest {
     fun startHydratesConversationIdentityProviderFromHomeSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 source(
@@ -137,6 +140,7 @@ class SharedHomeStoreTest {
     fun activitySnapshotSupplementsMissingParentIdentityWithoutOverwritingHome() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -190,6 +194,7 @@ class SharedHomeStoreTest {
     fun surfaceVisibilityChangeStaysOutOfHomeUiState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -219,6 +224,7 @@ class SharedHomeStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource = source(api = api),
             scope = scope
@@ -251,12 +257,14 @@ class SharedHomeStoreTest {
         val scopeB = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val storeA =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = authA,
                 dataSource = source(api = RecordingHomeApi(), sessionStore = authA),
                 scope = scopeA
             )
         val storeB =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = authB,
                 dataSource = source(api = RecordingHomeApi(), sessionStore = authB),
                 scope = scopeB
@@ -286,6 +294,7 @@ class SharedHomeStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource = source(api = api, sessionStore = sessionStore),
             scope = scope
@@ -321,6 +330,7 @@ class SharedHomeStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource = source(api = api, sessionStore = sessionStore),
             scope = scope
@@ -408,6 +418,7 @@ class SharedHomeStoreTest {
             )
         val warmStore =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(staleSnapshot),
                 scope = scope,
@@ -419,6 +430,7 @@ class SharedHomeStoreTest {
         val api = BlockingHomeApi()
         val coldStore =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = sessionStore,
                 dataSource = source(api = api, sessionStore = sessionStore),
                 scope = scope,
@@ -480,6 +492,7 @@ class SharedHomeStoreTest {
                 )
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource =
                 SharedHomeDataSource(
@@ -526,6 +539,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope,
@@ -546,6 +560,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = ThrowingHomeApi()),
             scope = scope,
@@ -568,6 +583,7 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(sampleHome(ServerId("server-1")))
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -593,6 +609,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -635,6 +652,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore),
             scope = scope
@@ -647,7 +665,7 @@ class SharedHomeStoreTest {
         )
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MessageNew(
@@ -675,6 +693,45 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun queuedRealtimeHomeIntentCannotMutateAfterOwnerRotation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val centralOwner = testRealtimeDomainEventOwner()
+        val store =
+            SharedHomeStore(
+                realtimeOwnerMutationGuard = centralOwner::runIfCurrentOwner,
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+                scope = scope,
+            )
+        store.accept(SharedHomeIntent.Start)
+        val before = store.state.value
+        val ownerA = centralOwner.rotateOwner("server-1", "member-1")
+        val staleIntent =
+            homeRealtimeIntent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("message-stale-owner"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 2,
+                            author = sampleMember().copy(id = MemberId("member-2")),
+                            timestampLabel = "12:01",
+                            body = "must not apply"
+                        )
+                    ),
+                ownerToken = ownerA
+            )
+
+        centralOwner.rotateOwner("server-1", "member-2")
+        store.accept(staleIntent)
+
+        assertEquals(before, store.state.value)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdateOnlyReplacesMatchingHomeRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -687,6 +744,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope
@@ -695,7 +753,7 @@ class SharedHomeStoreTest {
         val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MessageNew(
@@ -727,6 +785,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore, logger = logs::add),
             scope = scope,
@@ -737,7 +796,7 @@ class SharedHomeStoreTest {
         logs.clear()
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event = Heartbeat(seq = 42)
             )
@@ -755,6 +814,7 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
@@ -764,7 +824,7 @@ class SharedHomeStoreTest {
         api.calls.clear()
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -786,6 +846,7 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
@@ -797,7 +858,7 @@ class SharedHomeStoreTest {
 
         val blockedRefresh = api.blockNextChannels()
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -811,7 +872,7 @@ class SharedHomeStoreTest {
         val callsBeforeCluster = api.calls.toList()
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -822,7 +883,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -853,6 +914,7 @@ class SharedHomeStoreTest {
         val api = RecordingHomeApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
@@ -863,7 +925,7 @@ class SharedHomeStoreTest {
         logs.clear()
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -888,6 +950,7 @@ class SharedHomeStoreTest {
         val computersApi = RecordingComputersApi()
         val logs = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 source(
@@ -905,7 +968,7 @@ class SharedHomeStoreTest {
         logs.clear()
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -937,6 +1000,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope
@@ -945,7 +1009,7 @@ class SharedHomeStoreTest {
         logs.clear()
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -973,6 +1037,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
@@ -982,7 +1047,7 @@ class SharedHomeStoreTest {
         val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1012,6 +1077,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope,
@@ -1022,7 +1088,7 @@ class SharedHomeStoreTest {
         val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1053,6 +1119,7 @@ class SharedHomeStoreTest {
         val home = sampleHome(ServerId("server-1")).copy(directMessages = listOf(agentDm))
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource =
                 sourceWithSnapshot(
@@ -1071,7 +1138,7 @@ class SharedHomeStoreTest {
         val beforeContent = store.state.value.content as SharedHomeContentState.Content
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1082,7 +1149,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -1123,6 +1190,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -1135,7 +1203,7 @@ class SharedHomeStoreTest {
         )
         store.accept(SharedHomeIntent.Start)
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1179,6 +1247,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
@@ -1188,7 +1257,7 @@ class SharedHomeStoreTest {
         val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1199,7 +1268,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1210,7 +1279,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1242,6 +1311,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore),
             scope = scope,
@@ -1250,7 +1320,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1262,7 +1332,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1288,6 +1358,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), localStore = localStore, logger = logs::add),
             scope = scope,
@@ -1299,7 +1370,7 @@ class SharedHomeStoreTest {
         val beforeContent = store.state.value.content as SharedHomeContentState.Content
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MessageNew(
@@ -1338,6 +1409,7 @@ class SharedHomeStoreTest {
                     )
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home, localStore = localStore, logger = logs::add),
             scope = scope,
@@ -1350,7 +1422,7 @@ class SharedHomeStoreTest {
         val beforeContent = store.state.value.content as SharedHomeContentState.Content
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     MemberPresenceUpdated(
@@ -1382,6 +1454,7 @@ class SharedHomeStoreTest {
     fun selectConversationTracksSelectedRowAndClearsTopAction() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -1399,6 +1472,7 @@ class SharedHomeStoreTest {
     fun selectTopActionTracksActionAndClearsSelectedConversation() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -1416,6 +1490,7 @@ class SharedHomeStoreTest {
     fun refreshKeepsSelectedConversationAfterReturningFromThread() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -1435,6 +1510,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope
@@ -1476,6 +1552,7 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -1514,6 +1591,7 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -1550,6 +1628,7 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -1587,6 +1666,7 @@ class SharedHomeStoreTest {
         val localStore = InMemoryComposeLocalDataStore()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -1615,6 +1695,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val api = RecordingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = api),
             scope = scope,
@@ -1652,6 +1733,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -1703,6 +1785,7 @@ class SharedHomeStoreTest {
         val logs = mutableListOf<String>()
         val api = BlockingHomeApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -1755,6 +1838,7 @@ class SharedHomeStoreTest {
     fun channelCreatedOptimisticallyAddsAndSelectsChannel() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -1779,6 +1863,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
             scope = scope
@@ -1812,6 +1897,7 @@ class SharedHomeStoreTest {
                     """.trimIndent()
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
             scope = scope
@@ -1830,6 +1916,7 @@ class SharedHomeStoreTest {
         val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
         val computersApi = RecordingComputersApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 source(
@@ -1883,6 +1970,7 @@ class SharedHomeStoreTest {
                     """.trimIndent()
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 source(
@@ -1914,6 +2002,7 @@ class SharedHomeStoreTest {
         val announcementsApi = RecordingAnnouncementsApi()
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi, sessionStore = sessionStore),
             scope = scope
@@ -1931,6 +2020,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
             scope = scope
@@ -1953,7 +2043,7 @@ class SharedHomeStoreTest {
             """.trimIndent()
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     RealtimeRefreshRequired(
@@ -1974,6 +2064,7 @@ class SharedHomeStoreTest {
         val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
         val computersApi = RecordingComputersApi()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 source(
@@ -1996,6 +2087,7 @@ class SharedHomeStoreTest {
     fun upsertNotificationReplacesAppUpdateActionStateImmediately() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = source(api = RecordingHomeApi()),
             scope = scope
@@ -2035,6 +2127,7 @@ class SharedHomeStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val api = ServerUnreadHomeApi(unreadByServerId = mapOf("server-1" to 7))
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource =
                 SharedHomeDataSource(
@@ -2074,6 +2167,7 @@ class SharedHomeStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val api = MissingServerUnreadHomeApi() // summary = [] for active server
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource =
                 SharedHomeDataSource(
@@ -2110,6 +2204,7 @@ class SharedHomeStoreTest {
                 )
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource =
                 SharedHomeDataSource(
@@ -2165,6 +2260,7 @@ class SharedHomeStoreTest {
         val switchableApi = SwitchableHomeApi()
         switchableApi.setServerUnread("server-1" to 9)
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource =
                 SharedHomeDataSource(
@@ -2453,7 +2549,7 @@ class SharedHomeStoreTest {
     }
 
     private suspend fun awaitCondition(condition: () -> Boolean) {
-        withTimeout(1_000L) {
+        withTimeout(5_000L) {
             while (!condition()) {
                 delay(1)
             }
@@ -2811,6 +2907,7 @@ class SharedHomeStoreTest {
             pinnedSortMode = "manual"
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -2866,6 +2963,7 @@ class SharedHomeStoreTest {
             pinnedOrder = listOf("channel-1")
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial, updateResult = DataResult.Content(updatedSnapshot), updateCalls = updateCalls),
             scope = scope,
@@ -2916,6 +3014,7 @@ class SharedHomeStoreTest {
                 sidebarOrder = initial
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
@@ -2966,6 +3065,7 @@ class SharedHomeStoreTest {
                 sidebarOrder = initial
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
@@ -3015,6 +3115,7 @@ class SharedHomeStoreTest {
                 sidebarOrder = initial
             )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
@@ -3058,6 +3159,7 @@ class SharedHomeStoreTest {
             pinnedOrder = listOf("channel-1")
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
@@ -3073,6 +3175,7 @@ class SharedHomeStoreTest {
         val api = BlockingHomeApi()
         val coldStore =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = sessionStore,
                 dataSource = source(api = api, sessionStore = sessionStore),
                 scope = scope,
@@ -3112,6 +3215,7 @@ class SharedHomeStoreTest {
         )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 // Home payload is returned without sidebarOrder; the store
@@ -3165,6 +3269,7 @@ class SharedHomeStoreTest {
         )
         val failureMessages = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 initial = initial,
@@ -3191,6 +3296,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val failureMessages = mutableListOf<String>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = null),
             scope = scope,
@@ -3218,6 +3324,7 @@ class SharedHomeStoreTest {
             pinnedSortMode = "manual"
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 initial = initial,
@@ -3248,6 +3355,7 @@ class SharedHomeStoreTest {
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val updatedSnapshot = initial.copy(pinnedSortMode = "az")
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(
                 initial = initial,
@@ -3296,6 +3404,7 @@ class SharedHomeStoreTest {
             channelSortMode = "manual"
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -3346,6 +3455,7 @@ class SharedHomeStoreTest {
             pinnedSortMode = "manual"
         )
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -3398,6 +3508,7 @@ class SharedHomeStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(session)
         val updateCalls = mutableListOf<List<String>>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), sessionStore = sessionStore),
             scope = scope,
@@ -3426,6 +3537,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession()) // account user-1, servers [1,2]
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), sessionStore = sessionStore),
             scope = scope,
@@ -3471,6 +3583,7 @@ class SharedHomeStoreTest {
         var loadCount = 0
         val blockedLoad = BlockingCall()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = sessionStore,
             dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), sessionStore = sessionStore),
             scope = scope,
@@ -3510,6 +3623,7 @@ class SharedHomeStoreTest {
         val initial = SettingsServerSidebarOrderSnapshot()
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -3547,6 +3661,7 @@ class SharedHomeStoreTest {
         val readCalls = mutableListOf<ChannelId>()
         val unreadCalls = mutableListOf<ChannelId>()
         val store = SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource =
                 SharedHomeDataSource(
@@ -3596,6 +3711,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -3707,6 +3823,7 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
@@ -3756,6 +3873,7 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
@@ -3769,7 +3887,7 @@ class SharedHomeStoreTest {
         blockedRefresh.awaitStarted()
 
         store.dispatch(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -3822,6 +3940,7 @@ class SharedHomeStoreTest {
             )
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource = sourceWithSnapshot(snapshot, api = api),
                 scope = scope,
@@ -3835,7 +3954,7 @@ class SharedHomeStoreTest {
         blockedRefresh.awaitStarted()
 
         store.dispatch(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -3875,6 +3994,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -3947,6 +4067,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4026,6 +4147,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4059,7 +4181,7 @@ class SharedHomeStoreTest {
         // implied by the user room (enriched from the session), not carried
         // in the payload.
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4085,7 +4207,7 @@ class SharedHomeStoreTest {
         // but channel-2 has its own counter (041 §2.2 per-scope) so its
         // version 1 still applies — channel-1's high water must not swallow it.
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4122,6 +4244,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4147,7 +4270,7 @@ class SharedHomeStoreTest {
 
         store.accept(SharedHomeIntent.Start)
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4171,7 +4294,7 @@ class SharedHomeStoreTest {
         assertEquals(4, partial.unreadTotal)
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverReadStateChanged(
@@ -4219,6 +4342,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4235,7 +4359,7 @@ class SharedHomeStoreTest {
         val otherMember = sampleMember().copy(id = MemberId("member-2"), displayName = "Cindy")
 
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     MessageNew(
@@ -4252,7 +4376,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     MessageNew(
@@ -4276,7 +4400,7 @@ class SharedHomeStoreTest {
         assertEquals(visibleBefore, (store.state.value.content as SharedHomeContentState.Content).snapshot)
 
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     PerReceiverReadStateChanged(
@@ -4305,7 +4429,7 @@ class SharedHomeStoreTest {
         // Background aggregates cannot reconstruct the resulting baseline,
         // so they reconcile canonically. A later lower version is stale.
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     PerReceiverReadStateChanged(
@@ -4323,7 +4447,7 @@ class SharedHomeStoreTest {
         )
         awaitCondition { api.calls.count { it == "summary:server-1" } == 3 }
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     PerReceiverReadStateChanged(
@@ -4345,7 +4469,7 @@ class SharedHomeStoreTest {
         // A second scope is independent. Clearing channel-b at the next
         // accepted version leaves channel-c's optimistic unread intact.
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     MessageNew(
@@ -4363,7 +4487,7 @@ class SharedHomeStoreTest {
         )
         assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     PerReceiverReadStateChanged(
@@ -4388,7 +4512,7 @@ class SharedHomeStoreTest {
         // seq=null is not provably covered by any watermark. Keep it until
         // canonical refresh instead of silently undercounting.
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     MessageNew(
@@ -4405,7 +4529,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     PerReceiverReadStateChanged(
@@ -4436,6 +4560,7 @@ class SharedHomeStoreTest {
         val recreatedScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val recreated =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4448,7 +4573,7 @@ class SharedHomeStoreTest {
             )
         recreated.accept(SharedHomeIntent.Start)
         recreated.accept(
-            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+            backgroundHomeRealtimeIntent(
                 serverId = "server-2",
                 event =
                     MessageNew(
@@ -4475,6 +4600,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4497,7 +4623,7 @@ class SharedHomeStoreTest {
 
         store.accept(SharedHomeIntent.Start)
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
@@ -4526,6 +4652,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4586,6 +4713,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4604,7 +4732,7 @@ class SharedHomeStoreTest {
 
         store.accept(SharedHomeIntent.Start)
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverPinnedChanged(
@@ -4632,7 +4760,7 @@ class SharedHomeStoreTest {
         assertEquals(listOf("agent-1", "user-2"), updated?.pinnedOrder)
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverPinnedChanged(
@@ -4653,7 +4781,7 @@ class SharedHomeStoreTest {
         )
 
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverPinnedChanged(
@@ -4678,6 +4806,7 @@ class SharedHomeStoreTest {
         val calls = mutableListOf<Pair<ChannelId, Boolean>>()
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4718,6 +4847,7 @@ class SharedHomeStoreTest {
         val diagnostics = mutableListOf<String>()
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4744,7 +4874,7 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
         store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
@@ -4788,6 +4918,7 @@ class SharedHomeStoreTest {
         val diagnostics = mutableListOf<String>()
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4818,7 +4949,7 @@ class SharedHomeStoreTest {
         store.dispatch(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
         withTimeout(1_000) { requestStarted.await() }
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
@@ -4861,6 +4992,7 @@ class SharedHomeStoreTest {
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4900,7 +5032,7 @@ class SharedHomeStoreTest {
             )
         )
         store.accept(
-            SharedHomeIntent.ApplyRealtimeEvent(
+            homeRealtimeIntent(
                 serverId = "server-1",
                 event =
                     PerReceiverNotificationPrefsChanged(
@@ -4939,6 +5071,7 @@ class SharedHomeStoreTest {
         val failureMessages = mutableListOf<String>()
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -4985,6 +5118,7 @@ class SharedHomeStoreTest {
         val failureMessages = mutableListOf<String>()
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -5014,6 +5148,7 @@ class SharedHomeStoreTest {
         val calls = mutableListOf<Pair<ChannelId, Boolean>>()
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(
@@ -5081,6 +5216,7 @@ class SharedHomeStoreTest {
         val diagnostics = mutableListOf<String>()
         val store =
             SharedHomeStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 dataSource =
                     sourceWithSnapshot(

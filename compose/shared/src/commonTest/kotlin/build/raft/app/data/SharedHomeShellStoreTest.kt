@@ -254,31 +254,31 @@ class SharedHomeShellStoreTest {
         val store = fixture.store
         val event = SyncResumeResponse(messages = emptyList(), currentSeq = 1L, hasMore = false)
 
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
         store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
         store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(false))
         store.dispatch(SharedHomeShellIntent.OpenSaved)
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
         store.dispatch(SharedHomeShellIntent.OpenActivity)
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
 
         assertEquals(
             listOf<SharedHomeIntent>(
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
+                homeRealtimeIntentForServer("server-1", event),
                 SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
+                homeRealtimeIntentForServer("server-1", event),
                 SharedHomeIntent.SetSurfaceVisible(false),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
+                homeRealtimeIntentForServer("server-1", event),
+                homeRealtimeIntentForServer("server-1", event)
             ),
             fixture.homeIntents
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
+                activityRealtimeSummaryIntent(event, activeConversationId = null),
                 SharedActivityIntent.Refresh,
-                SharedActivityIntent.ApplyRealtimeEvent(event)
+                activityRealtimeIntent(event)
             ),
             fixture.activityIntents
         )
@@ -302,21 +302,21 @@ class SharedHomeShellStoreTest {
                     )
             )
 
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
         store.dispatch(SharedHomeShellIntent.OpenSaved)
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
 
         assertEquals(
             listOf<SharedHomeIntent>(
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
+                homeRealtimeIntentForServer("server-1", event),
+                homeRealtimeIntentForServer("server-1", event)
             ),
             fixture.homeIntents
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
+                activityRealtimeSummaryIntent(event, activeConversationId = null),
+                activityRealtimeSummaryIntent(event, activeConversationId = null)
             ),
             fixture.activityIntents
         )
@@ -338,18 +338,18 @@ class SharedHomeShellStoreTest {
             )
 
         store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
 
         assertEquals(
             listOf<SharedHomeIntent>(
                 SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
+                homeRealtimeIntentForServer("server-1", event)
             ),
             fixture.homeIntents
         )
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
+                activityRealtimeSummaryIntent(event, activeConversationId = null)
             ),
             fixture.activityIntents
         )
@@ -364,11 +364,11 @@ class SharedHomeShellStoreTest {
 
         store.dispatch(SharedHomeShellIntent.SetSelectedConversation("channel-1"))
         store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        store.dispatch(homeShellRealtimeIntent("server-1", event))
 
         assertEquals(
             listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = "channel-1")
+                activityRealtimeSummaryIntent(event, activeConversationId = "channel-1")
             ),
             fixture.activityIntents
         )
@@ -398,10 +398,10 @@ class SharedHomeShellStoreTest {
             )
 
         fixture.store.dispatch(SharedHomeShellIntent.OpenActivity)
-        fixture.store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+        fixture.store.dispatch(homeShellRealtimeIntent("server-1", event))
 
         assertEquals(
-            SharedActivityIntent.ApplyRealtimeEvent(
+            activityRealtimeIntent(
                 event = event,
                 allowLocalPatch = false
             ),

@@ -15,6 +15,7 @@ import build.raft.app.model.MessageUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskDeleted
@@ -27,32 +28,42 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 
 class SharedRealtimeDomainEventOwnerTest {
+    private val testOwners = mutableMapOf<SharedRealtimeDomainEventOwner, RealtimeOwnerEpoch>()
+
     @Test
     fun separateShellOwnersDoNotCrossDeliverServerEvents() {
-        val ownerA = SharedRealtimeDomainEventOwner()
-        val ownerB = SharedRealtimeDomainEventOwner()
+        val ownerA = testRealtimeDomainEventOwner()
+        val ownerB = testRealtimeDomainEventOwner()
         val deliveredA = mutableListOf<String>()
         val deliveredB = mutableListOf<String>()
         ownerA.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, _ -> deliveredA += serverId }
+                applyHomeShell = { envelope -> deliveredA += envelope.owner.serverId }
             )
         )
         ownerB.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, _ -> deliveredB += serverId }
+                applyHomeShell = { envelope -> deliveredB += envelope.owner.serverId }
             )
         )
 
+        val tokenA = ownerA.rotateOwner("server-a", "member-a")
+        val tokenB = ownerB.rotateOwner("server-b", "member-b")
         ownerA.accept(
-            serverId = "server-a",
-            event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, "test", ServerId("server-a"))
+            ownedRealtimeEvent(
+                RealtimeRefreshRequired(RealtimeRefreshScope.Home, "test", ServerId("server-a")),
+                tokenA,
+            )
         )
         ownerB.accept(
-            serverId = "server-b",
-            event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, "test", ServerId("server-b"))
+            ownedRealtimeEvent(
+                RealtimeRefreshRequired(RealtimeRefreshScope.Home, "test", ServerId("server-b")),
+                tokenB,
+            )
         )
 
         assertEquals(listOf("server-a"), deliveredA)
@@ -79,18 +90,18 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun ignoresBlankServerIdsAndHeartbeats() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val settingsEvents = mutableListOf<RealtimeEventRecord>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
-                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) }
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
+                applySettings = { envelope -> settingsEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) }
             )
         )
 
-        owner.accept("", DirectMessageCreated(ChannelId("dm-1")))
-        owner.accept("server-1", Heartbeat(seq = 10L))
+        owner.acceptOwned("", DirectMessageCreated(ChannelId("dm-1")))
+        owner.acceptOwned("server-1", Heartbeat(seq = 10L))
 
         assertEquals(emptyList(), homeEvents)
         assertEquals(emptyList(), settingsEvents)
@@ -98,23 +109,23 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun duplicateAcceptedEventsPatchDomainSinksOnce() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val settingsEvents = mutableListOf<RealtimeEventRecord>()
         val joinedChannels = mutableListOf<String>()
         val logs = mutableListOf<String>()
         val sinks =
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
-                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) },
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
+                applySettings = { envelope -> settingsEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
                 joinChannel = { channelId -> joinedChannels += channelId },
                 log = logs::add
             )
         val event = DirectMessageCreated(ChannelId("dm-1"))
         owner.registerSinks(sinks)
 
-        owner.accept("server-1", event, source = "app_shell")
-        owner.accept("server-1", event, source = "app_shell")
+        owner.acceptOwned("server-1", event, source = "app_shell")
+        owner.acceptOwned("server-1", event, source = "app_shell")
 
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
@@ -124,7 +135,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun backgroundUnreadAcceptUsesSharedDedupWithoutTouchingFullDomainSinks() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val unreadEvents = mutableListOf<RealtimeEventRecord>()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val settingsEvents = mutableListOf<RealtimeEventRecord>()
@@ -149,14 +160,15 @@ class SharedRealtimeDomainEventOwnerTest {
             )
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, accepted -> homeEvents += RealtimeEventRecord(serverId, accepted) },
-                applyHomeUnreadProjection = { serverId, accepted -> unreadEvents += RealtimeEventRecord(serverId, accepted) },
-                applySettings = { serverId, accepted -> settingsEvents += RealtimeEventRecord(serverId, accepted) }
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
+                applyHomeUnreadProjection = { envelope -> unreadEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
+                applySettings = { envelope -> settingsEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) }
             )
         )
 
-        owner.acceptHomeUnreadProjection("server-2", event, source = "background")
-        owner.acceptHomeUnreadProjection("server-2", event, source = "background")
+        val ownerToken = owner.rotateOwner("server-2", "member-1")
+        owner.acceptHomeUnreadProjection(ownedRealtimeEvent(event, ownerToken), source = "background")
+        owner.acceptHomeUnreadProjection(ownedRealtimeEvent(event, ownerToken), source = "background")
 
         assertEquals(listOf(RealtimeEventRecord("server-2", event)), unreadEvents)
         assertEquals(emptyList(), homeEvents)
@@ -165,7 +177,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun agentPresenceUpdatesActivitySinkWithoutRefreshingMemberDetail() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val activityEvents = mutableListOf<MemberPresenceUpdated>()
         var refreshRequests = 0
         val event =
@@ -181,7 +193,7 @@ class SharedRealtimeDomainEventOwnerTest {
             )
         )
 
-        owner.accept("server-1", event, source = "app_shell")
+        owner.acceptOwned("server-1", event, source = "app_shell")
 
         assertEquals(listOf(event), activityEvents)
         assertEquals(0, refreshRequests)
@@ -189,7 +201,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun agentPresenceDedupeKeepsPerMemberServerSeqIndependent() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val activityEvents = mutableListOf<MemberPresenceUpdated>()
         val agentOne =
             MemberPresenceUpdated(
@@ -211,9 +223,9 @@ class SharedRealtimeDomainEventOwnerTest {
             )
         )
 
-        owner.accept("server-1", agentOne, source = "app_shell")
-        owner.accept("server-1", agentTwo, source = "app_shell")
-        owner.accept("server-1", agentTwo, source = "app_shell")
+        owner.acceptOwned("server-1", agentOne, source = "app_shell")
+        owner.acceptOwned("server-1", agentTwo, source = "app_shell")
+        owner.acceptOwned("server-1", agentTwo, source = "app_shell")
 
         assertEquals(listOf(agentOne, agentTwo), activityEvents)
     }
@@ -221,7 +233,7 @@ class SharedRealtimeDomainEventOwnerTest {
     @Test
     fun taskRealtimeEventsPatchSharedTaskProjectionStore() = runBlocking {
         val tasksDataStore = SharedTasksDataStore()
-        val owner = SharedRealtimeDomainEventOwner(tasksDataStore)
+        val owner = testRealtimeDomainEventOwner(tasksDataStore)
         val task =
             TaskSummary(
                 id = TaskId("task-1"),
@@ -236,14 +248,14 @@ class SharedRealtimeDomainEventOwnerTest {
             snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
         )
 
-        owner.accept("server-1", TaskUpdated(task), source = "app_shell")
+        owner.acceptOwned("server-1", TaskUpdated(task), source = "app_shell")
 
         val projected =
             tasksDataStore.channelProjectionFlow("server-1", "channel-1", null).first()
         assertEquals(SharedTasksDataStoreStatus.Loaded, projected.status)
         assertEquals(listOf(task), projected.tasks)
 
-        owner.accept("server-1", TaskDeleted(task.id), source = "app_shell")
+        owner.acceptOwned("server-1", TaskDeleted(task.id), source = "app_shell")
 
         val afterDelete =
             tasksDataStore.channelProjectionFlow("server-1", "channel-1", null).first()
@@ -252,13 +264,13 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun messageEventsUseStableIdentityForDedupe() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val settingsEvents = mutableListOf<RealtimeEventRecord>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
-                applySettings = { serverId, event -> settingsEvents += RealtimeEventRecord(serverId, event) }
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
+                applySettings = { envelope -> settingsEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) }
             )
         )
         val event =
@@ -274,8 +286,8 @@ class SharedRealtimeDomainEventOwnerTest {
                 )
             )
 
-        owner.accept("server-1", event, source = "app_shell")
-        owner.accept("server-1", event, source = "app_shell")
+        owner.acceptOwned("server-1", event, source = "app_shell")
+        owner.acceptOwned("server-1", event, source = "app_shell")
 
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
@@ -284,21 +296,21 @@ class SharedRealtimeDomainEventOwnerTest {
     @Test
     fun acceptedMessageEventsAdvancePersistedCursorAfterSharedDedupe() {
         val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
-        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val owner = testRealtimeDomainEventOwner(cursorStore = cursorStore)
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val logs = mutableListOf<String>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
                 log = logs::add
             )
         )
         val first = MessageNew(message(id = "m1", seq = 1))
         val second = MessageUpdated(message(id = "m2", seq = 2, body = "edited"))
 
-        owner.accept("server-1", first, source = "app_shell")
-        owner.accept("server-1", second, source = "app_shell")
-        owner.accept("server-1", second, source = "app_shell")
+        owner.acceptOwned("server-1", first, source = "app_shell")
+        owner.acceptOwned("server-1", second, source = "app_shell")
+        owner.acceptOwned("server-1", second, source = "app_shell")
 
         assertEquals(
             listOf(
@@ -315,16 +327,16 @@ class SharedRealtimeDomainEventOwnerTest {
     fun messageSeqGapRequestsRepairWithoutGatingMainFanout() {
         val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
         cursorStore.saveAppliedLastSeq(ServerId("server-1"), 1)
-        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val owner = testRealtimeDomainEventOwner(cursorStore = cursorStore)
         val delivered = mutableListOf<RealtimeEventRecord>()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val logs = mutableListOf<String>()
-        owner.registerActiveThreadSink { serverId, event ->
-            delivered += RealtimeEventRecord(serverId, event)
+        owner.registerActiveThreadSink { envelope ->
+            delivered += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
         }
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
                 log = logs::add
             )
         )
@@ -339,8 +351,8 @@ class SharedRealtimeDomainEventOwnerTest {
                 hasMore = false
             )
 
-        owner.accept("server-1", gap, source = "app_shell")
-        owner.accept("server-1", repair, source = "app_shell")
+        owner.acceptOwned("server-1", gap, source = "app_shell")
+        owner.acceptOwned("server-1", repair, source = "app_shell")
 
         val expected =
             listOf(
@@ -357,12 +369,12 @@ class SharedRealtimeDomainEventOwnerTest {
     fun sparseRepairBatchAdvancesCursorAndDoesNotLeaveFanoutStuck() {
         val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
         cursorStore.saveAppliedLastSeq(ServerId("server-1"), 1)
-        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val owner = testRealtimeDomainEventOwner(cursorStore = cursorStore)
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val logs = mutableListOf<String>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) },
                 log = logs::add
             )
         )
@@ -378,9 +390,9 @@ class SharedRealtimeDomainEventOwnerTest {
             )
         val next = MessageNew(message(id = "m5", seq = 5, body = "next"))
 
-        owner.accept("server-1", gap, source = "app_shell")
-        owner.accept("server-1", repair, source = "app_shell")
-        owner.accept("server-1", next, source = "app_shell")
+        owner.acceptOwned("server-1", gap, source = "app_shell")
+        owner.acceptOwned("server-1", repair, source = "app_shell")
+        owner.acceptOwned("server-1", next, source = "app_shell")
 
         assertEquals(
             listOf(
@@ -398,16 +410,16 @@ class SharedRealtimeDomainEventOwnerTest {
     fun emptySyncResumeAdvancesPersistedCursorAndReachesDomainSinks() {
         val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
         cursorStore.saveAppliedLastSeq(ServerId("server-1"), 3)
-        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val owner = testRealtimeDomainEventOwner(cursorStore = cursorStore)
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) }
+                applyHomeShell = { envelope -> homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload) }
             )
         )
         val resume = SyncResumeResponse(messages = emptyList(), currentSeq = 5, hasMore = false)
 
-        owner.accept(
+        owner.acceptOwned(
             "server-1",
             resume,
             source = "app_shell"
@@ -419,17 +431,17 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun activeThreadSinkReceivesDomainEventsAndHeartbeatsButNotBlankServer() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val delivered = mutableListOf<RealtimeEventRecord>()
-        owner.registerActiveThreadSink { serverId, event ->
-            delivered += RealtimeEventRecord(serverId, event)
+        owner.registerActiveThreadSink { envelope ->
+            delivered += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
         }
         val dm = DirectMessageCreated(ChannelId("dm-1"))
         val heartbeat = Heartbeat(seq = 5L)
 
-        owner.accept("", dm)
-        owner.accept("server-1", dm, source = "app_shell")
-        owner.accept("server-1", heartbeat, source = "app_shell")
+        owner.acceptOwned("", dm)
+        owner.acceptOwned("server-1", dm, source = "app_shell")
+        owner.acceptOwned("server-1", heartbeat, source = "app_shell")
 
         assertEquals(
             listOf(
@@ -442,36 +454,40 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun activeThreadSinkSkipsDuplicateEventsViaSharedDedupLedger() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val delivered = mutableListOf<RealtimeEventRecord>()
-        owner.registerActiveThreadSink { serverId, event ->
-            delivered += RealtimeEventRecord(serverId, event)
+        owner.registerActiveThreadSink { envelope ->
+            delivered += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
         }
         val dm = DirectMessageCreated(ChannelId("dm-1"))
 
-        owner.accept("server-1", dm, source = "app_shell")
-        owner.accept("server-1", dm, source = "thread_route")
+        owner.acceptOwned("server-1", dm, source = "app_shell")
+        owner.acceptOwned("server-1", dm, source = "thread_route")
 
         assertEquals(listOf(RealtimeEventRecord("server-1", dm)), delivered)
     }
 
     @Test
     fun unregisteredActiveThreadSinkStopsReceivingWhileOthersContinue() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val first = mutableListOf<RealtimeEventRecord>()
         val second = mutableListOf<RealtimeEventRecord>()
         val firstSink =
-            RealtimeActiveThreadSink { serverId, event -> first += RealtimeEventRecord(serverId, event) }
+            RealtimeActiveThreadSink { envelope ->
+                first += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
+            }
         val secondSink =
-            RealtimeActiveThreadSink { serverId, event -> second += RealtimeEventRecord(serverId, event) }
+            RealtimeActiveThreadSink { envelope ->
+                second += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
+            }
         owner.registerActiveThreadSink(firstSink)
         owner.registerActiveThreadSink(secondSink)
 
         val dmOne = DirectMessageCreated(ChannelId("dm-1"))
-        owner.accept("server-1", dmOne)
+        owner.acceptOwned("server-1", dmOne)
         owner.unregisterActiveThreadSink(firstSink)
         val dmTwo = DirectMessageCreated(ChannelId("dm-2"))
-        owner.accept("server-1", dmTwo)
+        owner.acceptOwned("server-1", dmTwo)
 
         assertEquals(listOf(RealtimeEventRecord("server-1", dmOne)), first)
         assertEquals(
@@ -485,21 +501,221 @@ class SharedRealtimeDomainEventOwnerTest {
 
     @Test
     fun activeThreadSinkDeliveryDoesNotRequireRegisteredDomainSinks() {
-        val owner = SharedRealtimeDomainEventOwner()
+        val owner = testRealtimeDomainEventOwner()
         val delivered = mutableListOf<RealtimeEventRecord>()
-        owner.registerActiveThreadSink { serverId, event ->
-            delivered += RealtimeEventRecord(serverId, event)
+        owner.registerActiveThreadSink { envelope ->
+            delivered += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
         }
 
-        owner.accept("server-1", Heartbeat(seq = 1L))
+        owner.acceptOwned("server-1", Heartbeat(seq = 1L))
 
         assertEquals(1, delivered.size)
+    }
+
+    @Test
+    fun ownerRotationBetweenValidationAndSideEffectsDropsOldGenerationEverywhere() {
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        lateinit var owner: SharedRealtimeDomainEventOwner
+        lateinit var ownerB: RealtimeOwnerEpoch
+        var rotateAtSeam = true
+        owner =
+            testRealtimeDomainEventOwner(
+                cursorStore = cursorStore,
+                beforeOwnerSideEffects = {
+                    if (rotateAtSeam) {
+                        rotateAtSeam = false
+                        ownerB = owner.rotateOwner("server-1", "member-b")
+                    }
+                }
+            )
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        val settingsEvents = mutableListOf<RealtimeEventRecord>()
+        val threadEvents = mutableListOf<RealtimeEventRecord>()
+        val callbackSideEffects = mutableListOf<String>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { envelope ->
+                    homeEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
+                },
+                applySettings = { envelope ->
+                    settingsEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
+                }
+            )
+        )
+        owner.registerActiveThreadSink { envelope ->
+            threadEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
+        }
+        val ownerA = owner.rotateOwner("server-1", "member-a")
+        val event = MessageNew(message(id = "m-owner-fence", seq = 1))
+
+        val acceptedA = owner.acceptOwned("server-1", event, ownerToken = ownerA, source = "test")
+        if (acceptedA) {
+            callbackSideEffects +=
+                listOf(
+                    "realtime_last_seq",
+                    "membership_disconnect",
+                    "auth_refresh",
+                    "announcement_http",
+                    "foreground_banner",
+                )
+        }
+
+        assertEquals(emptyList(), homeEvents)
+        assertEquals(emptyList(), settingsEvents)
+        assertEquals(emptyList(), threadEvents)
+        assertEquals(emptyList(), callbackSideEffects)
+        assertEquals(0L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
+
+        val acceptedB = owner.acceptOwned("server-1", event, ownerToken = ownerB, source = "test")
+        if (acceptedB) callbackSideEffects += "current_callback"
+
+        assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
+        assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
+        assertEquals(listOf(RealtimeEventRecord("server-1", event)), threadEvents)
+        assertEquals(listOf("current_callback"), callbackSideEffects)
+        assertEquals(1L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
+    }
+
+    @Test
+    fun backgroundUnreadRequiresExactCurrentOwnerBeforeDedupRecoveryOrCursor() {
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val owner = testRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val unreadEvents = mutableListOf<RealtimeEventRecord>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeUnreadProjection = { envelope ->
+                    unreadEvents += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
+                }
+            )
+        )
+        val event = MessageNew(message(id = "background-owner", seq = 7))
+
+        assertEquals(
+            false,
+            owner.acceptHomeUnreadProjection(
+                envelope = ownedRealtimeEvent(event),
+                source = "background",
+            )
+        )
+
+        assertEquals(emptyList(), unreadEvents)
+        assertEquals(0L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
+    }
+
+    @Test
+    fun ownerRotationAtValidationSeamDropsTaskProjection() = runBlocking {
+        val tasksDataStore = SharedTasksDataStore()
+        lateinit var owner: SharedRealtimeDomainEventOwner
+        lateinit var ownerB: RealtimeOwnerEpoch
+        var rotateAtSeam = true
+        owner =
+            testRealtimeDomainEventOwner(
+                tasksDataStore = tasksDataStore,
+                beforeOwnerSideEffects = {
+                    if (rotateAtSeam) {
+                        rotateAtSeam = false
+                        ownerB = owner.rotateOwner("server-1", "member-b")
+                    }
+                }
+            )
+        tasksDataStore.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        val ownerA = owner.rotateOwner("server-1", "member-a")
+        val task =
+            TaskSummary(
+                id = TaskId("task-owner-fence"),
+                title = "Owner fence",
+                status = TaskStatus.InProgress,
+                channelId = ChannelId("channel-1"),
+                updatedAtLabel = "now"
+            )
+        val event = TaskUpdated(task)
+
+        owner.acceptOwned("server-1", event, ownerToken = ownerA, source = "test")
+        assertEquals(
+            emptyList(),
+            tasksDataStore.channelProjectionFlow("server-1", "channel-1", null).first().tasks
+        )
+
+        owner.acceptOwned("server-1", event, ownerToken = ownerB, source = "test")
+        assertEquals(
+            listOf(task),
+            tasksDataStore.channelProjectionFlow("server-1", "channel-1", null).first().tasks
+        )
+    }
+
+    @Test
+    fun revokeBurnsGenerationAndReadOnlyLookupCannotCreateOwner() {
+        val owner = testRealtimeDomainEventOwner()
+        val delivered = mutableListOf<RealtimeEventRecord>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { envelope ->
+                    delivered += RealtimeEventRecord(envelope.owner.serverId, envelope.payload)
+                }
+            )
+        )
+        val ownerA = owner.rotateOwner("server-1", "member-a")
+        val event = DirectMessageCreated(ChannelId("dm-reconnect"))
+
+        owner.revokeOwner()
+
+        owner.acceptOwned("server-1", event, ownerToken = ownerA, source = "test")
+        assertEquals(emptyList(), delivered)
+        val ownerAReconnect = owner.rotateOwner("server-1", "member-a")
+        assertNotEquals(ownerA.connectionEpoch, ownerAReconnect.connectionEpoch)
+        assertEquals(true, ownerAReconnect.connectionEpoch > ownerA.connectionEpoch)
+        owner.acceptOwned("server-1", event, ownerToken = ownerA, source = "stale-generation")
+        owner.acceptOwned("server-1", event, ownerToken = ownerAReconnect, source = "current-generation")
+        assertEquals(listOf(RealtimeEventRecord("server-1", event)), delivered)
+    }
+
+    @Test
+    fun queuedThreadMutationRechecksExactOwnerGeneration() {
+        val owner = testRealtimeDomainEventOwner()
+        val queued = mutableListOf<() -> Unit>()
+        val applied = mutableListOf<String>()
+        owner.registerActiveThreadSink { envelope ->
+            queued += {
+                owner.runIfCurrentOwner(envelope.owner) {
+                    applied += (envelope.payload as DirectMessageCreated).channelId.value
+                }
+            }
+        }
+        val ownerA = owner.rotateOwner("server-1", "member-a")
+        val event = DirectMessageCreated(ChannelId("dm-owner-fence"))
+        owner.acceptOwned("server-1", event, ownerToken = ownerA, source = "test")
+        val staleMutation = queued.removeFirst()
+
+        val ownerB = owner.rotateOwner("server-1", "member-b")
+        staleMutation()
+        owner.acceptOwned("server-1", event, ownerToken = ownerB, source = "test")
+        queued.removeFirst().invoke()
+
+        assertEquals(listOf("dm-owner-fence"), applied)
     }
 
     private data class RealtimeEventRecord(
         val serverId: String,
         val event: Any
     )
+
+    private fun SharedRealtimeDomainEventOwner.acceptOwned(
+        serverId: String,
+        event: RealtimeEvent,
+        ownerToken: RealtimeOwnerEpoch? = null,
+        source: String = "test",
+    ): Boolean {
+        val token =
+            ownerToken
+                ?: testOwners[this]?.takeIf { it.serverId == serverId }
+                ?: rotateOwner(serverId, TestOwnerMemberId)
+        testOwners[this] = token
+        return accept(ownedRealtimeEvent(event, token, serverId), source = source)
+    }
 
     private fun message(
         id: String,
@@ -515,4 +731,8 @@ class SharedRealtimeDomainEventOwnerTest {
             timestampLabel = "now",
             body = body
         )
+
+    private companion object {
+        const val TestOwnerMemberId = "test-owner"
+    }
 }

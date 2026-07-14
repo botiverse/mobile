@@ -42,6 +42,7 @@ import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
+import build.raft.app.network.sync.OwnerCommitGate
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -50,6 +51,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlin.coroutines.EmptyCoroutineContext
 
 private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
@@ -80,7 +84,7 @@ private fun sharedErrorLogger(tag: String, prefix: String = ""): (String) -> Uni
         slockLogError(tag, if (prefix.isBlank()) message else "$prefix $message")
     }
 
-internal class SlockSharedStoreProvider private constructor(
+internal class SlockSharedStoreProvider internal constructor(
     private val sqlDatabase: SlockSqlDatabase,
     private val authKeyValueStore: SlockKeyValueStore,
     private val sharedPreferenceStore: SlockKeyValueStore,
@@ -103,6 +107,7 @@ internal class SlockSharedStoreProvider private constructor(
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val eventBus: SlockEventBusRelay,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
+    private val ownerCommitGate: OwnerCommitGate,
     val messageTranslationStore: SharedMessageTranslationStore,
     val threadMessageStore: SharedThreadMessageStore,
     val threadPayloadStore: SharedThreadPayloadStore,
@@ -115,7 +120,6 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellAuthStores = SlockShellScopedStoreCache<SlockShellAuthSessionStore>()
     private val shellNetworkClients = SlockShellScopedStoreCache<SlockNetworkClient>()
     private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
-    private val shellRealtimeDomainEventOwners = SlockShellScopedStoreCache<SharedRealtimeDomainEventOwner>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
@@ -158,6 +162,7 @@ internal class SlockSharedStoreProvider private constructor(
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
+                realtimeDomainEventOwner.revokeOwner()
                 clearActiveShellServerSelections()
             }
         }
@@ -173,6 +178,7 @@ internal class SlockSharedStoreProvider private constructor(
         SyncCoreMessageShadowFoldLane.create(
             featureFlags = serverFeatureFlags,
             sqlDatabase = sqlDatabase,
+            ownerCommitGate = ownerCommitGate,
             now = ::defaultNowMillis,
             scope = CoroutineScope(SupervisorJob()),
             logger = sharedInfoLogger("SyncCoreT0Shadow", "sync_core_t0_shadow"),
@@ -266,19 +272,7 @@ internal class SlockSharedStoreProvider private constructor(
         }
 
     fun realtimeDomainEventOwner(scope: SlockShellStoreScope): SharedRealtimeDomainEventOwner =
-        if (scope == SlockShellStoreScope.Legacy) {
-            realtimeDomainEventOwner
-        } else {
-            shellRealtimeDomainEventOwners.getOrPut(scope) {
-                SharedRealtimeDomainEventOwner(
-                    tasksDataStore = tasksDataStore,
-                    cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
-                ).also {
-                    it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
-                    it.installReactionShadowLane(buildReactionShadowLane())
-                }
-            }
-        }
+        realtimeDomainEventOwner
 
     fun agentDetailStore(scope: SlockShellStoreScope): SharedAgentDetailStore =
         if (scope == SlockShellStoreScope.Legacy) {
@@ -388,7 +382,8 @@ internal class SlockSharedStoreProvider private constructor(
                 setChannelActivityMuted = setChannelActivityMuted,
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
-                persistSlices = listOf(homeIdentityPersistSlice)
+                persistSlices = listOf(homeIdentityPersistSlice),
+                realtimeOwnerMutationGuard = realtimeDomainEventOwner(scope)::runIfCurrentOwner,
             )
         }
     }
@@ -437,7 +432,8 @@ internal class SlockSharedStoreProvider private constructor(
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else CoroutineScope(SupervisorJob())
                     },
-                diagnosticsLogger = diagnosticsLogger ?: {}
+                diagnosticsLogger = diagnosticsLogger ?: {},
+                realtimeOwnerMutationGuard = realtimeDomainEventOwner(scope)::runIfCurrentOwner,
             )
         }
     }
@@ -460,6 +456,7 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun releaseShellStoreScope(scope: SlockShellStoreScope) {
         if (scope == SlockShellStoreScope.Legacy) return
+        realtimeDomainEventOwner.revokeOwner()
         selectedServerStores.get(scope)?.dispose()
         homeStores.remove(scope)?.clear()
         homeActivityStores.remove(scope)?.clear()
@@ -468,7 +465,6 @@ internal class SlockSharedStoreProvider private constructor(
         shellNetworkClients.remove(scope)
         shellAuthStores.remove(scope)
         shellServerMembersStores.remove(scope)
-        shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
         selectedServerStores.remove(scope)
@@ -596,6 +592,7 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             }
             val networkClient = scopedNetworkClientFactory(authStore)
+            val ownerCommitGate = OwnerCommitGate()
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
             // synchronously (before first render), then fire-and-forget a refresh from the
             // deployed WEB app origin (webUrl, not the API base URL) — the same canonical
@@ -673,8 +670,10 @@ internal class SlockSharedStoreProvider private constructor(
                 realtimeDomainEventOwner =
                     SharedRealtimeDomainEventOwner(
                         tasksDataStore = tasksDataStore,
-                        cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
+                        cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
+                        ownerCommitGate = ownerCommitGate,
                     ),
+                ownerCommitGate = ownerCommitGate,
                 messageTranslationStore =
                     SharedMessageTranslationStore(
                         authStore = authStore,
@@ -752,14 +751,28 @@ internal interface RealtimeDomainEventOwner {
     fun unregisterSinks(sinks: RealtimeDomainEventSinks)
     fun registerActiveThreadSink(sink: RealtimeActiveThreadSink)
     fun unregisterActiveThreadSink(sink: RealtimeActiveThreadSink)
-    fun accept(serverId: String, event: RealtimeEvent, source: String = "unknown")
-    fun acceptHomeUnreadProjection(serverId: String, event: RealtimeEvent, source: String = "unknown")
+    fun rotateOwner(serverId: String, memberId: String): RealtimeOwnerEpoch
+    fun rotateOwnerIfCurrent(
+        expectedOwnerToken: RealtimeOwnerEpoch,
+        serverId: String,
+        memberId: String,
+    ): RealtimeOwnerEpoch?
+    fun revokeOwner()
+    fun runIfCurrentOwner(owner: RealtimeOwnerEpoch, block: () -> Unit): Boolean
+    fun accept(
+        envelope: RealtimeOwnerEnvelope<RealtimeEvent>,
+        source: String = "unknown",
+    ): Boolean
+    fun acceptHomeUnreadProjection(
+        envelope: RealtimeOwnerEnvelope<RealtimeEvent>,
+        source: String = "unknown",
+    ): Boolean
 }
 
 internal data class RealtimeDomainEventSinks(
-    val applyHomeShell: (String, RealtimeEvent) -> Unit = { _, _ -> },
-    val applyHomeUnreadProjection: (String, RealtimeEvent) -> Unit = { _, _ -> },
-    val applySettings: (String, RealtimeEvent) -> Unit = { _, _ -> },
+    val applyHomeShell: (RealtimeOwnerEnvelope<RealtimeEvent>) -> Unit = {},
+    val applyHomeUnreadProjection: (RealtimeOwnerEnvelope<RealtimeEvent>) -> Unit = {},
+    val applySettings: (RealtimeOwnerEnvelope<RealtimeEvent>) -> Unit = {},
     val applyServerMembersRefresh: (String, RealtimeRefreshRequired) -> Unit = { _, _ -> },
     val applyAgentActivity: (MemberPresenceUpdated) -> Unit = {},
     val requestMemberDetailRefresh: () -> Unit = {},
@@ -777,18 +790,31 @@ internal data class RealtimeDomainEventSinks(
  * point for shell and thread consumers alike.
  */
 internal fun interface RealtimeActiveThreadSink {
-    fun deliver(serverId: String, event: RealtimeEvent)
+    fun deliver(envelope: RealtimeOwnerEnvelope<RealtimeEvent>)
 }
 
 internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null,
-    private val cursorStore: RealtimeAppliedSeqCursorStore? = null
+    private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
+    private val beforeOwnerSideEffects: () -> Unit = {},
+    private val ownerCommitGate: OwnerCommitGate,
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
     private val activeThreadSinks = mutableListOf<RealtimeActiveThreadSink>()
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
-    private val recoveryStates = mutableMapOf<String, MessageSeqRecoveryState<RealtimeEvent>>()
+    private data class RecoveryOwnerKey(
+        val serverId: String,
+        val memberId: String,
+        val generation: Long,
+    )
+
+    private val ownerTokenLock = SynchronizedObject()
+    private val acceptedKeyLock = SynchronizedObject()
+    private val recoveryStateLock = SynchronizedObject()
+    private var activeMemberId: String? = null
+    private val activeOwnerTokens = mutableMapOf<String, RealtimeOwnerEpoch>()
+    private val recoveryStates = mutableMapOf<RecoveryOwnerKey, MessageSeqRecoveryState<RealtimeEvent>>()
 
     // Flag-gated `sync_core_messages_v0` shadow fold+persist lane. Null until the provider installs it (see
     // installMessageShadowFoldLane); a null lane means the shadow path is entirely absent (e.g. unit tests
@@ -798,6 +824,8 @@ internal class SharedRealtimeDomainEventOwner(
 
     fun installMessageShadowFoldLane(lane: SyncCoreMessageShadowFoldLane) {
         messageShadowFoldLane = lane
+        synchronized(ownerTokenLock) { activeOwnerTokens.values.maxByOrNull { it.connectionEpoch } }
+            ?.let(lane::rotateOwner)
     }
 
     fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {
@@ -824,85 +852,203 @@ internal class SharedRealtimeDomainEventOwner(
         activeThreadSinks.remove(sink)
     }
 
-    override fun accept(serverId: String, event: RealtimeEvent, source: String) {
-        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
-        val key = event.realtimeDomainKey(resolvedServerId)
-        if (key != null && !rememberAcceptedKey(key)) {
-            sinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
-            return
+    override fun rotateOwner(serverId: String, memberId: String): RealtimeOwnerEpoch =
+        synchronized(ownerTokenLock) {
+            rotateOwnerLocked(serverId, memberId)
         }
-        val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
-        if (acceptedEvents.isEmpty()) return
-        // `sync_core_messages_v0` SHADOW fold+persist, BEFORE the sink fan-out and invisible to it. Flag-gated
-        // and fail-open (foldPersistMessageShadow never throws), so the legacy path below is untouched.
-        // Slice-2 lane insert point: when sole-apply becomes eligible (CANONICAL_FACT_SOLE_APPLY_ELIGIBLE,
-        // V2 envelope), the per-scope MessageSoleApplyLane replaces this shadow persist HERE — message
-        // frames route through fold+commit (one-txn) FIRST and only fan out to the sinks below on
-        // CommitSucceeded. Dormant in slice-2: MessageSoleApplyLane.createIfEligible is structurally
-        // false-gated, so no lane exists in production and this path stays byte-identical.
-        messageShadowFoldLane?.let { lane ->
-            if (lane.isEnabled()) foldPersistMessageShadow(lane, resolvedServerId, acceptedEvents)
+
+    override fun rotateOwnerIfCurrent(
+        expectedOwnerToken: RealtimeOwnerEpoch,
+        serverId: String,
+        memberId: String,
+    ): RealtimeOwnerEpoch? =
+        synchronized(ownerTokenLock) {
+            if (activeOwnerTokens[expectedOwnerToken.serverId] != expectedOwnerToken) return@synchronized null
+            rotateOwnerLocked(serverId, memberId)
         }
-        reactionShadowLane?.let { lane ->
-            if (lane.isEnabled()) observeReactionShadow(lane, resolvedServerId, acceptedEvents)
+
+    private fun rotateOwnerLocked(serverId: String, memberId: String): RealtimeOwnerEpoch {
+        if (activeMemberId != null && activeMemberId != memberId) {
+            activeOwnerTokens.clear()
+            synchronized(recoveryStateLock) { recoveryStates.clear() }
+            synchronized(acceptedKeyLock) {
+                acceptedKeys.clear()
+                acceptedKeySet.clear()
+            }
         }
-        val activeSinks = sinks
-        // Tee to Thread routes before the Heartbeat early-return: Thread
-        // consumes Heartbeat seq for realtime gap recovery. Snapshot the list
-        // so a sink unregistering during delivery cannot corrupt iteration.
-        acceptedEvents.forEach { acceptedEvent ->
-            activeThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, acceptedEvent) }
-            if (acceptedEvent is Heartbeat) {
-                activeSinks?.log?.invoke(
-                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat"
-                )
-                return@forEach
-            }
-            acceptedEvent.patchSharedTaskProjection(resolvedServerId)
-            activeSinks?.applyHomeShell?.invoke(resolvedServerId, acceptedEvent)
-            activeSinks?.applySettings?.invoke(resolvedServerId, acceptedEvent)
-            if (acceptedEvent is DirectMessageCreated) {
-                activeSinks?.joinChannel?.invoke(acceptedEvent.channelId.value)
-            }
-            if (acceptedEvent is ServerPlanUpdated) {
-                activeSinks?.log?.invoke(
-                    "shared_realtime_server_plan_updated serverId=${acceptedEvent.serverId.value} plan=${acceptedEvent.plan}"
-                )
-            }
-            if (acceptedEvent is MemberPresenceUpdated && acceptedEvent.kind == build.raft.app.model.MemberKind.Agent) {
-                activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
-            } else if (acceptedEvent.refreshesMemberDetail()) {
-                if (acceptedEvent is RealtimeRefreshRequired) {
-                    activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, acceptedEvent)
-                }
-                activeSinks?.requestMemberDetailRefresh?.invoke()
-            }
-            activeSinks?.emitRouteMarker?.invoke(acceptedEvent)
-            if (acceptedEvent !is MemberPresenceUpdated) {
-                activeSinks?.log?.invoke(
-                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
-                )
+        val nextOwnerGeneration = runBlocking { ownerCommitGate.rotate() }
+        return RealtimeOwnerEpoch(serverId, memberId, nextOwnerGeneration).also { ownerToken ->
+            activeMemberId = memberId
+            activeOwnerTokens[serverId] = ownerToken
+            messageShadowFoldLane?.rotateOwner(ownerToken)
+            synchronized(recoveryStateLock) {
+                recoveryStates.keys.removeAll { it.serverId == serverId }
             }
         }
     }
 
-    override fun acceptHomeUnreadProjection(serverId: String, event: RealtimeEvent, source: String) {
-        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
-        val key = event.realtimeDomainKey(resolvedServerId)
-        if (key != null && !rememberAcceptedKey(key)) {
-            sinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
-            return
-        }
-        val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
-        if (acceptedEvents.isEmpty()) return
-        acceptedEvents.forEach { acceptedEvent ->
-            if (acceptedEvent !is Heartbeat) {
-                sinks?.applyHomeUnreadProjection?.invoke(resolvedServerId, acceptedEvent)
-                sinks?.log?.invoke(
-                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
-                )
+    override fun revokeOwner() {
+        synchronized(ownerTokenLock) {
+            runBlocking { ownerCommitGate.rotate() }
+            activeMemberId = null
+            activeOwnerTokens.clear()
+            messageShadowFoldLane?.revokeOwner()
+            synchronized(recoveryStateLock) { recoveryStates.clear() }
+            synchronized(acceptedKeyLock) {
+                acceptedKeys.clear()
+                acceptedKeySet.clear()
             }
         }
+    }
+
+    override fun runIfCurrentOwner(
+        owner: RealtimeOwnerEpoch,
+        block: () -> Unit,
+    ): Boolean =
+        synchronized(ownerTokenLock) {
+            if (activeOwnerTokens[owner.serverId] != owner) return@synchronized false
+            block()
+            true
+        }
+
+    override fun accept(
+        envelope: RealtimeOwnerEnvelope<RealtimeEvent>,
+        source: String,
+    ): Boolean {
+        val ownerToken = envelope.owner
+        val event = envelope.payload
+        val resolvedServerId = ownerToken.serverId.takeIf { it.isNotBlank() } ?: return false
+        val key = event.realtimeDomainKey(resolvedServerId)
+        var rejectedReason = "missing_or_stale_owner_token"
+        val acceptedOwnerToken =
+            synchronized(ownerTokenLock) {
+                val accepted = ownerToken.takeIf { activeOwnerTokens[it.serverId] == it } ?: return@synchronized null
+                if (key != null && !rememberAcceptedKey("${accepted.connectionEpoch}:$key")) {
+                    rejectedReason = "duplicate key=$key"
+                    return@synchronized null
+                }
+                accepted
+            }
+        if (acceptedOwnerToken == null) {
+            sinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=$rejectedReason")
+            return false
+        }
+        beforeOwnerSideEffects()
+        val pendingThreadDeliveries = mutableListOf<Pair<RealtimeActiveThreadSink, RealtimeEvent>>()
+        var applied = false
+        synchronized(ownerTokenLock) {
+            if (activeOwnerTokens[acceptedOwnerToken.serverId] != acceptedOwnerToken) {
+                sinks?.log?.invoke(
+                    "realtime_domain_accept_skip source=$source reason=stale_owner_token_before_side_effects"
+                )
+                return@synchronized
+            }
+            val acceptedEvents = acceptedEventsForFold(resolvedServerId, acceptedOwnerToken, event, source)
+            if (acceptedEvents.isEmpty()) return@synchronized
+            applied = true
+            messageShadowFoldLane?.let { lane ->
+                if (lane.isEnabled()) {
+                    foldPersistMessageShadow(lane, resolvedServerId, acceptedOwnerToken, acceptedEvents)
+                }
+            }
+            reactionShadowLane?.let { lane ->
+                if (lane.isEnabled()) observeReactionShadow(lane, resolvedServerId, acceptedEvents)
+            }
+            val activeSinks = sinks
+            acceptedEvents.forEach { acceptedEvent ->
+                activeThreadSinks.toList().forEach { sink ->
+                    pendingThreadDeliveries += sink to acceptedEvent
+                }
+                if (acceptedEvent is Heartbeat) {
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat"
+                    )
+                    return@forEach
+                }
+                acceptedEvent.patchSharedTaskProjection(resolvedServerId)
+                val acceptedEnvelope = RealtimeOwnerEnvelope(acceptedOwnerToken, acceptedEvent)
+                activeSinks?.applyHomeShell?.invoke(acceptedEnvelope)
+                activeSinks?.applySettings?.invoke(acceptedEnvelope)
+                if (acceptedEvent is DirectMessageCreated) {
+                    activeSinks?.joinChannel?.invoke(acceptedEvent.channelId.value)
+                }
+                if (acceptedEvent is ServerPlanUpdated) {
+                    activeSinks?.log?.invoke(
+                        "shared_realtime_server_plan_updated serverId=${acceptedEvent.serverId.value} plan=${acceptedEvent.plan}"
+                    )
+                }
+                if (
+                    acceptedEvent is MemberPresenceUpdated &&
+                    acceptedEvent.kind == build.raft.app.model.MemberKind.Agent
+                ) {
+                    activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
+                } else if (acceptedEvent.refreshesMemberDetail()) {
+                    if (acceptedEvent is RealtimeRefreshRequired) {
+                        activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, acceptedEvent)
+                    }
+                    activeSinks?.requestMemberDetailRefresh?.invoke()
+                }
+                activeSinks?.emitRouteMarker?.invoke(acceptedEvent)
+                if (acceptedEvent !is MemberPresenceUpdated) {
+                    activeSinks?.log?.invoke(
+                        "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
+                    )
+                }
+            }
+        }
+        if (!applied) return false
+        pendingThreadDeliveries.forEach { (sink, acceptedEvent) ->
+            sink.deliver(RealtimeOwnerEnvelope(acceptedOwnerToken, acceptedEvent))
+        }
+        return true
+    }
+
+    override fun acceptHomeUnreadProjection(
+        envelope: RealtimeOwnerEnvelope<RealtimeEvent>,
+        source: String,
+    ): Boolean {
+        val ownerToken = envelope.owner
+        val event = envelope.payload
+        val resolvedServerId = ownerToken.serverId.takeIf { it.isNotBlank() } ?: return false
+        val key = event.realtimeDomainKey(resolvedServerId)
+        val acceptedOwnerToken =
+            synchronized(ownerTokenLock) {
+                ownerToken.takeIf { activeOwnerTokens[it.serverId] == it }
+            }
+        if (acceptedOwnerToken == null) {
+            sinks?.log?.invoke(
+                "realtime_domain_accept_skip source=$source reason=missing_or_stale_owner_token"
+            )
+            return false
+        }
+        beforeOwnerSideEffects()
+        var applied = false
+        synchronized(ownerTokenLock) {
+            if (activeOwnerTokens[acceptedOwnerToken.serverId] != acceptedOwnerToken) {
+                sinks?.log?.invoke(
+                    "realtime_domain_accept_skip source=$source reason=stale_owner_token_before_side_effects"
+                )
+                return@synchronized
+            }
+            if (key != null && !rememberAcceptedKey("${acceptedOwnerToken.connectionEpoch}:background:$key")) {
+                sinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
+                return@synchronized
+            }
+            val acceptedEvents = acceptedEventsForFold(resolvedServerId, acceptedOwnerToken, event, source)
+            if (acceptedEvents.isEmpty()) return@synchronized
+            applied = true
+            acceptedEvents.forEach { acceptedEvent ->
+                if (acceptedEvent !is Heartbeat) {
+                    sinks?.applyHomeUnreadProjection?.invoke(
+                        RealtimeOwnerEnvelope(acceptedOwnerToken, acceptedEvent)
+                    )
+                    sinks?.log?.invoke(
+                        "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
+                    )
+                }
+            }
+        }
+        return applied
     }
 
     /**
@@ -916,10 +1062,13 @@ internal class SharedRealtimeDomainEventOwner(
     private fun foldPersistMessageShadow(
         lane: SyncCoreMessageShadowFoldLane,
         resolvedServerId: String,
+        ownerToken: RealtimeOwnerEpoch,
         acceptedEvents: List<RealtimeEvent>,
     ) {
         try {
-            val epoch = recoveryStates[resolvedServerId]?.epoch
+            val epoch = synchronized(recoveryStateLock) {
+                recoveryStates[ownerToken.toRecoveryOwnerKey(resolvedServerId)]?.epoch
+            }
             for (acceptedEvent in acceptedEvents) {
                 val decoded =
                     when (acceptedEvent) {
@@ -929,6 +1078,7 @@ internal class SharedRealtimeDomainEventOwner(
                     } ?: continue
                 lane.foldAndPersist(
                     resolvedServerId = resolvedServerId,
+                    ownerToken = ownerToken,
                     decoded = decoded,
                     updated = acceptedEvent is MessageUpdated,
                     epoch = epoch,
@@ -960,46 +1110,53 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 
-    private fun acceptedEventsForFold(serverId: String, event: RealtimeEvent, source: String): List<RealtimeEvent> {
+    private fun acceptedEventsForFold(
+        serverId: String,
+        ownerToken: RealtimeOwnerEpoch,
+        event: RealtimeEvent,
+        source: String,
+    ): List<RealtimeEvent> {
         val store = cursorStore ?: return listOf(event)
         val server = ServerId(serverId)
-        val currentState = recoveryStates.getOrPut(serverId) {
-            MessageSeqRecoveryPolicy.initial(
-                appliedSeq = store.readAppliedLastSeq(server),
-                epoch = store.currentEpoch(server)
-            )
-        }
-        val result =
-            when (event) {
+        val recoveryOwnerKey = ownerToken.toRecoveryOwnerKey(serverId)
+        val (currentState, result, nextState) = synchronized(recoveryStateLock) {
+            val current = recoveryStates.getOrPut(recoveryOwnerKey) {
+                MessageSeqRecoveryPolicy.initial(
+                    appliedSeq = store.readAppliedLastSeq(server),
+                    epoch = store.currentEpoch(server)
+                )
+            }
+            val folded = when (event) {
                 is MessageNew,
                 is MessageUpdated -> {
-                    val frame = event.messageSeqEnvelope(currentState.epoch) ?: return listOf(event)
-                    MessageSeqRecoveryPolicy.onFrame(currentState, frame)
+                    val frame = event.messageSeqEnvelope(current.epoch) ?: return listOf(event)
+                    MessageSeqRecoveryPolicy.onFrame(current, frame)
                 }
                 is SyncResumeResponse ->
                     MessageSeqRecoveryPolicy.onRepairBatch(
-                        currentState,
+                        current,
                         MessageSeqRepairBatch(
                             events = event.messages.mapNotNull { message ->
                                 MessageSeqEnvelope(
                                     seq = message.seq?.takeIf { it > 0L } ?: return@mapNotNull null,
-                                    epoch = currentState.epoch,
+                                    epoch = current.epoch,
                                     event = MessageNew(message)
                                 )
                             },
                             currentSeq = event.currentSeq,
                             hasMore = event.hasMore,
-                            epoch = currentState.epoch
+                            epoch = current.epoch
                         )
                     )
                 else -> return listOf(event)
             }
-        val nextState =
-            result.state.copy(
-                serverSeq = maxOf(result.state.serverSeq, result.state.appliedSeq),
+            val next = folded.state.copy(
+                serverSeq = maxOf(folded.state.serverSeq, folded.state.appliedSeq),
                 appliedEvents = emptyList()
             )
-        recoveryStates[serverId] = nextState
+            recoveryStates[recoveryOwnerKey] = next
+            Triple(current, folded, next)
+        }
         if (nextState.appliedSeq > currentState.appliedSeq) {
             store.saveAppliedLastSeq(server, nextState.appliedSeq, nextState.epoch)
         }
@@ -1024,13 +1181,18 @@ internal class SharedRealtimeDomainEventOwner(
     }
 
     private fun rememberAcceptedKey(key: String): Boolean {
-        if (!acceptedKeySet.add(key)) return false
-        acceptedKeys.addLast(key)
-        while (acceptedKeys.size > AcceptedRealtimeKeyLimit) {
-            acceptedKeySet.remove(acceptedKeys.removeFirst())
+        return synchronized(acceptedKeyLock) {
+            if (!acceptedKeySet.add(key)) return@synchronized false
+            acceptedKeys.addLast(key)
+            while (acceptedKeys.size > AcceptedRealtimeKeyLimit) {
+                acceptedKeySet.remove(acceptedKeys.removeFirst())
+            }
+            true
         }
-        return true
     }
+
+    private fun RealtimeOwnerEpoch.toRecoveryOwnerKey(serverId: String): RecoveryOwnerKey =
+        RecoveryOwnerKey(serverId, memberId, connectionEpoch)
 
     private fun RealtimeEvent.patchSharedTaskProjection(serverId: String) {
         val store = tasksDataStore ?: return

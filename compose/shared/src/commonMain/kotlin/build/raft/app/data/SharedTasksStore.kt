@@ -107,6 +107,10 @@ sealed interface SharedTasksRouteIntent {
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
     data class ApplyTaskStatus(val taskId: String, val status: TaskStatus) : SharedTasksRouteIntent
     data class ApplyTaskUpdate(val task: TaskSummary) : SharedTasksRouteIntent
+    data class ApplyRealtimeTaskUpdate(
+        val task: TaskSummary,
+        val ownerToken: RealtimeOwnerEpoch,
+    ) : SharedTasksRouteIntent
     data object ClearNavigationError : SharedTasksRouteIntent
     data class SeedContent(val snapshot: TaskSnapshot) : SharedTasksRouteIntent
 
@@ -149,6 +153,7 @@ internal class SharedTasksViewModel(
     private val scope: SharedTasksScope = SharedTasksScope.Server,
     private val sharedTasksDataStore: SharedTasksDataStore? = null,
     private val diagnosticsLogger: (String) -> Unit = {},
+    private val realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, _ -> false },
     private val staleWindowMs: Long = 15_000L,
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
@@ -216,6 +221,20 @@ internal class SharedTasksViewModel(
                 if (store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(action.task))) {
                     viewModelScope.launch {
                         publishSharedTaskUpdate(action.task, "external_task_update")
+                    }
+                }
+            }
+            is SharedTasksRouteIntent.ApplyRealtimeTaskUpdate -> {
+                viewModelScope.launch {
+                    val serverId = useCase.currentServerId() ?: return@launch
+                    realtimeOwnerMutationGuard(action.ownerToken) {
+                        if (store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(action.task))) {
+                            sharedTasksDataStore?.upsertTask(serverId.value, action.task)
+                            diagnosticsLogger(
+                                "tasks_projection_upsert source=realtime_owner taskId=${action.task.id.value} " +
+                                    "status=${action.task.status.name}"
+                            )
+                        }
                     }
                 }
             }
@@ -561,6 +580,7 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         is SharedTasksRouteIntent.UpdateStatus -> "status"
         is SharedTasksRouteIntent.ApplyTaskStatus -> "apply_task_status"
         is SharedTasksRouteIntent.ApplyTaskUpdate -> "apply_task_update"
+        is SharedTasksRouteIntent.ApplyRealtimeTaskUpdate -> "apply_realtime_task_update"
         SharedTasksRouteIntent.ClearNavigationError -> "navigation"
         is SharedTasksRouteIntent.SeedContent -> "seed"
         is SharedTasksRouteIntent.CreateTasks -> "create"

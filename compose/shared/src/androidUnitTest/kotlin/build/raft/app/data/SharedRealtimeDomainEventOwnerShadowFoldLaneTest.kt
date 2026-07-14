@@ -28,6 +28,7 @@ import build.raft.app.network.sync.FoldPersistFrame
 import build.raft.app.network.sync.FoldPersistenceAdapter
 import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
 import build.raft.app.network.sync.RestoredFoldState
+import build.raft.app.network.sync.OwnerCommitGate
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
@@ -36,7 +37,9 @@ import build.raft.app.network.sync.SyncScopeKey
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,6 +51,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private val serverId = "server-1"
     private val channelId = "channel-1"
     private val scopeKey = SyncScopeKey(serverId = serverId, scopeId = channelId, scopeKind = "channel")
+    private val ownerTokens = mutableMapOf<SharedRealtimeDomainEventOwner, RealtimeOwnerEpoch>()
 
     private class FakeFlagsApi(private val enabled: Boolean) : SlockFeatureFlagsApi {
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
@@ -88,15 +92,26 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private fun ownerWith(lane: SyncCoreMessageShadowFoldLane): Pair<SharedRealtimeDomainEventOwner, MutableList<Pair<String, RealtimeEvent>>> {
         val owner = SharedRealtimeDomainEventOwner(
             cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+            ownerCommitGate = lane.ownerCommitGate,
         )
         owner.installMessageShadowFoldLane(lane)
+        ownerTokens[owner] = owner.rotateOwner(serverId, "member-1")
         val homeEvents = mutableListOf<Pair<String, RealtimeEvent>>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { server, event -> homeEvents += server to event },
+                applyHomeShell = { envelope ->
+                    homeEvents += envelope.owner.serverId to envelope.payload
+                },
             ),
         )
         return owner to homeEvents
+    }
+
+    private fun SharedRealtimeDomainEventOwner.acceptOwned(event: RealtimeEvent) {
+        accept(
+            envelope = RealtimeOwnerEnvelope(ownerTokens.getValue(this), event),
+            source = "app_shell"
+        )
     }
 
     private fun canonicalRow(
@@ -175,13 +190,14 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val lane = SyncCoreMessageShadowFoldLane.create(
             featureFlags = resolvedFlags(enabled = true),
             sqlDatabase = db,
+            ownerCommitGate = OwnerCommitGate(),
             now = { 100L },
             scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (owner, homeEvents) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), source = "app_shell")
+        owner.acceptOwned(messageNewWithCanonical(id = "m1", seq = 1))
 
         assertEquals(listOf("m1"), persistedFactIds(db), "flag-on shadow lane must persist the canonical fact")
         // Shadow is invisible: the legacy sink still saw the event exactly once.
@@ -194,19 +210,16 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val lane = SyncCoreMessageShadowFoldLane.create(
             featureFlags = resolvedFlags(enabled = true),
             sqlDatabase = db,
+            ownerCommitGate = OwnerCommitGate(),
             now = { 100L },
             scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (owner, homeEvents) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
-        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
-        owner.accept(
-            serverId,
-            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
-            source = "app_shell",
-        )
+        owner.acceptOwned(messageNewWithCanonical(id = "m10", seq = 10, content = "old"))
+        owner.acceptOwned(messageNewWithCanonical(id = "m14", seq = 14))
+        owner.acceptOwned(messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"))
 
         val restored = restoredState(db)
         assertEquals("new", restored.facts.first { it.id == "m10" }.content)
@@ -245,19 +258,16 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val lane = SyncCoreMessageShadowFoldLane(
             featureFlags = resolvedFlags(enabled = true),
             adapter = pausingAdapter,
+            ownerCommitGate = OwnerCommitGate(),
             scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (owner, _) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
-        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
+        owner.acceptOwned(messageNewWithCanonical(id = "m10", seq = 10, content = "old"))
+        owner.acceptOwned(messageNewWithCanonical(id = "m14", seq = 14))
         olderStarted.await()
-        owner.accept(
-            serverId,
-            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
-            source = "app_shell",
-        )
+        owner.acceptOwned(messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"))
 
         assertFalse(newerStarted.isCompleted, "newer frame must wait behind the earlier same-owner persist")
         releaseOlder.complete(Unit)
@@ -270,28 +280,71 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     @Test
+    fun ownerRotationWaitsForQueuedPersistCommitBoundary() = runBlocking {
+        val db = freshDatabase()
+        val delegate =
+            DefaultFoldPersistenceAdapter(
+                runner = SqlDelightFoldPersistTransactionRunner(db),
+                store = SqlDelightFoldPersistStore(db, now = { 100L })
+            )
+        val commitBoundaryEntered = CompletableDeferred<Unit>()
+        val releaseCommitBoundary = CompletableDeferred<Unit>()
+        val pausingAdapter =
+            object : FoldPersistenceAdapter {
+                override suspend fun applyFrame(frame: FoldPersistFrame) {
+                    commitBoundaryEntered.complete(Unit)
+                    releaseCommitBoundary.await()
+                    delegate.applyFrame(frame)
+                }
+
+                override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = delegate.restore(scope)
+            }
+        val lane =
+            SyncCoreMessageShadowFoldLane(
+                featureFlags = resolvedFlags(enabled = true),
+                adapter = pausingAdapter,
+                ownerCommitGate = OwnerCommitGate(),
+                scope = CoroutineScope(Dispatchers.Unconfined),
+                logger = {}
+            )
+        val (owner, _) = ownerWith(lane)
+
+        owner.acceptOwned(messageNewWithCanonical(id = "m-stale-owner", seq = 1))
+        commitBoundaryEntered.await()
+        val rotation = async(Dispatchers.Default) { owner.rotateOwner(serverId, "member-2") }
+        yield()
+        assertFalse(rotation.isCompleted, "rotation must wait until the owner-bound transaction completes")
+        releaseCommitBoundary.complete(Unit)
+        rotation.await()
+
+        assertEquals(listOf("m-stale-owner"), persistedFactIds(db))
+    }
+
+    @Test
     fun shadowLaneIsInvisibleToSinksRegardlessOfFlag() {
         val event = messageNewWithCanonical(id = "m1", seq = 1)
 
         val laneOn = SyncCoreMessageShadowFoldLane.create(
             featureFlags = resolvedFlags(enabled = true),
             sqlDatabase = freshDatabase(),
+            ownerCommitGate = OwnerCommitGate(),
             now = { 100L },
             scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (ownerOn, homeEventsOn) = ownerWith(laneOn)
-        ownerOn.accept(serverId, event, source = "app_shell")
+        ownerOn.acceptOwned(event)
 
         val laneOff = SyncCoreMessageShadowFoldLane.create(
             featureFlags = resolvedFlags(enabled = false),
             sqlDatabase = freshDatabase(),
+            ownerCommitGate = OwnerCommitGate(),
             now = { 100L },
             scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (ownerOff, homeEventsOff) = ownerWith(laneOff)
-        ownerOff.accept(serverId, event, source = "app_shell")
+        ownerOff.acceptOwned(event)
 
         // The sink-facing output must be byte-identical whether the shadow lane is on or off.
         assertEquals(homeEventsOff, homeEventsOn)
@@ -308,6 +361,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val lane = SyncCoreMessageShadowFoldLane(
             featureFlags = resolvedFlags(enabled = true),
             adapter = throwingAdapter,
+            ownerCommitGate = OwnerCommitGate(),
             scope = CoroutineScope(Dispatchers.Unconfined),
             logger = loggedFailures::add,
         )
@@ -315,7 +369,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val event = messageNewWithCanonical(id = "m1", seq = 1)
 
         // Must NOT throw out of accept, and the event must still reach the legacy sink.
-        owner.accept(serverId, event, source = "app_shell")
+        owner.acceptOwned(event)
 
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
         assertTrue(
@@ -330,13 +384,14 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val lane = SyncCoreMessageShadowFoldLane.create(
             featureFlags = resolvedFlags(enabled = false),
             sqlDatabase = db,
+            ownerCommitGate = OwnerCommitGate(),
             now = { 100L },
             scope = CoroutineScope(Dispatchers.Unconfined),
             logger = {},
         )
         val (owner, homeEvents) = ownerWith(lane)
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), source = "app_shell")
+        owner.acceptOwned(messageNewWithCanonical(id = "m1", seq = 1))
 
         assertEquals(emptyList(), persistedFactIds(db), "flag-off must not persist anything")
         assertEquals(1, homeEvents.size)
@@ -346,6 +401,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     fun normalizedReactionShadowRunsBeforeSinkAndRemainsInvisible() {
         val owner = SharedRealtimeDomainEventOwner(
             cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+            ownerCommitGate = OwnerCommitGate(),
         )
         val logs = mutableListOf<String>()
         val callOrder = mutableListOf<String>()
@@ -361,9 +417,9 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val homeEvents = mutableListOf<Pair<String, RealtimeEvent>>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { server, event ->
+                applyHomeShell = { envelope ->
                     callOrder += "sink"
-                    homeEvents += server to event
+                    homeEvents += envelope.owner.serverId to envelope.payload
                 },
             ),
         )
@@ -375,7 +431,8 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             ),
         )
 
-        owner.accept(serverId, event, source = "app_shell")
+        val ownerToken = owner.rotateOwner(serverId, "member-1")
+        owner.accept(RealtimeOwnerEnvelope(ownerToken, event), source = "app_shell")
 
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
         assertEquals(listOf("shadow", "sink"), callOrder)
@@ -387,6 +444,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     fun normalizedReactionShadowLoggerFailureCannotBlockLegacySink() {
         val owner = SharedRealtimeDomainEventOwner(
             cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+            ownerCommitGate = OwnerCommitGate(),
         )
         owner.installReactionShadowLane(
             SyncCoreReactionShadowLane(
@@ -397,7 +455,9 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val homeEvents = mutableListOf<Pair<String, RealtimeEvent>>()
         owner.registerSinks(
             RealtimeDomainEventSinks(
-                applyHomeShell = { server, event -> homeEvents += server to event },
+                applyHomeShell = { envelope ->
+                    homeEvents += envelope.owner.serverId to envelope.payload
+                },
             ),
         )
         val event = messageNewWithCanonical(
@@ -408,7 +468,8 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             ),
         )
 
-        owner.accept(serverId, event, source = "app_shell")
+        val ownerToken = owner.rotateOwner(serverId, "member-1")
+        owner.accept(RealtimeOwnerEnvelope(ownerToken, event), source = "app_shell")
 
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
     }

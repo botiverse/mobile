@@ -12,10 +12,12 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,6 +31,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
                 scope = scope
             )
@@ -68,6 +71,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-1")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -94,6 +98,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -120,6 +125,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -166,6 +172,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(session)),
                 scope = scope
             )
@@ -189,6 +196,7 @@ class SharedSettingsStoreTest {
             }
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -252,6 +260,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -297,6 +306,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -332,6 +342,7 @@ class SharedSettingsStoreTest {
         val chatLayoutRepository = FakeChatLayoutPreferenceRepository(translationMode = TranslationModePreference.Manual)
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -391,6 +402,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -420,6 +432,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(serverResult = DataResult.Content(serverSnapshot()))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -505,6 +518,7 @@ class SharedSettingsStoreTest {
             }
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -539,6 +553,7 @@ class SharedSettingsStoreTest {
             }
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -576,6 +591,7 @@ class SharedSettingsStoreTest {
             }
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -609,6 +625,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-1")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -633,6 +650,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
                 scope = scope
             )
@@ -654,6 +672,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -689,6 +708,7 @@ class SharedSettingsStoreTest {
         try {
             val store =
                 SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                     dataSource = dataSource,
                     scope = scope
                 )
@@ -763,6 +783,7 @@ class SharedSettingsStoreTest {
         val chatLayoutRepository = FakeChatLayoutPreferenceRepository(alignment = MyMessageAlignmentPreference.Left)
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -835,6 +856,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -861,6 +883,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -937,6 +960,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -975,6 +999,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1004,6 +1029,7 @@ class SharedSettingsStoreTest {
         val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "member")),
@@ -1030,6 +1056,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1078,6 +1105,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1138,6 +1166,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1178,6 +1207,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1216,6 +1246,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1256,6 +1287,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1297,6 +1329,7 @@ class SharedSettingsStoreTest {
             FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1312,7 +1345,7 @@ class SharedSettingsStoreTest {
 
         // Fire a realtime machine:updated event for the open machine.
         store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
+            settingsRealtimeIntent(
                 serverId = "server-1",
                 event =
                     build.raft.app.model.RealtimeRefreshRequired(
@@ -1337,6 +1370,55 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun realtimeMachineUpdateCannotCommitAfterOwnerRotation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val centralOwner = testRealtimeDomainEventOwner()
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42"))
+            )
+        val store =
+            SharedSettingsStore(
+                realtimeOwnerMutationGuard = centralOwner::runIfCurrentOwner,
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope,
+            )
+        val ownerA = centralOwner.rotateOwner("server-1", "user-1")
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        val before = store.state.value.computerDetail
+        repository.calls.clear()
+        repository.computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42-new"))
+        val block = BlockingCall(ignoreCancellation = true)
+        repository.computerDetailBlock = block
+
+        store.accept(
+            settingsRealtimeIntent(
+                serverId = "server-1",
+                event =
+                    build.raft.app.model.RealtimeRefreshRequired(
+                        scope = build.raft.app.model.RealtimeRefreshScope.Machines,
+                        reason = "machine:updated",
+                        serverId = build.raft.app.model.ServerId("server-1"),
+                        subjectId = "machine-42"
+                    ),
+                ownerToken = ownerA
+            )
+        )
+        block.awaitStarted()
+
+        centralOwner.rotateOwner("server-1", "user-2")
+        block.release()
+        yield()
+
+        assertEquals(before, store.state.value.computerDetail)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMachineUpdateDoesNotReloadWhenOpenMachineIdDoesNotMatch() = runBlocking {
         // #79: when the user is on a different computer's detail page, a
         // machine:updated event for some other machine must not trigger a
@@ -1346,6 +1428,7 @@ class SharedSettingsStoreTest {
             FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1359,7 +1442,7 @@ class SharedSettingsStoreTest {
         repository.calls.clear()
 
         store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
+            settingsRealtimeIntent(
                 serverId = "server-1",
                 event =
                     build.raft.app.model.RealtimeRefreshRequired(
@@ -1387,6 +1470,7 @@ class SharedSettingsStoreTest {
             FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-42")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1400,7 +1484,7 @@ class SharedSettingsStoreTest {
         repository.calls.clear()
 
         store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
+            settingsRealtimeIntent(
                 serverId = "server-1",
                 event =
                     build.raft.app.model.RealtimeRefreshRequired(
@@ -1427,6 +1511,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1455,6 +1540,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1497,6 +1583,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1549,6 +1636,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1599,6 +1687,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1648,6 +1737,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1677,6 +1767,7 @@ class SharedSettingsStoreTest {
             FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1689,7 +1780,7 @@ class SharedSettingsStoreTest {
         repository.calls.clear()
 
         store.accept(
-            SharedSettingsIntent.ApplyRealtimeEvent(
+            settingsRealtimeIntent(
                 serverId = "server-1",
                 event =
                     build.raft.app.model.RealtimeRefreshRequired(
@@ -1711,6 +1802,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1744,6 +1836,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1776,6 +1869,7 @@ class SharedSettingsStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = sessionStore,
@@ -1807,6 +1901,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1833,6 +1928,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1860,6 +1956,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1897,6 +1994,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -1960,6 +2058,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -2011,6 +2110,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -2039,6 +2139,7 @@ class SharedSettingsStoreTest {
         val engine = FakeProfilerEngine()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -2089,6 +2190,7 @@ class SharedSettingsStoreTest {
             )
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -2128,6 +2230,7 @@ class SharedSettingsStoreTest {
         val engine = FakeProfilerEngine()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -2159,6 +2262,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities(diagnosticsResult = DataResult.Empty(EmptyReason.NoSettingsAvailable))
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -2187,6 +2291,7 @@ class SharedSettingsStoreTest {
         val capabilities = FakeSettingsCapabilities()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource =
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -2242,6 +2347,7 @@ class SharedSettingsStoreTest {
         var updateProfileBlock: BlockingCall? = null
         var changePasswordBlock: BlockingCall? = null
         var uploadAvatarBlock: BlockingCall? = null
+        var computerDetailBlock: BlockingCall? = null
         var providerLinkBlock: BlockingCall? = null
         var registerConnectedAppBlock: BlockingCall? = null
         var createServerInviteBlock: BlockingCall? = null
@@ -2495,6 +2601,7 @@ class SharedSettingsStoreTest {
 
         override suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> {
             calls += "computerDetail:$machineId"
+            computerDetailBlock?.consume()
             return computerDetailResult
         }
 
@@ -3566,13 +3673,19 @@ class SharedSettingsStoreTest {
             connectedAccounts = emptyList()
         )
 
-    private class BlockingCall {
+    private class BlockingCall(
+        private val ignoreCancellation: Boolean = false
+    ) {
         private val started = CompletableDeferred<Unit>()
         private val released = CompletableDeferred<Unit>()
 
         suspend fun consume() {
             started.complete(Unit)
-            released.await()
+            if (ignoreCancellation) {
+                withContext(NonCancellable) { released.await() }
+            } else {
+                released.await()
+            }
         }
 
         suspend fun awaitStarted() {
@@ -3608,6 +3721,7 @@ class SharedSettingsStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
                 scope = scope
             )
@@ -3636,6 +3750,7 @@ class SharedSettingsStoreTest {
         val log = mutableListOf<MviTransition<SharedSettingsIntent>>()
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(sampleSession())),
                 scope = scope
             )
@@ -3695,6 +3810,7 @@ class SharedSettingsStoreTest {
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val store =
             SharedSettingsStore(
+                realtimeOwnerMutationGuard = { _, block -> block(); true },
                 dataSource = SharedSettingsDataSource(sessionStore),
                 scope = scope
             )

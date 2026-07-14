@@ -99,14 +99,38 @@ class SharedMembersStore(
         }
     }
 
-    private fun loadChannelSuggestions(force: Boolean) {
+    fun refreshChannelSuggestionsIfCurrent(
+        ownerToken: RealtimeOwnerEpoch,
+        ownerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean,
+    ) {
+        loadChannelSuggestions(
+            force = true,
+            ownerToken = ownerToken,
+            ownerMutationGuard = ownerMutationGuard,
+        )
+    }
+
+    private fun loadChannelSuggestions(
+        force: Boolean,
+        ownerToken: RealtimeOwnerEpoch? = null,
+        ownerMutationGuard: ((RealtimeOwnerEpoch, () -> Unit) -> Boolean)? = null,
+    ) {
         scope.launch {
+            fun mutate(block: () -> Unit): Boolean =
+                if (ownerToken == null || ownerMutationGuard == null) {
+                    block()
+                    true
+                } else {
+                    ownerMutationGuard(ownerToken, block)
+                }
+
+            if (!mutate {}) return@launch
             val serverId = authStore.readSession()?.currentServerId?.trim().orEmpty()
             if (serverId.isBlank()) {
-                _state.value = SharedMembersState()
+                mutate { _state.value = SharedMembersState() }
                 return@launch
             }
-            bindServer(serverId)
+            if (!mutate { bindServer(serverId) }) return@launch
             val current = _state.value
             val shouldLoad =
                 force ||
@@ -116,12 +140,16 @@ class SharedMembersStore(
                 logger("shared_members_channel_suggestions_skip serverId=$serverId reason=loaded_or_inflight")
                 return@launch
             }
-            _state.value =
-                _state.value.copy(
-                    channelStatus = SharedMembersLoadStatus.InFlight,
-                    channelErrorCode = null
-                )
-            loadChannelSuggestions(serverId)
+            if (
+                !mutate {
+                    _state.value =
+                        _state.value.copy(
+                            channelStatus = SharedMembersLoadStatus.InFlight,
+                            channelErrorCode = null
+                        )
+                }
+            ) return@launch
+            loadChannelSuggestions(serverId, mutate = ::mutate)
         }
     }
 
@@ -131,49 +159,56 @@ class SharedMembersStore(
         }
     }
 
-    private suspend fun loadChannelSuggestions(serverId: String) {
+    private suspend fun loadChannelSuggestions(
+        serverId: String,
+        mutate: (() -> Unit) -> Boolean = { block -> block(); true },
+    ) {
         val result =
             runCatchingPreservingCancellation {
                 channelRepository.getChannels(ServerId(serverId))
             }.getOrElse { throwable ->
                 logger("shared_members_channels_result serverId=$serverId result=exception message=${throwable.message.orEmpty()}")
-                if (_state.value.serverId == serverId) {
-                    _state.value =
-                        _state.value.copy(
-                            channelStatus = SharedMembersLoadStatus.Error,
-                            channelErrorCode = "channels_exception"
-                        )
+                mutate {
+                    if (_state.value.serverId == serverId) {
+                        _state.value =
+                            _state.value.copy(
+                                channelStatus = SharedMembersLoadStatus.Error,
+                                channelErrorCode = "channels_exception"
+                            )
+                    }
                 }
                 return
             }
-        if (_state.value.serverId != serverId) return
-        when (result) {
-            is DataResult.Content ->
-                _state.value =
-                    _state.value.copy(
-                        channelSuggestions = result.data.channels.map { it.toConversationSummary() }.toSharedMembersChannelSuggestions(),
-                        channelStatus = SharedMembersLoadStatus.Loaded,
-                        channelErrorCode = null
-                    )
-            is DataResult.Empty ->
-                _state.value =
-                    _state.value.copy(
-                        channelSuggestions = emptyList(),
-                        channelStatus = SharedMembersLoadStatus.Loaded,
-                        channelErrorCode = null
-                    )
-            is DataResult.Error ->
-                _state.value =
-                    _state.value.copy(
-                        channelStatus = SharedMembersLoadStatus.Error,
-                        channelErrorCode = result.error.code
-                    )
-            is DataResult.NoPermission ->
-                _state.value =
-                    _state.value.copy(
-                        channelStatus = SharedMembersLoadStatus.Error,
-                        channelErrorCode = result.blocker.code
-                    )
+        mutate {
+            if (_state.value.serverId != serverId) return@mutate
+            when (result) {
+                is DataResult.Content ->
+                    _state.value =
+                        _state.value.copy(
+                            channelSuggestions = result.data.channels.map { it.toConversationSummary() }.toSharedMembersChannelSuggestions(),
+                            channelStatus = SharedMembersLoadStatus.Loaded,
+                            channelErrorCode = null
+                        )
+                is DataResult.Empty ->
+                    _state.value =
+                        _state.value.copy(
+                            channelSuggestions = emptyList(),
+                            channelStatus = SharedMembersLoadStatus.Loaded,
+                            channelErrorCode = null
+                        )
+                is DataResult.Error ->
+                    _state.value =
+                        _state.value.copy(
+                            channelStatus = SharedMembersLoadStatus.Error,
+                            channelErrorCode = result.error.code
+                        )
+                is DataResult.NoPermission ->
+                    _state.value =
+                        _state.value.copy(
+                            channelStatus = SharedMembersLoadStatus.Error,
+                            channelErrorCode = result.blocker.code
+                        )
+            }
         }
     }
 }

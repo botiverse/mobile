@@ -87,7 +87,8 @@ class SharedActivityStore internal constructor(
     private val realtimeReconcileDelayMillis: Long = SharedActivityRealtimeReconcileDelayMillis,
     private val afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
-    private val onRealtimePatchOwnerEntered: () -> Unit = {}
+    private val onRealtimePatchOwnerEntered: () -> Unit = {},
+    private val realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, _ -> false },
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -110,9 +111,38 @@ class SharedActivityStore internal constructor(
     private var tailDrainBarrier: Job? = null
     private var realtimeReconcileJob: Job? = null
     private var realtimeReconcileDirty = false
+    private var realtimeReconcileOwnerToken: RealtimeOwnerEpoch? = null
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
     // One owner for live row patches, version ledger changes, load folds, and scheduler lifecycle.
     private val realtimeOwnerLock = SynchronizedObject()
+
+    private fun <T> withRealtimeOwnerMutation(
+        ownerToken: RealtimeOwnerEpoch?,
+        rejected: T,
+        block: () -> T,
+    ): T {
+        if (ownerToken == null) return synchronized(realtimeOwnerLock, block)
+        var result = rejected
+        val accepted =
+            realtimeOwnerMutationGuard(ownerToken) {
+                synchronized(realtimeOwnerLock) {
+                    result = block()
+                }
+            }
+        return if (accepted) result else rejected
+    }
+
+    fun onRealtimeOwnerChanged() {
+        synchronized(realtimeOwnerLock) {
+            loadGeneration += 1L
+            loadJob?.cancel()
+            loadJob = null
+            realtimeReconcileJob?.cancel()
+            realtimeReconcileJob = null
+            realtimeReconcileDirty = false
+            realtimeReconcileOwnerToken = null
+        }
+    }
 
     internal fun updateRuntimeIntegrations(
         authStore: SlockAuthSessionStore = this.authStore,
@@ -162,7 +192,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
-                applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
+                applyRealtimeSummaryEvent(intent.envelope.owner, intent.envelope.payload, intent.activeConversationId)
         }
     }
 
@@ -174,6 +204,7 @@ class SharedActivityStore internal constructor(
             realtimeReconcileJob?.cancel()
             realtimeReconcileJob = null
             realtimeReconcileDirty = false
+            realtimeReconcileOwnerToken = null
             realtimeHighWater.clear()
             pendingReadStateFacts = emptyMap()
         }
@@ -409,23 +440,28 @@ class SharedActivityStore internal constructor(
     }
 
     private fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
-        if (intent.event is PerReceiverReadStateChanged) {
-            applyPerReceiverReadStateChanged(intent.event)
+        if (intent.envelope.payload is PerReceiverReadStateChanged) {
+            applyPerReceiverReadStateChanged(intent.envelope.owner, intent.envelope.payload)
             return
         }
         val (shouldRefresh, reconcileJobToStart) =
-            synchronized(realtimeOwnerLock) {
+            withRealtimeOwnerMutation(intent.envelope.owner, rejected = false to null) mutation@{
                 applyRealtimeEventLocked(intent) to
                     realtimeReconcileJob?.takeIf { job -> !job.isActive && !job.isCompleted }
             }
         reconcileJobToStart?.start()
         if (shouldRefresh) {
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            load(
+                refresh = true,
+                pullRefresh = false,
+                intent = SharedActivityIntent.Refresh,
+                ownerToken = intent.envelope.owner
+            )
         }
     }
 
     private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
-        val event = intent.event
+        val event = intent.envelope.payload
         if (!event.refreshesActivity()) return false
         if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated) {
             if (intent.allowLocalPatch && _state.value.selectedFilter != InboxFilter.Mentions) {
@@ -435,7 +471,7 @@ class SharedActivityStore internal constructor(
                     else -> Unit
                 }
             }
-            scheduleRealtimeReconcileLocked()
+            scheduleRealtimeReconcileLocked(intent.envelope.owner)
             return false
         }
         val current = _state.value
@@ -537,16 +573,17 @@ class SharedActivityStore internal constructor(
             )
     }
 
-    private fun scheduleRealtimeReconcileLocked() {
+    private fun scheduleRealtimeReconcileLocked(ownerToken: RealtimeOwnerEpoch?) {
         realtimeReconcileDirty = true
+        realtimeReconcileOwnerToken = ownerToken
         if (realtimeReconcileJob != null) return
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 delay(realtimeReconcileDelayMillis.coerceAtLeast(0L))
                 while (true) {
                     val shouldReconcile =
-                        synchronized(realtimeOwnerLock) {
-                            if (realtimeReconcileDirty) {
+                        withRealtimeOwnerMutation(ownerToken, rejected = false) {
+                            if (realtimeReconcileDirty && realtimeReconcileOwnerToken == ownerToken) {
                                 realtimeReconcileDirty = false
                                 true
                             } else {
@@ -559,7 +596,12 @@ class SharedActivityStore internal constructor(
                         return@launch
                     }
                     awaitCurrentLoadIdle()
-                    load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+                    load(
+                        refresh = true,
+                        pullRefresh = false,
+                        intent = SharedActivityIntent.Refresh,
+                        ownerToken = ownerToken
+                    )
                     awaitCurrentLoadIdle()
                 }
             }
@@ -575,21 +617,26 @@ class SharedActivityStore internal constructor(
     }
 
     private fun applyRealtimeSummaryEvent(
+        ownerToken: RealtimeOwnerEpoch,
         event: RealtimeEvent,
         activeConversationId: String?
     ) {
         if (event is PerReceiverReadStateChanged) {
-            applyPerReceiverReadStateChanged(event)
+            applyPerReceiverReadStateChanged(ownerToken, event)
             return
         }
         scope.launch {
-            val current = _state.value
-            val snapshot = current.snapshot ?: return@launch
             val currentUserId = currentUserId() ?: return@launch
-            val increment = event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId)
-            if (increment <= 0) return@launch
-            reduceState(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId),
+            withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
+                val current = _state.value
+                val snapshot = current.snapshot ?: return@mutation
+                val increment = event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId)
+                if (increment <= 0) return@mutation
+                reduceState(
+                    SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                        envelope = RealtimeOwnerEnvelope(ownerToken, event),
+                        activeConversationId = activeConversationId,
+                    ),
                 current.copy(
                     snapshot =
                         snapshot.copy(
@@ -597,11 +644,15 @@ class SharedActivityStore internal constructor(
                     ),
                     errorCode = null
                 )
-            )
+                )
+            }
         }
     }
 
-    private fun applyPerReceiverReadStateChanged(event: PerReceiverReadStateChanged) {
+    private fun applyPerReceiverReadStateChanged(
+        ownerToken: RealtimeOwnerEpoch?,
+        event: PerReceiverReadStateChanged
+    ) {
         scope.launch {
             val session = authStore.readSession() ?: return@launch
             val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@launch
@@ -609,7 +660,7 @@ class SharedActivityStore internal constructor(
             val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return@launch
             var shouldReconcile = false
             var acceptedHere = false
-            synchronized(realtimeOwnerLock) {
+            withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
                 event.scopes.forEach { readScope ->
                     val maxReadSeq = readScope.maxReadSeq ?: return@forEach
                     val projectionKey =
@@ -646,9 +697,19 @@ class SharedActivityStore internal constructor(
                 }
             }
             if (shouldReconcile) {
-                diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
-                if (acceptedHere) onUnreadCountsChanged()
-                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+                val stillCurrent =
+                    withRealtimeOwnerMutation(ownerToken, rejected = false) mutation@{
+                        diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
+                        if (acceptedHere) onUnreadCountsChanged()
+                        true
+                    }
+                if (!stillCurrent) return@launch
+                load(
+                    refresh = true,
+                    pullRefresh = false,
+                    intent = SharedActivityIntent.Refresh,
+                    ownerToken = ownerToken
+                )
             }
         }
     }
@@ -656,13 +717,14 @@ class SharedActivityStore internal constructor(
     private fun load(
         refresh: Boolean,
         pullRefresh: Boolean = false,
-        intent: SharedActivityIntent
+        intent: SharedActivityIntent,
+        ownerToken: RealtimeOwnerEpoch? = null
     ) {
         val job =
-            synchronized(realtimeOwnerLock) {
+            withRealtimeOwnerMutation(ownerToken, rejected = null as Job?) mutation@{
                 val current = _state.value
                 if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) {
-                    return@synchronized null
+                    return@mutation null
                 }
                 val generation = ++loadGeneration
                 loadJob?.cancel()
@@ -672,8 +734,9 @@ class SharedActivityStore internal constructor(
                     val filter = previous.selectedFilter
                     try {
                         val session = authStore.readSession()
+                        if (!isCurrentRealtimeOwner(ownerToken)) return@launch
                         if (session == null) {
-                            synchronized(realtimeOwnerLock) {
+                            withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
                                 setLoadError("unauthenticated", append = !refresh)
                             }
                             logActivityLoad(
@@ -688,7 +751,7 @@ class SharedActivityStore internal constructor(
                         }
                         val serverId = session.currentServerId?.let(::ServerId)
                         if (serverId == null) {
-                            synchronized(realtimeOwnerLock) {
+                            withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
                                 setLoadError("server_missing", append = !refresh)
                             }
                             logActivityLoad(
@@ -704,12 +767,12 @@ class SharedActivityStore internal constructor(
                         val userId = session.user.id
                         val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         if (server == null) {
-                            synchronized(realtimeOwnerLock) {
+                            withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
                                 setLoadError("server_missing", append = !refresh)
                             }
                             return@launch
                         }
-                        synchronized(realtimeOwnerLock) {
+                        withRealtimeOwnerMutation(ownerToken, rejected = Unit) mutation@{
                             val stateBeforeOwner = _state.value
                             val ownerChanged =
                                 stateBeforeOwner.ownerServerId?.let { it != serverId.value } == true ||
@@ -762,7 +825,7 @@ class SharedActivityStore internal constructor(
                             }
                         val senderProfiles = loadSenderProfiles(serverId)
                         val applied =
-                            synchronized(realtimeOwnerLock) {
+                            withRealtimeOwnerMutation(ownerToken, rejected = false) {
                                 if (generation != loadGeneration) {
                                     false
                                 } else {
@@ -792,7 +855,7 @@ class SharedActivityStore internal constructor(
                         throw cancellation
                     } catch (_: Throwable) {
                         val handled =
-                            synchronized(realtimeOwnerLock) {
+                            withRealtimeOwnerMutation(ownerToken, rejected = false) {
                                 if (generation != loadGeneration) {
                                     false
                                 } else {
@@ -1208,6 +1271,9 @@ class SharedActivityStore internal constructor(
         return true
     }
 
+    private fun isCurrentRealtimeOwner(ownerToken: RealtimeOwnerEpoch?): Boolean =
+        ownerToken == null || realtimeOwnerMutationGuard(ownerToken) {}
+
     private suspend fun currentServerId(): ServerId? =
         authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
 
@@ -1460,12 +1526,12 @@ sealed interface SharedActivityIntent {
         val orderedMarkers: List<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
     data class ApplyRealtimeEvent(
-        val event: RealtimeEvent,
-        val allowLocalPatch: Boolean = true
+        val envelope: RealtimeOwnerEnvelope<RealtimeEvent>,
+        val allowLocalPatch: Boolean = true,
     ) : SharedActivityIntent
     data class ApplyRealtimeSummaryEvent(
-        val event: RealtimeEvent,
-        val activeConversationId: String?
+        val envelope: RealtimeOwnerEnvelope<RealtimeEvent>,
+        val activeConversationId: String?,
     ) : SharedActivityIntent
 }
 

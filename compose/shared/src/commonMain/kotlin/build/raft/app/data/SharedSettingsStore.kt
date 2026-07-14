@@ -11,6 +11,7 @@ import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlin.time.TimeSource
 
 enum class SharedSettingsDestination {
@@ -340,10 +343,7 @@ sealed interface SharedSettingsIntent {
      * ComputerDetail page reflects machine:updated server events without a
      * full app refresh.
      */
-    data class ApplyRealtimeEvent(
-        val serverId: String,
-        val event: RealtimeEvent
-    ) : SharedSettingsIntent
+    data class ApplyRealtimeEvent(val envelope: RealtimeOwnerEnvelope<RealtimeEvent>) : SharedSettingsIntent
     data class UpdateServerAgreement(val request: SettingsServerAgreementUpdateRequest) : SharedSettingsIntent
     data class UpdateServerOnboarding(val request: SettingsServerOnboardingUpdateRequest) : SharedSettingsIntent
     data class UpdateServerTranslation(val request: SettingsServerTranslationUpdateRequest) : SharedSettingsIntent
@@ -1281,14 +1281,16 @@ class SharedSettingsDataSource(
 
 class SharedSettingsViewModel(
     dataSource: SharedSettingsDataSource,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, _ -> false },
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
             SharedSettingsStore(
                 dataSource = dataSource,
                 scope = viewModelScope,
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                realtimeOwnerMutationGuard = realtimeOwnerMutationGuard,
             )
         }
     private val contractDelegate =
@@ -1309,6 +1311,10 @@ class SharedSettingsViewModel(
         } else {
             storeDelegate.value.dispatch(intent)
         }
+    }
+
+    fun onRealtimeOwnerChanged() {
+        storeDelegate.value.onRealtimeOwnerChanged()
     }
 
     suspend fun accept(intent: SharedSettingsIntent) {
@@ -1363,12 +1369,35 @@ class SharedSettingsStore(
     private val dataSource: SharedSettingsDataSource,
     private val scope: CoroutineScope,
     initialState: SharedSettingsState = SharedSettingsState(),
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val realtimeOwnerMutationGuard: (RealtimeOwnerEpoch, () -> Unit) -> Boolean = { _, _ -> false },
 ) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private val realtimeOwnerLock = SynchronizedObject()
+    private var realtimeOwnerJob: Job? = null
+
+    private fun withRealtimeOwnerMutation(
+        ownerToken: RealtimeOwnerEpoch?,
+        block: () -> Unit,
+    ): Boolean {
+        if (ownerToken == null) {
+            synchronized(realtimeOwnerLock, block)
+            return true
+        }
+        return realtimeOwnerMutationGuard(ownerToken) {
+            synchronized(realtimeOwnerLock, block)
+        }
+    }
+
+    fun onRealtimeOwnerChanged() {
+        synchronized(realtimeOwnerLock) {
+            realtimeOwnerJob?.cancel()
+            realtimeOwnerJob = null
+        }
+    }
 
     fun dispatch(intent: SharedSettingsIntent) {
         if (intent.loadsSettingsContent) {
@@ -1387,6 +1416,7 @@ class SharedSettingsStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        onRealtimeOwnerChanged()
     }
 
     suspend fun accept(intent: SharedSettingsIntent) {
@@ -1670,7 +1700,8 @@ class SharedSettingsStore(
                 )
             SharedSettingsIntent.CompleteAddComputerDialog ->
                 scope.launch { completeAddComputerDialog() }
-            is SharedSettingsIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
+            is SharedSettingsIntent.ApplyRealtimeEvent ->
+                applyRealtimeEvent(intent.envelope)
             is SharedSettingsIntent.UpdateServerAgreement -> {
                 runAction(SERVER_ACTION_AGREEMENT_SAVE) {
                     dataSource.updateServerAgreement(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_AGREEMENT_SAVE)
@@ -2073,26 +2104,46 @@ class SharedSettingsStore(
      *   flip live.
      * - Any other route: ignored (no excessive refresh).
      */
-    private fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
+    private fun applyRealtimeEvent(
+        envelope: RealtimeOwnerEnvelope<RealtimeEvent>
+    ) {
+        val ownerToken = envelope.owner
+        val serverId = envelope.owner.serverId
+        val event = envelope.payload
         if (event !is RealtimeRefreshRequired) return
         if (event.scope != RealtimeRefreshScope.Machines) return
         if (event.serverId?.value != null && event.serverId.value != serverId) return
         val machineId = event.subjectId?.takeIf { it.isNotBlank() } ?: return
-        when (_state.value.route.destination) {
-            SharedSettingsDestination.ComputerDetail -> {
-                val openId = _state.value.route.itemId.orEmpty()
-                if (openId.isNotBlank() && openId == machineId) {
-                    scope.launch { dataSource.loadComputerDetail(machineId, forceComputers = true).applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) } }
+        val destination = _state.value.route.destination
+        val openId = _state.value.route.itemId.orEmpty()
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                when (destination) {
+                    SharedSettingsDestination.ComputerDetail -> {
+                        if (openId.isBlank() || openId != machineId) return@launch
+                        val result = dataSource.loadComputerDetail(machineId, forceComputers = true)
+                        withRealtimeOwnerMutation(ownerToken) mutation@{
+                            result.applyToStateNow(SharedSettingsDestination.ComputerDetail) {
+                                copy(computerDetail = it)
+                            }
+                        }
+                    }
+                    SharedSettingsDestination.Computers -> {
+                        val result = dataSource.loadComputers(forceComputers = true)
+                        withRealtimeOwnerMutation(ownerToken) mutation@{
+                            result.applyToComputersListState()
+                            maybeAdvanceAddComputerDialogFromMachines(machineId)
+                        }
+                    }
+                    else -> Unit
                 }
             }
-            SharedSettingsDestination.Computers -> {
-                scope.launch {
-                    dataSource.loadComputers(forceComputers = true).applyToComputersListState()
-                    maybeAdvanceAddComputerDialogFromMachines(machineId)
-                }
+        val accepted =
+            withRealtimeOwnerMutation(ownerToken) {
+                realtimeOwnerJob?.cancel()
+                realtimeOwnerJob = job
             }
-            else -> Unit
-        }
+        if (accepted) job.start()
     }
 
     private fun dismissAddComputerDialog(cleanupPendingMachine: Boolean) {
@@ -2696,6 +2747,11 @@ class SharedSettingsStore(
         "API server switched to ${label.ifBlank { "selected environment" }}. Sign in again to continue."
 
     private suspend fun <T> DataResult<T>.applyToState(
+        destination: SharedSettingsDestination,
+        update: SharedSettingsState.(ScreenLoadState<T>) -> SharedSettingsState
+    ) = applyToStateNow(destination, update)
+
+    private fun <T> DataResult<T>.applyToStateNow(
         destination: SharedSettingsDestination,
         update: SharedSettingsState.(ScreenLoadState<T>) -> SharedSettingsState
     ) {
