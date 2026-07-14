@@ -138,7 +138,8 @@ internal fun SlockAspectFitImagePreviewSurface(
     borderWidth: Dp = SlockStroke.Default,
     contentScale: ContentScale = ContentScale.Fit,
     zoomable: Boolean = false,
-    showLoadingIndicator: Boolean = false
+    showLoadingIndicator: Boolean = false,
+    onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val normalizedSource = source?.trim()?.takeIf { it.isNotBlank() }
     val normalizedFallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() && it != normalizedSource }
@@ -158,6 +159,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                     modifier = Modifier.fillMaxSize(),
                     onImageStateChange = { state ->
                         imageState = state
+                        onImageStateChange?.invoke(state)
                         if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
                             activeSource = normalizedFallback
                         }
@@ -171,6 +173,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                     modifier = Modifier.fillMaxSize(),
                     onImageStateChange = { state ->
                         imageState = state
+                        onImageStateChange?.invoke(state)
                         if (state is AsyncImagePainter.State.Error && activeSource != normalizedFallback && normalizedFallback != null) {
                             activeSource = normalizedFallback
                         }
