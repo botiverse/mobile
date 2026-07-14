@@ -3407,7 +3407,13 @@ class ThreadPayloadTest {
                 showOpenInChannelAction = true
             )
 
-        val parentRequest = assertNotNull(replyPayload.resolveReplyParentConversationOpenRequest("", null))
+        val parentRequest =
+            assertNotNull(
+                replyPayload.resolveReplyParentConversationOpenRequest(
+                    serverId = "server-1",
+                    conversationIdentityProvider = null
+                )
+            )
         val parentIdentity = parentRequest.conversationIdentity
         val parentPayload = requireNotNull(buildAppShellThreadPayload(parentIdentity))
 
@@ -3416,6 +3422,101 @@ class ThreadPayloadTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
         assertEquals("parent-channel", parentPayload.sourceThreadId)
         assertEquals(null, parentPayload.parentMessageId)
+    }
+
+    @Test
+    fun replyThreadOpenParentRequiresCurrentSessionServer() {
+        val replyPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-reply-stream",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelKind = "channel",
+                sourceThreadId = "reply-stream",
+                streamChannelId = "reply-stream",
+                parentChannelId = "parent-channel",
+                parentMessageId = "parent-message",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "channel",
+                showOpenInChannelAction = true
+            )
+
+        assertNull(replyPayload.resolveReplyParentConversationOpenRequest("", null))
+        assertNull(replyPayload.resolveReplyParentConversationOpenRequest("   ", null))
+        assertNull(threadParentNavigationServerId(null))
+        assertNull(threadParentNavigationServerId("   "))
+        assertEquals("server-source", threadParentNavigationServerId(" server-source "))
+    }
+
+    @Test
+    fun crossServerJointReplyThreadOpenParentUsesExactCurrentSessionProjection() {
+        val replyPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-joint-reply-stream",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelKind = "channel",
+                sourceThreadId = "reply-stream",
+                streamChannelId = "reply-stream",
+                parentChannelId = "joint-parent",
+                parentMessageId = "parent-message",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "joint",
+                showOpenInChannelAction = true
+            )
+        val parentProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-source",
+                canonicalChannelId = "joint-parent",
+                aliases = setOf("joint-parent"),
+                conversationKind = ConversationKind.Joint,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                title = "partner"
+            )
+        val resolvedServers = mutableListOf<String>()
+        val provider =
+            object : SharedConversationIdentityProvider {
+                override fun observeServer(serverId: ServerId): Flow<SharedConversationDirectoryState> =
+                    flowOf(SharedConversationDirectoryState())
+
+                override fun projectionFlow(
+                    serverId: ServerId,
+                    ids: Collection<String>
+                ): Flow<Map<String, SharedConversationDirectoryProjection>> = flowOf(emptyMap())
+
+                override fun resolveProjection(
+                    serverId: ServerId,
+                    id: String
+                ): SharedConversationDirectoryProjection? {
+                    resolvedServers += serverId.value
+                    return parentProjection.takeIf {
+                        serverId.value == "server-source" && id == "joint-parent"
+                    }
+                }
+            }
+
+        val parentRequest =
+            assertNotNull(
+                replyPayload.resolveReplyParentConversationOpenRequest(
+                    serverId = " server-source ",
+                    conversationIdentityProvider = provider
+                )
+            )
+
+        assertEquals(listOf("server-source"), resolvedServers)
+        assertEquals(ConversationKind.Joint, parentRequest.conversationIdentity.kind)
+        assertEquals("joint-parent", parentRequest.conversationIdentity.channelId?.value)
+        assertNull(
+            replyPayload.resolveReplyParentConversationOpenRequest(
+                serverId = "server-stale",
+                conversationIdentityProvider = provider
+            )
+        )
+        assertNull(
+            replyPayload.resolveReplyParentConversationOpenRequest(
+                serverId = "server-source",
+                conversationIdentityProvider = null
+            )
+        )
     }
 
     @Test

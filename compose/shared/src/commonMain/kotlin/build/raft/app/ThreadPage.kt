@@ -883,9 +883,16 @@ internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest
     val routeIdentity = resolveThreadRouteIdentity()
     if (routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
     val parentId = parentChannelId?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    val server = serverId.takeIf { it.isNotBlank() }?.let(::ServerId)
+    val server = threadParentNavigationServerId(serverId)?.let(::ServerId) ?: return null
+    val parentProjection = conversationIdentityProvider?.resolveProjection(server, parentId)
+    if (
+        routeIdentity.parentConversationKind == ConversationKind.Joint &&
+        parentProjection?.conversationKind != ConversationKind.Joint
+    ) {
+        return null
+    }
     val directory =
-        listOfNotNull(server?.let { conversationIdentityProvider?.resolveProjection(it, parentId) })
+        listOfNotNull(parentProjection)
             .toSharedConversationDirectoryState()
     val sourceIdentity =
         ConversationOpenSourceMessageIdentity(
@@ -894,9 +901,12 @@ internal fun KuiklyThreadScreenPayload.resolveReplyParentConversationOpenRequest
             channelId = parentId,
             conversationKind = routeIdentity.parentConversationKind
         )
-    return (resolveOpenRequest(serverId, sourceIdentity, directory) as? ConversationOpenResolution.Resolved)
+    return (resolveOpenRequest(server.value, sourceIdentity, directory) as? ConversationOpenResolution.Resolved)
         ?.request
 }
+
+internal fun threadParentNavigationServerId(currentSessionServerId: String?): String? =
+    currentSessionServerId?.trim()?.takeIf { it.isNotBlank() }
 
 internal fun threadHeaderProjectionServerId(
     sessionServerId: String?,
@@ -2121,7 +2131,10 @@ private fun ThreadPageScreen() {
     }
     val unableToOpenThreadLabel = stringResource(MR.strings.thread_error_open_thread)
     val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
-    fun openStandaloneThreadPayload(nextPayload: KuiklyThreadScreenPayload) {
+    fun openStandaloneThreadPayload(
+        nextPayload: KuiklyThreadScreenPayload,
+        serverIdOverride: String? = null
+    ) {
         val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
         if (launchPayload == null) {
             bridge.toast(unableToOpenThreadLabel)
@@ -2131,7 +2144,10 @@ private fun ThreadPageScreen() {
         val pageData =
             launchPayload.toThreadPageData()
                 .put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-                .also { data -> storeScope.initialServerId?.let { data.put(SLOCK_SHELL_SERVER_ID, it) } }
+                .also { data ->
+                    (threadParentNavigationServerId(serverIdOverride) ?: storeScope.initialServerId)
+                        ?.let { data.put(SLOCK_SHELL_SERVER_ID, it) }
+                }
         val openPage = {
             routerModule.openPage(THREAD_PAGE, pageData)
         }
@@ -2163,12 +2179,14 @@ private fun ThreadPageScreen() {
         onBack = {
             routerModule.closePage()
         },
-        onOpenThreadPayload = ::openStandaloneThreadPayload,
+        onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
-        onOpenParentThread = { currentPayload ->
+        onOpenParentThread = { currentPayload, currentSessionServerId ->
+            val parentServerId = threadParentNavigationServerId(currentSessionServerId)
+                ?: return@SharedThreadRouteContent false
             val request =
                 currentPayload.resolveReplyParentConversationOpenRequest(
-                    serverId = storeScope.initialServerId.orEmpty(),
+                    serverId = parentServerId,
                     conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope)
                 ) ?: return@SharedThreadRouteContent false
             val parentPayload =
@@ -2184,7 +2202,7 @@ private fun ThreadPageScreen() {
                         ).toSet(),
                     onWarn = bridge::logWarn
                 ) ?: return@SharedThreadRouteContent false
-            openStandaloneThreadPayload(parentPayload)
+            openStandaloneThreadPayload(parentPayload, serverIdOverride = parentServerId)
             true
         },
         onAuthRequired = { code ->
@@ -3361,7 +3379,7 @@ internal fun SharedThreadRouteContent(
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
-    onOpenParentThread: (KuiklyThreadScreenPayload) -> Boolean = { false },
+    onOpenParentThread: (KuiklyThreadScreenPayload, String?) -> Boolean = { _, _ -> false },
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
@@ -5714,7 +5732,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openParentMessage" -> {
-                    if (!onOpenParentThread(renderedThread)) {
+                    if (!onOpenParentThread(renderedThread, currentSession?.currentServerId)) {
                         bridge.logWarn(
                             "thread_parent_navigation_rejected reason=parent_conversation_unresolved " +
                                 "threadId=${renderedThread.sourceThreadId.orEmpty()} " +
