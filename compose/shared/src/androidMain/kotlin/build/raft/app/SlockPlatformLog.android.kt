@@ -18,3 +18,5 @@ internal actual fun slockPlatformLog(
         println("$tag: $message")
     }
 }
+
+internal actual suspend fun flushSlockPlatformDiagnosticsDownstream(): Boolean = true

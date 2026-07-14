@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
+import build.raft.app.flushSlockPlatformDiagnosticsDownstream
 import build.raft.app.flushSlockPlatformLogs
 import build.raft.app.model.TaskStatus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
@@ -308,7 +309,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     suspend fun sendFeedback(): Boolean =
-        settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
+        diagnosticsSettingsCapability("sendFeedback")?.optString("status") == "ok"
 
     suspend fun prepareDiagnosticsFeedback(): SettingsDiagnosticsFeedbackDraft? =
         diagnosticsSettingsCapability("prepareDiagnosticsFeedback")
@@ -338,6 +339,10 @@ internal class BridgeSettingsPlatformCapabilities(
                 "attachmentCount=${attachments.size}"
         )
         bridge.log("settings_quiver_feedback_bridge_request_prepared")
+        flushSlockPlatformLogs()
+        if (!flushSlockPlatformDiagnosticsDownstream()) {
+            return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
+        }
         val response =
             settingsCapability(
                 JSONObject()
@@ -412,6 +417,7 @@ internal class BridgeSettingsPlatformCapabilities(
     private suspend fun diagnosticsSettingsCapability(action: String): JSONObject? {
         val command = JSONObject().put("action", action)
         flushSlockPlatformLogs()
+        if (!flushSlockPlatformDiagnosticsDownstream()) return null
         return settingsCapability(command)
     }
 
