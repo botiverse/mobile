@@ -1127,6 +1127,7 @@ class SlockHomeComponentsTest {
 
     @Test
     fun homeListBeyondBoundsTracksTwoThirdsViewportWithBounds() {
+        assertEquals(6, homeListInitialBeyondBoundsItemCount())
         assertEquals(6, homeListBeyondBoundsItemCount(itemCount = 0, viewportHeightDp = 0f))
         assertEquals(8, homeListBeyondBoundsItemCount(itemCount = 8, viewportHeightDp = 720f))
         assertEquals(12, homeListBeyondBoundsItemCount(itemCount = 40, viewportHeightDp = 600f))

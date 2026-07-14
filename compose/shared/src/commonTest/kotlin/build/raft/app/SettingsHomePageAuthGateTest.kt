@@ -2,10 +2,19 @@ package build.raft.app
 
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.SharedAuthGateIntent
+import build.raft.app.data.SharedAuthGateStore
 import build.raft.app.data.SharedAuthGateState
+import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -88,6 +97,67 @@ class SettingsHomePageAuthGateTest {
             null,
             appShellAuthSessionEventRestoreIntent(AuthSessionEvent.TokensRotated(generation = 8))
         )
+    }
+
+    @Test
+    fun restoringBootstrapStillProcessesNonReplayableAuthSignals() {
+        assertTrue(appShellDefersReadyGraph(SharedAuthGateState.Restoring))
+        assertEquals(
+            AppShellBootstrapAuthDecision(
+                intent = SharedAuthGateIntent.SignedOut,
+                resetSessionState = true
+            ),
+            appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.SessionInvalidated)
+        )
+        assertEquals(
+            AppShellBootstrapAuthDecision(
+                intent = SharedAuthGateIntent.Restore,
+                resetSessionState = true
+            ),
+            appShellBootstrapAuthDecision(
+                AppShellBootstrapAuthSignal.SessionChanged,
+                identityChanged = true
+            )
+        )
+        assertEquals(
+            AppShellBootstrapAuthDecision(
+                intent = SharedAuthGateIntent.RefreshSilently,
+                resetSessionState = false
+            ),
+            appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.BindingMetadataChanged)
+        )
+    }
+
+    @Test
+    fun appShellInitialRestoreInvalidationCancelsCachedReadyAdmission() = runBlocking {
+        val cachedReadStarted = CompletableDeferred<Unit>()
+        val releaseCachedRead = CompletableDeferred<Unit>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val staleSession = storedSession(accessToken = "stale-access")
+        val gateStore =
+            SharedAuthGateStore(
+                restoreSession = { SharedAuthResult.Success(staleSession) },
+                cachedSession = {
+                    cachedReadStarted.complete(Unit)
+                    releaseCachedRead.await()
+                    staleSession
+                },
+                scope = scope
+            )
+
+        requestAppShellInitialAuthRestore(gateStore::dispatch)
+        cachedReadStarted.await()
+        assertEquals(SharedAuthGateState.Restoring, gateStore.state.value)
+
+        val invalidation =
+            appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.SessionInvalidated)
+        gateStore.dispatch(invalidation.intent)
+        releaseCachedRead.complete(Unit)
+        yield()
+
+        assertTrue(invalidation.resetSessionState)
+        assertEquals(SharedAuthGateState.AuthRequired, gateStore.state.value)
+        scope.cancel()
     }
 
     private fun storedSession(

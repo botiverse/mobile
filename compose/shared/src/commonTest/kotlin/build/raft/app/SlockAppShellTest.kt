@@ -6,6 +6,7 @@ import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SlockShellStoreScope
@@ -36,9 +37,242 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockAppShellTest {
+    @Test
+    fun appShellRendererUpdatesStayIsolatedToTheSelectedChildSlot() {
+        val initialHomeRenderer: AppShellChildTabRenderer = { _, _ -> }
+        val entry =
+            AppShellChildTabEntry(
+                debugId = 1,
+                initialSelectedTab = "home",
+                initialRenderer = initialHomeRenderer
+            )
+        val updatedTasksRenderer: AppShellChildTabRenderer = { _, _ -> }
+
+        entry.updateRenderer("tasks", updatedTasksRenderer)
+
+        assertSame(initialHomeRenderer, entry.rendererFor("home"))
+        assertSame(updatedTasksRenderer, entry.rendererFor("tasks"))
+    }
+
+    @Test
+    fun appShellInactivePrewarmActivatesWithTheLatestRenderer() {
+        val initialRenderer: AppShellChildTabRenderer = { _, _ -> }
+        val latestTasksRenderer: AppShellChildTabRenderer = { _, _ -> }
+        val entry =
+            AppShellChildTabEntry(
+                debugId = 1,
+                initialSelectedTab = "home",
+                initialRetainedTabs = setOf("home"),
+                initialRenderer = initialRenderer
+            )
+
+        entry.updateSelection(
+            selectedTab = "tasks",
+            retainedTabs = setOf("home", "tasks"),
+            renderer = latestTasksRenderer
+        )
+
+        assertEquals("tasks", entry.selectedTab)
+        assertTrue("tasks" in entry.retainedTabs)
+        assertSame(latestTasksRenderer, entry.rendererFor("tasks"))
+        assertSame(initialRenderer, entry.rendererFor("home"))
+    }
+
+    @Test
+    fun appShellVisibilitySignalsCoalesceLifecycleThenPageDidAppear() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellVisibilitySignalsCoalescePageDidAppearThenLifecycle() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellVisibilitySignalsCoalesceDuplicateLifecycleEventsForOneAppearance() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellVisibilitySignalsCoalesceInterleavedAppearanceGenerations() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 6,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellVisibilitySignalsDoNotReopenAnEvictedAppearance() {
+        val gate = AppShellVisibleRefreshGate()
+
+        (1..17).forEach { generation ->
+            assertTrue(
+                gate.shouldRefresh(
+                    AppShellVisibleRefreshSignal.PageDidAppear,
+                    pageVisibleTick = generation,
+                    target = "target-$generation"
+                )
+            )
+        }
+
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 0,
+                target = "target-1"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 1,
+                target = "late-independent-target"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 18,
+                target = "target-18"
+            )
+        )
+    }
+
+    @Test
+    fun appShellVisibilitySignalsPreserveAdjacentGenerationsAndDifferentTargets() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 6,
+                target = "tasks:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellBuildsOnlyTheBootstrapGraphWhileAuthIsRestoring() {
+        assertTrue(appShellDefersReadyGraph(SharedAuthGateState.Restoring))
+        assertFalse(appShellDefersReadyGraph(SharedAuthGateState.AuthRequired))
+        assertFalse(
+            appShellDefersReadyGraph(
+                SharedAuthGateState.Ready(
+                    StoredAuthSession(
+                        accessToken = "access",
+                        refreshToken = "refresh",
+                        user = StoredAuthUser(id = "user-1", email = "user@raft.build", displayName = "User"),
+                        servers = listOf(StoredAuthServer("server-1", "Server")),
+                        selectedServerId = "server-1"
+                    )
+                )
+            )
+        )
+    }
+
     @Test
     fun appTabRendererUsesIosPlatformDefaultWhenRoutePageDataOmitsRenderer() {
         assertEquals(
