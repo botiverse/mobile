@@ -1156,9 +1156,10 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeHeaderRefreshIndicatorHidesDuringPullRefresh() {
+    fun homeHeaderRefreshIndicatorStaysVisibleDuringPullRefresh() {
         assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = false))
-        assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = true))
+        assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = true))
+        assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = true))
         assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = false))
     }
 

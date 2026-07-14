@@ -273,6 +273,20 @@ internal fun SharedHomeActivityScreen(
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean =
     routeVisibleTick > 0
 
+internal data class ActivityRefreshPresentation(
+    val headerRefreshing: Boolean,
+    val pullRefreshing: Boolean
+)
+
+internal fun activityRefreshPresentation(
+    refreshing: Boolean,
+    pullRefreshing: Boolean
+): ActivityRefreshPresentation =
+    ActivityRefreshPresentation(
+        headerRefreshing = refreshing || pullRefreshing,
+        pullRefreshing = pullRefreshing
+    )
+
 @Composable
 internal fun SharedHomeActivityScreen(
     state: SharedActivityState,
@@ -358,6 +372,7 @@ private fun SharedActivityPanelContent(
     onTitleClick: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
+    val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
     ) {
@@ -366,7 +381,7 @@ private fun SharedActivityPanelContent(
             totalUnreadCount = state.totalUnreadCount,
             onClose = onClose,
             topSafeAreaPadding = topSafeAreaPadding,
-            refreshing = state.refreshing && !state.pullRefreshing,
+            refreshing = refreshPresentation.headerRefreshing,
             onTitleClick = onTitleClick
         )
         SlockAppShellBodyTopBanner()
@@ -595,7 +610,8 @@ private fun SharedActivityList(
     var pendingUpdateCount by remember { mutableStateOf(0) }
     val scrollScope = rememberCoroutineScope()
     val latestOnIntent by rememberUpdatedState(onIntent)
-    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
+    val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
+    val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
     LaunchedEffect(snapshot.items) {
         val selected = selectedItemKey
         if (selected != null && snapshot.items.none { it.key == selected }) {
@@ -679,6 +695,7 @@ private fun SharedActivityList(
                 pullToRefreshItem(
                     state = pullToRefreshState,
                     scrollState = listState,
+                    holdRefreshInset = false,
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
                     content = { pullProgress, isRefreshing, _ ->
                         SlockRaftPullRefreshIndicator(
@@ -1199,7 +1216,8 @@ private fun SharedActivityRefreshableStateBody(
     listState: LazyListState,
     onAction: () -> Unit = {}
 ) {
-    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
+    val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
+    val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -1209,6 +1227,7 @@ private fun SharedActivityRefreshableStateBody(
             pullToRefreshItem(
                 state = pullToRefreshState,
                 scrollState = listState,
+                holdRefreshInset = false,
                 onRefresh = onRefresh,
                 content = { pullProgress, isRefreshing, _ ->
                     SlockRaftPullRefreshIndicator(

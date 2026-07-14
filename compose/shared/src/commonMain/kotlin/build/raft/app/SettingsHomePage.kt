@@ -15102,7 +15102,7 @@ private fun SharedHomeSavedPanel(
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: projectedItems.size,
                 onClose = onClose,
-                refreshing = state.refreshing && !state.pullRefreshing,
+                refreshing = state.refreshing || state.pullRefreshing,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )
@@ -15121,7 +15121,7 @@ private fun SharedHomeSavedPanel(
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: projectedItems.size,
                 onClose = onClose,
-                refreshing = state.refreshing && !state.pullRefreshing,
+                refreshing = state.refreshing || state.pullRefreshing,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )
@@ -15139,6 +15139,7 @@ private fun SharedHomeSavedPanel(
                     pullToRefreshItem(
                         state = pullToRefreshState,
                         scrollState = listState,
+                        holdRefreshInset = false,
                         onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
                         content = { pullProgress, isRefreshing, _ ->
                             SlockRaftPullRefreshIndicator(
