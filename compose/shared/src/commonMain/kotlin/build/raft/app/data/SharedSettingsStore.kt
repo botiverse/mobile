@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
@@ -1387,6 +1389,7 @@ class SharedSettingsStore(
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private val realtimeMachineRefreshMutex = Mutex()
 
     fun dispatch(intent: SharedSettingsIntent) {
         if (intent.loadsSettingsContent) {
@@ -2096,20 +2099,25 @@ class SharedSettingsStore(
         if (event.scope != RealtimeRefreshScope.Machines) return
         if (event.serverId?.value != null && event.serverId.value != serverId) return
         val machineId = event.subjectId?.takeIf { it.isNotBlank() } ?: return
-        when (_state.value.route.destination) {
-            SharedSettingsDestination.ComputerDetail -> {
-                val openId = _state.value.route.itemId.orEmpty()
-                if (openId.isNotBlank() && openId == machineId) {
-                    scope.launch { dataSource.loadComputerDetail(machineId, forceComputers = true).applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) } }
+        val route = _state.value.route
+        scope.launch {
+            realtimeMachineRefreshMutex.withLock {
+                when (route.destination) {
+                    SharedSettingsDestination.ComputerDetail -> {
+                        val openId = route.itemId.orEmpty()
+                        if (openId.isNotBlank() && openId == machineId) {
+                            dataSource
+                                .loadComputerDetail(machineId, forceComputers = true)
+                                .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+                        }
+                    }
+                    SharedSettingsDestination.Computers -> {
+                        dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+                        maybeAdvanceAddComputerDialogFromMachines(machineId)
+                    }
+                    else -> Unit
                 }
             }
-            SharedSettingsDestination.Computers -> {
-                scope.launch {
-                    dataSource.loadComputers(forceComputers = true).applyToComputersListState()
-                    maybeAdvanceAddComputerDialogFromMachines(machineId)
-                }
-            }
-            else -> Unit
         }
     }
 
