@@ -5,6 +5,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import com.tencent.kuikly.compose.profiler.RecompositionReport
@@ -14,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
@@ -1448,6 +1451,66 @@ class SharedSettingsStoreTest {
 
         // List must have been reloaded.
         assertTrue(repository.calls.contains("computers"))
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeMachineUpdatesSerializeWithoutDroppingFirstSideEffectOrOverwritingLaterSnapshot() = runBlocking {
+        val source = TwoCallRealtimeComputersSource()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        computersSource = source,
+                    ),
+                scope = scope,
+                initialState =
+                    SharedSettingsState(
+                        route = SharedSettingsRoute(SharedSettingsDestination.Computers),
+                        addComputerDialog =
+                            AddComputerDialogState(
+                                step = AddComputerStep.Waiting,
+                                machineId = "machine-1",
+                            ),
+                    ),
+            )
+
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = machineRefresh("machine-1"),
+            ),
+        )
+        source.firstStarted.await()
+
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event = machineRefresh("machine-2"),
+            ),
+        )
+        source.releaseFirst.complete(Unit)
+        scopeJob.children.toList().joinAll()
+
+        assertTrue(
+            source.secondFinished.isCompleted,
+            "the later machine-2 event must execute under both concurrent and FIFO serialization implementations",
+        )
+
+        assertEquals(
+            AddComputerStep.Connected,
+            store.state.value.addComputerDialog?.step,
+            "the machine-1 Waiting->Connected side effect must survive the later machine-2 event",
+        )
+        val computers = assertIs<ScreenLoadState.Content<SettingsComputersSnapshot>>(store.state.value.computers)
+        assertEquals(
+            listOf("machine-2"),
+            computers.data.computers.map { it.id },
+            "the later machine-2 snapshot must remain final; an older completion must not overwrite it",
+        )
         scope.cancel()
     }
 
@@ -2924,6 +2987,42 @@ class SharedSettingsStoreTest {
             return computerResult
         }
     }
+
+    private inner class TwoCallRealtimeComputersSource : SharedSettingsComputersSource {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val secondFinished = CompletableDeferred<Unit>()
+        private var calls = 0
+
+        override suspend fun loadSettingsComputersForServer(
+            serverId: String,
+            force: Boolean,
+        ): DataResult<SettingsComputersSnapshot> {
+            calls += 1
+            return if (calls == 1) {
+                firstStarted.complete(Unit)
+                releaseFirst.await()
+                DataResult.Content(computersSnapshot("machine-1"))
+            } else {
+                secondFinished.complete(Unit)
+                DataResult.Content(computersSnapshot("machine-2"))
+            }
+        }
+
+        override suspend fun loadSettingsComputerSnapshotForServer(
+            serverId: String,
+            machineId: String,
+            force: Boolean,
+        ) = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    }
+
+    private fun machineRefresh(machineId: String) =
+        RealtimeRefreshRequired(
+            scope = RealtimeRefreshScope.Machines,
+            reason = "machine:updated",
+            serverId = ServerId("server-1"),
+            subjectId = machineId,
+        )
 
     private class FakeSettingsCapabilities(
         private val aboutResult: DataResult<SharedSettingsAboutSnapshot> =
