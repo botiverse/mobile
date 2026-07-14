@@ -89,21 +89,57 @@ class SlockAppShellTest {
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 4,
+                appearanceGeneration = 4,
                 target = "home:"
             )
         )
         assertFalse(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 5,
+                appearanceGeneration = 5,
                 target = "home:"
             )
         )
+        gate.onLifecycleHidden(appearanceGeneration = 5)
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 5,
+                appearanceGeneration = 5,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellVisibilitySignalsCoalesceInitialAppearanceThenFirstResume() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 0,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 1)
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 2,
                 target = "home:"
             )
         )
@@ -116,14 +152,84 @@ class SlockAppShellTest {
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 5,
+                appearanceGeneration = 1,
                 target = "home:"
             )
         )
         assertFalse(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 4,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellCompletedPageFirstGenerationOpensTheNextLifecycleGeneration() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 1)
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 2,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellHiddenFrontierAllowsNextPageToArriveBeforeLifecycle() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 1)
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 2,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 2,
                 target = "home:"
             )
         )
@@ -136,21 +242,21 @@ class SlockAppShellTest {
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 4,
+                appearanceGeneration = 4,
                 target = "home:"
             )
         )
         assertFalse(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 4,
+                appearanceGeneration = 4,
                 target = "home:"
             )
         )
         assertFalse(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 5,
+                appearanceGeneration = 5,
                 target = "home:"
             )
         )
@@ -163,28 +269,74 @@ class SlockAppShellTest {
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 4,
+                appearanceGeneration = 4,
                 target = "home:"
             )
         )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 5,
+                target = "home:"
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 5)
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 5,
+                appearanceGeneration = 5,
                 target = "home:"
             )
         )
         assertFalse(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 5,
+                appearanceGeneration = 6,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellEvictedPageFirstGenerationNeedsHiddenBeforeOpeningNext() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        (2..18).forEach { generation ->
+            assertTrue(
+                gate.shouldRefresh(
+                    AppShellVisibleRefreshSignal.PageDidAppear,
+                    appearanceGeneration = generation,
+                    target = "other-$generation"
+                )
+            )
+        }
+
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+        gate.onLifecycleHidden(appearanceGeneration = 1)
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 1,
                 target = "home:"
             )
         )
         assertFalse(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 6,
+                appearanceGeneration = 2,
                 target = "home:"
             )
         )
@@ -198,7 +350,7 @@ class SlockAppShellTest {
             assertTrue(
                 gate.shouldRefresh(
                     AppShellVisibleRefreshSignal.PageDidAppear,
-                    pageVisibleTick = generation,
+                    appearanceGeneration = generation,
                     target = "target-$generation"
                 )
             )
@@ -207,21 +359,21 @@ class SlockAppShellTest {
         assertFalse(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 0,
+                appearanceGeneration = 0,
                 target = "target-1"
             )
         )
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 1,
+                appearanceGeneration = 1,
                 target = "late-independent-target"
             )
         )
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 18,
+                appearanceGeneration = 18,
                 target = "target-18"
             )
         )
@@ -234,21 +386,22 @@ class SlockAppShellTest {
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 4,
+                appearanceGeneration = 4,
                 target = "home:"
             )
         )
+        gate.onLifecycleHidden(appearanceGeneration = 5)
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.Lifecycle,
-                pageVisibleTick = 5,
+                appearanceGeneration = 5,
                 target = "home:"
             )
         )
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
-                pageVisibleTick = 6,
+                appearanceGeneration = 6,
                 target = "tasks:"
             )
         )
@@ -2426,9 +2579,77 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellPageDidAppearRefreshesOnlyAfterInitialAppearance() {
-        assertEquals(false, appShellPageDidAppearShouldRefresh(0))
-        assertEquals(true, appShellPageDidAppearShouldRefresh(1))
+    fun appShellAppearanceGenerationIncludesInitialAndResumeAppearances() {
+        assertEquals(
+            0,
+            appShellAppearanceGeneration(pageVisibleTick = 0, initialAuthRestoreTick = 0)
+        )
+        assertEquals(
+            1,
+            appShellAppearanceGeneration(pageVisibleTick = 0, initialAuthRestoreTick = 1)
+        )
+        assertEquals(
+            2,
+            appShellAppearanceGeneration(pageVisibleTick = 1, initialAuthRestoreTick = 1)
+        )
+    }
+
+    @Test
+    fun appShellInitialAppearanceRefreshesOnlyRetainedHomeContent() {
+        assertFalse(
+            appShellAppearanceShouldRefresh(
+                appearanceGeneration = 0,
+                pageVisibleTick = 0,
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                hasRetainedHomeContent = true
+            )
+        )
+        assertTrue(
+            appShellAppearanceShouldRefresh(
+                appearanceGeneration = 1,
+                pageVisibleTick = 0,
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                hasRetainedHomeContent = true
+            )
+        )
+        assertFalse(
+            appShellAppearanceShouldRefresh(
+                appearanceGeneration = 1,
+                pageVisibleTick = 0,
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                hasRetainedHomeContent = false
+            )
+        )
+        assertFalse(
+            appShellAppearanceShouldRefresh(
+                appearanceGeneration = 1,
+                pageVisibleTick = 0,
+                selectedTab = "tasks",
+                selectedHomeDestination = null,
+                hasRetainedHomeContent = true
+            )
+        )
+        assertFalse(
+            appShellAppearanceShouldRefresh(
+                appearanceGeneration = 1,
+                pageVisibleTick = 0,
+                selectedTab = "home",
+                selectedHomeDestination = "activity",
+                hasRetainedHomeContent = true
+            )
+        )
+        assertTrue(
+            appShellAppearanceShouldRefresh(
+                appearanceGeneration = 2,
+                pageVisibleTick = 1,
+                selectedTab = "tasks",
+                selectedHomeDestination = null,
+                hasRetainedHomeContent = false
+            )
+        )
     }
 
     @Test

@@ -1802,8 +1802,25 @@ internal fun retainedHomeSecondaryDestination(destination: String?): String? =
 internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
     retainedHomeSecondaryDestination(destination) == null
 
-internal fun appShellPageDidAppearShouldRefresh(pageVisibleTick: Int): Boolean =
-    pageVisibleTick > 0
+internal fun appShellAppearanceGeneration(
+    pageVisibleTick: Int,
+    initialAuthRestoreTick: Int
+): Int = pageVisibleTick + initialAuthRestoreTick
+
+internal fun appShellAppearanceShouldRefresh(
+    appearanceGeneration: Int,
+    pageVisibleTick: Int,
+    selectedTab: String,
+    selectedHomeDestination: String?,
+    hasRetainedHomeContent: Boolean
+): Boolean {
+    if (appearanceGeneration <= 0) return false
+    if (pageVisibleTick > 0) return true
+    // A new pager can attach to process-retained Home state after missing the native resume event.
+    return retainedAppShellSelectedTab(selectedTab) == "home" &&
+        selectedHomeDestination == null &&
+        hasRetainedHomeContent
+}
 
 internal fun appShellDefersReadyGraph(authGateState: SharedAuthGateState): Boolean =
     authGateState == SharedAuthGateState.Restoring
@@ -1823,21 +1840,48 @@ internal class AppShellVisibleRefreshGate {
         mutableMapOf<AppShellVisibleRefreshKey, MutableSet<AppShellVisibleRefreshSignal>>()
     private val keyOrder = mutableListOf<AppShellVisibleRefreshKey>()
     private val retiredThroughGenerationByTarget = mutableMapOf<String, Int>()
+    private var pendingLifecycleGeneration: Int? = null
+
+    fun onLifecycleHidden(appearanceGeneration: Int) {
+        pendingLifecycleGeneration =
+            maxOf(
+                pendingLifecycleGeneration ?: Int.MIN_VALUE,
+                appearanceGeneration + 1
+            )
+    }
 
     fun shouldRefresh(
         signal: AppShellVisibleRefreshSignal,
-        pageVisibleTick: Int,
+        appearanceGeneration: Int,
         target: String
     ): Boolean {
+        val currentKey = AppShellVisibleRefreshKey(appearanceGeneration, target)
+        val currentSignals = seenSignalsByKey[currentKey]
+        val retiredThroughGeneration =
+            retiredThroughGenerationByTarget.getOrElse(target) { Int.MIN_VALUE }
         val key =
-            AppShellVisibleRefreshKey(
-                appearanceGeneration =
-                    when (signal) {
-                        AppShellVisibleRefreshSignal.Lifecycle -> pageVisibleTick + 1
-                        AppShellVisibleRefreshSignal.PageDidAppear -> pageVisibleTick
-                    },
-                target = target
-            )
+            when (signal) {
+                AppShellVisibleRefreshSignal.PageDidAppear -> {
+                    if ((pendingLifecycleGeneration ?: Int.MAX_VALUE) <= appearanceGeneration) {
+                        pendingLifecycleGeneration = null
+                    }
+                    currentKey
+                }
+                AppShellVisibleRefreshSignal.Lifecycle -> {
+                    val pendingGeneration = pendingLifecycleGeneration
+                    when {
+                        pendingGeneration != null && pendingGeneration > appearanceGeneration -> {
+                            pendingLifecycleGeneration = null
+                            AppShellVisibleRefreshKey(pendingGeneration, target)
+                        }
+                        appearanceGeneration <= retiredThroughGeneration -> currentKey
+                        currentSignals?.contains(AppShellVisibleRefreshSignal.PageDidAppear) == true &&
+                            AppShellVisibleRefreshSignal.Lifecycle !in currentSignals -> currentKey
+                        currentSignals?.contains(AppShellVisibleRefreshSignal.Lifecycle) == true -> currentKey
+                        else -> AppShellVisibleRefreshKey(appearanceGeneration + 1, target)
+                    }
+                }
+            }
         if (
             key.appearanceGeneration <=
             retiredThroughGenerationByTarget.getOrElse(key.target) { Int.MIN_VALUE }
@@ -2185,10 +2229,12 @@ private fun SlockAppShellContent(
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val visibleAppearanceGeneration =
+        appShellAppearanceGeneration(pageVisibleTick, initialAuthRestoreTick)
     val windowNavigationCoordinator =
         remember(sharedStores, storeScope) { sharedStores.windowNavigationCoordinator(storeScope) }
-    LaunchedEffect(pager.pagerId, pageVisibleTick, initialAuthRestoreTick) {
-        if (pageVisibleTick > 0 || initialAuthRestoreTick > 0) {
+    LaunchedEffect(pager.pagerId, visibleAppearanceGeneration) {
+        if (visibleAppearanceGeneration > 0) {
             sharedStores.markActiveAppShellPager(pager.pagerId)
         }
     }
@@ -2921,12 +2967,12 @@ private fun SlockAppShellContent(
     fun refreshVisibleAppShellRoute(
         reason: String,
         signal: AppShellVisibleRefreshSignal,
-        visibleTick: Int
+        appearanceGeneration: Int
     ) {
         if (latestReadySession == null) return
         val refreshTarget =
             "${retainedAppShellSelectedTab(latestSelectedTab)}:${latestSelectedHomeDestination.orEmpty()}"
-        if (!visibleRefreshGate.shouldRefresh(signal, visibleTick, refreshTarget)) {
+        if (!visibleRefreshGate.shouldRefresh(signal, appearanceGeneration, refreshTarget)) {
             bridge.log(
                 "app_shell_visible_refresh_skip reason=$reason cause=same_appearance tab=${latestSelectedTab} " +
                     "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
@@ -2954,15 +3000,28 @@ private fun SlockAppShellContent(
         }
     }
 
-    LaunchedEffect(pageVisibleTick) {
-        if (appShellPageDidAppearShouldRefresh(pageVisibleTick)) {
+    LaunchedEffect(visibleAppearanceGeneration) {
+        if (
+            appShellAppearanceShouldRefresh(
+                appearanceGeneration = visibleAppearanceGeneration,
+                pageVisibleTick = pageVisibleTick,
+                selectedTab = latestSelectedTab,
+                selectedHomeDestination = latestSelectedHomeDestination,
+                hasRetainedHomeContent = homeState.content is SharedHomeContentState.Content
+            )
+        ) {
             if (latestSelectedHomeDestination != null) {
                 homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             } else {
                 refreshVisibleAppShellRoute(
-                    reason = "page_did_appear",
+                    reason =
+                        if (pageVisibleTick == 0) {
+                            "initial_page_did_appear"
+                        } else {
+                            "page_did_appear"
+                        },
                     signal = AppShellVisibleRefreshSignal.PageDidAppear,
-                    visibleTick = pageVisibleTick
+                    appearanceGeneration = visibleAppearanceGeneration
                 )
             }
         }
@@ -3762,7 +3821,7 @@ private fun SlockAppShellContent(
         val callbackRef =
             realtimeEvents.addListener { rawEventData ->
                 val eventDataSnapshot = rawEventData.toString()
-                val pageVisibleTickAtDelivery = pageVisibleTick
+                val appearanceGenerationAtDelivery = visibleAppearanceGeneration
                 appShellCoroutineScope.launch {
                     val eventData = JSONObject(eventDataSnapshot)
                     if (
@@ -3777,8 +3836,18 @@ private fun SlockAppShellContent(
                         ) {
                             return@launch
                         }
+                        if (eventData.optString(SlockRealtimeNotifyContract.KeyPageName) != SLOCK_APP_SHELL_PAGE) {
+                            return@launch
+                        }
                         if (
-                            eventData.optString(SlockRealtimeNotifyContract.KeyPageName) == SLOCK_APP_SHELL_PAGE &&
+                            event == SlockRealtimeNotifyContract.LifecycleHiddenPause ||
+                            event == SlockRealtimeNotifyContract.LifecycleHidden ||
+                            event == SlockRealtimeNotifyContract.LifecycleHiddenKeepAlive
+                        ) {
+                            visibleRefreshGate.onLifecycleHidden(appearanceGenerationAtDelivery)
+                            return@launch
+                        }
+                        if (
                             (
                                 event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                                     event == SlockRealtimeNotifyContract.LifecycleVisibleShow
@@ -3788,7 +3857,7 @@ private fun SlockAppShellContent(
                             refreshVisibleAppShellRoute(
                                 reason = "app_lifecycle_$event",
                                 signal = AppShellVisibleRefreshSignal.Lifecycle,
-                                visibleTick = pageVisibleTickAtDelivery
+                                appearanceGeneration = appearanceGenerationAtDelivery
                             )
                             sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                         }
