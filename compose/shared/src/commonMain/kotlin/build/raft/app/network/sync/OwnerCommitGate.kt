@@ -77,6 +77,17 @@ class OwnerBoundFoldPersistenceAdapter(
         gate.withCurrentGeneration(expectedOwnerGeneration) { inner.applyFrame(frame) }
     }
 
-    /** Restore is a read of the last committed state; the write gate above is what keeps it un-torn. */
-    suspend fun restore(scope: SyncScopeKey): RestoredFoldState = inner.restore(scope)
+    /**
+     * Reads the last committed state iff [expectedOwnerGeneration] is still current, holding the gate across
+     * BOTH underlying reads (facts + cursor). The inner restore is two queries with no read transaction, so
+     * an ungated restore could see a bound apply COMMIT between them (old facts + new cursor) — and a stale
+     * owner could restore across a rotate/burn and feed a dead generation's view into a fresh core. Same
+     * rule as the write side: stale → [StaleOwnerGeneration] before any read reaches the database.
+     *
+     * Boundary: this guarantees linearization against apply/rotate UNDER THE SAME GATE only — it is not a
+     * database-level snapshot against writers that bypass the gate. The foundation must therefore retire
+     * every direct (ungated) [FoldPersistenceAdapter] entry when it wires generations.
+     */
+    suspend fun restore(scope: SyncScopeKey, expectedOwnerGeneration: Long): RestoredFoldState =
+        gate.withCurrentGeneration(expectedOwnerGeneration) { inner.restore(scope) }
 }

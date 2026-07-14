@@ -15,6 +15,12 @@
  *   3. a commit failure is one real ROLLBACK, leaves the generation unchanged, and releases the gate;
  *   4. a burned (logout) generation rejects a late applier leaving the previously committed state
  *      byte-identical (zero statements).
+ *
+ * The read side carries the same owner semantics (赵 #891 review blocker): the inner restore is two queries
+ * with no read transaction, so it is gated identically —
+ *   5. a stale restore is rejected before ANY underlying read;
+ *   6. a rotation requested between the facts and cursor reads blocks until the whole restore returns
+ *      (the old-facts + new-cursor tear is unrepresentable).
  */
 package build.raft.app.network.sync
 
@@ -180,6 +186,74 @@ class OwnerCommitLinearizationTest {
         assertEquals(OwnerCommitGate.FIRST_GENERATION, gate.currentGeneration())
         bound(db, gate, real).applyFrame(frame(row("m1", 1)), OwnerCommitGate.FIRST_GENERATION)
         assertEquals(listOf("m1"), real.readFacts(scope).map { it.id })
+    }
+
+    @Test
+    fun staleRestoreRejectsBeforeAnyReadReachesTheDatabase() = runBlocking {
+        val (db, _) = freshDb()
+        val gate = OwnerCommitGate()
+        val real = store(db)
+        bound(db, gate, real).applyFrame(frame(row("m1", 1)), OwnerCommitGate.FIRST_GENERATION)
+
+        var reads = 0
+        val counting = object : FoldPersistStore by real {
+            override suspend fun readFacts(scope: SyncScopeKey): List<CanonicalMessageRow> {
+                reads++; return real.readFacts(scope)
+            }
+            override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? {
+                reads++; return real.readCursor(scope)
+            }
+        }
+        val adapter = bound(db, gate, counting)
+        gate.rotate() // the granted generation is burned before the read
+        assertFailsWith<StaleOwnerGeneration> { adapter.restore(scope, OwnerCommitGate.FIRST_GENERATION) }
+        assertEquals(0, reads, "a stale restore must fail closed before any underlying read")
+    }
+
+    @Test
+    fun rotationCannotLandBetweenARestoresFactsAndCursorReads() = runBlocking {
+        // The inner restore is two queries with no read transaction — the torn window is between them
+        // (old facts + new cursor). The gate held across BOTH reads makes that window unrepresentable:
+        // a rotation requested after the facts read blocks until the whole restore returns.
+        val (db, driver) = freshDb()
+        val gate = OwnerCommitGate()
+        val real = store(db)
+        bound(db, gate, real).applyFrame(frame(row("m1", 1)), OwnerCommitGate.FIRST_GENERATION)
+
+        val cursorReadEntered = CompletableDeferred<Unit>()
+        val releaseCursorRead = CompletableDeferred<Unit>()
+        val pausing = object : FoldPersistStore by real {
+            override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? {
+                cursorReadEntered.complete(Unit) // facts already read; pause inside the torn window
+                releaseCursorRead.await()
+                // Recorded while the gate is still held — a race-free in-window order witness.
+                return real.readCursor(scope).also { driver.events.add("cursor-read-done") }
+            }
+        }
+        val adapter = bound(db, gate, pausing)
+        val restore = async(Dispatchers.Default) {
+            adapter.restore(scope, OwnerCommitGate.FIRST_GENERATION)
+        }
+        cursorReadEntered.await()
+
+        val rotateStarted = CompletableDeferred<Unit>()
+        val rotation = async(Dispatchers.Default) {
+            rotateStarted.complete(Unit)
+            gate.rotate().also { driver.events.add("rotate-returned") }
+        }
+        rotateStarted.await()
+        // Settle window so a broken (released-lock) gate WOULD complete here; deterministic when correct.
+        delay(100)
+        assertFalse(rotation.isCompleted, "rotate must not land between a restore's facts and cursor reads")
+
+        releaseCursorRead.complete(Unit)
+        val restored = restore.await()
+        assertEquals(OwnerCommitGate.FIRST_GENERATION + 1, rotation.await())
+        val cursorAt = driver.events.indexOf("cursor-read-done")
+        val rotateAt = driver.events.indexOf("rotate-returned")
+        assertTrue(cursorAt in 0 until rotateAt, "rotation must serialize after the whole restore, got ${driver.events}")
+        assertEquals(listOf("m1"), restored.facts.map { it.id }, "restore returns the complete committed view")
+        assertEquals(1L, restored.cursor?.latestSeq, "cursor is consistent with the facts read")
     }
 
     @Test
