@@ -99,6 +99,7 @@ import kotlinx.coroutines.launch
 private val ActivitySelectedRowShadowOffset = 2.dp
 private const val ActivityNearTopThresholdPx = 50
 private const val ActivityUpdateTrackingWindow = 20
+private const val ActivityMutedPrimaryColorArgb = "#80000000"
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -871,6 +872,7 @@ private fun SharedActivityRow(
     onOpenMenu: (Offset) -> Unit
 ) {
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
+    val mutedPrimaryContent = item.activityPrimaryContentMuted()
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
@@ -909,7 +911,7 @@ private fun SharedActivityRow(
                         SlockLucideIcon(
                             SlockLucideIconName.MessageSquare,
                             modifier = Modifier.size(13.dp),
-                            color = "#FFFF4B9B",
+                            color = if (mutedPrimaryContent) ActivityMutedPrimaryColorArgb else SlockColor.TextBlackArgb,
                             verticalOffsetDp = 2f
                         )
                     }
@@ -927,7 +929,7 @@ private fun SharedActivityRow(
                             } else {
                                 SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
                             },
-                        color = if (item.kind == InboxItemKind.Thread && item.unreadCount == 0) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
+                        color = if (mutedPrimaryContent) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
                         maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -963,6 +965,9 @@ private fun SharedActivityRow(
         }
     }
 }
+
+internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
+    kind == InboxItemKind.Thread && unreadCount == 0
 
 internal fun InboxItem.activityDoneClickIdentity(): String = "activity-done:$key"
 
