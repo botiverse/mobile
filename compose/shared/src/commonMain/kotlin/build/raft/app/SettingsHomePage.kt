@@ -17925,6 +17925,10 @@ internal fun SettingsPageVisualContent() {
         SettingsServerDangerModalVisualContent()
         return
     }
+    if (variant.startsWith("administration-")) {
+        SettingsVisualAdministrationSectionContent(variant.removePrefix("administration-"))
+        return
+    }
     val spec = settingsVisualSpec(variant)
     // React baselines render settings pages flush to the viewport top; no host
     // status-bar spacer or safe-area padding may leak into fixture captures.
@@ -18045,6 +18049,107 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
         onPasswordChange = { _, _ -> },
         onEvent = { _, _ -> }
     )
+}
+
+// components.settings.administration.<section> React baselines capture ONE
+// focused section component with no settings chrome — the web harness renders
+// ADMINISTRATION_VISUAL_SECTIONS[section] inside a plain white viewport with
+// px-5/py-4 padding (web task #333). Mirror that here: one section card, no
+// SettingsDetailShell header, no profile card, no danger zone. Rendering the
+// whole Administration page instead is what drift issues #670/#754/#755/#758/
+// #810 flagged ("completely different screen").
+@Composable
+private fun SettingsVisualAdministrationSectionContent(sectionKey: String) {
+    val snapshot = remember { settingsVisualServerSnapshot() }
+    var joinLinkMaxUses by remember { mutableStateOf("25") }
+    var joinLinkExpiresAt by remember { mutableStateOf(settingsVisualFixtureValues.recentActivityAtIso) }
+    var agreementEnabled by remember { mutableStateOf(snapshot.agreement?.enabled ?: true) }
+    var agreementTitle by remember { mutableStateOf(snapshot.agreement?.title.orEmpty()) }
+    var agreementBody by remember { mutableStateOf(snapshot.agreement?.bodyMarkdown.orEmpty()) }
+    var onboardingAgentId by remember { mutableStateOf(snapshot.onboarding?.onboardingAgentId.orEmpty()) }
+    var onboardingGreetingEnabled by remember { mutableStateOf(snapshot.onboarding?.agentAllChannelGreetingEnabled ?: true) }
+    var hideHumansFromMembers by remember { mutableStateOf(snapshot.profile.hideHumansFromMembers) }
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+    ) {
+        when (sectionKey) {
+            "admins" ->
+                SettingsServerAdminsCard(
+                    members = snapshot.admins,
+                    section = snapshot.sections.firstOrNull { it.key == "admins" },
+                    actorRole = "owner",
+                    actionState = null,
+                    onAction = { _, _ -> }
+                )
+            "invites" ->
+                SettingsServerInvitesCard(
+                    invites = snapshot.pendingInvites,
+                    section = snapshot.sections.firstOrNull { it.key == "pending_invites" },
+                    actionState = null,
+                    timeContext = null,
+                    onAction = { _, _ -> }
+                )
+            "join-links" ->
+                SettingsServerJoinLinksCard(
+                    links = snapshot.joinLinks,
+                    section = snapshot.sections.firstOrNull { it.key == "join_links" },
+                    maxUses = joinLinkMaxUses,
+                    expiresAt = joinLinkExpiresAt,
+                    actionState = null,
+                    timeContext = null,
+                    onMaxUsesChange = { joinLinkMaxUses = it },
+                    onExpiresAtChange = { joinLinkExpiresAt = it },
+                    onCreate = {},
+                    onAction = { _, _ -> }
+                )
+            "pre-join-agreement" ->
+                SettingsServerAgreementCard(
+                    agreement = snapshot.agreement,
+                    section = snapshot.sections.firstOrNull { it.key == "pre_join_agreement" },
+                    enabled = agreementEnabled,
+                    title = agreementTitle,
+                    bodyMarkdown = agreementBody,
+                    actionState = null,
+                    onEnabledChange = { agreementEnabled = it },
+                    onTitleChange = { agreementTitle = it },
+                    onBodyChange = { agreementBody = it },
+                    onSubmit = {}
+                )
+            "onboarding" ->
+                SettingsServerOnboardingCard(
+                    onboarding = snapshot.onboarding,
+                    section = snapshot.sections.firstOrNull { it.key == "onboarding_agent" },
+                    selectedAgentId = onboardingAgentId,
+                    greetingEnabled = onboardingGreetingEnabled,
+                    actionState = null,
+                    onAgentSelected = { onboardingAgentId = it },
+                    onGreetingEnabledChange = { onboardingGreetingEnabled = it },
+                    onSubmit = {}
+                )
+            "member-permissions" ->
+                SettingsServerMemberPermissionsCard(
+                    profile = snapshot.profile,
+                    section = snapshot.sections.firstOrNull { it.key == "member_permissions" },
+                    hideHumansFromMembers = hideHumansFromMembers,
+                    actionState = null,
+                    onHideHumansFromMembersChange = { hideHumansFromMembers = it },
+                    onSubmit = {}
+                )
+            "translation" ->
+                SettingsServerTranslationPreferenceCard(
+                    snapshot = settingsVisualLanguageRegionSnapshot(),
+                    actionState = null,
+                    onServerTranslationChange = {}
+                )
+            // Unknown section keys fall back to the previous whole-page render
+            // so a stale capture list still produces a diagnosable image.
+            else -> SettingsVisualServerFocusedContent("administration")
+        }
+    }
 }
 
 @Composable
