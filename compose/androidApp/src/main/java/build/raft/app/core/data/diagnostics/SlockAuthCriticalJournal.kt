@@ -42,23 +42,21 @@ object SlockAuthCriticalJournal {
 
     fun isCritical(message: String): Boolean = classifyAuthCriticalEvent(message) != null
 
-    /** Returns true when the message belongs in the auth journal. */
-    fun record(level: String, tag: String, message: String): Boolean {
-        val event = classifyAuthCriticalEvent(message) ?: return false
-        val sanitizedMessage = DiagnosticsSanitizer.sanitize(message).take(MessageMaxChars)
-        val line =
-            buildAuthCriticalJournalLine(
-                timestamp = diagnosticsTimestamp(),
-                level = level.trim().lowercase(Locale.US).ifBlank { "info" },
-                tag = tag.takeIf { it.isNotBlank() } ?: "SlockAuth",
-                event = event,
-                message = sanitizedMessage,
-                thread = Thread.currentThread().name,
-                seq = System.nanoTime(),
-                dropped = droppedEntries.get()
-            )
-        executor.execute { append(line) }
-        return true
+    internal fun record(record: SanitizedDiagnosticLog, event: String) {
+        executor.execute {
+            val line =
+                buildSanitizedAuthCriticalJournalLine(
+                    timestamp = diagnosticsTimestamp(record.timestampMillis),
+                    level = record.level.trim().lowercase(Locale.US).ifBlank { "info" },
+                    tag = record.tag.takeIf { it.isNotBlank() } ?: "SlockAuth",
+                    event = event,
+                    message = record.message.take(MessageMaxChars),
+                    thread = record.threadName,
+                    seq = record.sequence,
+                    dropped = droppedEntries.get() + record.droppedBeforeDispatch,
+                )
+            append(line)
+        }
     }
 
     fun flush() {
@@ -130,10 +128,17 @@ object SlockAuthCriticalJournal {
 
     private fun journalDir(context: Context): File = File(context.filesDir, JournalDirName)
 
-    private fun diagnosticsTimestamp(): String =
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).apply {
+    private fun diagnosticsTimestamp(timestampMillis: Long): String =
+        requireNotNull(TimestampFormatter.get()).apply {
             timeZone = TimeZone.getDefault()
-        }.format(Date())
+        }.format(Date(timestampMillis))
+
+    private val TimestampFormatter =
+        ThreadLocal.withInitial {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).apply {
+                timeZone = TimeZone.getDefault()
+            }
+        }
 }
 
 internal fun classifyAuthCriticalEvent(message: String): String? {
@@ -167,12 +172,33 @@ internal fun buildAuthCriticalJournalLine(
     seq: Long,
     dropped: Long
 ): String =
+    buildSanitizedAuthCriticalJournalLine(
+        timestamp = timestamp,
+        level = level,
+        tag = tag,
+        event = event,
+        message = DiagnosticsSanitizer.sanitize(message),
+        thread = thread,
+        seq = seq,
+        dropped = dropped,
+    )
+
+private fun buildSanitizedAuthCriticalJournalLine(
+    timestamp: String,
+    level: String,
+    tag: String,
+    event: String,
+    message: String,
+    thread: String,
+    seq: Long,
+    dropped: Long,
+): String =
     JSONObject()
         .put("ts", timestamp)
         .put("level", level)
         .put("tag", tag)
         .put("event", event)
-        .put("message", DiagnosticsSanitizer.sanitize(message))
+        .put("message", message)
         .put("thread", thread)
         .put("seq", seq)
         .put("dropped", dropped)

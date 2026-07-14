@@ -52,25 +52,24 @@ object SlockGeneralLogRing {
         appContext = context.applicationContext
     }
 
-    fun record(level: String, tag: String, message: String) {
-        val normalizedLevel = level.trim().lowercase(Locale.US).ifBlank { "info" }
-        val safeTag = tag.takeIf { it.isNotBlank() } ?: return
-        val sanitizedMessage = DiagnosticsSanitizer.sanitize(message)
-        val truncated = sanitizedMessage.length > MessageMaxChars
-        val entry =
-            DiagnosticEntry(
-                timestamp = diagnosticsTimestamp(),
-                level = normalizedLevel,
-                tag = safeTag,
-                event = sanitizedMessage.substringBefore(' ', missingDelimiterValue = sanitizedMessage).take(96),
-                message = sanitizedMessage.take(MessageMaxChars),
-                thread = Thread.currentThread().name,
-                seq = System.nanoTime(),
-                dropped = droppedEntries.get(),
-                truncated = truncated
-            )
-        remember(entry)
-        executor.execute { append(entry) }
+    internal fun record(record: SanitizedDiagnosticLog) {
+        executor.execute {
+            val truncated = record.message.length > MessageMaxChars
+            val entry =
+                DiagnosticEntry(
+                    timestamp = diagnosticsTimestamp(record.timestampMillis),
+                    level = record.level.trim().lowercase(Locale.US).ifBlank { "info" },
+                    tag = record.tag,
+                    event = record.message.substringBefore(' ', missingDelimiterValue = record.message).take(96),
+                    message = record.message.take(MessageMaxChars),
+                    thread = record.threadName,
+                    seq = record.sequence,
+                    dropped = droppedEntries.get() + record.droppedBeforeDispatch,
+                    truncated = truncated,
+                )
+            remember(entry)
+            append(entry)
+        }
     }
 
     fun hasFiles(context: Context): Boolean =
@@ -208,10 +207,10 @@ object SlockGeneralLogRing {
             "Unable to read diagnostics file ${file.name}: ${error.javaClass.simpleName}"
         }
 
-    private fun diagnosticsTimestamp(): String =
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).apply {
+    private fun diagnosticsTimestamp(timestampMillis: Long): String =
+        requireNotNull(TimestampFormatter.get()).apply {
             timeZone = TimeZone.getDefault()
-        }.format(Date())
+        }.format(Date(timestampMillis))
 
     private fun logDir(context: Context): File = File(context.filesDir, LogDirName)
 
@@ -248,6 +247,13 @@ object SlockGeneralLogRing {
                 .put("truncated", truncated)
                 .toString()
     }
+
+    private val TimestampFormatter =
+        ThreadLocal.withInitial {
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).apply {
+                timeZone = TimeZone.getDefault()
+            }
+        }
 }
 
 internal fun diagnosticsRetentionLabel(fileCount: Int): String =

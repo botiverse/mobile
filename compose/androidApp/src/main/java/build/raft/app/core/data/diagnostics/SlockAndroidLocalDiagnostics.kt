@@ -6,6 +6,7 @@ import android.util.Log
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.json.JSONObject
@@ -26,6 +27,12 @@ object SlockAndroidLocalDiagnostics {
     private const val FeedbackSnapshotName = "slock-diagnostics-summary.txt"
     private const val RecentDiagnosticsMaxChars = 120_000
     private const val MaxValueLength = 512
+    private const val MaxQueuedMessageLength = 8_192
+    private const val MaxQueuedThreadNameLength = 128
+
+    private val diagnosticSequence = AtomicLong(System.nanoTime())
+    private val dispatchQueue =
+        SlockDiagnosticsDispatchQueue(processor = ::processPendingLog)
 
     fun init(context: Context) {
         SlockGeneralLogRing.init(context.applicationContext)
@@ -45,13 +52,47 @@ object SlockAndroidLocalDiagnostics {
         SlockGeneralLogRing.hasFiles(context.applicationContext) ||
             SlockAuthCriticalJournal.hasFiles(context.applicationContext)
 
-    fun recordLog(level: String, tag: String, message: String) {
-        val cleanTag = tag.valueOrNull() ?: return
-        val cleanMessage = DiagnosticsSanitizer.sanitize(message).takeIf { it.isNotBlank() } ?: return
-        writeLogcat(level, cleanTag, cleanMessage)
-        val routedToAuthJournal = SlockAuthCriticalJournal.record(level, cleanTag, cleanMessage)
-        if (!routedToAuthJournal && SlockPersistentDiagnosticsPolicy.shouldPersist(level, cleanMessage)) {
-            SlockGeneralLogRing.record(level, cleanTag, cleanMessage)
+    fun recordLog(
+        level: String,
+        tag: String,
+        message: String,
+        includeNonCritical: Boolean = true,
+    ) {
+        dispatchQueue.enqueue(
+            PendingDiagnosticLog(
+                level = level.take(16),
+                tag = tag.take(MaxValueLength),
+                message = message.take(MaxQueuedMessageLength),
+                timestampMillis = System.currentTimeMillis(),
+                threadName = Thread.currentThread().name.take(MaxQueuedThreadNameLength),
+                sequence = diagnosticSequence.incrementAndGet(),
+                includeNonCritical = includeNonCritical,
+            )
+        )
+    }
+
+    private fun processPendingLog(entry: PendingDiagnosticLog, droppedBeforeDispatch: Long) {
+        runCatching {
+            val cleanTag = entry.tag.valueOrNull() ?: return
+            val cleanMessage = DiagnosticsSanitizer.sanitize(entry.message).takeIf { it.isNotBlank() } ?: return
+            val sanitized =
+                SanitizedDiagnosticLog(
+                    level = entry.level,
+                    tag = cleanTag,
+                    message = cleanMessage,
+                    timestampMillis = entry.timestampMillis,
+                    threadName = entry.threadName,
+                    sequence = entry.sequence,
+                    droppedBeforeDispatch = droppedBeforeDispatch,
+                )
+            val authEvent = classifyAuthCriticalEvent(sanitized.message)
+            if (!shouldEmitDiagnostic(entry.includeNonCritical, authEvent)) return
+            writeLogcat(sanitized.level, sanitized.tag, sanitized.message)
+            if (authEvent != null) {
+                SlockAuthCriticalJournal.record(sanitized, authEvent)
+            } else if (SlockPersistentDiagnosticsPolicy.shouldPersist(sanitized.level, sanitized.message)) {
+                SlockGeneralLogRing.record(sanitized)
+            }
         }
     }
 
@@ -68,8 +109,7 @@ object SlockAndroidLocalDiagnostics {
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
         val appContext = context.applicationContext
-        SlockGeneralLogRing.flush()
-        SlockAuthCriticalJournal.flush()
+        flush()
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
         pruneFeedbackArchives(feedbackDir)
         val archive = File(feedbackDir, "$FeedbackFilePrefix${System.currentTimeMillis()}$FeedbackZipExtension")
@@ -110,6 +150,7 @@ object SlockAndroidLocalDiagnostics {
 
     fun exportRecentDiagnosticsText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
         val appContext = context.applicationContext
+        flush()
         val authText = SlockAuthCriticalJournal.exportRecentText(appContext, maxChars / 2)
         val generalText = SlockGeneralLogRing.exportRecentText(appContext, maxChars - authText.length)
         val text =
@@ -127,6 +168,7 @@ object SlockAndroidLocalDiagnostics {
 
     fun clearLocalDiagnosticsFiles(context: Context) {
         val appContext = context.applicationContext
+        flush()
         runCatching {
             feedbackDir(appContext).listFiles()
                 ?.filter { it.isFile && it.name.startsWith(FeedbackFilePrefix) }
@@ -135,6 +177,12 @@ object SlockAndroidLocalDiagnostics {
         SlockGeneralLogRing.clearFiles(appContext)
         SlockAuthCriticalJournal.clearFiles(appContext)
         recordLog("info", Tag, "diagnostics_local_files_clear_requested")
+    }
+
+    internal fun flush() {
+        dispatchQueue.flush()
+        SlockGeneralLogRing.flush()
+        SlockAuthCriticalJournal.flush()
     }
 
     // ---- Reporting hooks retained as no-ops (External crash reporting moved) -----------------
@@ -215,3 +263,6 @@ object SlockAndroidLocalDiagnostics {
         }
     }
 }
+
+internal fun shouldEmitDiagnostic(includeNonCritical: Boolean, authEvent: String?): Boolean =
+    includeNonCritical || authEvent != null
