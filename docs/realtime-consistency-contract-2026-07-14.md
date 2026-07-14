@@ -92,9 +92,12 @@ Message sequence numbers are ordered but not dense. Therefore
 `pendingTarget` is a missing-through boundary, not a promise that every integer
 below it exists in the stream.
 
-- If gap event `N` has not been applied live, recovery may target `N`.
-- If event `N` has already been applied live, recovery targets at most `N - 1`.
-- A stable short page MAY terminate with `networkCursor < pendingTarget`.
+- If gap event `N` has not been applied live, recovery MUST advance
+  `pendingTarget` to `max(previousPendingTarget, N)`.
+- If a new high-water event `N` has already been applied live, recovery MUST
+  advance `pendingTarget` to `max(previousPendingTarget, N - 1)`.
+- A stable short page MUST terminate even with
+  `networkCursor < pendingTarget`.
   That is not proof of a missing message because the skipped sequence numbers
   may belong to another stream or may not be visible to this receiver.
 - Tests MUST use real sparse fixtures. A fixture with contiguous `+1` sequence
@@ -113,8 +116,9 @@ The active identity is the tuple:
 
 The following rules are mandatory:
 
-1. A gap observed for the same route identity and route generation MAY join
-   the active recovery by advancing its target.
+1. A gap observed for the same route identity and route generation MUST join
+   the active recovery by advancing its target, or remain a no-op when the
+   target does not advance. It MUST NOT create a second recovery owner.
 2. A new route generation or different route identity MUST replace the active
    recovery with a new recovery id.
 3. An old recovery's response, terminal transition, exception handler, or
@@ -144,7 +148,8 @@ For every accepted network response:
    returned later by recovery appears exactly once.
 6. Every payload, cache, error, `Empty`, `NoPermission`, idle, loading, and
    `canLoadMoreAfter` write MUST revalidate both the current route generation
-   and active recovery id.
+   and the active operation id: the recovery id for gap recovery, or the
+   explicit pagination owner id for ordinary `LoadNewer`.
 
 No network await may occur while holding the state/authority mutex. The mutex
 protects short identity and state transitions, not transport latency.
@@ -268,10 +273,12 @@ current grants. Each `SlotKey` has at most one current `GrantRecord`.
 `AuthRevision(generation, session?)` is the durable auth truth. A null session
 is a durable tombstone and MUST survive restart.
 
-At the same authority linearization point:
+When processing an auth event at the same authority linearization point:
 
 - `g < lastGeneration`: ignore as stale;
-- `g == lastGeneration`: idempotent, with zero mint;
+- `g == lastGeneration`: the duplicate auth event is idempotent, with zero
+  mint; this does not prohibit `register(scopeKey)` from creating a new lease
+  under the unchanged current revision as defined in section 13;
 - `g > lastGeneration`: reread durable auth and atomically build and publish
   one complete `RegistrySnapshot` across all active leases, grants, gates,
   shadows, and exposed flows.
@@ -297,8 +304,8 @@ and grant epochs. Principal equality does not keep old authority current.
 - after an old lease is released, registering the same key creates a new
   `scopeLeaseId`;
 - when the current auth revision has a live session, the new lease atomically
-  receives a connection family, current-server grants, and flows at that same
-  revision;
+  receives one connection family, all server-slot grants for the session's
+  memberships, and flows at that same revision;
 - under an auth tombstone, registration cannot mint a family or grant;
 - the old lease's witnesses and sink handles remain invalid forever.
 
@@ -377,8 +384,9 @@ Durable facts, cursor, and dedup identity are keyed at least by:
 Consequences:
 
 - principal P2 MUST NOT inherit P1's cursor or private projection;
-- reauth of the same principal MAY reuse committed facts/cursor/dedup, while the
-  grant/family/epoch is new;
+- reauth or token rotation of the same principal MUST reuse already committed
+  durable facts/cursor/dedup, while the grant/family/epoch is new and every new
+  write still requires that new grant;
 - transient ingress dedup resets per connection family/epoch;
 - each consumer owns an independent cursor;
 - a consumer applies facts, projection, and cursor in one transaction;
