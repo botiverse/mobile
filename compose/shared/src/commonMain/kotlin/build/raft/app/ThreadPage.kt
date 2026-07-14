@@ -274,7 +274,6 @@ private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
-private const val ThreadMentionSuggestionPrewarmDelayMs = 100L
 private const val ThreadComposerMentionActionFadeDelayMs = 450L
 private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
@@ -373,6 +372,45 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
 internal enum class ThreadRouteMountPlan {
     LoadingShell,
     FeatureSurfaces
+}
+
+internal data class ThreadFeatureOwnerMountPlan(
+    val mountChatTimeline: Boolean,
+    val mountComposer: Boolean,
+    val mountTasksOwner: Boolean,
+    val mountFilesOwner: Boolean,
+    val mountMemberSuggestionsOwner: Boolean,
+    val mountChannelSuggestionsOwner: Boolean
+)
+
+internal fun threadFeatureOwnerMountPlan(
+    routeMountPlan: ThreadRouteMountPlan,
+    selectedTab: String?,
+    joined: Boolean,
+    showComposer: Boolean,
+    suggestionDemand: ThreadComposerSuggestionDemand
+): ThreadFeatureOwnerMountPlan {
+    if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
+        return ThreadFeatureOwnerMountPlan(
+            mountChatTimeline = false,
+            mountComposer = false,
+            mountTasksOwner = false,
+            mountFilesOwner = false,
+            mountMemberSuggestionsOwner = false,
+            mountChannelSuggestionsOwner = false
+        )
+    }
+    val normalizedTab = selectedTab?.trim()?.lowercase().orEmpty().ifBlank { "chat" }
+    val mountChat = normalizedTab == "chat"
+    val mountComposer = mountChat && joined && showComposer
+    return ThreadFeatureOwnerMountPlan(
+        mountChatTimeline = mountChat,
+        mountComposer = mountComposer,
+        mountTasksOwner = normalizedTab == "tasks",
+        mountFilesOwner = normalizedTab == "files",
+        mountMemberSuggestionsOwner = mountComposer && suggestionDemand == ThreadComposerSuggestionDemand.Members,
+        mountChannelSuggestionsOwner = mountComposer && suggestionDemand == ThreadComposerSuggestionDemand.Channels
+    )
 }
 
 internal fun KuiklyThreadScreenPayload.threadRouteMountPlan(
@@ -1795,6 +1833,7 @@ internal fun shouldStartThreadTasksJoin(
     taskChannelId: ChannelId?
 ): Boolean =
     shouldStartThreadTasksLoad(payload, taskChannelId) &&
+        KuiklyThreadTab.fromWireValue(payload.selectedTab) == KuiklyThreadTab.Tasks &&
         startedThreadId != taskChannelId?.value
 
 internal fun shouldStartThreadTasksLoad(
@@ -1835,15 +1874,6 @@ private fun KuiklyThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boo
 
 private fun KuiklyThreadScreenPayload.replyParentMessageIdForAuxiliary(): String? =
     parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
-
-private fun TasksUiState.threadTasksJoinDiagnosticsResult(): Pair<String, Int>? =
-    when (val state = loadState) {
-        ScreenLoadState.Loading -> null
-        is ScreenLoadState.Content -> "content" to state.data.tasks.size
-        is ScreenLoadState.Empty -> "empty:${state.reason.name}" to 0
-        is ScreenLoadState.Error -> "error:${state.error.code}" to 0
-        is ScreenLoadState.NoPermission -> "no_permission:${state.blocker.code}" to 0
-    }
 
 private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(): String =
     threadRenderDiagnosticsSource(toThreadTimelineSlice())
@@ -3792,6 +3822,32 @@ internal fun SharedThreadRouteContent(
         )
         return
     }
+    var selectedThreadTab by remember(threadInstanceKey, payload.selectedTab) {
+        mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
+    }
+    val availableThreadTabs =
+        remember(payload.showTaskOpenActions, payload.showTaskStatusActions, payload.composer.showAsTaskToggle) {
+            KuiklyThreadTab.entries.filter { tab ->
+                tab != KuiklyThreadTab.Tasks || payload.supportsChannelTasks()
+            }
+        }
+    LaunchedEffect(availableThreadTabs, selectedThreadTab) {
+        if (selectedThreadTab !in availableThreadTabs) {
+            selectedThreadTab = KuiklyThreadTab.Chat
+            threadViewModel.dispatch(SharedThreadIntent.SelectTab(KuiklyThreadTab.Chat.wireValue))
+        }
+    }
+    var composerSuggestionDemand by remember(threadInstanceKey) {
+        mutableStateOf(ThreadComposerSuggestionDemand.None)
+    }
+    val featureOwnerMountPlan =
+        threadFeatureOwnerMountPlan(
+            routeMountPlan = routeMountPlan,
+            selectedTab = selectedThreadTab.wireValue,
+            joined = payload.joined,
+            showComposer = payload.showComposer,
+            suggestionDemand = composerSuggestionDemand
+        )
     val headerProjectionMapDiagnostics =
         remember(directoryConversationProjections) {
             directoryConversationProjections.headerProjectionMapDiagnostics()
@@ -4029,9 +4085,6 @@ internal fun SharedThreadRouteContent(
     }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    var startedTasksJoinThreadId by remember { mutableStateOf<String?>(null) }
-    var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
-    var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
     val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
 
     DisposableEffect(threadInstanceKey) {
@@ -4080,7 +4133,7 @@ internal fun SharedThreadRouteContent(
     }
     val taskChannelId = payload.resolvedTaskLookupChannelId()?.let(::ChannelId)
     val tasksViewModel: SharedTasksViewModel? =
-        taskChannelId?.let { resolvedTaskChannelId ->
+        taskChannelId?.takeIf { featureOwnerMountPlan.mountTasksOwner }?.let { resolvedTaskChannelId ->
             viewModel(key = "shared-thread-tasks-${resolvedTaskChannelId.value}") {
                 SharedTasksViewModel(
                     authStore = authStore,
@@ -4188,10 +4241,15 @@ internal fun SharedThreadRouteContent(
             serverMembersStore,
             currentServerId,
             memberSuggestionScopeChannelId,
-            memberSuggestionScopedMentions
+            memberSuggestionScopedMentions,
+            featureOwnerMountPlan.mountMemberSuggestionsOwner
         ) {
             val serverId = currentServerId?.let(::ServerId)
-            if (serverMembersStore != null && serverId != null) {
+            if (
+                featureOwnerMountPlan.mountMemberSuggestionsOwner &&
+                serverMembersStore != null &&
+                serverId != null
+            ) {
                 serverMembersStore.memberSuggestionSliceFlow(
                     serverId = serverId,
                     mentionChannelId = memberSuggestionScopeChannelId,
@@ -4210,35 +4268,23 @@ internal fun SharedThreadRouteContent(
             }
         }
     val emptyChannelSuggestionsFlow = remember { MutableStateFlow(SharedMembersChannelSuggestionSlice()) }
-    val channelSuggestionsFlow = remember(membersStore) {
-        membersStore?.channelSuggestionSliceFlow()
+    val channelSuggestionsFlow = remember(membersStore, featureOwnerMountPlan.mountChannelSuggestionsOwner) {
+        membersStore
+            ?.takeIf { featureOwnerMountPlan.mountChannelSuggestionsOwner }
+            ?.channelSuggestionSliceFlow()
             ?.onStart {
                 membersStore.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
             }
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
     }
-    LaunchedEffect(
-        serverMembersStore,
-        membersStore,
-        currentServerId,
-        memberSuggestionScopeChannelId,
-        memberSuggestionScopedMentions
-    ) {
-        delay(ThreadMentionSuggestionPrewarmDelayMs)
-        val serverId = currentServerId?.let(::ServerId)
-        if (serverMembersStore != null && serverId != null) {
-            serverMembersStore.ensureMemberSuggestionsForServer(
-                serverId = serverId,
-                mentionChannelId = memberSuggestionScopeChannelId,
-                memberScopedMentions = memberSuggestionScopedMentions
-            )
-        }
-        membersStore?.dispatch(SharedMembersIntent.EnsureChannelSuggestions)
-    }
-    val filesViewModel: SharedThreadFilesViewModel =
-        viewModel(key = "shared-thread-files-$threadInstanceKey") {
-            SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
+    val filesViewModel: SharedThreadFilesViewModel? =
+        if (featureOwnerMountPlan.mountFilesOwner) {
+            viewModel(key = "shared-thread-files-$threadInstanceKey") {
+                SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
+            }
+        } else {
+            null
         }
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$threadInstanceKey") {
@@ -4284,18 +4330,28 @@ internal fun SharedThreadRouteContent(
             if (event is TaskUpdated) {
                 tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(event.task))
             }
-            if (event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
+            if (
+                event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId) &&
+                (
+                    featureOwnerMountPlan.mountMemberSuggestionsOwner ||
+                        featureOwnerMountPlan.mountChannelSuggestionsOwner
+                )
+            ) {
                 currentServerId?.let { serverId ->
-                    serverMembersStore?.ensureMemberSuggestionsForServer(
-                        serverId = ServerId(serverId),
-                        mentionChannelId = memberSuggestionScopeChannelId,
-                        memberScopedMentions = memberSuggestionScopedMentions,
-                        force = true
+                    if (featureOwnerMountPlan.mountMemberSuggestionsOwner) {
+                        serverMembersStore?.ensureMemberSuggestionsForServer(
+                            serverId = ServerId(serverId),
+                            mentionChannelId = memberSuggestionScopeChannelId,
+                            memberScopedMentions = memberSuggestionScopedMentions,
+                            force = true
+                        )
+                    }
+                }
+                if (featureOwnerMountPlan.mountChannelSuggestionsOwner) {
+                    membersStore?.dispatch(
+                        SharedMembersIntent.RefreshChannelSuggestions
                     )
                 }
-                membersStore?.dispatch(
-                    SharedMembersIntent.RefreshChannelSuggestions
-                )
             }
         }
     )
@@ -4337,33 +4393,6 @@ internal fun SharedThreadRouteContent(
             foregroundMessageBanner = null
         }
     }
-    LaunchedEffect(threadTimelineKey, taskChannelId?.value, payload.status) {
-        if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
-            return@LaunchedEffect
-        }
-        delay(ThreadBackgroundTasksJoinDelayMs)
-        if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
-            return@LaunchedEffect
-        }
-        startedTasksJoinThreadId = taskChannelId?.value
-        lastTasksJoinResultKey = null
-        tasksJoinStartedAt = TimeSource.Monotonic.markNow()
-        bridge.log(
-            "thread_tasks_join_start threadId=${threadTimelineKey.orEmpty()} reason=after_first_content"
-        )
-        tasksViewModel?.dispatch(SharedTasksRouteIntent.StartBackground)
-    }
-    ThreadTasksJoinResultLogger(
-        tasksViewModel = tasksViewModel,
-        taskChannelId = taskChannelId,
-        startedTasksJoinThreadId = startedTasksJoinThreadId,
-        lastTasksJoinResultKey = lastTasksJoinResultKey,
-        tasksJoinStartedAt = tasksJoinStartedAt,
-        threadRouteKey = threadTimelineKey,
-        onLogged = { resultKey -> lastTasksJoinResultKey = resultKey },
-        log = { message -> bridge.log(message) }
-    )
-
     var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
     val baseComposerState =
@@ -5498,6 +5527,10 @@ internal fun SharedThreadRouteContent(
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
+            selectedTab = selectedThreadTab,
+            availableTabs = availableThreadTabs,
+            onSelectedTabChanged = { selectedThreadTab = it },
+            onSuggestionDemandChanged = { composerSuggestionDemand = it },
             activityMuteState = activityMuteState,
             onToggleActivityMute =
                 activityMuteState?.let { muteState ->
@@ -5575,7 +5608,7 @@ internal fun SharedThreadRouteContent(
                     }
                     action == "openFileSource" && !itemId.isNullOrBlank() -> {
                         val fileItem =
-                            filesViewModel.state.value.payload.items.firstOrNull { it.attachmentId == itemId }
+                            filesViewModel?.state?.value?.payload?.items?.firstOrNull { it.attachmentId == itemId }
                         val sourceMessageId = fileItem?.threadFileSourceFocusMessageId()
                         if (sourceMessageId == null) {
                             bridge.toast(fileSourceUnavailableLabel)
@@ -9280,41 +9313,6 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
 }
 
 @Composable
-private fun ThreadTasksJoinResultLogger(
-    tasksViewModel: SharedTasksViewModel?,
-    taskChannelId: ChannelId?,
-    startedTasksJoinThreadId: String?,
-    lastTasksJoinResultKey: String?,
-    tasksJoinStartedAt: TimeMark?,
-    threadRouteKey: String?,
-    onLogged: (String) -> Unit,
-    log: (String) -> Unit
-) {
-    LaunchedEffect(tasksViewModel, startedTasksJoinThreadId, taskChannelId?.value) {
-        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
-        if (startedTasksJoinThreadId != resolvedTaskChannelId.value) {
-            return@LaunchedEffect
-        }
-        tasksViewModel ?: return@LaunchedEffect
-        var latestLoggedKey = lastTasksJoinResultKey
-        tasksViewModel.state.collect { tasksState ->
-            val (result, taskCount) = tasksState.threadTasksJoinDiagnosticsResult() ?: return@collect
-            val resultKey = "${resolvedTaskChannelId.value}:$result:$taskCount"
-            if (latestLoggedKey == resultKey) {
-                return@collect
-            }
-            latestLoggedKey = resultKey
-            onLogged(resultKey)
-            val durationMs = tasksJoinStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L
-            log(
-                "thread_tasks_join_result threadId=${threadRouteKey.orEmpty()} result=$result " +
-                    "tasks=$taskCount durationMs=$durationMs"
-            )
-        }
-    }
-}
-
-@Composable
 private fun ThreadDeferredLoadingRouteContent(
     payload: KuiklyThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
@@ -9364,9 +9362,13 @@ private fun ThreadPageContent(
     tasksViewModel: SharedTasksViewModel?,
     taskChannelId: ChannelId?,
     linkedTasksProjection: ThreadLinkedTasksProjection,
-    filesViewModel: SharedThreadFilesViewModel,
+    filesViewModel: SharedThreadFilesViewModel?,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    selectedTab: KuiklyThreadTab,
+    availableTabs: List<KuiklyThreadTab>,
+    onSelectedTabChanged: (KuiklyThreadTab) -> Unit,
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
     activityMuteState: ThreadActivityMuteUiState? = null,
     onToggleActivityMute: (() -> Unit)? = null,
     forwardServerId: ServerId?,
@@ -9404,9 +9406,6 @@ private fun ThreadPageContent(
     val renderAccessRetry = accessResolution.shouldRenderThreadAccessRetry()
     val shareExportScope = rememberCoroutineScope()
     val markdownTagFeedbackScope = rememberCoroutineScope()
-    var selectedTab by remember(payload.selectedTab) {
-        mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
-    }
     LaunchedEffect(
         threadInstanceKey,
         timelineSlice.status,
@@ -9433,29 +9432,17 @@ private fun ThreadPageContent(
                 "branch=${if (renderEarlyLoadingShell) "early_loading" else "tab_content"}"
         )
     }
-    val availableTabs =
-        remember(payload.showTaskOpenActions, payload.showTaskStatusActions, payload.composer.showAsTaskToggle) {
-            KuiklyThreadTab.entries.filter { tab ->
-                tab != KuiklyThreadTab.Tasks || payload.supportsChannelTasks()
-            }
-        }
-    LaunchedEffect(availableTabs, selectedTab) {
-        if (selectedTab !in availableTabs) {
-            selectedTab = KuiklyThreadTab.Chat
-            onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
-        }
-    }
     var visibleTasksStartThreadId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(selectedTab, taskChannelId?.value, payload.status, tasksViewModel) {
         val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
         tasksViewModel ?: return@LaunchedEffect
-        if (selectedTab != KuiklyThreadTab.Tasks) {
-            return@LaunchedEffect
-        }
-        if (visibleTasksStartThreadId == resolvedTaskChannelId.value) {
-            return@LaunchedEffect
-        }
-        if (!shouldStartThreadTasksLoad(payload, resolvedTaskChannelId)) {
+        if (
+            !shouldStartThreadTasksJoin(
+                payload = payload.copy(selectedTab = selectedTab.wireValue),
+                startedThreadId = visibleTasksStartThreadId,
+                taskChannelId = resolvedTaskChannelId
+            )
+        ) {
             return@LaunchedEffect
         }
         visibleTasksStartThreadId = resolvedTaskChannelId.value
@@ -9735,7 +9722,7 @@ private fun ThreadPageContent(
             payload.toThreadTimelineRenderConfig()
         }
     val selectThreadTab: (KuiklyThreadTab) -> Unit = { tab ->
-        selectedTab = tab
+        onSelectedTabChanged(tab)
         if (tab != KuiklyThreadTab.Chat) {
             clearShareSelection()
         }
@@ -9850,7 +9837,7 @@ private fun ThreadPageContent(
                         threadInstanceKey = threadInstanceKey,
                         basePayload = payload,
                         filesStartKey = resolvedAuxiliaryThreadId,
-                        filesViewModel = filesViewModel,
+                        filesViewModel = checkNotNull(filesViewModel),
                         attachmentOpenStates = attachmentOpenStates,
                         onAuthRequired = onFilesAuthRequired,
                         onOpenAttachment = onOpenFilesAttachment,
@@ -9880,7 +9867,7 @@ private fun ThreadPageContent(
                             onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
                         ThreadHeaderSearchAction.InlineThreadSearch -> {
                             if (selectedTab != KuiklyThreadTab.Chat) {
-                                selectedTab = KuiklyThreadTab.Chat
+                                onSelectedTabChanged(KuiklyThreadTab.Chat)
                                 onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
                             }
                             inlineSearchVisible = !inlineSearchVisible
@@ -10045,6 +10032,7 @@ private fun ThreadPageContent(
                                     insertMentionRequest = null
                                 }
                             },
+                            onSuggestionDemandChanged = onSuggestionDemandChanged,
                             composerSendKeyEnabled = composerSendKeyEnabled,
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {
@@ -10383,6 +10371,7 @@ private fun ThreadComposerRoute(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     composerSendKeyEnabled: Boolean = true,
     onKeyboardHeightChange: (Float) -> Unit
 ) {
@@ -10407,6 +10396,7 @@ private fun ThreadComposerRoute(
         onEvent = onEvent,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
+        onSuggestionDemandChanged = onSuggestionDemandChanged,
         composerSendKeyEnabled = composerSendKeyEnabled,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = 0.dp,
@@ -10427,6 +10417,7 @@ private fun ThreadComposerContentWithSuggestions(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
     composerSendKeyEnabled: Boolean = true,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
@@ -10515,6 +10506,7 @@ private fun ThreadComposerContentWithSuggestions(
         agentStatusResolver = agentStatusResolver,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
+        onSuggestionDemandChanged = onSuggestionDemandChanged,
         composerSendKeyEnabled = composerSendKeyEnabled,
     )
 }
@@ -11501,11 +11493,23 @@ private fun ThreadMessagesList(
                 longMessageCollapseEnabled = longMessageCollapseEnabled
             )
         }
-    LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key, focusedMessageTargetSignature) {
+    LaunchedEffect(
+        threadInstanceKey,
+        initialMarkdownPreparsePlan.key,
+        focusedMessageTargetSignature,
+        initialBottomAnchorReady
+    ) {
         if (initialMarkdownPreparsePlan.key.isEmpty()) {
             diagnosticsLogger(
                 "thread_markdown_preparse_plan scope=loaded_latest_first result=empty " +
                     "messages=${renderPayload.messages.size} extrasVisible=$contentExtrasVisible"
+            )
+            return@LaunchedEffect
+        }
+        if (!initialBottomAnchorReady) {
+            diagnosticsLogger(
+                "thread_markdown_preparse_plan scope=priority_anchor result=awaiting_viewport " +
+                    "messages=${renderPayload.messages.size}"
             )
             return@LaunchedEffect
         }
@@ -13833,7 +13837,6 @@ private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadMarkdownTagActiveFeedbackMs = 900L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
-private const val ThreadBackgroundTasksJoinDelayMs = 360L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12

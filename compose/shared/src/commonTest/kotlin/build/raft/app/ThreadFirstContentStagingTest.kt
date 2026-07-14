@@ -78,4 +78,71 @@ class ThreadFirstContentStagingTest {
         )
     }
 
+    @Test
+    fun payloadReadyMountPlanKeepsNonCurrentAndUntriggeredOwnersLazy() {
+        val loading =
+            threadFeatureOwnerMountPlan(
+                routeMountPlan = ThreadRouteMountPlan.LoadingShell,
+                selectedTab = "chat",
+                joined = true,
+                showComposer = true,
+                suggestionDemand = ThreadComposerSuggestionDemand.Members
+            )
+        assertFalse(loading.mountChatTimeline)
+        assertFalse(loading.mountComposer)
+        assertFalse(loading.mountTasksOwner)
+        assertFalse(loading.mountFilesOwner)
+        assertFalse(loading.mountMemberSuggestionsOwner)
+
+        val firstPayload =
+            threadFeatureOwnerMountPlan(
+                routeMountPlan = ThreadRouteMountPlan.FeatureSurfaces,
+                selectedTab = "chat",
+                joined = true,
+                showComposer = true,
+                suggestionDemand = ThreadComposerSuggestionDemand.None
+            )
+        assertTrue(firstPayload.mountChatTimeline)
+        assertTrue(firstPayload.mountComposer)
+        assertFalse(firstPayload.mountTasksOwner)
+        assertFalse(firstPayload.mountFilesOwner)
+        assertFalse(firstPayload.mountMemberSuggestionsOwner)
+        assertFalse(firstPayload.mountChannelSuggestionsOwner)
+
+        val memberSuggestionInteraction =
+            threadFeatureOwnerMountPlan(
+                routeMountPlan = ThreadRouteMountPlan.FeatureSurfaces,
+                selectedTab = "chat",
+                joined = true,
+                showComposer = true,
+                suggestionDemand = ThreadComposerSuggestionDemand.Members
+            )
+        assertTrue(memberSuggestionInteraction.mountMemberSuggestionsOwner)
+        assertFalse(memberSuggestionInteraction.mountChannelSuggestionsOwner)
+
+        val tasksSelection =
+            threadFeatureOwnerMountPlan(
+                routeMountPlan = ThreadRouteMountPlan.FeatureSurfaces,
+                selectedTab = "tasks",
+                joined = true,
+                showComposer = true,
+                suggestionDemand = ThreadComposerSuggestionDemand.None
+            )
+        assertTrue(tasksSelection.mountTasksOwner)
+        assertFalse(tasksSelection.mountFilesOwner)
+        assertFalse(tasksSelection.mountComposer)
+
+        val filesSelection =
+            threadFeatureOwnerMountPlan(
+                routeMountPlan = ThreadRouteMountPlan.FeatureSurfaces,
+                selectedTab = "files",
+                joined = true,
+                showComposer = true,
+                suggestionDemand = ThreadComposerSuggestionDemand.None
+            )
+        assertTrue(filesSelection.mountFilesOwner)
+        assertFalse(filesSelection.mountTasksOwner)
+        assertFalse(filesSelection.mountComposer)
+    }
+
 }
