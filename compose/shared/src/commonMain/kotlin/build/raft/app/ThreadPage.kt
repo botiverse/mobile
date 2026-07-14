@@ -11166,7 +11166,6 @@ private fun ThreadMessagesList(
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
-    val captureMessageAnchors = !listState.isScrollInProgress
     val coroutineScope = rememberCoroutineScope()
     val duplicateMessageRandomIds =
         remember(renderPayload.messages) {
@@ -12327,7 +12326,9 @@ private fun ThreadMessagesList(
                                 onToggleShareSelection = { onToggleShareSelection(message.id) },
                                 showSaveAction = !captureShareBounds,
                                 showInlineSaveAction = renderPayload.showInlineSaveAction,
-                                isMessageListScrolling = listState.isScrollInProgress,
+                                // Defer this snapshot read to the avatar leaf. Reading it at the
+                                // card boundary invalidates every visible message while anchoring.
+                                isMessageListScrolling = { listState.isScrollInProgress },
                                 alignOwnMessageRight = renderPayload.alignOwnMessagesRight && message.isOwn,
                                 compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
                                 suppressRepeatedAuthor = suppressRepeatedAuthor,
@@ -12338,7 +12339,9 @@ private fun ThreadMessagesList(
                                 activeMarkdownTagKey = activeMarkdownTagKey,
                                 taskOpenEnabled = renderPayload.showTaskOpenActions && isRichContentEnabled,
                                 taskStatusActionsEnabled = renderPayload.showTaskStatusActions && isRichContentEnabled,
-                                captureLongPressAnchor = captureMessageAnchors,
+                                // Gesture eligibility is checked on long press, not while composing
+                                // every row when programmatic scrolling starts or stops.
+                                captureLongPressAnchor = { !listState.isScrollInProgress },
                                 isMarkdownTagValid = isMarkdownTagValid,
                                 onShowActions = { anchor ->
                                     if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
@@ -13836,9 +13839,9 @@ private fun ThreadMessageCard(
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
-    isMessageListScrolling: Boolean = false,
+    isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    captureLongPressAnchor: Boolean = true,
+    captureLongPressAnchor: () -> Boolean = { true },
     shareSelectionActive: Boolean = false,
     selectedForShare: Boolean = false,
     onToggleShareSelection: () -> Unit = {},
@@ -13943,7 +13946,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
-                        statusPulsing = !isMessageListScrolling,
+                        statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
                         onClick = {
                             if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
@@ -14211,7 +14214,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
-                        statusPulsing = !isMessageListScrolling,
+                        statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
                         onClick = {
                             if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
@@ -15133,21 +15136,16 @@ private fun Modifier.threadMessagePressRipple(
 @Composable
 private fun Modifier.threadMessageLongPressActions(
     messageId: String,
-    captureLongPressAnchor: Boolean = true,
+    captureLongPressAnchor: () -> Boolean = { true },
     onShowActions: (Offset) -> Unit,
     onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
+    val currentCaptureLongPressAnchor by rememberUpdatedState(captureLongPressAnchor)
     val rootPos = remember(messageId) { SlockMutableOffsetRef() }
     return this
-        .then(
-            if (captureLongPressAnchor) {
-                Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
-            } else {
-                Modifier
-            }
-        )
+        .onGloballyPositioned { rootPos.update(it.positionInRoot()) }
         .pointerInput(messageId) {
             detectTapGestures(
                 onPress = { downPosition ->
@@ -15167,8 +15165,10 @@ private fun Modifier.threadMessageLongPressActions(
                     }
                 },
                 onLongPress = { localOffset ->
-                    val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
-                    currentOnShowActions(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                    if (currentCaptureLongPressAnchor()) {
+                        val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
+                        currentOnShowActions(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                    }
                 }
             )
         }
@@ -16634,7 +16634,7 @@ private fun ThreadMessageAvatarSlot(
     avatarLabel: String,
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
-    statusPulsing: Boolean = true,
+    statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
@@ -16688,7 +16688,7 @@ private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
-    statusPulsing: Boolean = true,
+    statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
@@ -16717,7 +16717,7 @@ private fun ThreadMessageAvatar(
             // #90 React parity: bump chat thread avatar overlay status dot
             // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
             statusSize = 11.dp,
-            statusPulsing = status?.pulsing == true && statusPulsing
+            statusPulsing = status?.pulsing == true && statusPulsing()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 SlockAvatar(
