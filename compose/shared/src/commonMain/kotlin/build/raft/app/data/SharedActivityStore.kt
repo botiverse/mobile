@@ -1495,7 +1495,7 @@ private fun List<InboxItem>.withActivityThreadTaskProjection(
 ): List<InboxItem> {
     tasksDataStore ?: return this
     val projection = tasksDataStore.projection(serverId, SharedTasksScope.Server)
-    if (projection.status != SharedTasksDataStoreStatus.Loaded || projection.tasks.isEmpty()) return this
+    if (projection.status == SharedTasksDataStoreStatus.Idle || projection.tasks.isEmpty()) return this
     val tasksByMessageId =
         projection.tasks
             .flatMap { task ->

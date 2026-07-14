@@ -106,6 +106,11 @@ internal fun SharedTasksProjectionSlice.threadLinkedTasksProjection(
                 authoritative = true,
                 lookup = tasks.threadLinkedTasksByMessageLookup(references)
             )
+        SharedTasksDataStoreStatus.Partial ->
+            ThreadLinkedTasksProjection(
+                authoritative = false,
+                lookup = tasks.threadLinkedTasksByMessageLookup(references)
+            )
         SharedTasksDataStoreStatus.Idle ->
             ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
     }
