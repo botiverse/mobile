@@ -203,7 +203,10 @@ internal fun settingsAdministrationWebViewUrl(
         ?.takeIf { it.isNotBlank() }
         ?.let { "s/$it/settings/administration" }
         ?: "settings/administration"
-    return "${sharedSettingsWebUrl(webBaseUrl, path)}?lang=$localeTag"
+    // embed=1: the web SettingsPanel drops its own panel header when embedded
+    // in the app WebView (proper contract; the injected chrome script below
+    // stays as a fallback for older web builds).
+    return "${sharedSettingsWebUrl(webBaseUrl, path)}?lang=$localeTag&embed=1"
 }
 
 private fun settingsAdministrationWebViewInjectedJavaScript(session: StoredAuthSession?): String {
