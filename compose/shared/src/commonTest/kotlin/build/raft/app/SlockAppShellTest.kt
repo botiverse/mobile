@@ -130,6 +130,67 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellVisibilitySignalsCoalesceDuplicateLifecycleEventsForOneAppearance() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
+    fun appShellVisibilitySignalsCoalesceInterleavedAppearanceGenerations() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 4,
+                target = "home:"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 5,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 6,
+                target = "home:"
+            )
+        )
+    }
+
+    @Test
     fun appShellVisibilitySignalsPreserveAdjacentGenerationsAndDifferentTargets() {
         val gate = AppShellVisibleRefreshGate()
 

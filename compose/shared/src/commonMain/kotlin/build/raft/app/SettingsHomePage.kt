@@ -1819,12 +1819,9 @@ internal data class AppShellVisibleRefreshKey(
 )
 
 internal class AppShellVisibleRefreshGate {
-    private data class PendingSignal(
-        val signal: AppShellVisibleRefreshSignal,
-        val key: AppShellVisibleRefreshKey
-    )
-
-    private var pendingSignal: PendingSignal? = null
+    private val seenSignalsByKey =
+        mutableMapOf<AppShellVisibleRefreshKey, MutableSet<AppShellVisibleRefreshSignal>>()
+    private val keyOrder = mutableListOf<AppShellVisibleRefreshKey>()
 
     fun shouldRefresh(
         signal: AppShellVisibleRefreshSignal,
@@ -1840,17 +1837,21 @@ internal class AppShellVisibleRefreshGate {
                     },
                 target = target
             )
-        val pairedSignal =
-            pendingSignal?.let { pending ->
-                pending.key == key && pending.signal != signal
-            } == true
-        pendingSignal =
-            if (pairedSignal) {
-                null
-            } else {
-                PendingSignal(signal = signal, key = key)
-            }
-        return !pairedSignal
+        val seenSignals = seenSignalsByKey[key]
+        if (seenSignals != null) {
+            seenSignals += signal
+            return false
+        }
+        seenSignalsByKey[key] = mutableSetOf(signal)
+        keyOrder += key
+        while (keyOrder.size > MaxRememberedAppearanceKeys) {
+            seenSignalsByKey.remove(keyOrder.removeAt(0))
+        }
+        return true
+    }
+
+    private companion object {
+        const val MaxRememberedAppearanceKeys = 16
     }
 }
 
