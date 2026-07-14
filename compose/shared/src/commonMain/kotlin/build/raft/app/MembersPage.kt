@@ -1503,16 +1503,6 @@ internal fun memberDetailUsesRemoteProfileOnly(
         sourceServerId != activeServerId
 }
 
-private fun MemberProfile.toRemoteProfileServerSummary(
-    profileServerId: ServerId,
-    fallback: ServerSummary
-): ServerSummary =
-    ServerSummary(
-        id = profileServerId,
-        name = serverName?.takeIf { it.isNotBlank() } ?: fallback.name,
-        slug = serverSlug?.takeIf { it.isNotBlank() }
-    )
-
 internal fun seedRemoteAgentProfile(
     agentDetailStore: SharedAgentDetailStore,
     member: MemberProfile
@@ -1582,7 +1572,14 @@ private class MemberDetailRouteProvider(
                     loadRemoteAgentProfile(
                         selectedId = selectedId,
                         profileServerId = checkNotNull(sourceServerId),
-                        fallbackServer = server,
+                        profileServer =
+                            session.servers
+                                .firstOrNull { it.id == sourceServerId.value }
+                                ?.toServerSummary()
+                                ?: ServerSummary(
+                                    id = sourceServerId,
+                                    name = sourceServerId.value
+                                ),
                         currentUserId = session.user.id
                     )
                 } else {
@@ -1596,33 +1593,28 @@ private class MemberDetailRouteProvider(
     private suspend fun loadRemoteAgentProfile(
         selectedId: MemberId,
         profileServerId: ServerId,
-        fallbackServer: ServerSummary,
+        profileServer: ServerSummary,
         currentUserId: String?
     ): MemberDetailRouteState {
-        return when (
-            val memberResult =
-                memberRepository.getMemberProfile(
-                    DataRequestPriority.Visible,
-                    selectedId,
-                    profileServerId
-                )
-        ) {
+        val client = agentsApiClient ?: return MemberDetailRouteState.Error("agent_profile_unavailable")
+        return when (val detailResult = client.publicAgentDetail(selectedId)) {
             is DataResult.Content -> {
-                val member = memberResult.data
-                if (member.kind != MemberKind.Agent || member.id != selectedId) {
+                val detail = detailResult.data
+                if (detail.agentId != selectedId || detail.summary?.id != selectedId.value) {
                     return MemberDetailRouteState.Error("member_identity_mismatch")
                 }
-                serverMembersStore.seedProfiles(profileServerId, listOf(member))
-                seedRemoteAgentProfile(agentDetailStore, member)
+                agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detail))
                 MemberDetailRouteState.Agent(
-                    server = member.toRemoteProfileServerSummary(profileServerId, fallbackServer),
+                    server = profileServer.copy(id = profileServerId),
                     currentUserId = currentUserId,
                     profileOnly = true
                 )
             }
             is DataResult.Empty -> MemberDetailRouteState.Error("member_not_found")
-            is DataResult.Error -> MemberDetailRouteState.Error(memberResult.error.code)
-            is DataResult.NoPermission -> MemberDetailRouteState.Error(memberResult.blocker.code)
+            is DataResult.Error -> MemberDetailRouteState.Error(detailResult.error.code)
+            is DataResult.NoPermission -> MemberDetailRouteState.Error(detailResult.blocker.code)
         }
     }
 

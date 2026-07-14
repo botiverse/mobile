@@ -206,6 +206,18 @@ internal class SlockAgentsApiClient(
             diagnosticsLogger = diagnosticsLogger
         ) { it.toSummary() }
 
+    /** Public/profile-only projection; intentionally does not load private agent satellites. */
+    suspend fun publicAgentDetail(agentId: MemberId): DataResult<AgentDetailSnapshot> =
+        agent(agentId).map { summary ->
+            AgentDetailSnapshot(
+                agentId = agentId,
+                summary = summary.toAgentDetailSummary(),
+                directMessages = emptyList(),
+                reminders = emptyList(),
+                activity = emptyList()
+            )
+        }
+
     suspend fun createAgent(body: String): DataResult<AgentSummary> =
         transport.createAgent(body).mapAgentsBody(
             "agent_create_contract_mismatch",
@@ -351,6 +363,35 @@ internal data class AgentSummary(
     val activityDetail: String?,
     val deletedAt: String?
 )
+
+internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
+    AgentDetailSummary(
+        id = id,
+        name = name,
+        displayName = displayName,
+        description = description,
+        serverRole = serverRole,
+        status = status,
+        runtime = runtime,
+        model = model,
+        runtimeModelKind = runtimeModelKind,
+        reasoning = reasoning,
+        executionMode = executionMode,
+        machineId = machineId,
+        machineName = machineName,
+        daemonVersion = daemonVersion,
+        avatarUrl = avatarUrl,
+        creatorId = creatorId,
+        creatorType = creatorType,
+        creator = creator,
+        createdAt = createdAt,
+        envVarNames = envVarNames,
+        envVars = envVars,
+        createdAgents = createdAgents,
+        activity = activity,
+        activityDetail = activityDetail,
+        deletedAt = deletedAt
+    )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
 internal data class AgentActivityPage(val entryCount: Int)
