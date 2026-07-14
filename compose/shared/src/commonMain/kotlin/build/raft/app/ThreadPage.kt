@@ -370,6 +370,23 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
     accessResolution == ThreadAccessResolution.Loading ||
         shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
+internal enum class ThreadRouteMountPlan {
+    LoadingShell,
+    FeatureSurfaces
+}
+
+internal fun KuiklyThreadScreenPayload.threadRouteMountPlan(
+    timelineSlice: ThreadTimelineSlice,
+    accessResolution: ThreadAccessResolution
+): ThreadRouteMountPlan {
+    val showLoadingShell = shouldRenderThreadLoadingShell(timelineSlice, accessResolution)
+    return if (showLoadingShell) {
+        ThreadRouteMountPlan.LoadingShell
+    } else {
+        ThreadRouteMountPlan.FeatureSurfaces
+    }
+}
+
 internal fun ThreadAccessResolution.shouldRenderThreadAccessRetry(): Boolean =
     this == ThreadAccessResolution.Error
 
@@ -3430,11 +3447,74 @@ internal fun SharedThreadRouteContent(
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
     val initialThreadInstanceKey = initialRouteIdentity.instanceKey
+    val payloadRouteIdentity = remember(payload) {
+        payload.resolveThreadRouteIdentity()
+    }
+    val threadInstanceKey = initialThreadInstanceKey
+    val threadTimelineKey =
+        payloadRouteIdentity.timelineChannelId
+            ?: initialRouteIdentity.timelineChannelId
+    val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
     }
     var currentServerSlug by remember(initialThreadInstanceKey) {
         mutableStateOf<String?>(null)
+    }
+    var startedRouteIdentity by remember(initialThreadInstanceKey) {
+        mutableStateOf<ThreadRouteIdentity?>(null)
+    }
+    var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(authStore, initialThreadInstanceKey) {
+        val session = authStore.readSession()
+        currentSession = session
+        currentServerSlug = session?.currentServerSlug()
+    }
+    LaunchedEffect(initialPayload, initialThreadInstanceKey) {
+        if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
+            return@LaunchedEffect
+        }
+        val alreadyStartedRouteIdentity = startedRouteIdentity
+        if (alreadyStartedRouteIdentity != null &&
+            alreadyStartedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)
+        ) {
+            threadViewModel.dispatch(SharedThreadIntent.ApplyRouteIntent(initialPayload))
+            return@LaunchedEffect
+        }
+        startedRouteIdentity = incomingRouteIdentity
+        bridge.performanceMarker(
+            phase = "thread_open_start",
+            routeName = "kuikly_thread",
+            event = "instant",
+            threadId = initialRouteIdentity.instanceKey,
+            metadata =
+                mapOf(
+                    "status" to initialPayload.status.ifBlank { "unknown" },
+                    "source" to initialPayload.threadRenderDiagnosticsSource()
+                )
+        )
+        threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
+    }
+    LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
+        if (firstRenderLoggedThreadId != threadInstanceKey) {
+            firstRenderLoggedThreadId = threadInstanceKey
+            bridge.performanceMarker(
+                phase = "thread_first_render",
+                routeName = "kuikly_thread",
+                event = "instant",
+                threadId = threadTimelineKey ?: threadInstanceKey,
+                metadata =
+                    mapOf(
+                        "status" to timelineSlice.status.ifBlank { "unknown" },
+                        "messages" to timelineSlice.messages.size.toString(),
+                        "source" to payload.threadRenderDiagnosticsSource(timelineSlice)
+                    )
+            )
+            bridge.log(
+                "thread_first_render threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} status=${timelineSlice.status} " +
+                    "messages=${timelineSlice.messages.size} source=${payload.threadRenderDiagnosticsSource(timelineSlice)}"
+            )
+        }
     }
     val headerProjectionRoutePayload =
         remember(
@@ -3587,6 +3667,131 @@ internal fun SharedThreadRouteContent(
             payload.threadActivityMuteState(stableHeaderProjection)
                 ?.takeIf { sharedHomeStore != null }
         }
+    val routeMountPlan =
+        payload.threadRouteMountPlan(
+            timelineSlice = timelineSlice,
+            accessResolution = renderSlice.accessResolution
+        )
+    DisposableEffect(
+        realtimeEvents,
+        currentSession?.currentServerId,
+        payload.parentChannelId,
+        payload.sourceThreadId,
+        payload.streamChannelId
+    ) {
+        val activeRoomIds = payload.activeRealtimeRoomIds()
+        val roomServerId = currentSession?.currentServerId
+        realtimeEvents.joinChannels(activeRoomIds, roomServerId)
+        onDispose {
+            realtimeEvents.leaveChannels(activeRoomIds, roomServerId)
+        }
+    }
+    LaunchedEffect(resolvedAuxiliaryThreadId, active) {
+        if (active) {
+            onResolvedAuxiliaryThreadIdChanged(resolvedAuxiliaryThreadId)
+        }
+    }
+    val coroutineScope = rememberCoroutineScope()
+    val latestCurrentSession by rememberUpdatedState(currentSession)
+    var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
+    var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
+        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+    }
+    val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
+    val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
+        { event ->
+            if (event is Heartbeat) {
+                threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(event.seq))
+            } else {
+                val activeReplyParentMessageId =
+                    initialPayload.originParentMessageId
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(::MessageId)
+                if (!event.isTaskProjectionEvent() && event !is MemberPresenceUpdated) {
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.ApplyRealtimeEvent(
+                            event = event,
+                            activeReplyParentMessageId = activeReplyParentMessageId
+                        )
+                    )
+                }
+                if (event is MemberPresenceUpdated) {
+                    serverMembersStore?.applyPresence(event)
+                }
+            }
+        }
+    )
+    // Pager lifecycle notifications remain mounted with the route core. A
+    // loading -> resolved transition must not reset foreground reconciliation.
+    DisposableEffect(realtimeEvents, active) {
+        val callbackRef =
+            realtimeEvents.addListener { eventData ->
+                val eventDataSnapshot = eventData.toString()
+                coroutineScope.launch {
+                    val lifecycleData = JSONObject(eventDataSnapshot)
+                    if (lifecycleData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
+                        return@launch
+                    }
+                    val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                    val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
+                    if (!threadLifecycleEventTargetsThread(pageName)) {
+                        return@launch
+                    }
+                    if (!appLifecycleEventTargetsShell(
+                            eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                            routeShellInstanceId = storeScope.shellInstanceId
+                        )
+                    ) {
+                        return@launch
+                    }
+                    threadHostForeground = isSlockHostVisible(storeScope.shellInstanceId)
+                    if (
+                        event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                        event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                    ) {
+                        if (threadLifecycleSeen && active) {
+                            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+                            realtimeEvents.rejoinChannels(
+                                latestForegroundRejoinRoomIds,
+                                latestCurrentSession?.currentServerId
+                            )
+                            foregroundReconciler.onForeground("thread_$event")
+                        } else {
+                            threadLifecycleSeen = true
+                        }
+                    }
+                }
+            }
+        onDispose { realtimeEvents.removeListener(callbackRef) }
+    }
+    // The owner records accepted event keys before fan-out. Keep the canonical
+    // Thread sink mounted during LoadingShell so accepted events are never lost
+    // behind the route's feature-surface gate.
+    DisposableEffect(realtimeDomainEventOwner, authStore, coroutineScope) {
+        val sink =
+            RealtimeActiveThreadSink { serverId, event ->
+                coroutineScope.launch {
+                    val currentSessionServerId =
+                        authStore.readSession()
+                            ?.currentServerId
+                            ?.takeIf { it.isNotBlank() }
+                            ?: return@launch
+                    if (currentSessionServerId != serverId) return@launch
+                    if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
+                    latestCoreThreadRealtimeEventHandler(event)
+                }
+            }
+        realtimeDomainEventOwner.registerActiveThreadSink(sink)
+        onDispose { realtimeDomainEventOwner.unregisterActiveThreadSink(sink) }
+    }
+    if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
+        ThreadDeferredLoadingRouteContent(
+            payload = payload,
+            displayModel = headerDisplayModel,
+            onBack = onBack
+        )
+        return
+    }
     val headerProjectionMapDiagnostics =
         remember(directoryConversationProjections) {
             directoryConversationProjections.headerProjectionMapDiagnostics()
@@ -3647,9 +3852,6 @@ internal fun SharedThreadRouteContent(
         payload
             .withSharedShellEventCapabilities()
     }
-    val payloadRouteIdentity = remember(payload) {
-        payload.resolveThreadRouteIdentity()
-    }
     val foregroundConversationDirectory =
         remember(directoryConversationProjections) {
             slockConversationDirectoryStateFromProjections(directoryConversationProjections.values)
@@ -3657,37 +3859,8 @@ internal fun SharedThreadRouteContent(
     var foregroundMessageBanner by remember(initialThreadInstanceKey) {
         mutableStateOf<SlockForegroundMessageBanner?>(null)
     }
-    val latestCurrentSession by rememberUpdatedState(currentSession)
     val latestPayloadRouteIdentity by rememberUpdatedState(payloadRouteIdentity)
     val latestForegroundConversationDirectory by rememberUpdatedState(foregroundConversationDirectory)
-    val threadInstanceKey = initialThreadInstanceKey
-    val threadTimelineKey =
-        payloadRouteIdentity.timelineChannelId
-            ?: initialRouteIdentity.timelineChannelId
-    val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
-    var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
-    var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
-        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
-    }
-    DisposableEffect(
-        realtimeEvents,
-        currentSession?.currentServerId,
-        payload.parentChannelId,
-        payload.sourceThreadId,
-        payload.streamChannelId
-    ) {
-        val activeRoomIds = payload.activeRealtimeRoomIds()
-        val roomServerId = currentSession?.currentServerId
-        realtimeEvents.joinChannels(activeRoomIds, roomServerId)
-        onDispose {
-            realtimeEvents.leaveChannels(activeRoomIds, roomServerId)
-        }
-    }
-    LaunchedEffect(resolvedAuxiliaryThreadId, active) {
-        if (active) {
-            onResolvedAuxiliaryThreadIdChanged(resolvedAuxiliaryThreadId)
-        }
-    }
     var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
@@ -3699,6 +3872,10 @@ internal fun SharedThreadRouteContent(
     }
     var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
+    LaunchedEffect(threadInstanceKey, currentSession?.currentServerId) {
+        createAgentComputerServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }
+        createAgentComputerServerResolved = true
+    }
     var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
@@ -3850,13 +4027,11 @@ internal fun SharedThreadRouteContent(
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
-    var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var startedTasksJoinThreadId by remember { mutableStateOf<String?>(null) }
     var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
     var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
-    val coroutineScope = rememberCoroutineScope()
     val currentAttachmentUploadJobs by rememberUpdatedState(attachmentUploadJobs)
 
     DisposableEffect(threadInstanceKey) {
@@ -3865,68 +4040,7 @@ internal fun SharedThreadRouteContent(
         }
     }
 
-    LaunchedEffect(authStore, initialThreadInstanceKey) {
-        val session = authStore.readSession()
-        currentSession = session
-        currentServerSlug = session?.currentServerSlug()
-        createAgentComputerServerId = session?.currentServerId?.takeIf { it.isNotBlank() }
-        createAgentComputerServerResolved = true
-    }
-    var startedRouteIdentity by remember(initialThreadInstanceKey) {
-        mutableStateOf<ThreadRouteIdentity?>(null)
-    }
-    LaunchedEffect(initialPayload, initialThreadInstanceKey) {
-        if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
-            return@LaunchedEffect
-        }
-        val alreadyStartedRouteIdentity = startedRouteIdentity
-        if (alreadyStartedRouteIdentity != null &&
-            alreadyStartedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)
-        ) {
-            threadViewModel.dispatch(SharedThreadIntent.ApplyRouteIntent(initialPayload))
-            return@LaunchedEffect
-        }
-        startedRouteIdentity = incomingRouteIdentity
-        bridge.performanceMarker(
-            phase = "thread_open_start",
-            routeName = "kuikly_thread",
-            event = "instant",
-            threadId = initialRouteIdentity.instanceKey,
-            metadata =
-                mapOf(
-                    "status" to initialPayload.status.ifBlank { "unknown" },
-                    "source" to initialPayload.threadRenderDiagnosticsSource()
-                )
-        )
-        pendingActionCardIds = emptySet()
-        pendingTaskConvertMessageIds = emptySet()
-        pendingThreadFollowMessageIds = emptySet()
-        createAgentDialogState = null
-        attachmentOpenStates = emptyMap()
-        inlineVideoPreviewStates = emptyMap()
-        attachmentCommentsDialogState = null
-        threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
-    }
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
-        if (firstRenderLoggedThreadId != threadInstanceKey) {
-            firstRenderLoggedThreadId = threadInstanceKey
-            bridge.performanceMarker(
-                phase = "thread_first_render",
-                routeName = "kuikly_thread",
-                event = "instant",
-                threadId = threadTimelineKey ?: threadInstanceKey,
-                metadata =
-                    mapOf(
-                        "status" to timelineSlice.status.ifBlank { "unknown" },
-                        "messages" to timelineSlice.messages.size.toString(),
-                        "source" to payload.threadRenderDiagnosticsSource(timelineSlice)
-                    )
-            )
-            bridge.log(
-                "thread_first_render threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} status=${timelineSlice.status} " +
-                    "messages=${timelineSlice.messages.size} source=${payload.threadRenderDiagnosticsSource(timelineSlice)}"
-            )
-        }
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
             firstContentLoggedThreadId = threadInstanceKey
             bridge.performanceMarker(
@@ -4165,119 +4279,42 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    val latestThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
+    val latestThreadFeatureRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
         { event ->
-            if (event is Heartbeat) {
-                threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(event.seq))
-            } else {
-                val activeReplyParentMessageId =
-                    initialPayload.originParentMessageId
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let(::MessageId)
-                if (!event.isTaskProjectionEvent() && event !is MemberPresenceUpdated) {
-                    threadViewModel.dispatch(
-                        SharedThreadIntent.ApplyRealtimeEvent(
-                            event = event,
-                            activeReplyParentMessageId = activeReplyParentMessageId
-                        )
+            if (event is TaskUpdated) {
+                tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(event.task))
+            }
+            if (event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
+                currentServerId?.let { serverId ->
+                    serverMembersStore?.ensureMemberSuggestionsForServer(
+                        serverId = ServerId(serverId),
+                        mentionChannelId = memberSuggestionScopeChannelId,
+                        memberScopedMentions = memberSuggestionScopedMentions,
+                        force = true
                     )
                 }
-                if (event is MemberPresenceUpdated) {
-                    serverMembersStore?.applyPresence(event)
-                }
-                if (event is TaskUpdated) {
-                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(event.task))
-                }
-                if (event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
-                    currentServerId?.let { serverId ->
-                        serverMembersStore?.ensureMemberSuggestionsForServer(
-                            serverId = ServerId(serverId),
-                            mentionChannelId = memberSuggestionScopeChannelId,
-                            memberScopedMentions = memberSuggestionScopedMentions,
-                            force = true
-                        )
-                    }
-                    membersStore?.dispatch(
-                        SharedMembersIntent.RefreshChannelSuggestions
-                    )
-                }
+                membersStore?.dispatch(
+                    SharedMembersIntent.RefreshChannelSuggestions
+                )
             }
         }
     )
-    // Pager lifecycle notifications are Thread-pager-local and stay on the raw
-    // listener; realtime domain events arrive through the shared
-    // SharedRealtimeDomainEventOwner sink below so the owner's dedup ledger is
-    // the single ingress decision point (#196, replaces per-route raw decode).
-    // resolvedAuxiliaryThreadId is provably within activeRealtimeRoomIds()
-    // (timelineChannelId = streamChannelId ?: sourceThreadId), so the rejoin
-    // set is exactly the mount-time join/leave set — keeping them identical
-    // avoids force-joining a room that never gets a paired leave.
-    val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
-    DisposableEffect(realtimeEvents, active) {
-        val callbackRef =
-            realtimeEvents.addListener { eventData ->
-                val eventDataSnapshot = eventData.toString()
-                coroutineScope.launch {
-                    val lifecycleData = JSONObject(eventDataSnapshot)
-                    if (lifecycleData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
-                        return@launch
-                    }
-                    val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
-                    val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
-                    if (!threadLifecycleEventTargetsThread(pageName)) {
-                        return@launch
-                    }
-                    if (!appLifecycleEventTargetsShell(
-                            eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
-                            routeShellInstanceId = storeScope.shellInstanceId
-                        )
-                    ) {
-                        return@launch
-                    }
-                    threadHostForeground = isSlockHostVisible(storeScope.shellInstanceId)
-                    if (
-                        event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
-                        event == SlockRealtimeNotifyContract.LifecycleVisibleShow
-                    ) {
-                        if (threadLifecycleSeen && active) {
-                            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-                            // Foreground reconciliation: local joined-room state may
-                            // be stale after background/reconnect — force re-emit
-                            // join:channel for the visible thread rooms (server-side
-                            // join is idempotent), and schedule the coalesced
-                            // per-server member/status refresh.
-                            realtimeEvents.rejoinChannels(
-                                latestForegroundRejoinRoomIds,
-                                latestCurrentSession?.currentServerId
-                            )
-                            foregroundReconciler.onForeground("thread_$event")
-                        } else {
-                            threadLifecycleSeen = true
-                        }
-                    }
-                }
-            }
-        onDispose { realtimeEvents.removeListener(callbackRef) }
-    }
-    DisposableEffect(realtimeDomainEventOwner, authStore, coroutineScope) {
+    // Feature-only reactions can mount with resolved content. The core sink
+    // above already owns canonical Thread apply and gap recovery.
+    DisposableEffect(realtimeDomainEventOwner, coroutineScope, currentServerId) {
         val sink =
             RealtimeActiveThreadSink { serverId, event ->
                 coroutineScope.launch {
-                    val currentSessionServerId =
-                        authStore.readSession()
-                            ?.currentServerId
-                            ?.takeIf { it.isNotBlank() }
-                            ?: return@launch
-                    if (currentSessionServerId != serverId) return@launch
+                    if (currentServerId != serverId) return@launch
                     if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
-                    latestThreadRealtimeEventHandler(event)
+                    latestThreadFeatureRealtimeEventHandler(event)
                     if (event is MessageNew) {
                         val session = latestCurrentSession
                         foregroundMessageBanner =
                             if (foregroundMessageBannersEnabled()) {
                                 slockForegroundMessageBannerProjection(
                                     serverId = serverId,
-                                    currentServerId = session?.currentServerId ?: currentSessionServerId,
+                                    currentServerId = session?.currentServerId ?: currentServerId,
                                     message = event.message,
                                     currentMemberId = session?.user?.id,
                                     visibleConversationKey = null,
@@ -9278,6 +9315,40 @@ private fun ThreadTasksJoinResultLogger(
 }
 
 @Composable
+private fun ThreadDeferredLoadingRouteContent(
+    payload: KuiklyThreadScreenPayload,
+    displayModel: ThreadHeaderDisplayModel,
+    onBack: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            ThreadPageHeader(
+                payload = payload,
+                headerDisplay = displayModel,
+                activityMuteState = null,
+                memberAvatarResolver = EmptySlockMemberAvatarResolver,
+                showActions = false,
+                onBack = onBack,
+                onOpenInChannel = {},
+                onOpenMemberProfile = {},
+                onOpenSearch = {},
+                onShowMembers = {},
+                onShowSettings = {}
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceWhite)
+            ) {
+                ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ThreadPageContent(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
@@ -10128,6 +10199,7 @@ private fun ThreadPageHeader(
     activityMuteState: ThreadActivityMuteUiState? = payload.threadActivityMuteState(null),
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     applyTopSafeArea: Boolean = true,
+    showActions: Boolean = true,
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
     onOpenMemberProfile: (MemberDetailIdentity) -> Unit,
@@ -10210,11 +10282,14 @@ private fun ThreadPageHeader(
                 }
             }
             if (
-                payload.threadHeaderSearchAction() != null ||
-                (activityMuteState != null && onToggleActivityMute != null) ||
-                payload.showSettingsAction ||
-                payload.showMembersAction ||
-                payload.threadHeaderOpenInParentActionVisible()
+                showActions &&
+                    (
+                        payload.threadHeaderSearchAction() != null ||
+                            (activityMuteState != null && onToggleActivityMute != null) ||
+                            payload.showSettingsAction ||
+                            payload.showMembersAction ||
+                            payload.threadHeaderOpenInParentActionVisible()
+                    )
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

@@ -828,8 +828,22 @@ class ThreadPayloadTest {
                     accessResolution = ThreadAccessResolution.Loading
                 )
             )
+            assertEquals(
+                ThreadRouteMountPlan.LoadingShell,
+                cachedContentPayload.threadRouteMountPlan(
+                    timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
+                    accessResolution = ThreadAccessResolution.Loading
+                )
+            )
             assertFalse(
                 cachedContentPayload.shouldRenderThreadLoadingShell(
+                    timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
+                    accessResolution = ThreadAccessResolution.Resolved
+                )
+            )
+            assertEquals(
+                ThreadRouteMountPlan.FeatureSurfaces,
+                cachedContentPayload.threadRouteMountPlan(
                     timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
                     accessResolution = ThreadAccessResolution.Resolved
                 )
