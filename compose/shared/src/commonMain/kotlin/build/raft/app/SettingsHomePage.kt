@@ -109,6 +109,7 @@ import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.AuthRefreshResponse
+import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.AuthSocialCompleteResponse
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.InMemorySlockAuthSessionStore
@@ -2864,6 +2865,17 @@ private fun SlockAppShellContent(
                 resetAppShellSessionState()
             }
             authGateViewModel.dispatch(appShellSessionChangeRestoreIntent(identityChanged))
+        }
+    }
+    LaunchedEffect(authStore) {
+        authStore.authSessionEvents.collect { event ->
+            val restoreIntent = appShellAuthSessionEventRestoreIntent(event) ?: return@collect
+            bridge.log(
+                "app_shell_auth_session_event_received type=binding_metadata_changed " +
+                    "generation=${event.generation} action=refresh_silently"
+            )
+            authGateMessage = null
+            authGateViewModel.dispatch(restoreIntent)
         }
     }
 
@@ -12362,6 +12374,9 @@ private class AuthChooseServerVisualApi(
     override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
         AuthApiResult.Failure(code = 400)
 
+    override suspend fun verifyEmail(token: String): AuthApiResult<Unit> =
+        AuthApiResult.Failure(code = 400)
+
     override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
         AuthApiResult.Success(user)
 
@@ -17120,6 +17135,13 @@ internal fun appShellSessionIdentityChanged(
 
 internal fun appShellSessionChangeRestoreIntent(identityChanged: Boolean): SharedAuthGateIntent =
     if (identityChanged) SharedAuthGateIntent.Restore else SharedAuthGateIntent.RefreshSilently
+
+internal fun appShellAuthSessionEventRestoreIntent(event: AuthSessionEvent): SharedAuthGateIntent? =
+    if (event is AuthSessionEvent.BindingMetadataChanged) {
+        SharedAuthGateIntent.RefreshSilently
+    } else {
+        null
+    }
 
 private fun SharedAuthGateState.authGateDiagnosticsName(): String =
     when (this) {

@@ -10,6 +10,7 @@ interface SlockAuthTransport {
     suspend fun register(bodyText: String): AuthNetworkResponse
     suspend fun forgotPassword(bodyText: String): AuthNetworkResponse
     suspend fun resendVerification(authorization: String): AuthNetworkResponse
+    suspend fun verifyEmail(bodyText: String): AuthNetworkResponse
     suspend fun currentUser(authorization: String): AuthNetworkResponse
     suspend fun refresh(bodyText: String): AuthNetworkResponse
     suspend fun logout(bodyText: String): AuthNetworkResponse

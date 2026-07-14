@@ -188,6 +188,9 @@ class SlockNetworkAuthMiddlewareTest {
         override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
             error("not used")
 
+        override suspend fun verifyEmail(token: String): AuthApiResult<Unit> =
+            error("not used")
+
         override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
             error("not used")
 

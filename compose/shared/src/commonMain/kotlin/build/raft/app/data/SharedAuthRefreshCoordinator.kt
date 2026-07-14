@@ -270,30 +270,31 @@ internal class SharedAuthRefreshCoordinator(
         if (code != 401 && code != 403) {
             return SharedAuthRefreshResult.Failure(exchange.response)
         }
-        val latest = sessionStore.readSession()
-        if (latest != null && !latest.sameTokensAs(exchange.originalSession)) {
-            logAlreadyUpdated(latest, null, null, safeCaller, safeReason)
-            return SharedAuthRefreshResult.Success(latest)
-        }
         if (clearOnUnauthorized) {
-            val clearCandidate = sessionStore.readSession()
-            if (clearCandidate != null && !clearCandidate.sameTokensAs(exchange.originalSession)) {
-                logAlreadyUpdated(clearCandidate, null, null, safeCaller, safeReason)
-                return SharedAuthRefreshResult.Success(clearCandidate)
-            }
-            if (clearCandidate?.sameTokensAs(exchange.originalSession) == true) {
-                sessionStore.clearSession(
+            val cleared =
+                sessionStore.clearSessionIfMatches(
+                    expectedAccountId = exchange.originalSession.user.id,
+                    expectedAccessToken = exchange.originalSession.accessToken,
+                    expectedRefreshToken = exchange.originalSession.refreshToken,
                     reason = "refresh_http_$code",
-                    source = clearSource
+                    source = clearSource,
                 )
+            if (!cleared) {
+                val successor = sessionStore.readSession()
+                if (successor != null && !successor.sameTokensAs(exchange.originalSession)) {
+                    logAlreadyUpdated(successor, null, null, safeCaller, safeReason)
+                    return SharedAuthRefreshResult.Success(successor)
+                }
             }
             coordinationMutex.withLock {
                 recentUnauthorizedByRefreshToken.remove(exchange.originalSession.refreshToken)
             }
-            warningLogger(
-                "refresh_unauthorized_session_cleared status=$code " +
-                    "reason=$safeReason caller=$safeCaller"
-            )
+            if (cleared) {
+                warningLogger(
+                    "refresh_unauthorized_session_cleared status=$code " +
+                        "reason=$safeReason caller=$safeCaller"
+                )
+            }
         } else {
             warningLogger(
                 "refresh_unauthorized_session_preserved status=$code " +
@@ -314,16 +315,20 @@ internal class SharedAuthRefreshCoordinator(
             "refresh_skip reason=missing_refresh_token caller=$safeCaller requestReason=$safeReason"
         )
         if (clearOnUnauthorized) {
-            val latest = sessionStore.readSession()
-            if (latest != null && !latest.sameTokensAs(current)) {
-                logAlreadyUpdated(latest, null, null, safeCaller, safeReason)
-                return SharedAuthRefreshResult.Success(latest)
-            }
-            if (latest?.sameTokensAs(current) == true) {
-                sessionStore.clearSession(
+            val cleared =
+                sessionStore.clearSessionIfMatches(
+                    expectedAccountId = current.user.id,
+                    expectedAccessToken = current.accessToken,
+                    expectedRefreshToken = current.refreshToken,
                     reason = "missing_refresh_token",
-                    source = clearSource
+                    source = clearSource,
                 )
+            if (!cleared) {
+                val successor = sessionStore.readSession()
+                if (successor != null && !successor.sameTokensAs(current)) {
+                    logAlreadyUpdated(successor, null, null, safeCaller, safeReason)
+                    return SharedAuthRefreshResult.Success(successor)
+                }
             }
         } else {
             warningLogger(

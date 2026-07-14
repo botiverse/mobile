@@ -328,6 +328,44 @@ class SharedAuthTokenProviderTest {
     }
 
     @Test
+    fun unauthorizedRefreshCompareAndClearPreservesConcurrentTokenRotation() = runBlocking {
+        val store =
+            RotateBeforeCompareClearSessionStore(
+                initialSession = sampleSession("stale-access", "stale-refresh"),
+                successorAccessToken = "successor-access",
+                successorRefreshToken = "successor-refresh"
+            )
+        val provider =
+            SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi =
+                    FakeAuthApi(
+                        refreshTokenAssertion = "stale-refresh",
+                        responses =
+                            listOf(
+                                AuthApiResult.Failure(
+                                    code = 401,
+                                    errorBodyText = """{"error":"invalid refresh"}"""
+                                )
+                            )
+                    ),
+                clockMillis = { 0L }
+            )
+
+        val result =
+            provider.refreshSession(
+                failedAccessToken = "stale-access",
+                failedRefreshToken = "stale-refresh",
+                clearOnUnauthorized = true
+            )
+
+        assertEquals("successor-access", result?.accessToken)
+        assertEquals("successor-refresh", result?.refreshToken)
+        assertEquals("successor-access", store.readSession()?.accessToken)
+        assertEquals(1, store.compareAndClearCalls)
+    }
+
+    @Test
     fun logsRefreshLifecycleWithTokenFingerprintsOnly() = runBlocking {
         val logs = mutableListOf<String>()
         val store =
@@ -543,6 +581,9 @@ class SharedAuthTokenProviderTest {
         override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
             error("not used")
 
+        override suspend fun verifyEmail(token: String): AuthApiResult<Unit> =
+            error("not used")
+
         override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
             error("not used")
 
@@ -587,6 +628,47 @@ class SharedAuthTokenProviderTest {
 
         override suspend fun clearSession(reason: String, source: String) {
             delegate.clearSession(reason, source)
+        }
+    }
+
+    private class RotateBeforeCompareClearSessionStore(
+        initialSession: StoredAuthSession,
+        private val successorAccessToken: String,
+        private val successorRefreshToken: String,
+    ) : SlockAuthSessionStore {
+        private val delegate = InMemorySlockAuthSessionStore(initialSession)
+        var compareAndClearCalls: Int = 0
+            private set
+
+        override suspend fun readSession(): StoredAuthSession? = delegate.readSession()
+
+        override suspend fun saveSession(session: StoredAuthSession) = delegate.saveSession(session)
+
+        override suspend fun updateTokens(accessToken: String, refreshToken: String) =
+            delegate.updateTokens(accessToken, refreshToken)
+
+        override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) =
+            delegate.updateSelectedServer(serverId, serverSlug)
+
+        override suspend fun clearSession(reason: String, source: String) =
+            delegate.clearSession(reason, source)
+
+        override suspend fun clearSessionIfMatches(
+            expectedAccountId: String,
+            expectedAccessToken: String,
+            expectedRefreshToken: String,
+            reason: String,
+            source: String,
+        ): Boolean {
+            compareAndClearCalls += 1
+            delegate.updateTokens(successorAccessToken, successorRefreshToken)
+            return delegate.clearSessionIfMatches(
+                expectedAccountId = expectedAccountId,
+                expectedAccessToken = expectedAccessToken,
+                expectedRefreshToken = expectedRefreshToken,
+                reason = reason,
+                source = source,
+            )
         }
     }
 

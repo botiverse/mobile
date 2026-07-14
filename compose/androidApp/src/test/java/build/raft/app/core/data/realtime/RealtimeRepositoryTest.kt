@@ -1204,6 +1204,9 @@ class RealtimeRepositoryTest {
         override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
             AuthApiResult.Failure(404)
 
+        override suspend fun verifyEmail(token: String): AuthApiResult<Unit> =
+            AuthApiResult.Failure(404)
+
         override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
             AuthApiResult.Failure(404)
 

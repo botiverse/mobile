@@ -35,21 +35,29 @@ internal fun AndroidShellLaunchTarget.taskLaunchPlan(
 
 /** Process-local lifecycle index. Android document identity remains deterministic across process death. */
 internal object AndroidShellWindowRegistry {
-    private val targetsByShell = ConcurrentHashMap<String, AndroidShellLaunchTarget>()
+    private data class RegisteredShell(
+        val target: AndroidShellLaunchTarget,
+        val taskId: Int?,
+    )
 
-    fun register(target: AndroidShellLaunchTarget) {
-        targetsByShell[target.shellInstanceId] = target
+    private val shellsById = ConcurrentHashMap<String, RegisteredShell>()
+
+    fun register(target: AndroidShellLaunchTarget, taskId: Int? = null) {
+        shellsById[target.shellInstanceId] = RegisteredShell(target = target, taskId = taskId)
     }
 
     fun unregister(shellInstanceId: String) {
-        targetsByShell.remove(shellInstanceId)
+        shellsById.remove(shellInstanceId)
     }
 
     fun targetForServer(serverId: String): AndroidShellLaunchTarget? =
-        targetsByShell.values.firstOrNull { target -> target.serverId == serverId }
+        shellsById.values.firstOrNull { registered -> registered.target.serverId == serverId }?.target
+
+    fun hasShellInTask(taskId: Int): Boolean =
+        shellsById.values.any { registered -> registered.taskId == taskId }
 
     fun clearForTest() {
-        targetsByShell.clear()
+        shellsById.clear()
     }
 }
 

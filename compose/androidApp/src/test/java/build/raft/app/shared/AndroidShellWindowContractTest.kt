@@ -43,11 +43,13 @@ class AndroidShellWindowContractTest {
     @Test
     fun ordinaryLauncherUsesDefaultNonDocumentShell() {
         val target = resolveAndroidShellLaunchTarget(JSONObject())
-        AndroidShellWindowRegistry.register(target)
+        AndroidShellWindowRegistry.register(target, taskId = 41)
 
         assertEquals("android-default-app-shell", target.shellInstanceId)
         assertNull(target.serverId)
         assertFalse(target.documentShell)
+        assertTrue(AndroidShellWindowRegistry.hasShellInTask(41))
+        assertFalse(AndroidShellWindowRegistry.hasShellInTask(42))
     }
 
     @Test

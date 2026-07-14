@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.StoredAuthServer
@@ -75,6 +76,18 @@ class SettingsHomePageAuthGateTest {
 
         assertFalse(identityChanged)
         assertEquals(SharedAuthGateIntent.RefreshSilently, appShellSessionChangeRestoreIntent(identityChanged))
+    }
+
+    @Test
+    fun bindingMetadataChangeSilentlyRefreshesTheLiveAuthGate() {
+        assertEquals(
+            SharedAuthGateIntent.RefreshSilently,
+            appShellAuthSessionEventRestoreIntent(AuthSessionEvent.BindingMetadataChanged(generation = 7))
+        )
+        assertEquals(
+            null,
+            appShellAuthSessionEventRestoreIntent(AuthSessionEvent.TokensRotated(generation = 8))
+        )
     }
 
     private fun storedSession(
