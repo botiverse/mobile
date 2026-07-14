@@ -28,6 +28,7 @@ export class SlockOhosAppDiagnostics {
   }
 
   static reportCaughtError(name: string, message: string, stack: string, extraData: string = ''): Record<string, Object> {
+    SlockOhosDiagnostics.recordCrashCaptured();
     SlockOhosDiagnostics.record(TAG, `caught_error ${name}: ${message}\n${stack}${extraData.length > 0 ? `\n${extraData}` : ''}`);
     return { "status": "ok", "code": "recorded" };
   }

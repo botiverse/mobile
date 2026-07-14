@@ -47,6 +47,9 @@ internal expect fun slockPlatformLog(
     hint: SlockPlatformLogHint
 )
 
+/** Waits for platform-specific diagnostics work accepted by [slockPlatformLog]. */
+internal expect suspend fun flushSlockPlatformDiagnosticsDownstream(): Boolean
+
 private object SlockPlatformLogSinkRegistry {
     @kotlin.concurrent.Volatile
     var sink: ((SlockPlatformLogRecord) -> Unit)? = null

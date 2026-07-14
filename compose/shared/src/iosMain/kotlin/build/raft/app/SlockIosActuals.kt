@@ -29,4 +29,6 @@ internal actual fun slockPlatformLog(
     )
 }
 
+internal actual suspend fun flushSlockPlatformDiagnosticsDownstream(): Boolean = true
+
 private const val SlockIosSharedLogNotificationName = "slockSharedLog"

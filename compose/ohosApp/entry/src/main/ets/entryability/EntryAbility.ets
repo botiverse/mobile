@@ -15,6 +15,7 @@ import { SlockKRVideoAdapter } from '../kuikly/adapter/SlockKRVideoAdapter';
 import { initializeSlockOhosAppScopeMMKV } from '../kuikly/SlockOhosAppScopeMMKV';
 import { initKmmResourceCompose } from '../kuikly/SlockOhosKmmResource';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
+import { admitSlockOhosPreparedBatch } from '../kuikly/SlockOhosDiagnosticsQueue';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
@@ -48,37 +49,29 @@ const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
 const SLOCK_SHARED_LOG_SINK_SERVICE = 'slockOhosSharedLogSink';
 
-interface SlockOhosSharedLogEntry {
-  level: string;
-  tag: string;
-  message: string;
-  timestampMillis: number;
-}
-
 class SlockOhosSharedLogSink {
   record(level: string, tag: string, message: string): void {
     SlockOhosDiagnostics.record(tag, message, Date.now(), this.normalizeLevel(level));
   }
 
-  recordBatch(payload: string): void {
-    try {
-      const entries = JSON.parse(payload) as Array<SlockOhosSharedLogEntry>;
-      entries.forEach((entry: SlockOhosSharedLogEntry) => {
-        SlockOhosDiagnostics.record(
-          entry.tag,
-          entry.message,
-          entry.timestampMillis,
-          this.normalizeLevel(entry.level)
-        );
-      });
-    } catch (_error) {
+  recordBatch(payload: string): boolean {
+    const admitted = admitSlockOhosPreparedBatch(
+      payload,
+      (entry) => SlockOhosDiagnostics.recordPreparedAsync(entry)
+    );
+    if (!admitted) {
       SlockOhosDiagnostics.record(
         SLOCK_KNOI_LOG_TAG,
-        'slock_ohos_log_batch_decode_failed',
+        'slock_ohos_log_batch_admission_failed',
         Date.now(),
         'error'
       );
     }
+    return admitted;
+  }
+
+  producerState(pending: boolean, healthy: boolean): void {
+    SlockOhosDiagnostics.setUpstreamState(pending, healthy);
   }
 
   private normalizeLevel(level: string): string {
