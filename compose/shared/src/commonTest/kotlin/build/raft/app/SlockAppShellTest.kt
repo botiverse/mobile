@@ -214,6 +214,13 @@ class SlockAppShellTest {
         assertTrue(
             gate.shouldRefresh(
                 AppShellVisibleRefreshSignal.PageDidAppear,
+                pageVisibleTick = 1,
+                target = "late-independent-target"
+            )
+        )
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
                 pageVisibleTick = 18,
                 target = "target-18"
             )
