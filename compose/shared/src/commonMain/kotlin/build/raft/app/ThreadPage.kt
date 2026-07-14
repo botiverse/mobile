@@ -17123,20 +17123,20 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(): String =
         .take(160)
         .ifBlank { "thread-attachment-download" }
 
-internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
+internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreviewLabel: String): String =
     listOf(
-        "HTML preview".takeIf { isHtmlAttachment() },
+        htmlPreviewLabel.takeIf { isHtmlAttachment() },
         displaySizeLabel()
     )
         .filterNotNull()
         .filter { it.isNotBlank() }
         .joinToString(" · ")
 
-internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): String? =
+internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc? =
     when {
-        isMp4VideoAttachment() -> "Video preview"
-        isTextLikeAttachment() || isHtmlAttachment() -> "Text preview"
-        isPreviewableDocumentAttachment() -> "Document preview"
+        isMp4VideoAttachment() -> MR.strings.file_preview_video.desc()
+        isTextLikeAttachment() || isHtmlAttachment() -> MR.strings.file_preview_text.desc()
+        isPreviewableDocumentAttachment() -> MR.strings.file_preview_document.desc()
         else -> null
     }
 
@@ -17281,9 +17281,9 @@ private fun ThreadAttachmentChip(
     }
     val isOpening = openState.threadAttachmentIsOpening()
     val canOpenComments = commentsEnabled && !attachment.isImageAttachment() && !attachment.isPdfAttachment()
-    val meta = attachment.threadAttachmentChipMetaLine()
+    val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
     val statusLabel = openState.threadAttachmentStatusLabel()
-    val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()
+    val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
     val affordanceIcon =
         if (attachment.threadAttachmentUsesPreviewAffordance()) SlockLucideIconName.Eye else SlockLucideIconName.Download
     Column(

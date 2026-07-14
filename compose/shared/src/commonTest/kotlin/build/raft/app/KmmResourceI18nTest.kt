@@ -821,6 +821,27 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun sharedChromeResidualStringResourcesAreGenerated() {
+        // Task #487: shared UI chrome that no page-scoped i18n task covered —
+        // inline video preview states, filter popover, dropdown empty row, and
+        // the app-shell offline banner.
+        listOf(
+            MR.strings.thread_video_preview_unavailable,
+            MR.strings.thread_video_preview_loading,
+            MR.strings.thread_video_playback_failed,
+            MR.strings.thread_video_attachment_fallback_name,
+            MR.strings.file_preview_document,
+            MR.strings.common_no_actions_available,
+            MR.strings.app_shell_offline_banner
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "shared chrome residual copy must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API

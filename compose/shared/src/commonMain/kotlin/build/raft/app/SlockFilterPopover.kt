@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.components.SlockBrutalInputField
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -159,7 +161,7 @@ internal fun SlockFilterPopover(
                     Box(modifier = Modifier.weight(1f))
                     if (showClearWhenSelected && selectedIds.isNotEmpty()) {
                         Text(
-                            text = "Clear",
+                            text = stringResource(MR.strings.common_clear),
                             style = SlockType.Caption.copy(
                                 fontSize = 10.sp,
                                 lineHeight = 12.sp,
@@ -193,7 +195,7 @@ internal fun SlockFilterPopover(
                 }
                 if (filtered.isEmpty()) {
                     Text(
-                        text = "No matches",
+                        text = stringResource(MR.strings.common_no_matches),
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)

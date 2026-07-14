@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -260,7 +262,7 @@ private fun SlockBrutalDropdownMenuEmptyRow(rowHeight: Dp) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "No actions available",
+            text = stringResource(MR.strings.common_no_actions_available),
             style = SlockType.Caption.copy(
                 fontSize = 11.sp,
                 lineHeight = 14.sp

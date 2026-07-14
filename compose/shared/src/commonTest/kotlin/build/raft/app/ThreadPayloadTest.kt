@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.MR
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AvatarReference
@@ -71,6 +72,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -1123,10 +1125,10 @@ class ThreadPayloadTest {
                 mimeType = "text/html"
             )
 
-        assertEquals("184 KB", pdf.threadAttachmentChipMetaLine())
-        assertEquals("Document preview", pdf.threadAttachmentSummaryLine())
-        assertEquals("HTML preview · 32 KB", html.threadAttachmentChipMetaLine())
-        assertEquals("Text preview", html.threadAttachmentSummaryLine())
+        assertEquals("184 KB", pdf.threadAttachmentChipMetaLine(htmlPreviewLabel = "HTML preview"))
+        assertEquals(MR.strings.file_preview_document.desc(), pdf.threadAttachmentSummaryLine())
+        assertEquals("HTML preview · 32 KB", html.threadAttachmentChipMetaLine(htmlPreviewLabel = "HTML preview"))
+        assertEquals(MR.strings.file_preview_text.desc(), html.threadAttachmentSummaryLine())
     }
 
     @Test

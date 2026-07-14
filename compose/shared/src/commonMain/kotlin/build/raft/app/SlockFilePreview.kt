@@ -2372,13 +2372,13 @@ private fun SlockFilePreviewVideoPanel(
                 // page header already shows the file name and meta.
                 SlockFilePreviewVideoOverlayText(
                     iconName = SlockLucideIconName.FileMusic,
-                    title = name.ifBlank { "Audio preview" },
+                    title = name.ifBlank { stringResource(MR.strings.file_preview_audio) },
                     detail = meta
                 )
             } else if (!nativeController && !firstFrameVisible && !isPlaying) {
                 SlockFilePreviewVideoOverlayText(
                     iconName = SlockLucideIconName.Play,
-                    title = name.ifBlank { "Video preview" },
+                    title = name.ifBlank { stringResource(MR.strings.file_preview_video) },
                     detail = meta
                 )
             }
