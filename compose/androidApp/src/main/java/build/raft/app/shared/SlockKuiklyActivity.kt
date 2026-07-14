@@ -101,6 +101,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.data.SlockAndroidSqlDatabaseContext
 import build.raft.app.network.SharedBinaryDownloader
 import build.raft.app.network.binaryDownloadUrlDiagnostics
+import build.raft.app.network.updateSlockNetworkKmmRecoveryEnvironment
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -3750,6 +3751,20 @@ internal class SlockKuiklyBridgeModule(
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
         val changed = before != after
         if (changed) {
+            runCatching {
+                updateSlockNetworkKmmRecoveryEnvironment(
+                    environmentKey = after.key,
+                    apiBaseUrl = after.apiBaseUrl
+                )
+            }.onSuccess { diagnostics ->
+                diagnostics?.let { SlockAppLog.record("SlockNetworkKmm", it) }
+            }.onFailure { error ->
+                SlockAppLog.record(
+                    "SlockNetworkKmm",
+                    "networkkmm_environment_update_failed " +
+                        "reason=${error::class.simpleName ?: "unknown"}"
+                )
+            }
             runBlocking {
                 KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession(
                     reason = "api_environment_changed",

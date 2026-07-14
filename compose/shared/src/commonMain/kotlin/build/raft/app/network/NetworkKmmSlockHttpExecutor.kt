@@ -326,7 +326,7 @@ private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
     }
 }
 
-private fun NetworkResponse.networkKmmDiagnostics(): String {
+internal fun NetworkResponse.networkKmmDiagnostics(): String {
     val rawCode = error?.rawCode ?: rawResponse?.errorCode
     val rawCodeLabel =
         when (rawCode) {
@@ -355,7 +355,18 @@ private fun NetworkResponse.networkKmmDiagnostics(): String {
         "tlsMs=${timing.sslCostTimeMs.toLong()} requestHeadersMs=${timing.requestHeadersTimeMs.toLong()} " +
         "requestBodyMs=${timing.requestBodyTimeMs.toLong()} " +
         "responseWaitMs=${timing.responseWaitTimeMs.toLong()} recvMs=${timing.recvTime.toLong()} " +
-        "connectionAttempts=${timing.connectionAttemptCount} totalMs=${timing.totalTimeMs.toLong()}"
+        "connectionAttempts=${timing.connectionAttemptCount} totalMs=${timing.totalTimeMs.toLong()} " +
+        "staleH2Detected=${timing.staleH2Detected} " +
+        "connectionOrigin=${timing.connectionOrigin?.toSafeDiagnosticsToken() ?: "none"} " +
+        "connectionShard=${timing.connectionShard ?: "none"} " +
+        "connectionGeneration=${timing.connectionGeneration ?: "none"} " +
+        "connectionIdentity=${timing.connectionIdentity?.toSafeDiagnosticsToken() ?: "none"} " +
+        "connectionDraining=${timing.connectionDraining} " +
+        "connectionRolloverRateLimited=${timing.connectionRolloverRateLimited} " +
+        "freshRetry=${timing.freshRetry} " +
+        "freshRetryResult=${timing.freshRetryResult?.toSafeDiagnosticsToken() ?: "none"} " +
+        "noResponseHeadersDurationMs=${timing.noResponseHeadersDurationMs.toLong()} " +
+        "staleH2ConcurrentRequestCount=${timing.staleH2ConcurrentRequestCount}"
 }
 
 internal fun String.sanitizeMultipartFileName(): String =

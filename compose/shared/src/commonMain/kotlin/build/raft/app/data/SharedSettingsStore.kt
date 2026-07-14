@@ -7,6 +7,7 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
+import build.raft.app.network.updateSlockNetworkKmmRecoveryEnvironment
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -1012,6 +1013,18 @@ class SharedSettingsDataSource(
     ): DataResult<SharedSettingsDeveloperSnapshot> {
         val changed = before != after
         if (changed) {
+            runCatching {
+                updateSlockNetworkKmmRecoveryEnvironment(
+                    environmentKey = after.key,
+                    apiBaseUrl = after.apiBaseUrl
+                )
+            }.onSuccess { diagnostics ->
+                diagnostics?.let { diagnosticsLogger?.invoke(it) }
+            }.onFailure { error ->
+                diagnosticsLogger?.invoke(
+                    "networkkmm_environment_update_failed reason=${error::class.simpleName ?: "unknown"}"
+                )
+            }
             sessionStore.clearSession(reason = "api_environment_changed", source = "settings_store")
             when (val result = platformCapabilities.onApiEnvironmentChanged(before, after)) {
                 is DataResult.Content -> Unit

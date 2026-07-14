@@ -187,8 +187,16 @@ private object AndroidAppScopeKeyValueStores {
         }
 }
 
+private const val SLOCK_NETWORK_RECOVERY_MMKV_NAMESPACE = "slockNetworkRecovery"
+
 fun androidMMKVAuthKeyValueStore(context: Context): SlockKeyValueStore =
     AndroidAppScopeKeyValueStores.get(context, SLOCK_AUTH_SESSION_MMKV_NAMESPACE)
+
+fun androidMMKVNetworkRecoveryKeyValueStore(context: Context): SlockKeyValueStore =
+    AndroidAppScopeKeyValueStores.get(context, SLOCK_NETWORK_RECOVERY_MMKV_NAMESPACE)
+
+fun androidMMKVApiEnvironmentKeyValueStore(context: Context): SlockKeyValueStore =
+    AndroidAppScopeKeyValueStores.get(context, SharedApiEnvironmentStore.Namespace)
 
 fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
     val appContext = context.applicationContext

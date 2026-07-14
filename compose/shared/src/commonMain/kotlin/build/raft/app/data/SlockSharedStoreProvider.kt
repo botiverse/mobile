@@ -40,15 +40,19 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.SlockNetworkKmmRecoveryRemoteFlagBridge
+import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
@@ -139,6 +143,33 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
 
+    private fun logNetworkKmmRemoteConfig(message: String) {
+        if (message.contains("persisted=false")) {
+            sharedErrorLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
+        } else {
+            sharedInfoLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
+        }
+    }
+
+    private fun updateNetworkKmmRecoveryEnvironment(): String {
+        val environment = apiEnvironmentStore.current()
+        val environmentId =
+            slockNetworkKmmRecoveryEnvironmentId(
+                environmentKey = environment.key,
+                apiBaseUrl = environment.apiBaseUrl
+            )
+        runCatching {
+            SlockNetworkKmmRecoveryRemoteFlagBridge.updateCurrentEnvironment(environmentId)
+        }.onSuccess { diagnostics ->
+            diagnostics?.let(::logNetworkKmmRemoteConfig)
+        }.onFailure { error ->
+            sharedWarnLogger("SlockNetworkKmm", "networkkmm_remote_config")(
+                "environment_update_failed reason=${error::class.simpleName ?: "unknown"}"
+            )
+        }
+        return environmentId
+    }
+
     /**
      * Server feature-flag evaluation (sync-core rollout gate). Prefetched per shell when its selected
      * server changes (see [selectedServerStore]) — this is what makes `sync_core_messages_v0` traffic
@@ -148,6 +179,19 @@ internal class SlockSharedStoreProvider private constructor(
         SharedServerFeatureFlags(
             api = SlockFeatureFlagsNetworkApi(networkClient),
             diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+            onEvaluation = { serverId, key, enabled, reason, environmentId, evaluationGeneration ->
+                if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
+                    SlockNetworkKmmRecoveryRemoteFlagBridge
+                        .apply(
+                            environmentId = environmentId,
+                            evaluationGeneration = evaluationGeneration,
+                            serverId = serverId.value,
+                            enabled = enabled,
+                            reason = reason
+                        )
+                        ?.let(::logNetworkKmmRemoteConfig)
+                }
+            },
         )
 
     /**
@@ -164,6 +208,7 @@ internal class SlockSharedStoreProvider private constructor(
         )
 
     init {
+        updateNetworkKmmRecoveryEnvironment()
         // Attach the flag-gated `sync_core_messages_v0` shadow fold+persist lane to the legacy-scope owner.
         // (The owner is constructed in create() before this instance exists, so serverFeatureFlags can only
         // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
@@ -172,6 +217,7 @@ internal class SlockSharedStoreProvider private constructor(
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
                 clearActiveShellServerSelections()
+                updateNetworkKmmRecoveryEnvironment()
             }
         }
     }
@@ -211,16 +257,45 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun selectedServerStore(scope: SlockShellStoreScope): SelectedServerStore =
         selectedServerStores.getOrPut(scope) {
-            SelectedServerStore(scope).also { selectionStore ->
+            SelectedServerStore(
+                scope = scope,
+                onSelectionChanged = { serverId ->
+                    runCatching {
+                        SlockNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection(
+                            scopeId = scope.shellInstanceId,
+                            serverId = serverId
+                        )
+                    }.onSuccess { diagnostics ->
+                        diagnostics?.let(::logNetworkKmmRemoteConfig)
+                    }.onFailure { error ->
+                        sharedWarnLogger("SlockNetworkKmm", "networkkmm_remote_config")(
+                            "active_selection_failed reason=${error::class.simpleName ?: "unknown"}"
+                        )
+                    }
+                }
+            ).also { selectionStore ->
                 // Prefetch registered server feature flags whenever this shell selects a server.
                 // StateFlow conflates to distinct values, so this evaluates once per server change.
                 // The collector lives on threadSendScope (not the shell scope), so cancel it when the
                 // store is disposed, or it would outlive an evicted shell selection store.
                 threadSendScope.launch {
                     val prefetching = launch {
-                        selectionStore.currentServerId.collect { serverId ->
+                        selectionStore.currentServerId.collectLatest { serverId ->
                             if (!serverId.isNullOrBlank()) {
-                                runCatching { serverFeatureFlags.prefetch(ServerId(serverId)) }
+                                try {
+                                    val environmentId = updateNetworkKmmRecoveryEnvironment()
+                                    serverFeatureFlags.prefetch(
+                                        serverId = ServerId(serverId),
+                                        evaluationContext = environmentId
+                                    )
+                                } catch (cancellation: CancellationException) {
+                                    throw cancellation
+                                } catch (error: Throwable) {
+                                    sharedWarnLogger("SlockFeatureFlags", "feature_flags")(
+                                        "prefetch_failed server=$serverId " +
+                                            "reason=${error::class.simpleName ?: "unknown"}"
+                                    )
+                                }
                             }
                         }
                     }
