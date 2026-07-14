@@ -3,6 +3,11 @@
 Date: 2026-06-25
 Task: #390
 
+Status: historical recovery proposal. The global-resume versus visible-stream
+distinction remains valid, but the canonical visible-stream cursor/target,
+coalescing, sparse-sequence, and terminal rules are now Thread gap recovery v1
+in `realtime-consistency-contract-2026-07-14.md`.
+
 ## Problem
 
 React already uses server message `seq` as a recovery cursor. Mobile/KMP has parts of the same contract, but the behavior is not yet treated as one explicit product rule. That makes it easy for Thread/Home changes to rely only on realtime delivery or page refresh and miss messages after reconnect, backgrounding, standalone Thread launch, or high-volume channels.

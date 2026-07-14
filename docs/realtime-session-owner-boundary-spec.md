@@ -1,6 +1,8 @@
 # Realtime Session Owner Boundary Spec
 
-Status: proposed after standalone Thread Pager proof work.
+Status: historical migration proposal. The canonical authority/grant/scope/sink
+model is now `realtime-consistency-contract-2026-07-14.md` (foundation v1.2).
+Use this document only for transport-lifecycle motivation and migration history.
 
 This spec tightens the realtime lifecycle boundary after the Android standalone
 Thread Pager path added host-side realtime for `compose_thread`.
