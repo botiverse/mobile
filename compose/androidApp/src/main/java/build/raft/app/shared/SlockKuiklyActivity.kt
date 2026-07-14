@@ -2387,7 +2387,11 @@ internal class SlockKuiklyBridgeModule(
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
-                SlockAndroidLocalDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
+                if (content.startsWith("shared_realtime_auth_refresh_")) {
+                    SlockAndroidLocalDiagnostics.recordAuthLog(level.name.lowercase(), "SlockKuikly", content)
+                } else {
+                    SlockAndroidLocalDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
+                }
                 null
             }
             "copyToPasteboard" -> {
@@ -5209,7 +5213,7 @@ private enum class SlockBridgeLogLevel {
 }
 
 private fun logSharedAuthDiagnostics(message: String) {
-    SlockAppLog.d("SlockKuikly", "shared_auth $message")
+    SlockAppLog.auth("SlockKuikly", "shared_auth $message")
 }
 
 internal fun JSONObject.toMap(): Map<String, Any> {

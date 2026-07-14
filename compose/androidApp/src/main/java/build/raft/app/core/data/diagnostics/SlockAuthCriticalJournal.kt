@@ -30,7 +30,16 @@ object SlockAuthCriticalJournal {
             TimeUnit.SECONDS,
             ArrayBlockingQueue(128),
             { runnable -> Thread(runnable, "SlockAuthJournalWriter").apply { isDaemon = true } },
-            { _, _ -> droppedEntries.incrementAndGet() }
+            { runnable, executor ->
+                // record() is only called by the diagnostics dispatch worker. Waiting here preserves
+                // accepted auth-critical FIFO without ever backpressuring the original UI caller.
+                try {
+                    executor.queue.put(runnable)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    droppedEntries.incrementAndGet()
+                }
+            }
         )
 
     @Volatile
@@ -59,11 +68,11 @@ object SlockAuthCriticalJournal {
         }
     }
 
-    fun flush() {
+    fun flush(): Boolean =
         runCatching {
             executor.submit { }.get(2L, TimeUnit.SECONDS)
-        }
-    }
+            droppedEntries.get() == 0L
+        }.getOrDefault(false)
 
     fun hasFiles(context: Context): Boolean =
         logFiles(context.applicationContext).any { it.isFile && it.length() > 0L }
@@ -105,7 +114,10 @@ object SlockAuthCriticalJournal {
     }
 
     private fun append(line: String) {
-        val context = appContext ?: return
+        val context = appContext ?: run {
+            droppedEntries.incrementAndGet()
+            return
+        }
         runCatching {
             synchronized(fileLock) {
                 val file = journalFile(context)
@@ -145,11 +157,15 @@ internal fun classifyAuthCriticalEvent(message: String): String? {
     val normalized = message.lowercase(Locale.US)
     AuthSessionClearMarker.find(normalized)?.let { return it.value }
     AuthRealtimeRefreshMarker.find(normalized)?.let { return it.value }
+    SharedRealtimeAuthRefreshMarker.find(normalized)?.let { return it.value }
     AuthTokenRefreshMarker.find(normalized)?.let { return it.value.trim() }
     AuthRetryMarker.find(normalized)?.let { return it.value.trim() }
     if (HttpUnauthorizedMarker.containsMatchIn(normalized)) return "auth_http_401"
     return null
 }
+
+internal fun hasFixedCostAuthCriticalHint(message: String): Boolean =
+    FixedCostAuthCriticalMarkers.any { marker -> message.contains(marker) }
 
 internal fun retainLatestAuthJournalLines(
     existing: List<String>,
@@ -226,9 +242,32 @@ internal fun parseAuthCriticalJournalEntries(lines: List<String>): List<AuthCrit
 
 private val AuthSessionClearMarker = Regex("""\bauth_session_clear(?:_[a-z0-9]+)*\b""")
 private val AuthRealtimeRefreshMarker = Regex("""\bauth_realtime_refresh_(?:start|result)\b""")
+private val SharedRealtimeAuthRefreshMarker =
+    Regex("""\bshared_realtime_auth_refresh_(?:skip|success|failed)\b""")
 private val AuthTokenRefreshMarker =
     Regex(
         """(?:^|\s)(?:refresh_start|refresh_success|refresh_failed|refresh_unauthorized_session_cleared|refresh_unauthorized_session_preserved)(?:\s|$)"""
     )
 private val AuthRetryMarker = Regex("""(?:^|\s)auth_retry_unauthorized_session_preserved(?:\s|$)""")
 private val HttpUnauthorizedMarker = Regex("""(?:^|[\s,])(?:code|status|http)\s*[:=]\s*401(?:[\s,]|$)""")
+private val FixedCostAuthCriticalMarkers =
+    listOf(
+        "auth_session_clear",
+        "auth_realtime_refresh_start",
+        "auth_realtime_refresh_result",
+        "shared_realtime_auth_refresh_skip",
+        "shared_realtime_auth_refresh_success",
+        "shared_realtime_auth_refresh_failed",
+        "refresh_start",
+        "refresh_success",
+        "refresh_failed",
+        "refresh_unauthorized_session_cleared",
+        "refresh_unauthorized_session_preserved",
+        "auth_retry_unauthorized_session_preserved",
+        "code=401",
+        "code:401",
+        "status=401",
+        "status:401",
+        "http=401",
+        "http:401",
+    )

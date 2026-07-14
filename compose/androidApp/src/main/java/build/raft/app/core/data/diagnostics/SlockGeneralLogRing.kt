@@ -42,7 +42,16 @@ object SlockGeneralLogRing {
             TimeUnit.SECONDS,
             ArrayBlockingQueue(512),
             { runnable -> Thread(runnable, "SlockDiagnosticsWriter").apply { isDaemon = true } },
-            { _, _ -> droppedEntries.incrementAndGet() }
+            { runnable, executor ->
+                // record() is only called by the diagnostics dispatch worker. Waiting here keeps a
+                // successful top-level flush from omitting an already accepted ordinary record.
+                try {
+                    executor.queue.put(runnable)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    droppedEntries.incrementAndGet()
+                }
+            }
         )
 
     @Volatile
@@ -83,11 +92,11 @@ object SlockGeneralLogRing {
         }
     }
 
-    fun flush() {
+    fun flush(): Boolean =
         runCatching {
             executor.submit { }.get(2L, TimeUnit.SECONDS)
-        }
-    }
+            droppedEntries.get() == 0L
+        }.getOrDefault(false)
 
     fun logFiles(context: Context): List<File> =
         logFilesIn(
@@ -159,7 +168,10 @@ object SlockGeneralLogRing {
         synchronized(memoryLock) { memoryEntries.toList() }
 
     private fun append(entry: DiagnosticEntry) {
-        val context = appContext ?: return
+        val context = appContext ?: run {
+            droppedEntries.incrementAndGet()
+            return
+        }
         runCatching {
             synchronized(fileLock) {
                 val dir = logDir(context).apply { mkdirs() }

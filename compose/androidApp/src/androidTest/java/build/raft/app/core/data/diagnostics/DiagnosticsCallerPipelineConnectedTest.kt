@@ -23,13 +23,13 @@ class DiagnosticsCallerPipelineConnectedTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         SlockAndroidLocalDiagnostics.init(context)
-        SlockAndroidLocalDiagnostics.flush()
+        assertTrue(SlockAndroidLocalDiagnostics.flush())
 
         Debug.startAllocCounting()
         val control: ProbeResult
         val diagnostics: ProbeResult
         try {
-            control = measureSeries(instrumentation, label = "control", afterSeries = {}) { }
+            control = measureSeries(instrumentation, label = "control", afterSeries = { true }) { }
             SystemClock.sleep(250L)
             diagnostics =
                 measureSeries(
@@ -51,7 +51,7 @@ class DiagnosticsCallerPipelineConnectedTest {
             Debug.stopAllocCounting()
         }
 
-        SlockAndroidLocalDiagnostics.flush()
+        assertTrue(SlockAndroidLocalDiagnostics.flush())
         val recentJsonl = SlockGeneralLogRing.exportRecentJsonl()
         val probeSequences =
             recentJsonl.lineSequence()
@@ -60,14 +60,14 @@ class DiagnosticsCallerPipelineConnectedTest {
                 .toList()
 
         instrumentation.runOnMainSync {
-            SlockAndroidLocalDiagnostics.recordLog(
+            SlockAndroidLocalDiagnostics.recordCriticalLog(
                 level = "debug",
                 tag = "Task272AuthProbe",
                 message = "task272_auth_probe refresh_failed authorization=Bearer auth-secret",
                 includeNonCritical = false,
             )
         }
-        SlockAndroidLocalDiagnostics.flush()
+        assertTrue(SlockAndroidLocalDiagnostics.flush())
         val authProbe =
             SlockAuthCriticalJournal.recentEntries(context)
                 .lastOrNull { it.message.contains("task272_auth_probe") }
@@ -106,7 +106,7 @@ class DiagnosticsCallerPipelineConnectedTest {
     private fun measureSeries(
         instrumentation: android.app.Instrumentation,
         label: String,
-        afterSeries: () -> Unit,
+        afterSeries: () -> Boolean,
         action: (Int) -> Unit,
     ): ProbeResult {
         val runtimeBefore = RuntimeStats.snapshot()
@@ -153,7 +153,7 @@ class DiagnosticsCallerPipelineConnectedTest {
         }
 
         assertTrue("$label frame probe timed out", completion.await(30L, TimeUnit.SECONDS))
-        afterSeries()
+        assertTrue("$label diagnostics drain timed out", afterSeries())
         val runtimeAfter = RuntimeStats.snapshot()
         return ProbeResult(
             label = label,
