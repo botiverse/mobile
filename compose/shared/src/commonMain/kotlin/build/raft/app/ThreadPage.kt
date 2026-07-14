@@ -168,6 +168,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
 import com.tencent.kuikly.compose.animation.core.tween
+import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -4410,6 +4411,9 @@ internal fun SharedThreadRouteContent(
     }
     var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
+    var inlineImageFallbackState by remember(threadInstanceKey) {
+        mutableStateOf(ThreadInlineImageFallbackState())
+    }
     val baseComposerState =
         remember(
             renderedPayload.composer,
@@ -4708,6 +4712,27 @@ internal fun SharedThreadRouteContent(
                     if (imagePreviewState?.current?.id == attachmentId && imagePreviewState?.current?.thumbnailUrl.isNullOrBlank()) {
                         bridge.toast(unableToLoadImageLabel)
                     }
+                }
+            }
+        }
+    }
+    fun requestInlineImageFallback(attachmentId: String) {
+        val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
+        inlineImageFallbackState = nextState
+        if (!shouldRequest) return
+        bridge.log("thread_inline_image_fallback status=start attachmentId=${attachmentId.take(8)}")
+        coroutineScope.launch {
+            when (val response = dataSource.attachmentUrl(attachmentId, disposition = "inline")) {
+                is ThreadApiResult.Success -> {
+                    inlineImageFallbackState =
+                        inlineImageFallbackState.resolve(attachmentId, response.data.url)
+                    bridge.log("thread_inline_image_fallback status=resolved attachmentId=${attachmentId.take(8)}")
+                }
+                is ThreadApiResult.Failure -> {
+                    bridge.log(
+                        "thread_inline_image_fallback status=failed attachmentId=${attachmentId.take(8)} " +
+                            "code=${response.code} contractCode=${response.contractCode.orEmpty()}"
+                    )
                 }
             }
         }
@@ -5521,6 +5546,11 @@ internal fun SharedThreadRouteContent(
                 ThreadInlineVideoPreviewHost(
                     states = inlineVideoPreviewStates,
                     requestPreview = ::requestInlineVideoPreview
+                ),
+            LocalThreadInlineImageFallbackHost provides
+                ThreadInlineImageFallbackHost(
+                    state = inlineImageFallbackState,
+                    requestFallback = ::requestInlineImageFallback
                 ),
             LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver
         ) {
@@ -17425,6 +17455,8 @@ private fun ThreadImageAttachmentTile(
     attachment: KuiklyThreadAttachmentItem,
     onOpen: () -> Unit
 ) {
+    val fallbackHost = LocalThreadInlineImageFallbackHost.current
+    val fallbackUrl = fallbackHost?.state?.resolvedUrls?.get(attachment.id)
     Box(
         modifier = Modifier.size(SharedThreadAttachmentImageSize)
             .clickable(onClick = onOpen),
@@ -17433,9 +17465,15 @@ private fun ThreadImageAttachmentTile(
         val thumbnailUrl = attachment.thumbnailUrl?.takeIf { it.isNotBlank() }
         SlockAspectFitImagePreviewSurface(
             source = thumbnailUrl,
+            fallbackSource = fallbackUrl,
             contentDescription = attachment.name,
             modifier = Modifier.fillMaxSize(),
-            contentScale = SlockImageThumbnailContentScale
+            contentScale = SlockImageThumbnailContentScale,
+            onImageStateChange = { state ->
+                if (state is AsyncImagePainter.State.Error && fallbackUrl == null) {
+                    fallbackHost?.requestFallback?.invoke(attachment.id)
+                }
+            }
         )
     }
 }
