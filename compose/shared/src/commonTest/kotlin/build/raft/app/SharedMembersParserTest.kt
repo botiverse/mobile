@@ -554,7 +554,7 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun remoteAgentIdentityForcesProfileOnlyEvenWhenCurrentServerCanViewPrivateTabs() {
+    fun remoteAgentAccessModeForcesProfileOnlyEvenWhenCurrentServerCanViewPrivateTabs() {
         val remoteIdentity =
             MemberDetailIdentity(
                 memberId = MemberId("agent-remote"),
@@ -562,21 +562,23 @@ class SharedMembersParserTest {
                 sourceServerId = ServerId("server-b")
             )
 
-        assertTrue(memberDetailUsesRemoteProfileOnly(remoteIdentity, currentServerId = "server-a"))
+        assertEquals(
+            MemberDetailAccessMode.RemoteProfileOnly,
+            remoteIdentity.memberDetailAccessMode(currentServerId = "server-a")
+        )
         assertEquals(
             listOf(MembersAgentDetailTab.Profile),
             membersAgentDetailTabsForAccess(
-                profileOnly = true,
+                accessMode = MemberDetailAccessMode.RemoteProfileOnly,
                 canViewPrivateSurfaces = true,
                 deleted = false
             )
         )
         assertEquals(
-            false,
-            memberDetailUsesRemoteProfileOnly(
-                remoteIdentity.copy(sourceServerId = ServerId("server-a")),
-                currentServerId = "server-a"
-            )
+            MemberDetailAccessMode.LocalFull,
+            remoteIdentity
+                .copy(sourceServerId = ServerId("server-a"))
+                .memberDetailAccessMode(currentServerId = "server-a")
         )
     }
 

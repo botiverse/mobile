@@ -21,6 +21,14 @@ internal enum class MemberDetailIdentitySource(val wireValue: String) {
     LegacyPageData("legacy_page_data")
 }
 
+internal enum class MemberDetailAccessMode {
+    LocalFull,
+    RemoteProfileOnly;
+
+    val allowsPrivateAgentSurfaces: Boolean
+        get() = this == LocalFull
+}
+
 internal fun memberDetailIdentity(
     memberId: String?,
     kind: MemberKind?,
@@ -58,13 +66,33 @@ internal fun MemberKind.memberKindWireValue(): String =
         MemberKind.System -> "system"
     }
 
+internal fun MemberDetailIdentity.memberDetailAccessMode(
+    currentServerId: String?
+): MemberDetailAccessMode {
+    val sourceServerId = sourceServerId?.value?.trim().orEmpty()
+    val activeServerId = currentServerId?.trim().orEmpty()
+    return if (
+        sourceServerId.isNotBlank() &&
+        activeServerId.isNotBlank() &&
+        sourceServerId != activeServerId
+    ) {
+        MemberDetailAccessMode.RemoteProfileOnly
+    } else {
+        MemberDetailAccessMode.LocalFull
+    }
+}
+
+/** Member kind selects the repository family; access mode is only passed to that selected family. */
 internal suspend fun <T> MemberDetailIdentity.dispatchMemberDetailLookup(
-    loadHuman: suspend (MemberId, ServerId?) -> T,
-    loadAgent: suspend (MemberId) -> T,
+    currentServerId: String?,
+    loadHuman: suspend (MemberId, ServerId?, MemberDetailAccessMode) -> T,
+    loadAgent: suspend (MemberId, MemberDetailAccessMode) -> T,
     unsupported: suspend (MemberId, MemberKind) -> T
-): T =
-    when (kind) {
-        MemberKind.Human -> loadHuman(memberId, sourceServerId)
-        MemberKind.Agent -> loadAgent(memberId)
+): T {
+    val accessMode = memberDetailAccessMode(currentServerId)
+    return when (kind) {
+        MemberKind.Human -> loadHuman(memberId, sourceServerId, accessMode)
+        MemberKind.Agent -> loadAgent(memberId, accessMode)
         MemberKind.System -> unsupported(memberId, kind)
     }
+}

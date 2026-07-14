@@ -13275,11 +13275,11 @@ private fun SharedMembersScreen(
                 onOpenMemberDetail = { member ->
                     routeScope.launch {
                         val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
-                        val remoteProfileOnly = memberDetailUsesRemoteProfileOnly(identity, serverId)
+                        val accessMode = identity.memberDetailAccessMode(serverId)
                         val launchPayload =
                             if (
                                 member.kind == MemberKind.Agent &&
-                                    !remoteProfileOnly &&
+                                    accessMode.allowsPrivateAgentSurfaces &&
                                     (agentPanelTabOrderState.serverId != serverId || !agentPanelTabOrderState.loaded)
                             ) {
                                 loadAgentPanelTabOrderForSharedMembers()

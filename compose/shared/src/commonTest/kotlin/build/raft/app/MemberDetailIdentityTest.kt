@@ -10,32 +10,47 @@ import kotlin.test.assertEquals
 
 class MemberDetailIdentityTest {
     @Test
-    fun humanIdentityDispatchesDirectlyToHumanLookupWithoutAgentProbe() = runBlocking {
-        var humanLookups = 0
-        var agentLookups = 0
-        val identity =
-            MemberDetailIdentity(
-                memberId = MemberId("human-artin"),
-                kind = MemberKind.Human,
-                sourceServerId = ServerId("server-1")
-            )
+    fun memberKindOwnsRepositoryDispatchAcrossLocalAndRemoteAccessModes() = runBlocking {
+        data class Case(
+            val kind: MemberKind,
+            val sourceServerId: String,
+            val expectedRepository: String,
+            val expectedAccessMode: MemberDetailAccessMode
+        )
 
-        val result =
-            identity.dispatchMemberDetailLookup(
-                loadHuman = { memberId, serverId ->
-                    humanLookups += 1
-                    "human:${memberId.value}@${serverId?.value}"
-                },
-                loadAgent = { memberId ->
-                    agentLookups += 1
-                    "agent:${memberId.value}"
-                },
-                unsupported = { memberId, kind -> "unsupported:${kind.name}:${memberId.value}" }
-            )
+        listOf(
+            Case(MemberKind.Human, "server-a", "human", MemberDetailAccessMode.LocalFull),
+            Case(MemberKind.Human, "server-b", "human", MemberDetailAccessMode.RemoteProfileOnly),
+            Case(MemberKind.Agent, "server-a", "agent", MemberDetailAccessMode.LocalFull),
+            Case(MemberKind.Agent, "server-b", "agent", MemberDetailAccessMode.RemoteProfileOnly)
+        ).forEach { case ->
+            var humanLookups = 0
+            var agentLookups = 0
+            val identity =
+                MemberDetailIdentity(
+                    memberId = MemberId("member-1"),
+                    kind = case.kind,
+                    sourceServerId = ServerId(case.sourceServerId)
+                )
 
-        assertEquals("human:human-artin@server-1", result)
-        assertEquals(1, humanLookups)
-        assertEquals(0, agentLookups)
+            val result =
+                identity.dispatchMemberDetailLookup(
+                    currentServerId = "server-a",
+                    loadHuman = { _, _, accessMode ->
+                        humanLookups += 1
+                        "human:$accessMode"
+                    },
+                    loadAgent = { _, accessMode ->
+                        agentLookups += 1
+                        "agent:$accessMode"
+                    },
+                    unsupported = { _, kind -> "unsupported:${kind.name}" }
+                )
+
+            assertEquals("${case.expectedRepository}:${case.expectedAccessMode}", result)
+            assertEquals(if (case.expectedRepository == "human") 1 else 0, humanLookups)
+            assertEquals(if (case.expectedRepository == "agent") 1 else 0, agentLookups)
+        }
     }
 
     @Test
@@ -86,11 +101,12 @@ class MemberDetailIdentityTest {
 
         val result =
             identity.dispatchMemberDetailLookup(
-                loadHuman = { _, _ ->
+                currentServerId = "server-1",
+                loadHuman = { _, _, _ ->
                     humanLookups += 1
                     "human"
                 },
-                loadAgent = {
+                loadAgent = { _, _ ->
                     agentLookups += 1
                     "agent"
                 },
