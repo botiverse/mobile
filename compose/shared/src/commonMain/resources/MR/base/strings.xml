@@ -41,6 +41,8 @@
     <string name="common_no_matches">No matches</string>
     <string name="common_success">Success</string>
     <string name="common_optional_suffix">(optional)</string>
+    <string name="common_no_actions_available">No actions available</string>
+    <string name="app_shell_offline_banner">No internet connection</string>
     <string name="settings_title">Settings</string>
     <string name="settings_navigation_section_personal">Personal</string>
     <string name="settings_navigation_section_workspace">Workspace</string>
@@ -436,6 +438,10 @@
     <string name="thread_image_preview_loading_full">Loading full image…</string>
     <string name="thread_image_preview_unavailable">Image unavailable</string>
     <string name="thread_image_preview_loading">Loading image…</string>
+    <string name="thread_video_preview_unavailable">Video preview unavailable</string>
+    <string name="thread_video_preview_loading">Loading video preview</string>
+    <string name="thread_video_playback_failed">Video playback failed</string>
+    <string name="thread_video_attachment_fallback_name">Video attachment</string>
     <string name="thread_action_back_to_bottom">Back to bottom</string>
     <string name="thread_label_saved">Saved</string>
     <string name="thread_state_refreshing_original">Refreshing original message…</string>
@@ -863,6 +869,7 @@
     <string name="file_preview_html">HTML preview</string>
     <string name="file_preview_audio">Audio preview</string>
     <string name="file_preview_video">Video preview</string>
+    <string name="file_preview_document">Document preview</string>
     <string name="file_preview_no_preview">No preview is available for this file type.</string>
     <string name="file_preview_download_to_open">Download this file, or use Open with to view it in another app.</string>
     <string name="file_preview_error_image_unavailable">Image preview is unavailable.</string>

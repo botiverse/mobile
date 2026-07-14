@@ -9,6 +9,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -103,13 +105,13 @@ internal fun ThreadInlineVideoAttachmentCard(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = attachment.name.ifBlank { "Video attachment" },
+                    text = attachment.name.ifBlank { stringResource(MR.strings.thread_video_attachment_fallback_name) },
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                attachment.threadAttachmentChipMetaLine().takeIf { it.isNotBlank() }?.let { meta ->
+                attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html)).takeIf { it.isNotBlank() }?.let { meta ->
                     Text(
                         text = meta,
                         style = SlockType.Caption,
@@ -170,14 +172,14 @@ private fun ThreadInlineVideoSurface(
             !previewEnabled ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.Play,
-                    label = "Video preview",
+                    label = stringResource(MR.strings.file_preview_video),
                     actionIcon = SlockLucideIconName.AppWindow,
                     onAction = onOpenPreview
                 )
             previewState?.status == ThreadInlineVideoPreviewStatus.Error ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.TriangleAlert,
-                    label = "Video preview unavailable",
+                    label = stringResource(MR.strings.thread_video_preview_unavailable),
                     actionIcon = SlockLucideIconName.RefreshCw,
                     onAction = onRetry,
                     secondaryActionIcon = SlockLucideIconName.AppWindow,
@@ -186,13 +188,13 @@ private fun ThreadInlineVideoSurface(
             previewState?.status != ThreadInlineVideoPreviewStatus.Ready || source.isBlank() ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.LoaderCircle,
-                    label = "Loading video preview",
+                    label = stringResource(MR.strings.thread_video_preview_loading),
                     spinning = true
                 )
             playState == PlayState.ERROR ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.TriangleAlert,
-                    label = "Video playback failed",
+                    label = stringResource(MR.strings.thread_video_playback_failed),
                     actionIcon = SlockLucideIconName.RefreshCw,
                     onAction = onRetry,
                     secondaryActionIcon = SlockLucideIconName.AppWindow,

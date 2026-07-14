@@ -41,6 +41,8 @@
     <string name="common_no_matches">无匹配项</string>
     <string name="common_success">成功</string>
     <string name="common_optional_suffix">（可选）</string>
+    <string name="common_no_actions_available">暂无可用操作</string>
+    <string name="app_shell_offline_banner">无网络连接</string>
     <string name="settings_title">设置</string>
     <string name="settings_navigation_section_personal">个人</string>
     <string name="settings_navigation_section_workspace">工作区</string>
@@ -436,6 +438,10 @@
     <string name="thread_image_preview_loading_full">正在加载完整图片…</string>
     <string name="thread_image_preview_unavailable">图片不可用</string>
     <string name="thread_image_preview_loading">正在加载图片…</string>
+    <string name="thread_video_preview_unavailable">视频预览不可用</string>
+    <string name="thread_video_preview_loading">正在加载视频预览</string>
+    <string name="thread_video_playback_failed">视频播放失败</string>
+    <string name="thread_video_attachment_fallback_name">视频附件</string>
     <string name="thread_action_back_to_bottom">回到底部</string>
     <string name="thread_label_saved">已保存</string>
     <string name="thread_state_refreshing_original">正在刷新原消息…</string>
@@ -861,6 +867,7 @@
     <string name="file_preview_html">HTML 预览</string>
     <string name="file_preview_audio">音频预览</string>
     <string name="file_preview_video">视频预览</string>
+    <string name="file_preview_document">文档预览</string>
     <string name="file_preview_no_preview">此文件类型没有可用预览。</string>
     <string name="file_preview_download_to_open">可下载此文件，或使用“打开方式”在其他应用中查看。</string>
     <string name="file_preview_error_image_unavailable">图片预览不可用。</string>

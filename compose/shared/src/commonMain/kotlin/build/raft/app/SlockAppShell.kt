@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -172,7 +174,7 @@ private fun SlockAppShellNetworkBanner() {
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
-            text = "No internet connection",
+            text = stringResource(MR.strings.app_shell_offline_banner),
             style = SlockType.ButtonBold,
             color = SlockColor.TextBlack,
             maxLines = 1
