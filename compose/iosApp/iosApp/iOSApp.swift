@@ -3,6 +3,7 @@ import shared
 import SDWebImage
 import SDWebImageSVGCoder
 import UIKit
+import UserNotifications
 
 private enum SlockIosPushEnvironment: String {
     case sandbox
@@ -13,6 +14,8 @@ private enum SlockIosPushHost {
     private static let remoteNotificationsStateName = Notification.Name("slockIosRemoteNotificationsState")
     private static var installationId: String?
     private static var remoteNotificationsObserver: NSObjectProtocol?
+    private static var desiredRemoteNotificationsEnabled = false
+    private static var remoteNotificationsGeneration: UInt64 = 0
 
     static func install() {
         if remoteNotificationsObserver == nil {
@@ -43,22 +46,99 @@ private enum SlockIosPushHost {
     }
 
     private static func setRemoteNotificationsEnabled(_ enabled: Bool) {
-        let apply = {
-            if enabled {
-                UIApplication.shared.registerForRemoteNotifications()
-            } else {
+        runOnMain {
+            desiredRemoteNotificationsEnabled = enabled
+            remoteNotificationsGeneration &+= 1
+            let generation = remoteNotificationsGeneration
+            if !enabled {
                 UIApplication.shared.unregisterForRemoteNotifications()
+                SlockIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "remote_notifications_state_applied enabled=false"
+                )
+                return
             }
+            enableRemoteNotifications(generation: generation)
+        }
+    }
+
+    private static func enableRemoteNotifications(generation: UInt64) {
+        let notificationCenter = UNUserNotificationCenter.current()
+        notificationCenter.getNotificationSettings { settings in
+            let status = settings.authorizationStatus
             SlockIosDiagnosticsRecord(
                 "info",
                 "SlockIosPush",
-                "remote_notifications_state_applied enabled=\(enabled)"
+                "notification_permission_status status=\(authorizationStatusName(status)) trigger=authenticated_session"
+            )
+            guard status == .notDetermined else {
+                registerForRemoteNotificationsIfCurrent(generation: generation)
+                return
+            }
+            notificationCenter.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                if let error {
+                    SlockIosDiagnosticsRecord(
+                        "warn",
+                        "SlockIosPush",
+                        "notification_permission_request_failed errorType=\(String(describing: type(of: error)))"
+                    )
+                } else {
+                    SlockIosDiagnosticsRecord(
+                        "info",
+                        "SlockIosPush",
+                        "notification_permission_request_finished granted=\(granted)"
+                    )
+                }
+                registerForRemoteNotificationsIfCurrent(generation: generation)
+            }
+        }
+    }
+
+    private static func registerForRemoteNotificationsIfCurrent(generation: UInt64) {
+        runOnMain {
+            guard desiredRemoteNotificationsEnabled, remoteNotificationsGeneration == generation else {
+                SlockIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "remote_notifications_registration_skipped reason=stale_desired_state"
+                )
+                return
+            }
+            // APNs token registration is intentionally independent from visible
+            // alert permission. Keeping the token current means a user who later
+            // enables notifications in Settings does not need another login.
+            UIApplication.shared.registerForRemoteNotifications()
+            SlockIosDiagnosticsRecord(
+                "info",
+                "SlockIosPush",
+                "remote_notifications_state_applied enabled=true"
             )
         }
+    }
+
+    private static func authorizationStatusName(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined:
+            return "not_determined"
+        case .denied:
+            return "denied"
+        case .authorized:
+            return "authorized"
+        case .provisional:
+            return "provisional"
+        case .ephemeral:
+            return "ephemeral"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private static func runOnMain(_ block: @escaping () -> Void) {
         if Thread.isMainThread {
-            apply()
+            block()
         } else {
-            DispatchQueue.main.sync(execute: apply)
+            DispatchQueue.main.async(execute: block)
         }
     }
 

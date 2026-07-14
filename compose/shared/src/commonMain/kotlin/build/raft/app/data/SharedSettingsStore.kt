@@ -472,6 +472,8 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> =
         DataResult.Content(Unit)
+
+    suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? = null
 }
 
 class SharedSettingsDataSource(
@@ -811,16 +813,27 @@ class SharedSettingsDataSource(
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
         }
 
-    suspend fun loadMobile(): DataResult<SettingsMobileSnapshot> =
-        when (val result = settingsRepository?.getMobileSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)) {
-            is DataResult.Content -> DataResult.Content(result.data.withLocalMobilePreferences())
+    suspend fun loadMobile(): DataResult<SettingsMobileSnapshot> {
+        val systemNotificationPermission = platformCapabilities.loadSystemNotificationPermission()
+        return when (val result = settingsRepository?.getMobileSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    result.data
+                        .withLocalMobilePreferences()
+                        .withSystemNotificationPermission(systemNotificationPermission)
+                )
             is DataResult.Empty -> result
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
         }
+    }
 
     suspend fun loadMobilePreferences(): DataResult<SettingsMobileSnapshot> =
-        DataResult.Content(localOnlyMobileSnapshot().withLocalMobilePreferences())
+        DataResult.Content(
+            localOnlyMobileSnapshot()
+                .withLocalMobilePreferences()
+                .withSystemNotificationPermission(platformCapabilities.loadSystemNotificationPermission())
+        )
 
     suspend fun setNotificationPreference(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
@@ -1182,6 +1195,11 @@ class SharedSettingsDataSource(
                     )
         )
     }
+
+    private fun SettingsMobileSnapshot.withSystemNotificationPermission(
+        permission: SettingsMobileActionSnapshot?
+    ): SettingsMobileSnapshot =
+        permission?.let { copy(notificationPermission = it) } ?: this
 
     private suspend fun DataResult<SettingsLanguageRegionSnapshot>.withLocalTranslationMode(): DataResult<SettingsLanguageRegionSnapshot> =
         when (this) {
@@ -3193,7 +3211,13 @@ private fun SettingsMobileSnapshot.withSystemNotificationResult(
 ): SettingsMobileSnapshot {
     val statusLabel = result.mobileStatusLabel(action)
     val detail = result.message.ifBlank { result.mobileDetail(action) }
-    val available = result.status != SystemNotificationActionStatus.Unsupported
+    val available =
+        result.status != SystemNotificationActionStatus.Unsupported &&
+            !(action == MOBILE_ACTION_PERMISSION &&
+                result.status in setOf(
+                    SystemNotificationActionStatus.PermissionDenied,
+                    SystemNotificationActionStatus.NotificationsDisabled
+                ))
     val snapshot = SettingsMobileActionSnapshot(available = available, statusLabel = statusLabel, detail = detail)
     return when (action) {
         MOBILE_ACTION_PERMISSION -> copy(notificationPermission = snapshot)
@@ -3209,6 +3233,12 @@ private fun SystemNotificationActionResult.mobileStatusLabel(action: String): St
             when (action) {
                 MOBILE_ACTION_SETTINGS -> "Opened"
                 MOBILE_ACTION_TEST_NOTIFICATION -> "Sent"
+                MOBILE_ACTION_PERMISSION ->
+                    when (code) {
+                        "permission_authorized", "permission_granted", "permission_ephemeral" -> "Allowed"
+                        "permission_provisional" -> "Provisional"
+                        else -> "Done"
+                    }
                 else -> "Done"
             }
         SystemNotificationActionStatus.Requested -> "Requested"

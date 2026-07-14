@@ -881,7 +881,7 @@ class SharedSettingsStoreTest {
             )
         )
         var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals("Done", mobile.notificationPermission.statusLabel)
+        assertEquals("Allowed", mobile.notificationPermission.statusLabel)
         assertNull(store.state.value.effect)
 
         store.accept(SharedSettingsIntent.RequestNotificationPermission)
@@ -918,6 +918,7 @@ class SharedSettingsStoreTest {
         )
         mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals("Disabled", mobile.notificationPermission.statusLabel)
+        assertEquals(false, mobile.notificationPermission.available)
         assertEquals("System notifications are disabled for Raft.", mobile.notificationPermission.detail)
         assertNull(store.state.value.actionState?.errorCode)
 
@@ -929,6 +930,38 @@ class SharedSettingsStoreTest {
         )
         assertEquals("post_failed", store.state.value.actionState?.errorCode)
         scope.cancel()
+    }
+
+    @Test
+    fun mobileLoadUsesCurrentSystemNotificationPermissionSnapshot() = runBlocking {
+        val capabilities =
+            FakeSettingsCapabilities(
+                systemNotificationPermission =
+                    SettingsMobileActionSnapshot(
+                        available = false,
+                        statusLabel = "Denied",
+                        detail = "Notification permission is denied. Open iOS Settings to enable it."
+                    )
+            )
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
+                notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
+                localeRepository = FakeLocaleRepository(),
+                chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository(),
+                platformCapabilities = capabilities
+            )
+
+        val mobile = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobile()).data
+
+        assertEquals("Denied", mobile.notificationPermission.statusLabel)
+        assertEquals(false, mobile.notificationPermission.available)
+        assertEquals(
+            "Notification permission is denied. Open iOS Settings to enable it.",
+            mobile.notificationPermission.detail
+        )
+        assertEquals(listOf("notificationPermission"), capabilities.calls)
     }
 
     @Test
@@ -2930,7 +2963,8 @@ class SharedSettingsStoreTest {
         private val avatarFileResult: DataResult<PlatformFile> =
             DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable")),
         private val connectedAppLogoFileResult: DataResult<PlatformFile> =
-            DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable"))
+            DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable")),
+        private val systemNotificationPermission: SettingsMobileActionSnapshot? = null
     ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
 
@@ -3029,6 +3063,13 @@ class SharedSettingsStoreTest {
         override suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<PlatformFile> {
             calls += "pickConnectedAppLogoFile:$clientRecordId"
             return connectedAppLogoFileResult
+        }
+
+        override suspend fun loadSystemNotificationPermission(): SettingsMobileActionSnapshot? {
+            if (systemNotificationPermission != null) {
+                calls += "notificationPermission"
+            }
+            return systemNotificationPermission
         }
 
         private fun storageSnapshot(feedback: String? = null): SharedSettingsStorageSnapshot =
