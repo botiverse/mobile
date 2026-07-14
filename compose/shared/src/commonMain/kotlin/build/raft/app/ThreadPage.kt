@@ -11317,7 +11317,7 @@ private fun ThreadMessagesList(
     }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
-    var userScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
@@ -11622,7 +11622,7 @@ private fun ThreadMessagesList(
         pendingKeyboardBottomAnchor = false
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
-        userScrollGeneration += 1
+        userScrollGeneration.value += 1
         diagnosticsLogger(
             "thread_header_scroll_to_top request=$headerScrollToTopRequest " +
                 "firstVisible=${listState.firstVisibleItemIndex} totalItems=$lazyItemCount"
@@ -11771,20 +11771,48 @@ private fun ThreadMessagesList(
     ) {
         val previousStatus = previousOlderMessagesStatus
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
-            pendingOlderPageAnchor = listState.threadFirstVisibleMessageAnchor(renderPayload)
+            pendingOlderPageAnchor =
+                listState.threadFirstVisibleMessageAnchor(
+                    timelineSlice = renderPayload,
+                    userScrollGeneration = userScrollGeneration.value
+                )
             allowBottomAutoAnchor = false
+            pendingOlderPageAnchor?.let { anchor ->
+                diagnosticsLogger(
+                    "thread_older_anchor_capture messageId=${anchor.messageId} offset=${anchor.offset} " +
+                        "userScrollGeneration=${anchor.userScrollGeneration} " +
+                        "isScrollInProgress=${listState.isScrollInProgress}"
+                )
+            }
         } else if (previousStatus == "loading" && renderPayload.olderMessagesStatus != "loading") {
             val anchor = pendingOlderPageAnchor
             pendingOlderPageAnchor = null
             allowBottomAutoAnchor = false
-            // Restoring the anchor cancels an active drag; a dragging user is
-            // already re-positioning themselves, so let the gesture win and
-            // skip the programmatic restore (task #554 pattern scan).
-            if (anchor != null && !listState.isScrollInProgress) {
+            if (anchor != null) {
+                listState.awaitThreadMessagesLayoutFrame()
+            }
+            if (
+                anchor != null &&
+                shouldRestoreThreadOlderPageAnchor(
+                    capturedUserScrollGeneration = anchor.userScrollGeneration,
+                    currentUserScrollGeneration = userScrollGeneration.value
+                )
+            ) {
                 val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
                 if (targetIndex >= 0) {
                     listState.scrollToItem(targetIndex, -anchor.offset)
+                    diagnosticsLogger(
+                        "thread_older_anchor_restore result=restored messageId=${anchor.messageId} " +
+                            "targetIndex=$targetIndex offset=${anchor.offset} " +
+                            "userScrollGeneration=${userScrollGeneration.value}"
+                    )
                 }
+            } else if (anchor != null) {
+                diagnosticsLogger(
+                    "thread_older_anchor_restore result=skipped_user_moved messageId=${anchor.messageId} " +
+                        "capturedUserScrollGeneration=${anchor.userScrollGeneration} " +
+                        "currentUserScrollGeneration=${userScrollGeneration.value}"
+                )
             }
         }
         previousOlderMessagesStatus = renderPayload.olderMessagesStatus
@@ -11793,7 +11821,7 @@ private fun ThreadMessagesList(
         if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
             return@LaunchedEffect
         }
-        latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration
+        latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
         latestLocalSendBottomAnchorActiveKey = latestLocalSendBottomAnchorKey
         allowBottomAutoAnchor = true
     }
@@ -11808,7 +11836,7 @@ private fun ThreadMessagesList(
                 activeAnchorKey = latestLocalSendBottomAnchorActiveKey,
                 targetAnchorKey = anchorKey,
                 startUserScrollGeneration = startUserScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration,
+                currentUserScrollGeneration = userScrollGeneration.value,
                 isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(currentLatestItemIndexState.value),
                 isSendingAnchorVisible = currentPayloadState.value.hasSendingLocalSendAnchor(anchorKey),
                 attempt = attempt
@@ -12115,6 +12143,12 @@ private fun ThreadMessagesList(
                 modifier = Modifier.fillMaxSize()
                     .touchListener { type, _ ->
                         if (type == TouchType.Move) {
+                            // Count every direct pointer move, not inertial/programmatic
+                            // scrolling. Older-page completion may safely cancel the
+                            // original top fling and restore its message anchor, but a
+                            // new/continued drag after the request started owns the
+                            // viewport and must never be yanked back.
+                            userScrollGeneration.value += 1
                             // A user drag retires the pending focused-message
                             // anchor request: growth-driven retries must never
                             // scroll against an interacting user (task #554).
@@ -12128,7 +12162,6 @@ private fun ThreadMessagesList(
                             if (latestLocalSendBottomAnchorActiveKey != null) {
                                 latestLocalSendBottomAnchorActiveKey = null
                                 allowBottomAutoAnchor = false
-                                userScrollGeneration += 1
                             }
                         }
                     }
@@ -13428,11 +13461,17 @@ internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): Stri
 
 private data class ThreadVisibleMessageAnchor(
     val messageId: String,
-    val offset: Int
+    val offset: Int,
+    val userScrollGeneration: Int
+)
+
+private class ThreadUserScrollGeneration(
+    var value: Int = 0
 )
 
 private fun LazyListState.threadFirstVisibleMessageAnchor(
-    timelineSlice: ThreadTimelineSlice
+    timelineSlice: ThreadTimelineSlice,
+    userScrollGeneration: Int
 ): ThreadVisibleMessageAnchor? {
     val firstMessageListItemIndex = timelineSlice.firstMessageListItemIndex()
     val messageCount = timelineSlice.messages.size
@@ -13445,8 +13484,17 @@ private fun LazyListState.threadFirstVisibleMessageAnchor(
             }
             ?: return null
     val message = timelineSlice.messages.getOrNull(item.index - firstMessageListItemIndex) ?: return null
-    return ThreadVisibleMessageAnchor(messageId = message.id, offset = item.offset)
+    return ThreadVisibleMessageAnchor(
+        messageId = message.id,
+        offset = item.offset,
+        userScrollGeneration = userScrollGeneration
+    )
 }
+
+internal fun shouldRestoreThreadOlderPageAnchor(
+    capturedUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int
+): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
 private fun LazyListState.isThreadOlderAutoLoadThreshold(boundaryIndex: Int): Boolean {
     if (boundaryIndex < 0) return false
