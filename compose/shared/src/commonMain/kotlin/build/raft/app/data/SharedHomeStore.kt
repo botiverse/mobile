@@ -228,10 +228,13 @@ internal class SharedHomeStore(
 
     private fun debounceInFlightHomeLoad(intent: SharedHomeIntent): Boolean {
         if (!intent.debouncesInFlightHomeLoad) return false
-        val activeLoad = loadJob?.isActive == true
-        if (!activeLoad) return false
+        return coalesceIntoInFlightHomeLoad(intent.toSharedHomeIntentDiagnosticsLabel())
+    }
+
+    private fun coalesceIntoInFlightHomeLoad(intentLabel: String): Boolean {
+        if (loadJob?.isActive != true) return false
         diagnosticsLogger(
-            "home_load_debounce intent=${intent.toSharedHomeIntentDiagnosticsLabel()} " +
+            "home_load_debounce intent=$intentLabel " +
                 "reason=in_flight_load"
         )
         return true
@@ -705,6 +708,14 @@ internal class SharedHomeStore(
             val currentContent = current.content as? SharedHomeContentState.Content
             if (hiddenHomeSnapshotDirty) {
                 hiddenHomeSnapshotDirty = false
+                if (coalesceIntoInFlightHomeLoad("visible_dirty_reconcile")) {
+                    reduceState(
+                        current.copy(
+                            homeRealtimeDirty = false
+                        )
+                    )
+                    return
+                }
                 val nextSwitch = current.serverSwitchState.refresh()
                 reduceState(
                     current.copy(

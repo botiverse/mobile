@@ -1647,6 +1647,69 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun visibleDirtyReconcileCoalescesIntoInFlightStartLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val api = RecordingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), api = api),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetSurfaceVisible(false))
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("message-hidden"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 2,
+                            author = sampleMember().copy(id = MemberId("member-2")),
+                            timestampLabel = "12:01",
+                            body = "hidden update"
+                        )
+                    )
+            )
+        )
+        assertEquals(true, store.state.value.homeRealtimeDirty)
+        api.calls.clear()
+        logs.clear()
+        val blockedLoad = api.blockNextChannels()
+
+        store.dispatch(SharedHomeIntent.Start)
+        blockedLoad.awaitStarted()
+        store.dispatch(SharedHomeIntent.SetSurfaceVisible(true))
+        yield()
+
+        assertEquals(3, api.calls.size)
+        assertEquals(
+            setOf("dms:server-1", "unread:server-1", "summary:server-1"),
+            api.calls.toSet()
+        )
+        assertEquals(
+            1,
+            logs.count {
+                it == "home_load_debounce intent=visible_dirty_reconcile reason=in_flight_load"
+            }
+        )
+
+        blockedLoad.release()
+        awaitCondition {
+            api.calls.size >= 4 &&
+                (store.state.value.content as? SharedHomeContentState.Content)?.contentRefreshing == false
+        }
+        assertEquals(4, api.calls.size)
+        assertEquals(false, store.state.value.homeRealtimeDirty)
+        assertEquals("server-1", (store.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value)
+        scope.cancel()
+    }
+
+    @Test
     fun dispatchStartDebouncesInFlightHomeLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
