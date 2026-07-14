@@ -2235,6 +2235,21 @@ private fun SlockAppShellContent(
         remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val appShellRealtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
+    val realtimeAuthorityFlow =
+        remember(sharedStores, storeScope) { sharedStores.realtimeAuthority(storeScope) }
+    val realtimeAuthority by realtimeAuthorityFlow.collectAsState()
+    LaunchedEffect(
+        realtimeAuthority?.witness?.authGeneration,
+        realtimeAuthority?.witness?.connectionFamilyId,
+    ) {
+        val authority = realtimeAuthority
+        bridge.log(
+            "realtime_authority_shadow scope=${storeScope.shellInstanceId} " +
+                "state=${if (authority == null) "absent" else "current"} " +
+                "generation=${authority?.witness?.authGeneration ?: 0L} " +
+                "grants=${authority?.grantsByServer?.size ?: 0}"
+        )
+    }
     val appShellAgentDetailStore =
         remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val selectedServerId by selectedServerStore.selectedServerId.collectAsState()

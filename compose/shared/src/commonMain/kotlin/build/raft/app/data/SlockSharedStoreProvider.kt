@@ -50,6 +50,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -116,6 +117,7 @@ internal class SlockSharedStoreProvider private constructor(
     val apiEnvironmentStore: SharedApiEnvironmentStore,
     val eventBus: SlockEventBusRelay,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
+    val realtimeAuthorityProvider: RealtimeAuthorityProvider,
     val messageTranslationStore: SharedMessageTranslationStore,
     val threadMessageStore: SharedThreadMessageStore,
     val threadPayloadStore: SharedThreadPayloadStore,
@@ -129,6 +131,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellNetworkClients = SlockShellScopedStoreCache<SlockNetworkClient>()
     private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
     private val shellRealtimeDomainEventOwners = SlockShellScopedStoreCache<SharedRealtimeDomainEventOwner>()
+    private val realtimeAuthorityRegistrations = SlockShellScopedStoreCache<String>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
@@ -169,6 +172,7 @@ internal class SlockSharedStoreProvider private constructor(
         // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
+        realtimeAuthorityProvider.start(threadSendScope)
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
                 clearActiveShellServerSelections()
@@ -292,6 +296,23 @@ internal class SlockSharedStoreProvider private constructor(
                 }
             }
         }
+
+    /**
+     * Provider-owned authority flow for one mounted AppShell. Registration is
+     * idempotent by shellInstanceId; callers only observe the flow and never
+     * mint/rotate registry identities themselves.
+     */
+    fun realtimeAuthority(scope: SlockShellStoreScope): StateFlow<RealtimeScopeAuthority?> {
+        val flow = realtimeAuthorityProvider.authorityFlow(scope.shellInstanceId)
+        val registrationId =
+            realtimeAuthorityRegistrations.getOrPut(scope) {
+                "${scope.shellInstanceId}:${defaultNowMillis()}:${Random.nextLong()}"
+            }
+        threadSendScope.launch {
+            realtimeAuthorityProvider.registerScope(scope.shellInstanceId, registrationId)
+        }
+        return flow
+    }
 
     fun agentDetailStore(scope: SlockShellStoreScope): SharedAgentDetailStore =
         if (scope == SlockShellStoreScope.Legacy) {
@@ -473,6 +494,11 @@ internal class SlockSharedStoreProvider private constructor(
 
     fun releaseShellStoreScope(scope: SlockShellStoreScope) {
         if (scope == SlockShellStoreScope.Legacy) return
+        realtimeAuthorityRegistrations.remove(scope)?.let { registrationId ->
+            threadSendScope.launch {
+                realtimeAuthorityProvider.releaseScope(scope.shellInstanceId, registrationId)
+            }
+        }
         selectedServerStores.get(scope)?.dispose()
         homeStores.remove(scope)?.clear()
         homeActivityStores.remove(scope)?.clear()
@@ -622,6 +648,21 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             }
             val networkClient = scopedNetworkClientFactory(authStore)
+            val threadSendScope = CoroutineScope(SupervisorJob())
+            val realtimeAuthorityRegistry =
+                RealtimeAuthorityRegistry(
+                    authRevisionStore = KeyValueRealtimeAuthRevisionStore(authKeyValueStore),
+                    processInstanceId =
+                        "mobile-${defaultNowMillis()}-${Random.nextLong()}",
+                    diagnosticsLogger = sharedInfoLogger("RealtimeAuthority", "realtime_authority"),
+                )
+            val realtimeAuthorityProvider =
+                RealtimeAuthorityProvider(
+                    registry = realtimeAuthorityRegistry,
+                    authStore = authStore,
+                    authEvents = authStore,
+                    diagnosticsLogger = sharedInfoLogger("RealtimeAuthority", "realtime_authority"),
+                )
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
             // synchronously (before first render), then fire-and-forget a refresh from the
             // deployed WEB app origin (webUrl, not the API base URL) — the same canonical
@@ -701,6 +742,7 @@ internal class SlockSharedStoreProvider private constructor(
                         tasksDataStore = tasksDataStore,
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
                     ),
+                realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
                     SharedMessageTranslationStore(
                         authStore = authStore,
@@ -731,7 +773,7 @@ internal class SlockSharedStoreProvider private constructor(
                     ),
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),
-                threadSendScope = CoroutineScope(SupervisorJob())
+                threadSendScope = threadSendScope
             ).also {
                 val pushLifecycleScope = CoroutineScope(SupervisorJob())
                 SlockPushRegistrationLifecycle.observeSessionEvents(

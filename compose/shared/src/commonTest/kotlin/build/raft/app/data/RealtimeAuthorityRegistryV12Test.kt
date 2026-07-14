@@ -7,6 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -149,6 +150,70 @@ class RealtimeAuthorityRegistryV12Test {
         assertFalse(authFirst.runIfCurrentGrant(newlyMintedBurnedGrant) {})
         assertTrue(authFirst.runIfCurrentGrant(siblingGrant) {})
         assertEquals(siblingGrant, authFirst.currentGrant(siblingLease.id, "a"))
+    }
+
+    @Test
+    fun durableRevisionIsRereadAndEqualGenerationPayloadConflictFailsClosed() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val diagnostics = mutableListOf<String>()
+        val first = registry(store, process = "process-first")
+        first.initialize()
+        assertEquals(
+            RealtimeAuthAdvanceResult.Advanced,
+            first.advanceAuthResult(revision(1, principal = "p1", servers = listOf("a"))),
+        )
+
+        val staleProcess =
+            RealtimeAuthorityRegistry(
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(store),
+                processInstanceId = "process-stale",
+                diagnosticsLogger = diagnostics::add,
+            )
+        staleProcess.initialize()
+        assertEquals(
+            RealtimeAuthAdvanceResult.Advanced,
+            first.advanceAuthResult(revision(2, principal = "p2", servers = listOf("b"))),
+        )
+
+        assertEquals(
+            RealtimeAuthAdvanceResult.Conflict,
+            staleProcess.advanceAuthResult(revision(2, principal = "p3", servers = listOf("c"))),
+        )
+        assertEquals(
+            revision(2, principal = "p2", servers = listOf("b")),
+            KeyValueRealtimeAuthRevisionStore(store).read(),
+            "a stale process must reread durable truth instead of overwriting equal generation",
+        )
+        assertTrue(diagnostics.any { it.contains("equal_generation_payload_conflict") })
+    }
+
+    @Test
+    fun providerStyleReconcileAllocatesFromDurableTruthAndCanForceSamePayloadSuccessor() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val registry = registry(store, process = "process-provider")
+        registry.initialize()
+
+        val p1 = RealtimeAuthoritySession(principalId = "p1", serverIds = listOf("a", "b"))
+        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(p1, force = false))
+        assertEquals(1L, registry.snapshot.value.authRevision.generation)
+        assertEquals(RealtimeAuthAdvanceResult.Duplicate, registry.advanceAuthFromCurrentSession(p1, force = false))
+        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(p1, force = true))
+        assertEquals(2L, registry.snapshot.value.authRevision.generation)
+
+        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(null, force = false))
+        assertEquals(3L, registry.snapshot.value.authRevision.generation)
+        assertNull(registry.snapshot.value.authRevision.session)
+        assertEquals(RealtimeAuthAdvanceResult.Duplicate, registry.advanceAuthFromCurrentSession(null, force = false))
+    }
+
+    @Test
+    fun processInstanceIdMustBeFreshConstructionInputAndNeverBlank() {
+        assertFailsWith<IllegalArgumentException> {
+            RealtimeAuthorityRegistry(
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                processInstanceId = "   ",
+            )
+        }
     }
 
     private fun registry(store: SlockKeyValueStore, process: String): RealtimeAuthorityRegistry =

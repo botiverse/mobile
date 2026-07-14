@@ -83,6 +83,13 @@ internal interface RealtimeAuthRevisionStore {
     fun write(revision: RealtimeAuthRevision)
 }
 
+internal enum class RealtimeAuthAdvanceResult {
+    Advanced,
+    Duplicate,
+    Stale,
+    Conflict,
+}
+
 internal class KeyValueRealtimeAuthRevisionStore(
     private val store: SlockKeyValueStore,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
@@ -107,7 +114,12 @@ internal class KeyValueRealtimeAuthRevisionStore(
 internal class RealtimeAuthorityRegistry(
     private val authRevisionStore: RealtimeAuthRevisionStore,
     private val processInstanceId: String,
+    private val diagnosticsLogger: (String) -> Unit = {},
 ) {
+    init {
+        require(processInstanceId.isNotBlank()) { "realtime processInstanceId must not be blank" }
+    }
+
     private val mutex = Mutex()
     private val mutableSnapshot = MutableStateFlow(RealtimeRegistrySnapshot.Empty)
     private var nextLeaseId = 0L
@@ -125,15 +137,60 @@ internal class RealtimeAuthorityRegistry(
     }
 
     suspend fun advanceAuth(revision: RealtimeAuthRevision): Boolean =
+        advanceAuthResult(revision) == RealtimeAuthAdvanceResult.Advanced
+
+    suspend fun advanceAuthResult(revision: RealtimeAuthRevision): RealtimeAuthAdvanceResult =
         mutex.withLock {
             val normalized = revision.normalized()
-            val current = mutableSnapshot.value
-            if (normalized.generation <= current.authRevision.generation) {
-                return@withLock false
+            val (current, durableConflict) = synchronizeDurableRevisionLocked()
+            if (durableConflict) return@withLock RealtimeAuthAdvanceResult.Conflict
+            val durable = current.authRevision
+            if (normalized.generation < durable.generation) {
+                return@withLock RealtimeAuthAdvanceResult.Stale
+            }
+            if (normalized.generation == durable.generation) {
+                if (normalized == durable) {
+                    return@withLock RealtimeAuthAdvanceResult.Duplicate
+                }
+                diagnosticsLogger(
+                    "realtime_authority_auth_advance result=conflict " +
+                        "reason=equal_generation_payload_conflict generation=${normalized.generation}"
+                )
+                return@withLock RealtimeAuthAdvanceResult.Conflict
             }
             authRevisionStore.write(normalized)
             mutableSnapshot.value = rebuildForAuth(current, normalized)
-            true
+            RealtimeAuthAdvanceResult.Advanced
+        }
+
+    /**
+     * Provider entry point: rereads durable truth inside the registry mutex and
+     * allocates the next authority generation from that durable value. A typed
+     * auth event is a wake signal, so [session] is the provider's freshly read
+     * current session rather than event payload.
+     */
+    suspend fun advanceAuthFromCurrentSession(
+        session: RealtimeAuthoritySession?,
+        force: Boolean,
+    ): RealtimeAuthAdvanceResult =
+        mutex.withLock {
+            val (current, durableConflict) = synchronizeDurableRevisionLocked()
+            if (durableConflict) return@withLock RealtimeAuthAdvanceResult.Conflict
+            val normalizedSession =
+                RealtimeAuthRevision(generation = current.authRevision.generation, session = session)
+                    .normalized()
+                    .session
+            if (!force && normalizedSession == current.authRevision.session) {
+                return@withLock RealtimeAuthAdvanceResult.Duplicate
+            }
+            val next =
+                RealtimeAuthRevision(
+                    generation = current.authRevision.generation + 1L,
+                    session = normalizedSession,
+                )
+            authRevisionStore.write(next)
+            mutableSnapshot.value = rebuildForAuth(current, next)
+            RealtimeAuthAdvanceResult.Advanced
         }
 
     suspend fun register(scopeKey: String): RealtimeScopeLease =
@@ -290,6 +347,29 @@ internal class RealtimeAuthorityRegistry(
 
     private fun nextOpaqueId(kind: String, counter: Long): String =
         "$processInstanceId:$kind:$counter"
+
+    private fun synchronizeDurableRevisionLocked(): Pair<RealtimeRegistrySnapshot, Boolean> {
+        val current = mutableSnapshot.value
+        val durable = authRevisionStore.read()?.normalized() ?: RealtimeRegistrySnapshot.Empty.authRevision
+        if (durable == current.authRevision) return current to false
+        if (durable.generation < current.authRevision.generation) {
+            diagnosticsLogger(
+                "realtime_authority_durable_sync result=ignored reason=durable_generation_regressed " +
+                    "durable=${durable.generation} memory=${current.authRevision.generation}"
+            )
+            return current to false
+        }
+        if (durable.generation == current.authRevision.generation) {
+            diagnosticsLogger(
+                "realtime_authority_durable_sync result=conflict " +
+                    "reason=equal_generation_payload_conflict generation=${durable.generation}"
+            )
+            return current to true
+        }
+        return rebuildForAuth(current, durable).also { synchronized ->
+            mutableSnapshot.value = synchronized
+        } to false
+    }
 }
 
 private fun RealtimeAuthRevision.normalized(): RealtimeAuthRevision =
