@@ -4218,9 +4218,7 @@ private fun SlockAppShellContent(
                                 },
                                 onOpenServerSelection = {
                                     pager.openAuthChooseServerPage(
-                                        storeScope = navigationStoreScope,
-                                        documentShell =
-                                            pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
+                                        storeScope = navigationStoreScope
                                     )
                                 },
                                 onCreateChannel = { openCreateChannelDialog() },
@@ -12391,9 +12389,6 @@ private fun AuthChooseServerPageContent() {
     val sourceStoreScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
-    val sourceDocumentShell = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
-    }
     val skipInitialLoad = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, false)
     }
@@ -12465,20 +12460,11 @@ private fun AuthChooseServerPageContent() {
                 authDataSource = authDataSource,
                 skipInitialLoad = skipInitialLoad,
                 onReady = { readySession ->
-                    val switchesDocumentServer =
-                        isDocumentCrossServerSelection(
-                            sourceStoreScope = sourceStoreScope,
-                            sourceDocumentShell = sourceDocumentShell,
-                            selectedServerId = readySession.selectedServerId
-                        )
-                    if (!switchesDocumentServer) {
-                        bridge.realtimeDisconnect("server_changed")
-                    }
+                    bridge.realtimeDisconnect("server_changed")
                     pager.openAppShellReplacingCurrentPage(
                         pageData =
                             appShellPageDataForServerSelection(
                                 sourceStoreScope = sourceStoreScope,
-                                sourceDocumentShell = sourceDocumentShell,
                                 selectedServerId = readySession.selectedServerId,
                                 suppressRestoreLanding = true
                             )
@@ -12656,8 +12642,7 @@ private fun Pager.openAppShellDeveloper() {
 }
 
 private fun Pager.openAuthChooseServerPage(
-    storeScope: SlockShellStoreScope,
-    documentShell: Boolean
+    storeScope: SlockShellStoreScope
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
@@ -12665,8 +12650,7 @@ private fun Pager.openAuthChooseServerPage(
             authChooseServerPageData(
                 replaceCurrent = false,
                 fromShell = true,
-                storeScope = storeScope,
-                documentShell = documentShell
+                storeScope = storeScope
             )
         )
 }
@@ -12692,8 +12676,7 @@ internal fun authChooseServerPageData(
     replaceCurrent: Boolean = false,
     fromShell: Boolean = false,
     skipInitialLoad: Boolean = false,
-    storeScope: SlockShellStoreScope? = null,
-    documentShell: Boolean = false
+    storeScope: SlockShellStoreScope? = null
 ): JSONObject =
     slockAuthRoutePageData(AUTH_CHOOSE_SERVER_PAGE, replaceCurrent)
         .apply {
@@ -12706,43 +12689,25 @@ internal fun authChooseServerPageData(
             storeScope?.let { scope ->
                 put(SLOCK_SHELL_INSTANCE_ID, scope.shellInstanceId)
                 scope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
-                put(SLOCK_DOCUMENT_SHELL, documentShell)
+                put(SLOCK_DOCUMENT_SHELL, false)
             }
         }
 
 internal fun appShellPageDataForServerSelection(
     sourceStoreScope: SlockShellStoreScope,
-    sourceDocumentShell: Boolean,
     selectedServerId: String?,
     suppressRestoreLanding: Boolean = false
 ): JSONObject {
     val normalizedServerId = selectedServerId?.trim()?.takeIf { it.isNotBlank() }
-    val switchesDocumentServer =
-        isDocumentCrossServerSelection(
-            sourceStoreScope = sourceStoreScope,
-            sourceDocumentShell = sourceDocumentShell,
-            selectedServerId = normalizedServerId
-        )
     return appShellPageData(
         replaceCurrent = true,
         suppressRestoreLanding = suppressRestoreLanding
     ).apply {
         normalizedServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
-        if (!switchesDocumentServer) {
-            put(SLOCK_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
-            put(SLOCK_DOCUMENT_SHELL, sourceDocumentShell)
-        }
+        put(SLOCK_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
+        put(SLOCK_DOCUMENT_SHELL, false)
     }
 }
-
-internal fun isDocumentCrossServerSelection(
-    sourceStoreScope: SlockShellStoreScope,
-    sourceDocumentShell: Boolean,
-    selectedServerId: String?
-): Boolean =
-    sourceDocumentShell &&
-        !selectedServerId.isNullOrBlank() &&
-        selectedServerId.trim() != sourceStoreScope.initialServerId
 
 internal fun appShellPageData(
     replaceCurrent: Boolean = false,

@@ -15,29 +15,29 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
-    fun notificationServerCreatesStableDocumentShellIdentity() {
+    fun notificationServerUsesDefaultSingleShellIdentity() {
         val pageData = JSONObject().put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-2")
 
         val target = resolveAndroidShellLaunchTarget(pageData)
 
-        assertEquals("server-shell:server-2", target.shellInstanceId)
+        assertEquals("android-default-app-shell", target.shellInstanceId)
         assertEquals("server-2", target.serverId)
-        assertTrue(target.documentShell)
+        assertFalse(target.documentShell)
         val enriched = pageData.withAndroidShellLaunchTarget(target)
         assertEquals(target.shellInstanceId, enriched.getString(ANDROID_SHELL_INSTANCE_ID_KEY))
         assertEquals("server-2", enriched.getString(ANDROID_SHELL_SERVER_ID_KEY))
     }
 
     @Test
-    fun existingServerWindowWinsOverCreatingAnotherDocument() {
+    fun legacyRegisteredServerWindowCannotCreateAnotherShell() {
         AndroidShellWindowRegistry.register(
             AndroidShellLaunchTarget("shell-existing", "server-2", documentShell = true)
         )
 
         val target = resolveAndroidShellLaunchTarget(JSONObject().put(ANDROID_SHELL_SERVER_ID_KEY, "server-2"))
 
-        assertEquals("shell-existing", target.shellInstanceId)
-        assertTrue(target.documentShell)
+        assertEquals("android-default-app-shell", target.shellInstanceId)
+        assertFalse(target.documentShell)
     }
 
     @Test
@@ -68,28 +68,48 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
-    fun serverDocumentShellNeverFallsBackToDefaultTaskClear() {
+    fun legacyDocumentRequestCannotSuppressRequestedTaskClear() {
         val target = resolveAndroidShellLaunchTarget(
             JSONObject().put(ANDROID_SHELL_SERVER_ID_KEY, "server-2")
         )
 
         val taskLaunch = target.taskLaunchPlan(requestedTaskClear = true)
 
-        assertFalse(taskLaunch.clearTask)
-        assertEquals("server-shell:server-2", taskLaunch.documentShellId)
+        assertTrue(taskLaunch.clearTask)
     }
 
     @Test
-    fun pageDataRoundTripKeepsIdentityAndIntent() {
+    fun pageDataRoundTripNormalizesLegacyDocumentIdentity() {
         val source = JSONObject().put("slockNotificationMessageId", "message-1")
         val target = AndroidShellLaunchTarget("shell-a", "server-a", documentShell = true)
 
         val enriched = source.withAndroidShellLaunchTarget(target)
         val restored = androidShellLaunchTargetFromPageData(enriched)
 
-        assertEquals(target, restored)
-        assertTrue(enriched.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
+        assertEquals("android-default-app-shell", restored?.shellInstanceId)
+        assertEquals("server-a", restored?.serverId)
+        assertFalse(restored?.documentShell ?: true)
+        assertFalse(enriched.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
         assertEquals("message-1", enriched.getString("slockNotificationMessageId"))
+    }
+
+    @Test
+    fun rawLegacyDocumentPageDataNormalizesBeforeStoreScopeWhilePreservingRoute() {
+        val source =
+            JSONObject()
+                .put(ANDROID_SHELL_INSTANCE_ID_KEY, "server-shell:server-b")
+                .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-b")
+                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-b")
+                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-b")
+
+        val normalized = normalizeAndroidAppShellPageData(source)
+
+        assertEquals("android-default-app-shell", normalized.getString(ANDROID_SHELL_INSTANCE_ID_KEY))
+        assertEquals("server-b", normalized.getString(ANDROID_SHELL_SERVER_ID_KEY))
+        assertFalse(normalized.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
+        assertEquals("thread-b", normalized.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
+        assertEquals("message-b", normalized.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
     }
 
     @Test
@@ -107,7 +127,6 @@ class AndroidShellWindowContractTest {
         assertEquals("server-a", target?.serverId)
         assertFalse(target?.documentShell ?: true)
         assertFalse(taskLaunch?.clearTask ?: true)
-        assertNull(taskLaunch?.documentShellId)
     }
 
     @Test
@@ -154,14 +173,14 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
-    fun chooserCrossServerRouteWithoutOldShellIdResolvesTargetServerDocument() {
+    fun chooserCrossServerRouteWithoutOldShellIdUsesDefaultShell() {
         val replacementPageData = JSONObject().put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
 
         val target = resolveAndroidShellLaunchTarget(replacementPageData)
 
-        assertEquals("server-shell:server-b", target.shellInstanceId)
+        assertEquals("android-default-app-shell", target.shellInstanceId)
         assertEquals("server-b", target.serverId)
-        assertTrue(target.documentShell)
+        assertFalse(target.documentShell)
     }
 
     @Test
@@ -171,18 +190,4 @@ class AndroidShellWindowContractTest {
         assertTrue(shouldReleaseAndroidShellWindow(isFinishing = true, isChangingConfigurations = false))
     }
 
-    @Test
-    fun documentWindowUsesActivityMetricsWithoutOverwritingDefaultShellAdapter() {
-        assertTrue(shouldUseGlobalHostDisplayMetrics(null))
-        assertTrue(
-            shouldUseGlobalHostDisplayMetrics(
-                AndroidShellLaunchTarget("android-default-app-shell", null, documentShell = false)
-            )
-        )
-        assertFalse(
-            shouldUseGlobalHostDisplayMetrics(
-                AndroidShellLaunchTarget("server-shell:s1", "s1", documentShell = true)
-            )
-        )
-    }
 }

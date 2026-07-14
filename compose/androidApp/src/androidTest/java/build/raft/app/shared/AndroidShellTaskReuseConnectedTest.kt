@@ -26,7 +26,8 @@ class AndroidShellTaskReuseConnectedTest {
             PackageManager.GET_META_DATA,
         )
 
-        assertEquals(ActivityInfo.DOCUMENT_LAUNCH_NONE, activityInfo.documentLaunchMode)
+        assertEquals(ActivityInfo.LAUNCH_SINGLE_TASK, activityInfo.launchMode)
+        assertEquals(ActivityInfo.DOCUMENT_LAUNCH_NEVER, activityInfo.documentLaunchMode)
     }
 
     @Test
@@ -41,7 +42,7 @@ class AndroidShellTaskReuseConnectedTest {
     }
 
     @Test
-    fun notificationReusesExistingServerDocumentTaskWithoutCreatingAnotherDocument() {
+    fun legacyDocumentPayloadStillReusesSingleAppShellTask() {
         assertNotificationReusesExistingShell(
             AndroidShellLaunchTarget(
                 shellInstanceId = "server-shell:server-notification-reuse",
@@ -51,41 +52,68 @@ class AndroidShellTaskReuseConnectedTest {
         )
     }
 
+    @Test
+    fun secondServerLegacyDocumentLaunchCannotCreateAnotherAppShell() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        AndroidShellWindowRegistry.clearForTest()
+        val firstIntent = appShellIntent(
+            context = context,
+            target = AndroidShellLaunchTarget(
+                shellInstanceId = "android-default-app-shell",
+                serverId = "server-a",
+                documentShell = false,
+            ),
+            instanceId = "single-shell-server-a",
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        context.startActivity(firstIntent)
+        val firstActivity = waitForResumedAppShell(instrumentation)
+        val firstTaskId = firstActivity.taskId
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        try {
+            val legacyDocumentIntent = rawLegacyAppShellIntent(
+                context = context,
+                shellInstanceId = "server-shell:server-b",
+                serverId = "server-b",
+                instanceId = "single-shell-server-b",
+            ).apply {
+                data = Uri.parse("raft-shell://window/server-shell%3Aserver-b")
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                        Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS
+                )
+            }
+            context.startActivity(legacyDocumentIntent)
+            val replacement = waitForReplacementAppShell(instrumentation, firstActivity)
+
+            assertEquals(firstTaskId, replacement.taskId)
+            assertEquals(1, waitForTaskActivityCount(activityManager, firstTaskId, expectedCount = 1))
+            assertEquals(1, appShellTaskCount(activityManager, context.packageName))
+            val replacementPageData = readCurrentPageData(instrumentation, replacement)
+            assertEquals("android-default-app-shell", replacementPageData.getString(ANDROID_SHELL_INSTANCE_ID_KEY))
+            assertEquals("server-b", replacementPageData.getString(ANDROID_SHELL_SERVER_ID_KEY))
+            assertEquals(false, replacementPageData.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
+            assertEquals(
+                "thread-server-b",
+                replacementPageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID),
+            )
+            assertEquals(
+                "message-server-b",
+                replacementPageData.getString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID),
+            )
+        } finally {
+            activityManager.appTasks.firstOrNull { it.taskInfo.taskId == firstTaskId }?.finishAndRemoveTask()
+            AndroidShellWindowRegistry.clearForTest()
+        }
+    }
+
     private fun assertNotificationReusesExistingShell(initialTarget: AndroidShellLaunchTarget) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         AndroidShellWindowRegistry.clearForTest()
-        val initialPageData =
-            JSONObject()
-                .put("instanceId", "notification-reuse-initial")
-                .put(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
-                .put("slockSocialAuthProviders", "google,github")
-                .put("slockSuppressRestoreLanding", true)
-                .put("localOffsetMinutes", 0)
-                .put("todayEpochDay", 0)
-                .put("nowEpochMillis", System.currentTimeMillis())
-                .withAndroidShellLaunchTarget(initialTarget)
-        val initialIntent =
-            Intent(context, SlockAppShellActivity::class.java)
-                .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
-                .putExtra(
-                    SlockKuiklyActivity.KEY_PAGE_DATA,
-                    SlockKuiklyPageData.fromJson(initialPageData).text,
-                )
-                .apply {
-                    if (initialTarget.documentShell) {
-                        data = Uri.parse(
-                            "raft-shell://window/${Uri.encode(initialTarget.shellInstanceId)}"
-                        )
-                        addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
-                                Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS
-                        )
-                    } else {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                    }
-                }
+        val initialIntent = appShellIntent(context, initialTarget, "notification-reuse-initial")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         context.startActivity(initialIntent)
         val initialActivity = waitForResumedAppShell(instrumentation)
         val taskId = initialActivity.taskId
@@ -105,6 +133,74 @@ class AndroidShellTaskReuseConnectedTest {
             AndroidShellWindowRegistry.clearForTest()
         }
     }
+
+    private fun appShellIntent(
+        context: Context,
+        target: AndroidShellLaunchTarget,
+        instanceId: String,
+    ): Intent {
+        val pageData =
+            JSONObject()
+                .put("instanceId", instanceId)
+                .put(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+                .put("slockSocialAuthProviders", "google,github")
+                .put("slockSuppressRestoreLanding", true)
+                .put("localOffsetMinutes", 0)
+                .put("todayEpochDay", 0)
+                .put("nowEpochMillis", System.currentTimeMillis())
+                .withAndroidShellLaunchTarget(target)
+        return Intent(context, SlockAppShellActivity::class.java)
+            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+            .putExtra(
+                SlockKuiklyActivity.KEY_PAGE_DATA,
+                SlockKuiklyPageData.fromJson(pageData).text,
+            )
+    }
+
+    private fun rawLegacyAppShellIntent(
+        context: Context,
+        shellInstanceId: String,
+        serverId: String,
+        instanceId: String,
+    ): Intent {
+        val pageData =
+            JSONObject()
+                .put("instanceId", instanceId)
+                .put(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+                .put("slockSocialAuthProviders", "google,github")
+                .put("slockSuppressRestoreLanding", true)
+                .put("localOffsetMinutes", 0)
+                .put("todayEpochDay", 0)
+                .put("nowEpochMillis", System.currentTimeMillis())
+                .put(ANDROID_SHELL_INSTANCE_ID_KEY, shellInstanceId)
+                .put(ANDROID_SHELL_SERVER_ID_KEY, serverId)
+                .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, serverId)
+                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-server-b")
+                .put(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "message-server-b")
+        return Intent(context, SlockAppShellActivity::class.java)
+            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+            .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, pageData.toString())
+    }
+
+    private fun readCurrentPageData(
+        instrumentation: android.app.Instrumentation,
+        activity: SlockAppShellActivity,
+    ): JSONObject {
+        val pageData = AtomicReference<JSONObject>()
+        instrumentation.runOnMainSync {
+            pageData.set(activity.currentPageDataSnapshotForTest())
+        }
+        return requireNotNull(pageData.get())
+    }
+
+    private fun appShellTaskCount(activityManager: ActivityManager, packageName: String): Int =
+        activityManager.appTasks.count { appTask ->
+            appTask.taskInfo.baseActivity?.let { component ->
+                component.packageName == packageName &&
+                    component.className == SlockAppShellActivity::class.java.name
+            } == true
+        }
 
     private fun waitForResumedAppShell(
         instrumentation: android.app.Instrumentation,

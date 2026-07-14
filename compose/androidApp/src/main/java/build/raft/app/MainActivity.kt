@@ -137,7 +137,6 @@ class MainActivity : ComponentActivity() {
             this,
             pageData = pageData.withAndroidShellLaunchTarget(target),
             clearTask = taskLaunch.clearTask,
-            documentShellId = taskLaunch.documentShellId,
         )
         finish()
     }
