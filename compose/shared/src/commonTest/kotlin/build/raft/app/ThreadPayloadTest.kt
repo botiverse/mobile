@@ -6643,7 +6643,7 @@ class ThreadPayloadTest {
 
         assertFalse(shouldStartThreadTasksJoin(loadingPayload, startedThreadId = null, taskChannelId = taskChannelId))
         assertFalse(shouldStartThreadTasksLoad(loadingPayload, taskChannelId = taskChannelId))
-        assertTrue(shouldStartThreadTasksJoin(contentPayload, startedThreadId = null, taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = null, taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
@@ -6757,7 +6757,14 @@ class ThreadPayloadTest {
         assertEquals("thread-m1", resolvedPayload.resolvedAuxiliaryThreadId())
         assertEquals("channel-1", resolvedPayload.resolvedTaskLookupChannelId())
         assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("channel-1")))
-        assertTrue(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = resolvedTaskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = resolvedTaskChannelId))
+        assertTrue(
+            shouldStartThreadTasksJoin(
+                resolvedPayload.copy(selectedTab = "tasks"),
+                startedThreadId = null,
+                taskChannelId = resolvedTaskChannelId
+            )
+        )
         assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = ChannelId("thread-m1")))
     }
 

@@ -13,10 +13,12 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -974,6 +976,12 @@ private fun resolveComposerParentMessageId(
     else -> originValue?.takeIf { it.isNotBlank() }
 }
 
+internal enum class ThreadComposerSuggestionDemand {
+    None,
+    Members,
+    Channels
+}
+
 @Composable
 internal fun ThreadComposerContent(
     payload: KuiklyThreadComposerPayload,
@@ -986,7 +994,8 @@ internal fun ThreadComposerContent(
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = true,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
-    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {}
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
 ) {
     ThreadComposerContent(
         surface =
@@ -1003,7 +1012,8 @@ internal fun ThreadComposerContent(
         keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
         composerSendKeyEnabled = composerSendKeyEnabled,
         insertMentionRequest = insertMentionRequest,
-        onInsertMentionConsumed = onInsertMentionConsumed
+        onInsertMentionConsumed = onInsertMentionConsumed,
+        onSuggestionDemandChanged = onSuggestionDemandChanged
     )
 }
 
@@ -1021,7 +1031,8 @@ internal fun ThreadComposerContent(
     composerSendKeyEnabled: Boolean = true,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
-    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {}
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -1052,6 +1063,19 @@ internal fun ThreadComposerContent(
                 suggestionsEnabled = state.suggestionsEnabled
             )
         }
+    val suggestionDemand =
+        when (suggestionTrigger) {
+            is KuiklyComposerSuggestionTrigger.MemberTrigger -> ThreadComposerSuggestionDemand.Members
+            is KuiklyComposerSuggestionTrigger.ChannelTrigger -> ThreadComposerSuggestionDemand.Channels
+            KuiklyComposerSuggestionTrigger.None -> ThreadComposerSuggestionDemand.None
+        }
+    val latestSuggestionDemandChanged by rememberUpdatedState(onSuggestionDemandChanged)
+    LaunchedEffect(state.instanceId, suggestionDemand) {
+        latestSuggestionDemandChanged(suggestionDemand)
+    }
+    DisposableEffect(state.instanceId) {
+        onDispose { latestSuggestionDemandChanged(ThreadComposerSuggestionDemand.None) }
+    }
     var indexedMemberSuggestions by remember(state.instanceId) {
         mutableStateOf<ThreadComposerIndexedSuggestions<KuiklyComposerMemberItem>?>(null)
     }
