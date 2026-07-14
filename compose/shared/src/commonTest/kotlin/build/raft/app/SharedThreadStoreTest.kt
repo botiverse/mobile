@@ -113,6 +113,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1043,22 +1045,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmReplyThreadCacheUsesCanonicalReplyAccessBeforeFooterAppears() = runBlocking {
+    fun warmReplyThreadCacheUsesJoinedParentAccessWhenCanonicalCompletesFirst() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
-        val canonicalConversation =
-            conversationSummary("thread-m1").copy(
-                kind = ConversationKind.Thread,
-                joined = false,
-                permissions = ConversationPermissions(canSend = false),
-                channelId = ChannelId("thread-m1"),
-                thread =
-                    ThreadConversation(
-                        parentChannelId = ChannelId("channel-1"),
-                        parentMessageId = MessageId("m1"),
-                        streamChannelId = ChannelId("thread-m1")
-                    )
-            )
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val canonicalConversation = replyThreadConversation(joined = false, canSend = false)
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -1073,24 +1068,54 @@ class SharedThreadStoreTest {
                 getReplyThreadStarted = CompletableDeferred()
                 releaseGetReplyThread = CompletableDeferred()
             }
+        val homeRequested = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository {
+                homeRequested.complete(Unit)
+                releaseHome.await()
+                DataResult.Content(joinedHomeSnapshotWithConflictingReplyChild())
+            }
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository
+                conversationRepository = repository,
+                channelRepository = channelRepository
             )
         dataSource.cachePayload(
-            contentPayloadForRoute(route, "cached reply").copy(joined = true, canSend = true)
+            contentPayloadForRoute(route, "cached reply").copy(
+                joined = false,
+                canSend = false,
+                composer = route.composer.copy(enabled = false)
+            )
         )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val renderEvents = mutableListOf<SharedThreadRenderSlice>()
+        val renderJob = launch {
+            store.renderSliceFlow().collect { slice -> renderEvents += slice }
+        }
 
         store.dispatch(SharedThreadIntent.Start(route))
         repository.getReplyThreadStarted?.await()
+        homeRequested.await()
 
         assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
-        assertTrue(store.state.value.payload.joined)
+        assertFalse(
+            store.state.value.payload.isThreadPrimaryFooterReady(
+                timelineSlice = store.state.value.timelineSlice,
+                accessResolution = store.state.value.accessResolution
+            )
+        )
 
         repository.releaseGetReplyThread?.complete(Unit)
+        withTimeout(1_000) {
+            while (!store.state.value.canonicalAccessResolved) {
+                delay(10)
+            }
+        }
+        assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
+        releaseHome.complete(Unit)
         withTimeout(1_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
@@ -1100,14 +1125,515 @@ class SharedThreadStoreTest {
         val resolvedFrame = store.state.value
         assertEquals(ThreadAccessResolution.Resolved, resolvedFrame.accessResolution)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolvedFrame.payload.surfaceKind)
-        assertFalse(resolvedFrame.payload.joined)
-        assertFalse(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.joined)
+        assertTrue(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.composer.enabled)
+        assertEquals(1, channelRepository.homeCalls)
+        assertFalse(
+            renderEvents.any { slice ->
+                slice.accessResolution == ThreadAccessResolution.Resolved && !slice.payload.joined
+            }
+        )
         assertTrue(
             resolvedFrame.payload.isThreadPrimaryFooterReady(
                 timelineSlice = resolvedFrame.timelineSlice,
                 accessResolution = resolvedFrame.accessResolution
             )
         )
+        renderJob.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun warmReplyThreadCacheUsesJoinedParentAccessWhenHomeCompletesFirst() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val canonicalConversation = replyThreadConversation(joined = false, canSend = false)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "network reply",
+                            conversation = canonicalConversation
+                        )
+                    )
+            ).apply {
+                getReplyThreadStarted = CompletableDeferred()
+                releaseGetReplyThread = CompletableDeferred()
+            }
+        val channelRepository =
+            FakeChannelRepository {
+                DataResult.Content(joinedHomeSnapshotWithConflictingReplyChild())
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = channelRepository
+            )
+        dataSource.cachePayload(
+            contentPayloadForRoute(route, "cached reply").copy(
+                joined = false,
+                canSend = false,
+                composer = route.composer.copy(enabled = false)
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val renderEvents = mutableListOf<SharedThreadRenderSlice>()
+        val renderJob = launch {
+            store.renderSliceFlow().collect { slice -> renderEvents += slice }
+        }
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        repository.getReplyThreadStarted?.await()
+        withTimeout(1_000) {
+            while (!store.state.value.initialHomeAccessLookupComplete) {
+                delay(10)
+            }
+        }
+
+        val homeFirstFrame = store.state.value
+        assertEquals(ThreadAccessResolution.Loading, homeFirstFrame.accessResolution)
+        assertTrue(homeFirstFrame.payload.joined)
+        assertTrue(homeFirstFrame.payload.canSend)
+        assertTrue(homeFirstFrame.payload.composer.enabled)
+        assertFalse(
+            homeFirstFrame.payload.isThreadPrimaryFooterReady(
+                timelineSlice = homeFirstFrame.timelineSlice,
+                accessResolution = homeFirstFrame.accessResolution
+            )
+        )
+
+        repository.releaseGetReplyThread?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolvedFrame = store.state.value
+        assertTrue(resolvedFrame.payload.joined)
+        assertTrue(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.composer.enabled)
+        assertEquals(1, channelRepository.homeCalls)
+        assertFalse(
+            renderEvents.any { slice ->
+                slice.accessResolution == ThreadAccessResolution.Resolved && !slice.payload.joined
+            }
+        )
+        assertTrue(
+            resolvedFrame.payload.isThreadPrimaryFooterReady(
+                timelineSlice = resolvedFrame.timelineSlice,
+                accessResolution = resolvedFrame.accessResolution
+            )
+        )
+        renderJob.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun warmReplyThreadCacheUsesUnjoinedParentAccessOverCanonicalThreadAccess() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val canonicalConversation = replyThreadConversation(joined = true, canSend = true)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "network reply",
+                            conversation = canonicalConversation
+                        )
+                    )
+            )
+        val releaseHome = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository {
+                releaseHome.await()
+                DataResult.Content(unjoinedHomeSnapshotWithConflictingReplyChild())
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = channelRepository
+            )
+        dataSource.cachePayload(
+            contentPayloadForRoute(route, "cached reply").copy(joined = true, canSend = true)
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val renderEvents = mutableListOf<SharedThreadRenderSlice>()
+        val renderJob = launch {
+            store.renderSliceFlow().collect { slice -> renderEvents += slice }
+        }
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        withTimeout(1_000) {
+            while (!store.state.value.canonicalAccessResolved) {
+                delay(10)
+            }
+        }
+        assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
+        releaseHome.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolvedFrame = store.state.value
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolvedFrame.payload.surfaceKind)
+        assertFalse(resolvedFrame.payload.joined)
+        assertFalse(resolvedFrame.payload.canSend)
+        assertFalse(resolvedFrame.payload.composer.enabled)
+        assertEquals(1, channelRepository.homeCalls)
+        assertFalse(
+            renderEvents.any { slice ->
+                slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
+            }
+        )
+        assertTrue(
+            resolvedFrame.payload.isThreadPrimaryFooterReady(
+                timelineSlice = resolvedFrame.timelineSlice,
+                accessResolution = resolvedFrame.accessResolution
+            )
+        )
+        renderJob.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun warmReplyThreadCacheUsesUnjoinedParentAccessWhenHomeCompletesFirst() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "network reply",
+                            conversation = replyThreadConversation(joined = true, canSend = true)
+                        )
+                    )
+            ).apply {
+                getReplyThreadStarted = CompletableDeferred()
+                releaseGetReplyThread = CompletableDeferred()
+            }
+        val channelRepository =
+            FakeChannelRepository {
+                DataResult.Content(unjoinedHomeSnapshotWithConflictingReplyChild())
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = channelRepository
+            )
+        dataSource.cachePayload(
+            contentPayloadForRoute(route, "cached reply").copy(joined = true, canSend = true)
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val renderEvents = mutableListOf<SharedThreadRenderSlice>()
+        val renderJob = launch {
+            store.renderSliceFlow().collect { slice -> renderEvents += slice }
+        }
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        repository.getReplyThreadStarted?.await()
+        withTimeout(1_000) {
+            while (!store.state.value.initialHomeAccessLookupComplete) {
+                delay(10)
+            }
+        }
+        assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
+        assertFalse(store.state.value.payload.joined)
+        assertFalse(
+            store.state.value.payload.isThreadPrimaryFooterReady(
+                timelineSlice = store.state.value.timelineSlice,
+                accessResolution = store.state.value.accessResolution
+            )
+        )
+
+        repository.releaseGetReplyThread?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolvedFrame = store.state.value
+        assertFalse(resolvedFrame.payload.joined)
+        assertFalse(resolvedFrame.payload.canSend)
+        assertFalse(resolvedFrame.payload.composer.enabled)
+        assertFalse(
+            renderEvents.any { slice ->
+                slice.accessResolution == ThreadAccessResolution.Resolved && slice.payload.joined
+            }
+        )
+        renderJob.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun activityReplyThreadUsesJoinedDirectMessageParentAccess() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.DirectMessage,
+            parentChannelId = "dm-1",
+            parentMessageId = "dm-parent-message",
+            threadId = "dm-thread-1"
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "dm-thread-1",
+                            body = "network dm reply",
+                            conversation =
+                                replyThreadConversation(
+                                    threadId = "dm-thread-1",
+                                    parentChannelId = "dm-1",
+                                    parentMessageId = "dm-parent-message",
+                                    joined = false,
+                                    canSend = false
+                                )
+                        )
+                    )
+            )
+        val channelRepository =
+            FakeChannelRepository {
+                DataResult.Content(joinedDmHomeSnapshotWithConflictingReplyChild())
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = channelRepository
+            )
+        dataSource.cachePayload(
+            contentPayloadForRoute(route, "cached dm reply", channelId = "dm-thread-1").copy(
+                joined = false,
+                canSend = false,
+                composer = route.composer.copy(enabled = false)
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolvedFrame = store.state.value
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolvedFrame.payload.parentSurfaceKind)
+        assertTrue(resolvedFrame.payload.joined)
+        assertTrue(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.composer.enabled)
+        assertEquals("dm-1", resolvedFrame.payload.parentChannelId)
+        assertEquals(1, channelRepository.homeCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityReplyThreadUsesJoinedJointParentAccess() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Joint,
+            parentChannelId = "joint-1",
+            parentMessageId = "joint-parent-message",
+            threadId = "joint-thread-1"
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "joint-thread-1",
+                            body = "network joint reply",
+                            conversation =
+                                replyThreadConversation(
+                                    threadId = "joint-thread-1",
+                                    parentChannelId = "joint-1",
+                                    parentMessageId = "joint-parent-message",
+                                    joined = false,
+                                    canSend = false
+                                )
+                        )
+                    )
+            )
+        val channelRepository =
+            FakeChannelRepository {
+                DataResult.Content(joinedJointHomeSnapshotWithConflictingReplyChild())
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = channelRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolvedFrame = store.state.value
+        assertEquals(ConversationKind.Joint, resolvedFrame.payload.resolveThreadRouteIdentity().parentConversationKind)
+        assertTrue(resolvedFrame.payload.joined)
+        assertTrue(resolvedFrame.payload.canSend)
+        assertTrue(resolvedFrame.payload.composer.enabled)
+        assertEquals("joint-1", resolvedFrame.payload.parentChannelId)
+        assertEquals(1, channelRepository.homeCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityReplyThreadFailsClosedWhenParentAccessCandidateIsMissing() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "network reply",
+                            conversation = replyThreadConversation(joined = false, canSend = false)
+                        )
+                    )
+            )
+        val channelRepository =
+            FakeChannelRepository {
+                DataResult.Content(replyChildOnlyHomeSnapshot(joined = true, canSend = true))
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = channelRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
+                delay(10)
+            }
+        }
+
+        val failedFrame = store.state.value
+        assertEquals(ThreadAccessResolution.Error, failedFrame.accessResolution)
+        assertTrue(failedFrame.accessResolution.shouldRenderThreadAccessRetry())
+        assertFalse(
+            failedFrame.payload.isThreadPrimaryFooterReady(
+                timelineSlice = failedFrame.timelineSlice,
+                accessResolution = failedFrame.accessResolution
+            )
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun activityReplyThreadFailsClosedWhenParentAccessLookupTimesOut() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val neverCompleteHome = CompletableDeferred<Unit>()
+        var homeAttempt = 0
+        val channelRepository =
+            FakeChannelRepository {
+                homeAttempt += 1
+                if (homeAttempt == 1) {
+                    neverCompleteHome.await()
+                }
+                DataResult.Content(joinedHomeSnapshot())
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult =
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "thread-m1",
+                                    body = "network reply",
+                                    conversation = replyThreadConversation(joined = false, canSend = false)
+                                )
+                            )
+                    ),
+                channelRepository = channelRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        withTimeout(1_500) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
+                delay(10)
+            }
+        }
+
+        val failedFrame = store.state.value
+        assertEquals(ThreadAccessResolution.Error, failedFrame.accessResolution)
+        assertTrue(failedFrame.initialHomeAccessLookupComplete)
+        assertTrue(failedFrame.accessResolution.shouldRenderThreadAccessRetry())
+        assertFalse(
+            failedFrame.payload.isThreadPrimaryFooterReady(
+                timelineSlice = failedFrame.timelineSlice,
+                accessResolution = failedFrame.accessResolution
+            )
+        )
+
+        store.dispatch(SharedThreadIntent.Refresh)
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+        assertEquals(2, channelRepository.homeCalls)
+        assertTrue(store.state.value.payload.joined)
+        assertTrue(store.state.value.payload.composer.enabled)
         scope.cancel()
     }
 
@@ -8734,6 +9260,60 @@ class SharedThreadStoreTest {
             showReplyActions = false
         )
 
+    private fun activityReplyPayload(
+        parentKind: ConversationKind,
+        parentChannelId: String,
+        parentMessageId: String,
+        threadId: String
+    ): KuiklyThreadScreenPayload {
+        val request =
+            InboxItem(
+                key = "thread:$parentMessageId",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId(threadId),
+                channelName = "reply-thread",
+                threadChannelId = ChannelId(threadId),
+                parentChannelId = ChannelId(parentChannelId),
+                parentChannelName = if (parentKind == ConversationKind.DirectMessage) "Cindy" else "general",
+                parentChannelKind = parentKind,
+                parentMessageId = MessageId(parentMessageId),
+                parentMessagePreview = "parent body",
+                latestActivityMessageId = MessageId("reply-1")
+            ).toHomeMessageOpenRequestForTest()
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = request.conversationIdentity,
+                timeContext = null,
+                anchorMessageId = request.anchorMessageId,
+                originFallback = request.originFallback
+            )
+        return parseThreadScreenPayload(
+            payload = Json.encodeToString(launch),
+            instanceId = "activity-reply-$threadId"
+        )
+    }
+
+    private fun replyThreadConversation(
+        threadId: String = "thread-m1",
+        parentChannelId: String = "channel-1",
+        parentMessageId: String = "m1",
+        joined: Boolean,
+        canSend: Boolean
+    ): ConversationSummary =
+        conversationSummary(threadId).copy(
+            kind = ConversationKind.Thread,
+            joined = joined,
+            permissions = ConversationPermissions(canSend = canSend),
+            channelId = ChannelId(threadId),
+            thread =
+                ThreadConversation(
+                    parentChannelId = ChannelId(parentChannelId),
+                    parentMessageId = MessageId(parentMessageId),
+                    streamChannelId = ChannelId(threadId),
+                    parentSurfaceKind = null
+                )
+        )
+
     private fun unresolvedReplyPayload(parentMessageId: String): KuiklyThreadScreenPayload =
         basePayload().copy(
             instanceId = "shared-shell-thread-pending-$parentMessageId",
@@ -8805,6 +9385,119 @@ class SharedThreadStoreTest {
                         joined = false,
                         permissions = ConversationPermissions(canSend = false)
                     ).toHomeChannelRow()
+                ),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
+
+    private fun joinedHomeSnapshot(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels =
+                listOf(
+                    conversationSummary().copy(
+                        joined = true,
+                        permissions = ConversationPermissions(canSend = true)
+                    ).toHomeChannelRow()
+                ),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
+
+    private fun joinedHomeSnapshotWithConflictingReplyChild(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels =
+                listOf(
+                    replyThreadConversation(joined = false, canSend = false).toHomeChannelRow(),
+                    conversationSummary().copy(
+                        joined = true,
+                        permissions = ConversationPermissions(canSend = true)
+                    ).toHomeChannelRow()
+                ),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
+
+    private fun unjoinedHomeSnapshotWithConflictingReplyChild(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels =
+                listOf(
+                    replyThreadConversation(joined = true, canSend = true).toHomeChannelRow(),
+                    conversationSummary().copy(
+                        joined = false,
+                        permissions = ConversationPermissions(canSend = false)
+                    ).toHomeChannelRow()
+                ),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
+
+    private fun joinedDmHomeSnapshotWithConflictingReplyChild(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels =
+                listOf(
+                    replyThreadConversation(
+                        threadId = "dm-thread-1",
+                        parentChannelId = "dm-1",
+                        parentMessageId = "dm-parent-message",
+                        joined = false,
+                        canSend = false
+                    ).toHomeChannelRow()
+                ),
+            directMessages =
+                listOf(
+                    conversationSummary("dm-1").copy(
+                        kind = ConversationKind.DirectMessage,
+                        channelId = ChannelId("dm-1"),
+                        joined = true,
+                        permissions = ConversationPermissions(canSend = true)
+                    ).toHomeDirectMessageRow()
+                ),
+            unreadTotal = 0
+        )
+
+    private fun joinedJointHomeSnapshotWithConflictingReplyChild(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels =
+                listOf(
+                    replyThreadConversation(
+                        threadId = "joint-thread-1",
+                        parentChannelId = "joint-1",
+                        parentMessageId = "joint-parent-message",
+                        joined = false,
+                        canSend = false
+                    ).toHomeChannelRow(),
+                    conversationSummary("joint-1").copy(
+                        kind = ConversationKind.Joint,
+                        channelId = ChannelId("joint-1"),
+                        channelType = JointChannelKindWireValue,
+                        joined = true,
+                        permissions = ConversationPermissions(canRead = true, canSend = true)
+                    ).toHomeChannelRow()
+                ),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
+
+    private fun replyChildOnlyHomeSnapshot(
+        joined: Boolean,
+        canSend: Boolean
+    ): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels =
+                listOf(
+                    replyThreadConversation(joined = joined, canSend = canSend).toHomeChannelRow()
                 ),
             directMessages = emptyList(),
             unreadTotal = 0

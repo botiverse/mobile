@@ -370,6 +370,9 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
     accessResolution == ThreadAccessResolution.Loading ||
         shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
+internal fun ThreadAccessResolution.shouldRenderThreadAccessRetry(): Boolean =
+    this == ThreadAccessResolution.Error
+
 private fun KuiklyThreadScreenPayload.hasProgressiveThreadLoadingShell(): Boolean {
     if (status != "loading") return false
     val routeIdentity = resolveThreadRouteIdentity()
@@ -9309,6 +9312,7 @@ private fun ThreadPageContent(
             timelineSlice = timelineSlice,
             accessResolution = accessResolution
         )
+    val renderAccessRetry = accessResolution.shouldRenderThreadAccessRetry()
     val shareExportScope = rememberCoroutineScope()
     val markdownTagFeedbackScope = rememberCoroutineScope()
     var selectedTab by remember(payload.selectedTab) {
@@ -9655,7 +9659,19 @@ private fun ThreadPageContent(
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
         ) {
-            if (renderEarlyLoadingShell) {
+            if (renderAccessRetry) {
+                ThreadStateActionMessage(
+                    title = stringResource(MR.strings.thread_error_load),
+                    detail = stringResource(MR.strings.common_error),
+                    actionLabel = stringResource(MR.strings.common_retry),
+                    onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
+                )
+            } else if (accessResolution == ThreadAccessResolution.NoPermission) {
+                ThreadStateMessage(
+                    stringResource(MR.strings.thread_state_no_permission),
+                    stringResource(MR.strings.thread_error_no_permission)
+                )
+            } else if (renderEarlyLoadingShell) {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
             } else when (tab) {
                 KuiklyThreadTab.Chat ->
