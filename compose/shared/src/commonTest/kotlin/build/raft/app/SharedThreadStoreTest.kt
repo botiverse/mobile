@@ -5861,9 +5861,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun emptyInitialLoadShowsRetryableErrorAtDeadlineAndStillAppliesLateContent() = runBlocking {
+    fun emptyInitialLoadStaysLoadingUntilCanonicalFetchCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val diagnostics = mutableListOf<String>()
         val repository =
             FakeConversationRepository(
                 threadDelayMillis = 100L,
@@ -5876,33 +5875,20 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository,
-                diagnosticsLogger = diagnostics::add
+                conversationRepository = repository
             )
         val store =
             SharedThreadStore(
                 dataSource = dataSource,
-                scope = scope,
-                diagnosticsLogger = diagnostics::add,
-                initialLoadDeadlineMillis = 10L
+                scope = scope
             )
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
 
-        withTimeout(1_000L) {
-            while (store.state.value.payload.errorCode != "thread_initial_load_timeout") {
-                delay(5L)
-            }
-        }
-        assertEquals("error", store.state.value.payload.status)
+        delay(30L)
+        assertEquals("loading", store.state.value.payload.status)
         assertEquals(emptyList(), store.state.value.payload.messages)
-        assertTrue(
-            diagnostics.any {
-                it.startsWith("thread_initial_load_deadline ") &&
-                    it.contains("threadId=channel-1") &&
-                    it.contains("deadlineMs=10")
-            }
-        )
+        assertEquals(null, store.state.value.payload.errorCode)
 
         withTimeout(1_000L) {
             while (store.state.value.payload.messages.singleOrNull()?.id != "m1") {
@@ -5916,9 +5902,8 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun warmContentStaysVisiblePastInitialLoadDeadlineDuringSlowRefresh() = runBlocking {
+    fun warmContentStaysVisibleDuringSlowRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val diagnostics = mutableListOf<String>()
         val repository =
             FakeConversationRepository(
                 threadResult = DataResult.Content(threadSnapshot(body = "cached content"))
@@ -5927,15 +5912,12 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository,
-                diagnosticsLogger = diagnostics::add
+                conversationRepository = repository
             )
         val store =
             SharedThreadStore(
                 dataSource = dataSource,
-                scope = scope,
-                diagnosticsLogger = diagnostics::add,
-                initialLoadDeadlineMillis = 10L
+                scope = scope
             )
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -5947,7 +5929,6 @@ class SharedThreadStoreTest {
         assertEquals("content", store.state.value.payload.status)
         assertEquals("cached content", store.state.value.payload.messages.single().body)
         assertEquals(null, store.state.value.payload.errorCode)
-        assertTrue(diagnostics.none { it.startsWith("thread_initial_load_deadline ") })
 
         withTimeout(1_000L) {
             while (store.state.value.payload.messages.singleOrNull()?.body != "refreshed content") {

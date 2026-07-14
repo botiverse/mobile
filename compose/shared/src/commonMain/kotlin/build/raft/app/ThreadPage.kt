@@ -428,6 +428,21 @@ internal fun KuiklyThreadScreenPayload.threadRouteMountPlan(
 internal fun ThreadAccessResolution.shouldRenderThreadAccessRetry(): Boolean =
     this == ThreadAccessResolution.Error
 
+internal fun handleThreadStoreRetryEvent(
+    action: String,
+    dispatch: (SharedThreadIntent) -> Unit,
+): Boolean {
+    val intent =
+        when (action) {
+            "retryThreadLoad" -> SharedThreadIntent.Refresh
+            "retryLoadOlder" -> SharedThreadIntent.LoadOlder
+            "retryLoadNewer" -> SharedThreadIntent.LoadNewer
+            else -> return false
+        }
+    dispatch(intent)
+    return true
+}
+
 private fun KuiklyThreadScreenPayload.hasProgressiveThreadLoadingShell(): Boolean {
     if (status != "loading") return false
     val routeIdentity = resolveThreadRouteIdentity()
@@ -5587,6 +5602,9 @@ internal fun SharedThreadRouteContent(
             },
             onBack = onBack,
             onThreadEvent = { action, itemId, attachmentId, tab ->
+                if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
+                    return@ThreadPageContent
+                }
                 when {
                     action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
                         val imageGroup =
@@ -6483,10 +6501,10 @@ internal fun SharedThreadRouteContent(
                         threadViewModel.dispatch(SharedThreadIntent.LoadMembers)
                     }
                 }
-                action == "loadOlder" || action == "retryLoadOlder" -> {
+                action == "loadOlder" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadOlder)
                 }
-                action == "loadNewer" || action == "retryLoadNewer" -> {
+                action == "loadNewer" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadNewer)
                 }
                 action == "deleteLocalFailedSend" && !itemId.isNullOrBlank() -> {
@@ -6748,9 +6766,6 @@ internal fun SharedThreadRouteContent(
                             )
                         }
                     }
-                }
-                "retryThreadLoad" -> {
-                    threadViewModel.dispatch(SharedThreadIntent.Refresh)
                 }
                 "attachImage", "attachFile" -> {
                     coroutineScope.launch {
@@ -9404,6 +9419,7 @@ private fun ThreadPageContent(
             accessResolution = accessResolution
         )
     val renderAccessRetry = accessResolution.shouldRenderThreadAccessRetry()
+    val accessErrorLabels = threadUserFacingErrorLabels()
     val shareExportScope = rememberCoroutineScope()
     val markdownTagFeedbackScope = rememberCoroutineScope()
     LaunchedEffect(
@@ -9738,7 +9754,9 @@ private fun ThreadPageContent(
             if (renderAccessRetry) {
                 ThreadStateActionMessage(
                     title = stringResource(MR.strings.thread_error_load),
-                    detail = stringResource(MR.strings.common_error),
+                    detail =
+                        accessErrorLabels.forErrorCode(payload.errorCode)
+                            ?: stringResource(MR.strings.thread_error_access_resolution),
                     actionLabel = stringResource(MR.strings.common_retry),
                     onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
                 )

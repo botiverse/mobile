@@ -2704,7 +2704,6 @@ internal object SharedThreadPaging {
     const val pageSize = initialPageSize
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
-private const val SharedThreadInitialLoadDeadlineMillis = 10_000L
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
 
@@ -2868,7 +2867,6 @@ internal class SharedThreadStore(
     private val dataSource: SharedThreadDataSource,
     private val scope: CoroutineScope,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
-    private val initialLoadDeadlineMillis: Long = SharedThreadInitialLoadDeadlineMillis,
     initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload()
 ) {
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
@@ -3198,64 +3196,11 @@ internal class SharedThreadStore(
             delay(SharedThreadFirstFrameDelayMillis)
         }
         val result =
-            if (hasRenderableContent) {
-                dataSource.fetchThreadPayload(
-                    basePayload = basePayload,
-                    persistResult = true,
-                    reusePrewarm = reusePrewarm
-                )
-            } else {
-                coroutineScope {
-                    val deadlineJob =
-                        launch {
-                            delay(initialLoadDeadlineMillis.coerceAtLeast(0L))
-                            val current = _state.value.payload
-                            if (
-                                staleTokenStillCurrent(
-                                    staleToken,
-                                    "thread_initial_load_deadline",
-                                    "apply",
-                                    basePayload,
-                                    current
-                                ) &&
-                                routeStillCurrent(basePayload, "thread_initial_load_deadline", "apply", current) &&
-                                current.status == "loading" &&
-                                !current.hasRenderableThreadContent()
-                            ) {
-                                val emitted = reducePayloadPatch { currentPayload ->
-                                    if (
-                                        !routeStillCurrent(
-                                            basePayload,
-                                            "thread_initial_load_deadline",
-                                            "reduce",
-                                            currentPayload
-                                        ) ||
-                                        currentPayload.status != "loading" ||
-                                        currentPayload.hasRenderableThreadContent()
-                                    ) {
-                                        return@reducePayloadPatch currentPayload
-                                    }
-                                    currentPayload.asRefreshFailed("thread_initial_load_timeout")
-                                }
-                                if (emitted) {
-                                    diagnosticsLogger?.invoke(
-                                        "thread_initial_load_deadline threadId=${basePayload.sourceThreadId.orEmpty()} " +
-                                            "deadlineMs=${initialLoadDeadlineMillis.coerceAtLeast(0L)} result=retryable_error"
-                                    )
-                                }
-                            }
-                        }
-                    try {
-                        dataSource.fetchThreadPayload(
-                            basePayload = basePayload,
-                            persistResult = true,
-                            reusePrewarm = reusePrewarm
-                        )
-                    } finally {
-                        deadlineJob.cancel()
-                    }
-                }
-            }
+            dataSource.fetchThreadPayload(
+                basePayload = basePayload,
+                persistResult = true,
+                reusePrewarm = reusePrewarm
+            )
         val latest = _state.value.payload
         if (
             !staleTokenStillCurrent(staleToken, "thread_refresh", "after_fetch", basePayload, latest) ||
