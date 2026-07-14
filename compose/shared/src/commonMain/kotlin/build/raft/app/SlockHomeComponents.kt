@@ -1085,7 +1085,7 @@ internal fun SlockStructuralHomeShell(
         )
     var listStateServerId by remember { mutableStateOf(listPositionServerId) }
     var listPremeasureServerId by remember { mutableStateOf(currentServerId) }
-    var listPremeasureLimit by remember { mutableStateOf(Int.MAX_VALUE) }
+    var listPremeasureLimit by remember { mutableStateOf(homeListInitialBeyondBoundsItemCount()) }
     val captureRowAnchors = !listState.isScrollInProgress
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
     DisposableEffect(listState, currentServerId) {
@@ -1231,18 +1231,19 @@ internal fun SlockStructuralHomeShell(
                             listStateServerId = listPositionServerId
                         }
                         if (listPremeasureServerId != currentServerId) {
-                            listPremeasureLimit = HomeListMinBeyondBoundsItemCount
+                            listPremeasureLimit = homeListInitialBeyondBoundsItemCount()
                             listPremeasureServerId = currentServerId
-                            while (listPremeasureLimit < targetHomeBeyondBoundsItemCount) {
-                                withFrameNanos { }
-                                listPremeasureLimit =
-                                    homeListNextServerSwitchBeyondBoundsItemCount(
-                                        current = listPremeasureLimit,
-                                        target = targetHomeBeyondBoundsItemCount
-                                    )
-                            }
-                        } else if (listPremeasureLimit != Int.MAX_VALUE) {
+                        }
+                        if (listPremeasureLimit > targetHomeBeyondBoundsItemCount) {
                             listPremeasureLimit = targetHomeBeyondBoundsItemCount
+                        }
+                        while (listPremeasureLimit < targetHomeBeyondBoundsItemCount) {
+                            withFrameNanos { }
+                            listPremeasureLimit =
+                                homeListNextServerSwitchBeyondBoundsItemCount(
+                                    current = listPremeasureLimit,
+                                    target = targetHomeBeyondBoundsItemCount
+                                )
                         }
                     }
                     traceMarkdownSection(SlockHomeTraceNames.LIST_RENDER, lazyItemCount) {
@@ -1896,6 +1897,8 @@ internal fun homeListBeyondBoundsItemCount(
         maximumValue = boundedTarget
     )
 }
+
+internal fun homeListInitialBeyondBoundsItemCount(): Int = HomeListMinBeyondBoundsItemCount
 
 internal fun homeListNextServerSwitchBeyondBoundsItemCount(current: Int, target: Int): Int =
     (current.coerceAtLeast(HomeListMinBeyondBoundsItemCount) + HomeListServerSwitchRampStep)

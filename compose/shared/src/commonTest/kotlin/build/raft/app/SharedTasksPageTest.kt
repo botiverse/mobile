@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.TaskId
+import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskStatus
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
@@ -8,6 +10,31 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 
 class SharedTasksPageTest {
+    @Test
+    fun taskDisplaySortExtractsEachLargeSnapshotKeyExactlyOnce() {
+        val tasks =
+            (1..3_515).map { number ->
+                TaskSummary(
+                    id = TaskId("task-$number"),
+                    title = "Task $number",
+                    status = TaskStatus.Todo,
+                    taskNumber = number,
+                    updatedAtLabel = (1_700_000_000_000L + number).toString()
+                )
+            }
+        var keyExtractions = 0
+
+        val sorted =
+            tasks.sortedByTaskDisplayOrder { task ->
+                keyExtractions += 1
+                task.taskDisplayOrderKey()
+            }
+
+        assertEquals(tasks.size, keyExtractions)
+        assertEquals(3_515, sorted.first().taskNumber)
+        assertEquals(1, sorted.last().taskNumber)
+    }
+
     @Test
     fun tasksHeaderSubtitleShowsTotalWhenUnfiltered() {
         assertEquals("42 channel tasks", tasksHeaderSubtitle(totalTasks = 42, visibleTasks = 42))

@@ -1409,12 +1409,29 @@ private fun TaskSummary.tasksMeaningfulDisplayTitle(): String {
     return raw.removePrefix(numberLabel).trim().takeIf { it.isNotBlank() } ?: raw
 }
 
-private fun List<TaskSummary>.sortedByTaskDisplayOrder(): List<TaskSummary> =
-    sortedWith(
-        compareByDescending<TaskSummary> { it.updatedAtLabel.toTaskSortValue() }
-            .thenByDescending { it.taskNumber ?: Int.MIN_VALUE }
-            .thenBy { it.title.lowercase() }
+internal data class TaskDisplayOrderKey(
+    val updatedAt: Long,
+    val taskNumber: Int,
+    val normalizedTitle: String
+)
+
+internal fun TaskSummary.taskDisplayOrderKey(): TaskDisplayOrderKey =
+    TaskDisplayOrderKey(
+        updatedAt = updatedAtLabel.toTaskSortValue(),
+        taskNumber = taskNumber ?: Int.MIN_VALUE,
+        normalizedTitle = title.lowercase()
     )
+
+internal fun List<TaskSummary>.sortedByTaskDisplayOrder(
+    keyOf: (TaskSummary) -> TaskDisplayOrderKey = TaskSummary::taskDisplayOrderKey
+): List<TaskSummary> =
+    map { task -> task to keyOf(task) }
+        .sortedWith(
+            compareByDescending<Pair<TaskSummary, TaskDisplayOrderKey>> { it.second.updatedAt }
+                .thenByDescending { it.second.taskNumber }
+                .thenBy { it.second.normalizedTitle }
+        )
+        .map { it.first }
 
 private fun String.toTaskSortValue(): Long {
     val trimmed = trim()

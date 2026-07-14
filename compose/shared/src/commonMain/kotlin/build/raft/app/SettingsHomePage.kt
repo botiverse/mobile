@@ -601,9 +601,15 @@ private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members
 private const val AppShellChildPagePrewarmInitialDelayMs = 600L
 private const val AppShellChildPagePrewarmIntervalMs = 500L
 
-private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
+internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
-private class AppShellChildTabEntry(
+internal class AppShellChildTabRenderSlot(
+    initialRenderer: AppShellChildTabRenderer
+) {
+    var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
+}
+
+internal class AppShellChildTabEntry(
     val debugId: Int,
     initialSelectedTab: String = "home",
     initialRetainedTabs: Set<String> = setOf(initialSelectedTab),
@@ -614,8 +620,28 @@ private class AppShellChildTabEntry(
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
     var retainedTabs by mutableStateOf(initialRetainedTabs)
-    var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
+    private val renderSlots =
+        AppShellChildPageTabKeys.associateWith {
+            AppShellChildTabRenderSlot(initialRenderer)
+        }
     var modalHostState: SlockUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
+
+    fun rendererFor(tab: String): AppShellChildTabRenderer =
+        renderSlots.getValue(tab).renderer
+
+    fun updateRenderer(tab: String, renderer: AppShellChildTabRenderer) {
+        renderSlots.getValue(tab).renderer = renderer
+    }
+
+    fun updateSelection(
+        selectedTab: String,
+        retainedTabs: Set<String>,
+        renderer: AppShellChildTabRenderer
+    ) {
+        updateRenderer(selectedTab, renderer)
+        this.retainedTabs = retainedTabs
+        this.selectedTab = selectedTab
+    }
 }
 
 private data class AppShellChildTabRegistration(
@@ -1411,13 +1437,14 @@ private fun SlockAppShellChildTabPageContent() {
         }
     }
     if (appShellChildPageRendersContent(active = active, retained = retained)) {
+        val renderer = entry.rendererFor(tab)
         val modalHostState = entry.modalHostState
         if (modalHostState != null) {
             SlockUnifiedDialogHostProvider(modalHostState) {
-                entry.renderer(tab, active)
+                renderer(tab, active)
             }
         } else {
-            entry.renderer(tab, active)
+            renderer(tab, active)
         }
     } else {
         Box(modifier = Modifier.fillMaxSize())
@@ -1778,6 +1805,51 @@ internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Bo
 internal fun appShellPageDidAppearShouldRefresh(pageVisibleTick: Int): Boolean =
     pageVisibleTick > 0
 
+internal fun appShellDefersReadyGraph(authGateState: SharedAuthGateState): Boolean =
+    authGateState == SharedAuthGateState.Restoring
+
+internal enum class AppShellVisibleRefreshSignal {
+    Lifecycle,
+    PageDidAppear
+}
+
+internal data class AppShellVisibleRefreshKey(
+    val appearanceGeneration: Int,
+    val target: String
+)
+
+internal class AppShellVisibleRefreshGate {
+    private var pendingLifecycleKey: AppShellVisibleRefreshKey? = null
+
+    fun shouldRefresh(
+        signal: AppShellVisibleRefreshSignal,
+        pageVisibleTick: Int,
+        target: String
+    ): Boolean {
+        val key =
+            AppShellVisibleRefreshKey(
+                appearanceGeneration =
+                    when (signal) {
+                        AppShellVisibleRefreshSignal.Lifecycle -> pageVisibleTick + 1
+                        AppShellVisibleRefreshSignal.PageDidAppear -> pageVisibleTick
+                    },
+                target = target
+            )
+        return when (signal) {
+            AppShellVisibleRefreshSignal.Lifecycle -> {
+                val duplicate = pendingLifecycleKey == key
+                pendingLifecycleKey = key
+                !duplicate
+            }
+            AppShellVisibleRefreshSignal.PageDidAppear -> {
+                val pairedLifecycle = pendingLifecycleKey == key
+                pendingLifecycleKey = null
+                !pairedLifecycle
+            }
+        }
+    }
+}
+
 private fun String.toHomeSecondaryOpenIntent(): SharedHomeShellIntent =
     when (retainedHomeSecondaryDestination(this)) {
         HomeDestinationActivity -> SharedHomeShellIntent.OpenActivity
@@ -2115,8 +2187,154 @@ private fun SlockAppShellContent(
     val authDataSource = remember(sharedStores, storeScope) {
         sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
     }
-    val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val appShellCoroutineScope = rememberCoroutineScope()
+    val eventBus = sharedStores.eventBus
+    val authSessionEvents =
+        remember(eventBus, pager.pagerId) {
+            KuiklyAuthSessionEvents(
+                eventBus = eventBus,
+                source = "app-shell:${pager.pagerId}"
+            )
+        }
+    val authGateViewModel: SharedAuthGateViewModel =
+        viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
+            SharedAuthGateViewModel(authDataSource)
+        }
+    var authGateState by remember { mutableStateOf(authGateViewModel.state.value) }
+    LaunchedEffect(authGateViewModel) {
+        authGateViewModel.state.collect { nextState ->
+            authGateState = nextState
+        }
+    }
+    var consumedInitialAuthRestoreTick by remember { mutableStateOf(0) }
+    LaunchedEffect(initialAuthRestoreTick) {
+        if (
+            initialAuthRestoreTick > 0 &&
+            consumedInitialAuthRestoreTick != initialAuthRestoreTick
+        ) {
+            consumedInitialAuthRestoreTick = initialAuthRestoreTick
+            authGateViewModel.accept(SharedAuthGateIntent.Restore)
+            authGateState = authGateViewModel.state.value
+        }
+    }
+    var authGateMessage by remember { mutableStateOf<AuthGateMessage?>(null) }
+    var authSessionResetGeneration by remember { mutableStateOf(0) }
+    var appliedAuthSessionResetGeneration by remember { mutableStateOf(0) }
+    DisposableEffect(authSessionEvents, authStore) {
+        val callbackRef =
+            authSessionEvents.addSessionClearedListener { signal ->
+                if (authSessionEvents.isLocalSource(signal)) {
+                    return@addSessionClearedListener
+                }
+                slockLogInfo("SlockSharedAuth", "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
+                appShellCoroutineScope.launch {
+                    runCatchingPreservingCancellation {
+                        authStore.clearSessionFromSessionClearedNotify(
+                            reason = signal.reason,
+                            previousSessionFingerprint = signal.previousSessionFingerprint
+                        )
+                    }.onSuccess { applied ->
+                        slockLogInfo(
+                            "SlockSharedAuth",
+                            "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
+                                "source=${signal.source} reason=${signal.reason}"
+                        )
+                    }.onFailure { throwable ->
+                        slockLogWarn(
+                            "SlockSharedAuth",
+                            "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
+                                "reason=${signal.reason} error=${throwable.message.orEmpty()}"
+                        )
+                    }
+                }
+            }
+        onDispose {
+            authSessionEvents.removeSessionClearedListener(callbackRef)
+        }
+    }
+    LaunchedEffect(sharedStores.authLossFunnel, pager.pagerId) {
+        sharedStores.authLossFunnel.resolutions.collect { resolution ->
+            if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
+                bridge.logWarn(
+                    "app_shell_auth_loss_effect_skip reason=inactive_pager " +
+                        "source=${resolution.signal.source} pagerId=${pager.pagerId}"
+                )
+                return@collect
+            }
+            when (val decision = resolution.decision) {
+                is AuthLossDecision.SessionPreserved ->
+                    bridge.logWarn(
+                        "app_shell_auth_loss_effect decision=session_preserved " +
+                            "reason=${decision.reason} source=${resolution.signal.source}"
+                    )
+                is AuthLossDecision.AuthRequired -> {
+                    bridge.logWarn(
+                        "app_shell_auth_loss_effect decision=auth_required " +
+                            "reason=${decision.reason} source=${resolution.signal.source}"
+                    )
+                    val authDecision =
+                        appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.AuthRequired)
+                    authGateMessage = AuthGateMessage.Static(MR.strings.auth_error_session_expired.desc())
+                    if (authDecision.resetSessionState) authSessionResetGeneration += 1
+                    authGateViewModel.dispatch(authDecision.intent)
+                }
+            }
+        }
+    }
+    LaunchedEffect(authStore) {
+        authStore.sessionInvalidations.collect {
+            val authDecision =
+                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.SessionInvalidated)
+            bridge.realtimeDisconnect("auth_invalid")
+            if (authDecision.resetSessionState) authSessionResetGeneration += 1
+            authGateViewModel.dispatch(authDecision.intent)
+        }
+    }
+    LaunchedEffect(authStore) {
+        authStore.sessionChanges.collect { fingerprint ->
+            val cachedSession =
+                runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
+            val currentSession = (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
+            val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
+            val authDecision =
+                appShellBootstrapAuthDecision(
+                    AppShellBootstrapAuthSignal.SessionChanged,
+                    identityChanged = identityChanged
+                )
+            bridge.log(
+                "app_shell_session_change_received fingerprint=$fingerprint " +
+                    "hasSession=${cachedSession != null} identityChanged=$identityChanged"
+            )
+            authGateMessage = null
+            if (identityChanged) {
+                bridge.realtimeDisconnect("auth_changed")
+            }
+            if (authDecision.resetSessionState) authSessionResetGeneration += 1
+            authGateViewModel.dispatch(authDecision.intent)
+        }
+    }
+    LaunchedEffect(authStore) {
+        authStore.authSessionEvents.collect { event ->
+            if (appShellAuthSessionEventRestoreIntent(event) == null) return@collect
+            val authDecision =
+                appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.BindingMetadataChanged)
+            bridge.log(
+                "app_shell_auth_session_event_received type=binding_metadata_changed " +
+                    "generation=${event.generation} action=refresh_silently"
+            )
+            authGateMessage = null
+            authGateViewModel.dispatch(authDecision.intent)
+        }
+    }
+    if (appShellDefersReadyGraph(authGateState)) {
+        if (suppressRestoreLanding) {
+            AppShellSilentRestoreContent()
+        } else {
+            AppShellRestoreSplashContent()
+        }
+        return
+    }
+    val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val settingsCapabilities =
         remember(bridge, appShellCoroutineScope) {
             BridgeSettingsPlatformCapabilities(bridge, appShellCoroutineScope.kuiklyBridgeCallContext())
@@ -2236,55 +2454,15 @@ private fun SlockAppShellContent(
                 KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
             )
         }
-    val eventBus = sharedStores.eventBus
     val notificationPreferenceEvents = remember(eventBus) { KuiklyNotificationPreferenceEvents(eventBus) }
     val appUpdateEvents = remember(eventBus) { KuiklyAppUpdateEvents(eventBus) }
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val hostNetworkEvents = remember(eventBus) { KuiklyHostNetworkEvents(eventBus) }
-    val authSessionEvents =
-        remember(eventBus, pager.pagerId) {
-            KuiklyAuthSessionEvents(
-                eventBus = eventBus,
-                source = "app-shell:${pager.pagerId}"
-            )
-        }
     val notificationPreferenceRepository =
         remember(notificationPreferenceEvents) {
             kuiklyNotificationPreferenceRepository(notificationPreferenceEvents)
         }
     val notificationPreferenceScope = rememberCoroutineScope()
-    DisposableEffect(authSessionEvents, authStore) {
-        val callbackRef =
-            authSessionEvents.addSessionClearedListener { signal ->
-                if (authSessionEvents.isLocalSource(signal)) {
-                    return@addSessionClearedListener
-                }
-                slockLogInfo("SlockSharedAuth", "shared_auth_session auth_session_clear_notify_received source=${signal.source} reason=${signal.reason}")
-                appShellCoroutineScope.launch {
-                    runCatchingPreservingCancellation {
-                        authStore.clearSessionFromSessionClearedNotify(
-                            reason = signal.reason,
-                            previousSessionFingerprint = signal.previousSessionFingerprint
-                        )
-                    }.onSuccess { applied ->
-                        slockLogInfo(
-                            "SlockSharedAuth",
-                            "shared_auth_session auth_session_clear_notify_result result=success applied=$applied " +
-                                "source=${signal.source} reason=${signal.reason}"
-                        )
-                    }.onFailure { throwable ->
-                        slockLogWarn(
-                            "SlockSharedAuth",
-                            "shared_auth_session auth_session_clear_notify_result result=failure source=${signal.source} " +
-                                "reason=${signal.reason} error=${throwable.message.orEmpty()}"
-                        )
-                    }
-                }
-            }
-        onDispose {
-            authSessionEvents.removeSessionClearedListener(callbackRef)
-        }
-    }
     val homeActivityRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealInboxRepository(
@@ -2406,7 +2584,6 @@ private fun SlockAppShellContent(
                 diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
             )
         }
-    var authGateMessage by remember { mutableStateOf<AuthGateMessage?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
@@ -2437,27 +2614,6 @@ private fun SlockAppShellContent(
     val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
     val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
     val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
-    val authGateViewModel: SharedAuthGateViewModel =
-        viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
-            SharedAuthGateViewModel(authDataSource)
-        }
-    var authGateState by remember { mutableStateOf(authGateViewModel.state.value) }
-    LaunchedEffect(authGateViewModel) {
-        authGateViewModel.state.collect { nextState ->
-            authGateState = nextState
-        }
-    }
-    var consumedInitialAuthRestoreTick by remember { mutableStateOf(0) }
-    LaunchedEffect(initialAuthRestoreTick) {
-        if (
-            initialAuthRestoreTick > 0 &&
-            consumedInitialAuthRestoreTick != initialAuthRestoreTick
-        ) {
-            consumedInitialAuthRestoreTick = initialAuthRestoreTick
-            authGateViewModel.accept(SharedAuthGateIntent.Restore)
-            authGateState = authGateViewModel.state.value
-        }
-    }
     val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
@@ -2731,9 +2887,23 @@ private fun SlockAppShellContent(
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
     var foregroundMessageBanner by remember { mutableStateOf<SlockForegroundMessageBanner?>(null) }
+    val visibleRefreshGate = remember { AppShellVisibleRefreshGate() }
 
-    fun refreshVisibleAppShellRoute(reason: String) {
+    fun refreshVisibleAppShellRoute(
+        reason: String,
+        signal: AppShellVisibleRefreshSignal,
+        visibleTick: Int
+    ) {
         if (latestReadySession == null) return
+        val refreshTarget =
+            "${retainedAppShellSelectedTab(latestSelectedTab)}:${latestSelectedHomeDestination.orEmpty()}"
+        if (!visibleRefreshGate.shouldRefresh(signal, visibleTick, refreshTarget)) {
+            bridge.log(
+                "app_shell_visible_refresh_skip reason=$reason cause=same_appearance tab=${latestSelectedTab} " +
+                    "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
+            )
+            return
+        }
         bridge.log(
             "app_shell_visible_refresh reason=$reason tab=${latestSelectedTab} " +
                 "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
@@ -2760,7 +2930,11 @@ private fun SlockAppShellContent(
             if (latestSelectedHomeDestination != null) {
                 homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             } else {
-                refreshVisibleAppShellRoute("page_did_appear")
+                refreshVisibleAppShellRoute(
+                    reason = "page_did_appear",
+                    signal = AppShellVisibleRefreshSignal.PageDidAppear,
+                    visibleTick = pageVisibleTick
+                )
             }
         }
     }
@@ -2786,32 +2960,10 @@ private fun SlockAppShellContent(
         pendingDiagnosticsFeedback = null
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
     }
-
-    LaunchedEffect(sharedStores.authLossFunnel, pager.pagerId) {
-        sharedStores.authLossFunnel.resolutions.collect { resolution ->
-            if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
-                bridge.logWarn(
-                    "app_shell_auth_loss_effect_skip reason=inactive_pager " +
-                        "source=${resolution.signal.source} pagerId=${pager.pagerId}"
-                )
-                return@collect
-            }
-            when (val decision = resolution.decision) {
-                is AuthLossDecision.SessionPreserved ->
-                    bridge.logWarn(
-                        "app_shell_auth_loss_effect decision=session_preserved " +
-                            "reason=${decision.reason} source=${resolution.signal.source}"
-                    )
-                is AuthLossDecision.AuthRequired -> {
-                    bridge.logWarn(
-                        "app_shell_auth_loss_effect decision=auth_required " +
-                            "reason=${decision.reason} source=${resolution.signal.source}"
-                    )
-                    authGateMessage = AuthGateMessage.Static(MR.strings.auth_error_session_expired.desc())
-                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-                    resetAppShellSessionState()
-                }
-            }
+    LaunchedEffect(authSessionResetGeneration) {
+        if (authSessionResetGeneration > appliedAuthSessionResetGeneration) {
+            appliedAuthSessionResetGeneration = authSessionResetGeneration
+            resetAppShellSessionState()
         }
     }
 
@@ -2859,43 +3011,6 @@ private fun SlockAppShellContent(
             notificationPreferenceEvents.removePreferenceListener(callbackRef)
         }
     }
-    LaunchedEffect(authStore) {
-        authStore.sessionInvalidations.collect {
-            bridge.realtimeDisconnect("auth_invalid")
-            authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-            resetAppShellSessionState()
-        }
-    }
-    LaunchedEffect(authStore) {
-        authStore.sessionChanges.collect { fingerprint ->
-            val cachedSession =
-                runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
-            val currentSession = (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
-            val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
-            bridge.log(
-                "app_shell_session_change_received fingerprint=$fingerprint " +
-                    "hasSession=${cachedSession != null} identityChanged=$identityChanged"
-            )
-            authGateMessage = null
-            if (identityChanged) {
-                bridge.realtimeDisconnect("auth_changed")
-                resetAppShellSessionState()
-            }
-            authGateViewModel.dispatch(appShellSessionChangeRestoreIntent(identityChanged))
-        }
-    }
-    LaunchedEffect(authStore) {
-        authStore.authSessionEvents.collect { event ->
-            val restoreIntent = appShellAuthSessionEventRestoreIntent(event) ?: return@collect
-            bridge.log(
-                "app_shell_auth_session_event_received type=binding_metadata_changed " +
-                    "generation=${event.generation} action=refresh_silently"
-            )
-            authGateMessage = null
-            authGateViewModel.dispatch(restoreIntent)
-        }
-    }
-
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
             if (suppressRestoreLanding) {
@@ -3632,7 +3747,11 @@ private fun SlockAppShellContent(
                                 ) &&
                             latestReadySession != null
                         ) {
-                            refreshVisibleAppShellRoute("app_lifecycle_$event")
+                            refreshVisibleAppShellRoute(
+                                reason = "app_lifecycle_$event",
+                                signal = AppShellVisibleRefreshSignal.Lifecycle,
+                                visibleTick = pageVisibleTick
+                            )
                             sharedStores.foregroundReconciler.onForeground("app_shell_$event")
                         }
                         return@launch
@@ -4205,9 +4324,11 @@ private fun SlockAppShellContent(
                         }
                     val childTabEntry = childTabRegistration.entry
                     SideEffect {
-                        childTabEntry.selectedTab = currentChildTab
-                        childTabEntry.retainedTabs = retainedAppShellTabs
-                        childTabEntry.renderer = childTabRenderer
+                        childTabEntry.updateSelection(
+                            selectedTab = currentChildTab,
+                            retainedTabs = retainedAppShellTabs,
+                            renderer = childTabRenderer
+                        )
                         childTabEntry.modalHostState = appShellModalHostState
                     }
                     LaunchedEffect(childTabShellId, childTabEntry.debugId) {
@@ -17159,6 +17280,41 @@ internal fun appShellSessionIdentityChanged(
 
 internal fun appShellSessionChangeRestoreIntent(identityChanged: Boolean): SharedAuthGateIntent =
     if (identityChanged) SharedAuthGateIntent.Restore else SharedAuthGateIntent.RefreshSilently
+
+internal enum class AppShellBootstrapAuthSignal {
+    AuthRequired,
+    SessionInvalidated,
+    SessionChanged,
+    BindingMetadataChanged
+}
+
+internal data class AppShellBootstrapAuthDecision(
+    val intent: SharedAuthGateIntent,
+    val resetSessionState: Boolean
+)
+
+internal fun appShellBootstrapAuthDecision(
+    signal: AppShellBootstrapAuthSignal,
+    identityChanged: Boolean = false
+): AppShellBootstrapAuthDecision =
+    when (signal) {
+        AppShellBootstrapAuthSignal.AuthRequired,
+        AppShellBootstrapAuthSignal.SessionInvalidated ->
+            AppShellBootstrapAuthDecision(
+                intent = SharedAuthGateIntent.SignedOut,
+                resetSessionState = true
+            )
+        AppShellBootstrapAuthSignal.SessionChanged ->
+            AppShellBootstrapAuthDecision(
+                intent = appShellSessionChangeRestoreIntent(identityChanged),
+                resetSessionState = identityChanged
+            )
+        AppShellBootstrapAuthSignal.BindingMetadataChanged ->
+            AppShellBootstrapAuthDecision(
+                intent = SharedAuthGateIntent.RefreshSilently,
+                resetSessionState = false
+            )
+    }
 
 internal fun appShellAuthSessionEventRestoreIntent(event: AuthSessionEvent): SharedAuthGateIntent? =
     if (event is AuthSessionEvent.BindingMetadataChanged) {
