@@ -218,6 +218,7 @@
     <string name="thread_tab_files">Files</string>
     <string name="thread_state_loading">Loading…</string>
     <string name="thread_error_load">Failed to load thread</string>
+    <string name="thread_error_access_resolution">Could not verify access to this thread or its parent message. Check your connection and try again.</string>
     <string name="thread_state_no_permission">No permission</string>
     <string name="thread_error_no_permission">You do not have permission to view this thread.</string>
     <string name="thread_error_reason_auth">Please sign in again to continue.</string>

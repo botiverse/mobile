@@ -7183,6 +7183,25 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadStoreRetryEventsDispatchRealStoreIntentsInsteadOfFallingThroughAsUnsupported() {
+        mapOf(
+            "retryThreadLoad" to SharedThreadIntent.Refresh::class,
+            "retryLoadOlder" to SharedThreadIntent.LoadOlder::class,
+            "retryLoadNewer" to SharedThreadIntent.LoadNewer::class,
+        ).forEach { (action, expectedIntentClass) ->
+            val dispatched = mutableListOf<SharedThreadIntent>()
+
+            assertEquals(true, handleThreadStoreRetryEvent(action, dispatched::add), action)
+            assertEquals(1, dispatched.size, action)
+            assertEquals(expectedIntentClass, dispatched.single()::class, action)
+        }
+
+        val dispatched = mutableListOf<SharedThreadIntent>()
+        assertEquals(false, handleThreadStoreRetryEvent("openTask", dispatched::add))
+        assertEquals(emptyList(), dispatched)
+    }
+
+    @Test
     fun sharedShellHidesChannelChromeForReplyThread() {
         val payload =
             KuiklyThreadScreenPayload(

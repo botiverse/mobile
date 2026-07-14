@@ -51,6 +51,7 @@ class ThreadFailureReasonTest {
             "auth_required" to ThreadUserFacingErrorReason.AuthenticationRequired,
             "thread_forbidden" to ThreadUserFacingErrorReason.PermissionDenied,
             "dns_lookup_failed" to ThreadUserFacingErrorReason.ServerUnreachable,
+            "{\"error\":\"network_timeout\"}" to ThreadUserFacingErrorReason.RequestTimedOut,
             "thread_send_timeout" to ThreadUserFacingErrorReason.RequestTimedOut,
             "thread_network" to ThreadUserFacingErrorReason.NetworkFailed,
             "http_503" to ThreadUserFacingErrorReason.ServerUnavailable,
