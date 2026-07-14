@@ -128,7 +128,8 @@ private val DeveloperRouteGroups =
                         pageName = SETTINGS_BILLING_PAGE,
                         detail = "Billing settings fixture",
                         payloadProvider = { routerPreviewJson.encodeToString(settingsBillingSmokePayload) }
-                    )
+                    ),
+                    DeveloperRouteItem("Settings Administration", SETTINGS_ADMINISTRATION_PAGE, "Administration webview page")
                 )
         ),
         DeveloperRouteGroup(
