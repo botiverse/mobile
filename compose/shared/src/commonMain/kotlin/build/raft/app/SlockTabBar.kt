@@ -133,6 +133,13 @@ internal fun slockSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
 internal fun slockAndroidFloatingBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
     SlockOhosHdsBottomTabBarHostHeight + bottomSafeArea
 
+internal val SlockVerticalTabSectionTextStyle =
+    SlockType.TabLabel.copy(
+        letterSpacing = 1.sp,
+        color = SlockColor.TextBlack.copy(alpha = 0.4f)
+    )
+internal val SlockVerticalTabSectionBottomPadding = 4.dp
+
 @Composable
 internal fun SlockVerticalTabBar(
     items: List<SlockTabItemPayload>,
@@ -150,15 +157,16 @@ internal fun SlockVerticalTabBar(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = sectionStartPadding, top = if (index > 0) 12.dp else 0.dp, bottom = 6.dp)
+                        .padding(
+                            start = sectionStartPadding,
+                            top = if (index > 0) 12.dp else 0.dp,
+                            bottom = SlockVerticalTabSectionBottomPadding
+                        )
                 ) {
                     Text(
                         item.section.uppercase(),
-                        style = SlockType.Caption.copy(
-                            letterSpacing = 2.sp,
-                            color = SlockColor.TextMutedGray
-                        ),
-                        color = SlockColor.TextMutedGray
+                        style = SlockVerticalTabSectionTextStyle,
+                        color = SlockVerticalTabSectionTextStyle.color
                     )
                 }
             }
