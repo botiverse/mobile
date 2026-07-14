@@ -2,7 +2,7 @@
 
 Date: 2026-07-15
 
-Revision: 2 (addresses @MingQi CHANGES_REQUESTED review on r1).
+Revision: 3 (addresses @MingQi CHANGES_REQUESTED review on r2).
 
 Status: **Draft**. Design-only. Do not start implementation from this document until @artin and the platform owners sign off on this revision.
 
@@ -50,6 +50,8 @@ trustedOrigin = origin(initialSrc)     // scheme + host + effective port
 ```
 
 That is the SINGLE authority. No static per-environment list. `initialSrc` for a production WebView on today's stack is `https://app.raft.build/...`; on staging it is `https://raft-app-staging.botiverse.dev/s/botiverse/...`; in Developer mode it is whatever `webUrl` was configured. The OTHER two hostnames (`app.slock.ai`, `slock-app-staging.botiverse.dev`) currently 301/302 to those origins and are therefore never the effective initial `src`. Any static allowlist is by definition a second authority that will drift.
+
+**Pre-condition for capture.** `trustedOrigin` is captured ONLY after `initialSrc` passes the same URL/environment eligibility that the existing auth-bootstrap uses (HTTP(S) scheme, parses via the platform URL parser, environment matches the app's active env). If eligibility fails the bridge is not installed at all — `hostEventsEnabled=true` becomes a runtime no-op, not an implicit widening. If a legacy URL (e.g. an `app.slock.ai` `initialSrc` that would 301 to `app.raft.build`) is passed, `trustedOrigin` is captured as the LEGACY origin; the subsequent redirect is cross-origin from `trustedOrigin`'s perspective, and the bridge MUST remain detached across that navigation. Do NOT treat "we don't currently pass legacy URLs" as a safety invariant — treat that only as a scheduling fact.
 
 Platform implementations MUST:
 
@@ -171,7 +173,9 @@ The Kuikly boundary contract is `params: JSONObject` with a single string key `m
 
 ### Native platform seams
 
-Each platform's WebView renderer implements the receive path AND the injected script generator. The script generator is a shared function in KMP that emits the same JS on every platform (only the `postMessage` target differs). Concretely, each platform's `injectedJavaScript` gets prefixed with:
+KMP shared owns a TEMPLATE for the bridge script — the object shape (`RaftHost.version`, `RaftHost.emit`), the wire schema, the version string. Each platform assembles the actual JS from that template and injects it via its own document-start seam. There is NO shared executable JS blob.
+
+Reference script shape (each platform inlines with its own `post` implementation and its own JS-source-manifest style):
 
 ```js
 (function () {
@@ -192,9 +196,15 @@ Each platform's WebView renderer implements the receive path AND the injected sc
 
 Per platform:
 
-- **Android** (`SlockSandboxWebViewRenderView.kt`): create a `WebMessagePort` pair on the main frame, bind to `window.RaftBridge` (internal name) via `WebViewCompat.postWebMessage`. The injected `post` is `window.__raftBridgePort.postMessage(m)`. Preferred over `addJavascriptInterface` because that exposes an entire Java object; `WebMessagePort` exposes only strings on one named channel. The Kotlin side receives via `WebMessagePort.WebMessageCallback.onMessage`, extracts the string, wraps as `mapOf("message" to raw)`, forwards to the Kuikly event bus.
-- **iOS** (`SlockSandboxWebView.m`): register `WKScriptMessageHandler` on `WKUserContentController` under name `raftHost` (`.atDocumentStart`, `forMainFrameOnly: true`). The injected `post` is `window.webkit.messageHandlers.raftHost.postMessage(m)`. Inbound handler validates `message.frameInfo.request.URL.origin` against the allowlist, then dispatches through Kuikly with `@{@"message": raw}`.
-- **OHOS** (`SlockSandboxWebView.ets`): use `webController.registerJavaScriptProxy` (or the current equivalent) for a string-only channel; same origin/main-frame gate; same `{message: raw}` shape into the Kuikly event bus.
+- **Android** (`SlockSandboxWebViewRenderView.kt`): the specific document-start seam MUST be `androidx.webkit.WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(trustedOrigin))` (backed by `WebView` feature `DOCUMENT_START_SCRIPT` on WebView 83+). Inbound: `WebViewCompat.addWebMessageListener(webView, "raftHostPort", setOf(trustedOrigin), listener)`. The listener's `onPostMessage` receives strings, wraps as `mapOf("message" to raw)`, and forwards to the Kuikly event bus.
+
+  This is the load-bearing choice @MingQi r3 flagged: the current renderer's *bootstrap HTML* is a transient document that dies at `window.location.replace(targetUrl)`, so `window.RaftHost` installed inside it does NOT survive into the target document. `onPageFinished evaluate` runs AFTER the target's React reads the global — too late. Only `addDocumentStartJavaScript` runs on the target document, before React, with an exact-origin rule. `addJavascriptInterface` is rejected on two counts: it exposes an entire Java object (wider attack surface) and it runs at the whole-webview level (no per-target-document isolation).
+
+  **Support / fallback.** `addDocumentStartJavaScript` requires `WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)` (backed by AndroidX WebKit + a recent WebView provider). If the feature check returns false, `hostEventsEnabled=true` MUST resolve to a no-op — the bridge is NOT installed, and the WebView-owner surface MUST NOT allow session-mutating flows on that device. This is a "fail-closed on old WebView" contract, verified in a red gate that stubs the feature-support probe to `false` and asserts the bridge is absent from the target document. Do not silently degrade to a later-running seam.
+
+- **iOS** (`SlockSandboxWebView.m`): the seam is `WKUserContentController.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))` for the bridge script, and `addScriptMessageHandler(handler, name: "raftHost")` for the inbound channel. Inbound: reject any `WKScriptMessage` whose `message.frameInfo.request.URL.origin` is not equal to `trustedOrigin`. Dispatch through Kuikly with `@{@"message": raw}`.
+
+- **OHOS** (`SlockSandboxWebView.ets`): the seam is the ArkTS Web component's document-start user-script API (equivalent to iOS `WKUserScript` semantics) plus the string-only proxy channel. Main-frame-only. Inbound: reject messages whose page origin != `trustedOrigin`. Same `{message: raw}` shape into Kuikly.
 
 ## Event vocabulary v1
 
@@ -238,7 +248,7 @@ The split matters because r1 conflated them: it described "native parse boundary
 **Lifecycle / ABA safety.** Platform implementations MUST:
 
 - Close the message handler / port pair when the renderer view is destroyed (Android `WebView.destroy`, iOS view controller `deinit`, OHOS equivalent).
-- Detach on main-frame navigation to any URL whose origin is not in the allowlist; re-attach only if a subsequent navigation returns to an approved origin.
+- Detach on main-frame navigation to any URL whose origin is not equal to `trustedOrigin`; re-attach only if a subsequent navigation returns exactly to `trustedOrigin`.
 - A callback delivered from an OLD renderer's registration MUST NOT reach a REPLACEMENT WebView instance. This is the ABA case — a pending message queued by a torn-down WebView must be dropped, not dispatched through the shared event bus that a new WebView is subscribed to. Concretely: each registration carries a per-instance token; the shared consumer checks the token and drops stale messages.
 
 **Tests required for v1** (per platform):
@@ -260,7 +270,7 @@ Web calls `hasRaftHostEventBridge()` before calling `emitHostEvent(...)`. The he
 
 ## Failure modes, restated
 
-- Unknown `kind` → silently ignored by the host after parse validation. Soft versioning.
+- Unknown `kind` (not in the current known vocabulary) → dropped with a warn log at the shared KMP layer. Consumer never observes it. Soft versioning: a v2 web app running on a v1 host degrades to no delivery, not to silent acceptance of an unrecognised event.
 - Non-embedded browser → `window.RaftHost` undefined → `emitHostEvent` short-circuits.
 - Malformed / oversized / wrong-shape message → dropped at parse boundary, warn log.
 - Cross-origin frame emits → rejected at the native origin gate.
@@ -284,7 +294,10 @@ If any of these change scope, do NOT extend this document — write a new one:
   - Outside a host (`RaftHost` undefined), `emitHostEvent` is a no-op — no throw, no console error.
   - Inside a host, `emitHostEvent` invokes the injected `emit` exactly once per call with a `{}` payload when omitted.
   - Layout embed detection (`isHostShell()`) is NOT influenced by bridge presence — bridge on / off does not change what web renders.
-- One end-to-end scenario, CI-driven: web calls `emitHostEvent("session:logout")` inside a WebView with `hostEventsEnabled=true` on the approved origin → the shared consumer receives `("session:logout", {})`.
+- One end-to-end scenario, CI-driven: web calls `emitHostEvent("session:logout")` inside a WebView with `hostEventsEnabled=true` whose `initialSrc` origin was captured as `trustedOrigin` → the shared consumer receives `("session:logout", {})`.
+- **Document-start ordering gate** (per platform): a page loaded into the WebView observes `window.RaftHost.version === "raft-host-v1"` from JS that runs BEFORE any React render / any user-code `emit` call. Verified by a probe script that reads the global at document-start and reports via the bridge itself; the absence of that report is the red signal.
+- **Non-clobber gate** (per platform): a page attempting to reassign `window.RaftHost = {}` after document-start leaves the original bridge intact and continues to deliver events. Frozen `defineProperty` is the mechanism; the gate proves the mechanism.
+- **Android WebView-feature fallback gate**: stubbing `WebViewFeature.isFeatureSupported(DOCUMENT_START_SCRIPT)` to `false` → `hostEventsEnabled=true` becomes a no-op; the target document does NOT see `window.RaftHost`. Verified as a red gate — the counterfactual (silently degrading to a later seam) would land as green here and is what this gate exists to prevent.
 - Non-goals for cross-origin frames, oversized payloads, and torn-down renderers each have a red gate as described in §Safety limits.
 
 ## Owners and review
@@ -303,10 +316,15 @@ If any of these change scope, do NOT extend this document — write a new one:
 
 ## Changelog
 
-- **r3 (2026-07-15):** addresses @MingQi CHANGES_REQUESTED review on r2. Substantive fixes:
-  (1) **Origin authority** — replaced the static per-environment allowlist with `trustedOrigin = origin(initialSrc)` per WebView instance. Real prod is `app.raft.build`; static list was wrong AND would drift. Single authority now. `slock.ai` legacy hostnames 301 to the real origins and are never the effective initial `src`.
-  (2) **Injection lifecycle** aligned with actual production: iOS/OHOS use document-start caller JS through user-script APIs; Android uses bootstrap HTML + `page-finished evaluate`. KMP shared owns the CONTRACT (version, object shape, wire schema) as template + constants — NOT a shared JS blob. Bridge script + auth-seed script are two independent privileged registrations per platform, ordering + non-clobber explicit.
-  (3) **Responsibility split** tightened: native enforces channel-level controls (origin, frame, lifecycle, ABA, UTF-8 byte size cap) BEFORE Kuikly dispatch; shared KMP enforces content-level checks (JSON, kind pattern, vocabulary, payload shape) INSIDE the handler. Byte cap is UTF-8 bytes (`raw.utf8Bytes <= 4096`), not JS string `.length`.
+- **r3 (2026-07-15, superseded 2 minutes later by r3 delta below):** initial delta addressed @MingQi r2. Original three fixes:
+  (1) `trustedOrigin = origin(initialSrc)` replaces the static allowlist.
+  (2) KMP shared owns contract, not shared JS blob; bridge script + auth-seed script are independent privileged registrations per platform.
+  (3) native/shared responsibility split; UTF-8 byte cap not JS `.length`.
+
+  On re-review @MingQi (r3 CHANGES_REQUESTED) flagged three residual issues in the DOC's fidelity to those fixes — this file at r3+delta now carries the corrections:
+  - **Android document-start seam pinned to `WebViewCompat.addDocumentStartJavaScript`** with an exact-origin rule set, plus a `WebViewFeature.DOCUMENT_START_SCRIPT` support probe + fail-closed fallback (no silent degradation to `page-finished evaluate`, which is too late for the target document's React).
+  - **Origin pre-condition** made explicit: `trustedOrigin` is only captured after `initialSrc` passes existing auth-bootstrap eligibility. A legacy URL passed as `initialSrc` captures the legacy origin, then the redirect is cross-origin from `trustedOrigin`'s view and the bridge stays detached. Do not rely on "we don't currently pass legacy URLs" as an invariant.
+  - **Residual r2 language purged** in three places: Native seams no longer says "shared JS generator"; iOS/lifecycle no longer says "allowlist"; failure modes no longer says "unknown kind silently ignored" (it's now warn+drop per the shared layer). Revision header updated to r3.
 - **r2 (2026-07-15):** addresses @MingQi CHANGES_REQUESTED review on r1. Substantive additions:
   (1) `hostEventsEnabled` opt-in attr, (2) trusted-origin + main-frame-only requirement,
   (3) params-map boundary alignment (`{message: raw}`), (4) `seq`/`ts` removed from v1,
