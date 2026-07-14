@@ -4183,31 +4183,56 @@ internal fun SharedThreadRouteContent(
             }
         }
     )
-    // Pager lifecycle notifications are Thread-pager-local and stay on the raw
-    // listener; realtime domain events arrive through the shared
-    // SharedRealtimeDomainEventOwner sink below so the owner's dedup ledger is
-    // the single ingress decision point (#196, replaces per-route raw decode).
+    // Pager lifecycle notifications are Thread-pager-local. Ordinary realtime
+    // payloads are decoded here as an ingress adapter and forwarded into the
+    // shared owner, so a directly hosted Thread does not depend on AppShell
+    // being mounted while dedup/fanout still has one decision point.
     // resolvedAuxiliaryThreadId is provably within activeRealtimeRoomIds()
     // (timelineChannelId = streamChannelId ?: sourceThreadId), so the rejoin
     // set is exactly the mount-time join/leave set — keeping them identical
     // avoids force-joining a room that never gets a paired leave.
     val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
-    DisposableEffect(realtimeEvents, active) {
+    DisposableEffect(
+        realtimeEvents,
+        realtimeEventMapper,
+        realtimeDomainEventOwner,
+        authStore,
+        active
+    ) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
                 val eventDataSnapshot = eventData.toString()
                 coroutineScope.launch {
-                    val lifecycleData = JSONObject(eventDataSnapshot)
-                    if (lifecycleData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
+                    val rawEventData = JSONObject(eventDataSnapshot)
+                    if (rawEventData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
+                        val event =
+                            decodeSharedShellRealtimeEvent(
+                                rawEventData,
+                                realtimeEventMapper,
+                                slockLogger("SlockThreadRealtimeDecode")
+                            ) ?: return@launch
+                        val session = authStore.readSession()
+                        val serverId =
+                            resolveSharedShellRealtimeServerId(rawEventData, event, session)
+                                ?: return@launch
+                        val currentSessionServerId =
+                            session?.currentServerId?.takeIf { it.isNotBlank() }
+                                ?: return@launch
+                        if (currentSessionServerId != serverId) return@launch
+                        realtimeDomainEventOwner.accept(
+                            serverId = serverId,
+                            event = event,
+                            source = "thread_route"
+                        )
                         return@launch
                     }
-                    val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
-                    val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
+                    val event = rawEventData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                    val pageName = rawEventData.optString(SlockRealtimeNotifyContract.KeyPageName)
                     if (!threadLifecycleEventTargetsThread(pageName)) {
                         return@launch
                     }
                     if (!appLifecycleEventTargetsShell(
-                            eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                            eventShellInstanceId = rawEventData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
                             routeShellInstanceId = storeScope.shellInstanceId
                         )
                     ) {
