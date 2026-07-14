@@ -7,11 +7,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -165,22 +165,37 @@ internal object AndroidUnreadNotificationPoster {
 
     private fun unreadNotificationContentIntent(context: Context, request: JSONObject, notificationId: Int): PendingIntent? {
         val appContext = context.applicationContext
-        val pageData = SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(request)
-        val intent =
-            if (pageData != null) {
-                Intent(appContext, MainActivity::class.java)
-                    .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
-                    .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(pageData).text)
-            } else {
-                appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
-            } ?: return null
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val intent = unreadNotificationLaunchIntent(appContext, request)
+            ?: appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            ?: return null
         return PendingIntent.getActivity(
             appContext,
             notificationId,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
+
+    internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
+        val pageData = SlockKuiklyActivity.buildUnreadNotificationAppShellPageData(request) ?: return null
+        val target = resolveAndroidShellLaunchTarget(pageData)
+        val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
+        return Intent(context.applicationContext, SlockAppShellActivity::class.java)
+            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_APP_SHELL)
+            .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(resolvedPageData).text)
+            .apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+                if (target.documentShell) {
+                    data = Uri.parse("raft-shell://window/${Uri.encode(target.shellInstanceId)}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS)
+                }
+            }
     }
 
     private fun notificationChannelIdForCategory(category: String): String =
