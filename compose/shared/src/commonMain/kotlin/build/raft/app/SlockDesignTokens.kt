@@ -23,6 +23,9 @@ internal object SlockColor {
     val AccentLime = Color(0xFFA9D877)
     val AccentRed = Color(0xFFF97264)
     val AccentStone = Color(0xFFC0B9B1)
+    // react raft-ui `--state-warning-base: oklch(0.7 0.202 44.441)` (#FF6900) —
+    // the warning badge/banner fill. Distinct from AccentOrange (#F8A16F).
+    val StateWarningBase = Color(0xFFFF6900)
     val SurfaceWhite = Color(0xFFFFFFFF)
     val SurfaceCream = Color(0xFFFFFAEF)
     val AppBgLightBlue = Color(0xFFE6F8FF)

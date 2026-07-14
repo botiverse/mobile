@@ -35,6 +35,8 @@ import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -479,6 +481,7 @@ internal fun UiSelectVisualContent() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun UiBadgeVisualContent() {
     Box(
@@ -489,17 +492,21 @@ internal fun UiBadgeVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockBrutalBadge("Shared", tone = SlockBrutalTone.White)
-                SlockBrutalBadge("Installed", tone = SlockBrutalTone.Lime)
-                SlockBrutalBadge("Update", tone = SlockBrutalTone.Orange)
-                SlockBrutalBadge("Built In", tone = SlockBrutalTone.Stone)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockBrutalBadge("task #273", tone = SlockBrutalTone.Red, uppercase = false)
-                SlockBrutalBadgeButton("Install", tone = SlockBrutalTone.Pink, onClick = {})
-            }
+        // React renders one `flex flex-wrap gap-2` run of six raft-ui <Badge>s
+        // whose default flipped to uppercase=false ("case-sensitive content
+        // stays intact") — Title Case, no tracking, wrap where width dictates
+        // (drift #773). Warning fill is --state-warning-base #FF6900, not the
+        // softer AccentOrange.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SlockBrutalBadge("Shared", tone = SlockBrutalTone.White, uppercase = false)
+            SlockBrutalBadge("Installed", tone = SlockBrutalTone.Lime, uppercase = false)
+            SlockBrutalBadge("Update", tone = SlockBrutalTone.Warning, uppercase = false)
+            SlockBrutalBadge("Built In", tone = SlockBrutalTone.Stone, uppercase = false)
+            SlockBrutalBadge("task #273", tone = SlockBrutalTone.Red, uppercase = false)
+            SlockBrutalBadgeButton("Install", tone = SlockBrutalTone.Pink, uppercase = false, onClick = {})
         }
     }
 }

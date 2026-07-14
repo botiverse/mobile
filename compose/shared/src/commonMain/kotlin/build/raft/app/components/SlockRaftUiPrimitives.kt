@@ -52,7 +52,10 @@ internal enum class SlockBrutalTone(val color: Color) {
     Red(SlockColor.AccentRed),
     // react raft-ui badge variant "muted": bg --secondary-400 -> brutal stone
     // #C0B9B1 (== SlockColor.AccentStone), not the cream surface color.
-    Stone(SlockColor.AccentStone)
+    Stone(SlockColor.AccentStone),
+    // react raft-ui badge variant "warning": bg --state-warning-base #FF6900,
+    // NOT the softer AccentOrange (#F8A16F) — drift issue #773.
+    Warning(SlockColor.StateWarningBase)
 }
 
 private val SlockSelectedSurfaceCyan = Color(0xFFDFF7FD)

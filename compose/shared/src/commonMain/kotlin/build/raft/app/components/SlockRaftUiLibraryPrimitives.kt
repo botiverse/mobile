@@ -67,7 +67,7 @@ internal enum class SlockRaftUiButtonVariant(val background: Color) {
 internal enum class SlockRaftUiBadgeVariant(val tone: SlockBrutalTone) {
     Success(SlockBrutalTone.Lime),
     Information(SlockBrutalTone.Cyan),
-    Warning(SlockBrutalTone.Orange),
+    Warning(SlockBrutalTone.Warning),
     Danger(SlockBrutalTone.Red)
 }
 
