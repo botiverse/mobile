@@ -71,6 +71,7 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.ThreadMessagesPage
+import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.WireMessage
@@ -4526,24 +4527,44 @@ class SharedThreadStoreTest {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
-                threadResultProvider = { _, includeFollowedSummaries, _ ->
+                threadResult =
                     DataResult.Content(
                         threadSnapshot(
-                            body = if (includeFollowedSummaries) "followed body" else "initial body",
+                            body = "initial body",
                             messages =
                                 listOf(
                                     message(
                                         threadId = "channel-1",
                                         id = "m1",
                                         seq = 10,
-                                        body = if (includeFollowedSummaries) "followed body" else "initial body",
+                                        body = "initial body",
                                         threadChannelId = "thread-m1",
-                                        replyCount = if (includeFollowedSummaries) 7 else 0
+                                        replyCount = 0
                                     )
                                 )
                         )
+                    ),
+                threadReplySummariesResult =
+                    DataResult.Content(
+                        ThreadReplySummariesSnapshot(
+                            threads =
+                                listOf(
+                                    InboxItem(
+                                        key = "thread:m1",
+                                        kind = InboxItemKind.Thread,
+                                        channelId = ChannelId("thread-m1"),
+                                        channelName = "reply thread",
+                                        threadChannelId = ChannelId("thread-m1"),
+                                        parentChannelId = ChannelId("channel-1"),
+                                        parentMessageId = MessageId("m1"),
+                                        replyCount = 7,
+                                        unreadCount = 2,
+                                        firstUnreadMessageId = MessageId("reply-6")
+                                    )
+                                ),
+                            followedThreadKeys = setOf("thread:m1")
+                        )
                     )
-                }
             )
         val dataSource =
             SharedThreadDataSource(
@@ -4557,10 +4578,54 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         delay(1L)
 
-        assertEquals(listOf(false, true), repository.getThreadIncludeFollowedSummaries)
-        assertEquals("followed body", store.state.value.payload.messages.single().body)
-        assertEquals(7, store.state.value.payload.messages.single().replyCount)
+        assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
+        val message = store.state.value.payload.messages.single()
+        assertEquals("initial body", message.body)
+        assertEquals(7, message.replyCount)
+        assertEquals(2, message.unreadReplyCount)
+        assertEquals("reply-6", message.firstUnreadReplyMessageId)
+        assertTrue(message.isThreadFollowed)
         assertEquals(0, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun channelSummaryBackfillWithNoChangesDoesNotRefetchTimelineOrEmitState() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "stable body")),
+                threadReplySummariesResult =
+                    DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        delay(1L)
+
+        assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
+        assertEquals("stable body", store.state.value.payload.messages.single().body)
+        assertTrue(
+            logs.any {
+                it.startsWith("thread_secondary_refresh_result") &&
+                    it.contains("emitted=false")
+            }
+        )
         scope.cancel()
     }
 
@@ -9099,6 +9164,8 @@ class SharedThreadStoreTest {
 
     private class FakeConversationRepository(
         var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
+        var threadReplySummariesResult: DataResult<ThreadReplySummariesSnapshot> =
+            DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList())),
         var threadResultsById: Map<ThreadId, DataResult<ThreadSnapshot>> = emptyMap(),
         var threadResultProvider: ((ThreadId, Boolean, Int) -> DataResult<ThreadSnapshot>)? = null,
         var threadDelayMillis: Long = 0L,
@@ -9124,6 +9191,7 @@ class SharedThreadStoreTest {
         val getThreadRequests: MutableList<ThreadId> = mutableListOf()
         val getThreadIncludeFollowedSummaries: MutableList<Boolean> = mutableListOf()
         val getThreadLimits: MutableList<Int> = mutableListOf()
+        val getThreadReplySummariesRequests: MutableList<Pair<ThreadId, List<MessageId>>> = mutableListOf()
         val olderRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
         val olderLimits: MutableList<Int> = mutableListOf()
         val newerRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
@@ -9155,6 +9223,14 @@ class SharedThreadStoreTest {
             return threadResultProvider?.invoke(threadId, includeFollowedSummaries, limit)
                 ?: threadResultsById[threadId]
                 ?: threadResult
+        }
+
+        override suspend fun getThreadReplySummaries(
+            threadId: ThreadId,
+            parentMessageIds: List<MessageId>
+        ): DataResult<ThreadReplySummariesSnapshot> {
+            getThreadReplySummariesRequests += threadId to parentMessageIds
+            return threadReplySummariesResult
         }
 
         override suspend fun getReplyThread(

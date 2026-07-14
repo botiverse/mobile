@@ -153,6 +153,11 @@ interface ConversationRepository {
         includeFollowedSummaries: Boolean = false,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
+    suspend fun getThreadReplySummaries(
+        threadId: ThreadId,
+        parentMessageIds: List<MessageId>
+    ): DataResult<ThreadReplySummariesSnapshot> =
+        DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
     suspend fun getReplyThread(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,

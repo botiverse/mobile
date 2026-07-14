@@ -337,6 +337,11 @@ data class ThreadListSnapshot(
     val nextOffset: Int? = null
 )
 
+data class ThreadReplySummariesSnapshot(
+    val threads: List<InboxItem>,
+    val followedThreadKeys: Set<String> = emptySet()
+)
+
 data class AttachmentUploadRequest(
     val channelId: ChannelId,
     val files: List<PlatformFile>

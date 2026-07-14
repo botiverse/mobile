@@ -209,6 +209,74 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun getThreadReplySummariesDoesNotRefetchMessages() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET channels/channel-1/threads" to
+                            """
+                            {
+                              "threads": [
+                                {
+                                  "threadChannelId": "thread-1",
+                                  "parentChannelId": "channel-1",
+                                  "parentMessageId": "parent-1",
+                                  "replyCount": 4,
+                                  "unreadCount": 1,
+                                  "firstUnreadMessageId": "reply-4"
+                                }
+                              ]
+                            }
+                            """.trimIndent(),
+                        "GET channels/threads/followed" to
+                            """
+                            {
+                              "threads": [
+                                {
+                                  "threadChannelId": "thread-1",
+                                  "parentChannelId": "channel-1",
+                                  "parentMessageId": "parent-1",
+                                  "replyCount": 4
+                                }
+                              ]
+                            }
+                            """.trimIndent()
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result =
+            repository.getThreadReplySummaries(
+                threadId = ThreadId("channel-1"),
+                parentMessageIds = listOf(MessageId("parent-1"))
+            )
+
+        val summaries = assertIs<DataResult.Content<ThreadReplySummariesSnapshot>>(result).data
+        assertEquals(1, summaries.threads.size)
+        assertEquals("parent-1", summaries.threads.single().parentMessageId?.value)
+        assertTrue(summaries.followedThreadKeys.isNotEmpty())
+        assertEquals(
+            listOf(
+                RecordedConversationRequest(
+                    DataRequestPriority.Visible,
+                    "GET",
+                    "channels/channel-1/threads",
+                    listOf("parentMessageIds" to "parent-1")
+                ),
+                RecordedConversationRequest(
+                    DataRequestPriority.Visible,
+                    "GET",
+                    "channels/threads/followed",
+                    listOf("limit" to "50")
+                )
+            ),
+            network.requests
+        )
+        assertFalse(network.requests.any { it.path.startsWith("messages/") })
+    }
+
+    @Test
     fun getReplyThreadLoadsMessagesFromResolvedThreadChannel() = runBlocking {
         val network =
             FakeConversationNetworkClient(
