@@ -48,6 +48,44 @@ class AvatarPriorityTest {
     }
 
     @Test
+    fun humanAvatarUsesValidatedServerGravatarHashAfterUploadedAvatar() {
+        val hash = "A".repeat(64)
+        assertEquals(
+            "gravatar:${hash.lowercase()}",
+            avatarWireValueForAvatarSlot(
+                kind = MemberKind.Human,
+                id = "user-1",
+                avatarWireValue = null,
+                gravatarHash = hash
+            )
+        )
+        assertEquals(
+            "https://cdn.raft.build/avatars/users/cindy.webp",
+            avatarWireValueForAvatarSlot(
+                kind = MemberKind.Human,
+                id = "user-1",
+                avatarWireValue = "https://cdn.raft.build/avatars/users/cindy.webp",
+                gravatarHash = hash
+            )
+        )
+        assertEquals(
+            "pixel:robot",
+            avatarWireValueForAvatarSlot(
+                kind = MemberKind.Agent,
+                id = "agent-1",
+                avatarWireValue = null,
+                gravatarHash = hash
+            )
+        )
+        assertNull("not-a-hash".humanGravatarAvatarWireValueOrNull(MemberKind.Human))
+        assertEquals(
+            "https://www.gravatar.com/avatar/${hash.lowercase()}?s=160&d=404",
+            "gravatar:${hash.lowercase()}".gravatarAvatarHttpUrlOrNull()
+        )
+        assertNull("https://www.gravatar.com/avatar/${hash.lowercase()}".gravatarAvatarHttpUrlOrNull())
+    }
+
+    @Test
     fun avatarReferenceRejectsLegacyGravatarUrls() {
         assertNull(AvatarReference.fromWireValue("https://www.gravatar.com/avatar/hash?s=52&d=404"))
         assertEquals(

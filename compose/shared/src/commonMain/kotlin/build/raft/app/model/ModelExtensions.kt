@@ -209,7 +209,8 @@ fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
         kind = kind,
         id = id.value,
         avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
     )
 
 fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
@@ -220,27 +221,31 @@ fun MemberProfile.avatarWireValueForRenderedAvatar(): String? =
         kind = kind,
         id = id.value,
         avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
     )
 
 fun avatarWireValueForAvatarSlot(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null
+    avatarUrl: String? = null,
+    gravatarHash: String? = null
 ): String? =
     resolveAvatarSlot(
         kind = kind,
         id = id,
         avatarWireValue = avatarWireValue,
-        avatarUrl = avatarUrl
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
     ).effectiveAvatarWireValue
 
 fun avatarWireValueForRenderedAvatar(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null
+    avatarUrl: String? = null,
+    gravatarHash: String? = null
 ): String? {
     val explicitAvatarWireValue =
         avatarWireValue?.appAvatarWireValueOrNull()
@@ -250,7 +255,8 @@ fun avatarWireValueForRenderedAvatar(
             kind = kind,
             id = id,
             avatarWireValue = null,
-            avatarUrl = null
+            avatarUrl = null,
+            gravatarHash = gravatarHash
         )
 }
 
@@ -258,11 +264,15 @@ fun resolveAvatarSlot(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null
+    avatarUrl: String? = null,
+    gravatarHash: String? = null
 ): AvatarSlotResolution {
-    val wireValue =
+    val explicitWireValue =
         avatarWireValue?.appAvatarWireValueOrNull()
             ?: avatarUrl?.appAvatarWireValueOrNull()
+    val wireValue =
+        explicitWireValue
+            ?: gravatarHash?.humanGravatarAvatarWireValueOrNull(kind)
     if (kind != MemberKind.Agent) {
         return AvatarSlotResolution(
             displayAvatarWireValue = wireValue,
@@ -277,6 +287,21 @@ fun resolveAvatarSlot(
 
 fun agentAvatarFallbackWireValue(id: String): String =
     "pixel:robot"
+
+private val Sha256HexRegex = Regex("^[0-9a-fA-F]{64}$")
+private const val GravatarAvatarWirePrefix = "gravatar:"
+
+fun String.humanGravatarAvatarWireValueOrNull(kind: MemberKind): String? =
+    trim()
+        .takeIf { kind == MemberKind.Human && Sha256HexRegex.matches(it) }
+        ?.lowercase()
+        ?.let { "$GravatarAvatarWirePrefix$it" }
+
+fun String.gravatarAvatarHttpUrlOrNull(): String? =
+    removePrefix(GravatarAvatarWirePrefix)
+        .takeIf { startsWith(GravatarAvatarWirePrefix) && Sha256HexRegex.matches(it) }
+        ?.lowercase()
+        ?.let { "https://www.gravatar.com/avatar/$it?s=160&d=404" }
 
 fun String.isLegacyGravatarAvatarUrl(): Boolean =
     contains("gravatar.com/avatar", ignoreCase = true)

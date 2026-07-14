@@ -9326,7 +9326,7 @@ private fun MembersAvatar(
     modifier: Modifier = Modifier
 ) {
     val resolvedAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id.value)
-    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.kind, member.id) {
+    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
     val avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue
