@@ -2595,11 +2595,12 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         home: HomeSnapshot
     ): ConversationAccessCandidate? {
-        val lookupIds = basePayload.conversationHeaderFallbackIds()
+        val lookupIds = basePayload.conversationAccessFallbackIds()
         if (lookupIds.isEmpty()) return null
         return home.toSharedConversationDirectoryState()
             .let { directory -> lookupIds.firstNotNullOfOrNull(directory::resolve) }
             ?.toConversationAccessCandidate()
+            ?.takeIf { candidate -> basePayload.acceptsInitialConversationAccessCandidate(candidate) }
     }
 
     private suspend fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
@@ -3306,7 +3307,11 @@ internal class SharedThreadStore(
                     currentPayload
                         .withThreadContentProjectionFrom(nextPayload)
                         .let { payload ->
-                            if (resolvingInitialAccess && result is DataResult.Content) {
+                            if (
+                                resolvingInitialAccess &&
+                                result is DataResult.Content &&
+                                payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread
+                            ) {
                                 payload.withCanonicalConversationAccessFrom(nextPayload)
                             } else {
                                 payload
@@ -3320,7 +3325,9 @@ internal class SharedThreadStore(
                         result = result,
                         canonicalAccessResolved = canonicalAccessResolved,
                         homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                        homeAccessCandidate = currentState.initialHomeAccessCandidate
+                        homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                        requiresParentAccessCandidate =
+                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
                     )
                 val didEmit =
                     reduceState(
@@ -3401,6 +3408,13 @@ internal class SharedThreadStore(
                             currentState.accessResolution == ThreadAccessResolution.NoPermission ->
                                 ThreadAccessResolution.NoPermission
                             currentState.accessResolution == ThreadAccessResolution.Error ->
+                                ThreadAccessResolution.Error
+                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                                currentState.canonicalAccessResolved &&
+                                candidate != null ->
+                                ThreadAccessResolution.Resolved
+                            projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                                currentState.canonicalAccessResolved ->
                                 ThreadAccessResolution.Error
                             currentState.canonicalAccessResolved ->
                                 ThreadAccessResolution.Resolved
@@ -5789,14 +5803,20 @@ internal fun KuiklyThreadScreenPayload.withInitialHomeConversationAccessFallback
     candidate: ConversationAccessCandidate?
 ): KuiklyThreadScreenPayload {
     candidate ?: return this
+    if (!acceptsInitialConversationAccessCandidate(candidate)) return this
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        // Reply capability belongs to the parent Channel/DM, not to the
+        // synthetic thread conversation returned with reply content.
+        return copy(
+            joined = candidate.joined,
+            canSend = candidate.permissions.canSend,
+            composer =
+                composer.copy(
+                    enabled = candidate.joined && candidate.permissions.canSend
+                )
+        )
+    }
     if (candidate.joined) return this
-    val acceptsCandidate =
-        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-            conversationHeaderLookupIds().any(candidate.ids::contains)
-        } else {
-            acceptsConversationAccessCandidate(candidate)
-        }
-    if (!acceptsCandidate) return this
     return copy(
         joined = false,
         canSend = candidate.permissions.canSend,
@@ -5808,14 +5828,16 @@ private fun ThreadAccessResolution.afterRefreshResult(
     result: DataResult<*>,
     canonicalAccessResolved: Boolean,
     homeLookupComplete: Boolean,
-    homeAccessCandidate: ConversationAccessCandidate?
+    homeAccessCandidate: ConversationAccessCandidate?,
+    requiresParentAccessCandidate: Boolean
 ): ThreadAccessResolution =
     when (result) {
         is DataResult.Content ->
-            if (this == ThreadAccessResolution.Resolved || (canonicalAccessResolved && homeLookupComplete)) {
-                ThreadAccessResolution.Resolved
-            } else {
-                ThreadAccessResolution.Loading
+            when {
+                this == ThreadAccessResolution.Resolved -> ThreadAccessResolution.Resolved
+                !canonicalAccessResolved || !homeLookupComplete -> ThreadAccessResolution.Loading
+                requiresParentAccessCandidate && homeAccessCandidate == null -> ThreadAccessResolution.Error
+                else -> ThreadAccessResolution.Resolved
             }
         is DataResult.Empty ->
             when {
@@ -6476,14 +6498,42 @@ private fun ThreadSnapshot.withConversationAccessFallback(
     return if (nextConversation == current) this else copy(conversation = nextConversation)
 }
 
-// Order IS the contract: the page's own thread/stream ids resolve before the parent id,
-// so access falls back to the page's own conversation before the parent's (t432 family ③).
-private fun KuiklyThreadScreenPayload.conversationHeaderFallbackIds(): Set<String> =
-    listOfNotNull(
-        sourceThreadId,
-        streamChannelId,
-        parentChannelId
-    ).mapNotNull { id -> id.takeIf { it.isNotBlank() } }.toSet()
+private fun KuiklyThreadScreenPayload.conversationAccessFallbackIds(): List<String> =
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        listOfNotNull(replyParentAccessIdentityOrNull()?.first)
+    } else {
+        listOfNotNull(sourceThreadId, streamChannelId, parentChannelId)
+            .mapNotNull { id -> id.takeIf { it.isNotBlank() } }
+            .distinct()
+    }
+
+private fun KuiklyThreadScreenPayload.acceptsInitialConversationAccessCandidate(
+    candidate: ConversationAccessCandidate
+): Boolean {
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+        return acceptsConversationAccessCandidate(candidate)
+    }
+    val (parentId, parentKind) = replyParentAccessIdentityOrNull() ?: return false
+    if (parentId !in candidate.ids) return false
+    return candidate.conversationKind == parentKind
+}
+
+private fun KuiklyThreadScreenPayload.replyParentAccessIdentityOrNull(): Pair<String, ConversationKind>? {
+    val routeIdentity = resolveThreadRouteIdentity()
+    if (
+        routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+        !routeIdentity.hasCompleteReplyIdentity
+    ) {
+        return null
+    }
+    val parentId = parentChannelId?.takeIf { it.isNotBlank() } ?: return null
+    val parentMessage =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return null
+    if (routeIdentity.parentKey != "$parentId:$parentMessage") return null
+    return parentId to (routeIdentity.parentConversationKind ?: return null)
+}
 
 private fun ConversationSummary.matchesHeaderFallbackId(ids: Set<String>): Boolean =
     headerFallbackIds().any { it in ids }

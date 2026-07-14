@@ -1,10 +1,12 @@
 package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 
 internal data class ConversationAccessCandidate(
     val ids: Set<String>,
+    val conversationKind: ConversationKind,
     val surfaceKind: String,
     val joined: Boolean,
     val archived: Boolean,
@@ -426,6 +428,7 @@ internal fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<Strin
 internal fun SharedConversationDirectoryProjection.toConversationAccessCandidate(): ConversationAccessCandidate =
     ConversationAccessCandidate(
         ids = (aliases + canonicalChannelId).filter { it.isNotBlank() }.toSet(),
+        conversationKind = conversationKind,
         surfaceKind = surfaceKind,
         joined = joined,
         archived = archived,
