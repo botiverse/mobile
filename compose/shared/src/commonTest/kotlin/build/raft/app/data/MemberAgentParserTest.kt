@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.MemberId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Presence
@@ -9,6 +10,33 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 class MemberAgentParserTest {
+    @Test
+    fun humanProfilePreservesServerGravatarHash() {
+        val hash = "a".repeat(64)
+        val profile = assertNotNull(
+            parseSharedMemberProfile(
+                """
+                {
+                  "userId":"user-cindy",
+                  "name":"cindyz",
+                  "displayName":"cindyz",
+                  "email":"cinryzh@gmail.com",
+                  "gravatarHash":"$hash",
+                  "avatarUrl":null,
+                  "role":"member",
+                  "membershipStatus":"active"
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertEquals(hash, profile.gravatarHash)
+        assertEquals(
+            "gravatar:$hash",
+            profile.avatarWireValueForAvatarSlot()
+        )
+    }
+
     @Test
     fun agentChannelsPreserveMembershipMuteState() {
         val channels = assertNotNull(

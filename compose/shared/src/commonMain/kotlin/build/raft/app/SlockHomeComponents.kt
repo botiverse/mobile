@@ -33,6 +33,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarWireValueOrNull
+import build.raft.app.model.gravatarAvatarHttpUrlOrNull
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.resources.MR
 import com.tencent.kuikly.core.manager.BridgeManager
@@ -4317,6 +4318,12 @@ internal fun SlockAvatar(
     // Thread — that's a lot of recompositions on scroll, so we want to know whether
     // it's the identify / http-fetch / render / fallback-default that's hot.
     val displayAvatarWireValue = avatarWireValue?.appAvatarWireValueOrNull()
+    val httpAvatarSource = remember(displayAvatarWireValue) {
+        displayAvatarWireValue?.gravatarAvatarHttpUrlOrNull()
+            ?: displayAvatarWireValue?.takeIf {
+                it.startsWith("http://") || it.startsWith("https://")
+            }
+    }
     val pixelSpec = remember(displayAvatarWireValue) {
         traceMarkdownSectionNonComposable(SlockAvatarTraceNames.IDENTIFY) {
             displayAvatarWireValue?.toPixelAvatarSpec()
@@ -4326,7 +4333,7 @@ internal fun SlockAvatar(
         pixelSpec != null -> traceMarkdownSection(SlockAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
         }
-        displayAvatarWireValue?.startsWith("http://") == true || displayAvatarWireValue?.startsWith("https://") == true -> Box(
+        httpAvatarSource != null -> Box(
             modifier = modifier
                 .size(width = avatarSize, height = avatarSize)
                 .background(SlockColor.AccentLavender)
@@ -4335,7 +4342,7 @@ internal fun SlockAvatar(
         ) {
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
-                source = displayAvatarWireValue,
+                source = httpAvatarSource,
                 modifier = Modifier.fillMaxSize()
             )
         }

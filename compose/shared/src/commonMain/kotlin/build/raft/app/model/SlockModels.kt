@@ -243,6 +243,7 @@ data class MemberProfile(
     val roleDescription: String? = null,
     val serverRole: String? = null,
     val email: String? = null,
+    val gravatarHash: String? = null,
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
