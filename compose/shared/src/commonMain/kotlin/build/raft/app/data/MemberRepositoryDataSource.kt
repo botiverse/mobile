@@ -892,35 +892,6 @@ private fun <T> HomeNetworkResponse.toDataError(): DataResult<T> =
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
     }
 
-private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
-    AgentDetailSummary(
-        id = id,
-        name = name,
-        displayName = displayName,
-        description = description,
-        serverRole = serverRole,
-        status = status,
-        runtime = runtime,
-        model = model,
-        runtimeModelKind = runtimeModelKind,
-        reasoning = reasoning,
-        executionMode = executionMode,
-        machineId = machineId,
-        machineName = machineName,
-        daemonVersion = daemonVersion,
-        avatarUrl = avatarUrl,
-        creatorId = creatorId,
-        creatorType = creatorType,
-        creator = creator,
-        createdAt = createdAt,
-        envVarNames = envVarNames,
-        envVars = envVars,
-        createdAgents = createdAgents,
-        activity = activity,
-        activityDetail = activityDetail,
-        deletedAt = deletedAt
-    )
-
 private fun DataResult<AgentCommandResult>.toLifecycleActionResult(
     agentId: MemberId,
     action: String,

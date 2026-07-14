@@ -81,6 +81,23 @@ class AgentsApiTest {
     }
 
     @Test
+    fun publicAgentDetailLoadsOnlyTheJointAuthorizedAgentProfile() = runBlocking {
+        val transport = RecordingAgentsApi()
+        val detail =
+            assertIs<DataResult.Content<AgentDetailSnapshot>>(
+                SlockAgentsApiClient(transport).publicAgentDetail(MemberId("agent-1"))
+            ).data
+
+        assertEquals("agent-1", detail.agentId.value)
+        assertEquals("Noel Bot", detail.summary?.displayName)
+        assertEquals(emptyList(), detail.directMessages)
+        assertEquals(emptyList(), detail.channels)
+        assertEquals(emptyList(), detail.reminders)
+        assertEquals(emptyList(), detail.activity)
+        assertEquals(listOf("GET agents/agent-1"), transport.calls)
+    }
+
+    @Test
     fun createAgentBodySerializesAvatarAndRuntimeSelectionFields() {
         val body =
             buildCreateAgentBody(
