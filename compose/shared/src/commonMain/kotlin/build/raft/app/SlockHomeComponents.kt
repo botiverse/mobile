@@ -1623,7 +1623,6 @@ internal fun SlockStructuralHomeShell(
                 ) { _ ->
                     ServerSwitcherPanel(
                         servers,
-                        serverSwitcherAvatarPainters,
                         currentServerId,
                         pendingServerId,
                         prefersChineseCommunity,
@@ -3038,7 +3037,6 @@ internal fun HomeInlineErrorCard(
 @Composable
 private fun ServerSwitcherPanel(
     servers: List<SlockServerSwitcherItem>,
-    avatarPainters: Map<String, AsyncImagePainter>,
     currentServerId: String,
     pendingServerId: String?,
     prefersChineseCommunity: Boolean,
@@ -3189,7 +3187,6 @@ private fun ServerSwitcherPanel(
                         } else {
                             ServerSwitcherRow(
                                 server,
-                                avatarPainters[server.id],
                                 server.id == currentServerId,
                                 server.id == pendingServerId,
                                 dragHandleVisible = order.size > 1,
@@ -3221,7 +3218,6 @@ private fun ServerSwitcherPanel(
                     serversById[active]?.let { server ->
                         ServerSwitcherRow(
                             server,
-                            avatarPainters[server.id],
                             server.id == currentServerId,
                             server.id == pendingServerId,
                             dragHandleVisible = true,
@@ -3274,7 +3270,6 @@ private fun HardShadowPanel(
 @Composable
 private fun ServerSwitcherRow(
     server: SlockServerSwitcherItem,
-    avatarPainter: AsyncImagePainter?,
     selected: Boolean,
     pending: Boolean,
     dragHandleVisible: Boolean = false,
@@ -3306,7 +3301,7 @@ private fun ServerSwitcherRow(
                 else -> Spacer(Modifier.size(14.dp))
             }
         }
-        ServerSwitcherAvatarTile(server, avatarPainter)
+        ServerSwitcherAvatarTile(server)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
@@ -3334,10 +3329,7 @@ private fun ServerSwitcherRow(
 }
 
 @Composable
-private fun ServerSwitcherAvatarTile(
-    server: SlockServerSwitcherItem,
-    avatarPainter: AsyncImagePainter?
-) {
+private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
     val presentation = server.toServerSwitcherAvatarPresentation()
     Box(
         modifier =
@@ -3360,11 +3352,11 @@ private fun ServerSwitcherAvatarTile(
             maxLines = 1,
             textAlign = TextAlign.Center
         )
-        if (presentation.avatarWireValue != null && avatarPainter != null) {
-            Image(
-                painter = avatarPainter,
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
+        presentation.avatarWireValue?.let { source ->
+            // The invisible prewarm Image owns its painter. Give the visible row a distinct
+            // painter so Kuikly's stateful image node can draw the already-warm cache entry.
+            SlockAvatarHttpImage(
+                source = source,
                 modifier = Modifier.fillMaxSize()
             )
         }
