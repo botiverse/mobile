@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.InboxItem
 import build.raft.app.data.toConversationSummary
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.PlatformFile
@@ -48,6 +49,7 @@ import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.ThreadCandidateProofGate
 import build.raft.app.data.ThreadIdentityProof
 import build.raft.app.data.ThreadRouteId
+import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentOpenTarget
@@ -1236,29 +1238,21 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload
     ): DataResult<KuiklyThreadScreenPayload> {
         if (conversationRepository == null) return DataResult.Content(basePayload)
-        val session =
-            readSession()
-                ?: return authSessionRequiredResult()
-        val result =
-            if (basePayload.shouldResolveReplyThreadByParentPair()) {
-                fetchInitialReplyThreadPayloadFromRepository(
-                    session = session,
-                    basePayload = basePayload,
-                    includeFollowedSummaries = true
-                )
-            } else {
-                val resolvedThreadId =
-                    basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
-                        ?: basePayload.streamChannelId?.takeIf { it.isNotBlank() }
-                        ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
-                fetchInitialThreadPayloadFromRepository(
-                    session = session,
-                    basePayload = basePayload,
-                    threadId = ThreadId(resolvedThreadId),
-                    includeFollowedSummaries = true
-                )
-            }
-        return result
+        if (basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            return DataResult.Content(basePayload)
+        }
+        readSession() ?: return authSessionRequiredResult()
+        val resolvedThreadId =
+            basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: basePayload.streamChannelId?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        val parentMessageIds = basePayload.messages.map { MessageId(it.id) }
+        return conversationRepository
+            .getThreadReplySummaries(
+                threadId = ThreadId(resolvedThreadId),
+                parentMessageIds = parentMessageIds
+            )
+            .map { summaries -> basePayload.withReplySummaries(summaries) }
     }
 
     /**
@@ -5287,6 +5281,62 @@ private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
         loadingMore = false,
         nextCursor = nextCursor,
         errorCode = null
+    )
+}
+
+private fun KuiklyThreadScreenPayload.withReplySummaries(
+    snapshot: ThreadReplySummariesSnapshot
+): KuiklyThreadScreenPayload {
+    if (snapshot.threads.isEmpty()) return this
+    val summariesByParentMessageId =
+        snapshot.threads
+            .mapNotNull { summary -> summary.parentMessageId?.value?.let { it to summary } }
+            .toMap()
+    val summariesByThreadChannelId =
+        snapshot.threads
+            .flatMap { summary ->
+                listOfNotNull(
+                    summary.threadChannelId?.value?.let { it to summary },
+                    summary.channelId.value.let { it to summary }
+                )
+            }
+            .toMap()
+    val updatedMessages =
+        messages.map { message ->
+            val summary =
+                summariesByParentMessageId[message.id]
+                    ?: message.threadChannelId?.let(summariesByThreadChannelId::get)
+                    ?: return@map message
+            message.withReplySummary(summary, snapshot.followedThreadKeys)
+        }
+    return if (updatedMessages == messages) this else copy(messages = updatedMessages)
+}
+
+private fun KuiklyThreadMessageItem.withReplySummary(
+    summary: InboxItem,
+    followedThreadKeys: Set<String>
+): KuiklyThreadMessageItem {
+    val summaryThreadChannelId = summary.threadChannelId ?: summary.channelId
+    val nextThreadChannelId = threadChannelId ?: summaryThreadChannelId.value
+    val nextReplyCount = maxOf(replyCount, summary.replyCount)
+    val nextUnreadReplyCount = maxOf(unreadReplyCount, summary.unreadCount)
+    val nextFirstUnreadReplyMessageId = firstUnreadReplyMessageId ?: summary.firstUnreadMessageId?.value
+    val nextFollowed = isThreadFollowed || summary.key in followedThreadKeys
+    if (
+        nextThreadChannelId == threadChannelId &&
+        nextReplyCount == replyCount &&
+        nextUnreadReplyCount == unreadReplyCount &&
+        nextFirstUnreadReplyMessageId == firstUnreadReplyMessageId &&
+        nextFollowed == isThreadFollowed
+    ) {
+        return this
+    }
+    return copy(
+        threadChannelId = nextThreadChannelId,
+        replyCount = nextReplyCount,
+        unreadReplyCount = nextUnreadReplyCount,
+        firstUnreadReplyMessageId = nextFirstUnreadReplyMessageId,
+        isThreadFollowed = nextFollowed
     )
 }
 

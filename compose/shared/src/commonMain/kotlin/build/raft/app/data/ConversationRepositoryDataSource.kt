@@ -207,6 +207,78 @@ class RealConversationRepository(
         )
     }
 
+    override suspend fun getThreadReplySummaries(
+        threadId: ThreadId,
+        parentMessageIds: List<MessageId>
+    ): DataResult<ThreadReplySummariesSnapshot> = coroutineScope {
+        val context = currentContext() ?: return@coroutineScope authRequired()
+        val visibleParentMessageIds = parentMessageIds.distinct()
+        if (visibleParentMessageIds.isEmpty()) {
+            return@coroutineScope DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+        }
+        val loadStartedAt = TimeSource.Monotonic.markNow()
+        warningLogger(
+            "thread_summary_load_start threadId=${threadId.value} " +
+                "parentMessageIds=${visibleParentMessageIds.size}"
+        )
+        val channelSummariesDeferred =
+            async {
+                executeConversation(
+                    emptyReason = EmptyReason.NoInboxItems,
+                    block = {
+                        networkClient.channelThreads(
+                            priority = DataRequestPriority.Visible,
+                            channelId = ChannelId(threadId.value),
+                            parentMessageIds = visibleParentMessageIds
+                        )
+                    },
+                    emptyWhen = { false },
+                    source = "thread_summary_channel_threads",
+                    mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }
+                )
+            }
+        val followedSummariesDeferred =
+            async {
+                executeConversation(
+                    emptyReason = EmptyReason.NoInboxItems,
+                    block = { networkClient.followedThreads(DataRequestPriority.Visible, MESSAGE_PAGE_LIMIT) },
+                    emptyWhen = { false },
+                    source = "thread_summary_followed_threads",
+                    mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
+                )
+            }
+        val channelSummaries = channelSummariesDeferred.await()
+        val followedSummaries = followedSummariesDeferred.await()
+        val channelThreads =
+            (channelSummaries as? DataResult.Content)
+                ?.data
+                ?.threads
+                .orEmpty()
+        val followedForChannel =
+            (followedSummaries as? DataResult.Content)
+                ?.data
+                ?.threads
+                ?.filter { it.parentChannelId?.value == threadId.value }
+                .orEmpty()
+        val followedThreadKeys = followedForChannel.mapTo(mutableSetOf()) { it.key }
+        val mergedThreads = (channelThreads + followedForChannel).distinctBy { it.key }
+        warningLogger(
+            "thread_summary_load_result threadId=${threadId.value} " +
+                "channelSummaries=${channelThreads.size} followedSummaries=${followedForChannel.size} " +
+                "mergedSummaries=${mergedThreads.size} durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+        )
+        if (channelSummaries is DataResult.Error && followedSummaries is DataResult.Error) {
+            DataResult.Error(channelSummaries.error)
+        } else {
+            DataResult.Content(
+                ThreadReplySummariesSnapshot(
+                    threads = mergedThreads,
+                    followedThreadKeys = followedThreadKeys
+                )
+            )
+        }
+    }
+
     override suspend fun getReplyThread(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
