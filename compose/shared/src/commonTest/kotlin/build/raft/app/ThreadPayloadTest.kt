@@ -39,6 +39,8 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.SharedTasksDataSource
+import build.raft.app.data.SharedTasksDataStoreStatus
+import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -6451,6 +6453,51 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun partialSharedTaskProjectionEnrichesKnownRowsWithoutClearingHistoricalTaskFacts() {
+        val recentTask =
+            TaskSummary(
+                id = TaskId("task-recent"),
+                title = "recent task",
+                status = TaskStatus.InProgress,
+                taskNumber = 626,
+                messageId = MessageId("message-recent"),
+                updatedAtLabel = ""
+            )
+        val historicalMessage =
+            KuiklyThreadMessageItem(
+                id = "message-history",
+                authorId = "user-artin",
+                authorName = "Artin",
+                body = "historical task",
+                taskId = "task-history",
+                taskNumber = 625,
+                taskStatus = "todo"
+            )
+        val recentMessage =
+            KuiklyThreadMessageItem(
+                id = "message-recent",
+                authorId = "user-artin",
+                authorName = "Artin",
+                body = "recent task"
+            )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(historicalMessage, recentMessage))
+        val projection =
+            SharedTasksProjectionSlice(
+                status = SharedTasksDataStoreStatus.Partial,
+                tasks = listOf(recentTask)
+            ).threadLinkedTasksProjection(payload.threadLinkedTaskReferences())
+
+        val projected = payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(projection)
+
+        assertFalse(projection.authoritative)
+        assertEquals("task-history", projected.messages[0].taskId)
+        assertEquals(625, projected.messages[0].taskNumber)
+        assertEquals("task-recent", projected.messages[1].taskId)
+        assertEquals(626, projected.messages[1].taskNumber)
+        assertEquals("in_progress", projected.messages[1].taskStatus)
+    }
+
+    @Test
     fun linkedTaskProjectionMatchesMessagesByTaskIdentity() {
         val task =
             TaskSummary(
@@ -6645,6 +6692,20 @@ class ThreadPayloadTest {
         assertFalse(shouldStartThreadTasksLoad(loadingPayload, taskChannelId = taskChannelId))
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = null, taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
+        assertTrue(
+            shouldBackfillThreadTasksProjection(
+                payload = contentPayload,
+                taskChannelId = taskChannelId,
+                projectionStatus = SharedTasksDataStoreStatus.Idle
+            )
+        )
+        assertFalse(
+            shouldBackfillThreadTasksProjection(
+                payload = contentPayload,
+                taskChannelId = taskChannelId,
+                projectionStatus = SharedTasksDataStoreStatus.Loaded
+            )
+        )
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
         assertTrue(
@@ -6659,6 +6720,13 @@ class ThreadPayloadTest {
                 contentPayload.copy(sourceThreadId = null),
                 startedThreadId = null,
                 taskChannelId = taskChannelId
+            )
+        )
+        assertFalse(
+            shouldBackfillThreadTasksProjection(
+                payload = contentPayload.copy(selectedTab = "tasks"),
+                taskChannelId = taskChannelId,
+                projectionStatus = SharedTasksDataStoreStatus.Partial
             )
         )
     }

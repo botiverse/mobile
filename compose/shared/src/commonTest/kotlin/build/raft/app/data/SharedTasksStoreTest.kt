@@ -337,9 +337,59 @@ class SharedTasksStoreTest {
 
         val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
 
-        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(SharedTasksDataStoreStatus.Partial, slice.status)
         assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
         assertEquals(TaskStatus.Done, slice.tasks.single().status)
+    }
+
+    @Test
+    fun sharedTasksDataStoreRealtimeUpsertStaysPartialUntilChannelSnapshotBackfills() = runBlocking {
+        val store = SharedTasksDataStore()
+        val recentTask = task("task-recent", TaskStatus.InProgress, channelId = ChannelId("channel-1"))
+        val historicalTask = task("task-history", TaskStatus.Todo, channelId = ChannelId("channel-1"))
+
+        store.upsertTask("server-1", recentTask)
+
+        val partial = store.channelProjectionFlow("server-1", "channel-1", null).first()
+        assertEquals(SharedTasksDataStoreStatus.Partial, partial.status)
+        assertEquals(listOf("task-recent"), partial.tasks.map { it.id.value })
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(historicalTask, recentTask),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val loaded = store.channelProjectionFlow("server-1", "channel-1", null).first()
+        assertEquals(SharedTasksDataStoreStatus.Loaded, loaded.status)
+        assertEquals(listOf("task-history", "task-recent"), loaded.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStoreReusesLoadedServerSnapshotBehindEarlierPartialChannelProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+        val recentTask = task("task-recent", TaskStatus.InReview, channelId = ChannelId("channel-1"))
+        val historicalTask = task("task-history", TaskStatus.Todo, channelId = ChannelId("channel-1"))
+
+        store.upsertTask("server-1", recentTask)
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(historicalTask),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val projection = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, projection.status)
+        assertEquals(listOf("task-history", "task-recent"), projection.tasks.map { it.id.value })
     }
 
     @Test

@@ -88,6 +88,7 @@ import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.SlockAuthSessionStore
@@ -1859,6 +1860,15 @@ internal fun shouldStartThreadTasksLoad(
         payload.status == "content" &&
         payload.supportsChannelTasks() &&
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
+
+internal fun shouldBackfillThreadTasksProjection(
+    payload: KuiklyThreadScreenPayload,
+    taskChannelId: ChannelId?,
+    projectionStatus: SharedTasksDataStoreStatus
+): Boolean =
+    shouldStartThreadTasksLoad(payload, taskChannelId) &&
+        KuiklyThreadTab.fromWireValue(payload.selectedTab) == KuiklyThreadTab.Chat &&
+        projectionStatus != SharedTasksDataStoreStatus.Loaded
 
 internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     val timelineChannelId = resolveThreadRouteIdentity().timelineChannelId ?: return null
@@ -4228,12 +4238,11 @@ internal fun SharedThreadRouteContent(
         remember(timelineSlice) {
             timelineSlice.threadLinkedTaskReferences()
         }
-    val linkedTasksProjection by remember(
+    val taskProjectionSlice by remember(
         tasksDataStore,
         currentServerId,
         taskChannelId?.value,
-        baseRenderedPayload.title,
-        taskProjectionReferences
+        baseRenderedPayload.title
     ) {
         tasksDataStore
             ?.channelProjectionFlow(
@@ -4241,10 +4250,78 @@ internal fun SharedThreadRouteContent(
                 channelId = taskChannelId?.value,
                 channelName = baseRenderedPayload.title
             )
-            ?.map { slice -> slice.threadLinkedTasksProjection(taskProjectionReferences) }
             ?.distinctUntilChanged()
-            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
-    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+            ?: MutableStateFlow(SharedTasksProjectionSlice())
+    }.collectAsState(SharedTasksProjectionSlice())
+    LaunchedEffect(
+        currentServerId,
+        taskChannelId?.value,
+        selectedThreadTab,
+        payload.status,
+        taskProjectionSlice.status
+    ) {
+        val serverId = currentServerId ?: return@LaunchedEffect
+        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
+        val sharedStore = tasksDataStore ?: return@LaunchedEffect
+        val currentPayload = payload.copy(selectedTab = selectedThreadTab.wireValue)
+        if (
+            !shouldBackfillThreadTasksProjection(
+                payload = currentPayload,
+                taskChannelId = resolvedTaskChannelId,
+                projectionStatus = taskProjectionSlice.status
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        bridge.log(
+            "thread_tasks_projection_backfill_start threadId=${payload.sourceThreadId.orEmpty()} " +
+                "channelId=${resolvedTaskChannelId.value} status=${taskProjectionSlice.status.name}"
+        )
+        when (
+            val result =
+                tasksDataSource.loadChannelTasks(
+                    channelId = resolvedTaskChannelId,
+                    priority = DataRequestPriority.Background
+                )
+        ) {
+            is DataResult.Content -> {
+                sharedStore.publishSnapshot(
+                    serverId = serverId,
+                    scope = SharedTasksScope.Channel(resolvedTaskChannelId),
+                    snapshot = result.data
+                )
+                bridge.log(
+                    "thread_tasks_projection_backfill_result result=content " +
+                        "channelId=${resolvedTaskChannelId.value} tasks=${result.data.tasks.size}"
+                )
+            }
+            is DataResult.Empty -> {
+                sharedStore.publishSnapshot(
+                    serverId = serverId,
+                    scope = SharedTasksScope.Channel(resolvedTaskChannelId),
+                    snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+                )
+                bridge.log(
+                    "thread_tasks_projection_backfill_result result=empty " +
+                        "channelId=${resolvedTaskChannelId.value}"
+                )
+            }
+            is DataResult.Error ->
+                bridge.log(
+                    "thread_tasks_projection_backfill_result result=error " +
+                        "channelId=${resolvedTaskChannelId.value} code=${result.error.code}"
+                )
+            is DataResult.NoPermission ->
+                bridge.log(
+                    "thread_tasks_projection_backfill_result result=no_permission " +
+                        "channelId=${resolvedTaskChannelId.value} code=${result.blocker.code}"
+                )
+        }
+    }
+    val linkedTasksProjection =
+        remember(taskProjectionSlice, taskProjectionReferences) {
+            taskProjectionSlice.threadLinkedTasksProjection(taskProjectionReferences)
+        }
     val renderedPayload =
         remember(baseRenderedPayload, threadMembersProjection) {
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)

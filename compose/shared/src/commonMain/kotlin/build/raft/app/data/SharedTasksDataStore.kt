@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.map
 
 internal enum class SharedTasksDataStoreStatus {
     Idle,
+    Partial,
     Loaded
 }
 
@@ -25,7 +26,9 @@ private data class SharedTasksChannelKey(
 
 private data class SharedTasksDataStoreState(
     val serverSnapshots: Map<String, TaskSnapshot> = emptyMap(),
-    val channelSnapshots: Map<SharedTasksChannelKey, TaskSnapshot> = emptyMap()
+    val serverSnapshotStatuses: Map<String, SharedTasksDataStoreStatus> = emptyMap(),
+    val channelSnapshots: Map<SharedTasksChannelKey, TaskSnapshot> = emptyMap(),
+    val channelSnapshotStatuses: Map<SharedTasksChannelKey, SharedTasksDataStoreStatus> = emptyMap()
 )
 
 internal class SharedTasksDataStore {
@@ -41,19 +44,26 @@ internal class SharedTasksDataStore {
             when (scope) {
                 SharedTasksScope.Server ->
                     state.value.copy(
-                        serverSnapshots = state.value.serverSnapshots + (normalizedServerId to snapshot)
+                        serverSnapshots = state.value.serverSnapshots + (normalizedServerId to snapshot),
+                        serverSnapshotStatuses =
+                            state.value.serverSnapshotStatuses +
+                                (normalizedServerId to SharedTasksDataStoreStatus.Loaded)
                     )
-                is SharedTasksScope.Channel ->
+                is SharedTasksScope.Channel -> {
+                    val channelKey =
+                        SharedTasksChannelKey(
+                            serverId = normalizedServerId,
+                            channelId = scope.channelId.value.normalizedTasksStoreId()
+                        )
                     state.value.copy(
                         channelSnapshots =
                             state.value.channelSnapshots +
-                                (
-                                    SharedTasksChannelKey(
-                                        serverId = normalizedServerId,
-                                        channelId = scope.channelId.value.normalizedTasksStoreId()
-                                    ) to snapshot
-                                )
+                                (channelKey to snapshot),
+                        channelSnapshotStatuses =
+                            state.value.channelSnapshotStatuses +
+                                (channelKey to SharedTasksDataStoreStatus.Loaded)
                     )
+                }
             }
     }
 
@@ -65,6 +75,9 @@ internal class SharedTasksDataStore {
         val serverSnapshot =
             (current.serverSnapshots[normalizedServerId] ?: TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()))
                 .upsert(task)
+        val serverSnapshotStatus =
+            current.serverSnapshotStatuses[normalizedServerId]
+                ?: SharedTasksDataStoreStatus.Partial
         val taskChannelKey =
             when {
                 taskChannelId != null ->
@@ -77,6 +90,8 @@ internal class SharedTasksDataStore {
             current.copy(
                 serverSnapshots =
                     current.serverSnapshots + (normalizedServerId to serverSnapshot),
+                serverSnapshotStatuses =
+                    current.serverSnapshotStatuses + (normalizedServerId to serverSnapshotStatus),
                 channelSnapshots =
                     current.channelSnapshots
                         .mapValues { (key, snapshot) ->
@@ -94,13 +109,30 @@ internal class SharedTasksDataStore {
                             }
                         }
                         .let { snapshots ->
-                            if (taskChannelKey == null || snapshots.containsKey(taskChannelKey)) {
+                            if (
+                                taskChannelKey == null ||
+                                snapshots.containsKey(taskChannelKey) ||
+                                serverSnapshotStatus == SharedTasksDataStoreStatus.Loaded
+                            ) {
                                 snapshots
                             } else {
                                 snapshots + (
                                     taskChannelKey to
                                         TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()).upsert(task)
                                     )
+                            }
+                        },
+                channelSnapshotStatuses =
+                    current.channelSnapshotStatuses
+                        .let { statuses ->
+                            if (
+                                taskChannelKey == null ||
+                                statuses.containsKey(taskChannelKey) ||
+                                serverSnapshotStatus == SharedTasksDataStoreStatus.Loaded
+                            ) {
+                                statuses
+                            } else {
+                                statuses + (taskChannelKey to serverSnapshotStatus)
                             }
                         }
             )
@@ -165,7 +197,10 @@ internal class SharedTasksDataStore {
     private fun SharedTasksDataStoreState.selectServerProjection(serverId: String?): SharedTasksProjectionSlice {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return SharedTasksProjectionSlice()
         val snapshot = serverSnapshots[normalizedServerId] ?: return SharedTasksProjectionSlice()
-        return SharedTasksProjectionSlice(status = SharedTasksDataStoreStatus.Loaded, tasks = snapshot.tasks)
+        return SharedTasksProjectionSlice(
+            status = serverSnapshotStatuses[normalizedServerId] ?: SharedTasksDataStoreStatus.Partial,
+            tasks = snapshot.tasks
+        )
     }
 
     private fun SharedTasksDataStoreState.selectChannelProjection(
@@ -183,10 +218,32 @@ internal class SharedTasksDataStore {
                     channelId = normalizedChannelId
                 )
             ]
+        val exactChannelKey =
+            SharedTasksChannelKey(
+                serverId = normalizedServerId,
+                channelId = normalizedChannelId
+            )
+        val exactChannelStatus = channelSnapshotStatuses[exactChannelKey]
         if (exactChannelSnapshot != null) {
-            return SharedTasksProjectionSlice(status = SharedTasksDataStoreStatus.Loaded, tasks = exactChannelSnapshot.tasks)
+            if (exactChannelStatus == SharedTasksDataStoreStatus.Loaded) {
+                return SharedTasksProjectionSlice(
+                    status = SharedTasksDataStoreStatus.Loaded,
+                    tasks = exactChannelSnapshot.tasks
+                )
+            }
         }
-        val serverSnapshot = serverSnapshots[normalizedServerId] ?: return SharedTasksProjectionSlice()
+        val serverSnapshot = serverSnapshots[normalizedServerId]
+        val serverStatus = serverSnapshotStatuses[normalizedServerId]
+        if (serverSnapshot == null) {
+            return if (exactChannelSnapshot == null) {
+                SharedTasksProjectionSlice()
+            } else {
+                SharedTasksProjectionSlice(
+                    status = exactChannelStatus ?: SharedTasksDataStoreStatus.Partial,
+                    tasks = exactChannelSnapshot.tasks
+                )
+            }
+        }
         val channelTasks =
             serverSnapshot.tasks.filter { task ->
                 val taskChannelId = task.channelId?.value.normalizedTasksStoreId()
@@ -194,7 +251,14 @@ internal class SharedTasksDataStore {
                 (normalizedChannelId != null && taskChannelId == normalizedChannelId) ||
                     (normalizedChannelName != null && taskChannelName == normalizedChannelName)
             }
-        return SharedTasksProjectionSlice(status = SharedTasksDataStoreStatus.Loaded, tasks = channelTasks)
+        val projectedTasks =
+            exactChannelSnapshot?.tasks?.fold(channelTasks) { tasks, task ->
+                TaskSnapshot(tasks = tasks, summaryCounts = emptyMap()).upsert(task).tasks
+            } ?: channelTasks
+        return SharedTasksProjectionSlice(
+            status = serverStatus ?: SharedTasksDataStoreStatus.Partial,
+            tasks = projectedTasks
+        )
     }
 }
 

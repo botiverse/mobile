@@ -1832,31 +1832,24 @@ class SharedActivityStoreTest {
     fun activityThreadRowsMergeTaskProjectionWhenInboxProjectionIsMissingTaskFields() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val tasksDataStore = SharedTasksDataStore()
-        tasksDataStore.publishSnapshot(
+        tasksDataStore.upsertTask(
             serverId = "server-1",
-            scope = SharedTasksScope.Server,
-            snapshot =
-                TaskSnapshot(
-                    tasks =
-                        listOf(
-                            TaskSummary(
-                                id = TaskId("task-177"),
-                                title = "Thread task",
-                                status = TaskStatus.InReview,
-                                taskNumber = 177,
-                                messageId = MessageId("parent-message"),
-                                channelId = ChannelId("parent-channel"),
-                                assignee =
-                                    MemberProfile(
-                                        id = MemberId("agent-1"),
-                                        displayName = "Claude Assistant",
-                                        handle = "claude",
-                                        kind = MemberKind.Agent
-                                    ),
-                                updatedAtLabel = "now"
-                            )
+            task =
+                TaskSummary(
+                    id = TaskId("task-177"),
+                    title = "Thread task",
+                    status = TaskStatus.InReview,
+                    taskNumber = 177,
+                    messageId = MessageId("parent-message"),
+                    channelId = ChannelId("parent-channel"),
+                    assignee =
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Claude Assistant",
+                            handle = "claude",
+                            kind = MemberKind.Agent
                         ),
-                    summaryCounts = emptyMap()
+                    updatedAtLabel = "now"
                 )
         )
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(threadItem("thread-channel-1")))))
