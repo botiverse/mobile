@@ -242,6 +242,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const fileName = (records["fileName"] as string | undefined) ?? "attachment";
     const mimeType = records["mimeType"] as string | undefined;
     const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
+    const downloadId = (records["downloadId"] as string | undefined) ?? `${attachmentId}:${fileName}`;
     if (url === undefined || url.length === 0) {
       callback({ "status": "failed", "message": "Unable to download attachment" });
       return;
@@ -254,7 +255,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
       const cached = this.isUsableAttachmentCacheFile(path);
       if (!cached) {
-        const downloaded = await this.downloadAttachmentToCache(url, path, attachmentId, trackProgress ? callback : undefined);
+        const downloaded = await this.downloadAttachmentToCache(
+          url,
+          path,
+          attachmentId,
+          downloadId,
+          trackProgress ? callback : undefined
+        );
         if (!downloaded) {
           callback({ "status": "failed", "message": "Unable to download attachment" });
           return;
@@ -294,6 +301,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const requestedFileName = (records["fileName"] as string | undefined) ?? "attachment";
     const mimeType = records["mimeType"] as string | undefined;
     const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
+    const downloadId = (records["downloadId"] as string | undefined) ?? `${attachmentId}:${requestedFileName}`;
     if (url === undefined || url.length === 0) {
       callback({ "status": "failed", "message": "Unable to download attachment" });
       return;
@@ -308,7 +316,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, requestedFileName, mimeType)}`;
       const cached = this.isUsableAttachmentCacheFile(path);
       if (!cached) {
-        const downloaded = await this.downloadAttachmentToCache(url, path, attachmentId, trackProgress ? callback : undefined);
+        const downloaded = await this.downloadAttachmentToCache(
+          url,
+          path,
+          attachmentId,
+          downloadId,
+          trackProgress ? callback : undefined
+        );
         if (!downloaded) {
           callback({ "status": "failed", "message": "Unable to download attachment" });
           return;
@@ -1246,15 +1260,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     url: string,
     path: string,
     attachmentId: string,
+    downloadId: string,
     progressCallback?: KuiklyRenderCallback
   ): Promise<boolean> {
-    const tempPath = `${path}.part`;
+    const attemptToken = this.safeAttachmentPathSegment(downloadId).slice(0, 64) || "attempt";
+    const tempPath = `${path}.part-${attemptToken}`;
     const request = http.createHttp();
     let file: fs.File | undefined = undefined;
     let downloadedBytes = 0;
     let totalBytes: number | undefined = undefined;
-    let lastPercent = -1;
-    let lastProgressAt = Date.now();
+    let nextProgressSequence = 0;
+    let emittedPositiveBytes = false;
+    let lastProgressAt = 0;
     let resolveDataEnd: (() => void) | undefined = undefined;
     const dataEndPromise = new Promise<void>((resolve) => {
       resolveDataEnd = resolve;
@@ -1266,15 +1283,20 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       fs.writeSync(file.fd, chunk);
       downloadedBytes += chunk.byteLength;
       const percent = this.attachmentDownloadPercent(downloadedBytes, totalBytes);
-      if (this.emitAttachmentDownloadProgressIfNeeded(
-        progressCallback,
-        downloadedBytes,
-        totalBytes,
-        percent,
-        lastPercent,
-        lastProgressAt
-      )) {
-        lastPercent = percent ?? lastPercent;
+      const now = Date.now();
+      const firstPositiveBytes = downloadedBytes > 0 && !emittedPositiveBytes;
+      if (firstPositiveBytes || now - lastProgressAt >= 250) {
+        nextProgressSequence += 1;
+        this.emitAttachmentDownloadProgress(
+          progressCallback,
+          downloadId,
+          nextProgressSequence,
+          "receiving",
+          downloadedBytes,
+          totalBytes,
+          percent
+        );
+        emittedPositiveBytes = true;
         lastProgressAt = Date.now();
       }
     };
@@ -1283,19 +1305,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     };
     const dataReceiveProgressCallback = (progress: http.DataReceiveProgressInfo) => {
       totalBytes = progress.totalSize > 0 ? progress.totalSize : totalBytes;
-      const progressDownloadedBytes = Math.max(downloadedBytes, progress.receiveSize);
-      const percent = this.attachmentDownloadPercent(progressDownloadedBytes, totalBytes);
-      if (this.emitAttachmentDownloadProgressIfNeeded(
-        progressCallback,
-        progressDownloadedBytes,
-        totalBytes,
-        percent,
-        lastPercent,
-        lastProgressAt
-      )) {
-        lastPercent = percent ?? lastPercent;
-        lastProgressAt = Date.now();
-      }
     };
     try {
       this.safeUnlink(tempPath);
@@ -1303,7 +1312,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       request.on("dataReceive", dataReceiveCallback);
       request.on("dataEnd", dataEndCallback);
       request.on("dataReceiveProgress", dataReceiveProgressCallback);
-      this.emitAttachmentDownloadProgress(progressCallback, 0, undefined, undefined);
       const responseCode = await request.requestInStream(url, {
         method: http.RequestMethod.GET,
         header: { "Accept": "*/*" },
@@ -1315,8 +1323,12 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return false;
       }
       await dataEndPromise;
+      nextProgressSequence += 1;
       this.emitAttachmentDownloadProgress(
         progressCallback,
+        downloadId,
+        nextProgressSequence,
+        "complete",
         downloadedBytes,
         totalBytes,
         totalBytes !== undefined ? 100 : undefined
@@ -1341,37 +1353,20 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private attachmentDownloadPercent(downloadedBytes: number, totalBytes?: number): number | undefined {
-    if (totalBytes === undefined || totalBytes <= 0) {
+    if (downloadedBytes <= 0 || totalBytes === undefined || totalBytes <= 0) {
       return undefined;
     }
-    return Math.min(100, Math.max(0, Math.floor((downloadedBytes * 100) / totalBytes)));
-  }
-
-  private emitAttachmentDownloadProgressIfNeeded(
-    callback: KuiklyRenderCallback | undefined,
-    downloadedBytes: number,
-    totalBytes: number | undefined,
-    percent: number | undefined,
-    lastPercent: number,
-    lastProgressAt: number
-  ): boolean {
-    if (callback === undefined) {
-      return false;
+    if (downloadedBytes >= totalBytes) {
+      return 100;
     }
-    const now = Date.now();
-    const shouldEmit =
-      (percent !== undefined && percent >= 100) ||
-        (percent !== undefined && percent !== lastPercent && percent - lastPercent >= 2) ||
-        (percent === undefined && now - lastProgressAt >= 500) ||
-        now - lastProgressAt >= 750;
-    if (shouldEmit) {
-      this.emitAttachmentDownloadProgress(callback, downloadedBytes, totalBytes, percent);
-    }
-    return shouldEmit;
+    return Math.min(99, Math.max(1, Math.floor((downloadedBytes * 100) / totalBytes)));
   }
 
   private emitAttachmentDownloadProgress(
     callback: KuiklyRenderCallback | undefined,
+    downloadId: string,
+    sequence: number,
+    phase: string,
     downloadedBytes: number,
     totalBytes: number | undefined,
     percent: number | undefined
@@ -1380,6 +1375,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return;
     }
     const payload: Record<string, Object> = {
+      "downloadId": downloadId,
+      "sequence": sequence,
+      "phase": phase,
       "status": "progress",
       "downloadedBytes": downloadedBytes
     };

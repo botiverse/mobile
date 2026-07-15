@@ -136,6 +136,7 @@ import java.io.IOException
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -2402,6 +2403,7 @@ internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
     private val attachmentDownloadControls = ConcurrentHashMap<String, AttachmentDownloadControl>()
+    private val attachmentDownloadAttemptFence = AttachmentDownloadAttemptFence()
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -4381,10 +4383,10 @@ internal class SlockKuiklyBridgeModule(
     private fun deleteAttachmentCache(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
         val targetFile = attachmentCacheFile(request)
-        val partFile = File(targetFile.parentFile, "${targetFile.name}.part")
-        val existed = targetFile.exists() || partFile.exists()
+        val partFiles = attachmentDownloadPartFiles(targetFile)
+        val existed = targetFile.exists() || partFiles.any { it.exists() }
         val deleted =
-                listOf(targetFile, partFile)
+                (listOf(targetFile) + partFiles)
                         .map { file -> if (file.exists()) runCatching { file.delete() }.getOrDefault(false) else true }
                         .all { it }
         return if (deleted) {
@@ -4443,6 +4445,7 @@ internal class SlockKuiklyBridgeModule(
                 if (!wasCached) {
                     val control = AttachmentDownloadControl(downloadId)
                     attachmentDownloadControls[downloadId] = control
+                    attachmentDownloadAttemptFence.begin(targetFile, downloadId)
                     try {
                         downloadAttachmentToFile(urlText, targetFile, downloadId, control, progressCallback)
                     } catch (ignored: AttachmentDownloadStoppedException) {
@@ -4455,6 +4458,7 @@ internal class SlockKuiklyBridgeModule(
                         )
                     } finally {
                         attachmentDownloadControls.remove(downloadId, control)
+                        attachmentDownloadAttemptFence.end(targetFile, downloadId)
                     }
                 } else {
                     null
@@ -4639,7 +4643,7 @@ internal class SlockKuiklyBridgeModule(
             control: AttachmentDownloadControl,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): String? {
-        val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
+        val tempFile = attachmentDownloadTempFile(targetFile, downloadId)
         runCatching { tempFile.delete() }
         try {
             val requestStartedAt = SystemClock.elapsedRealtime()
@@ -4718,6 +4722,10 @@ internal class SlockKuiklyBridgeModule(
                             )
                         }
                     }
+            control.waitIfPausedOrStopped()
+            if (!attachmentDownloadAttemptFence.isCurrent(targetFile, downloadId)) {
+                throw AttachmentDownloadStoppedException()
+            }
             val finalSample =
                     progressSampler.sample(
                             downloadedBytes = lastDownloadedBytes,
@@ -5158,6 +5166,39 @@ private class AttachmentDownloadControl(
 }
 
 private class AttachmentDownloadStoppedException : RuntimeException()
+
+internal class AttachmentDownloadAttemptFence {
+    private val currentAttemptByTarget = ConcurrentHashMap<String, String>()
+
+    fun begin(targetFile: File, downloadId: String) {
+        currentAttemptByTarget[targetFile.absolutePath] = downloadId
+    }
+
+    fun isCurrent(targetFile: File, downloadId: String): Boolean =
+            currentAttemptByTarget[targetFile.absolutePath] == downloadId
+
+    fun end(targetFile: File, downloadId: String) {
+        currentAttemptByTarget.remove(targetFile.absolutePath, downloadId)
+    }
+}
+
+internal fun attachmentDownloadTempFile(targetFile: File, downloadId: String): File {
+    val digest =
+            MessageDigest.getInstance("SHA-256")
+                    .digest(downloadId.toByteArray(StandardCharsets.UTF_8))
+                    .take(12)
+                    .joinToString("") { byte -> "%02x".format(Locale.US, byte.toInt() and 0xff) }
+    return File(targetFile.parentFile, "${targetFile.name}.part-$digest")
+}
+
+internal fun attachmentDownloadPartFiles(targetFile: File): List<File> {
+    val legacyName = "${targetFile.name}.part"
+    val attemptPrefix = "$legacyName-"
+    return targetFile.parentFile
+            ?.listFiles()
+            ?.filter { file -> file.name == legacyName || file.name.startsWith(attemptPrefix) }
+            .orEmpty()
+}
 
 private sealed interface AttachmentPreparationResult {
     data class Ready(
