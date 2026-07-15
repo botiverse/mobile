@@ -1901,11 +1901,13 @@ private class SlockKuiklyImageAdapter(
         private const val MAX_BITMAP_DECODE_EDGE_PX = 4096
 
         private val networkBitmapCache =
-                object : LruCache<String, Bitmap>(NETWORK_BITMAP_CACHE_BYTES) {
-                    override fun sizeOf(key: String, value: Bitmap): Int {
+                object : LruCache<SlockNetworkImageRequestKey, Bitmap>(NETWORK_BITMAP_CACHE_BYTES) {
+                    override fun sizeOf(key: SlockNetworkImageRequestKey, value: Bitmap): Int {
                         return value.allocationByteCount.coerceAtLeast(value.byteCount)
                     }
                 }
+        private val networkImageFlights =
+                SlockImageRequestSingleFlight<SlockNetworkImageRequestKey, Bitmap>()
     }
 
     override fun fetchDrawable(
@@ -2035,64 +2037,81 @@ private class SlockKuiklyImageAdapter(
             imageLoadOption: HRImageLoadOption,
             callback: (drawable: Drawable?) -> Unit
     ) {
-        SlockKuiklyThreadAdapter.executeOnSubThread {
-            runCatching {
-                        cachedNetworkBitmap(imageLoadOption.src)?.let { bitmap ->
-                            SlockAppLog.record(
-                                    "SlockImageLoad",
-                                    "source=network status=cache_hit bitmapWidth=${bitmap.width} bitmapHeight=${bitmap.height} " +
-                                            "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
-                                            binaryDownloadUrlDiagnostics(imageLoadOption.src)
-                            )
-                            return@runCatching bitmap.toBitmapDrawable()
-                        }
-                        val response =
-                                runBlocking {
-                                    SharedBinaryDownloader.fetchBytes(imageLoadOption.src)
+        val requestKey = imageLoadOption.networkRequestKey()
+        val subscription =
+                networkImageFlights.load(
+                        key = requestKey,
+                        start = { complete ->
+                            SlockKuiklyThreadAdapter.executeOnSubThread {
+                                val result =
+                                        runCatching {
+                                            cachedNetworkBitmap(requestKey)?.let { bitmap ->
+                                                SlockAppLog.record(
+                                                        "SlockImageLoad",
+                                                        "source=network status=cache_hit bitmapWidth=${bitmap.width} " +
+                                                                "bitmapHeight=${bitmap.height} " +
+                                                                "requestWidth=${imageLoadOption.requestWidth} " +
+                                                                "requestHeight=${imageLoadOption.requestHeight} " +
+                                                                binaryDownloadUrlDiagnostics(imageLoadOption.src)
+                                                )
+                                                return@runCatching bitmap
+                                            }
+                                            val response =
+                                                    runBlocking {
+                                                        SharedBinaryDownloader.fetchBytes(imageLoadOption.src)
+                                                    }
+                                            recordNetworkImageBytes(imageLoadOption, response.bytes.size, response.contentType)
+                                            bitmapFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
+                                                    ?: throw IllegalStateException("Image decode failed")
+                                        }
+                                result.exceptionOrNull()?.let { throwable ->
+                                    recordImageLoadFailure("network", imageLoadOption, throwable)
                                 }
-                        recordNetworkImageBytes(imageLoadOption, response.bytes.size, response.contentType)
-                        drawableFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
-                                ?: throw IllegalStateException("Image decode failed")
-                    }
-                    .onSuccess { drawable ->
-                        callback(drawable)
-                    }
-                    .onFailure { throwable ->
-                        recordImageLoadFailure("network", imageLoadOption, throwable)
-                        callback(null)
-                    }
-        }
+                                complete(result)
+                            }
+                        },
+                        callback = { result -> callback(result.getOrNull()?.toBitmapDrawable()) }
+                )
+        SlockAppLog.record(
+                "SlockImageLoad",
+                "source=network status=${subscription.disposition.diagnosticsToken()} " +
+                        "requestKeyHash=${requestKey.hashCode().toString(16)} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
+        )
     }
 
-    private fun cachedNetworkBitmap(src: String): Bitmap? =
+    private fun cachedNetworkBitmap(requestKey: SlockNetworkImageRequestKey): Bitmap? =
             synchronized(networkBitmapCache) {
-                networkBitmapCache.get(src)?.takeUnless { it.isRecycled }
+                networkBitmapCache.get(requestKey)?.takeUnless { it.isRecycled }
             }
 
-    private fun cacheNetworkBitmap(src: String, bitmap: Bitmap) {
+    private fun cacheNetworkBitmap(requestKey: SlockNetworkImageRequestKey, bitmap: Bitmap) {
         val bitmapBytes = bitmap.allocationByteCount.coerceAtLeast(bitmap.byteCount)
         if (bitmapBytes > MAX_SINGLE_NETWORK_BITMAP_BYTES) {
             return
         }
         synchronized(networkBitmapCache) {
-            networkBitmapCache.put(src, bitmap)
+            networkBitmapCache.put(requestKey, bitmap)
         }
     }
 
-    private fun drawableFromNetworkBytes(
+    private fun bitmapFromNetworkBytes(
             bytes: ByteArray,
             imageLoadOption: HRImageLoadOption,
             contentType: String?
-    ): Drawable? {
-        if (bytes.looksLikeSvg(contentType)) {
-            return svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
-        }
-        val bitmap = bitmapFromBytes(bytes, imageLoadOption)
-                ?: run {
-                    recordNetworkImageDecodeFailure(imageLoadOption, bytes.size, contentType)
-                    return null
+    ): Bitmap? {
+        val bitmap =
+                if (bytes.looksLikeSvg(contentType)) {
+                    (svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption) as? BitmapDrawable)?.bitmap
+                } else {
+                    bitmapFromBytes(bytes, imageLoadOption)
                 }
-        cacheNetworkBitmap(imageLoadOption.src, bitmap)
+                        ?: run {
+                            recordNetworkImageDecodeFailure(imageLoadOption, bytes.size, contentType)
+                            return null
+                        }
+        cacheNetworkBitmap(imageLoadOption.networkRequestKey(), bitmap)
         SlockAppLog.record(
                 "SlockImageLoad",
                 "source=network status=decoded bytes=${bytes.size} contentType=${contentType ?: "unknown"} " +
@@ -2100,8 +2119,23 @@ private class SlockKuiklyImageAdapter(
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
                         binaryDownloadUrlDiagnostics(imageLoadOption.src)
         )
-        return bitmap.toBitmapDrawable()
+        return bitmap
     }
+
+    private fun HRImageLoadOption.networkRequestKey(): SlockNetworkImageRequestKey =
+            SlockNetworkImageRequestKey.create(
+                    url = src,
+                    requestWidth = requestWidth,
+                    requestHeight = requestHeight,
+                    needResize = needResize,
+                    scaleType = scaleType.name
+            )
+
+    private fun SlockImageFlightDisposition.diagnosticsToken(): String =
+            when (this) {
+                SlockImageFlightDisposition.Started -> "flight_start"
+                SlockImageFlightDisposition.Joined -> "flight_join"
+            }
 
     private fun loadSvg(
             imageLoadOption: HRImageLoadOption,
