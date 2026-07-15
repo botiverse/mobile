@@ -83,6 +83,16 @@ jobs:
             --cap 5 \
             ${{ steps.mode.outputs.live }} | tee token-audit-report.json
 
+      - name: Run glyph audit (text-glyph-as-icon lens)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          node scripts/patrol/glyph_audit.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --cap 5 \
+            ${{ steps.mode.outputs.live }} | tee glyph-audit-report.json
+
       - name: Run renderer coverage audit (markdown silent-drop lens)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,6 +118,7 @@ jobs:
           path: |
             patrol-report.json
             token-audit-report.json
+            glyph-audit-report.json
             renderer-coverage-report.json
             font-audit-report.json
 
