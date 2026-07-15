@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -311,13 +312,31 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
         val store = FakeDurableStore()
         val lane = lane(store)
         val scope = scope()
-        seedReady(lane, store.snapshot(scope))
+        val old = store.snapshot(scope)
+        seedReady(lane, old)
         val updateKey = LegacyRealtimeDedupKey("message:updated:server-1:m1:1:")
         val updated = input(CanonicalMessageFoldKind.Updated, row(content = "edited"))
 
         assertEquals(CurrentGrantMessageShadowCommitOutcome.IgnoredMissingUpdatedBase, lane.commit(scope.partition, updateKey, updated))
         assertEquals(0, store.writeInvocations)
+        assertEquals(0, store.reads)
+        val observed = assertNotNull(lane.workingByScope[scope]).observedLegacyInputs.single()
+        assertEquals(updateKey, observed.key, "missing-base Updated is still observed for collision detection")
+        assertEquals(updated, observed.fingerprint.structuralInput)
         assertTrue(lane.published.value().committedAccelerationByScope[scope].orEmpty().isEmpty())
+        assertEquals(old, published(lane, scope))
+
+        assertEquals(
+            CurrentGrantMessageShadowCommitOutcome.LegacyDedupCollision,
+            lane.commit(
+                scope.partition,
+                updateKey,
+                input(CanonicalMessageFoldKind.Updated, row(content = "different-input")),
+            ),
+        )
+        assertEquals(0, store.writeInvocations)
+        assertEquals(0, store.reads, "same-key/different-input collision is decided before restore")
+        assertEquals(old, published(lane, scope))
 
         assertEquals(
             CurrentGrantMessageShadowCommitOutcome.Committed,
@@ -350,6 +369,17 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
         assertEquals(1, store.reads)
         assertEquals(0, store.writeInvocations)
         assertNull(published(lane, scope))
+
+        val second = lane.commit(
+            scope.partition,
+            LegacyRealtimeDedupKey("message:new:server-1:m2:2"),
+            input(CanonicalMessageFoldKind.New, row(id = "m2", seq = 2)),
+        )
+        assertIs<CurrentGrantMessageShadowCommitOutcome.FailedOpen>(second)
+        assertEquals(MessageShadowWorkingState.Poisoned(corruption), lane.workingByScope[scope]?.state)
+        assertEquals(1, store.reads, "Poisoned is sticky and must not retry restore")
+        assertEquals(0, store.writeInvocations)
+        assertNull(published(lane, scope))
     }
 
     @Test
@@ -368,7 +398,9 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
         }
         assertEquals(1, store.rollbacks)
         assertNull(lane.workingByScope[scope]?.inFlight)
-        assertTrue(published(lane, scope)?.facts.orEmpty().isEmpty())
+        assertEquals(MessageShadowWorkingState.Ready(store.snapshot(scope)), lane.workingByScope[scope]?.state)
+        assertEquals(store.snapshot(scope), published(lane, scope))
+        assertTrue(lane.published.value().committedAccelerationByScope[scope].orEmpty().isEmpty())
     }
 
     @Test
@@ -389,6 +421,9 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
         assertFailsWith<CancellationException> { lane.commit(scope.partition, key, input) }
         assertEquals(1, store.commits)
         assertTrue(published(lane, scope)?.facts.orEmpty().isEmpty())
+        assertIs<MessageShadowWorkingState.NeedsRestore>(lane.workingByScope[scope]?.state)
+        assertNull(lane.workingByScope[scope]?.inFlight)
+        assertTrue(lane.published.value().committedAccelerationByScope[scope].orEmpty().isEmpty())
 
         assertEquals(CurrentGrantMessageShadowCommitOutcome.DurableNoChange, lane.commit(scope.partition, key, input))
         assertEquals(1, store.writeInvocations)
@@ -455,5 +490,176 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
         assertEquals(0, store.writeInvocations)
         assertEquals(durable, published(lane, scope))
         assertTrue(lane.published.value().committedAccelerationByScope[scope].orEmpty().isEmpty())
+    }
+
+    @Test
+    fun strictValidatorAcceptsEmptyFactsWithNullCursor() {
+        val scope = scope()
+        val result = StrictMessageScopeSnapshotValidator().validate(scope, emptyList(), null)
+
+        val valid = assertIs<StrictMessageRestoreResult.Valid>(result)
+        assertEquals(CommittedMessageScopeSnapshot(scope, emptyList(), null), valid.snapshot)
+    }
+
+    @Test
+    fun strictValidatorAcceptsNonEmptyOrderedFactsWithCoveringCursor() {
+        val scope = scope()
+        val first = row(id = "m1", seq = 1)
+        val second = row(id = "m2", seq = 2)
+        val cursor = PersistedCursor(2L, 1L, 2L, hasLoadedOldest = true, hasLoadedNewest = true, epoch = "e1")
+        val result = StrictMessageScopeSnapshotValidator().validate(
+            scope,
+            listOf(storedFact(scope, first), storedFact(scope, second)),
+            cursor,
+        )
+
+        val valid = assertIs<StrictMessageRestoreResult.Valid>(result)
+        assertEquals(listOf(first, second), valid.snapshot.facts)
+        assertEquals(cursor, valid.snapshot.cursor)
+    }
+
+    @Test
+    fun strictValidatorRejectsBadCanonicalJson() {
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.FactDecodeFailed,
+            listOf(storedFact(scope(), row(), canonicalFactJson = "not-json")),
+            cursor(1),
+        )
+    }
+
+    @Test
+    fun strictValidatorRejectsStoredScalarMismatch() {
+        val scope = scope()
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.FactScalarMismatch,
+            listOf(storedFact(scope, row(), seq = 99L)),
+            cursor(99),
+        )
+    }
+
+    @Test
+    fun strictValidatorRejectsEveryStoredPartitionScalarMismatch() {
+        val scope = scope()
+        val fact = row()
+        listOf(
+            storedFact(scope, fact, serverId = "other-server"),
+            storedFact(scope, fact, principalId = "other-principal"),
+            storedFact(scope, fact, consumerId = "other-consumer"),
+        ).forEach { mismatched ->
+            assertCorrupt(
+                StrictMessageRestoreCorruptionKind.FactPartitionMismatch,
+                listOf(mismatched),
+                cursor(1),
+            )
+        }
+    }
+
+    @Test
+    fun strictValidatorRejectsChannelOrScopeKindMismatch() {
+        val scope = scope()
+        val fact = row()
+        listOf(
+            storedFact(scope, fact, channelId = "other-channel"),
+            storedFact(scope, fact, scopeKind = "thread"),
+        ).forEach { mismatched ->
+            assertCorrupt(
+                StrictMessageRestoreCorruptionKind.FactScopeMismatch,
+                listOf(mismatched),
+                cursor(1),
+            )
+        }
+    }
+
+    @Test
+    fun strictValidatorRejectsDuplicateDecodedFactIdentity() {
+        val scope = scope()
+        val duplicate = storedFact(scope, row())
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.DuplicateFactId,
+            listOf(duplicate, duplicate),
+            cursor(1),
+        )
+    }
+
+    @Test
+    fun strictValidatorRejectsNonStrictSeqIdOrdering() {
+        val scope = scope()
+        val later = row(id = "m2", seq = 2)
+        val earlier = row(id = "m1", seq = 1)
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.FactOrderInvalid,
+            listOf(storedFact(scope, later), storedFact(scope, earlier)),
+            PersistedCursor(2L, 1L, 2L),
+        )
+    }
+
+    @Test
+    fun strictValidatorRejectsNonEmptyFactsWithoutCursor() {
+        val scope = scope()
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.CursorMissing,
+            listOf(storedFact(scope, row())),
+            null,
+        )
+    }
+
+    @Test
+    fun strictValidatorRejectsLatestOrNewestCursorBehindMaxFactSeq() {
+        val scope = scope()
+        val fact = storedFact(scope, row(seq = 5))
+        listOf(
+            PersistedCursor(latestSeq = 4, oldestLoadedSeq = 1, newestLoadedSeq = 5),
+            PersistedCursor(latestSeq = 5, oldestLoadedSeq = 1, newestLoadedSeq = 4),
+        ).forEach { lagging ->
+            assertCorrupt(
+                StrictMessageRestoreCorruptionKind.CursorPrecedesFacts,
+                listOf(fact),
+                lagging,
+            )
+        }
+    }
+
+    @Test
+    fun strictValidatorRejectsOldestCursorAboveMinFactSeq() {
+        val scope = scope()
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.CursorPrecedesFacts,
+            listOf(storedFact(scope, row(seq = 5))),
+            PersistedCursor(latestSeq = 5, oldestLoadedSeq = 6, newestLoadedSeq = 5),
+        )
+    }
+
+    private fun storedFact(
+        scope: SyncScopeKey,
+        row: CanonicalMessageRow,
+        serverId: String = scope.serverId,
+        principalId: String = scope.principalId,
+        consumerId: String = scope.consumerId,
+        id: String = row.id,
+        channelId: String = scope.scopeId,
+        scopeKind: String = scope.scopeKind,
+        seq: Long = row.seq,
+        createdAt: String = row.createdAt,
+        canonicalFactJson: String = encodeCanonicalFact(row),
+    ) = StrictMessageStoredFact(
+        serverId = serverId,
+        principalId = principalId,
+        consumerId = consumerId,
+        id = id,
+        channelId = channelId,
+        scopeKind = scopeKind,
+        seq = seq,
+        createdAt = createdAt,
+        canonicalFactJson = canonicalFactJson,
+    )
+
+    private fun assertCorrupt(
+        expected: StrictMessageRestoreCorruptionKind,
+        storedFacts: List<StrictMessageStoredFact>,
+        cursor: PersistedCursor?,
+    ) {
+        val result = StrictMessageScopeSnapshotValidator().validate(scope(), storedFacts, cursor)
+        val corrupt = assertIs<StrictMessageRestoreResult.Corrupt>(result)
+        assertEquals(expected, corrupt.corruption.kind)
     }
 }
