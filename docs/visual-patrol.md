@@ -81,3 +81,7 @@ node scripts/visual_patrol.mjs --analysis gh-pages --comparison react__android -
 - Phase 1 (this change): detect → dedupe → file issues (dry-run-safe).
 - Phase 2: attach M3 draft patch + panel verdict to style/token issues.
 - Later: auto-close issues whose drift no longer reproduces; multi-comparison sweep in one run.
+
+## token-audit lens
+
+`scripts/patrol/token_audit.mjs` scans commonMain for semantic/brand colors weakened with `.copy(alpha = …)` (the mobile#996 brown-destructive class) and files per-file `code-smell` cluster issues through the shared lib (cap 5/run in the nightly job). Deliberate react `bg-*/N` tint mirrors are false positives — comment them or promote to a named token, then close. M3 auto-triage for this lens is a follow-up; issue bodies carry manual triage guidance.

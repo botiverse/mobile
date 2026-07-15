@@ -73,10 +73,22 @@ jobs:
             --cap "${{ github.event.inputs.cap || '10' }}" \
             --repo "${{ github.repository }}" \
             ${{ steps.mode.outputs.live }} | tee patrol-report.json
+      - name: Run token audit (design-token lens)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          node scripts/patrol/token_audit.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --cap 5 \
+            ${{ steps.mode.outputs.live }} | tee token-audit-report.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: visual-patrol-report
-          path: patrol-report.json
+          path: |
+            patrol-report.json
+            token-audit-report.json
 
   # After filing, adversarially verify each open drift issue with a 3x M3 panel:
   # majority "real problem" -> label `verified` (enters the fix queue); otherwise the
