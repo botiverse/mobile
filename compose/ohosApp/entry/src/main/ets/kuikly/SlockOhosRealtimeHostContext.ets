@@ -22,6 +22,10 @@ interface RealtimeConnectParams {
   accessToken: string;
   socketUrl: string;
   lastSeq: number;
+  authorityScopeLeaseId: string;
+  authorityPrincipalId: string;
+  authorityAuthGeneration: number;
+  authorityConnectionFamilyId: string;
 }
 
 class SlockOhosEnhancedNotifySink {
@@ -68,6 +72,10 @@ export class SlockOhosRealtimeHostContext {
           accessToken: (params['accessToken'] as string) ?? '',
           socketUrl: (params['socketUrl'] as string) ?? DEFAULT_SOCKET_URL,
           lastSeq: Number(params['lastSeq'] ?? 0),
+          authorityScopeLeaseId: (params['authorityScopeLeaseId'] as string) ?? '',
+          authorityPrincipalId: (params['authorityPrincipalId'] as string) ?? '',
+          authorityAuthGeneration: Number(params['authorityAuthGeneration'] ?? 0),
+          authorityConnectionFamilyId: (params['authorityConnectionFamilyId'] as string) ?? '',
         }, params['forceReconnect'] === true);
         break;
       case 'disconnect':
@@ -189,6 +197,10 @@ export class SlockOhosRealtimeHostContext {
       accessToken: params.accessToken,
       socketUrl: params.socketUrl,
       lastSeq: decision.resumeSeq,
+      authorityScopeLeaseId: params.authorityScopeLeaseId,
+      authorityPrincipalId: params.authorityPrincipalId,
+      authorityAuthGeneration: params.authorityAuthGeneration,
+      authorityConnectionFamilyId: params.authorityConnectionFamilyId,
     };
     if (!decision.shouldConnect) {
       return;
@@ -256,6 +268,10 @@ export class SlockOhosRealtimeHostContext {
     }
     this.sendRealtimeNotify({
       serverId: decision.serverId,
+      authorityScopeLeaseId: this.connectParams?.authorityScopeLeaseId ?? '',
+      authorityPrincipalId: this.connectParams?.authorityPrincipalId ?? '',
+      authorityAuthGeneration: this.connectParams?.authorityAuthGeneration ?? 0,
+      authorityConnectionFamilyId: this.connectParams?.authorityConnectionFamilyId ?? '',
       eventName: decision.eventName,
       rawPayload: decision.rawPayload,
     });

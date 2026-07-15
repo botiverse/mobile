@@ -245,6 +245,16 @@ internal class SharedHomeStore(
         hiddenHomeSnapshotDirty = false
     }
 
+    suspend fun awaitRealtimeSettled() {
+        while (true) {
+            val observedLoad = loadJob
+            val observedAgentStatus = agentDirectMessageStatusJob
+            observedLoad?.join()
+            observedAgentStatus?.join()
+            if (loadJob === observedLoad && agentDirectMessageStatusJob === observedAgentStatus) return
+        }
+    }
+
     fun supplementConversationIdentity(snapshot: InboxSnapshot) {
         supplementConversationIdentity(
             serverId = snapshot.server.id,

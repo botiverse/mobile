@@ -160,9 +160,28 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
-            is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
+            is SharedActivityIntent.ApplyRealtimeEvent -> {
+                if (intent.event is PerReceiverReadStateChanged) {
+                    scope.launch { applyPerReceiverReadStateChanged(intent.event) }
+                } else if (applyRealtimeEventImmediately(intent)) {
+                    load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+                }
+            }
+            is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
+                scope.launch { acceptRealtime(intent) }
+        }
+    }
+
+    suspend fun acceptRealtime(intent: SharedActivityIntent) {
+        when (intent) {
+            is SharedActivityIntent.ApplyRealtimeEvent -> {
+                applyRealtimeEvent(intent)
+                synchronized(realtimeOwnerLock) { realtimeReconcileJob }?.join()
+                awaitCurrentLoadIdle()
+            }
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
+            else -> error("acceptRealtime only accepts realtime intents")
         }
     }
 
@@ -408,20 +427,26 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
+    private suspend fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
         if (intent.event is PerReceiverReadStateChanged) {
             applyPerReceiverReadStateChanged(intent.event)
             return
         }
+        val shouldRefresh = applyRealtimeEventImmediately(intent)
+        if (shouldRefresh) {
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            awaitCurrentLoadIdle()
+        }
+    }
+
+    private fun applyRealtimeEventImmediately(intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
         val (shouldRefresh, reconcileJobToStart) =
             synchronized(realtimeOwnerLock) {
                 applyRealtimeEventLocked(intent) to
                     realtimeReconcileJob?.takeIf { job -> !job.isActive && !job.isCompleted }
             }
         reconcileJobToStart?.start()
-        if (shouldRefresh) {
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
-        }
+        return shouldRefresh
     }
 
     private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
@@ -574,7 +599,7 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun applyRealtimeSummaryEvent(
+    private suspend fun applyRealtimeSummaryEvent(
         event: RealtimeEvent,
         activeConversationId: String?
     ) {
@@ -582,74 +607,71 @@ class SharedActivityStore internal constructor(
             applyPerReceiverReadStateChanged(event)
             return
         }
-        scope.launch {
-            val current = _state.value
-            val snapshot = current.snapshot ?: return@launch
-            val currentUserId = currentUserId() ?: return@launch
-            val increment = event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId)
-            if (increment <= 0) return@launch
-            reduceState(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId),
-                current.copy(
-                    snapshot =
-                        snapshot.copy(
-                            totalUnreadCount = snapshot.totalUnreadCount + increment
-                    ),
-                    errorCode = null
-                )
+        val current = _state.value
+        val snapshot = current.snapshot ?: return
+        val currentUserId = currentUserId() ?: return
+        val increment = event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId)
+        if (increment <= 0) return
+        reduceState(
+            SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId),
+            current.copy(
+                snapshot =
+                    snapshot.copy(
+                        totalUnreadCount = snapshot.totalUnreadCount + increment
+                ),
+                errorCode = null
             )
-        }
+        )
     }
 
-    private fun applyPerReceiverReadStateChanged(event: PerReceiverReadStateChanged) {
-        scope.launch {
-            val session = authStore.readSession() ?: return@launch
-            val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@launch
-            if (event.serverId != null && event.serverId != serverId) return@launch
-            val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return@launch
-            var shouldReconcile = false
-            var acceptedHere = false
-            synchronized(realtimeOwnerLock) {
-                event.scopes.forEach { readScope ->
-                    val maxReadSeq = readScope.maxReadSeq ?: return@forEach
-                    val projectionKey =
-                        ActivityReadStateProjectionKey(
-                            serverId = serverId,
-                            memberId = memberId,
-                            scopeId = readScope.scopeId
-                        )
-                    val checkpoint =
-                        PerReceiverReadStateCheckpoint(
-                            version = readScope.readStateVersion,
-                            maxReadSeq = maxReadSeq
-                        )
-                    val result =
-                        perReceiverStateVersionStore.applyOrObserveReadStateFact(
-                            serverId = serverId,
-                            memberId = memberId,
-                            scopeId = readScope.scopeId,
-                            incomingVersion = readScope.readStateVersion,
-                            incomingMaxReadSeq = maxReadSeq
-                        )
-                    diagnosticsLogger(
-                        "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
-                            "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
+    private suspend fun applyPerReceiverReadStateChanged(event: PerReceiverReadStateChanged) {
+        val session = authStore.readSession() ?: return
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
+        if (event.serverId != null && event.serverId != serverId) return
+        val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
+        var shouldReconcile = false
+        var acceptedHere = false
+        synchronized(realtimeOwnerLock) {
+            event.scopes.forEach { readScope ->
+                val maxReadSeq = readScope.maxReadSeq ?: return@forEach
+                val projectionKey =
+                    ActivityReadStateProjectionKey(
+                        serverId = serverId,
+                        memberId = memberId,
+                        scopeId = readScope.scopeId
                     )
-                    val alreadyScheduledOrReconciled =
-                        pendingReadStateFacts[projectionKey] == checkpoint ||
-                            reconciledReadStateFacts[projectionKey] == checkpoint
-                    if (result != PerReceiverReadStateFactResult.Stale && !alreadyScheduledOrReconciled) {
-                        pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
-                        shouldReconcile = true
-                    }
-                    acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
+                val checkpoint =
+                    PerReceiverReadStateCheckpoint(
+                        version = readScope.readStateVersion,
+                        maxReadSeq = maxReadSeq
+                    )
+                val result =
+                    perReceiverStateVersionStore.applyOrObserveReadStateFact(
+                        serverId = serverId,
+                        memberId = memberId,
+                        scopeId = readScope.scopeId,
+                        incomingVersion = readScope.readStateVersion,
+                        incomingMaxReadSeq = maxReadSeq
+                    )
+                diagnosticsLogger(
+                    "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
+                        "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
+                )
+                val alreadyScheduledOrReconciled =
+                    pendingReadStateFacts[projectionKey] == checkpoint ||
+                        reconciledReadStateFacts[projectionKey] == checkpoint
+                if (result != PerReceiverReadStateFactResult.Stale && !alreadyScheduledOrReconciled) {
+                    pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
+                    shouldReconcile = true
                 }
+                acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
             }
-            if (shouldReconcile) {
-                diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
-                if (acceptedHere) onUnreadCountsChanged()
-                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
-            }
+        }
+        if (shouldReconcile) {
+            diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
+            if (acceptedHere) onUnreadCountsChanged()
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            awaitCurrentLoadIdle()
         }
     }
 

@@ -50,7 +50,9 @@ class SharedHomeShellStore(
     activityState: StateFlow<SharedActivityState>,
     searchSavedState: StateFlow<SharedHomeSearchSavedState>,
     private val dispatchHome: (SharedHomeIntent) -> Unit,
+    private val acceptHome: suspend (SharedHomeIntent) -> Unit = { intent -> dispatchHome(intent) },
     private val dispatchActivity: (SharedActivityIntent) -> Unit,
+    private val acceptActivityRealtime: suspend (SharedActivityIntent) -> Unit = { intent -> dispatchActivity(intent) },
     private val dispatchSearchSaved: (SharedHomeSearchSavedIntent) -> Unit,
     private val resetActivity: () -> Unit = {},
     private val diagnosticsLogger: (String) -> Unit = {},
@@ -159,6 +161,30 @@ class SharedHomeShellStore(
                 selectedConversationId = null,
                 primarySurfaceVisible = false
             )
+    }
+
+    suspend fun acceptRealtimeEvent(serverId: String, event: RealtimeEvent) {
+        acceptHome(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
+        val current = _state.value
+        if (current.destination == SharedHomeShellDestinationActivity) {
+            acceptActivityRealtime(
+                SharedActivityIntent.ApplyRealtimeEvent(
+                    event = event,
+                    allowLocalPatch = current.home.allowsLocalActivityPatch(event)
+                )
+            )
+        } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
+            acceptActivityRealtime(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(
+                    event = event,
+                    activeConversationId = current.selectedConversationId
+                )
+            )
+        }
+    }
+
+    suspend fun acceptBackgroundServerUnreadEvent(serverId: String, event: RealtimeEvent) {
+        acceptHome(SharedHomeIntent.ApplyBackgroundServerUnreadEvent(serverId, event))
     }
 
     fun clear() {

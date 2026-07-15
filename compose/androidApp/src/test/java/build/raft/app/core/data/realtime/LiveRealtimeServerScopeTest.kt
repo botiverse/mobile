@@ -11,6 +11,8 @@ import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.MessageNew
 import build.raft.app.model.ServerId
@@ -55,7 +57,8 @@ class LiveRealtimeServerScopeTest {
                 mapOf(
                     "token" to fixture.session.accessToken,
                     "serverId" to requireNotNull(fixture.session.currentServerId)
-                )
+                ),
+                liveConnectionContext(requireNotNull(fixture.session.currentServerId)),
             )
             assertTrue("Socket did not connect for sync resume validation.", connected.await(15, TimeUnit.SECONDS))
             assertTrue("Socket did not finish room joins before resume.", roomsJoined.await(20, TimeUnit.SECONDS))
@@ -151,7 +154,10 @@ class LiveRealtimeServerScopeTest {
         }
 
         try {
-            transport.connect(mapOf("token" to fixture.session.accessToken, "serverId" to serverId))
+            transport.connect(
+                mapOf("token" to fixture.session.accessToken, "serverId" to serverId),
+                liveConnectionContext(serverId),
+            )
             assertTrue("Socket did not connect for live payload capture.", connected.await(15, TimeUnit.SECONDS))
             transport.emit(RealtimeSocketEvents.JoinChannel, mapOf("channelId" to channelId.value))
             conversationRepository.sendMessage(
@@ -340,6 +346,18 @@ class LiveRealtimeServerScopeTest {
         runCatching {
             JSONObject(this).keys().asSequence().joinToString("|")
         }.getOrDefault("")
+
+    private fun liveConnectionContext(serverId: String): RealtimeSocketConnectionContext =
+        RealtimeSocketConnectionContext(
+            serverId = ServerId(serverId),
+            witness =
+                RealtimeConnectionWitnessToken(
+                    scopeLeaseId = "live-test-lease",
+                    principalId = "live-test-principal",
+                    authGeneration = 1L,
+                    connectionFamilyId = "live-test-family",
+                ),
+        )
 
     private companion object {
         const val MAX_PAYLOAD_CHARS = 4_000

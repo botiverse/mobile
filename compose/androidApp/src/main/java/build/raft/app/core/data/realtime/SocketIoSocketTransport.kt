@@ -3,6 +3,7 @@ package build.raft.app.core.data.realtime
 import android.util.Log
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
 import io.socket.client.IO
 import io.socket.client.Manager
@@ -17,12 +18,14 @@ class SocketIoSocketTransport(
     private val listeners = mutableMapOf<String, MutableSet<(Any?) -> Unit>>()
     private val boundListeners = mutableMapOf<BoundEvent, Emitter.Listener>()
     private var socket: Socket? = null
+    private var currentContext: RealtimeSocketConnectionContext? = null
 
-    override fun connect(auth: Map<String, String>) {
+    override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
         build.raft.app.core.data.diagnostics.SlockAppLog.d(
             "SlockRealtime",
             "transport_connect_start serverId=${auth["serverId"].orEmpty()} hasToken=${auth["token"].isNullOrBlank().not()}"
         )
+        currentContext = context
         socket?.disconnect()
         socket = IO.socket(
             socketUrl,
@@ -34,7 +37,7 @@ class SocketIoSocketTransport(
         ).also { newSocket ->
             listeners.forEach { (eventName, eventListeners) ->
                 eventListeners.forEach { listener ->
-                    bindListener(newSocket, eventName, listener)
+                    bindListener(newSocket, eventName, listener, context)
                 }
             }
             newSocket.connect()
@@ -43,6 +46,7 @@ class SocketIoSocketTransport(
 
     override fun disconnect() {
         build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", "transport_disconnect")
+        currentContext = null
         socket?.disconnect()
     }
 
@@ -56,18 +60,27 @@ class SocketIoSocketTransport(
 
     override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription {
         listeners.getOrPut(eventName) { mutableSetOf() } += listener
-        socket?.let { bindListener(it, eventName, listener) }
+        val context = currentContext
+        if (context != null) {
+            socket?.let { bindListener(it, eventName, listener, context) }
+        }
         return RealtimeSubscription {
             listeners[eventName]?.remove(listener)
             unbindListener(eventName, listener)
         }
     }
 
-    private fun bindListener(socket: Socket, eventName: String, listener: (Any?) -> Unit) {
+    private fun bindListener(
+        socket: Socket,
+        eventName: String,
+        listener: (Any?) -> Unit,
+        context: RealtimeSocketConnectionContext,
+    ) {
         val key = BoundEvent(eventName, listener)
         unbindListener(eventName, listener)
         val emitter = socket.emitterFor(eventName)
         val socketListener = Emitter.Listener { args ->
+            if (currentContext != context) return@Listener
             listener(args.firstOrNull())
         }
         boundListeners[key] = socketListener

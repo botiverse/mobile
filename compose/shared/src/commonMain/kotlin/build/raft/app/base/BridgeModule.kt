@@ -629,7 +629,11 @@ internal class BridgeModule : Module() {
         shellInstanceId: String = "",
         socketUrl: String = SLOCK_SOCKET_BASE_URL,
         lastSeq: Long = 0L,
-        forceReconnect: Boolean = false
+        forceReconnect: Boolean = false,
+        authorityScopeLeaseId: String,
+        authorityPrincipalId: String,
+        authorityAuthGeneration: Long,
+        authorityConnectionFamilyId: String,
     ) {
         val methodArgs = JSONObject()
         methodArgs.put("action", "connect")
@@ -639,6 +643,10 @@ internal class BridgeModule : Module() {
         methodArgs.put("socketUrl", socketUrl)
         methodArgs.put("lastSeq", lastSeq)
         methodArgs.put("forceReconnect", forceReconnect)
+        methodArgs.put("authorityScopeLeaseId", authorityScopeLeaseId)
+        methodArgs.put("authorityPrincipalId", authorityPrincipalId)
+        methodArgs.put("authorityAuthGeneration", authorityAuthGeneration)
+        methodArgs.put("authorityConnectionFamilyId", authorityConnectionFamilyId)
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 

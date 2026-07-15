@@ -20,6 +20,7 @@ import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ChannelId
@@ -491,7 +492,7 @@ class RealtimeRepositoryTest {
         val events = mutableListOf<RealtimeEvent>()
         val rawEvents = mutableListOf<String>()
         client.observeEvents { events += it }
-        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+        client.observeRawEvents { _, eventName, _ -> rawEvents += eventName }
 
         client.connect(
             RealtimeConnectRequest(
@@ -510,7 +511,7 @@ class RealtimeRepositoryTest {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
         val rawEvents = mutableListOf<String>()
-        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+        client.observeRawEvents { _, eventName, _ -> rawEvents += eventName }
 
         client.connect(
             RealtimeConnectRequest(
@@ -1188,7 +1189,7 @@ class RealtimeRepositoryTest {
         val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
         var connectCount = 0
 
-        override fun connect(auth: Map<String, String>) {
+        override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
             connectCount += 1
             lastAuth = auth
         }

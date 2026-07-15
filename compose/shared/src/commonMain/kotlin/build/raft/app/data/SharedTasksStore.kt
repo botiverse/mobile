@@ -244,6 +244,10 @@ internal class SharedTasksViewModel(
         }
     }
 
+    fun applyRealtimeTaskUpdate(task: TaskSummary) {
+        store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(task))
+    }
+
     private fun load(intent: SharedTasksRouteIntent) {
         val selectedFilter =
             when (intent) {

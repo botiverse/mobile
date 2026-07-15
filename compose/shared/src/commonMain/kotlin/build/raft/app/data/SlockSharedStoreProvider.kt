@@ -364,7 +364,8 @@ internal class SlockSharedStoreProvider private constructor(
             shellRealtimeDomainEventOwners.getOrPut(scope) {
                 SharedRealtimeDomainEventOwner(
                     tasksDataStore = tasksDataStore,
-                    cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
+                    cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
+                    runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
                     it.installReactionShadowLane(buildReactionShadowLane())
@@ -832,7 +833,8 @@ internal class SlockSharedStoreProvider private constructor(
                 realtimeDomainEventOwner =
                     SharedRealtimeDomainEventOwner(
                         tasksDataStore = tasksDataStore,
-                        cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
+                        cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
+                        runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
                     ),
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -935,6 +937,18 @@ internal data class RealtimeDomainEventSinks(
     val log: (String) -> Unit = {}
 )
 
+internal data class RealtimeGuardedDomainEventSinks(
+    val applyHomeShell: suspend (String, RealtimeEvent) -> Unit = { _, _ -> },
+    val applyHomeUnreadProjection: suspend (String, RealtimeEvent) -> Unit = { _, _ -> },
+    val applySettings: suspend (String, RealtimeEvent) -> Unit = { _, _ -> },
+    val applyServerMembersRefresh: suspend (String, RealtimeRefreshRequired) -> Unit = { _, _ -> },
+    val applyAgentActivity: suspend (MemberPresenceUpdated) -> Unit = {},
+    val requestMemberDetailRefresh: suspend () -> Unit = {},
+    val joinChannel: suspend (String) -> Unit = {},
+    val emitRouteMarker: suspend (RealtimeEvent) -> Unit = {},
+    val log: suspend (String) -> Unit = {},
+)
+
 /**
  * Per-route sink for standalone Thread pagers. Registered while a Thread
  * route is mounted; the owner tees every accepted event (including
@@ -947,12 +961,19 @@ internal fun interface RealtimeActiveThreadSink {
     fun deliver(serverId: String, event: RealtimeEvent)
 }
 
+internal fun interface RealtimeGuardedActiveThreadSink {
+    suspend fun deliver(serverId: String, event: RealtimeEvent)
+}
+
 internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null,
-    private val cursorStore: RealtimeAppliedSeqCursorStore? = null
+    private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
+    private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
+    private var guardedSinks: RealtimeGuardedDomainEventSinks? = null
     private val activeThreadSinks = mutableListOf<RealtimeActiveThreadSink>()
+    private val guardedActiveThreadSinks = mutableListOf<RealtimeGuardedActiveThreadSink>()
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
     private val recoveryStates = mutableMapOf<String, MessageSeqRecoveryState<RealtimeEvent>>()
@@ -981,6 +1002,16 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 
+    fun registerGuardedSinks(sinks: RealtimeGuardedDomainEventSinks) {
+        guardedSinks = sinks
+    }
+
+    fun unregisterGuardedSinks(sinks: RealtimeGuardedDomainEventSinks) {
+        if (guardedSinks === sinks || guardedSinks == sinks) {
+            guardedSinks = null
+        }
+    }
+
     override fun registerActiveThreadSink(sink: RealtimeActiveThreadSink) {
         if (sink !in activeThreadSinks) {
             activeThreadSinks.add(sink)
@@ -990,6 +1021,34 @@ internal class SharedRealtimeDomainEventOwner(
     override fun unregisterActiveThreadSink(sink: RealtimeActiveThreadSink) {
         activeThreadSinks.remove(sink)
     }
+
+    fun registerGuardedActiveThreadSink(sink: RealtimeGuardedActiveThreadSink) {
+        if (sink !in guardedActiveThreadSinks) {
+            guardedActiveThreadSinks.add(sink)
+        }
+    }
+
+    fun unregisterGuardedActiveThreadSink(sink: RealtimeGuardedActiveThreadSink) {
+        guardedActiveThreadSinks.remove(sink)
+    }
+
+    suspend fun accept(
+        grant: RealtimeGrantRecord,
+        event: RealtimeEvent,
+        source: String = "unknown",
+    ): Boolean =
+        runIfCurrentGrant(grant) {
+            acceptGuarded(grant.serverId, event, source)
+        }
+
+    suspend fun acceptHomeUnreadProjection(
+        grant: RealtimeGrantRecord,
+        event: RealtimeEvent,
+        source: String = "unknown",
+    ): Boolean =
+        runIfCurrentGrant(grant) {
+            acceptGuardedHomeUnreadProjection(grant.serverId, event, source)
+        }
 
     override fun accept(serverId: String, event: RealtimeEvent, source: String) {
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
@@ -1066,6 +1125,79 @@ internal class SharedRealtimeDomainEventOwner(
             if (acceptedEvent !is Heartbeat) {
                 sinks?.applyHomeUnreadProjection?.invoke(resolvedServerId, acceptedEvent)
                 sinks?.log?.invoke(
+                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
+                )
+            }
+        }
+    }
+
+    private suspend fun acceptGuarded(
+        serverId: String,
+        event: RealtimeEvent,
+        source: String,
+    ) {
+        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
+        val key = event.realtimeDomainKey(resolvedServerId)
+        if (key != null && !rememberAcceptedKey(key)) {
+            guardedSinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
+            return
+        }
+        val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
+        if (acceptedEvents.isEmpty()) return
+        val activeSinks = guardedSinks
+        acceptedEvents.forEach { acceptedEvent ->
+            guardedActiveThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, acceptedEvent) }
+            if (acceptedEvent is Heartbeat) {
+                activeSinks?.log?.invoke(
+                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat"
+                )
+                return@forEach
+            }
+            acceptedEvent.patchSharedTaskProjection(resolvedServerId)
+            activeSinks?.applyHomeShell?.invoke(resolvedServerId, acceptedEvent)
+            activeSinks?.applySettings?.invoke(resolvedServerId, acceptedEvent)
+            if (acceptedEvent is DirectMessageCreated) {
+                activeSinks?.joinChannel?.invoke(acceptedEvent.channelId.value)
+            }
+            if (acceptedEvent is ServerPlanUpdated) {
+                activeSinks?.log?.invoke(
+                    "shared_realtime_server_plan_updated serverId=${acceptedEvent.serverId.value} plan=${acceptedEvent.plan}"
+                )
+            }
+            if (acceptedEvent is MemberPresenceUpdated && acceptedEvent.kind == build.raft.app.model.MemberKind.Agent) {
+                activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
+            } else if (acceptedEvent.refreshesMemberDetail()) {
+                if (acceptedEvent is RealtimeRefreshRequired) {
+                    activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, acceptedEvent)
+                }
+                activeSinks?.requestMemberDetailRefresh?.invoke()
+            }
+            activeSinks?.emitRouteMarker?.invoke(acceptedEvent)
+            if (acceptedEvent !is MemberPresenceUpdated) {
+                activeSinks?.log?.invoke(
+                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
+                )
+            }
+        }
+    }
+
+    private suspend fun acceptGuardedHomeUnreadProjection(
+        serverId: String,
+        event: RealtimeEvent,
+        source: String,
+    ) {
+        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
+        val key = event.realtimeDomainKey(resolvedServerId)
+        if (key != null && !rememberAcceptedKey(key)) {
+            guardedSinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
+            return
+        }
+        val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
+        if (acceptedEvents.isEmpty()) return
+        acceptedEvents.forEach { acceptedEvent ->
+            if (acceptedEvent !is Heartbeat) {
+                guardedSinks?.applyHomeUnreadProjection?.invoke(resolvedServerId, acceptedEvent)
+                guardedSinks?.log?.invoke(
                     "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
                 )
             }

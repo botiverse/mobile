@@ -4,6 +4,7 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.RealtimeClientDiagnostics
 import build.raft.app.data.realtime.RealtimeCursorPolicy
@@ -51,12 +52,13 @@ class SocketIoRealtimeClient(
     private val clockMillis: () -> Long = { System.currentTimeMillis() }
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
-    private val rawListeners = mutableSetOf<(String, Any?) -> Unit>()
+    private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
     private val joinedChannels = linkedSetOf<ChannelId>()
     private var cursor: RealtimeCursorState = RealtimeCursorPolicy.fromAppliedSeq(0)
     private var connectedServerId: String? = null
     private var currentAuth: RealtimeAuth? = null
+    private var currentConnectionContext: RealtimeSocketConnectionContext? = null
     private var authRefreshProvider: ((String) -> RealtimeAuth?)? = null
     private var lastHeartbeatAtMillis: Long? = null
     private var lastInboundEventAtMillis: Long? = null
@@ -76,6 +78,8 @@ class SocketIoRealtimeClient(
             connectedServerId = request.auth.serverId.value
         }
         currentAuth = request.auth
+        val connectionContext = RealtimeSocketConnectionContext(request.auth.serverId, request.witness)
+        currentConnectionContext = connectionContext
         cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
         resumeProjectionRetryLastSeq = null
         state = RealtimeConnectionState.Connecting
@@ -85,12 +89,13 @@ class SocketIoRealtimeClient(
         ensureTransportListeners()
         startHeartbeatWatchdog()
         logger("client_connect_start serverId=${request.auth.serverId.value} lastSeq=${request.lastSeq}")
-        transport.connect(request.auth.toWireMap())
+        transport.connect(request.auth.toWireMap(), connectionContext)
     }
 
     fun disconnect() {
         logger("client_disconnect serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size}")
         stopHeartbeatWatchdog()
+        currentConnectionContext = null
         transport.disconnect()
         state = RealtimeConnectionState.Disconnected
         diagnostics?.onIntentionalDisconnect(
@@ -112,6 +117,7 @@ class SocketIoRealtimeClient(
             )
         if (!shouldReconnect) return false
         val auth = currentAuth ?: return false
+        val connectionContext = currentConnectionContext ?: return false
         logger(
             "heartbeat_silence_reconnect serverId=${connectedServerId.orEmpty()} " +
                 "lastHeartbeatAt=${lastHeartbeatAtMillis ?: 0L} lastInboundAt=${lastInboundEventAtMillis ?: 0L}"
@@ -124,7 +130,7 @@ class SocketIoRealtimeClient(
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = nowMillis
         rebaselineCursor(reason = "heartbeat_silent")
-        transport.connect(auth.toWireMap())
+        transport.connect(auth.toWireMap(), connectionContext)
         return true
     }
 
@@ -167,7 +173,9 @@ class SocketIoRealtimeClient(
         return RealtimeSubscription { listeners -= listener }
     }
 
-    fun observeRawEvents(listener: (eventName: String, rawPayload: Any?) -> Unit): RealtimeSubscription {
+    fun observeRawEvents(
+        listener: (context: RealtimeSocketConnectionContext, eventName: String, rawPayload: Any?) -> Unit
+    ): RealtimeSubscription {
         rawListeners += listener
         return RealtimeSubscription { rawListeners -= listener }
     }
@@ -271,7 +279,8 @@ class SocketIoRealtimeClient(
                             "payloadType=${payload?.javaClass?.simpleName.orEmpty()} durationMs=$mapDurationMs"
                     )
                     if (shouldFanOutRawEvent(eventName, serverAhead = false)) {
-                        rawListeners.toList().forEach { it(eventName, payload) }
+                        val connectionContext = currentConnectionContext ?: return@on
+                        rawListeners.toList().forEach { it(connectionContext, eventName, payload) }
                     }
                     return@on
                 }
@@ -281,7 +290,8 @@ class SocketIoRealtimeClient(
                 }
                 val shouldFanOutRaw = shouldFanOutRawEvent(eventName, cursorUpdate.serverAhead)
                 if (shouldFanOutRaw) {
-                    rawListeners.toList().forEach { it(eventName, payload) }
+                    val connectionContext = currentConnectionContext ?: return@on
+                    rawListeners.toList().forEach { it(connectionContext, eventName, payload) }
                 }
                 successDiagnostics.record(
                     eventName = eventName,
@@ -398,7 +408,8 @@ class SocketIoRealtimeClient(
         connectedServerId = next.serverId.value
         logger("auth_refresh_apply reason=$reason serverId=${next.serverId.value} tokenChanged=${previous?.token != next.token}")
         state = RealtimeConnectionState.Connecting
-        transport.connect(next.toWireMap())
+        val connectionContext = currentConnectionContext ?: return
+        transport.connect(next.toWireMap(), connectionContext)
     }
 
     private fun dispatch(event: RealtimeEvent): RealtimeCursorUpdate {

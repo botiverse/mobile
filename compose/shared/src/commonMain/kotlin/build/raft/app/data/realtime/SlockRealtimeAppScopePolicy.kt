@@ -19,6 +19,10 @@ object SlockRealtimeNotifyContract {
     const val KeyServerId = GeneratedRealtimeContract.PayloadKey.ServerId
     const val KeyEventName = GeneratedRealtimeContract.PayloadKey.EventName
     const val KeyRawPayload = GeneratedRealtimeContract.PayloadKey.RawPayload
+    const val KeyAuthorityScopeLeaseId = "authorityScopeLeaseId"
+    const val KeyAuthorityPrincipalId = "authorityPrincipalId"
+    const val KeyAuthorityAuthGeneration = "authorityAuthGeneration"
+    const val KeyAuthorityConnectionFamilyId = "authorityConnectionFamilyId"
     const val ActionAppLifecycle = "appLifecycle"
     const val LifecycleVisibleResume = "resume"
     const val LifecycleVisibleShow = "show"
