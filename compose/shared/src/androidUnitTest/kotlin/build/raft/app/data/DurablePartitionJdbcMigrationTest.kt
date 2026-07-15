@@ -38,7 +38,7 @@ class DurablePartitionJdbcMigrationTest {
     @Test
     fun exactCheckedInV1MigratesToFreshV2WhilePreservingEveryNonCoreDefinitionAndOutboxByte() {
         val migratedPath = copyDatabaseResource("1.db")
-        val freshV2Path = copyDatabaseResource("2.db")
+        val freshV2Path = Files.createTempFile("slock-fresh-v2-", ".db").also { it.deleteIfExists() }
         try {
             val before = JdbcSqliteDriver(url(migratedPath))
             val expectedOutbox = seedExactBaselineRows(before)
@@ -53,6 +53,7 @@ class DurablePartitionJdbcMigrationTest {
 
             val freshV2 = JdbcSqliteDriver(url(freshV2Path))
             try {
+                SlockDatabase.Schema.create(freshV2).value
                 assertEquals(
                     freshV2.masterDefinitions().map { it.canonicalSchema() },
                     before.masterDefinitions().map { it.canonicalSchema() },

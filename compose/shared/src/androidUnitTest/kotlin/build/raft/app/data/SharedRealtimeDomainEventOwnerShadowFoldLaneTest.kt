@@ -15,8 +15,10 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
+import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.FoldPersistFrame
 import build.raft.app.network.sync.FoldPersistenceAdapter
@@ -135,6 +137,26 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             ),
         )
 
+    private fun messageUpdatedWithCanonical(
+        id: String,
+        seq: Long,
+        content: String = "updated-$id",
+    ): MessageUpdated = MessageUpdated(
+        message = Message(
+            id = MessageId(id),
+            threadId = ThreadId(channelId),
+            channelId = ChannelId(channelId),
+            seq = seq,
+            author = MemberProfile(MemberId("u1"), "Alice", "alice", MemberKind.Human),
+            timestampLabel = "now",
+            body = content,
+        ),
+        decodedCanonical = CanonicalMessageCarry(
+            row = canonicalRow(id, seq, content),
+            presentAggregates = emptySet<MessageAggregateField>(),
+        ),
+    )
+
     private class RecordingAdapter : FoldPersistenceAdapter {
         val appliedFrames = mutableListOf<FoldPersistFrame>()
 
@@ -189,13 +211,35 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val (owner, homeEvents) = ownerWith(lane)
         val heartbeat = Heartbeat(seq = 1L)
         val messageWithoutCarry = messageNewWithCanonical(id = "m-no-carry", seq = 2L).copy(decodedCanonical = null)
+        val resume = SyncResumeResponse(messages = emptyList(), currentSeq = 2L, hasMore = false)
 
         owner.accept(serverId, heartbeat, source = "app_shell")
         owner.accept(serverId, messageWithoutCarry, source = "app_shell")
+        owner.accept(serverId, resume, source = "app_shell")
 
         assertTrue(adapter.appliedFrames.isEmpty())
         assertTrue(logs.none { it.contains("sync_core_partition_persist_denied") })
-        assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to messageWithoutCarry), homeEvents)
+        assertEquals<List<Pair<String, RealtimeEvent>>>(
+            listOf(serverId to messageWithoutCarry, serverId to resume),
+            homeEvents,
+        )
+    }
+
+    @Test
+    fun legacyOwnerTreatsCanonicalMessageUpdatedAsEligibleAndDeniesExactlyOnce() {
+        val logs = mutableListOf<String>()
+        val adapter = RecordingAdapter()
+        val lane = recordingLane(logs, adapter)
+        val (owner, homeEvents) = ownerWith(lane)
+        val event = messageUpdatedWithCanonical(id = "m-updated", seq = 3L)
+
+        owner.accept(serverId, event, source = "app_shell")
+
+        assertTrue(adapter.appliedFrames.isEmpty())
+        assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().contains("sync_core_partition_persist_denied"))
+        assertTrue(logs.single().contains("deniedFrameCount=1"))
     }
 
     @Test
@@ -208,6 +252,14 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             "PartitionDenied(reason=PrincipalUnavailable, deniedFrameCount=1)",
             one.toString(),
         )
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().contains("deniedFrameCount=1"))
+    }
+
+    @Test
+    fun countedDenialEmitsOneBoundedLogForTwoEligibleFrames() {
+        val logs = mutableListOf<String>()
+        val lane = recordingLane(logs)
 
         val countedMethod = lane.javaClass.getDeclaredMethod(
             "partitionDenied",
@@ -217,6 +269,11 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         )
         val two = countedMethod.invoke(lane, serverId, PartitionDenialReason.PrincipalUnavailable, 2)
         assertEquals("PartitionDenied(reason=PrincipalUnavailable, deniedFrameCount=2)", two?.toString())
+        assertEquals(1, logs.size, "one denied batch must emit exactly one diagnostic")
+        assertTrue(logs.single().contains("deniedFrameCount=2"))
+        assertFalse(logs.single().contains("messageId="))
+        assertFalse(logs.single().contains("content="))
+        assertFalse(logs.single().contains("principalId="))
     }
 
     @Test

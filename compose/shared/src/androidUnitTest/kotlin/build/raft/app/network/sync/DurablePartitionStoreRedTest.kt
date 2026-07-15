@@ -1,6 +1,7 @@
 package build.raft.app.network.sync
 
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -24,7 +25,7 @@ import kotlin.test.assertTrue
  */
 class DurablePartitionStoreRedTest {
     private class SqlCountingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
-        var executeCount: Int = 0
+        var statementCount: Int = 0
 
         override fun execute(
             identifier: Int?,
@@ -32,8 +33,19 @@ class DurablePartitionStoreRedTest {
             parameters: Int,
             binders: (SqlPreparedStatement.() -> Unit)?,
         ): QueryResult<Long> {
-            executeCount += 1
+            statementCount += 1
             return delegate.execute(identifier, sql, parameters, binders)
+        }
+
+        override fun <R> executeQuery(
+            identifier: Int?,
+            sql: String,
+            mapper: (SqlCursor) -> QueryResult<R>,
+            parameters: Int,
+            binders: (SqlPreparedStatement.() -> Unit)?,
+        ): QueryResult<R> {
+            statementCount += 1
+            return delegate.executeQuery(identifier, sql, mapper, parameters, binders)
         }
     }
 
@@ -224,7 +236,7 @@ class DurablePartitionStoreRedTest {
     fun directStoreMismatchFailsBeforePendingWiringAndBeforeAnySql() = runBlocking {
         val counting = SqlCountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
         build.raft.app.shared.data.local.SlockDatabase.Schema.create(counting).value
-        counting.executeCount = 0
+        counting.statementCount = 0
         val database = SlockSqlDatabase(counting)
         val declaredScope = scope(scopeId = "channel-a")
         val mismatchedFact = row("mismatched", 1L, scope(scopeId = "channel-b"))
@@ -235,6 +247,6 @@ class DurablePartitionStoreRedTest {
 
         assertEquals("FoldPersistScopeMismatch", failure?.let { it::class.simpleName })
         assertTrue(failure?.message.orEmpty().contains("channelId"))
-        assertEquals(0, counting.executeCount, "direct mismatch must fail before SQL and before pending binding")
+        assertEquals(0, counting.statementCount, "direct mismatch must fail before SQL and before pending binding")
     }
 }
