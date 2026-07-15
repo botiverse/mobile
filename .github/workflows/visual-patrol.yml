@@ -83,12 +83,22 @@ jobs:
             --cap 5 \
             ${{ steps.mode.outputs.live }} | tee token-audit-report.json
 
+      - name: Run renderer coverage audit (markdown silent-drop lens)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          node scripts/patrol/renderer_coverage.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            ${{ steps.mode.outputs.live }} | tee renderer-coverage-report.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: visual-patrol-report
           path: |
             patrol-report.json
             token-audit-report.json
+            renderer-coverage-report.json
 
   # After filing, adversarially verify each open drift issue with a 3x M3 panel:
   # majority "real problem" -> label `verified` (enters the fix queue); otherwise the

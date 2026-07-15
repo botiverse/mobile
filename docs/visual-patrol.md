@@ -85,3 +85,7 @@ node scripts/visual_patrol.mjs --analysis gh-pages --comparison react__android -
 ## token-audit lens
 
 `scripts/patrol/token_audit.mjs` scans commonMain for semantic/brand colors weakened with `.copy(alpha = …)` (the mobile#996 brown-destructive class) and files per-file `code-smell` cluster issues through the shared lib (cap 5/run in the nightly job). Deliberate react `bg-*/N` tint mirrors are false positives — comment them or promote to a named token, then close. M3 auto-triage for this lens is a follow-up; issue bodies carry manual triage guidance.
+
+## renderer-coverage lens
+
+`scripts/patrol/renderer_coverage.mjs` statically diffs the markdown library type universe (org.jetbrains:markdown 0.7.5 — refresh the embedded list on upgrade) against the types the fork actually dispatches, minus a justified allowlist. Unhandled types are silent-drop candidates (the task #493 EMAIL_AUTOLINK class). Dynamic sibling: `MarkdownContentIntegrityTest` in commonTest asserts content survives rendering for known shapes.
