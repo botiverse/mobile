@@ -2,10 +2,22 @@ package build.raft.app.data
 
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskId
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.coroutineContext
 
 internal enum class SharedTasksDataStoreStatus {
     Idle,
@@ -28,25 +40,94 @@ private data class SharedTasksDataStoreState(
     val serverSnapshots: Map<String, TaskSnapshot> = emptyMap(),
     val serverSnapshotStatuses: Map<String, SharedTasksDataStoreStatus> = emptyMap(),
     val channelSnapshots: Map<SharedTasksChannelKey, TaskSnapshot> = emptyMap(),
-    val channelSnapshotStatuses: Map<SharedTasksChannelKey, SharedTasksDataStoreStatus> = emptyMap()
+    val channelSnapshotStatuses: Map<SharedTasksChannelKey, SharedTasksDataStoreStatus> = emptyMap(),
+    val mutationRevision: Long = 0L,
+    val taskMutations: Map<SharedTasksTaskKey, SharedTasksTaskMutation> = emptyMap()
 )
 
-internal class SharedTasksDataStore {
+private data class SharedTasksTaskKey(
+    val serverId: String,
+    val taskId: TaskId
+)
+
+private data class SharedTasksTaskMutation(
+    val revision: Long,
+    val task: TaskSummary?
+)
+
+private data class SharedTasksSnapshotLoadKey(
+    val serverId: String,
+    val scope: SharedTasksScope
+)
+
+internal class SharedTasksDataStore(
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
+    private val ownerIdentityProvider: (suspend () -> String?)? = null
+) {
     private val state = MutableStateFlow(SharedTasksDataStoreState())
+    private val loadMutex = Mutex()
+    private val loadsInFlight =
+        mutableMapOf<SharedTasksSnapshotLoadKey, Deferred<DataResult<TaskSnapshot>>>()
+    private var ownerIdentityBound = false
+    private var ownerIdentity: String? = null
+    private var ownerGeneration: Long = 0L
+
+    suspend fun bindCurrentOwnerIdentity() {
+        val identityProvider = ownerIdentityProvider ?: return
+        loadMutex.withLock {
+            // Read under the same lock that installs the binding. Otherwise an
+            // older A read can pause, B can bind, then A can resume and rebind
+            // stale identity over B.
+            val nextIdentity = identityProvider()
+            if (ownerIdentityBound && ownerIdentity == nextIdentity) return@withLock
+            clearOwnerDataLocked()
+            ownerIdentity = nextIdentity
+            ownerIdentityBound = true
+        }
+    }
+
+    suspend fun clearOwnerData() {
+        loadMutex.withLock {
+            clearOwnerDataLocked()
+            ownerIdentity = null
+            ownerIdentityBound = false
+        }
+    }
+
+    private fun clearOwnerDataLocked() {
+        ownerGeneration += 1L
+        loadsInFlight.values.forEach { it.cancel() }
+        loadsInFlight.clear()
+        state.value = SharedTasksDataStoreState()
+    }
 
     fun publishSnapshot(
         serverId: String,
         scope: SharedTasksScope,
-        snapshot: TaskSnapshot
-    ) {
-        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
-        state.value =
+        snapshot: TaskSnapshot,
+        requestRevision: Long? = null
+    ): TaskSnapshot? {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return null
+        var committedSnapshot: TaskSnapshot? = null
+        state.update { current ->
+            val mergedSnapshot =
+                if (requestRevision == null) {
+                    snapshot
+                } else {
+                    current.mergeTaskMutationsAfter(
+                        serverId = normalizedServerId,
+                        scope = scope,
+                        snapshot = snapshot,
+                        requestRevision = requestRevision
+                    )
+                }
+            committedSnapshot = mergedSnapshot
             when (scope) {
                 SharedTasksScope.Server ->
-                    state.value.copy(
-                        serverSnapshots = state.value.serverSnapshots + (normalizedServerId to snapshot),
+                    current.copy(
+                        serverSnapshots = current.serverSnapshots + (normalizedServerId to mergedSnapshot),
                         serverSnapshotStatuses =
-                            state.value.serverSnapshotStatuses +
+                            current.serverSnapshotStatuses +
                                 (normalizedServerId to SharedTasksDataStoreStatus.Loaded)
                     )
                 is SharedTasksScope.Channel -> {
@@ -55,38 +136,132 @@ internal class SharedTasksDataStore {
                             serverId = normalizedServerId,
                             channelId = scope.channelId.value.normalizedTasksStoreId()
                         )
-                    state.value.copy(
+                    current.copy(
                         channelSnapshots =
-                            state.value.channelSnapshots +
-                                (channelKey to snapshot),
+                            current.channelSnapshots +
+                                (channelKey to mergedSnapshot),
                         channelSnapshotStatuses =
-                            state.value.channelSnapshotStatuses +
+                            current.channelSnapshotStatuses +
                                 (channelKey to SharedTasksDataStoreStatus.Loaded)
                     )
                 }
             }
+        }
+        return committedSnapshot
+    }
+
+    suspend fun loadSnapshot(
+        serverId: String,
+        scope: SharedTasksScope,
+        forceRefresh: Boolean = false,
+        fetch: suspend () -> DataResult<TaskSnapshot>
+    ): DataResult<TaskSnapshot> {
+        bindCurrentOwnerIdentity()
+        val normalizedServerId = serverId.normalizedTasksStoreId()
+            ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
+        if (!forceRefresh) {
+            projection(normalizedServerId, scope).loadedSnapshotOrNull()?.let { return DataResult.Content(it) }
+        }
+        val key = SharedTasksSnapshotLoadKey(normalizedServerId, scope)
+        var created: Deferred<DataResult<TaskSnapshot>>? = null
+        var immediate: TaskSnapshot? = null
+        val deferred =
+            loadMutex.withLock {
+                loadsInFlight[key]
+                    ?: if (!forceRefresh) {
+                        projection(normalizedServerId, scope).loadedSnapshotOrNull()?.let { snapshot ->
+                            immediate = snapshot
+                            null
+                        } ?: createSnapshotLoad(key, fetch).also { candidate ->
+                            loadsInFlight[key] = candidate
+                            created = candidate
+                        }
+                    } else {
+                        createSnapshotLoad(key, fetch).also { candidate ->
+                            loadsInFlight[key] = candidate
+                            created = candidate
+                        }
+                    }
+            }
+        immediate?.let { return DataResult.Content(it) }
+        val shared = deferred ?: error("shared tasks snapshot load missing")
+        created?.start()
+        return shared.await()
+    }
+
+    private fun createSnapshotLoad(
+        key: SharedTasksSnapshotLoadKey,
+        fetch: suspend () -> DataResult<TaskSnapshot>
+    ): Deferred<DataResult<TaskSnapshot>> {
+        val requestRevision = state.value.mutationRevision
+        val requestOwnerGeneration = ownerGeneration
+        return scope.async(start = CoroutineStart.LAZY) {
+            try {
+                val result = fetch()
+                val currentJob = coroutineContext[Job]
+                loadMutex.withLock {
+                    if (
+                        ownerGeneration != requestOwnerGeneration ||
+                        loadsInFlight[key] !== currentJob
+                    ) {
+                        return@withLock result
+                    }
+                    when (result) {
+                        is DataResult.Content -> {
+                            val committed =
+                                publishSnapshot(key.serverId, key.scope, result.data, requestRevision)
+                                    ?: return@withLock result
+                            if (committed.tasks.isEmpty()) {
+                                DataResult.Empty(EmptyReason.NoTasks)
+                            } else {
+                                DataResult.Content(committed)
+                            }
+                        }
+                        is DataResult.Empty -> {
+                            val committed =
+                                publishSnapshot(
+                                    key.serverId,
+                                    key.scope,
+                                    TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()),
+                                    requestRevision
+                                ) ?: return@withLock result
+                            if (committed.tasks.isEmpty()) result else DataResult.Content(committed)
+                        }
+                        is DataResult.Error -> result
+                        is DataResult.NoPermission -> result
+                    }
+                }
+            } finally {
+                val currentJob = coroutineContext[Job]
+                loadMutex.withLock {
+                    if (loadsInFlight[key] === currentJob) {
+                        loadsInFlight.remove(key)
+                    }
+                }
+            }
+        }
     }
 
     fun upsertTask(serverId: String, task: TaskSummary) {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
         val taskChannelId = task.channelId?.value.normalizedTasksStoreId()
         val taskChannelName = task.channelName.normalizedTasksChannelName()
-        val current = state.value
-        val serverSnapshot =
-            (current.serverSnapshots[normalizedServerId] ?: TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()))
-                .upsert(task)
-        val serverSnapshotStatus =
-            current.serverSnapshotStatuses[normalizedServerId]
-                ?: SharedTasksDataStoreStatus.Partial
-        val taskChannelKey =
-            when {
-                taskChannelId != null ->
-                    SharedTasksChannelKey(serverId = normalizedServerId, channelId = taskChannelId)
-                taskChannelName != null ->
-                    SharedTasksChannelKey(serverId = normalizedServerId, channelName = taskChannelName)
-                else -> null
-            }
-        state.value =
+        state.update { current ->
+            val nextRevision = current.mutationRevision + 1L
+            val serverSnapshot =
+                (current.serverSnapshots[normalizedServerId] ?: TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()))
+                    .upsert(task)
+            val serverSnapshotStatus =
+                current.serverSnapshotStatuses[normalizedServerId]
+                    ?: SharedTasksDataStoreStatus.Partial
+            val taskChannelKey =
+                when {
+                    taskChannelId != null ->
+                        SharedTasksChannelKey(serverId = normalizedServerId, channelId = taskChannelId)
+                    taskChannelName != null ->
+                        SharedTasksChannelKey(serverId = normalizedServerId, channelName = taskChannelName)
+                    else -> null
+                }
             current.copy(
                 serverSnapshots =
                     current.serverSnapshots + (normalizedServerId to serverSnapshot),
@@ -95,17 +270,17 @@ internal class SharedTasksDataStore {
                 channelSnapshots =
                     current.channelSnapshots
                         .mapValues { (key, snapshot) ->
-                            if (
-                                key.serverId == normalizedServerId &&
-                                (
-                                    (taskChannelId != null && key.channelId == taskChannelId) ||
-                                        (taskChannelName != null && key.channelName == taskChannelName) ||
-                                        snapshot.tasks.any { currentTask -> currentTask.id == task.id }
-                                    )
-                            ) {
-                                snapshot.upsert(task)
-                            } else {
-                                snapshot
+                            if (key.serverId != normalizedServerId) {
+                                return@mapValues snapshot
+                            }
+                            val isTargetChannel =
+                                (taskChannelId != null && key.channelId == taskChannelId) ||
+                                    (taskChannelName != null && key.channelName == taskChannelName)
+                            when {
+                                isTargetChannel -> snapshot.upsert(task)
+                                snapshot.tasks.any { currentTask -> currentTask.id == task.id } ->
+                                    snapshot.remove(task.id)
+                                else -> snapshot
                             }
                         }
                         .let { snapshots ->
@@ -134,14 +309,20 @@ internal class SharedTasksDataStore {
                             } else {
                                 statuses + (taskChannelKey to serverSnapshotStatus)
                             }
-                        }
+                        },
+                mutationRevision = nextRevision,
+                taskMutations =
+                    current.taskMutations +
+                        (SharedTasksTaskKey(normalizedServerId, task.id) to
+                            SharedTasksTaskMutation(nextRevision, task))
             )
+        }
     }
 
     fun removeTask(serverId: String, taskId: TaskId) {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
-        val current = state.value
-        state.value =
+        state.update { current ->
+            val nextRevision = current.mutationRevision + 1L
             current.copy(
                 serverSnapshots =
                     current.serverSnapshots.mapValues { (snapshotServerId, snapshot) ->
@@ -150,8 +331,14 @@ internal class SharedTasksDataStore {
                 channelSnapshots =
                     current.channelSnapshots.mapValues { (key, snapshot) ->
                         if (key.serverId == normalizedServerId) snapshot.remove(taskId) else snapshot
-                    }
+                    },
+                mutationRevision = nextRevision,
+                taskMutations =
+                    current.taskMutations +
+                        (SharedTasksTaskKey(normalizedServerId, taskId) to
+                            SharedTasksTaskMutation(nextRevision, null))
             )
+        }
     }
 
     fun channelProjectionFlow(
@@ -159,9 +346,14 @@ internal class SharedTasksDataStore {
         channelId: String?,
         channelName: String?
     ): Flow<SharedTasksProjectionSlice> =
-        state
-            .map { current -> current.selectChannelProjection(serverId, channelId, channelName) }
-            .distinctUntilChanged()
+        flow {
+            bindCurrentOwnerIdentity()
+            emitAll(
+                state
+                    .map { current -> current.selectChannelProjection(serverId, channelId, channelName) }
+                    .distinctUntilChanged()
+            )
+        }
 
     fun projectionFlow(
         serverId: String?,
@@ -169,9 +361,14 @@ internal class SharedTasksDataStore {
     ): Flow<SharedTasksProjectionSlice> =
         when (scope) {
             SharedTasksScope.Server ->
-                state
-                    .map { current -> current.selectServerProjection(serverId) }
-                    .distinctUntilChanged()
+                flow {
+                    bindCurrentOwnerIdentity()
+                    emitAll(
+                        state
+                            .map { current -> current.selectServerProjection(serverId) }
+                            .distinctUntilChanged()
+                    )
+                }
             is SharedTasksScope.Channel ->
                 channelProjectionFlow(
                     serverId = serverId,
@@ -260,7 +457,34 @@ internal class SharedTasksDataStore {
             tasks = projectedTasks
         )
     }
+
+    private fun SharedTasksDataStoreState.mergeTaskMutationsAfter(
+        serverId: String,
+        scope: SharedTasksScope,
+        snapshot: TaskSnapshot,
+        requestRevision: Long
+    ): TaskSnapshot =
+        taskMutations
+            .asSequence()
+            .filter { (key, mutation) -> key.serverId == serverId && mutation.revision > requestRevision }
+            .sortedBy { (_, mutation) -> mutation.revision }
+            .fold(snapshot) { merged, (key, mutation) ->
+                val task = mutation.task
+                when {
+                    task == null -> merged.remove(key.taskId)
+                    scope == SharedTasksScope.Server -> merged.upsert(task)
+                    scope is SharedTasksScope.Channel && task.channelId == scope.channelId -> merged.upsert(task)
+                    else -> merged.remove(key.taskId)
+                }
+            }
 }
+
+private fun SharedTasksProjectionSlice.loadedSnapshotOrNull(): TaskSnapshot? =
+    if (status == SharedTasksDataStoreStatus.Loaded) {
+        TaskSnapshot(tasks = tasks, summaryCounts = tasks.summaryCounts())
+    } else {
+        null
+    }
 
 private fun String?.normalizedTasksStoreId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }

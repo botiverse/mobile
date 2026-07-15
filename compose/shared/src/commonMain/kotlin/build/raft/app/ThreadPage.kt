@@ -1731,7 +1731,17 @@ internal suspend fun openMarkdownTaskNumberPayload(
     val snapshot =
         when (
             val result =
-                tasksDataSource.loadTasks(
+                tasksDataStore?.loadSnapshot(
+                    serverId = serverId.value,
+                    scope = SharedTasksScope.Server,
+                    forceRefresh = true
+                ) {
+                    tasksDataSource.loadTasks(
+                        serverId = serverId,
+                        filter = TaskFilter(),
+                        priority = DataRequestPriority.Foreground
+                    )
+                } ?: tasksDataSource.loadTasks(
                     serverId = serverId,
                     filter = TaskFilter(),
                     priority = DataRequestPriority.Foreground
@@ -1742,7 +1752,6 @@ internal suspend fun openMarkdownTaskNumberPayload(
             is DataResult.Error -> return MarkdownTaskNumberOpenResult.Failed
             is DataResult.NoPermission -> return MarkdownTaskNumberOpenResult.AuthRequired
         }
-    tasksDataStore?.publishSnapshot(serverId.value, SharedTasksScope.Server, snapshot)
     val matches = snapshot.tasks.filter { task -> task.taskNumber == taskNumber }
     val selected =
         when (matches.size) {
@@ -4280,28 +4289,23 @@ internal fun SharedThreadRouteContent(
         )
         when (
             val result =
-                tasksDataSource.loadChannelTasks(
-                    channelId = resolvedTaskChannelId,
-                    priority = DataRequestPriority.Background
-                )
+                sharedStore.loadSnapshot(
+                    serverId = serverId,
+                    scope = SharedTasksScope.Channel(resolvedTaskChannelId)
+                ) {
+                    tasksDataSource.loadChannelTasks(
+                        channelId = resolvedTaskChannelId,
+                        priority = DataRequestPriority.Background
+                    )
+                }
         ) {
             is DataResult.Content -> {
-                sharedStore.publishSnapshot(
-                    serverId = serverId,
-                    scope = SharedTasksScope.Channel(resolvedTaskChannelId),
-                    snapshot = result.data
-                )
                 bridge.log(
                     "thread_tasks_projection_backfill_result result=content " +
                         "channelId=${resolvedTaskChannelId.value} tasks=${result.data.tasks.size}"
                 )
             }
             is DataResult.Empty -> {
-                sharedStore.publishSnapshot(
-                    serverId = serverId,
-                    scope = SharedTasksScope.Channel(resolvedTaskChannelId),
-                    snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
-                )
                 bridge.log(
                     "thread_tasks_projection_backfill_result result=empty " +
                         "channelId=${resolvedTaskChannelId.value}"
