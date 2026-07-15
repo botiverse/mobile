@@ -2104,7 +2104,7 @@ class SharedSettingsStore(
      *   flip live.
      * - Any other route: ignored (no excessive refresh).
      */
-    private fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
+    private suspend fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
         if (event !is RealtimeRefreshRequired) return
         if (event.scope != RealtimeRefreshScope.Machines) return
         if (event.serverId?.value != null && event.serverId.value != serverId) return
@@ -2113,14 +2113,14 @@ class SharedSettingsStore(
             SharedSettingsDestination.ComputerDetail -> {
                 val openId = _state.value.route.itemId.orEmpty()
                 if (openId.isNotBlank() && openId == machineId) {
-                    scope.launch { dataSource.loadComputerDetail(machineId, forceComputers = true).applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) } }
+                    dataSource
+                        .loadComputerDetail(machineId, forceComputers = true)
+                        .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
                 }
             }
             SharedSettingsDestination.Computers -> {
-                scope.launch {
-                    dataSource.loadComputers(forceComputers = true).applyToComputersListState()
-                    maybeAdvanceAddComputerDialogFromMachines(machineId)
-                }
+                dataSource.loadComputers(forceComputers = true).applyToComputersListState()
+                maybeAdvanceAddComputerDialogFromMachines(machineId)
             }
             else -> Unit
         }

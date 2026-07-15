@@ -93,36 +93,44 @@ class SharedMembersStore(
 
     fun dispatch(intent: SharedMembersIntent) {
         when (intent) {
-            SharedMembersIntent.EnsureChannelSuggestions -> loadChannelSuggestions(force = false)
-            SharedMembersIntent.RefreshChannelSuggestions -> loadChannelSuggestions(force = true)
+            SharedMembersIntent.EnsureChannelSuggestions -> launchChannelSuggestionsLoad(force = false)
+            SharedMembersIntent.RefreshChannelSuggestions -> launchChannelSuggestionsLoad(force = true)
             SharedMembersIntent.Clear -> _state.value = SharedMembersState()
         }
     }
 
-    private fun loadChannelSuggestions(force: Boolean) {
+    suspend fun acceptRealtimeChannelSuggestionsRefresh() {
+        loadChannelSuggestionsForCurrentSession(force = true)
+    }
+
+    private fun launchChannelSuggestionsLoad(force: Boolean) {
         scope.launch {
-            val serverId = authStore.readSession()?.currentServerId?.trim().orEmpty()
-            if (serverId.isBlank()) {
-                _state.value = SharedMembersState()
-                return@launch
-            }
-            bindServer(serverId)
-            val current = _state.value
-            val shouldLoad =
-                force ||
-                    (current.channelStatus != SharedMembersLoadStatus.Loaded &&
-                        current.channelStatus != SharedMembersLoadStatus.InFlight)
-            if (!shouldLoad) {
-                logger("shared_members_channel_suggestions_skip serverId=$serverId reason=loaded_or_inflight")
-                return@launch
-            }
-            _state.value =
-                _state.value.copy(
-                    channelStatus = SharedMembersLoadStatus.InFlight,
-                    channelErrorCode = null
-                )
-            loadChannelSuggestions(serverId)
+            loadChannelSuggestionsForCurrentSession(force)
         }
+    }
+
+    private suspend fun loadChannelSuggestionsForCurrentSession(force: Boolean) {
+        val serverId = authStore.readSession()?.currentServerId?.trim().orEmpty()
+        if (serverId.isBlank()) {
+            _state.value = SharedMembersState()
+            return
+        }
+        bindServer(serverId)
+        val current = _state.value
+        val shouldLoad =
+            force ||
+                (current.channelStatus != SharedMembersLoadStatus.Loaded &&
+                    current.channelStatus != SharedMembersLoadStatus.InFlight)
+        if (!shouldLoad) {
+            logger("shared_members_channel_suggestions_skip serverId=$serverId reason=loaded_or_inflight")
+            return
+        }
+        _state.value =
+            _state.value.copy(
+                channelStatus = SharedMembersLoadStatus.InFlight,
+                channelErrorCode = null
+            )
+        loadChannelSuggestions(serverId)
     }
 
     private fun bindServer(serverId: String) {

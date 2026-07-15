@@ -3,6 +3,8 @@ package build.raft.app.shared
 import build.raft.app.data.DataResult
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.realtime.RealtimeConnectionState
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.SlockRealtimeAppScopeConnection
 import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
 import build.raft.app.data.realtime.SlockRealtimeAppScopeSink
@@ -196,7 +198,12 @@ class AndroidAppScopeRealtimeOwnerTest {
     private class FakeAppScopeConnection : SlockRealtimeAppScopeConnection {
         override val state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
 
-        override suspend fun connect(serverId: ServerId, accessToken: String, lastSeq: Long): DataResult<Unit> =
+        override suspend fun connect(
+            serverId: ServerId,
+            accessToken: String,
+            lastSeq: Long,
+            witness: RealtimeConnectionWitnessToken,
+        ): DataResult<Unit> =
             DataResult.Content(Unit)
 
         override fun disconnect() = Unit
@@ -206,14 +213,21 @@ class AndroidAppScopeRealtimeOwnerTest {
         override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
             RealtimeSubscription {}
 
-        override fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription =
+        override fun observeRawEvents(
+            listener: (RealtimeSocketConnectionContext, String, String) -> Unit
+        ): RealtimeSubscription =
             RealtimeSubscription {}
     }
 
     private class FakeAppScopeSink : SlockRealtimeAppScopeSink {
         override fun log(message: String) = Unit
 
-        override fun fanOutRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: String) = Unit
+        override fun fanOutRawRealtimeEvent(
+            serverId: ServerId,
+            witness: RealtimeConnectionWitnessToken,
+            eventName: String,
+            rawPayload: String,
+        ) = Unit
 
         override suspend fun maybePostBackgroundUnreadNotification(
             serverId: ServerId,

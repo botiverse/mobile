@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
 
 class SettingsHomePageRealtimeTest {
     @Test
-    fun announcementRealtimeFallsBackToCurrentSessionServer() {
+    fun announcementRealtimeWithoutAnAuthoritativeServerFailsClosed() {
         val eventData =
             JSONObject().apply {
                 put("eventName", RealtimeSocketEvents.AnnouncementNew)
@@ -30,7 +30,7 @@ class SettingsHomePageRealtimeTest {
             )
 
         assertEquals(RealtimeRefreshScope.Announcements, event.scope)
-        assertEquals("server-1", resolveSharedShellRealtimeServerId(eventData, event, sampleSession()))
+        assertEquals(null, resolveSharedShellRealtimeServerId(eventData, event, sampleSession()))
     }
 
     @Test
@@ -47,7 +47,7 @@ class SettingsHomePageRealtimeTest {
             resolveSharedShellRealtimeServerId(
                 JSONObject().apply { put("serverId", "wrapper-server") },
                 event,
-                sampleSession()
+                sampleSession(),
             )
         )
         assertEquals(

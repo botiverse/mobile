@@ -109,6 +109,11 @@ internal class RealtimeAuthorityProvider(
         eventServerId: String,
     ): RealtimeGrantRecord? = registry.resolve(witness, eventServerId)
 
+    suspend fun runIfCurrentGrant(
+        grant: RealtimeGrantRecord,
+        block: suspend () -> Unit,
+    ): Boolean = registry.runIfCurrentGrant(grant, block)
+
     private suspend fun reconcileInitialSession() {
         lifecycleMutex.withLock {
             ensureInitializedLocked()
@@ -207,3 +212,34 @@ private fun StoredAuthSession?.toRealtimeAuthoritySession(): RealtimeAuthoritySe
                     .distinct(),
         )
     }
+
+/** Production raw-callback seam: lookup-only resolve, then final apply under the same registry gate. */
+internal class RealtimeShellCallbackGate(
+    private val authorityProvider: RealtimeAuthorityProvider,
+    private val domainOwner: SharedRealtimeDomainEventOwner,
+) {
+    suspend fun resolveExistingGrant(
+        witness: RealtimeConnectionWitness,
+        eventServerId: String,
+    ): RealtimeGrantRecord? = authorityProvider.resolve(witness, eventServerId)
+
+    suspend fun acceptDomain(
+        witness: RealtimeConnectionWitness,
+        eventServerId: String,
+        event: build.raft.app.model.RealtimeEvent,
+        source: String,
+    ): Boolean {
+        val grant = resolveExistingGrant(witness, eventServerId) ?: return false
+        return domainOwner.accept(grant, event, source)
+    }
+
+    suspend fun acceptBackgroundUnread(
+        witness: RealtimeConnectionWitness,
+        eventServerId: String,
+        event: build.raft.app.model.RealtimeEvent,
+        source: String,
+    ): Boolean {
+        val grant = resolveExistingGrant(witness, eventServerId) ?: return false
+        return domainOwner.acceptHomeUnreadProjection(grant, event, source)
+    }
+}

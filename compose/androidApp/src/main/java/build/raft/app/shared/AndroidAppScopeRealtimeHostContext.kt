@@ -22,6 +22,8 @@ import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.data.realtime.SlockRealtimeHostContext
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
@@ -50,7 +52,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     override suspend fun connect(
         serverId: ServerId,
         accessToken: String,
-        lastSeq: Long
+        lastSeq: Long,
+        witness: RealtimeConnectionWitnessToken,
     ): DataResult<Unit> {
         client.connect(
             RealtimeConnectRequest(
@@ -59,7 +62,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                         token = accessToken,
                         serverId = serverId
                     ),
-                lastSeq = lastSeq
+                lastSeq = lastSeq,
+                witness = witness,
             )
         )
         return DataResult.Content(Unit)
@@ -76,9 +80,11 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
         repository.observeEvents(listener)
 
-    override fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription =
-        client.observeRawEvents { eventName, rawPayload ->
-            listener(eventName, rawPayload.toRealtimeRawPayloadString())
+    override fun observeRawEvents(
+        listener: (context: RealtimeSocketConnectionContext, eventName: String, rawPayload: String) -> Unit
+    ): RealtimeSubscription =
+        client.observeRawEvents { context, eventName, rawPayload ->
+            listener(context, eventName, rawPayload.toRealtimeRawPayloadString())
         }
 
     override fun log(message: String) {
@@ -87,12 +93,13 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
     override fun fanOutRawRealtimeEvent(
         serverId: ServerId,
+        witness: RealtimeConnectionWitnessToken,
         eventName: String,
         rawPayload: String
     ) {
         postAndroidAppScopeEvent(
             eventName = SlockRealtimeNotifyContract.EventName,
-            eventData = realtimeNotifyPayload(serverId, eventName, rawPayload)
+            eventData = realtimeNotifyPayload(serverId, witness, eventName, rawPayload)
         )
     }
 
@@ -178,9 +185,18 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
             SlockRealtimeAppScopePolicy.backgroundUnreadNotificationConversationKind(message)
 
-        private fun realtimeNotifyPayload(serverId: ServerId, eventName: String, rawPayload: Any?): JSONObject =
+        private fun realtimeNotifyPayload(
+            serverId: ServerId,
+            witness: RealtimeConnectionWitnessToken,
+            eventName: String,
+            rawPayload: Any?,
+        ): JSONObject =
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyServerId, serverId.value)
+                .put(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
+                .put(SlockRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
+                .put(SlockRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
+                .put(SlockRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
                 .put(SlockRealtimeNotifyContract.KeyEventName, eventName)
                 .put(SlockRealtimeNotifyContract.KeyRawPayload, rawPayload.toRealtimeRawPayloadString())
 

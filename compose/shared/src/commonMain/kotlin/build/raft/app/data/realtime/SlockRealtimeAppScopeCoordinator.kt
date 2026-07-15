@@ -15,16 +15,28 @@ import build.raft.app.model.ServerId
 interface SlockRealtimeAppScopeConnection {
     val state: RealtimeConnectionState
 
-    suspend fun connect(serverId: ServerId, accessToken: String, lastSeq: Long): DataResult<Unit>
+    suspend fun connect(
+        serverId: ServerId,
+        accessToken: String,
+        lastSeq: Long,
+        witness: RealtimeConnectionWitnessToken,
+    ): DataResult<Unit>
     fun disconnect()
     fun emitRoomCommand(eventName: String, payload: String, force: Boolean = false)
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
-    fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription
+    fun observeRawEvents(
+        listener: (context: RealtimeSocketConnectionContext, eventName: String, rawPayload: String) -> Unit
+    ): RealtimeSubscription
 }
 
 interface SlockRealtimeAppScopeSink {
     fun log(message: String)
-    fun fanOutRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: String)
+    fun fanOutRawRealtimeEvent(
+        serverId: ServerId,
+        witness: RealtimeConnectionWitnessToken,
+        eventName: String,
+        rawPayload: String,
+    )
     suspend fun maybePostBackgroundUnreadNotification(
         serverId: ServerId,
         event: NotificationPushReceived,
@@ -441,7 +453,8 @@ class SlockRealtimeAppScopeCoordinator(
         serverId: ServerId,
         accessToken: String,
         requestedLastSeq: Long,
-        forceReconnect: Boolean
+        forceReconnect: Boolean,
+        witness: RealtimeConnectionWitnessToken,
     ): DataResult<Unit> {
         val decision =
             engine.connectDecision(
@@ -459,7 +472,8 @@ class SlockRealtimeAppScopeCoordinator(
             connection.connect(
                 serverId = serverId,
                 accessToken = accessToken,
-                lastSeq = decision.resumeSeq
+                lastSeq = decision.resumeSeq,
+                witness = witness,
             )
         sink.log(
             "connect_result serverId=${serverId.value} result=${result::class.simpleName} " +
@@ -556,17 +570,19 @@ class SlockRealtimeAppScopeCoordinator(
         }
     }
 
-    fun onRawEvent(eventName: String, rawPayload: String) {
+    fun onRawEvent(
+        context: RealtimeSocketConnectionContext,
+        eventName: String,
+        rawPayload: String,
+    ) {
         val decision = engine.onRawEvent(eventName, rawPayload)
         if (decision.shouldFanOut) {
-            val currentServerId = decision.serverId
-            if (currentServerId != null) {
-                sink.fanOutRawRealtimeEvent(
-                    serverId = currentServerId,
-                    eventName = decision.eventName,
-                    rawPayload = decision.rawPayload
-                )
-            }
+            sink.fanOutRawRealtimeEvent(
+                serverId = context.serverId,
+                witness = context.witness,
+                eventName = decision.eventName,
+                rawPayload = decision.rawPayload
+            )
         }
         if (decision.logMessage.isNotEmpty()) sink.log(decision.logMessage)
     }
@@ -584,9 +600,9 @@ class SlockRealtimeAppScopeRuntime(
             }
         }
     private val rawEventSubscription: RealtimeSubscription =
-        connection.observeRawEvents { eventName, rawPayload ->
+        connection.observeRawEvents { context, eventName, rawPayload ->
             dispatch {
-                coordinator.onRawEvent(eventName, rawPayload)
+                coordinator.onRawEvent(context, eventName, rawPayload)
             }
         }
 
@@ -617,13 +633,15 @@ class SlockRealtimeAppScopeRuntime(
         serverId: ServerId,
         accessToken: String,
         requestedLastSeq: Long,
-        forceReconnect: Boolean
+        forceReconnect: Boolean,
+        witness: RealtimeConnectionWitnessToken,
     ): DataResult<Unit> =
         coordinator.connect(
             serverId = serverId,
             accessToken = accessToken,
             requestedLastSeq = requestedLastSeq,
-            forceReconnect = forceReconnect
+            forceReconnect = forceReconnect,
+            witness = witness,
         )
 
     fun disconnectForSessionEnd(reason: String): Boolean =

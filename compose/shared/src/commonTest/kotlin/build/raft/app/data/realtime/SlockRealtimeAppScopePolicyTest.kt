@@ -110,10 +110,10 @@ class SlockRealtimeAppScopePolicyTest {
         val connection = FakeAppScopeConnection()
         val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
 
-        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 7, forceReconnect = false)
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 7, forceReconnect = false, witness = witness())
         coordinator.onMappedEvent(MessageNew(message(seq = 42)))
-        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = false)
-        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = true)
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = false, witness = witness())
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = true, witness = witness())
 
         assertEquals(listOf(7L, 0L), connection.connectedLastSeqs)
     }
@@ -124,10 +124,11 @@ class SlockRealtimeAppScopePolicyTest {
         val sink = FakeAppScopeSink()
         val coordinator = SlockRealtimeAppScopeCoordinator(connection, sink)
 
-        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false)
+        val context = RealtimeSocketConnectionContext(ServerId("server-1"), witness())
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false, witness = context.witness)
         coordinator.onMappedEvent(DirectMessageCreated(ChannelId("dm-1")))
-        coordinator.onRawEvent(RealtimeSocketEvents.Heartbeat, """{"seq":43}""")
-        coordinator.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
+        coordinator.onRawEvent(context, RealtimeSocketEvents.Heartbeat, """{"seq":43}""")
+        coordinator.onRawEvent(context, RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
 
         assertEquals(listOf(RealtimeSocketEvents.JoinChannel to "dm-1"), connection.roomCommands)
         assertEquals(listOf(RealtimeSocketEvents.Heartbeat, RealtimeSocketEvents.MessageNew), sink.fanOutEventNames)
@@ -139,7 +140,7 @@ class SlockRealtimeAppScopePolicyTest {
         val enhancedNotifyBus = FakeEnhancedNotifyBus()
         val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink(), enhancedNotifyBus)
 
-        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false)
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false, witness = witness())
 
         enhancedNotifyBus.emitRoomCommand(
             action = SlockRealtimeNotifyContract.ActionJoinChannel,
@@ -350,7 +351,8 @@ class SlockRealtimeAppScopePolicyTest {
         override suspend fun connect(
             serverId: ServerId,
             accessToken: String,
-            lastSeq: Long
+            lastSeq: Long,
+            witness: RealtimeConnectionWitnessToken,
         ): DataResult<Unit> {
             connectedLastSeqs += lastSeq
             state = RealtimeConnectionState.Connected
@@ -368,7 +370,9 @@ class SlockRealtimeAppScopePolicyTest {
         override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
             RealtimeSubscription { }
 
-        override fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription =
+        override fun observeRawEvents(
+            listener: (RealtimeSocketConnectionContext, String, String) -> Unit
+        ): RealtimeSubscription =
             RealtimeSubscription { }
     }
 
@@ -379,6 +383,7 @@ class SlockRealtimeAppScopePolicyTest {
 
         override fun fanOutRawRealtimeEvent(
             serverId: ServerId,
+            witness: RealtimeConnectionWitnessToken,
             eventName: String,
             rawPayload: String
         ) {
@@ -391,6 +396,14 @@ class SlockRealtimeAppScopePolicyTest {
             isAppInForeground: Boolean
         ) = Unit
     }
+
+    private fun witness(): RealtimeConnectionWitnessToken =
+        RealtimeConnectionWitnessToken(
+            scopeLeaseId = "lease-1",
+            principalId = "member-1",
+            authGeneration = 1L,
+            connectionFamilyId = "family-1",
+        )
     @Test
     fun rejoinChannelForcesEmitWhileKeepingJoinedSetConsistent() {
         val engine = SlockRealtimeAppScopeEngine()

@@ -21,6 +21,7 @@ import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
 import build.raft.app.data.realtime.bootstrapRealtime
@@ -44,6 +45,7 @@ internal object AndroidAppScopeRealtimeOwner {
 
     private var realtimeClient: SocketIoRealtimeClient? = null
     private var realtimeRuntime: SlockRealtimeAppScopeRuntime? = null
+    private var realtimeConnectionWitness: RealtimeConnectionWitnessToken? = null
     private var realtimeConnectJob: Job? = null
     private var multiSessionRegistry: AndroidRealtimeSessionRegistry<MultiSessionRuntime>? = null
     private val visibleShellOwners = AndroidVisibleShellOwners()
@@ -152,10 +154,13 @@ internal object AndroidAppScopeRealtimeOwner {
                         "backgroundMs=${shownAtMillis - (hiddenAtMillis ?: shownAtMillis)} " +
                         "serverId=${ownedSession.serverId.value}"
                 )
-                connectFromStoredSession(
+                val witness = realtimeConnectionWitness ?: return
+                reconnectOwnedSession(
                     context = context.applicationContext,
-                    requestedLastSeq = runtime.lastSeq,
-                    forceReconnect = true
+                    serverId = ownedSession.serverId,
+                    accessToken = ownedSession.accessToken,
+                    state = RealtimeConnectionState.Disconnected,
+                    witness = witness,
                 )
                 return
             }
@@ -248,95 +253,23 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
-    fun connectFromStoredSession(
-        context: Context,
-        requestedLastSeq: Long = 0L
-    ) {
-        connectFromStoredSession(
-            context = context,
-            requestedLastSeq = requestedLastSeq,
-            missingSelectedServerRetryCount = 0,
-            forceReconnect = false
-        )
-    }
-
-    private fun connectFromStoredSession(
-        context: Context,
-        requestedLastSeq: Long,
-        missingSelectedServerRetryCount: Int = 0,
-        forceReconnect: Boolean = false
-    ) {
-        val appContext = context.applicationContext
-        val runtime = bootstrapRealtime(appContext)
-        val sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
-        val tokenProvider = appContext.sharedRealtimeAuthTokenProvider(sessionStore)
-        realtimeConnectJob?.cancel()
-        realtimeConnectJob =
-            scope.launch {
-                try {
-                    var session =
-                        // Foreground/lifecycle connect jobs are replaceable. Connect with the
-                        // latest committed session; Socket.IO auth connect_error may trigger
-                        // only the process-owned shared refresh coordinator.
-                        tokenProvider.currentSession()
-                    var serverId = session?.currentServerId?.let(::ServerId)
-                    if (serverId == null) {
-                        SlockAppLog.w(
-                            LOG_TAG,
-                            "connect_skip reason=missing_selected_server retry=$missingSelectedServerRetryCount"
-                        )
-                        if (missingSelectedServerRetryCount < 1) {
-                            delay(1500L)
-                            session =
-                                tokenProvider.currentSession()
-                            serverId = session?.currentServerId?.let(::ServerId)
-                            if (serverId == null) {
-                                SlockAppLog.w(
-                                    LOG_TAG,
-                                    "connect_skip reason=missing_selected_server retry=${missingSelectedServerRetryCount + 1}"
-                                )
-                            }
-                        }
-                        if (serverId == null) return@launch
-                    }
-                    val accessToken =
-                        session?.accessToken?.takeIf { it.isNotBlank() }
-                            ?: run {
-                                SlockAppLog.w(
-                                    LOG_TAG,
-                                    "connect_skip reason=missing_access_token serverId=${serverId.value}"
-                                )
-                                return@launch
-                            }
-                    val result =
-                        runtime.connect(
-                            serverId = serverId,
-                            accessToken = accessToken,
-                            requestedLastSeq = requestedLastSeq,
-                            forceReconnect = forceReconnect
-                        )
-                } finally {
-                    realtimeConnectJob = null
-                }
-            }
-    }
-
     fun connectFromSharedRequest(
         context: Context,
         serverId: ServerId,
         accessToken: String,
         shellInstanceId: String,
         requestedLastSeq: Long,
-        forceReconnect: Boolean
+        forceReconnect: Boolean,
+        witness: RealtimeConnectionWitnessToken,
     ) {
         if (serverId.value.isBlank() || accessToken.isBlank()) {
             SlockAppLog.w(
                 LOG_TAG,
                 "connect_skip reason=blank_request serverId=${serverId.value} has_access_token=${accessToken.isNotBlank()}"
             )
-            connectFromStoredSession(context, requestedLastSeq)
             return
         }
+        realtimeConnectionWitness = witness
         SlockAppLog.w(
             LOG_TAG,
             "connect_request source=shared serverId=${serverId.value} shellInstanceId=$shellInstanceId " +
@@ -349,7 +282,8 @@ internal object AndroidAppScopeRealtimeOwner {
                 accessToken = accessToken,
                 shellInstanceId = shellInstanceId,
                 requestedLastSeq = requestedLastSeq,
-                forceReconnect = forceReconnect
+                forceReconnect = forceReconnect,
+                witness = witness,
             )
             return
         }
@@ -363,7 +297,8 @@ internal object AndroidAppScopeRealtimeOwner {
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
-                            forceReconnect = forceReconnect
+                            forceReconnect = forceReconnect,
+                            witness = witness,
                         )
                 } finally {
                     realtimeConnectJob = null
@@ -446,7 +381,6 @@ internal object AndroidAppScopeRealtimeOwner {
                 LOG_TAG,
                 "realtime_health_check_missing_owner_session trigger=$reason"
             )
-            connectFromStoredSession(context, runtime?.lastSeq ?: 0L)
             return
         }
         val serverId = ownedSession.serverId
@@ -459,7 +393,10 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         when (val state = client.state) {
             RealtimeConnectionState.Disconnected,
-            is RealtimeConnectionState.Failed -> reconnectOwnedSession(context, serverId, ownedSession.accessToken, state)
+            is RealtimeConnectionState.Failed -> {
+                val witness = realtimeConnectionWitness ?: return
+                reconnectOwnedSession(context, serverId, ownedSession.accessToken, state, witness)
+            }
             RealtimeConnectionState.Connected,
             RealtimeConnectionState.RoomsJoined -> {
                 SlockAppLog.d(
@@ -495,6 +432,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 registry.disconnectAll(cleanReason)
                 multiSessionRegistry = null
                 backgroundKeepAliveEnabled = false
+                realtimeConnectionWitness = null
                 return
             }
             val targetServerId = serverId ?: return
@@ -526,6 +464,7 @@ internal object AndroidAppScopeRealtimeOwner {
             realtimeClient = null
             realtimeRuntime = null
         }
+        realtimeConnectionWitness = null
         backgroundKeepAliveEnabled = false
     }
 
@@ -554,7 +493,8 @@ internal object AndroidAppScopeRealtimeOwner {
         accessToken: String,
         shellInstanceId: String,
         requestedLastSeq: Long,
-        forceReconnect: Boolean
+        forceReconnect: Boolean,
+        witness: RealtimeConnectionWitnessToken,
     ) {
         val registry = multiSessionRegistry(context)
         registry.releaseOwnerFromOtherServers(
@@ -563,6 +503,7 @@ internal object AndroidAppScopeRealtimeOwner {
             mode = AndroidRealtimeOwnerReleaseMode.ReplaceGrace
         )
         val holder = registry.acquire(serverId, shellInstanceId)
+        holder.witness = witness
         holder.connectJob?.cancel()
         holder.connectJob =
             scope.launch {
@@ -572,7 +513,8 @@ internal object AndroidAppScopeRealtimeOwner {
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = requestedLastSeq,
-                            forceReconnect = forceReconnect
+                            forceReconnect = forceReconnect,
+                            witness = witness,
                         )
                     SlockAppLog.d(
                         LOG_TAG,
@@ -643,6 +585,7 @@ internal object AndroidAppScopeRealtimeOwner {
 
     private fun reconnectMultiSession(holder: MultiSessionRuntime, reason: String) {
         val ownedSession = holder.runtime.ownedSession() ?: return
+        val witness = holder.witness ?: return
         holder.connectJob?.cancel()
         holder.connectJob =
             scope.launch {
@@ -652,7 +595,8 @@ internal object AndroidAppScopeRealtimeOwner {
                             serverId = ownedSession.serverId,
                             accessToken = ownedSession.accessToken,
                             requestedLastSeq = holder.runtime.lastSeq,
-                            forceReconnect = true
+                            forceReconnect = true,
+                            witness = witness,
                         )
                     SlockAppLog.d(
                         LOG_TAG,
@@ -688,7 +632,8 @@ internal object AndroidAppScopeRealtimeOwner {
         context: Context,
         serverId: ServerId,
         accessToken: String,
-        state: RealtimeConnectionState
+        state: RealtimeConnectionState,
+        witness: RealtimeConnectionWitnessToken,
     ) {
         val runtime = bootstrapRealtime(context.applicationContext)
         realtimeConnectJob?.cancel()
@@ -700,7 +645,8 @@ internal object AndroidAppScopeRealtimeOwner {
                             serverId = serverId,
                             accessToken = accessToken,
                             requestedLastSeq = runtime.lastSeq,
-                            forceReconnect = true
+                            forceReconnect = true,
+                            witness = witness,
                         )
                     SlockAppLog.d(
                         LOG_TAG,
@@ -797,7 +743,8 @@ internal object AndroidAppScopeRealtimeOwner {
         val serverId: ServerId,
         val client: SocketIoRealtimeClient,
         val runtime: SlockRealtimeAppScopeRuntime,
-        var connectJob: Job? = null
+        var connectJob: Job? = null,
+        var witness: RealtimeConnectionWitnessToken? = null,
     )
 
     private val ProcessWideDisconnectReasons =

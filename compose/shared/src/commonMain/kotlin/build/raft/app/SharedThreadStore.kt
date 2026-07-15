@@ -5046,6 +5046,10 @@ internal class SharedThreadViewModel(
         store.dispatch(intent)
     }
 
+    suspend fun accept(intent: SharedThreadIntent) {
+        store.accept(intent)
+    }
+
     override fun onCleared() {
         if (storeDelegate.isInitialized()) {
             store.clear()

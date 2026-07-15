@@ -95,6 +95,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.model.MemberKind
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
@@ -1279,16 +1280,27 @@ open class SlockKuiklyActivity :
         accessToken: String,
         shellInstanceId: String = "",
         lastSeq: Long,
-        forceReconnect: Boolean = false
+        forceReconnect: Boolean = false,
+        witness: RealtimeConnectionWitnessToken,
     ) {
-        if (serverId.isBlank() || accessToken.isBlank()) return
+        if (
+            serverId.isBlank() ||
+            accessToken.isBlank() ||
+            witness.scopeLeaseId.isBlank() ||
+            witness.principalId.isBlank() ||
+            witness.authGeneration <= 0L ||
+            witness.connectionFamilyId.isBlank()
+        ) {
+            return
+        }
         AndroidAppScopeRealtimeOwner.connectFromSharedRequest(
             context = applicationContext,
             serverId = ServerId(serverId),
             accessToken = accessToken,
             shellInstanceId = shellInstanceId,
             requestedLastSeq = lastSeq,
-            forceReconnect = forceReconnect
+            forceReconnect = forceReconnect,
+            witness = witness,
         )
     }
 
@@ -2469,7 +2481,14 @@ internal class SlockKuiklyBridgeModule(
                             accessToken = request.optString("accessToken"),
                             shellInstanceId = request.optString("shellInstanceId"),
                             lastSeq = request.optLong("lastSeq", 0L),
-                            forceReconnect = request.optBoolean("forceReconnect", false)
+                            forceReconnect = request.optBoolean("forceReconnect", false),
+                            witness =
+                                RealtimeConnectionWitnessToken(
+                                    scopeLeaseId = request.optString("authorityScopeLeaseId"),
+                                    principalId = request.optString("authorityPrincipalId"),
+                                    authGeneration = request.optLong("authorityAuthGeneration", 0L),
+                                    connectionFamilyId = request.optString("authorityConnectionFamilyId"),
+                                )
                     )
             "disconnect" ->
                     (activity as? SlockKuiklyActivity)?.requestRealtimeDisconnect(

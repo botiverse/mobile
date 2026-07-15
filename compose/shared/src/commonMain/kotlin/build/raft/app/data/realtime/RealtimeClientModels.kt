@@ -8,9 +8,30 @@ data class RealtimeAuth(
     val serverId: ServerId
 )
 
+data class RealtimeConnectionWitnessToken(
+    val scopeLeaseId: String,
+    val principalId: String,
+    val authGeneration: Long,
+    val connectionFamilyId: String,
+)
+
+val UnboundRealtimeConnectionWitnessToken =
+    RealtimeConnectionWitnessToken(
+        scopeLeaseId = "",
+        principalId = "",
+        authGeneration = 0L,
+        connectionFamilyId = "",
+    )
+
+data class RealtimeSocketConnectionContext(
+    val serverId: ServerId,
+    val witness: RealtimeConnectionWitnessToken,
+)
+
 data class RealtimeConnectRequest(
     val auth: RealtimeAuth,
-    val lastSeq: Long = 0
+    val lastSeq: Long = 0,
+    val witness: RealtimeConnectionWitnessToken = UnboundRealtimeConnectionWitnessToken,
 )
 
 data class RealtimeChannelGap(

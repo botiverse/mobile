@@ -19,7 +19,9 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ChannelId
@@ -38,6 +40,10 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -92,7 +98,7 @@ class RealtimeRepositoryTest {
         val logs = mutableListOf<String>()
         val rawEvents = mutableListOf<String>()
         val client = SocketIoRealtimeClient(transport = transport, logger = logs::add)
-        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+        client.observeRawEvents { _, eventName, _ -> rawEvents += eventName }
 
         client.connect(
             RealtimeConnectRequest(
@@ -138,6 +144,117 @@ class RealtimeRepositoryTest {
         assertEquals(1, intervalLogs.count { it.startsWith("event_success_summary ") })
         assertTrue(intervalLogs.single { it.startsWith("event_success_summary ") }.contains("count=2"))
     }
+
+    @Test
+    fun queuedOldListenerWritesNothingAfterSuccessorReplacementReturns() {
+        val fence = RealtimeSocketGenerationFence()
+        val context = realtimeSocketContext()
+        lateinit var firstGeneration: RealtimeSocketGeneration
+        var oldDeliveries = 0
+        var newDeliveries = 0
+
+        fence.replace(context) { firstGeneration = it }
+        fence.replace(context) { successorGeneration ->
+            assertTrue(fence.runIfCurrent(successorGeneration) { newDeliveries += 1 })
+        }
+        assertFalse(fence.runIfCurrent(firstGeneration) { oldDeliveries += 1 })
+
+        assertEquals(0, oldDeliveries)
+        assertEquals(1, newDeliveries)
+    }
+
+    @Test
+    fun identicalGenerationFieldsStillRequireExactCurrentTokenIdentity() {
+        val fence = RealtimeSocketGenerationFence(generationIdForOracle = { 1L })
+        val context = realtimeSocketContext()
+        val generations = mutableListOf<RealtimeSocketGeneration>()
+        fence.replace(context) { generations += it }
+        fence.replace(context) { generations += it }
+        assertEquals(2, generations.size)
+        assertEquals(generations[0].generationId, generations[1].generationId)
+        assertEquals(generations[0].context, generations[1].context)
+        assertFalse(generations[0] === generations[1])
+        var downstreamDeliveries = 0
+
+        val retainedListeners =
+            generations.map { generation ->
+                {
+                    fence.runIfCurrent(generation) {
+                        downstreamDeliveries += 1
+                    }
+                }
+            }
+        retainedListeners.forEach { it() }
+
+        assertEquals(1, downstreamDeliveries)
+    }
+
+    @Test
+    fun reconnectCannotPublishBetweenOldListenerCheckAndDelivery() {
+        val oldListenerPassedCurrentCheck = CountDownLatch(1)
+        val releaseOldListener = CountDownLatch(1)
+        val fence =
+            RealtimeSocketGenerationFence(
+                beforeCurrentDelivery = {
+                    oldListenerPassedCurrentCheck.countDown()
+                    assertTrue(releaseOldListener.await(5, TimeUnit.SECONDS))
+                }
+            )
+        val context = realtimeSocketContext()
+        lateinit var oldGeneration: RealtimeSocketGeneration
+        fence.replace(context) { oldGeneration = it }
+        val successorAttempted = CountDownLatch(1)
+        val successorReturned = CountDownLatch(1)
+        var downstreamDeliveries = 0
+        val eventOrder = Collections.synchronizedList(mutableListOf<String>())
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val oldDelivery =
+                executor.submit {
+                    fence.runIfCurrent(oldGeneration) {
+                        downstreamDeliveries += 1
+                        eventOrder += "old-write"
+                    }
+                }
+            assertTrue(oldListenerPassedCurrentCheck.await(5, TimeUnit.SECONDS))
+            val successorConnect =
+                executor.submit {
+                    successorAttempted.countDown()
+                    fence.replace(context) {}
+                    eventOrder += "successor-return"
+                    successorReturned.countDown()
+                }
+
+            assertTrue(successorAttempted.await(5, TimeUnit.SECONDS))
+            assertFalse(
+                "successor return must wait for the old delivery that already owns the linearization point",
+                successorReturned.await(100, TimeUnit.MILLISECONDS),
+            )
+            releaseOldListener.countDown()
+            oldDelivery.get(5, TimeUnit.SECONDS)
+            successorConnect.get(5, TimeUnit.SECONDS)
+
+            assertEquals(listOf("old-write", "successor-return"), eventOrder.toList())
+            assertEquals(1, downstreamDeliveries)
+            assertFalse(fence.runIfCurrent(oldGeneration) { downstreamDeliveries += 1 })
+            assertEquals(1, downstreamDeliveries)
+        } finally {
+            releaseOldListener.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    private fun realtimeSocketContext(): RealtimeSocketConnectionContext =
+        RealtimeSocketConnectionContext(
+            serverId = ServerId("server-1"),
+            witness =
+                RealtimeConnectionWitnessToken(
+                    scopeLeaseId = "lease-1",
+                    principalId = "user-1",
+                    authGeneration = 1,
+                    connectionFamilyId = "family-1",
+                ),
+        )
 
     @Test
     fun repositoryInjectsSessionTokenAndSelectedServerIntoRealtimeClient() {
@@ -491,7 +608,7 @@ class RealtimeRepositoryTest {
         val events = mutableListOf<RealtimeEvent>()
         val rawEvents = mutableListOf<String>()
         client.observeEvents { events += it }
-        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+        client.observeRawEvents { _, eventName, _ -> rawEvents += eventName }
 
         client.connect(
             RealtimeConnectRequest(
@@ -510,7 +627,7 @@ class RealtimeRepositoryTest {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
         val rawEvents = mutableListOf<String>()
-        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+        client.observeRawEvents { _, eventName, _ -> rawEvents += eventName }
 
         client.connect(
             RealtimeConnectRequest(
@@ -809,6 +926,427 @@ class RealtimeRepositoryTest {
 
         assertEquals(firstConnectCount + 1, transport.connectCount)
         assertEquals("sample-access", transport.lastAuth["token"])
+    }
+
+    @Test
+    fun successDeliveryKeepsProducingConnectionStateAheadOfSuccessorConnect() {
+        val transport = LinearizedGenerationFakeTransport()
+        val deliveryOwnsLock = CountDownLatch(1)
+        val releaseDelivery = CountDownLatch(1)
+        val successorAttempted = CountDownLatch(1)
+        val successorReturned = CountDownLatch(1)
+        val stateReadReturned = CountDownLatch(1)
+        val eventOrder = Collections.synchronizedList(mutableListOf<String>())
+        val rawContexts = Collections.synchronizedList(mutableListOf<RealtimeSocketConnectionContext>())
+        val executor = Executors.newFixedThreadPool(3)
+        val client = SocketIoRealtimeClient(transport)
+        client.observeEvents { eventOrder += "A-delivery" }
+        client.observeRawEvents { context, _, _ ->
+            rawContexts += context
+            eventOrder += "A-raw"
+        }
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
+
+        try {
+            client.connect(requestA)
+            val connectionA = transport.captureCurrent()
+            assertTrue(transport.deliverRetained(connectionA, RealtimeSocketEvents.Connect))
+            assertEquals(build.raft.app.data.realtime.RealtimeConnectionState.Connected, client.state)
+            transport.beforeDelivery = {
+                deliveryOwnsLock.countDown()
+                assertTrue(releaseDelivery.await(5, TimeUnit.SECONDS))
+            }
+            val oldDelivery =
+                executor.submit<Boolean> {
+                    transport.deliverRetained(
+                        connectionA,
+                        RealtimeSocketEvents.MessageNew,
+                        messagePayload(serverId = "server-A", seq = 7L),
+                    )
+                }
+            assertTrue(deliveryOwnsLock.await(5, TimeUnit.SECONDS))
+            val successorConnect =
+                executor.submit {
+                    successorAttempted.countDown()
+                    client.connect(requestB)
+                    eventOrder += "B-return"
+                    successorReturned.countDown()
+                }
+
+            assertTrue(successorAttempted.await(5, TimeUnit.SECONDS))
+            assertFalse(
+                "successor must not publish client state before the old delivery completes",
+                successorReturned.await(100, TimeUnit.MILLISECONDS),
+            )
+            val stateRead =
+                executor.submit {
+                    val observed = client.state
+                    stateReadReturned.countDown()
+                    observed
+                }
+            assertFalse(
+                "state reads must share A's monitor instead of observing B's early Connecting write",
+                stateReadReturned.await(100, TimeUnit.MILLISECONDS),
+            )
+
+            releaseDelivery.countDown()
+            assertTrue(oldDelivery.get(5, TimeUnit.SECONDS))
+            successorConnect.get(5, TimeUnit.SECONDS)
+            stateRead.get(5, TimeUnit.SECONDS)
+
+            assertEquals(listOf(requestA.toContext()), rawContexts.toList())
+            assertTrue(eventOrder.indexOf("A-delivery") < eventOrder.indexOf("B-return"))
+            assertTrue(eventOrder.indexOf("A-raw") < eventOrder.indexOf("B-return"))
+            assertEquals(requestB.toContext(), transport.currentContext())
+            val rawCountAfterReplacement = rawContexts.size
+            assertFalse(
+                transport.deliverRetained(
+                    connectionA,
+                    RealtimeSocketEvents.MessageNew,
+                    messagePayload(serverId = "server-A", seq = 8L),
+                ),
+            )
+            assertEquals(rawCountAfterReplacement, rawContexts.size)
+
+            transport.beforeDelivery = null
+            transport.clearEmitted()
+            assertTrue(
+                transport.deliverRetained(
+                    transport.captureCurrent(),
+                    RealtimeSocketEvents.RoomsJoined,
+                ),
+            )
+            assertFalse(
+                "A cursor must finish before B installs its zero cursor",
+                transport.emittedSnapshot().any { it.first == RealtimeSocketEvents.SyncResume },
+            )
+        } finally {
+            releaseDelivery.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun ignoredDeliveryKeepsProducingWitnessAheadOfSameServerSuccessor() {
+        val transport = LinearizedGenerationFakeTransport()
+        val deliveryOwnsLock = CountDownLatch(1)
+        val releaseDelivery = CountDownLatch(1)
+        val successorAttempted = CountDownLatch(1)
+        val successorReturned = CountDownLatch(1)
+        val stateReadReturned = CountDownLatch(1)
+        val rawContexts = Collections.synchronizedList(mutableListOf<RealtimeSocketConnectionContext>())
+        val eventOrder = Collections.synchronizedList(mutableListOf<String>())
+        val executor = Executors.newFixedThreadPool(3)
+        val client = SocketIoRealtimeClient(transport)
+        client.observeRawEvents { context, _, _ ->
+            rawContexts += context
+            eventOrder += "A-raw"
+        }
+        val requestA = realtimeConnectRequest(serverId = "server-1", familyId = "family-A")
+        val requestB = realtimeConnectRequest(serverId = "server-1", familyId = "family-B")
+
+        try {
+            client.connect(requestA)
+            val connectionA = transport.captureCurrent()
+            assertTrue(transport.deliverRetained(connectionA, RealtimeSocketEvents.Connect))
+            transport.beforeDelivery = {
+                deliveryOwnsLock.countDown()
+                assertTrue(releaseDelivery.await(5, TimeUnit.SECONDS))
+            }
+            val oldDelivery =
+                executor.submit<Boolean> {
+                    transport.deliverRetained(
+                        connectionA,
+                        RealtimeSocketEvents.MessageNew,
+                        mapOf("serverId" to "server-1"),
+                    )
+                }
+            assertTrue(deliveryOwnsLock.await(5, TimeUnit.SECONDS))
+            val successorConnect =
+                executor.submit {
+                    successorAttempted.countDown()
+                    client.connect(requestB)
+                    eventOrder += "B-return"
+                    successorReturned.countDown()
+                }
+
+            assertTrue(successorAttempted.await(5, TimeUnit.SECONDS))
+            assertFalse(successorReturned.await(100, TimeUnit.MILLISECONDS))
+            val stateRead =
+                executor.submit {
+                    val observed = client.state
+                    stateReadReturned.countDown()
+                    observed
+                }
+            assertFalse(stateReadReturned.await(100, TimeUnit.MILLISECONDS))
+
+            releaseDelivery.countDown()
+            assertTrue(oldDelivery.get(5, TimeUnit.SECONDS))
+            successorConnect.get(5, TimeUnit.SECONDS)
+            stateRead.get(5, TimeUnit.SECONDS)
+
+            assertEquals(listOf(requestA.toContext()), rawContexts.toList())
+            assertTrue(eventOrder.indexOf("A-raw") < eventOrder.indexOf("B-return"))
+            assertEquals(requestB.toContext(), transport.currentContext())
+            val rawCountAfterReplacement = rawContexts.size
+            assertFalse(
+                transport.deliverRetained(
+                    connectionA,
+                    RealtimeSocketEvents.MessageNew,
+                    mapOf("serverId" to "server-1"),
+                ),
+            )
+            assertEquals(rawCountAfterReplacement, rawContexts.size)
+        } finally {
+            releaseDelivery.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun heartbeatDecisionAndReconnectLinearizeAheadOfSuccessorConnect() {
+        var now = 1_000L
+        val transport = LinearizedGenerationFakeTransport()
+        val heartbeatDecisionReached = CountDownLatch(1)
+        val releaseHeartbeat = CountDownLatch(1)
+        val successorAttempted = CountDownLatch(1)
+        val successorReturned = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        val client =
+            SocketIoRealtimeClient(
+                transport = transport,
+                clockMillis = { now },
+                beforeHeartbeatReconnect = {
+                    heartbeatDecisionReached.countDown()
+                    assertTrue(releaseHeartbeat.await(5, TimeUnit.SECONDS))
+                },
+            )
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
+
+        try {
+            client.connect(requestA)
+            val connectionA = transport.captureCurrent()
+            transport.deliverRetained(connectionA, RealtimeSocketEvents.Connect)
+            transport.deliverRetained(
+                connectionA,
+                RealtimeSocketEvents.Heartbeat,
+                mapOf("serverId" to "server-A", "seq" to 0L),
+            )
+            now += 121_000L
+            val heartbeatReconnect =
+                executor.submit {
+                    assertTrue(client.checkHeartbeatSilence(now))
+                }
+            assertTrue(heartbeatDecisionReached.await(5, TimeUnit.SECONDS))
+            val successorConnect =
+                executor.submit {
+                    successorAttempted.countDown()
+                    client.connect(requestB)
+                    successorReturned.countDown()
+                }
+
+            assertTrue(successorAttempted.await(5, TimeUnit.SECONDS))
+            assertFalse(
+                "B must wait for the watchdog's complete A decision and replace",
+                successorReturned.await(100, TimeUnit.MILLISECONDS),
+            )
+            releaseHeartbeat.countDown()
+            heartbeatReconnect.get(5, TimeUnit.SECONDS)
+            successorConnect.get(5, TimeUnit.SECONDS)
+
+            assertEquals(requestB.toContext(), transport.currentContext())
+            assertEquals(
+                listOf(requestA.toContext(), requestA.toContext(), requestB.toContext()),
+                transport.connectHistorySnapshot(),
+            )
+        } finally {
+            releaseHeartbeat.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun successorConnectLinearizesBeforeLaterHeartbeatDecision() {
+        var now = 1_000L
+        val transport = LinearizedGenerationFakeTransport()
+        val client = SocketIoRealtimeClient(transport = transport, clockMillis = { now })
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
+
+        client.connect(requestA)
+        client.connect(requestB)
+        val connectionB = transport.captureCurrent()
+        transport.deliverRetained(connectionB, RealtimeSocketEvents.Connect)
+        transport.deliverRetained(
+            connectionB,
+            RealtimeSocketEvents.Heartbeat,
+            mapOf("serverId" to "server-B", "seq" to 0L),
+        )
+        now += 1_000L
+        val connectCountBeforeWatchdog = transport.connectHistorySnapshot().size
+
+        assertFalse(client.checkHeartbeatSilence(now))
+
+        assertEquals(connectCountBeforeWatchdog, transport.connectHistorySnapshot().size)
+        assertEquals(requestB.toContext(), transport.currentContext())
+        assertEquals(build.raft.app.data.realtime.RealtimeConnectionState.Connected, client.state)
+    }
+
+    @Test
+    fun authRefreshUpdatesCapturedServerWhilePreservingConnectionWitness() {
+        val transport = LinearizedGenerationFakeTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        client.setAuthRefreshProvider {
+            RealtimeAuth(token = "token-B", serverId = ServerId("server-B"))
+        }
+
+        client.connect(requestA)
+        val connectionA = transport.captureCurrent()
+        assertTrue(
+            transport.deliverRetained(
+                connectionA,
+                RealtimeSocketEvents.ConnectError,
+                "invalid token",
+            ),
+        )
+
+        assertEquals(
+            RealtimeSocketConnectionContext(
+                serverId = ServerId("server-B"),
+                witness = requestA.witness,
+            ),
+            transport.currentContext(),
+        )
+    }
+
+    @Test
+    fun cancelledWatchdogTaskCannotReconnectSuccessorSession() {
+        var now = 1_000L
+        val scheduledTicks = mutableListOf<() -> Unit>()
+        val transport = LinearizedGenerationFakeTransport()
+        val client =
+            SocketIoRealtimeClient(
+                transport = transport,
+                clockMillis = { now },
+                watchdogScheduler = { tick ->
+                    scheduledTicks += tick
+                    { /* A cancelled task may already be queued. */ }
+                },
+            )
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
+
+        client.connect(requestA)
+        val oldTick = scheduledTicks.single()
+        client.disconnect()
+        client.connect(requestB)
+        assertEquals(2, scheduledTicks.size)
+        val connectionB = transport.captureCurrent()
+        transport.deliverRetained(connectionB, RealtimeSocketEvents.Connect)
+        transport.deliverRetained(
+            connectionB,
+            RealtimeSocketEvents.Heartbeat,
+            mapOf("serverId" to "server-B", "seq" to 0L),
+        )
+        now += 121_000L
+        val connectCountBeforeOldTick = transport.connectHistorySnapshot().size
+
+        oldTick()
+
+        assertEquals(connectCountBeforeOldTick, transport.connectHistorySnapshot().size)
+        assertEquals(requestB.toContext(), transport.currentContext())
+        assertEquals(build.raft.app.data.realtime.RealtimeConnectionState.Connected, client.state)
+    }
+
+    @Test
+    fun disconnectWaitsForCompleteProducingConnectionDelivery() {
+        val transport = LinearizedGenerationFakeTransport()
+        val deliveryOwnsLock = CountDownLatch(1)
+        val releaseDelivery = CountDownLatch(1)
+        val disconnectAttempted = CountDownLatch(1)
+        val disconnectReturned = CountDownLatch(1)
+        val rawContexts = Collections.synchronizedList(mutableListOf<RealtimeSocketConnectionContext>())
+        val eventOrder = Collections.synchronizedList(mutableListOf<String>())
+        val executor = Executors.newFixedThreadPool(2)
+        val client = SocketIoRealtimeClient(transport)
+        client.observeRawEvents { context, _, _ ->
+            rawContexts += context
+            eventOrder += "A-raw"
+        }
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+
+        try {
+            client.connect(requestA)
+            val connectionA = transport.captureCurrent()
+            transport.deliverRetained(connectionA, RealtimeSocketEvents.Connect)
+            transport.beforeDelivery = {
+                deliveryOwnsLock.countDown()
+                assertTrue(releaseDelivery.await(5, TimeUnit.SECONDS))
+            }
+            val oldDelivery =
+                executor.submit<Boolean> {
+                    transport.deliverRetained(
+                        connectionA,
+                        RealtimeSocketEvents.MessageNew,
+                        mapOf("serverId" to "server-A"),
+                    )
+                }
+            assertTrue(deliveryOwnsLock.await(5, TimeUnit.SECONDS))
+            val disconnect =
+                executor.submit {
+                    disconnectAttempted.countDown()
+                    client.disconnect()
+                    eventOrder += "disconnect-return"
+                    disconnectReturned.countDown()
+                }
+
+            assertTrue(disconnectAttempted.await(5, TimeUnit.SECONDS))
+            assertFalse(disconnectReturned.await(100, TimeUnit.MILLISECONDS))
+            releaseDelivery.countDown()
+            assertTrue(oldDelivery.get(5, TimeUnit.SECONDS))
+            disconnect.get(5, TimeUnit.SECONDS)
+
+            assertEquals(listOf(requestA.toContext()), rawContexts.toList())
+            assertEquals(listOf("A-raw", "disconnect-return"), eventOrder.toList())
+            assertEquals(null, transport.currentContext())
+            assertFalse(
+                transport.deliverRetained(
+                    connectionA,
+                    RealtimeSocketEvents.MessageNew,
+                    mapOf("serverId" to "server-A"),
+                ),
+            )
+        } finally {
+            releaseDelivery.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun disconnectClearFirstRejectsRetainedProducingConnection() {
+        val transport = LinearizedGenerationFakeTransport()
+        val rawContexts = mutableListOf<RealtimeSocketConnectionContext>()
+        val client = SocketIoRealtimeClient(transport)
+        client.observeRawEvents { context, _, _ -> rawContexts += context }
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+
+        client.connect(requestA)
+        val connectionA = transport.captureCurrent()
+        client.disconnect()
+
+        assertEquals(null, transport.currentContext())
+        assertFalse(
+            transport.deliverRetained(
+                connectionA,
+                RealtimeSocketEvents.MessageNew,
+                mapOf("serverId" to "server-A"),
+            ),
+        )
+        assertTrue(rawContexts.isEmpty())
+        assertEquals(build.raft.app.data.realtime.RealtimeConnectionState.Disconnected, client.state)
     }
 
     @Test
@@ -1183,31 +1721,158 @@ class RealtimeRepositoryTest {
     }
 
     private class FakeRealtimeSocketTransport : RealtimeSocketTransport {
-        val handlers = mutableMapOf<String, MutableList<(Any?) -> Unit>>()
+        private val linearizationLock = Any()
+        val handlers =
+            mutableMapOf<String, MutableList<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
         var lastAuth: Map<String, String> = emptyMap()
         val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
         var connectCount = 0
+        private var currentContext: RealtimeSocketConnectionContext? = null
 
-        override fun connect(auth: Map<String, String>) {
-            connectCount += 1
-            lastAuth = auth
+        override fun <T> linearize(block: () -> T): T = synchronized(linearizationLock, block)
+
+        override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
+            linearize {
+                connectCount += 1
+                lastAuth = auth
+                currentContext = context
+            }
         }
 
-        override fun disconnect() = Unit
+        override fun disconnect() {
+            linearize { currentContext = null }
+        }
 
         override fun emit(eventName: String, payload: Map<String, Any>) {
-            emitted += eventName to payload
+            linearize { emitted += eventName to payload }
         }
 
-        override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription {
-            handlers.getOrPut(eventName) { mutableListOf() } += listener
-            return RealtimeSubscription { handlers[eventName]?.remove(listener) }
-        }
+        override fun on(
+            eventName: String,
+            listener: (RealtimeSocketConnectionContext, Any?) -> Unit,
+        ): RealtimeSubscription =
+            linearize {
+                handlers.getOrPut(eventName) { mutableListOf() } += listener
+                RealtimeSubscription {
+                    linearize { handlers[eventName]?.remove(listener) }
+                }
+            }
 
         fun receive(eventName: String, payload: Any? = null) {
-            handlers[eventName].orEmpty().forEach { it(payload) }
+            linearize {
+                val context = checkNotNull(currentContext)
+                handlers[eventName].orEmpty().forEach { it(context, payload) }
+            }
         }
     }
+
+    private data class LinearizedConnection(
+        val id: Long,
+        val context: RealtimeSocketConnectionContext,
+    )
+
+    private class LinearizedGenerationFakeTransport : RealtimeSocketTransport {
+        private val linearizationLock = Any()
+        private var nextConnectionId = 0L
+        private var current: LinearizedConnection? = null
+        private val handlers =
+            mutableMapOf<String, MutableList<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
+        private val connectHistory = mutableListOf<RealtimeSocketConnectionContext>()
+        private val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
+
+        @Volatile
+        var beforeDelivery: ((eventName: String) -> Unit)? = null
+
+        override fun <T> linearize(block: () -> T): T = synchronized(linearizationLock, block)
+
+        override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
+            linearize {
+                nextConnectionId += 1
+                current = LinearizedConnection(nextConnectionId, context)
+                connectHistory += context
+            }
+        }
+
+        override fun disconnect() {
+            linearize { current = null }
+        }
+
+        override fun emit(eventName: String, payload: Map<String, Any>) {
+            linearize { emitted += eventName to payload }
+        }
+
+        override fun on(
+            eventName: String,
+            listener: (RealtimeSocketConnectionContext, Any?) -> Unit,
+        ): RealtimeSubscription =
+            linearize {
+                handlers.getOrPut(eventName) { mutableListOf() } += listener
+                RealtimeSubscription {
+                    linearize { handlers[eventName]?.remove(listener) }
+                }
+            }
+
+        fun captureCurrent(): LinearizedConnection = linearize { checkNotNull(current) }
+
+        fun currentContext(): RealtimeSocketConnectionContext? = linearize { current?.context }
+
+        fun connectHistorySnapshot(): List<RealtimeSocketConnectionContext> =
+            linearize { connectHistory.toList() }
+
+        fun emittedSnapshot(): List<Pair<String, Map<String, Any>>> = linearize { emitted.toList() }
+
+        fun clearEmitted() {
+            linearize { emitted.clear() }
+        }
+
+        fun deliverRetained(
+            connection: LinearizedConnection,
+            eventName: String,
+            payload: Any? = null,
+        ): Boolean =
+            linearize {
+                if (current !== connection) return@linearize false
+                beforeDelivery?.invoke(eventName)
+                handlers[eventName].orEmpty().toList().forEach { listener ->
+                    listener(connection.context, payload)
+                }
+                true
+            }
+    }
+
+    private fun realtimeConnectRequest(
+        serverId: String,
+        familyId: String,
+        lastSeq: Long = 0L,
+    ): RealtimeConnectRequest =
+        RealtimeConnectRequest(
+            auth = RealtimeAuth(token = "token-$familyId", serverId = ServerId(serverId)),
+            lastSeq = lastSeq,
+            witness =
+                RealtimeConnectionWitnessToken(
+                    scopeLeaseId = "lease-$familyId",
+                    principalId = "user-1",
+                    authGeneration = if (familyId == "family-A") 1L else 2L,
+                    connectionFamilyId = familyId,
+                ),
+        )
+
+    private fun RealtimeConnectRequest.toContext(): RealtimeSocketConnectionContext =
+        RealtimeSocketConnectionContext(auth.serverId, witness)
+
+    private fun messagePayload(serverId: String, seq: Long): Map<String, Any> =
+        mapOf(
+            "serverId" to serverId,
+            "id" to "message-$seq",
+            "threadId" to "channel-1",
+            "channelId" to "channel-1",
+            "seq" to seq,
+            "content" to "Realtime body $seq",
+            "messageType" to "chat",
+            "senderType" to "user",
+            "senderId" to "user-1",
+            "senderName" to "Artin",
+        )
 
     private class InMemoryAuthSessionStore(
         var session: AuthSession?

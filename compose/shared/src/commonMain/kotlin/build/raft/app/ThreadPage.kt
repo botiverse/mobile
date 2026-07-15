@@ -96,7 +96,7 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
-import build.raft.app.data.RealtimeActiveThreadSink
+import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
@@ -3773,14 +3773,14 @@ internal fun SharedThreadRouteContent(
     val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
         { event ->
             if (event is Heartbeat) {
-                threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(event.seq))
+                threadViewModel.accept(SharedThreadIntent.RecoverRealtimeGap(event.seq))
             } else {
                 val activeReplyParentMessageId =
                     initialPayload.originParentMessageId
                         ?.takeIf { it.isNotBlank() }
                         ?.let(::MessageId)
                 if (!event.isTaskProjectionEvent() && event !is MemberPresenceUpdated) {
-                    threadViewModel.dispatch(
+                    threadViewModel.accept(
                         SharedThreadIntent.ApplyRealtimeEvent(
                             event = event,
                             activeReplyParentMessageId = activeReplyParentMessageId
@@ -3841,20 +3841,18 @@ internal fun SharedThreadRouteContent(
     // behind the route's feature-surface gate.
     DisposableEffect(realtimeDomainEventOwner, authStore, coroutineScope) {
         val sink =
-            RealtimeActiveThreadSink { serverId, event ->
-                coroutineScope.launch {
-                    val currentSessionServerId =
-                        authStore.readSession()
-                            ?.currentServerId
-                            ?.takeIf { it.isNotBlank() }
-                            ?: return@launch
-                    if (currentSessionServerId != serverId) return@launch
-                    if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
-                    latestCoreThreadRealtimeEventHandler(event)
-                }
+            RealtimeGuardedActiveThreadSink { serverId, event ->
+                val currentSessionServerId =
+                    authStore.readSession()
+                        ?.currentServerId
+                        ?.takeIf { it.isNotBlank() }
+                        ?: return@RealtimeGuardedActiveThreadSink
+                if (currentSessionServerId != serverId) return@RealtimeGuardedActiveThreadSink
+                if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@RealtimeGuardedActiveThreadSink
+                latestCoreThreadRealtimeEventHandler(event)
             }
-        realtimeDomainEventOwner.registerActiveThreadSink(sink)
-        onDispose { realtimeDomainEventOwner.unregisterActiveThreadSink(sink) }
+        realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
     }
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
         ThreadDeferredLoadingRouteContent(
@@ -4432,7 +4430,7 @@ internal fun SharedThreadRouteContent(
     val latestThreadFeatureRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
         { event ->
             if (event is TaskUpdated) {
-                tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(event.task))
+                tasksViewModel?.applyRealtimeTaskUpdate(event.task)
             }
             if (
                 event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId) &&
@@ -4452,9 +4450,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 if (featureOwnerMountPlan.mountChannelSuggestionsOwner) {
-                    membersStore?.dispatch(
-                        SharedMembersIntent.RefreshChannelSuggestions
-                    )
+                    membersStore?.acceptRealtimeChannelSuggestionsRefresh()
                 }
             }
         }
@@ -4463,16 +4459,15 @@ internal fun SharedThreadRouteContent(
     // above already owns canonical Thread apply and gap recovery.
     DisposableEffect(realtimeDomainEventOwner, coroutineScope, currentServerId) {
         val sink =
-            RealtimeActiveThreadSink { serverId, event ->
-                coroutineScope.launch {
-                    if (currentServerId != serverId) return@launch
-                    if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
-                    latestThreadFeatureRealtimeEventHandler(event)
-                    if (event is MessageNew) {
-                        val session = latestCurrentSession
-                        foregroundMessageBanner =
-                            if (foregroundMessageBannersEnabled()) {
-                                slockForegroundMessageBannerProjection(
+            RealtimeGuardedActiveThreadSink { serverId, event ->
+                if (currentServerId != serverId) return@RealtimeGuardedActiveThreadSink
+                if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@RealtimeGuardedActiveThreadSink
+                latestThreadFeatureRealtimeEventHandler(event)
+                if (event is MessageNew) {
+                    val session = latestCurrentSession
+                    foregroundMessageBanner =
+                        if (foregroundMessageBannersEnabled()) {
+                            slockForegroundMessageBannerProjection(
                                     serverId = serverId,
                                     currentServerId = session?.currentServerId ?: currentServerId,
                                     message = event.message,
@@ -4480,15 +4475,14 @@ internal fun SharedThreadRouteContent(
                                     visibleConversationKey = null,
                                     visibleRouteIdentity = latestPayloadRouteIdentity,
                                     conversationDirectory = latestForegroundConversationDirectory
-                                ) ?: foregroundMessageBanner
-                            } else {
-                                null
-                            }
-                    }
+                            ) ?: foregroundMessageBanner
+                        } else {
+                            null
+                        }
                 }
             }
-        realtimeDomainEventOwner.registerActiveThreadSink(sink)
-        onDispose { realtimeDomainEventOwner.unregisterActiveThreadSink(sink) }
+        realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
+        onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
     }
     LaunchedEffect(foregroundMessageBanner?.id) {
         val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect

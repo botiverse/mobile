@@ -11,6 +11,8 @@ import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
+import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.MessageNew
 import build.raft.app.model.ServerId
@@ -37,14 +39,14 @@ class LiveRealtimeServerScopeTest {
         var heartbeatSeq: Long? = null
         var responseCurrentSeq: Long? = null
 
-        transport.on(RealtimeSocketEvents.Connect) { connected.countDown() }
-        transport.on(RealtimeSocketEvents.RoomsJoined) { roomsJoined.countDown() }
-        transport.on(RealtimeSocketEvents.Heartbeat) { payload ->
+        transport.on(RealtimeSocketEvents.Connect) { _, _ -> connected.countDown() }
+        transport.on(RealtimeSocketEvents.RoomsJoined) { _, _ -> roomsJoined.countDown() }
+        transport.on(RealtimeSocketEvents.Heartbeat) { _, payload ->
             val json = payload as? JSONObject
             heartbeatSeq = json?.optLong("seq")
             heartbeat.countDown()
         }
-        transport.on(RealtimeSocketEvents.SyncResumeResponse) { payload ->
+        transport.on(RealtimeSocketEvents.SyncResumeResponse) { _, payload ->
             val json = payload as? JSONObject
             responseCurrentSeq = json?.optLong("currentSeq")
             syncResumeResponse.countDown()
@@ -55,7 +57,8 @@ class LiveRealtimeServerScopeTest {
                 mapOf(
                     "token" to fixture.session.accessToken,
                     "serverId" to requireNotNull(fixture.session.currentServerId)
-                )
+                ),
+                liveConnectionContext(requireNotNull(fixture.session.currentServerId)),
             )
             assertTrue("Socket did not connect for sync resume validation.", connected.await(15, TimeUnit.SECONDS))
             assertTrue("Socket did not finish room joins before resume.", roomsJoined.await(20, TimeUnit.SECONDS))
@@ -126,7 +129,7 @@ class LiveRealtimeServerScopeTest {
         val connected = CountDownLatch(1)
         val realtimePayload = CountDownLatch(1)
         SocketIoRealtimeClient.RealtimeWireEventNames.forEach { eventName ->
-            transport.on(eventName) { payload ->
+            transport.on(eventName) { _, payload ->
                 artifact.record(
                     "socket_event",
                     mapOf(
@@ -139,8 +142,8 @@ class LiveRealtimeServerScopeTest {
                 realtimePayload.countDown()
             }
         }
-        transport.on(RealtimeSocketEvents.Connect) { connected.countDown() }
-        transport.on(RealtimeSocketEvents.RoomsJoined) { payload ->
+        transport.on(RealtimeSocketEvents.Connect) { _, _ -> connected.countDown() }
+        transport.on(RealtimeSocketEvents.RoomsJoined) { _, payload ->
             artifact.record(
                 "socket_rooms_joined",
                 mapOf(
@@ -151,7 +154,10 @@ class LiveRealtimeServerScopeTest {
         }
 
         try {
-            transport.connect(mapOf("token" to fixture.session.accessToken, "serverId" to serverId))
+            transport.connect(
+                mapOf("token" to fixture.session.accessToken, "serverId" to serverId),
+                liveConnectionContext(serverId),
+            )
             assertTrue("Socket did not connect for live payload capture.", connected.await(15, TimeUnit.SECONDS))
             transport.emit(RealtimeSocketEvents.JoinChannel, mapOf("channelId" to channelId.value))
             conversationRepository.sendMessage(
@@ -205,7 +211,7 @@ class LiveRealtimeServerScopeTest {
         val connectCount = AtomicInteger(0)
         val receivedPreviousServerMessage = CountDownLatch(1)
         val targetBody = "live previous server message $suffix"
-        transport.on(RealtimeSocketEvents.Connect) {
+        transport.on(RealtimeSocketEvents.Connect) { _, _ ->
             if (connectCount.incrementAndGet() == 1) {
                 firstConnected.countDown()
             } else {
@@ -340,6 +346,18 @@ class LiveRealtimeServerScopeTest {
         runCatching {
             JSONObject(this).keys().asSequence().joinToString("|")
         }.getOrDefault("")
+
+    private fun liveConnectionContext(serverId: String): RealtimeSocketConnectionContext =
+        RealtimeSocketConnectionContext(
+            serverId = ServerId(serverId),
+            witness =
+                RealtimeConnectionWitnessToken(
+                    scopeLeaseId = "live-test-lease",
+                    principalId = "live-test-principal",
+                    authGeneration = 1L,
+                    connectionFamilyId = "live-test-family",
+                ),
+        )
 
     private companion object {
         const val MAX_PAYLOAD_CHARS = 4_000
