@@ -156,19 +156,17 @@ private fun sharedConversationDirectoryStateFromProjections(
 ): SharedConversationDirectoryState {
     val claimed = projections.filter { it.canonicalChannelId.isNotBlank() }
     val byCanonicalId = claimed.associateBy { it.canonicalChannelId }
-    if (claimed.size != byCanonicalId.size) {
-        // Two projections self-attesting the SAME canonical id is an identity conflict the
-        // associateBy silently resolves last-wins. Log it explicitly (t432 family ③) —
-        // adjudication stays last-wins until a real case motivates provenance rules.
-        claimed.groupBy { it.canonicalChannelId }
-            .filterValues { it.size > 1 }
-            .forEach { (canonicalId, claims) ->
-                logger(
-                    "conversation_identity_canonical_conflict canonicalId=$canonicalId " +
-                        "claims=${claims.joinToString(",") { it.conversationKind.name }} lastWins=true"
-                )
-            }
-    }
+    // Two projections self-attesting the SAME canonical id remain last-wins. Keep the
+    // evidence bounded: Home/Activity merge rebuilds this directory frequently, and logging
+    // every duplicate claim on every rebuild produced thousands of identical JSONL rows.
+    val canonicalOverlaps =
+        if (claimed.size != byCanonicalId.size) {
+            claimed.groupBy { it.canonicalChannelId }.filterValues { it.size > 1 }
+        } else {
+            emptyMap()
+        }
+    val canonicalKindConflicts =
+        canonicalOverlaps.filterValues { claims -> claims.map { it.conversationKind }.distinct().size > 1 }
     val aliasesById =
         buildMap<String, MutableSet<String>> {
             byCanonicalId.values.forEach { projection ->
@@ -179,8 +177,30 @@ private fun sharedConversationDirectoryStateFromProjections(
             }
         }.mapValues { (_, values) -> values.toSet() }
     val duplicateAliases = aliasesById.filterValues { it.size > 1 }
-    duplicateAliases.forEach { (alias, canonicalIds) ->
-        logger("conversation_identity_alias_conflict alias=$alias canonicalIds=${canonicalIds.joinToString(",")}")
+    if (canonicalOverlaps.isNotEmpty() || duplicateAliases.isNotEmpty()) {
+        val canonicalOverlapSample =
+            canonicalOverlaps.entries
+                .take(ConversationConflictSampleLimit)
+                .joinToString("|") { (canonicalId, claims) -> "$canonicalId:${claims.size}" }
+                .ifBlank { "_" }
+        val canonicalKindConflictSample =
+            canonicalKindConflicts.entries
+                .take(ConversationConflictSampleLimit)
+                .joinToString("|") { (canonicalId, claims) ->
+                    "$canonicalId:${claims.map { it.conversationKind.name }.distinct().joinToString(",").take(96)}"
+                }
+                .ifBlank { "_" }
+        val aliasSample =
+            duplicateAliases.entries
+                .take(ConversationConflictSampleLimit)
+                .joinToString("|") { (alias, canonicalIds) -> "$alias:${canonicalIds.size}" }
+                .ifBlank { "_" }
+        logger(
+            "conversation_identity_merge_summary canonicalOverlapCount=${canonicalOverlaps.size} " +
+                "canonicalKindConflictCount=${canonicalKindConflicts.size} aliasAmbiguityCount=${duplicateAliases.size} " +
+                "canonicalOverlapSample=$canonicalOverlapSample " +
+                "canonicalKindConflictSample=$canonicalKindConflictSample aliasSample=$aliasSample"
+        )
     }
     return SharedConversationDirectoryState(
         projectionsByCanonicalId = byCanonicalId,
@@ -188,6 +208,8 @@ private fun sharedConversationDirectoryStateFromProjections(
         duplicateAliases = duplicateAliases
     )
 }
+
+private const val ConversationConflictSampleLimit = 4
 
 private fun MutableMap<String, MutableSet<String>>.putAlias(aliasId: String, canonicalChannelId: String) {
     if (aliasId.isBlank() || canonicalChannelId.isBlank()) return

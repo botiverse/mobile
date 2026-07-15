@@ -273,6 +273,8 @@ class SlockRealtimeAppScopePolicyTest {
         assertEquals(ChannelId("channel-1"), leave.channelId)
         assertFalse(duplicateLeave.shouldEmit)
         assertEquals(SlockRealtimeRoomJoinedChannelAction.None, duplicateLeave.joinedChannelAction)
+        assertEquals("", heartbeat.logMessage)
+        assertEquals("", message.logMessage)
         assertFalse(blankJoin.shouldEmit)
         assertFalse(unsupportedJoin.shouldEmit)
         assertTrue(heartbeat.shouldFanOut)

@@ -116,12 +116,14 @@ class SharedHomeShellStore(
         )
 
     fun dispatch(intent: SharedHomeShellIntent) {
-        diagnosticsLogger(
-            "home_shell_dispatch intent=${intent.toSharedHomeShellIntentDiagnosticsLabel()} " +
-                "destination=${_state.value.destination ?: "_"} surfaceVisible=${_state.value.primarySurfaceVisible} " +
-                "selectedConversation=${_state.value.selectedConversationId ?: "_"} " +
-                "home=${_state.value.home.toSharedHomeShellHomeSummary()}"
-        )
+        if (intent.shouldLogHomeShellDispatch()) {
+            diagnosticsLogger(
+                "home_shell_dispatch intent=${intent.toSharedHomeShellIntentDiagnosticsLabel()} " +
+                    "destination=${_state.value.destination ?: "_"} surfaceVisible=${_state.value.primarySurfaceVisible} " +
+                    "selectedConversation=${_state.value.selectedConversationId ?: "_"} " +
+                    "home=${_state.value.home.toSharedHomeShellHomeSummary()}"
+            )
+        }
         when (intent) {
             SharedHomeShellIntent.Start -> {
                 diagnosticsLogger("home_shell_forward_home intent=hydrate:start source=shell_start")
@@ -243,6 +245,25 @@ class SharedHomeShellStore(
         }
     }
 }
+
+private fun SharedHomeShellIntent.shouldLogHomeShellDispatch(): Boolean =
+    when (this) {
+        SharedHomeShellIntent.Start,
+        SharedHomeShellIntent.ForegroundRefresh,
+        is SharedHomeShellIntent.SetSurfaceVisible,
+        SharedHomeShellIntent.OpenActivity,
+        SharedHomeShellIntent.OpenSaved,
+        SharedHomeShellIntent.OpenSearch,
+        SharedHomeShellIntent.CloseSecondaryDestination,
+        is SharedHomeShellIntent.SetSelectedConversation,
+        is SharedHomeShellIntent.SelectTopAction,
+        is SharedHomeShellIntent.DismissNotification -> true
+        is SharedHomeShellIntent.ApplyRealtimeEvent,
+        is SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent,
+        is SharedHomeShellIntent.Home,
+        is SharedHomeShellIntent.Activity,
+        is SharedHomeShellIntent.SearchSaved -> false
+    }
 
 private fun SharedHomeState.allowsLocalActivityPatch(event: RealtimeEvent): Boolean =
     when (event) {

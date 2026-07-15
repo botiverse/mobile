@@ -51,6 +51,95 @@ import org.junit.Test
 
 class RealtimeRepositoryTest {
     @Test
+    fun clientAggregatesSuccessfulEventDiagnosticsInsteadOfLoggingEveryPipelineStage() {
+        val transport = FakeRealtimeSocketTransport()
+        val logs = mutableListOf<String>()
+        val client = SocketIoRealtimeClient(transport = transport, logger = logs::add)
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        transport.receive(
+            RealtimeSocketEvents.MessageNew,
+            mapOf(
+                "serverId" to "server-1",
+                "id" to "message-1",
+                "threadId" to "channel-1",
+                "channelId" to "channel-1",
+                "seq" to 89,
+                "content" to "Realtime body",
+                "messageType" to "chat",
+                "senderType" to "user",
+                "senderId" to "user-1",
+                "senderName" to "Artin"
+            )
+        )
+
+        val summary = logs.single { it.startsWith("event_success_summary ") }
+        assertTrue(summary.contains("count=1"))
+        assertTrue(summary.contains("types=message_new:1"))
+        assertTrue(summary.contains("rawFanOut=1"))
+        assertFalse(logs.any { it.startsWith("event_map_parse ") })
+        assertFalse(logs.any { it.startsWith("event_received ") })
+        assertFalse(logs.any { it.startsWith("event_dispatch ") })
+    }
+
+    @Test
+    fun clientLogsIgnoredRealtimePayloadWithoutWaitingForSummarySampling() {
+        val transport = FakeRealtimeSocketTransport()
+        val logs = mutableListOf<String>()
+        val rawEvents = mutableListOf<String>()
+        val client = SocketIoRealtimeClient(transport = transport, logger = logs::add)
+        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        transport.receive(RealtimeSocketEvents.MessageNew, mapOf("serverId" to "server-1"))
+
+        assertTrue(logs.any { it.startsWith("event_map_ignored eventName=${RealtimeSocketEvents.MessageNew} ") })
+        assertEquals(listOf(RealtimeSocketEvents.MessageNew), rawEvents)
+    }
+
+    @Test
+    fun successDiagnosticsEmitFirstPeriodicAndSlowParseSignals() {
+        var now = 0L
+        val diagnostics =
+            RealtimeSuccessDiagnostics(
+                clockMillis = { now },
+                summaryEventCount = 3,
+                summaryIntervalMillis = 1_000L,
+                slowParseMillis = 16L
+            )
+
+        fun record(parseDurationMs: Long = 1L): List<String> =
+            diagnostics.record(
+                eventName = RealtimeSocketEvents.MessageNew,
+                mappedType = "message_new",
+                parseDurationMs = parseDurationMs,
+                appliedSeq = 10L,
+                serverMaxSeq = 10L,
+                listenerCount = 1,
+                rawFanOut = true,
+                serverId = "server-1"
+            )
+
+        assertTrue(record().single().contains("count=1"))
+        assertTrue(record().isEmpty())
+        assertTrue(record().isEmpty())
+        assertTrue(record().single().contains("count=3"))
+        assertTrue(record(parseDurationMs = 20L).single().startsWith("event_parse_slow "))
+        now = 1_001L
+        val intervalLogs = record()
+        assertEquals(1, intervalLogs.count { it.startsWith("event_success_summary ") })
+        assertTrue(intervalLogs.single { it.startsWith("event_success_summary ") }.contains("count=2"))
+    }
+
+    @Test
     fun repositoryInjectsSessionTokenAndSelectedServerIntoRealtimeClient() {
         val transport = FakeRealtimeSocketTransport()
         val repository = SessionRealtimeRepository(
