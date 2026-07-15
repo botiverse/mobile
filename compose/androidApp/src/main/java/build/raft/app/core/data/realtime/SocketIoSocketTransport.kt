@@ -80,8 +80,9 @@ class SocketIoSocketTransport(
         unbindListener(eventName, listener)
         val emitter = socket.emitterFor(eventName)
         val socketListener = Emitter.Listener { args ->
-            if (!generationFence.accepts(generation)) return@Listener
-            listener(args.firstOrNull())
+            generationFence.runIfCurrent(generation) {
+                listener(args.firstOrNull())
+            }
         }
         boundListeners[key] = socketListener
         emitter.on(eventName, socketListener)
@@ -116,14 +117,18 @@ internal data class RealtimeSocketGeneration(
     val context: RealtimeSocketConnectionContext,
 )
 
-internal class RealtimeSocketGenerationFence {
+internal class RealtimeSocketGenerationFence(
+    private val beforeGenerationPublish: (() -> Unit)? = null,
+) {
     private var nextGenerationId = 0L
     @Volatile
     private var current: RealtimeSocketGeneration? = null
 
     fun begin(context: RealtimeSocketConnectionContext): RealtimeSocketGeneration {
-        nextGenerationId += 1L
-        return RealtimeSocketGeneration(nextGenerationId, context).also { current = it }
+        val next = nextGenerationId + 1L
+        beforeGenerationPublish?.invoke()
+        nextGenerationId = next
+        return RealtimeSocketGeneration(next, context).also { current = it }
     }
 
     fun clear() {
@@ -133,6 +138,15 @@ internal class RealtimeSocketGenerationFence {
     fun currentOrNull(): RealtimeSocketGeneration? = current
 
     fun accepts(generation: RealtimeSocketGeneration): Boolean = current == generation
+
+    fun runIfCurrent(
+        generation: RealtimeSocketGeneration,
+        block: () -> Unit,
+    ): Boolean {
+        if (!accepts(generation)) return false
+        block()
+        return true
+    }
 }
 
 internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String, Any>): Any =
