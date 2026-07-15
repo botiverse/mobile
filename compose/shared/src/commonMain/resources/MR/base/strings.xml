@@ -1191,6 +1191,7 @@
     <string name="search_error_timeout_detail">The server did not respond in time. Retry search after a moment.</string>
     <string name="search_error_offline_detail">Check your connection, then retry search.</string>
     <string name="search_error_network_detail">The current server could not be reached. Retry search after it reconnects.</string>
+    <string name="search_placeholder">Search channels, DMs, messages…</string>
     <string name="search_empty_title">Search everything</string>
     <string name="search_empty_detail">Search channels, DMs, people, agents, and message history.</string>
     <string name="search_empty_results_query">No results for “%1$s”</string>

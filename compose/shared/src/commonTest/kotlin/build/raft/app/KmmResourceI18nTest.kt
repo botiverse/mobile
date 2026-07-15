@@ -194,6 +194,7 @@ class KmmResourceI18nTest {
     @Test
     fun homeSearchActivityAndSavedPanelResourcesAreGenerated() {
         listOf(
+            MR.strings.search_placeholder,
             MR.strings.search_section_channels_dms,
             MR.strings.search_filter_search_senders,
             MR.strings.search_time_last_30_days,

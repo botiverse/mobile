@@ -1191,6 +1191,7 @@
     <string name="search_error_timeout_detail">服务器未及时响应，请稍后重试搜索。</string>
     <string name="search_error_offline_detail">请检查网络后重试搜索。</string>
     <string name="search_error_network_detail">无法连接当前服务器，请在恢复连接后重试搜索。</string>
+    <string name="search_placeholder">搜索频道、私信和消息…</string>
     <string name="search_empty_title">搜索所有内容</string>
     <string name="search_empty_detail">搜索频道、私信、成员、智能体和消息历史。</string>
     <string name="search_empty_results_query">没有关于“%1$s”的结果</string>
