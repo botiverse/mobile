@@ -18,6 +18,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
     private var appliedCacheEnabled: Boolean? = null
     private var appliedEphemeral: Boolean? = null
     private var appliedInjectedJavaScript: String? = null
+    private var appliedHostEventsEnabled: Boolean? = null
 
     override fun createAttr(): SlockSandboxWebViewAttr = SlockSandboxWebViewAttr()
 
@@ -33,6 +34,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
         cacheEnabled: Boolean,
         ephemeral: Boolean,
         injectedJavaScript: String,
+        hostEventsEnabled: Boolean,
         force: Boolean = false
     ) {
         if (
@@ -43,7 +45,8 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
             appliedDomStorageEnabled == domStorageEnabled &&
             appliedCacheEnabled == cacheEnabled &&
             appliedEphemeral == ephemeral &&
-            appliedInjectedJavaScript == injectedJavaScript
+            appliedInjectedJavaScript == injectedJavaScript &&
+            appliedHostEventsEnabled == hostEventsEnabled
         ) {
             return
         }
@@ -54,6 +57,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
         appliedCacheEnabled = cacheEnabled
         appliedEphemeral = ephemeral
         appliedInjectedJavaScript = injectedJavaScript
+        appliedHostEventsEnabled = hostEventsEnabled
         getViewAttr().run {
             allowScripts(allowScripts)
             allowNavigation(allowNavigation)
@@ -61,6 +65,7 @@ internal class SlockSandboxWebViewNode : DeclarativeBaseView<SlockSandboxWebView
             cacheEnabled(cacheEnabled)
             ephemeral(ephemeral)
             injectedJavaScript(injectedJavaScript)
+            hostEventsEnabled(hostEventsEnabled)
             src(url)
         }
     }
@@ -105,6 +110,22 @@ internal class SlockSandboxWebViewAttr : Attr() {
         "injectedJavaScript" with value
         return this
     }
+
+    /**
+     * Opt-in switch for the host↔web event bridge (design: `mobile/docs/host-web-event-bridge-2026-07-15.md`).
+     * When true, the native renderer installs the bridge script at document-start on the
+     * target document and registers a message listener bound to the WebView's captured
+     * `trustedOrigin`. Default false — WebViews without a session-mutating consumer
+     * (marketplace, billing, computers) do NOT expose the bridge and cannot receive
+     * `session:*` events from the guest page. Each platform additionally probes its own
+     * feature-support prerequisites (Android: `DOCUMENT_START_SCRIPT` AND
+     * `WEB_MESSAGE_LISTENER`); if unsupported, this attr resolves to a no-op even when
+     * set true (fail-closed against a "half-bridge").
+     */
+    fun hostEventsEnabled(value: Boolean): SlockSandboxWebViewAttr {
+        "hostEventsEnabled" with value
+        return this
+    }
 }
 
 internal class SlockSandboxWebViewEvent : Event() {
@@ -132,11 +153,69 @@ internal class SlockSandboxWebViewEvent : Event() {
         }
     }
 
+    /**
+     * Structured message from the embedded web guest to the host, delivered ONLY when
+     * `hostEventsEnabled(true)` and the platform's feature-support probes both succeed.
+     *
+     * Wire contract (design r3+delta v2, MingQi APPROVE at 919c2cca):
+     *
+     *   native params = { "message": "<raw JSON string>" }
+     *
+     * The raw JSON must decode to `{ kind: string, payload: object }`. This handler
+     * enforces the shared-layer checks (kind pattern + known vocabulary + payload
+     * shape); anything failing them is dropped with a warn log, not delivered to the
+     * caller. Native handlers enforce the channel-level controls (origin, main-frame,
+     * lifecycle, ABA, UTF-8 byte cap) BEFORE the params ever reach this method.
+     */
+    fun hostMessage(handler: (kind: String, payload: JSONObject) -> Unit) {
+        register(EVENT_HOST_MESSAGE) { params ->
+            val raw = params.optStringValue("message", "")
+            if (raw.isEmpty()) return@register
+            val parsed = try {
+                JSONObject(raw)
+            } catch (_: Throwable) {
+                return@register
+            }
+            val kind = parsed.optString("kind", "")
+            if (!isKnownHostEventKind(kind)) return@register
+            val payload = parsed.optJSONObject("payload") ?: return@register
+            handler(kind, payload)
+        }
+    }
+
     companion object {
         const val EVENT_LOAD_SUCCESS = "loadSuccess"
         const val EVENT_LOAD_FAILURE = "loadFailure"
         const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
         const val EVENT_URL_CHANGE = "urlChange"
+        const val EVENT_HOST_MESSAGE = "hostMessage"
+
+        /** Bridge protocol version. Web checks `window.RaftHost.version === RAFT_HOST_VERSION`. */
+        const val RAFT_HOST_VERSION = "raft-host-v1"
+
+        /**
+         * Closed set of event kinds this host version understands. Unknown kinds are
+         * dropped at the shared-layer parse boundary. Soft versioning: a v2 web app
+         * emitting a new kind on a v1 host degrades to no delivery, not to silent
+         * acceptance of an unrecognised event.
+         */
+        val KNOWN_HOST_EVENT_KINDS: Set<String> = setOf(
+            "session:logout",
+            "session:server-deleted",
+            "session:server-left",
+            "session:server-switched",
+            "session:token-refresh-failed"
+        )
+
+        // Named per §Safety limits in the design: `^[a-z][a-z0-9]*(:[a-z][a-z0-9-]*)+$`,
+        // length 4–64. This is the FLOOR — vocabulary check narrows further.
+        private val HOST_EVENT_KIND_PATTERN = Regex("^[a-z][a-z0-9]*(:[a-z][a-z0-9-]*)+$")
+
+        internal fun isKnownHostEventKind(kind: String): Boolean {
+            if (kind.length !in 4..64) return false
+            if (!HOST_EVENT_KIND_PATTERN.matches(kind)) return false
+            return kind in KNOWN_HOST_EVENT_KINDS
+        }
     }
 }
 
@@ -151,13 +230,15 @@ internal fun SlockSandboxWebView(
     cacheEnabled: Boolean = false,
     ephemeral: Boolean = true,
     injectedJavaScript: String = "",
+    hostEventsEnabled: Boolean = false,
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
-    onUrlChange: (String) -> Unit = {}
+    onUrlChange: (String) -> Unit = {},
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
 ) {
     val updateAttrs =
-        remember(url, allowScripts, allowNavigation, domStorageEnabled, cacheEnabled, ephemeral, injectedJavaScript) {
+        remember(url, allowScripts, allowNavigation, domStorageEnabled, cacheEnabled, ephemeral, injectedJavaScript, hostEventsEnabled) {
             { view: SlockSandboxWebViewNode ->
                 view.applyWebViewAttrs(
                     url = url,
@@ -166,7 +247,8 @@ internal fun SlockSandboxWebView(
                     domStorageEnabled = domStorageEnabled,
                     cacheEnabled = cacheEnabled,
                     ephemeral = ephemeral,
-                    injectedJavaScript = injectedJavaScript
+                    injectedJavaScript = injectedJavaScript,
+                    hostEventsEnabled = hostEventsEnabled
                 )
             }
         }
@@ -182,6 +264,7 @@ internal fun SlockSandboxWebView(
                 cacheEnabled = cacheEnabled,
                 ephemeral = ephemeral,
                 injectedJavaScript = injectedJavaScript,
+                hostEventsEnabled = hostEventsEnabled,
                 force = true
             )
             event {
@@ -189,6 +272,7 @@ internal fun SlockSandboxWebView(
                 loadFailure(onLoadFailure)
                 navigationBlocked(onNavigationBlocked)
                 urlChange(onUrlChange)
+                hostMessage(onHostMessage)
             }
         },
         viewUpdate = { view ->
@@ -198,6 +282,7 @@ internal fun SlockSandboxWebView(
                 loadFailure(onLoadFailure)
                 navigationBlocked(onNavigationBlocked)
                 urlChange(onUrlChange)
+                hostMessage(onHostMessage)
             }
         }
     )
@@ -214,10 +299,12 @@ internal fun SlockWebView(
     cacheEnabled: Boolean = true,
     ephemeral: Boolean = false,
     injectedJavaScript: String = "",
+    hostEventsEnabled: Boolean = false,
     onLoadSuccess: () -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     onNavigationBlocked: (String) -> Unit = {},
-    onUrlChange: (String) -> Unit = {}
+    onUrlChange: (String) -> Unit = {},
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
 ) {
     SlockSandboxWebView(
         url = url,
@@ -228,10 +315,12 @@ internal fun SlockWebView(
         cacheEnabled = cacheEnabled,
         ephemeral = ephemeral,
         injectedJavaScript = injectedJavaScript,
+        hostEventsEnabled = hostEventsEnabled,
         onLoadSuccess = onLoadSuccess,
         onLoadFailure = onLoadFailure,
         onNavigationBlocked = onNavigationBlocked,
-        onUrlChange = onUrlChange
+        onUrlChange = onUrlChange,
+        onHostMessage = onHostMessage
     )
 }
 
