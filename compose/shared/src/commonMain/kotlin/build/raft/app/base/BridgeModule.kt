@@ -917,6 +917,8 @@ internal class BridgeModule : Module() {
 
 internal data class BridgeAttachmentDownloadProgress(
     val downloadId: String = "",
+    val sequence: Long = 0L,
+    val phase: String = "receiving",
     val status: String = "progress",
     val percent: Int?,
     val downloadedBytes: Long,
@@ -926,20 +928,52 @@ internal data class BridgeAttachmentDownloadProgress(
 
 internal fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
     val totalBytes = optString("totalBytes").toLongOrNull()?.takeIf { it > 0L }
-    val downloadedBytes = optString("downloadedBytes").toLongOrNull() ?: 0L
+    val downloadedBytes = (optString("downloadedBytes").toLongOrNull() ?: 0L).coerceAtLeast(0L)
     val bytesPerSecond = optString("bytesPerSecond").toLongOrNull()?.takeIf { it > 0L }
+    val explicitPercent = optString("percent").toIntOrNull()?.coerceIn(0, 100)
     val percent =
-        optString("percent").toIntOrNull()
-            ?.coerceIn(0, 100)
-            ?: totalBytes?.let { total ->
-                if (total <= 0L) null else ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
-    }
+        when {
+            explicitPercent == 100 -> 100
+            downloadedBytes <= 0L -> null
+            explicitPercent != null -> explicitPercent.coerceIn(1, 99)
+            totalBytes != null ->
+                ((downloadedBytes.toDouble() * 100.0) / totalBytes.toDouble())
+                    .toInt()
+                    .coerceIn(1, 99)
+            else -> null
+        }
     return BridgeAttachmentDownloadProgress(
         downloadId = optString("downloadId"),
+        sequence = optString("sequence").toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
+        phase = optString("phase").ifBlank { if (downloadedBytes > 0L) "receiving" else "response_wait" },
         status = optString("status").ifBlank { "progress" },
         percent = percent,
         downloadedBytes = downloadedBytes,
         totalBytes = totalBytes,
         bytesPerSecond = bytesPerSecond
+    )
+}
+
+/**
+ * Request-scoped monotonic reducer for attachment transfer samples.
+ *
+ * Native callbacks and render scheduling are asynchronous. A late sample must never rewind the
+ * visible byte count, percentage, or sequence for the active download attempt.
+ */
+internal fun reduceAttachmentDownloadProgress(
+    current: BridgeAttachmentDownloadProgress?,
+    incoming: BridgeAttachmentDownloadProgress,
+    expectedDownloadId: String
+): BridgeAttachmentDownloadProgress? {
+    if (incoming.downloadId.isBlank() || incoming.downloadId != expectedDownloadId) return current
+    if (current == null || current.downloadId != incoming.downloadId) return incoming
+    if (incoming.sequence > 0L && current.sequence > 0L && incoming.sequence <= current.sequence) return current
+    if (incoming.downloadedBytes < current.downloadedBytes) return current
+    val currentPercent = current.percent
+    val incomingPercent = incoming.percent
+    if (currentPercent != null && incomingPercent != null && incomingPercent < currentPercent) return current
+    return incoming.copy(
+        totalBytes = incoming.totalBytes ?: current.totalBytes,
+        percent = incomingPercent ?: currentPercent?.takeIf { incoming.downloadedBytes > 0L }
     )
 }

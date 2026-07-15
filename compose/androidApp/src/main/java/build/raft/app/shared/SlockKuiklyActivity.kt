@@ -4403,44 +4403,14 @@ internal class SlockKuiklyBridgeModule(
         return when (request.optString("action").lowercase(Locale.US)) {
             "pause" -> {
                 control.pause()
-                emitAttachmentDownloadEvent(
-                        attachmentDownloadProgress(
-                                downloadId = downloadId,
-                                status = "paused",
-                                downloadedBytes = control.downloadedBytes,
-                                totalBytes = control.totalBytes,
-                                percent = control.percent,
-                                bytesPerSecond = null
-                        )
-                )
                 mapOf("status" to "paused")
             }
             "resume" -> {
                 control.resume()
-                emitAttachmentDownloadEvent(
-                        attachmentDownloadProgress(
-                                downloadId = downloadId,
-                                status = "resumed",
-                                downloadedBytes = control.downloadedBytes,
-                                totalBytes = control.totalBytes,
-                                percent = control.percent,
-                                bytesPerSecond = null
-                        )
-                )
                 mapOf("status" to "resumed")
             }
             "stop", "cancel" -> {
                 control.stop()
-                emitAttachmentDownloadEvent(
-                        attachmentDownloadProgress(
-                                downloadId = downloadId,
-                                status = "cancelled",
-                                downloadedBytes = control.downloadedBytes,
-                                totalBytes = control.totalBytes,
-                                percent = control.percent,
-                                bytesPerSecond = null
-                        )
-                )
                 mapOf("status" to "cancelled")
             }
             else -> mapOf("status" to "failed", "message" to "Unknown download action")
@@ -4677,6 +4647,7 @@ internal class SlockKuiklyBridgeModule(
             var lastDownloadedBytes = 0L
             var lastTotalBytes: Long? = null
             var firstByteLogged = false
+            var nextProgressSequence = 0L
             val progressSampler = AttachmentDownloadProgressSampler()
             val responseContentType =
                     runBlocking {
@@ -4696,6 +4667,8 @@ internal class SlockKuiklyBridgeModule(
                                             progressCallback,
                                             attachmentDownloadProgress(
                                                     downloadId = downloadId,
+                                                    sequence = ++nextProgressSequence,
+                                                    phase = "response_wait",
                                                     downloadedBytes = 0L,
                                                     totalBytes = totalBytes,
                                                     percent = null,
@@ -4732,6 +4705,8 @@ internal class SlockKuiklyBridgeModule(
                                                 progressCallback,
                                                 attachmentDownloadProgress(
                                                         downloadId = downloadId,
+                                                        sequence = ++nextProgressSequence,
+                                                        phase = "receiving",
                                                         downloadedBytes = downloadedBytes,
                                                         totalBytes = totalBytes,
                                                         percent = sample.percent,
@@ -4754,6 +4729,8 @@ internal class SlockKuiklyBridgeModule(
                     progressCallback,
                     attachmentDownloadProgress(
                             downloadId = downloadId,
+                            sequence = ++nextProgressSequence,
+                            phase = "complete",
                             downloadedBytes = lastDownloadedBytes,
                             totalBytes = lastTotalBytes,
                             percent = finalSample?.percent,
@@ -4781,6 +4758,8 @@ internal class SlockKuiklyBridgeModule(
 
     private fun attachmentDownloadProgress(
             downloadId: String,
+            sequence: Long,
+            phase: String,
             status: String = "progress",
             downloadedBytes: Long,
             totalBytes: Long?,
@@ -4789,6 +4768,8 @@ internal class SlockKuiklyBridgeModule(
     ): Map<String, Any> =
             buildMap {
                 put("downloadId", downloadId)
+                put("sequence", sequence)
+                put("phase", phase)
                 put("status", status)
                 put("downloadedBytes", downloadedBytes)
                 totalBytes?.let { put("totalBytes", it) }
@@ -4801,18 +4782,6 @@ internal class SlockKuiklyBridgeModule(
             progress: Map<String, Any>
     ) {
         progressCallback?.invoke(progress)
-        emitAttachmentDownloadEvent(progress)
-    }
-
-    private fun emitAttachmentDownloadEvent(progress: Map<String, Any>) {
-        val payload = JSONObject()
-        progress.forEach { (key, value) ->
-            payload.put(key, value)
-        }
-        postAndroidAppScopeEvent(
-                eventName = ATTACHMENT_DOWNLOAD_EVENT_NAME,
-                eventData = payload
-        )
     }
 
     private fun cleanupAttachmentCache(cacheDir: File) {
@@ -5008,7 +4977,6 @@ internal class SlockKuiklyBridgeModule(
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME = "quiver-feedback-attachments"
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
-        private const val ATTACHMENT_DOWNLOAD_EVENT_NAME = "slock.attachmentDownloadProgress"
         private const val QUIVER_INSTALL_OPENED = "opened"
         private const val QUIVER_INSTALL_PERMISSION_REQUIRED = "permission_required"
         private const val QUIVER_INSTALL_FAILED = "failed"
