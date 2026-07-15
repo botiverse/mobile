@@ -239,38 +239,38 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun initialDownloadStatusShowsProgressImmediately() {
+    fun initialDownloadStatusDoesNotPretendBytesHaveTransferred() {
         val label = slockFilePreviewDownloadStatusLabel(SlockFilePreviewInitialDownloadProgress)
 
-        assertEquals("Downloading 0%", label)
+        assertEquals("Downloading...", label)
     }
 
     @Test
-    fun activeDownloadStatusFallsBackToZeroPercentBeforeNativeProgress() {
+    fun activeDownloadStatusStaysIndeterminateBeforeNativeProgress() {
         val label = slockFilePreviewActiveDownloadStatusLabel(progress = null, status = "downloading")
 
-        assertEquals("Downloading 0%", label)
+        assertEquals("Downloading...", label)
     }
 
     @Test
-    fun pausedDownloadStatusFallsBackToZeroPercentBeforeNativeProgress() {
+    fun pausedDownloadStatusStaysIndeterminateBeforeNativeProgress() {
         val label = slockFilePreviewActiveDownloadStatusLabel(progress = null, status = "paused")
 
-        assertEquals("Paused 0%", label)
+        assertEquals("Paused...", label)
     }
 
     @Test
-    fun threadAttachmentOpeningStatusUsesVisibleZeroPercentFallback() {
+    fun threadAttachmentOpeningStatusUsesIndeterminateFallback() {
         val label = ThreadAttachmentOpenUiState(status = "downloading").threadAttachmentStatusLabel()
 
-        assertEquals("Downloading 0%", label)
+        assertEquals("Downloading...", label)
     }
 
     @Test
-    fun threadAttachmentPausedStatusUsesVisibleZeroPercentFallback() {
+    fun threadAttachmentPausedStatusUsesIndeterminateFallback() {
         val label = ThreadAttachmentOpenUiState(status = "paused").threadAttachmentStatusLabel()
 
-        assertEquals("Paused 0%", label)
+        assertEquals("Paused...", label)
     }
 
     @Test

@@ -4672,11 +4672,12 @@ internal class SlockKuiklyBridgeModule(
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
         runCatching { tempFile.delete() }
         try {
-            val downloadStartedAt = System.currentTimeMillis()
+            val requestStartedAt = SystemClock.elapsedRealtime()
+            val downloadKeyHash = downloadId.hashCode().toString(16)
             var lastDownloadedBytes = 0L
             var lastTotalBytes: Long? = null
-            var lastPercent = -1
-            var lastProgressAt = System.currentTimeMillis()
+            var firstByteLogged = false
+            val progressSampler = AttachmentDownloadProgressSampler()
             val responseContentType =
                     runBlocking {
                         tempFile.outputStream().use { output ->
@@ -4684,15 +4685,20 @@ internal class SlockKuiklyBridgeModule(
                                 url = urlText,
                                 onStart = { totalBytes ->
                                     lastTotalBytes = totalBytes
-                                    lastPercent = if (totalBytes == null) -1 else 0
+                                    progressSampler.onResponseStart(SystemClock.elapsedRealtime())
                                     control.totalBytes = totalBytes
+                                    SlockAppLog.record(
+                                            "SlockAttachmentDownload",
+                                            "phase=response_start keyHash=$downloadKeyHash expectedBytes=${totalBytes ?: -1L} " +
+                                                "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
+                                    )
                                     emitAttachmentDownloadProgress(
                                             progressCallback,
                                             attachmentDownloadProgress(
                                                     downloadId = downloadId,
                                                     downloadedBytes = 0L,
                                                     totalBytes = totalBytes,
-                                                    percent = totalBytes?.let { 0 },
+                                                    percent = null,
                                                     bytesPerSecond = null
                                             )
                                     )
@@ -4704,47 +4710,61 @@ internal class SlockKuiklyBridgeModule(
                                     output.write(bytes)
                                     lastDownloadedBytes = downloadedBytes
                                     lastTotalBytes = totalBytes
-                                    val percent =
-                                            totalBytes?.let { total ->
-                                                ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
-                                            }
+                                    if (!firstByteLogged && downloadedBytes > 0L) {
+                                        firstByteLogged = true
+                                        SlockAppLog.record(
+                                            "SlockAttachmentDownload",
+                                            "phase=first_byte keyHash=$downloadKeyHash downloadedBytes=$downloadedBytes " +
+                                                "expectedBytes=${totalBytes ?: -1L} " +
+                                                "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
+                                        )
+                                    }
+                                    val sample =
+                                            progressSampler.sample(
+                                                    downloadedBytes = downloadedBytes,
+                                                    totalBytes = totalBytes,
+                                                    nowMs = SystemClock.elapsedRealtime()
+                                            )
+                                    val percent = attachmentDownloadPercent(downloadedBytes, totalBytes)
                                     control.updateProgress(downloadedBytes, totalBytes, percent)
-                                    val now = System.currentTimeMillis()
-                                    val shouldEmit =
-                                            when {
-                                                percent != null && percent >= 100 -> true
-                                                percent != null && percent != lastPercent && percent - lastPercent >= 2 -> true
-                                                percent == null && now - lastProgressAt >= 500L -> true
-                                                now - lastProgressAt >= 750L -> true
-                                                else -> false
-                                            }
-                                    if (shouldEmit) {
+                                    if (sample != null) {
                                         emitAttachmentDownloadProgress(
                                                 progressCallback,
                                                 attachmentDownloadProgress(
                                                         downloadId = downloadId,
                                                         downloadedBytes = downloadedBytes,
                                                         totalBytes = totalBytes,
-                                                        percent = percent,
-                                                        bytesPerSecond = downloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, now)
+                                                        percent = sample.percent,
+                                                        bytesPerSecond = sample.bytesPerSecond
                                                 )
                                         )
-                                        lastPercent = percent ?: lastPercent
-                                        lastProgressAt = now
                                     }
                                 }
                             )
                         }
                     }
+            val finalSample =
+                    progressSampler.sample(
+                            downloadedBytes = lastDownloadedBytes,
+                            totalBytes = lastTotalBytes,
+                            nowMs = SystemClock.elapsedRealtime(),
+                            complete = true
+                    )
             emitAttachmentDownloadProgress(
                     progressCallback,
                     attachmentDownloadProgress(
                             downloadId = downloadId,
                             downloadedBytes = lastDownloadedBytes,
                             totalBytes = lastTotalBytes,
-                            percent = lastTotalBytes?.let { 100 },
-                            bytesPerSecond = lastDownloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, System.currentTimeMillis())
+                            percent = finalSample?.percent,
+                            bytesPerSecond = finalSample?.bytesPerSecond
                     )
+            )
+            SlockAppLog.record(
+                    "SlockAttachmentDownload",
+                    "phase=complete keyHash=$downloadKeyHash downloadedBytes=$lastDownloadedBytes " +
+                            "expectedBytes=${lastTotalBytes ?: -1L} " +
+                            "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
             )
             if (targetFile.exists()) {
                 targetFile.delete()
@@ -4793,11 +4813,6 @@ internal class SlockKuiklyBridgeModule(
                 eventName = ATTACHMENT_DOWNLOAD_EVENT_NAME,
                 eventData = payload
         )
-    }
-
-    private fun Long.downloadBytesPerSecondSince(startedAt: Long, now: Long): Long? {
-        val elapsedMs = (now - startedAt).coerceAtLeast(1L)
-        return ((this * 1_000L) / elapsedMs).takeIf { it > 0L }
     }
 
     private fun cleanupAttachmentCache(cacheDir: File) {

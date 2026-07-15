@@ -3369,7 +3369,7 @@ internal val SlockFilePreviewInitialDownloadProgress =
     BridgeAttachmentDownloadProgress(
         downloadId = "",
         status = "progress",
-        percent = 0,
+        percent = null,
         downloadedBytes = 0L,
         totalBytes = null,
         bytesPerSecond = null
