@@ -160,7 +160,6 @@ import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -3167,19 +3166,12 @@ internal fun MembersListContent(
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-                pullToRefreshItem(
+                slockRaftPullToRefreshItem(
                     state = pullToRefreshState,
                     scrollState = listState,
-                    holdRefreshInset = false,
                     onRefresh = {
                         pullRefreshActive = true
                         onRefresh()
-                    },
-                    content = { pullProgress, isRefreshing, _ ->
-                        SlockRaftPullRefreshIndicator(
-                            pullProgress = pullProgress,
-                            isRefreshing = isRefreshing
-                        )
                     }
                 )
             }

@@ -89,7 +89,6 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
@@ -1263,19 +1262,12 @@ internal fun SlockStructuralHomeShell(
                             beyondBoundsItemCount = homeBeyondBoundsItemCount
                         ) {
                             if (pullToRefreshEnabled) {
-                                pullToRefreshItem(
+                                slockRaftPullToRefreshItem(
                                     state = pullToRefreshState,
                                     scrollState = listState,
-                                    holdRefreshInset = false,
                                     onRefresh = {
                                         pullRefreshActive = true
                                         onRefresh()
-                                    },
-                                    content = { pullProgress, isRefreshing, _ ->
-                                        SlockRaftPullRefreshIndicator(
-                                            pullProgress = pullProgress,
-                                            isRefreshing = isRefreshing
-                                        )
                                     }
                                 )
                             }

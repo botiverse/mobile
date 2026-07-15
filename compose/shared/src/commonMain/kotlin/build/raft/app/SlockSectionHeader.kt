@@ -23,7 +23,11 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.material3.PullToRefreshState
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
@@ -42,6 +46,7 @@ private val LoadingSpinnerSize = 14.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
+private val PullRefreshCarrierColor = SlockColor.SurfaceWhite
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -183,25 +188,50 @@ internal fun SlockTopPageHeaderAction(
     }
 }
 
-@Suppress("UNUSED_PARAMETER")
+internal fun LazyListScope.slockRaftPullToRefreshItem(
+    state: PullToRefreshState,
+    scrollState: LazyListState,
+    onRefresh: () -> Unit
+) {
+    pullToRefreshItem(
+        state = state,
+        scrollState = scrollState,
+        holdRefreshInset = true,
+        onRefresh = onRefresh,
+        content = { pullProgress, isRefreshing, refreshThreshold ->
+            SlockRaftPullRefreshIndicator(
+                pullProgress = pullProgress,
+                isRefreshing = isRefreshing,
+                refreshThreshold = refreshThreshold
+            )
+        }
+    )
+}
+
 @Composable
 internal fun SlockRaftPullRefreshIndicator(
     pullProgress: Float,
     isRefreshing: Boolean,
+    refreshThreshold: Dp,
     modifier: Modifier = Modifier
 ) {
-    if (!slockPullRefreshIndicatorVisible(pullProgress, isRefreshing)) return
     Box(
-        modifier = modifier.fillMaxWidth().height(48.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(refreshThreshold)
+                .background(PullRefreshCarrierColor),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.LoaderCircle,
-            modifier = Modifier.size(LoadingSpinnerSize),
-            color = SlockColor.TextBlackArgb,
-            spinning = isRefreshing,
-            rotationDegrees = slockPullRefreshIndicatorRotationDegrees(pullProgress, isRefreshing)
-        )
+        if (slockPullRefreshIndicatorVisible(pullProgress, isRefreshing)) {
+            SlockLucideIcon(
+                SlockLucideIconName.LoaderCircle,
+                modifier = Modifier.size(LoadingSpinnerSize),
+                color = SlockColor.TextBlackArgb,
+                spinning = isRefreshing,
+                rotationDegrees = slockPullRefreshIndicatorRotationDegrees(pullProgress, isRefreshing)
+            )
+        }
     }
 }
 
