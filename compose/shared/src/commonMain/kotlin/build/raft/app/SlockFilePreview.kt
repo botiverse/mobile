@@ -1517,12 +1517,7 @@ private fun SlockFilePreviewEditorToolButton(
         onClick = onClick,
         enabled = enabled,
         shadowOffset = if (selected) 2.dp else 0.dp,
-        backgroundColor =
-            when {
-                selected -> SlockColor.BrandYellow
-                destructive -> SlockColor.AccentRed.copy(alpha = 0.18f)
-                else -> SlockColor.SurfaceWhite
-            },
+        backgroundColor = slockFilePreviewEditorToolBackground(selected = selected, destructive = destructive),
         disabledBackgroundColor = SlockColor.SurfaceCream,
         disabledIconColor = SlockColor.TextMutedGrayArgb,
         size = SlockSize.IconButton,
@@ -1530,6 +1525,13 @@ private fun SlockFilePreviewEditorToolButton(
         modifier = modifier
     )
 }
+
+internal fun slockFilePreviewEditorToolBackground(selected: Boolean, destructive: Boolean): Color =
+    when {
+        selected -> SlockColor.BrandYellow
+        destructive -> SlockColor.AccentRed
+        else -> SlockColor.SurfaceWhite
+    }
 
 internal fun slockFilePreviewEditorBottomPadding(
     keyboardInsetDp: Float,

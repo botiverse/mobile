@@ -17,6 +17,22 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalSerializationApi::class)
 class SlockFilePreviewDownloadStatusTest {
     @Test
+    fun editorDestructiveToolUsesTheOpaqueDangerToken() {
+        assertEquals(
+            SlockColor.AccentRed,
+            slockFilePreviewEditorToolBackground(selected = false, destructive = true)
+        )
+    }
+
+    @Test
+    fun editorSelectedToolKeepsPriorityOverDestructiveTone() {
+        assertEquals(
+            SlockColor.BrandYellow,
+            slockFilePreviewEditorToolBackground(selected = true, destructive = true)
+        )
+    }
+
+    @Test
     fun filePreviewLaunchPayloadOnlyCarriesPreviewIdentity() {
         val descriptor = WireSlockFilePreviewLaunchPayload.serializer().descriptor
         val names = (0 until descriptor.elementsCount).map(descriptor::getElementName)
