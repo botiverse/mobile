@@ -274,6 +274,51 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun lateOriginCorrectionRunsOnceAfterQuietSessionWhenUserDidNotMove() {
+        val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+
+        assertTrue(
+            shouldCorrectFocusedAnchorAfterOriginHydration(
+                originStatus = "loaded",
+                targetIdentity = identity,
+                anchoredIdentity = identity,
+                correctedIdentity = null,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 3,
+                currentUserScrollGeneration = 3
+            )
+        )
+        assertFalse(
+            shouldCorrectFocusedAnchorAfterOriginHydration(
+                originStatus = "loaded",
+                targetIdentity = identity,
+                anchoredIdentity = identity,
+                correctedIdentity = identity,
+                scrollInterruptedIdentity = null,
+                startUserScrollGeneration = 3,
+                currentUserScrollGeneration = 3
+            )
+        )
+    }
+
+    @Test
+    fun lateOriginCorrectionNeverRunsAfterUserScroll() {
+        val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+
+        assertFalse(
+            shouldCorrectFocusedAnchorAfterOriginHydration(
+                originStatus = "loaded",
+                targetIdentity = identity,
+                anchoredIdentity = identity,
+                correctedIdentity = null,
+                scrollInterruptedIdentity = identity,
+                startUserScrollGeneration = 3,
+                currentUserScrollGeneration = 4
+            )
+        )
+    }
+
+    @Test
     fun focusedAnchorSessionTreatsExplicitViewportReplacementAsUserOverride() {
         val targetIdentity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
         val staleSessionIdentity = focusedMessageAnchorIdentity(messageId = "m1", requestNonce = 1)

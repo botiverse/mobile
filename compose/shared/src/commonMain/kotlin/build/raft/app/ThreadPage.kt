@@ -11625,6 +11625,8 @@ private fun ThreadMessagesList(
     var focusedAnchorSessionIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var focusedAnchorSessionElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
     var focusedAnchorSessionReanchors by remember(threadInstanceKey) { mutableStateOf(0) }
+    var focusedAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
+    var correctedFocusedOriginIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var bottomAnchorFocusedYieldElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
     val pendingFocusedMessageAnchorIdentityState =
         rememberUpdatedState(
@@ -12205,6 +12207,8 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
+        focusedAnchorStartUserScrollGeneration = userScrollGeneration.value
+        correctedFocusedOriginIdentity = null
         // task #567 first-principles invariant: once anchored, the target must
         // hold its viewport position until the user scrolls. The list is
         // item-key anchored and the target itself becomes the anchor item
@@ -12278,6 +12282,61 @@ private fun ThreadMessagesList(
                 }
             }
         }
+    }
+    LaunchedEffect(
+        threadInstanceKey,
+        renderPayload.focusedMessageId,
+        renderPayload.focusedMessageRequestNonce,
+        renderPayload.originStatus,
+        renderPayload.originMessage?.id,
+        lazyItemCount
+    ) {
+        val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        val targetIdentity =
+            focusedMessageAnchorIdentity(
+                messageId = targetMessageId,
+                requestNonce = renderPayload.focusedMessageRequestNonce
+            )
+        val startUserScrollGeneration = focusedAnchorStartUserScrollGeneration ?: return@LaunchedEffect
+        if (
+            !shouldCorrectFocusedAnchorAfterOriginHydration(
+                originStatus = renderPayload.originStatus,
+                targetIdentity = targetIdentity,
+                anchoredIdentity = focusedAnchorSessionIdentity,
+                correctedIdentity = correctedFocusedOriginIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                startUserScrollGeneration = startUserScrollGeneration,
+                currentUserScrollGeneration = userScrollGeneration.value
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        val targetIndex = renderPayload.focusedMessageListItemIndex()
+        if (targetIndex < 0) return@LaunchedEffect
+        listState.awaitThreadMessagesLayoutFrame()
+        listState.awaitThreadMessagesLayoutStability(targetIndex)
+        if (
+            !shouldCorrectFocusedAnchorAfterOriginHydration(
+                originStatus = renderPayload.originStatus,
+                targetIdentity = targetIdentity,
+                anchoredIdentity = focusedAnchorSessionIdentity,
+                correctedIdentity = correctedFocusedOriginIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                startUserScrollGeneration = startUserScrollGeneration,
+                currentUserScrollGeneration = userScrollGeneration.value
+            ) ||
+            listState.isScrollInProgress ||
+            !listState.canScrollToThreadItem(targetIndex)
+        ) {
+            return@LaunchedEffect
+        }
+        correctedFocusedOriginIdentity = targetIdentity
+        val corrected = listState.scrollThreadItemToFocusedViewport(targetIndex)
+        diagnosticsLogger(
+            "thread_focused_origin_correction result=${if (corrected) "corrected" else "skipped_unmeasured"} " +
+                "messageId=$targetMessageId targetIndex=$targetIndex originStatus=${renderPayload.originStatus} " +
+                "userScrollGeneration=${userScrollGeneration.value}"
+        )
     }
     LaunchedEffect(threadInstanceKey, inlineSearchVisible, activeInlineSearchMatch) {
         val match = activeInlineSearchMatch ?: return@LaunchedEffect
@@ -13475,6 +13534,22 @@ internal fun focusedAnchorSessionUserOverrideActive(
     scrollInterruptedIdentity: String?
 ): Boolean =
     isScrollInProgress || scrollInterruptedIdentity == targetIdentity
+
+internal fun shouldCorrectFocusedAnchorAfterOriginHydration(
+    originStatus: String,
+    targetIdentity: String,
+    anchoredIdentity: String?,
+    correctedIdentity: String?,
+    scrollInterruptedIdentity: String?,
+    startUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int
+): Boolean =
+    originStatus != "none" &&
+        originStatus != "loading" &&
+        anchoredIdentity == targetIdentity &&
+        correctedIdentity != targetIdentity &&
+        scrollInterruptedIdentity != targetIdentity &&
+        startUserScrollGeneration == currentUserScrollGeneration
 
 // The session policy as a pure state machine (task #567). Precedence:
 // user interaction always wins (#554 semantics), then the hard cap (never

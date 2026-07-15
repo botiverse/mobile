@@ -219,6 +219,78 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun sharedThreadMessageStoreProducerSurvivesFirstWaiterCancellation() = runBlocking {
+        val producerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadMessageStore(scope = producerScope)
+        val server = ServerId("server-1")
+        val channel = ChannelId("channel-1")
+        val messageId = MessageId("m1")
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        var fetchCount = 0
+        val first =
+            async {
+                store.resolve(server, channel, messageId) {
+                    fetchCount += 1
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    SharedThreadMessageResolution.Loaded(
+                        message(threadId = "channel-1", id = "m1", seq = 1, body = "shared result")
+                    )
+                }
+            }
+        fetchStarted.await()
+        val second =
+            async {
+                store.resolve(server, channel, messageId) {
+                    fetchCount += 1
+                    SharedThreadMessageResolution.Error("duplicate_fetch")
+                }
+            }
+
+        yield()
+        first.cancel()
+        releaseFetch.complete(Unit)
+
+        assertEquals("shared result", (second.await() as SharedThreadMessageResolution.Loaded).message.body)
+        assertEquals(1, fetchCount)
+        assertEquals("shared result", store.get(server, channel, messageId)?.body)
+        producerScope.cancel()
+    }
+
+    @Test
+    fun sharedThreadMessageStoreLateFetchCannotOverwriteNewerSeed() = runBlocking {
+        val producerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadMessageStore(scope = producerScope)
+        val server = ServerId("server-1")
+        val channel = ChannelId("channel-1")
+        val messageId = MessageId("m1")
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        val resolving =
+            async {
+                store.resolve(server, channel, messageId) {
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    SharedThreadMessageResolution.Loaded(
+                        message(threadId = "channel-1", id = "m1", seq = 1, body = "stale fetch")
+                    )
+                }
+            }
+        fetchStarted.await()
+        store.upsert(
+            server,
+            channel,
+            message(threadId = "channel-1", id = "m1", seq = 2, body = "newer seed")
+        )
+        releaseFetch.complete(Unit)
+
+        assertEquals("newer seed", (resolving.await() as SharedThreadMessageResolution.Loaded).message.body)
+        assertEquals("newer seed", store.get(server, channel, messageId)?.body)
+        producerScope.cancel()
+    }
+
+    @Test
     fun threadRouteIdentitySeparatesUnresolvedReplyParentFromResolvedTimeline() {
         val unresolved = unresolvedReplyPayload(parentMessageId = "m1").resolveThreadRouteIdentity()
         val resolved = replyPayload(parentMessageId = "m1", threadId = "thread-m1").resolveThreadRouteIdentity()
@@ -5910,6 +5982,39 @@ class SharedThreadStoreTest {
         assertEquals("thread_parent_timeout", payload.originErrorCode)
         assertNull(payload.errorCode)
         scope.cancel()
+    }
+
+    @Test
+    fun focusedOriginCompletionRejectsNewerSameRouteOriginState() {
+        val loading = focusedReplyRoute()
+        val newerOrigin = contentPayload("newer parent").messages.single().copy(id = "parent-1")
+
+        assertTrue(
+            loading.acceptsFocusedOriginHydrationCompletion(
+                parentChannelId = "parent-channel-1",
+                parentMessageId = "parent-1",
+                originStatusAtStart = "loading",
+                originMessageAtStart = null
+            )
+        )
+        assertFalse(
+            loading.copy(originStatus = "loaded", originMessage = newerOrigin)
+                .acceptsFocusedOriginHydrationCompletion(
+                    parentChannelId = "parent-channel-1",
+                    parentMessageId = "parent-1",
+                    originStatusAtStart = "loading",
+                    originMessageAtStart = null
+                )
+        )
+        assertFalse(
+            loading.copy(originStatus = "missing")
+                .acceptsFocusedOriginHydrationCompletion(
+                    parentChannelId = "parent-channel-1",
+                    parentMessageId = "parent-1",
+                    originStatusAtStart = "loading",
+                    originMessageAtStart = null
+                )
+        )
     }
 
     @Test
