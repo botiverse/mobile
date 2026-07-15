@@ -435,6 +435,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         if (insideCodeSpan) {
                             append(child.getUnescapedTextInNode(content))
                         } else {
+                            skipIfNext = MarkdownTokenTypes.GT
                             val email = child.getUnescapedTextInNode(content)
                             annotatorSettings.referenceLinkHandler?.store(email, "mailto:$email")
                             withLink(
@@ -454,7 +455,13 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     MarkdownTokenTypes.RPAREN -> append(')')
                     MarkdownTokenTypes.LBRACKET -> append('[')
                     MarkdownTokenTypes.RBRACKET -> append(']')
-                    MarkdownTokenTypes.LT -> append('<')
+                    MarkdownTokenTypes.LT ->
+                        // GFM consumes the angle brackets around an email
+                        // autolink (web renders just the linked address); keep
+                        // them only inside code spans where content is verbatim.
+                        if (insideCodeSpan || children.getOrNull(childIndex + 1)?.type != MarkdownTokenTypes.EMAIL_AUTOLINK) {
+                            append('<')
+                        }
                     MarkdownTokenTypes.GT -> append('>')
                     MarkdownTokenTypes.COLON -> append(':')
                     MarkdownTokenTypes.EXCLAMATION_MARK -> append('!')
