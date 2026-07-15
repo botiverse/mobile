@@ -287,10 +287,12 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     content: String,
     node: ASTNode,
     annotatorSettings: AnnotatorSettings,
+    insideCodeSpan: Boolean = false,
 ) = buildMarkdownAnnotatedString(
     content = content,
     children = node.children,
     annotatorSettings = annotatorSettings,
+    insideCodeSpan = insideCodeSpan,
 )
 
 /**
@@ -306,6 +308,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     content: String,
     children: List<ASTNode>,
     annotatorSettings: AnnotatorSettings,
+    insideCodeSpan: Boolean = false,
 ) {
     val annotate = annotatorSettings.annotator.annotate
     val annotateSequence = annotatorSettings.annotator.annotateSequence
@@ -382,12 +385,13 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                                     buildMarkdownAnnotatedString(
                                         content,
                                         child.children.innerList(),
-                                        annotatorSettings
+                                        annotatorSettings,
+                                        insideCodeSpan = true
                                     )
                                 }.toAnnotatedString().text
                             append(codeText.withSlockInlineCodeCharWrapBreaks(charWrapThreshold))
                         } else {
-                            buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
+                            buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings, insideCodeSpan = true)
                         }
                         if (usesEdgePaddingBridge) {
                             append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
@@ -417,9 +421,32 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
 
                     // Token Types
                     MarkdownTokenTypes.TEXT -> append(child.getUnescapedTextInNode(content))
-                    GFMTokenTypes.GFM_AUTOLINK -> if (child.parent == MarkdownElementTypes.LINK_TEXT) {
+                    GFMTokenTypes.GFM_AUTOLINK -> if (insideCodeSpan || child.parent == MarkdownElementTypes.LINK_TEXT) {
+                        // Code spans are verbatim (task #493): no linkification.
                         append(child.getUnescapedTextInNode(content))
                     } else appendAutoLink(content, child, annotatorSettings)
+
+                    // The lexer emits EMAIL_AUTOLINK for "user@host" between angle
+                    // brackets even inside code spans. Without this branch the token
+                    // fell through the when and was silently DROPPED, rendering
+                    // `artin <artin@cat.ms>` as "artin <>" (task #493). Verbatim in
+                    // code spans; a mailto link elsewhere (GFM behavior, web parity).
+                    MarkdownTokenTypes.EMAIL_AUTOLINK ->
+                        if (insideCodeSpan) {
+                            append(child.getUnescapedTextInNode(content))
+                        } else {
+                            val email = child.getUnescapedTextInNode(content)
+                            annotatorSettings.referenceLinkHandler?.store(email, "mailto:$email")
+                            withLink(
+                                LinkAnnotation.Url(
+                                    "mailto:$email",
+                                    annotatorSettings.linkTextSpanStyle,
+                                    linkInteractionListener = annotatorSettings.linkInteractionListener
+                                )
+                            ) {
+                                append(email)
+                            }
+                        }
 
                     MarkdownTokenTypes.SINGLE_QUOTE -> append('\'')
                     MarkdownTokenTypes.DOUBLE_QUOTE -> append('\"')
