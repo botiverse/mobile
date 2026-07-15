@@ -677,13 +677,15 @@ private fun SharedActivityList(
             latestOnIntent(SharedActivityIntent.PrewarmActivityTail(emptyList()))
         }
     }
+    val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
+    val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize().padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
+            if (showPullToRefreshItem) {
                 slockRaftPullToRefreshItem(
                     state = pullToRefreshState,
                     scrollState = listState,
@@ -714,7 +716,7 @@ private fun SharedActivityList(
                     }
                 )
             }
-            if (snapshot.hasMore || loadingMore || loadMoreErrorCode != null) {
+            if (showLoadMoreFooter) {
                 item(key = "activity_load_more") {
                     val shouldRequest = activityShouldRequestLoadMore(
                         hasMore = snapshot.hasMore,

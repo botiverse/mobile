@@ -1315,7 +1315,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            3,
+            2,
             sharedListBeyondBoundsItemCount(
                 threadMessagesLazyItemCount(
                     originStatus = "none",
@@ -1325,6 +1325,26 @@ class ThreadPayloadTest {
                 )
             )
         )
+        val loadingCount =
+            threadMessagesLazyItemCount(
+                originStatus = "none",
+                showHistoryBoundary = false,
+                messagesCount = 0,
+                canLoadMoreAfter = false,
+                showReplyEmptyState = true,
+                showBottomScrollPadding = true
+            )
+        val loadedCount =
+            threadMessagesLazyItemCount(
+                originStatus = "none",
+                showHistoryBoundary = false,
+                messagesCount = 0,
+                canLoadMoreAfter = false,
+                showReplyEmptyState = false,
+                showBottomScrollPadding = true
+            )
+        assertEquals(2, loadingCount)
+        assertEquals(1, loadedCount)
     }
 
     @Test
@@ -7156,7 +7176,24 @@ class ThreadPayloadTest {
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
-        assertEquals(4, threadMessagesBeyondBoundsItemCount(80))
+        assertEquals(8, threadMessagesBeyondBoundsItemCount(80))
+        assertEquals(12, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 720f))
+        assertEquals(24, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 10_000f))
+        assertEquals(
+            ThreadLazyWindowConsumerCounts(
+                listBeyondBoundsItems = 12,
+                markdownPreparseOverscanItems = 12,
+                diagnosticsBeyondBoundsItems = 12
+            ),
+            threadLazyWindowConsumerCounts(
+                itemCount = 80,
+                viewportHeightDp = 720f
+            )
+        )
+        assertFalse(threadViewportMeasurementReady(0f))
+        assertFalse(threadViewportMeasurementReady(Float.NaN))
+        assertFalse(threadViewportMeasurementReady(Float.POSITIVE_INFINITY))
+        assertTrue(threadViewportMeasurementReady(720f))
         assertEquals(
             -568,
             threadLatestItemBottomAnchorScrollOffset(

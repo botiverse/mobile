@@ -83,7 +83,6 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 
-private const val TasksListDefaultBeyondBoundsItemCount = 1
 private const val TasksListMaxBeyondBoundsItemCount = 4
 
 @Composable
@@ -786,10 +785,7 @@ internal fun sharedTasksLazyItemCount(
 }
 
 internal fun sharedTasksBeyondBoundsItemCount(itemCount: Int): Int =
-    itemCount.coerceIn(
-        minimumValue = TasksListDefaultBeyondBoundsItemCount,
-        maximumValue = TasksListMaxBeyondBoundsItemCount
-    )
+    itemCount.coerceAtLeast(0).coerceAtMost(TasksListMaxBeyondBoundsItemCount)
 
 private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
     if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board

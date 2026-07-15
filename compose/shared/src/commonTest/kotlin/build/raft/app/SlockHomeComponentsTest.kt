@@ -1124,6 +1124,32 @@ class SlockHomeComponentsTest {
                 directMessagesExpanded = false
             )
         )
+        assertEquals(
+            9,
+            homeLazyItemCount(
+                channelsCount = 3,
+                jointCount = 0,
+                directMessagesCount = 2,
+                channelsExpanded = false,
+                jointChannelsExpanded = false,
+                directMessagesExpanded = false,
+                hasPullToRefreshItem = false
+            )
+        )
+        assertEquals(
+            18,
+            homeLazyItemCount(
+                channelsCount = 0,
+                jointCount = 0,
+                directMessagesCount = 0,
+                channelsExpanded = false,
+                jointChannelsExpanded = false,
+                directMessagesExpanded = false,
+                hasInlineError = true,
+                channelSkeletonCount = 4,
+                directMessageSkeletonCount = 3
+            )
+        )
     }
 
     @Test
@@ -1165,22 +1191,23 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun sharedListBeyondBoundsPremeasuresShortListsWithoutGrowingUnbounded() {
-        assertEquals(3, sharedListBeyondBoundsItemCount(0))
+    fun sharedListBeyondBoundsNeverExceedsActualItemsOrGrowsUnbounded() {
+        assertEquals(0, sharedListBeyondBoundsItemCount(0))
+        assertEquals(2, sharedListBeyondBoundsItemCount(2))
         assertEquals(12, sharedListBeyondBoundsItemCount(12))
         assertEquals(96, sharedListBeyondBoundsItemCount(400))
     }
 
     @Test
-    fun homeListBeyondBoundsTracksTwoThirdsViewportWithBounds() {
+    fun homeListBeyondBoundsTracksOneViewportWithBounds() {
         assertEquals(6, homeListInitialBeyondBoundsItemCount())
-        assertEquals(6, homeListBeyondBoundsItemCount(itemCount = 0, viewportHeightDp = 0f))
+        assertEquals(0, homeListBeyondBoundsItemCount(itemCount = 0, viewportHeightDp = 0f))
         assertEquals(8, homeListBeyondBoundsItemCount(itemCount = 8, viewportHeightDp = 720f))
-        assertEquals(12, homeListBeyondBoundsItemCount(itemCount = 40, viewportHeightDp = 600f))
-        assertEquals(15, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 720f))
+        assertEquals(18, homeListBeyondBoundsItemCount(itemCount = 40, viewportHeightDp = 600f))
+        assertEquals(22, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 720f))
         assertEquals(24, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 2_000f))
         assertEquals(
-            10,
+            14,
             homeListBeyondBoundsItemCount(
                 itemCount = 400,
                 viewportHeightDp = 720f,
@@ -1190,8 +1217,54 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun viewportBeyondBoundsFallsBackSafelyForInvalidMetricsAndBounds() {
+        assertEquals(
+            0,
+            slockViewportBeyondBoundsItemCount(
+                itemCount = -1,
+                viewportHeightDp = Float.NaN,
+                representativeRowStepDp = 0f,
+                minimumItems = -3,
+                maximumItems = -1
+            )
+        )
+        assertEquals(
+            6,
+            slockViewportBeyondBoundsItemCount(
+                itemCount = 20,
+                viewportHeightDp = Float.POSITIVE_INFINITY,
+                representativeRowStepDp = 34f,
+                minimumItems = 6,
+                maximumItems = 24
+            )
+        )
+        assertEquals(
+            8,
+            slockViewportBeyondBoundsItemCount(
+                itemCount = 20,
+                viewportHeightDp = 720f,
+                representativeRowStepDp = Float.NaN,
+                minimumItems = 8,
+                maximumItems = 4
+            )
+        )
+        assertEquals(
+            5,
+            slockViewportBeyondBoundsItemCount(
+                itemCount = 5,
+                viewportHeightDp = 720f,
+                representativeRowStepDp = 34f,
+                minimumItems = 6,
+                maximumItems = 24,
+                viewportFraction = Float.NEGATIVE_INFINITY
+            )
+        )
+    }
+
+    @Test
     fun homeServerSwitcherKeepsSmallFixedPremeasureWindow() {
-        assertEquals(3, homeServerSwitcherBeyondBoundsItemCount(0))
+        assertEquals(0, homeServerSwitcherBeyondBoundsItemCount(0))
+        assertEquals(2, homeServerSwitcherBeyondBoundsItemCount(2))
         assertEquals(6, homeServerSwitcherBeyondBoundsItemCount(40))
     }
 
@@ -1552,6 +1625,16 @@ class SlockHomeComponentsTest {
                 humansCount = 2,
                 agentsExpanded = false,
                 humansExpanded = false
+            )
+        )
+        assertEquals(
+            4,
+            membersLazyItemCount(
+                agents = agents,
+                humansCount = 2,
+                agentsExpanded = false,
+                humansExpanded = false,
+                hasPullToRefreshItem = false
             )
         )
     }
