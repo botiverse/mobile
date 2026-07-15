@@ -2,6 +2,7 @@
 
 #import "KuiklyRenderViewController.h"
 #import <Hands/Hands.h>
+#import <shared/shared.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
@@ -2512,17 +2513,17 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
             return;
         }
         UIAlertController *prompt =
-            [UIAlertController alertControllerWithTitle:@"Send feedback"
-                                                message:@"Your message plus device diagnostics will be sent to Hands. You'll get a copyable reference to share in the community."
+            [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackPromptTitle
+                                                message:SharedSlockHostStrings.shared.feedbackPromptMessage
                                          preferredStyle:UIAlertControllerStyleAlert];
         [prompt addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-            textField.placeholder = @"Describe your feedback";
+            textField.placeholder = SharedSlockHostStrings.shared.feedbackPromptPlaceholder;
         }];
-        [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel"
+        [prompt addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.feedbackCancel
                                                    style:UIAlertActionStyleCancel
                                                  handler:nil]];
         __weak UIAlertController *weakPrompt = prompt;
-        [prompt addAction:[UIAlertAction actionWithTitle:@"Send"
+        [prompt addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.feedbackSend
                                                    style:UIAlertActionStyleDefault
                                                  handler:^(UIAlertAction *action) {
             NSString *description = [weakPrompt.textFields.firstObject.text
@@ -2553,10 +2554,10 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
                     SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics",
                         [NSString stringWithFormat:@"quiver_feedback_submit_failed error=%@", error.localizedDescription ?: @"unknown"]);
                     UIAlertController *failed =
-                        [UIAlertController alertControllerWithTitle:@"Feedback failed"
-                                                            message:error.localizedDescription ?: @"Unknown error"
+                        [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackFailedTitle
+                                                            message:error.localizedDescription ?: SharedSlockHostStrings.shared.feedbackErrorUnknown
                                                      preferredStyle:UIAlertControllerStyleAlert];
-                    [failed addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                    [failed addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
                     [controller presentViewController:failed animated:YES completion:nil];
                     return;
                 }
@@ -2578,10 +2579,10 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
                 SlockDiagnosticsRecord(@"info", @"SlockDiagnostics",
                     [NSString stringWithFormat:@"quiver_feedback_submitted ticket=%@", shortId]);
                 UIAlertController *done =
-                    [UIAlertController alertControllerWithTitle:@"Feedback sent"
-                                                        message:@"Copied — paste it in the community."
+                    [UIAlertController alertControllerWithTitle:SharedSlockHostStrings.shared.feedbackSentTitle
+                                                        message:SharedSlockHostStrings.shared.feedbackCopiedMessage
                                                  preferredStyle:UIAlertControllerStyleAlert];
-                [done addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [done addAction:[UIAlertAction actionWithTitle:SharedSlockHostStrings.shared.ok style:UIAlertActionStyleDefault handler:nil]];
                 [controller presentViewController:done animated:YES completion:nil];
             });
         }];

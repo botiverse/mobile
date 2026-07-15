@@ -842,6 +842,24 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun hostLayerStringResourcesAreGenerated() {
+        // Task #491: native-host alert copy (iOS HRBridgeModule resolves these
+        // through the exported SlockHostStrings object).
+        listOf(
+            MR.strings.host_feedback_prompt_message,
+            MR.strings.host_feedback_prompt_placeholder,
+            MR.strings.host_feedback_sent_title,
+            MR.strings.host_feedback_copied_message,
+            MR.strings.host_feedback_error_unknown
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "host-layer copy must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API
