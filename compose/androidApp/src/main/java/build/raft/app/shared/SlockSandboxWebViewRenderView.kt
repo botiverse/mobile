@@ -15,6 +15,11 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.JavaScriptReplyProxy
+import androidx.webkit.ScriptHandler
+import androidx.webkit.WebMessageCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.tencent.kuikly.core.render.android.expand.component.KRView
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.ByteArrayInputStream
@@ -38,6 +43,16 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var loadFailureCallback: KuiklyRenderCallback? = null
     private var navigationBlockedCallback: KuiklyRenderCallback? = null
     private var urlChangeCallback: KuiklyRenderCallback? = null
+    private var hostMessageCallback: KuiklyRenderCallback? = null
+
+    // Host↔web event bridge. See `docs/host-web-event-bridge-2026-07-15.md`.
+    // Opt-in per WebView; installed only when `hostEventsEnabled` AND both
+    // `DOCUMENT_START_SCRIPT` + `WEB_MESSAGE_LISTENER` features are supported by
+    // this device's WebView provider (fail-closed on old WebView versions).
+    private var hostEventsEnabled: Boolean = false
+    private var trustedOrigin: String? = null
+    private var bridgeScriptHandle: ScriptHandler? = null
+    private var bridgeListenerName: String? = null
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -81,6 +96,14 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             PROP_INJECTED_JAVASCRIPT -> {
                 updateInjectedJavaScript(propValue.toString())
+                true
+            }
+            PROP_HOST_EVENTS_ENABLED -> {
+                updateHostEventsEnabled(propValue.toBooleanValue(default = false))
+                true
+            }
+            EVENT_HOST_MESSAGE -> {
+                hostMessageCallback = propValue as? KuiklyRenderCallback
                 true
             }
             EVENT_LOAD_SUCCESS -> {
@@ -137,6 +160,14 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateInjectedJavaScript("")
                 true
             }
+            PROP_HOST_EVENTS_ENABLED -> {
+                updateHostEventsEnabled(false)
+                true
+            }
+            EVENT_HOST_MESSAGE -> {
+                hostMessageCallback = null
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = null
                 true
@@ -175,6 +206,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         loadFailureCallback = null
         navigationBlockedCallback = null
         urlChangeCallback = null
+        hostMessageCallback = null
+        // Detach the host↔web bridge BEFORE stopping the webview so the message channel
+        // and document-start script are gone; anything queued on the port is dropped by
+        // the ABA guard (bridgeListenerName == null after detach).
+        detachHostBridge()
         Log.i(LOG_TAG, "destroy_webview loadedSrc=${loadedSrc.take(LOG_URL_LIMIT)}")
         webView.stopLoading()
         webView.loadUrl("about:blank")
@@ -192,6 +228,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         loadedSrc = ""
         lastSuccessfulUrl = ""
         allowedUri = null
+        trustedOrigin = null
+        bridgeScriptHandle = null
+        bridgeListenerName = null
         webView = WebView(context)
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -369,14 +408,24 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (destroyed) return
         val normalized = next.trim()
         if (src == normalized) return
+        // Src changing invalidates the bridge — a WebView whose initial `src` was
+        // `app.raft.build` never gains permission to talk to a different origin
+        // (design §"Redirects and navigation"). Tear down before the new load.
+        detachHostBridge()
+        trustedOrigin = null
         src = normalized
         loadedSrc = ""
         lastSuccessfulUrl = ""
         allowedUri = normalized.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        // Capture the exact origin — the single authority for both `addWebMessageListener`
+        // rules and the callback-side re-check. Same origin format both sides emit.
+        trustedOrigin = allowedUri?.let(::originOf)
         if (normalized.isBlank()) {
             webView.loadUrl("about:blank")
             return
         }
+        // If host events are already enabled and eligibility holds, install now.
+        maybeAttachHostBridge()
         loadedSrc = normalized
         if (shouldBootstrapInjectedJavaScript()) {
             Log.i(LOG_TAG, "load_src bootstrap=true url=${normalized.take(LOG_URL_LIMIT)}")
@@ -444,6 +493,129 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             @Suppress("DEPRECATION")
             webView.loadUrl("javascript:$script")
         }
+    }
+
+    private fun updateHostEventsEnabled(next: Boolean) {
+        if (destroyed) return
+        if (hostEventsEnabled == next) return
+        hostEventsEnabled = next
+        if (next) {
+            maybeAttachHostBridge()
+        } else {
+            detachHostBridge()
+        }
+    }
+
+    /**
+     * Install the bridge if and only if every precondition holds:
+     *  - `hostEventsEnabled` was set true by the caller;
+     *  - `trustedOrigin` was captured from a non-blank, parseable `src`;
+     *  - the device's WebView provider supports BOTH `DOCUMENT_START_SCRIPT` and
+     *    `WEB_MESSAGE_LISTENER` (either false ⇒ fail-closed no-op — see
+     *    §"Support / fallback" in the design).
+     *
+     * If already installed, do nothing (idempotent).
+     */
+    private fun maybeAttachHostBridge() {
+        if (destroyed) return
+        if (!hostEventsEnabled) return
+        if (bridgeListenerName != null) return  // already attached
+        val origin = trustedOrigin ?: return
+        if (!isBridgeFeatureSupported()) {
+            Log.w(LOG_TAG, "host_bridge_unsupported skipping install; hostEventsEnabled becomes no-op")
+            return
+        }
+        val allowed = setOf(origin)
+        val listener = object : WebViewCompat.WebMessageListener {
+            override fun onPostMessage(
+                view: WebView,
+                message: WebMessageCompat,
+                sourceOrigin: Uri,
+                isMainFrame: Boolean,
+                replyProxy: JavaScriptReplyProxy,
+            ) {
+                // Callback-side re-check on TOP of `addWebMessageListener`'s own
+                // origin filter. Belt-and-braces per @MingQi review.
+                if (!isMainFrame) return
+                if (originOf(sourceOrigin) != origin) return
+                val raw = message.data ?: return
+                val bytes = raw.toByteArray(Charsets.UTF_8).size
+                if (bytes > MAX_MESSAGE_UTF8_BYTES) {
+                    Log.w(LOG_TAG, "host_message_oversized bytes=$bytes cap=$MAX_MESSAGE_UTF8_BYTES dropped")
+                    return
+                }
+                notifyHostMessage(raw)
+            }
+        }
+        try {
+            WebViewCompat.addWebMessageListener(webView, BRIDGE_LISTENER_NAME, allowed, listener)
+            bridgeScriptHandle = WebViewCompat.addDocumentStartJavaScript(webView, bridgeScript(), allowed)
+            bridgeListenerName = BRIDGE_LISTENER_NAME
+            Log.i(LOG_TAG, "host_bridge_attached origin=$origin")
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "host_bridge_attach_failed reason=${t.message}")
+            // Roll back to a clean state so a later `maybeAttachHostBridge()` can retry
+            // without a half-installed listener/script pair.
+            try { bridgeScriptHandle?.remove() } catch (_: Throwable) { /* best effort */ }
+            bridgeScriptHandle = null
+            try { WebViewCompat.removeWebMessageListener(webView, BRIDGE_LISTENER_NAME) } catch (_: Throwable) { /* best effort */ }
+            bridgeListenerName = null
+        }
+    }
+
+    private fun detachHostBridge() {
+        val name = bridgeListenerName ?: run {
+            bridgeScriptHandle = null
+            return
+        }
+        try { bridgeScriptHandle?.remove() } catch (_: Throwable) { /* best effort */ }
+        bridgeScriptHandle = null
+        try { WebViewCompat.removeWebMessageListener(webView, name) } catch (_: Throwable) { /* best effort */ }
+        bridgeListenerName = null
+    }
+
+    private fun isBridgeFeatureSupported(): Boolean =
+        WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+
+    private fun originOf(uri: Uri): String? {
+        val scheme = uri.scheme?.lowercase() ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        val port = uri.port
+        return if (port < 0) "$scheme://$host" else "$scheme://$host:$port"
+    }
+
+    private fun bridgeScript(): String {
+        // The bridge script that runs at document-start on the target document. Defines
+        // `window.RaftHost` as a frozen object; the auth-seed script (which runs later
+        // via `evaluateInjectedJavaScript`) MUST NOT overwrite this — the
+        // `defineProperty(..., writable=false, configurable=false)` + `Object.freeze`
+        // combination throws in strict mode / silently no-ops in sloppy mode if a later
+        // script tries. `RAFT_HOST_VERSION` is imported from the KMP shared constant
+        // and pinned to `raft-host-v1`; the web helper checks it before calling `emit`.
+        return """
+            (function () {
+              'use strict';
+              var post = function (m) {
+                try { window.$BRIDGE_LISTENER_NAME.postMessage(m); } catch (_) {}
+              };
+              Object.defineProperty(window, 'RaftHost', {
+                value: Object.freeze({
+                  version: '$RAFT_HOST_VERSION',
+                  emit: function (kind, payload) {
+                    if (typeof kind !== 'string') return;
+                    try { post(JSON.stringify({ kind: kind, payload: payload || {} })); } catch (_) {}
+                  }
+                }),
+                writable: false, configurable: false
+              });
+            })();
+        """.trimIndent()
+    }
+
+    private fun notifyHostMessage(raw: String) {
+        if (destroyed) return
+        hostMessageCallback?.invoke(mapOf("message" to raw))
     }
 
     private fun logConsoleMessage(consoleMessage: ConsoleMessage) {
@@ -530,15 +702,29 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val PROP_CACHE_ENABLED = "cacheEnabled"
         private const val PROP_EPHEMERAL = "ephemeral"
         private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"
+        private const val PROP_HOST_EVENTS_ENABLED = "hostEventsEnabled"
         private const val EVENT_LOAD_SUCCESS = "loadSuccess"
         private const val EVENT_LOAD_FAILURE = "loadFailure"
         private const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
         private const val EVENT_URL_CHANGE = "urlChange"
+        private const val EVENT_HOST_MESSAGE = "hostMessage"
+
+        // Bridge protocol (design r3+delta v2). Version is duplicated with
+        // `SlockSandboxWebViewEvent.RAFT_HOST_VERSION` in KMP shared; a static
+        // guard in `SlockSandboxWebViewRenderViewBridgeContractTest` (see
+        // commonTest side) fails if the two ever drift.
+        private const val RAFT_HOST_VERSION = "raft-host-v1"
+        // Name of the JS-side proxy injected by `addWebMessageListener`. The
+        // bridge script binds `window.RaftHost.emit` to `raftHostPort.postMessage`.
+        private const val BRIDGE_LISTENER_NAME = "raftHostPort"
+        // §Safety limits: 4 KB UTF-8 byte cap on the raw wire string.
+        private const val MAX_MESSAGE_UTF8_BYTES = 4096
 
         private fun String.isEventProp(): Boolean =
             this == EVENT_LOAD_SUCCESS ||
                 this == EVENT_LOAD_FAILURE ||
                 this == EVENT_NAVIGATION_BLOCKED ||
-                this == EVENT_URL_CHANGE
+                this == EVENT_URL_CHANGE ||
+                this == EVENT_HOST_MESSAGE
     }
 }

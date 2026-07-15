@@ -489,6 +489,12 @@ dependencies {
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.metrics.performance)
+    // For SlockSandboxWebViewRenderView's host↔web event bridge: `addDocumentStartJavaScript`
+    // + `addWebMessageListener`. See `docs/host-web-event-bridge-2026-07-15.md`. Both
+    // features are runtime-probed via `WebViewFeature.isFeatureSupported`; on old
+    // WebView providers where either is unsupported, `hostEventsEnabled=true` becomes a
+    // no-op (fail-closed against a "half-bridge"). Version pinned in libs.versions.toml.
+    implementation(libs.androidx.webkit)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
