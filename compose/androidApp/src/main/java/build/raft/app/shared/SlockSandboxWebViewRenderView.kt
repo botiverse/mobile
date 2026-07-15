@@ -20,6 +20,7 @@ import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import build.raft.app.SlockSandboxWebViewEvent
 import com.tencent.kuikly.core.render.android.expand.component.KRView
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.ByteArrayInputStream
@@ -50,9 +51,31 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     // `DOCUMENT_START_SCRIPT` + `WEB_MESSAGE_LISTENER` features are supported by
     // this device's WebView provider (fail-closed on old WebView versions).
     private var hostEventsEnabled: Boolean = false
-    private var trustedOrigin: String? = null
+    /**
+     * Captured ONCE from the first eligible `src`. Immutable for the life of this
+     * renderer instance (@MingQi review r6 #1). A WebView whose initial src was
+     * `app.raft.build` never gains permission to talk to any other origin — a later
+     * `updateSrc()` that resolves to a different origin PERMANENTLY DISABLES the
+     * bridge on this renderer, it does NOT re-capture. Recreation after
+     * `onDestroy` starts a fresh renderer with a fresh capture opportunity.
+     */
+    private var initialTrustedOrigin: String? = null
+    /**
+     * Set true once a later `updateSrc()` produced an origin that disagreed with
+     * `initialTrustedOrigin`. From that point on, `maybeAttachHostBridge()` is a
+     * no-op regardless of feature-support or `hostEventsEnabled`.
+     */
+    private var bridgeSealedOff: Boolean = false
     private var bridgeScriptHandle: ScriptHandler? = null
     private var bridgeListenerName: String? = null
+    /**
+     * Per-registration token (@MingQi review r6 #2). Every `addWebMessageListener`
+     * install captures the CURRENT value at closure construction time; on detach
+     * this is incremented, so any callback delivered LATER from an old listener
+     * sees a mismatch and drops the message. Guards the ABA case where a queued
+     * message from a torn-down listener would otherwise reach a fresh one.
+     */
+    private var bridgeEpoch: Long = 0L
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -228,9 +251,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         loadedSrc = ""
         lastSuccessfulUrl = ""
         allowedUri = null
-        trustedOrigin = null
+        initialTrustedOrigin = null
+        bridgeSealedOff = false
         bridgeScriptHandle = null
         bridgeListenerName = null
+        bridgeEpoch = 0L
         webView = WebView(context)
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -285,6 +310,12 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     super.onPageStarted(view, url, favicon)
                     Log.i(LOG_TAG, "page_started url=${url.orEmpty().take(LOG_URL_LIMIT)}")
                     url?.let { notifyUrlChange(it) }
+                    // Bridge lifecycle gate (@MingQi review r6 #3). Even when
+                    // `allowNavigation=true`, a main-frame navigation whose target origin
+                    // differs from the captured `initialTrustedOrigin` MUST detach the
+                    // bridge. `allowNavigation` widens NAVIGATION policy; it does not
+                    // widen BRIDGE origin authority.
+                    url?.let { detachBridgeIfOffOrigin(it) }
                     if (url != null && !allowNavigation && !isAllowedMainDocumentUrl(url)) {
                         view?.stopLoading()
                         notifyNavigationBlocked(url)
@@ -408,23 +439,33 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (destroyed) return
         val normalized = next.trim()
         if (src == normalized) return
-        // Src changing invalidates the bridge — a WebView whose initial `src` was
-        // `app.raft.build` never gains permission to talk to a different origin
-        // (design §"Redirects and navigation"). Tear down before the new load.
+        // Src changing invalidates any active bridge, always. Detach first — later logic
+        // decides whether a re-attach is even permitted (@MingQi review r6 #1).
         detachHostBridge()
-        trustedOrigin = null
         src = normalized
         loadedSrc = ""
         lastSuccessfulUrl = ""
         allowedUri = normalized.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
-        // Capture the exact origin — the single authority for both `addWebMessageListener`
-        // rules and the callback-side re-check. Same origin format both sides emit.
-        trustedOrigin = allowedUri?.let(::originOf)
+        val candidateOrigin = allowedUri?.takeIf(::isEligibleBridgeUri)?.let(::originOf)
+        // §"Origin authority" contract: `initialTrustedOrigin` is captured ONCE and is
+        // immutable for the life of this renderer. A later src whose origin differs
+        // permanently seals off the bridge.
+        val currentInitial = initialTrustedOrigin
+        if (currentInitial == null) {
+            if (candidateOrigin != null) {
+                initialTrustedOrigin = candidateOrigin
+            }
+        } else if (candidateOrigin != currentInitial) {
+            Log.w(
+                LOG_TAG,
+                "host_bridge_sealed reason=origin_changed initial=$currentInitial candidate=$candidateOrigin"
+            )
+            bridgeSealedOff = true
+        }
         if (normalized.isBlank()) {
             webView.loadUrl("about:blank")
             return
         }
-        // If host events are already enabled and eligibility holds, install now.
         maybeAttachHostBridge()
         loadedSrc = normalized
         if (shouldBootstrapInjectedJavaScript()) {
@@ -508,23 +549,29 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     /**
      * Install the bridge if and only if every precondition holds:
-     *  - `hostEventsEnabled` was set true by the caller;
-     *  - `trustedOrigin` was captured from a non-blank, parseable `src`;
-     *  - the device's WebView provider supports BOTH `DOCUMENT_START_SCRIPT` and
-     *    `WEB_MESSAGE_LISTENER` (either false ⇒ fail-closed no-op — see
-     *    §"Support / fallback" in the design).
+     *  - `hostEventsEnabled == true`;
+     *  - `bridgeSealedOff == false` (no earlier src disagreed with the initial origin);
+     *  - `initialTrustedOrigin != null` (captured from an eligible src);
+     *  - both `DOCUMENT_START_SCRIPT` and `WEB_MESSAGE_LISTENER` are supported
+     *    (either false ⇒ fail-closed no-op).
      *
      * If already installed, do nothing (idempotent).
      */
     private fun maybeAttachHostBridge() {
         if (destroyed) return
         if (!hostEventsEnabled) return
+        if (bridgeSealedOff) return  // origin changed → sealed for the life of this instance
         if (bridgeListenerName != null) return  // already attached
-        val origin = trustedOrigin ?: return
+        val origin = initialTrustedOrigin ?: return
         if (!isBridgeFeatureSupported()) {
             Log.w(LOG_TAG, "host_bridge_unsupported skipping install; hostEventsEnabled becomes no-op")
             return
         }
+        // Per-registration token (ABA guard, @MingQi review r6 #2). The listener captures
+        // the CURRENT epoch at closure construction. Any detach increments `bridgeEpoch`,
+        // so a callback delivered later from a torn-down listener sees a mismatch and
+        // drops the message before it can reach a fresh listener installed after re-attach.
+        val listenerEpoch = ++bridgeEpoch
         val allowed = setOf(origin)
         val listener = object : WebViewCompat.WebMessageListener {
             override fun onPostMessage(
@@ -534,6 +581,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 isMainFrame: Boolean,
                 replyProxy: JavaScriptReplyProxy,
             ) {
+                // ABA drop: if the current epoch has moved past ours, we came from a
+                // detached listener and must not deliver.
+                if (bridgeEpoch != listenerEpoch) return
                 // Callback-side re-check on TOP of `addWebMessageListener`'s own
                 // origin filter. Belt-and-braces per @MingQi review.
                 if (!isMainFrame) return
@@ -551,19 +601,26 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             WebViewCompat.addWebMessageListener(webView, BRIDGE_LISTENER_NAME, allowed, listener)
             bridgeScriptHandle = WebViewCompat.addDocumentStartJavaScript(webView, bridgeScript(), allowed)
             bridgeListenerName = BRIDGE_LISTENER_NAME
-            Log.i(LOG_TAG, "host_bridge_attached origin=$origin")
+            Log.i(LOG_TAG, "host_bridge_attached origin=$origin epoch=$listenerEpoch")
         } catch (t: Throwable) {
             Log.w(LOG_TAG, "host_bridge_attach_failed reason=${t.message}")
-            // Roll back to a clean state so a later `maybeAttachHostBridge()` can retry
-            // without a half-installed listener/script pair.
+            // Roll back so a later `maybeAttachHostBridge()` can retry cleanly. Bumping
+            // the epoch again invalidates the closure we just leaked into the WebView.
             try { bridgeScriptHandle?.remove() } catch (_: Throwable) { /* best effort */ }
             bridgeScriptHandle = null
             try { WebViewCompat.removeWebMessageListener(webView, BRIDGE_LISTENER_NAME) } catch (_: Throwable) { /* best effort */ }
             bridgeListenerName = null
+            bridgeEpoch++
         }
     }
 
     private fun detachHostBridge() {
+        // Bump the epoch BEFORE anything else. A callback in flight right now that has
+        // not yet reached its `bridgeEpoch != listenerEpoch` check will see the bumped
+        // value on its next read and drop. Any callback still queued in the message-port
+        // pipeline that arrives after this bump has the same fate. This is the ABA
+        // guard's core operation (@MingQi review r6 #2).
+        bridgeEpoch++
         val name = bridgeListenerName ?: run {
             bridgeScriptHandle = null
             return
@@ -574,16 +631,13 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         bridgeListenerName = null
     }
 
+    private fun isEligibleBridgeUri(uri: Uri): Boolean = isSlockSandboxWebViewEligibleBridgeUri(uri)
+
     private fun isBridgeFeatureSupported(): Boolean =
         WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) &&
             WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
 
-    private fun originOf(uri: Uri): String? {
-        val scheme = uri.scheme?.lowercase() ?: return null
-        val host = uri.host?.lowercase() ?: return null
-        val port = uri.port
-        return if (port < 0) "$scheme://$host" else "$scheme://$host:$port"
-    }
+    private fun originOf(uri: Uri): String? = slockSandboxWebViewOriginOf(uri)
 
     private fun bridgeScript(): String {
         // The bridge script that runs at document-start on the target document. Defines
@@ -591,8 +645,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         // via `evaluateInjectedJavaScript`) MUST NOT overwrite this — the
         // `defineProperty(..., writable=false, configurable=false)` + `Object.freeze`
         // combination throws in strict mode / silently no-ops in sloppy mode if a later
-        // script tries. `RAFT_HOST_VERSION` is imported from the KMP shared constant
-        // and pinned to `raft-host-v1`; the web helper checks it before calling `emit`.
+        // script tries. The version string is read from the KMP shared
+        // `SlockSandboxWebViewEvent.RAFT_HOST_VERSION` — single source of truth for both
+        // KMP shared and Android; web helper checks the same string before calling `emit`.
         return """
             (function () {
               'use strict';
@@ -601,7 +656,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
               };
               Object.defineProperty(window, 'RaftHost', {
                 value: Object.freeze({
-                  version: '$RAFT_HOST_VERSION',
+                  version: '${SlockSandboxWebViewEvent.RAFT_HOST_VERSION}',
                   emit: function (kind, payload) {
                     if (typeof kind !== 'string') return;
                     try { post(JSON.stringify({ kind: kind, payload: payload || {} })); } catch (_) {}
@@ -615,7 +670,32 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     private fun notifyHostMessage(raw: String) {
         if (destroyed) return
-        hostMessageCallback?.invoke(mapOf("message" to raw))
+        val cb = hostMessageCallback ?: return
+        // Consumer throw is a shared/product bug; it MUST NOT propagate up into the
+        // WebKit / Kuikly dispatch pipeline (@MingQi review r6 #4). Same principle as
+        // the web helper's throw-safe emit path: the caller has no recovery for a
+        // consumer-side throw, and letting it escape can wedge the WebView.
+        try {
+            cb.invoke(mapOf("message" to raw))
+        } catch (t: Throwable) {
+            Log.w(LOG_TAG, "host_message_callback_threw reason=${t.message}")
+        }
+    }
+
+    private fun detachBridgeIfOffOrigin(url: String) {
+        // Only relevant if a bridge is currently installed.
+        if (bridgeListenerName == null) return
+        val trusted = initialTrustedOrigin ?: return
+        val parsed = runCatching { Uri.parse(url) }.getOrNull() ?: return
+        val target = originOf(parsed) ?: return
+        if (target != trusted) {
+            Log.w(LOG_TAG, "host_bridge_detach_off_origin trusted=$trusted target=$target")
+            detachHostBridge()
+            // Seal off — the WebView reached a different origin; do NOT re-attach if it
+            // navigates back (@MingQi review r6 #1 immutability corollary, r6 #3
+            // "allowNavigation does not widen bridge origin authority").
+            bridgeSealedOff = true
+        }
     }
 
     private fun logConsoleMessage(consoleMessage: ConsoleMessage) {
@@ -709,11 +789,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val EVENT_URL_CHANGE = "urlChange"
         private const val EVENT_HOST_MESSAGE = "hostMessage"
 
-        // Bridge protocol (design r3+delta v2). Version is duplicated with
-        // `SlockSandboxWebViewEvent.RAFT_HOST_VERSION` in KMP shared; a static
-        // guard in `SlockSandboxWebViewRenderViewBridgeContractTest` (see
-        // commonTest side) fails if the two ever drift.
-        private const val RAFT_HOST_VERSION = "raft-host-v1"
+        // Bridge protocol version is owned by KMP shared
+        // (`SlockSandboxWebViewEvent.RAFT_HOST_VERSION`). Do NOT duplicate the string
+        // constant here — this renderer READS it. If it's ever renamed, this file
+        // continues to compile because `bridgeScript()` references the shared constant
+        // in an interpolation; the JS output changes atomically with the shared change.
         // Name of the JS-side proxy injected by `addWebMessageListener`. The
         // bridge script binds `window.RaftHost.emit` to `raftHostPort.postMessage`.
         private const val BRIDGE_LISTENER_NAME = "raftHostPort"
@@ -727,4 +807,31 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 this == EVENT_URL_CHANGE ||
                 this == EVENT_HOST_MESSAGE
     }
+}
+
+/**
+ * A URI is eligible to CAPTURE the initial trusted origin for a `SlockSandboxWebView`
+ * only if it uses HTTP(S) and has a non-empty host. Non-http(s) schemes and blank
+ * hosts never seed the bridge (design §"Pre-condition for capture"). Exposed as
+ * top-level `internal` so unit tests can exercise the predicate directly without
+ * needing to instantiate the KRView (which requires a real Context on Android).
+ */
+internal fun isSlockSandboxWebViewEligibleBridgeUri(uri: Uri): Boolean {
+    val scheme = uri.scheme?.lowercase() ?: return false
+    if (scheme != "http" && scheme != "https") return false
+    val host = uri.host ?: return false
+    return host.isNotBlank()
+}
+
+/**
+ * scheme + host + optional port, normalised to lowercase. Same string format the
+ * platform's `WebMessageListener` `sourceOrigin` returns via `Uri.toString()` when
+ * the port is present or omitted — enables an EXACT-STRING compare between the
+ * captured `initialTrustedOrigin` and the inbound `sourceOrigin` on every message.
+ */
+internal fun slockSandboxWebViewOriginOf(uri: Uri): String? {
+    val scheme = uri.scheme?.lowercase() ?: return null
+    val host = uri.host?.lowercase() ?: return null
+    val port = uri.port
+    return if (port < 0) "$scheme://$host" else "$scheme://$host:$port"
 }
