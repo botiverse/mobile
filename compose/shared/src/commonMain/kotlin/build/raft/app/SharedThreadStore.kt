@@ -669,6 +669,7 @@ internal class SharedThreadPayloadStore(
                     }
             if (freshnessLedger.isCurrent(generation)) return@coroutineScope result
         }
+        error("failed prewarm takeover loop exited unexpectedly")
     }
 
     suspend fun recordCanonicalSuccess(generation: SharedThreadFreshnessGeneration) {
