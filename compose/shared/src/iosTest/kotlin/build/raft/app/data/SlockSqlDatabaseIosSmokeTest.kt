@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
