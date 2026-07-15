@@ -26,26 +26,27 @@ class SocketIoSocketTransport(
             "SlockRealtime",
             "transport_connect_start serverId=${auth["serverId"].orEmpty()} hasToken=${auth["token"].isNullOrBlank().not()}"
         )
-        val generation = generationFence.begin(context)
-        socket?.disconnect()
-        val newSocket = IO.socket(
-            socketUrl,
-            IO.Options().apply {
-                transports = arrayOf(WebSocket.NAME)
-                reconnection = true
-                this.auth = auth
+        generationFence.replace(context) { generation ->
+            socket?.disconnect()
+            val newSocket = IO.socket(
+                socketUrl,
+                IO.Options().apply {
+                    transports = arrayOf(WebSocket.NAME)
+                    reconnection = true
+                    this.auth = auth
+                }
+            )
+            listeners.forEach { (eventName, eventListeners) ->
+                eventListeners.forEach { listener ->
+                    bindListener(newSocket, eventName, listener, generation)
+                }
             }
-        )
-        listeners.forEach { (eventName, eventListeners) ->
-            eventListeners.forEach { listener ->
-                bindListener(newSocket, eventName, listener, generation)
-            }
+            // Publish the exact socket before connect(): Socket.IO may synchronously invoke a
+            // manager listener that re-enters connect(). A later outer assignment would otherwise
+            // overwrite that successor socket after the nested connect returns.
+            socket = newSocket
+            newSocket.connect()
         }
-        // Publish the exact socket before connect(): Socket.IO may synchronously invoke a
-        // manager listener that re-enters connect(). A later outer assignment would otherwise
-        // overwrite that successor socket after the nested connect returns.
-        socket = newSocket
-        newSocket.connect()
     }
 
     @Synchronized
@@ -127,18 +128,24 @@ internal class RealtimeSocketGeneration(
 )
 
 internal class RealtimeSocketGenerationFence(
-    private val beforeGenerationPublish: (() -> Unit)? = null,
+    private val generationIdForOracle: (() -> Long)? = null,
+    private val beforeCurrentDelivery: (() -> Unit)? = null,
 ) {
     private var nextGenerationId = 0L
     @Volatile
     private var current: RealtimeSocketGeneration? = null
 
-    fun begin(context: RealtimeSocketConnectionContext): RealtimeSocketGeneration {
-        val next = nextGenerationId + 1L
-        beforeGenerationPublish?.invoke()
-        nextGenerationId = next
+    private fun allocate(context: RealtimeSocketConnectionContext): RealtimeSocketGeneration {
+        val next =
+            generationIdForOracle?.invoke()
+                ?: (nextGenerationId + 1L).also { nextGenerationId = it }
         return RealtimeSocketGeneration(next, context).also { current = it }
     }
+
+    fun <T> replace(
+        context: RealtimeSocketConnectionContext,
+        block: (RealtimeSocketGeneration) -> T,
+    ): T = block(allocate(context))
 
     fun clear() {
         current = null
@@ -153,6 +160,7 @@ internal class RealtimeSocketGenerationFence(
         block: () -> Unit,
     ): Boolean {
         if (!accepts(generation)) return false
+        beforeCurrentDelivery?.invoke()
         block()
         return true
     }
