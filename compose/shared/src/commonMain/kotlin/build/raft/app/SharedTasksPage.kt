@@ -1197,14 +1197,9 @@ private fun SharedTaskCard(
                 Text(
                     text = assigneeDisplayName?.let { "@$it" }
                         ?: stringResource(MR.strings.tasks_assignee_unassigned),
-                    style =
-                        if (assigneeDisplayName != null) {
-                            SlockType.Caption
-                                .withSlockFontWeight(FontWeight.Bold)
-                                .copy(fontSize = 11.sp, lineHeight = 14.sp)
-                        } else {
-                            SlockType.Caption
-                        },
+                    style = SlockType.Caption
+                        .withSlockFontWeight(FontWeight.Bold)
+                        .copy(fontSize = 11.sp, lineHeight = 14.sp),
                     color = SlockColor.TextBlack.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
