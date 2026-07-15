@@ -1,10 +1,4 @@
-/*
- * `sync_core_messages_v0` "sole-apply t0" SHADOW fold+persist lane, at the SharedRealtimeDomainEventOwner
- * accept seam. The lane runs BEFORE the sink fan-out, is INVISIBLE to the sinks (never changes any sink
- * output), and is FAIL-OPEN (a fold/persist error can never block or throw into the legacy accept path).
- * This exercises those four properties on a REAL SQLite backend. Sole-apply stays OFF — this is a
- * shadow-of-record persist only, no read path is touched.
- */
+/* T2 REDs for legacy partition denial plus the existing reaction-shadow preservation gates. */
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
@@ -14,32 +8,28 @@ import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.model.ChannelId
+import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
-import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.FoldPersistFrame
 import build.raft.app.network.sync.FoldPersistenceAdapter
-import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
 import build.raft.app.network.sync.RestoredFoldState
-import build.raft.app.network.sync.SqlDelightFoldPersistStore
-import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.DurablePartitionKey
+import build.raft.app.network.sync.PartitionDenialReason
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -145,134 +135,111 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
             ),
         )
 
-    private fun messageUpdatedWithCanonical(
-        id: String,
-        seq: Long,
-        content: String,
-    ): MessageUpdated =
-        MessageUpdated(
-            message = Message(
-                id = MessageId(id),
-                threadId = ThreadId(channelId),
-                channelId = ChannelId(channelId),
-                seq = seq,
-                author = MemberProfile(MemberId("u1"), "Alice", "alice", MemberKind.Human),
-                timestampLabel = "now",
-                body = content,
-            ),
-            decodedCanonical = CanonicalMessageCarry(
-                row = canonicalRow(id, seq, content),
-                presentAggregates = emptySet<MessageAggregateField>(),
-            ),
-        )
+    private class RecordingAdapter : FoldPersistenceAdapter {
+        val appliedFrames = mutableListOf<FoldPersistFrame>()
 
-    private fun persistedFactIds(db: SlockSqlDatabase): List<String> = runBlocking {
-        SqlDelightFoldPersistStore(db, now = { 100L }).readFacts(scopeKey).map { it.id }
-    }
-
-    private fun restoredState(db: SlockSqlDatabase): RestoredFoldState = runBlocking {
-        val store = SqlDelightFoldPersistStore(db, now = { 100L })
-        RestoredFoldState(store.readFacts(scopeKey), store.readCursor(scopeKey))
-    }
-
-    @Test
-    fun persistsFactToStoreWhenFlagOn() {
-        val db = freshDatabase()
-        val lane = SyncCoreMessageShadowFoldLane.create(
-            featureFlags = resolvedFlags(enabled = true),
-            sqlDatabase = db,
-            now = { 100L },
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            logger = {},
-        )
-        val (owner, homeEvents) = ownerWith(lane)
-
-        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), source = "app_shell")
-
-        assertEquals(listOf("m1"), persistedFactIds(db), "flag-on shadow lane must persist the canonical fact")
-        // Shadow is invisible: the legacy sink still saw the event exactly once.
-        assertEquals(1, homeEvents.size)
-    }
-
-    @Test
-    fun olderMessageUpdatePersistsFoldedFactWithoutRewindingScopeCursor() {
-        val db = freshDatabase()
-        val lane = SyncCoreMessageShadowFoldLane.create(
-            featureFlags = resolvedFlags(enabled = true),
-            sqlDatabase = db,
-            now = { 100L },
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            logger = {},
-        )
-        val (owner, homeEvents) = ownerWith(lane)
-
-        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
-        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
-        owner.accept(
-            serverId,
-            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
-            source = "app_shell",
-        )
-
-        val restored = restoredState(db)
-        assertEquals("new", restored.facts.first { it.id == "m10" }.content)
-        assertEquals(14, restored.cursor?.latestSeq)
-        assertEquals(14, restored.cursor?.newestLoadedSeq)
-        assertEquals(3, homeEvents.size, "shadow update must remain invisible to legacy sink delivery")
-    }
-
-    @Test
-    fun olderPersistCannotCompleteAfterNewerUpdateAndRollbackDurableState() = runBlocking {
-        val db = freshDatabase()
-        val delegate = DefaultFoldPersistenceAdapter(
-            runner = SqlDelightFoldPersistTransactionRunner(db),
-            store = SqlDelightFoldPersistStore(db, now = { 100L }),
-        )
-        val invocation = AtomicInteger(0)
-        val olderStarted = CompletableDeferred<Unit>()
-        val releaseOlder = CompletableDeferred<Unit>()
-        val newerStarted = CompletableDeferred<Unit>()
-        val newerCompleted = CompletableDeferred<Unit>()
-        val pausingAdapter = object : FoldPersistenceAdapter {
-            override suspend fun applyFrame(frame: FoldPersistFrame) {
-                when (invocation.incrementAndGet()) {
-                    2 -> {
-                        olderStarted.complete(Unit)
-                        releaseOlder.await()
-                    }
-                    3 -> newerStarted.complete(Unit)
-                }
-                delegate.applyFrame(frame)
-                if (invocation.get() == 3) newerCompleted.complete(Unit)
-            }
-
-            override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = delegate.restore(scope)
+        override suspend fun applyFrame(frame: FoldPersistFrame) {
+            appliedFrames += frame
         }
-        val lane = SyncCoreMessageShadowFoldLane(
-            featureFlags = resolvedFlags(enabled = true),
-            adapter = pausingAdapter,
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            logger = {},
+
+        override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = RestoredFoldState(emptyList(), null)
+    }
+
+    private fun recordingLane(
+        logs: MutableList<String>,
+        adapter: RecordingAdapter = RecordingAdapter(),
+    ) = SyncCoreMessageShadowFoldLane(
+        featureFlags = resolvedFlags(enabled = true),
+        adapter = adapter,
+        scope = CoroutineScope(Dispatchers.Unconfined),
+        logger = logs::add,
+    )
+
+    @Test
+    fun legacyOwnerDeniesExactlyOneCanonicalFrameWithoutPersistingAndKeepsSinkByteEqual() {
+        val logs = mutableListOf<String>()
+        val adapter = RecordingAdapter()
+        val lane = recordingLane(logs, adapter)
+        val (owner, homeEvents) = ownerWith(lane)
+        val event = messageNewWithCanonical(id = "m1", seq = 1)
+
+        owner.accept(serverId, event, source = "app_shell")
+
+        assertTrue(adapter.appliedFrames.isEmpty(), "legacy path without principal must never persist")
+        assertEquals<List<Pair<String, RealtimeEvent>>>(
+            listOf(serverId to event),
+            homeEvents,
+            "denial must not alter legacy sink delivery",
         )
-        val (owner, _) = ownerWith(lane)
+        assertEquals(1, logs.size, "one eligible canonical frame must produce one bounded denial")
+        assertTrue(logs.single().contains("sync_core_partition_persist_denied"))
+        assertTrue(logs.single().contains("reason=principal_unavailable"))
+        assertTrue(logs.single().contains("consumer=sync-core.messages.v1"))
+        assertTrue(logs.single().contains("deniedFrameCount=1"))
+        assertFalse(logs.single().contains("m1"), "bounded denial must not include message identity")
+        assertFalse(logs.single().contains("body-m1"), "bounded denial must not include message content")
+        assertFalse(logs.single().contains("principal-1"), "bounded denial must not include principal")
+    }
 
-        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
-        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
-        olderStarted.await()
-        owner.accept(
-            serverId,
-            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
-            source = "app_shell",
+    @Test
+    fun nonMessageAndMessageWithoutCanonicalCarryProduceZeroDenialAndZeroPersist() {
+        val logs = mutableListOf<String>()
+        val adapter = RecordingAdapter()
+        val lane = recordingLane(logs, adapter)
+        val (owner, homeEvents) = ownerWith(lane)
+        val heartbeat = Heartbeat(seq = 1L)
+        val messageWithoutCarry = messageNewWithCanonical(id = "m-no-carry", seq = 2L).copy(decodedCanonical = null)
+
+        owner.accept(serverId, heartbeat, source = "app_shell")
+        owner.accept(serverId, messageWithoutCarry, source = "app_shell")
+
+        assertTrue(adapter.appliedFrames.isEmpty())
+        assertTrue(logs.none { it.contains("sync_core_partition_persist_denied") })
+        assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to messageWithoutCarry), homeEvents)
+    }
+
+    @Test
+    fun namedDenialCarriesBoundedFrameCount() {
+        val logs = mutableListOf<String>()
+        val lane = recordingLane(logs)
+
+        val one = lane.partitionDenied(serverId, PartitionDenialReason.PrincipalUnavailable)
+        assertEquals(
+            "PartitionDenied(reason=PrincipalUnavailable, deniedFrameCount=1)",
+            one.toString(),
         )
 
-        assertFalse(newerStarted.isCompleted, "newer frame must wait behind the earlier same-owner persist")
-        releaseOlder.complete(Unit)
-        newerCompleted.await()
+        val countedMethod = lane.javaClass.getDeclaredMethod(
+            "partitionDenied",
+            String::class.java,
+            PartitionDenialReason::class.java,
+            Int::class.javaPrimitiveType,
+        )
+        val two = countedMethod.invoke(lane, serverId, PartitionDenialReason.PrincipalUnavailable, 2)
+        assertEquals("PartitionDenied(reason=PrincipalUnavailable, deniedFrameCount=2)", two?.toString())
+    }
 
-        val restored = restoredState(db)
-        assertEquals("new", restored.facts.first { it.id == "m10" }.content)
-        assertEquals(14, restored.cursor?.latestSeq)
-        assertEquals(14, restored.cursor?.newestLoadedSeq)
+    @Test
+    fun narrowMessageLaneDerivesScopeFromCanonicalPayload() {
+        val logs = mutableListOf<String>()
+        val adapter = RecordingAdapter()
+        val lane = recordingLane(logs, adapter)
+        val decoded = requireNotNull(messageNewWithCanonical(id = "m1", seq = 1).decodedCanonical)
+        val partition = scopeKey.partition
+
+        val method = lane.javaClass.getDeclaredMethod(
+            "foldAndPersist",
+            DurablePartitionKey::class.java,
+            CanonicalMessageCarry::class.java,
+            Boolean::class.javaPrimitiveType,
+            String::class.java,
+        )
+        method.invoke(lane, partition, decoded, false, "epoch-a")
+
+        val frame = adapter.appliedFrames.single()
+        assertEquals(partition, frame.scope.partition)
+        assertEquals(decoded.row.channelId, frame.scope.scopeId)
+        assertEquals("channel", frame.scope.scopeKind)
     }
 
     @Test
@@ -302,50 +269,6 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         // The sink-facing output must be byte-identical whether the shadow lane is on or off.
         assertEquals(homeEventsOff, homeEventsOn)
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEventsOn)
-    }
-
-    @Test
-    fun failOpenWhenPersistThrowsStillDeliversToSinks() {
-        val throwingAdapter = object : FoldPersistenceAdapter {
-            override suspend fun applyFrame(frame: FoldPersistFrame): Unit = throw RuntimeException("boom")
-            override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = RestoredFoldState(emptyList(), null)
-        }
-        val loggedFailures = mutableListOf<String>()
-        val lane = SyncCoreMessageShadowFoldLane(
-            featureFlags = resolvedFlags(enabled = true),
-            adapter = throwingAdapter,
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            logger = loggedFailures::add,
-        )
-        val (owner, homeEvents) = ownerWith(lane)
-        val event = messageNewWithCanonical(id = "m1", seq = 1)
-
-        // Must NOT throw out of accept, and the event must still reach the legacy sink.
-        owner.accept(serverId, event, source = "app_shell")
-
-        assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
-        assertTrue(
-            loggedFailures.any { it.contains("sync_core_t0_shadow_persist_failed") },
-            "a swallowed persist failure must emit a bounded diagnostic",
-        )
-    }
-
-    @Test
-    fun noPersistWhenFlagOff() {
-        val db = freshDatabase()
-        val lane = SyncCoreMessageShadowFoldLane.create(
-            featureFlags = resolvedFlags(enabled = false),
-            sqlDatabase = db,
-            now = { 100L },
-            scope = CoroutineScope(Dispatchers.Unconfined),
-            logger = {},
-        )
-        val (owner, homeEvents) = ownerWith(lane)
-
-        owner.accept(serverId, messageNewWithCanonical(id = "m1", seq = 1), source = "app_shell")
-
-        assertEquals(emptyList(), persistedFactIds(db), "flag-off must not persist anything")
-        assertEquals(1, homeEvents.size)
     }
 
     @Test

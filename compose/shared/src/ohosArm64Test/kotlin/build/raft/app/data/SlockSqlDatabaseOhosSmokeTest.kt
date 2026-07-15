@@ -18,4 +18,11 @@ class SlockSqlDatabaseOhosSmokeTest {
             driver.close()
         }
     }
+
+    @Test
+    fun nativeFileBackedMigrationRollsBackAndRetriesForEveryDdlBoundary() {
+        assertFileBackedDurablePartitionMigrationRollbackRetry(platformName = "ohos") { schema, name ->
+            NativeSqliteDriver(schema = schema, name = name)
+        }
+    }
 }

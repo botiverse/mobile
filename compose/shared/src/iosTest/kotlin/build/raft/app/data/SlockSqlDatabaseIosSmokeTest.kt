@@ -18,4 +18,11 @@ class SlockSqlDatabaseIosSmokeTest {
             driver.close()
         }
     }
+
+    @Test
+    fun nativeFileBackedMigrationRollsBackAndRetriesForEveryDdlBoundary() {
+        assertFileBackedDurablePartitionMigrationRollbackRetry(platformName = "ios") { schema, name ->
+            NativeSqliteDriver(schema = schema, name = name)
+        }
+    }
 }
