@@ -420,7 +420,6 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.text.SelectionContainer
 import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -15402,17 +15401,10 @@ private fun SharedHomeSavedPanel(
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-                    pullToRefreshItem(
+                    slockRaftPullToRefreshItem(
                         state = pullToRefreshState,
                         scrollState = listState,
-                        holdRefreshInset = false,
-                        onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
-                        content = { pullProgress, isRefreshing, _ ->
-                            SlockRaftPullRefreshIndicator(
-                                pullProgress = pullProgress,
-                                isRefreshing = isRefreshing
-                            )
-                        }
+                        onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) }
                     )
                 }
                 val hasSavedRows = projectedItems.isNotEmpty()

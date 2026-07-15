@@ -73,7 +73,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -694,17 +693,10 @@ private fun SharedActivityList(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-                pullToRefreshItem(
+                slockRaftPullToRefreshItem(
                     state = pullToRefreshState,
                     scrollState = listState,
-                    holdRefreshInset = false,
-                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
-                    content = { pullProgress, isRefreshing, _ ->
-                        SlockRaftPullRefreshIndicator(
-                            pullProgress = pullProgress,
-                            isRefreshing = isRefreshing
-                        )
-                    }
+                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) }
                 )
             }
             items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
@@ -1222,17 +1214,10 @@ private fun SharedActivityRefreshableStateBody(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
-            pullToRefreshItem(
+            slockRaftPullToRefreshItem(
                 state = pullToRefreshState,
                 scrollState = listState,
-                holdRefreshInset = false,
-                onRefresh = onRefresh,
-                content = { pullProgress, isRefreshing, _ ->
-                    SlockRaftPullRefreshIndicator(
-                        pullProgress = pullProgress,
-                        isRefreshing = isRefreshing
-                    )
-                }
+                onRefresh = onRefresh
             )
         }
         item(key = "activity_state") {
