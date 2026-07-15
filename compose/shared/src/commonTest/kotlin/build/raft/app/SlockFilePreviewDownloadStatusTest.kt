@@ -6,10 +6,12 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.tmm.kmmresource.resource.desc.desc
+import kotlinx.coroutines.Job
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -788,5 +790,184 @@ class SlockFilePreviewDownloadStatusTest {
         assertEquals("resolved-two", next?.imageUrl)
         assertEquals(1, next?.imageGalleryIndex)
         assertEquals("2/2", next?.imageGalleryProgressLabel())
+    }
+
+    @Test
+    fun imageGalleryResolutionStateDeduplicatesRapidRevisitAndKeepsLateResults() {
+        val gallery =
+            listOf(
+                SlockFilePreviewGalleryImage(
+                    attachmentId = "att-1",
+                    name = "one.png",
+                    mimeType = "image/png",
+                    thumbnailUrl = "thumb-one"
+                ),
+                SlockFilePreviewGalleryImage(
+                    attachmentId = "att-2",
+                    name = "two.png",
+                    mimeType = "image/png",
+                    thumbnailUrl = "thumb-two"
+                )
+            )
+        val first =
+            SlockFilePreviewPayload(
+                kind = "loading",
+                requestedKind = "image",
+                name = "one.png",
+                imageUrl = "thumb-one",
+                source = "thread_attachment",
+                attachmentId = "att-1",
+                imageGallery = gallery
+            )
+        val second = first.withImageGalleryIndex(1)!!
+        var state = SlockFilePreviewImageGalleryResolutionState()
+
+        val firstStart = state.beginResolution(first)
+        state = firstStart.state
+        assertEquals("att-1", firstStart.requestPayload?.attachmentId)
+
+        val secondStart = state.beginResolution(second)
+        state = secondStart.state
+        assertEquals("att-2", secondStart.requestPayload?.attachmentId)
+        assertEquals(setOf("att-1", "att-2"), state.inFlightAttachmentIds.toSet())
+
+        val rapidFirstRevisit = state.beginResolution(first)
+        state = rapidFirstRevisit.state
+        assertNull(rapidFirstRevisit.requestPayload)
+        assertNull(rapidFirstRevisit.cancelAttachmentId)
+        assertEquals(setOf("att-1", "att-2"), state.inFlightAttachmentIds.toSet())
+        assertEquals(listOf("att-2", "att-1"), state.inFlightAttachmentIds)
+
+        val resolvedFirst = first.copy(kind = "image", imageUrl = "full-one", messageDesc = null)
+        state = state.completeResolution(requestPayload = first, resolvedPayload = resolvedFirst)
+        assertNull(second.withResolvedImageGalleryPayload(resolvedFirst))
+        assertEquals("att-2", second.attachmentId, "A's late completion must not replace visible B")
+
+        val returnedFirst = second.withImageGalleryIndex(0, state.resolvedPayloadByAttachmentId)
+        assertEquals("image", returnedFirst?.kind)
+        assertEquals("full-one", returnedFirst?.imageUrl)
+        assertNull(state.beginResolution(returnedFirst!!).requestPayload)
+
+        val resolvedSecond = second.copy(kind = "image", imageUrl = "full-two", messageDesc = null)
+        state = state.completeResolution(requestPayload = second, resolvedPayload = resolvedSecond)
+        assertEquals(emptyList(), state.inFlightAttachmentIds)
+        assertEquals(setOf("att-1", "att-2"), state.resolvedPayloadByAttachmentId.keys)
+    }
+
+    @Test
+    fun imageGalleryResolutionStateBoundsConcurrentRequestsToTwoAttachments() {
+        val gallery =
+            listOf(
+                SlockFilePreviewGalleryImage(attachmentId = "att-1", thumbnailUrl = "thumb-one"),
+                SlockFilePreviewGalleryImage(attachmentId = "att-2", thumbnailUrl = "thumb-two"),
+                SlockFilePreviewGalleryImage(attachmentId = "att-3", thumbnailUrl = "thumb-three")
+            )
+        val first =
+            SlockFilePreviewPayload(
+                kind = "loading",
+                requestedKind = "image",
+                imageUrl = "thumb-one",
+                source = "thread_attachment",
+                attachmentId = "att-1",
+                imageGallery = gallery
+            )
+        val second = first.withImageGalleryIndex(1)!!
+        val third = first.withImageGalleryIndex(2)!!
+        var state = SlockFilePreviewImageGalleryResolutionState().beginResolution(first).state
+        state = state.beginResolution(second).state
+
+        val thirdStart = state.beginResolution(third)
+
+        assertEquals("att-3", thirdStart.requestPayload?.attachmentId)
+        assertEquals("att-1", thirdStart.cancelAttachmentId)
+        assertEquals(listOf("att-2", "att-3"), thirdStart.state.inFlightAttachmentIds)
+    }
+
+    @Test
+    fun imageGalleryResolutionJobOwnershipRejectsStaleReplacement() {
+        val firstJob = Job()
+        val replacementJob = Job()
+        val jobs = mutableMapOf("att-1" to firstJob)
+        assertTrue(jobs.ownsImageGalleryResolution("att-1", firstJob))
+
+        jobs["att-1"] = replacementJob
+        firstJob.cancel()
+
+        assertFalse(jobs.ownsImageGalleryResolution("att-1", firstJob))
+        assertTrue(jobs.ownsImageGalleryResolution("att-1", replacementJob))
+        assertFalse(jobs.ownsImageGalleryResolution("missing", null))
+    }
+
+    @Test
+    fun imageGalleryResolutionStateRetriesAfterThumbnailOnlyFallback() {
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "loading",
+                requestedKind = "image",
+                imageUrl = "thumb-one",
+                source = "thread_attachment",
+                attachmentId = "att-1",
+                imageGallery =
+                    listOf(
+                        SlockFilePreviewGalleryImage(
+                            attachmentId = "att-1",
+                            thumbnailUrl = "thumb-one"
+                        )
+                    )
+            )
+        val firstStart = SlockFilePreviewImageGalleryResolutionState().beginResolution(payload)
+        val thumbnailOnlyFallback = payload.copy(kind = "image", messageDesc = null)
+        val failed =
+            firstStart.state.completeResolution(
+                requestPayload = payload,
+                resolvedPayload = thumbnailOnlyFallback
+            )
+
+        val retry = failed.beginResolution(payload)
+
+        assertEquals(emptyMap(), failed.resolvedPayloadByAttachmentId)
+        assertEquals("att-1", retry.requestPayload?.attachmentId)
+        assertEquals(listOf("att-1"), retry.state.inFlightAttachmentIds)
+    }
+
+    @Test
+    fun imageGalleryKeepAliveSourcesAreBoundToCurrentAndAdjacentImages() {
+        val gallery =
+            listOf(
+                SlockFilePreviewGalleryImage(attachmentId = "att-1", thumbnailUrl = "thumb-one"),
+                SlockFilePreviewGalleryImage(attachmentId = "att-2", thumbnailUrl = "thumb-two"),
+                SlockFilePreviewGalleryImage(attachmentId = "att-3", thumbnailUrl = "thumb-three"),
+                SlockFilePreviewGalleryImage(attachmentId = "att-4", thumbnailUrl = "thumb-four")
+            )
+        val current =
+            SlockFilePreviewPayload(
+                kind = "image",
+                requestedKind = "image",
+                imageUrl = "full-2",
+                source = "thread_attachment",
+                attachmentId = "att-2",
+                imageGallery = gallery,
+                imageGalleryIndex = 1
+            )
+        val resolvedPayloads =
+            gallery.associate { image ->
+                image.attachmentId to
+                    current.copy(
+                        attachmentId = image.attachmentId,
+                        imageUrl = "full-${image.attachmentId.takeLast(1)}"
+                    )
+            }
+
+        assertEquals(
+            setOf(
+                "thumb-one",
+                "full-1",
+                "thumb-two",
+                "full-2",
+                "thumb-three",
+                "full-3"
+            ),
+            current.imageGalleryKeepAliveSources(resolvedPayloads)
+        )
     }
 }

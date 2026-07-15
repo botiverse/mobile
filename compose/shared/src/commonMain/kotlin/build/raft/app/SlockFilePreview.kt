@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,6 +64,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -95,6 +97,9 @@ import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -114,6 +119,7 @@ private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewAttachmentDownloadEvent = "slock.attachmentDownloadProgress"
 private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
+private const val SlockFilePreviewImageGalleryMaxInFlightRequests = 2
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -333,8 +339,11 @@ private fun SlockFilePreviewStandalonePageContent() {
     var attachmentCommentsState by remember(payload.attachmentId) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
-    var resolvedImageGalleryPayloads by remember(launchPayloadTrace.payload.imageGallery) {
-        mutableStateOf<Map<String, SlockFilePreviewPayload>>(emptyMap())
+    var imageGalleryResolutionState by remember(launchPayloadTrace.payload.imageGallery) {
+        mutableStateOf(SlockFilePreviewImageGalleryResolutionState())
+    }
+    val imageGalleryResolutionJobs = remember(launchPayloadTrace.payload.imageGallery) {
+        mutableMapOf<String, Job>()
     }
     var composerImageEditMode by remember(payload.composerImageActionId, payload.attachmentId, payload.imageUrl) {
         mutableStateOf(false)
@@ -505,6 +514,85 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     }
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
+        if (payload.isPendingThreadImageGalleryResolution()) {
+            imageGalleryResolutionState.resolvedPayloadByAttachmentId[payload.attachmentId]
+                ?.let(payload::withResolvedImageGalleryPayload)
+                ?.let { cachedPayload ->
+                    payload = cachedPayload
+                    return@LaunchedEffect
+                }
+            val start = imageGalleryResolutionState.beginResolution(payload)
+            imageGalleryResolutionState = start.state
+            val requestPayload = start.requestPayload ?: return@LaunchedEffect
+            start.cancelAttachmentId?.let { attachmentId ->
+                imageGalleryResolutionJobs.remove(attachmentId)?.cancel()
+                bridge.log(
+                    "file_preview_image_resolve status=cancelled attachment=${attachmentId.take(8)} reason=concurrency_limit"
+                )
+            }
+            bridge.log(
+                "file_preview_image_resolve status=start attachment=${requestPayload.attachmentId.take(8)} " +
+                    "kind=${requestPayload.kind} thumbnail=${requestPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+            )
+            val resolutionJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    val nextPayload = requestPayload.loadThreadAttachmentPreview(threadApi, networkClient) ?: return@launch
+                    if (
+                        !imageGalleryResolutionJobs.ownsImageGalleryResolution(
+                            requestPayload.attachmentId,
+                            currentCoroutineContext()[Job]
+                        )
+                    ) {
+                        return@launch
+                    }
+                    imageGalleryResolutionState =
+                        imageGalleryResolutionState.completeResolution(
+                            requestPayload = requestPayload,
+                            resolvedPayload = nextPayload
+                        )
+                    val visiblePayload = payload.withResolvedImageGalleryPayload(nextPayload)
+                    if (visiblePayload != null) {
+                        payload = visiblePayload
+                    }
+                    bridge.log(
+                        "file_preview_image_resolve status=committed attachment=${nextPayload.attachmentId.take(8)} " +
+                            "visible=${visiblePayload != null} cached=${nextPayload.hasResolvedRemoteImageComparedTo(requestPayload)} " +
+                            "kind=${nextPayload.kind} error=${nextPayload.error ?: "none"} " +
+                            "primary=${nextPayload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"} " +
+                            "fallback=${nextPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    if (
+                        !imageGalleryResolutionJobs.ownsImageGalleryResolution(
+                            requestPayload.attachmentId,
+                            currentCoroutineContext()[Job]
+                        )
+                    ) {
+                        return@launch
+                    }
+                    val failedPayload = requestPayload.imageGalleryResolutionFailurePayload()
+                    payload.withResolvedImageGalleryPayload(failedPayload)?.let { visiblePayload ->
+                        payload = visiblePayload
+                    }
+                    bridge.log(
+                        "file_preview_image_resolve status=failed attachment=${requestPayload.attachmentId.take(8)} " +
+                            "type=${throwable::class.simpleName ?: "unknown"}"
+                    )
+                } finally {
+                    val currentJob = currentCoroutineContext()[Job]
+                    if (imageGalleryResolutionJobs.ownsImageGalleryResolution(requestPayload.attachmentId, currentJob)) {
+                        imageGalleryResolutionJobs.remove(requestPayload.attachmentId)
+                        imageGalleryResolutionState =
+                            imageGalleryResolutionState.finishResolution(requestPayload.attachmentId)
+                    }
+                }
+            }
+            imageGalleryResolutionJobs[requestPayload.attachmentId] = resolutionJob
+            resolutionJob.start()
+            return@LaunchedEffect
+        }
         if (
             payload.source == SlockFilePreviewSourceThreadAttachment &&
             payload.kind == "loading" &&
@@ -532,15 +620,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                         "primary=${nextPayload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"} " +
                         "fallback=${nextPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
                 )
-            }
-            if (
-                nextPayload.source == SlockFilePreviewSourceThreadAttachment &&
-                nextPayload.attachmentId.isNotBlank() &&
-                nextPayload.imageGallery.isNotEmpty() &&
-                nextPayload.kind != "loading"
-            ) {
-                resolvedImageGalleryPayloads =
-                    resolvedImageGalleryPayloads + (nextPayload.attachmentId to nextPayload)
             }
         }
     }
@@ -762,7 +841,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     }
     fun selectImageGalleryIndex(index: Int) {
-        payload.withImageGalleryIndex(index, resolvedImageGalleryPayloads)?.let { nextPayload ->
+        payload.withImageGalleryIndex(index, imageGalleryResolutionState.resolvedPayloadByAttachmentId)?.let { nextPayload ->
             payload = nextPayload
             downloadStatus = "idle"
             downloadMessage = ""
@@ -922,34 +1001,42 @@ private fun SlockFilePreviewStandalonePageContent() {
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
         } else {
-            SlockFilePreviewPayloadContent(
-                payload = payload,
-                onOpenUrl = {},
-                downloadStatusLabel =
-                    when (downloadStatus) {
-                        "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(downloadProgress, downloadStatus)
-                        "failed" -> downloadMessage.ifBlank { "Download failed" }
-                        else -> null
-                    },
-                downloadInProgress = downloadActive,
-                downloadPaused = downloadStatus == "paused",
-                downloadProgressPercent = downloadProgress?.percent ?: if (downloadActive) 0 else null,
-                downloadCached = attachmentCacheState,
-                onDownload =
-                    if (canOpenWith) {
-                        when (slockFilePreviewPrimaryAction(attachmentCacheState)) {
-                            SlockFilePreviewPrimaryAction.Save -> ::requestExternalSave
-                            SlockFilePreviewPrimaryAction.Open -> ::requestExternalOpen
-                        }
-                    } else {
-                        null
-                    },
-                onPauseDownload = { requestDownloadControl("pause") },
-                onResumeDownload = { requestDownloadControl("resume") },
-                onStopDownload = { requestDownloadControl("stop") },
-                onImageGalleryIndexChange = ::selectImageGalleryIndex,
-                modifier = Modifier.weight(1f).fillMaxWidth()
-            )
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                SlockFilePreviewPayloadContent(
+                    payload = payload,
+                    onOpenUrl = {},
+                    downloadStatusLabel =
+                        when (downloadStatus) {
+                            "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(downloadProgress, downloadStatus)
+                            "failed" -> downloadMessage.ifBlank { "Download failed" }
+                            else -> null
+                        },
+                    downloadInProgress = downloadActive,
+                    downloadPaused = downloadStatus == "paused",
+                    downloadProgressPercent = downloadProgress?.percent ?: if (downloadActive) 0 else null,
+                    downloadCached = attachmentCacheState,
+                    onDownload =
+                        if (canOpenWith) {
+                            when (slockFilePreviewPrimaryAction(attachmentCacheState)) {
+                                SlockFilePreviewPrimaryAction.Save -> ::requestExternalSave
+                                SlockFilePreviewPrimaryAction.Open -> ::requestExternalOpen
+                            }
+                        } else {
+                            null
+                        },
+                    onPauseDownload = { requestDownloadControl("pause") },
+                    onResumeDownload = { requestDownloadControl("resume") },
+                    onStopDownload = { requestDownloadControl("stop") },
+                    onImageGalleryIndexChange = ::selectImageGalleryIndex,
+                    modifier = Modifier.fillMaxSize()
+                )
+                SlockFilePreviewImageGalleryCacheKeepAlive(
+                    sources =
+                        payload.imageGalleryKeepAliveSources(
+                            imageGalleryResolutionState.resolvedPayloadByAttachmentId
+                        )
+                )
+            }
             SlockFilePreviewComposerImageActionBar(
                 payload = payload,
                 enabled = !downloadActive,
@@ -2462,6 +2549,36 @@ private fun SlockFilePreviewImageGallerySurface(
     }
 }
 
+/**
+ * Kuikly's image cache is reference-counted: when the last painter for a source is forgotten,
+ * the native memory-cache entry is cleared. The gallery renders one visible item at a time, so
+ * keep tiny invisible painters for only the current item and its immediate neighbors.
+ */
+@Composable
+private fun SlockFilePreviewImageGalleryCacheKeepAlive(
+    sources: Set<String>,
+    modifier: Modifier = Modifier
+) {
+    if (sources.isEmpty()) return
+    Box(
+        modifier =
+            modifier
+                .size(1.dp)
+                .alpha(0f)
+                .clipToBounds()
+    ) {
+        sources.sorted().forEach { source ->
+            key(source) {
+                SlockCachedImage(
+                    source = source,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
 private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
     when (kind) {
         "markdown", "text" -> SlockLucideIconName.FileText
@@ -2854,6 +2971,160 @@ internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String
         composerImagePreviewUri = fileRef,
         imageGallery = updatedGallery
     )
+}
+
+internal data class SlockFilePreviewImageGalleryResolutionState(
+    val resolvedPayloadByAttachmentId: Map<String, SlockFilePreviewPayload> = emptyMap(),
+    val inFlightAttachmentIds: List<String> = emptyList()
+) {
+    internal fun beginResolution(payload: SlockFilePreviewPayload): SlockFilePreviewImageGalleryResolutionStart {
+        val attachmentId = payload.attachmentId
+        if (
+            !payload.isPendingThreadImageGalleryResolution() ||
+            attachmentId in resolvedPayloadByAttachmentId
+        ) {
+            return SlockFilePreviewImageGalleryResolutionStart(
+                state = this,
+                requestPayload = null,
+                cancelAttachmentId = null
+            )
+        }
+        if (attachmentId in inFlightAttachmentIds) {
+            return SlockFilePreviewImageGalleryResolutionStart(
+                state = copy(inFlightAttachmentIds = (inFlightAttachmentIds - attachmentId) + attachmentId),
+                requestPayload = null,
+                cancelAttachmentId = null
+            )
+        }
+        val cancelAttachmentId =
+            inFlightAttachmentIds
+                .takeIf { it.size >= SlockFilePreviewImageGalleryMaxInFlightRequests }
+                ?.firstOrNull()
+        val nextInFlightAttachmentIds =
+            (cancelAttachmentId?.let(inFlightAttachmentIds::minus) ?: inFlightAttachmentIds) + attachmentId
+        return SlockFilePreviewImageGalleryResolutionStart(
+            state = copy(inFlightAttachmentIds = nextInFlightAttachmentIds),
+            requestPayload = payload,
+            cancelAttachmentId = cancelAttachmentId
+        )
+    }
+
+    internal fun completeResolution(
+        requestPayload: SlockFilePreviewPayload,
+        resolvedPayload: SlockFilePreviewPayload
+    ): SlockFilePreviewImageGalleryResolutionState {
+        val attachmentId = requestPayload.attachmentId
+        val nextResolvedPayloads =
+            if (
+                resolvedPayload.attachmentId == attachmentId &&
+                resolvedPayload.isTerminalThreadImageGalleryPayload() &&
+                resolvedPayload.hasResolvedRemoteImageComparedTo(requestPayload)
+            ) {
+                resolvedPayloadByAttachmentId + (attachmentId to resolvedPayload)
+            } else {
+                resolvedPayloadByAttachmentId
+            }
+        return copy(
+            resolvedPayloadByAttachmentId = nextResolvedPayloads,
+            inFlightAttachmentIds = inFlightAttachmentIds - attachmentId
+        )
+    }
+
+    internal fun finishResolution(attachmentId: String): SlockFilePreviewImageGalleryResolutionState =
+        copy(inFlightAttachmentIds = inFlightAttachmentIds - attachmentId)
+}
+
+internal data class SlockFilePreviewImageGalleryResolutionStart(
+    val state: SlockFilePreviewImageGalleryResolutionState,
+    val requestPayload: SlockFilePreviewPayload?,
+    val cancelAttachmentId: String?
+)
+
+internal fun Map<String, Job>.ownsImageGalleryResolution(
+    attachmentId: String,
+    job: Job?
+): Boolean =
+    job != null && this[attachmentId] === job
+
+private fun SlockFilePreviewPayload.isPendingThreadImageGalleryResolution(): Boolean =
+    source == SlockFilePreviewSourceThreadAttachment &&
+        attachmentId.isNotBlank() &&
+        imageGallery.isNotEmpty() &&
+        kind == "loading" &&
+        requestedKind == "image"
+
+private fun SlockFilePreviewPayload.isTerminalThreadImageGalleryPayload(): Boolean =
+    source == SlockFilePreviewSourceThreadAttachment &&
+        attachmentId.isNotBlank() &&
+        imageGallery.isNotEmpty() &&
+        kind != "loading" &&
+        requestedKind == "image"
+
+internal fun SlockFilePreviewPayload.withResolvedImageGalleryPayload(
+    resolvedPayload: SlockFilePreviewPayload
+): SlockFilePreviewPayload? {
+    if (!isPendingThreadImageGalleryResolution()) return null
+    if (attachmentId != resolvedPayload.attachmentId || !resolvedPayload.isTerminalThreadImageGalleryPayload()) return null
+    return resolvedPayload.copy(
+        imageGallery = imageGallery,
+        imageGalleryIndex = imageGalleryIndex
+    )
+}
+
+private fun SlockFilePreviewPayload.hasResolvedRemoteImageComparedTo(
+    requestPayload: SlockFilePreviewPayload
+): Boolean {
+    val resolvedSource = imageUrl?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    val initialSource = requestPayload.imageUrl?.trim()?.takeIf { it.isNotBlank() }
+    return resolvedSource != initialSource
+}
+
+private fun SlockFilePreviewPayload.imageGalleryResolutionFailurePayload(): SlockFilePreviewPayload =
+    copy(
+        kind = "image",
+        titleDesc = MR.strings.file_preview_image.desc(),
+        message = "",
+        messageDesc =
+            if (imageUrl.isNullOrBlank()) {
+                MR.strings.file_preview_error_image_unavailable.desc()
+            } else {
+                null
+            },
+        error = "image_preview_resolve_failed"
+    )
+
+internal fun SlockFilePreviewPayload.imageGalleryKeepAliveSources(
+    resolvedPayloadByAttachmentId: Map<String, SlockFilePreviewPayload> = emptyMap()
+): Set<String> {
+    if (imageGallery.isEmpty()) return emptySet()
+    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val retainedIndices =
+        (currentIndex - 1..currentIndex + 1)
+            .filter(imageGallery.indices::contains)
+    return buildSet {
+        retainedIndices.forEach { index ->
+            val galleryImage = imageGallery[index]
+            galleryImage.thumbnailUrl
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::add)
+            resolvedPayloadByAttachmentId[galleryImage.attachmentId]
+                ?.imageUrl
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::add)
+            if (index == currentIndex) {
+                imageUrl
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::add)
+                currentImageThumbnailUrl()
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::add)
+            }
+        }
+    }
 }
 
 internal fun SlockFilePreviewPayload.withImageGalleryIndex(
