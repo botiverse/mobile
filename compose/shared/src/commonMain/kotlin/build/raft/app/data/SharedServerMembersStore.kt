@@ -155,7 +155,39 @@ data class SharedServerMembersState(
                 .asSequence()
                 .filter { cleanServerId == null || it.serverId?.trim() == cleanServerId }
                 .flatMap { it.members.asSequence() }
-                .firstOrNull { it.id.value.trim() == cleanMemberId }
+                    .firstOrNull { it.id.value.trim() == cleanMemberId }
+    }
+
+    fun canonicalMentionHandle(
+        serverId: ServerId,
+        mentionChannelId: String?,
+        memberId: String?
+    ): String? {
+        val cleanServerId = serverId.value.normalizedServerMembersId() ?: return null
+        val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
+        val channelHandle =
+            mentionChannelId
+                .normalizedServerMembersId()
+                ?.let { channelId ->
+                    channelMemberSlices[
+                        SharedServerChannelMembersScope(
+                            serverId = cleanServerId,
+                            channelId = channelId
+                        )
+                    ]
+                }
+                ?.members
+                ?.asSequence()
+                ?.filter { member -> member.id.value.trim() == cleanMemberId }
+                ?.mapNotNull { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
+                ?.firstOrNull()
+        if (channelHandle != null) return channelHandle
+        return entriesByServerId[cleanServerId]
+            ?.members
+            ?.asSequence()
+            ?.filter { member -> member.id.value.trim() == cleanMemberId }
+            ?.mapNotNull { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
+            ?.firstOrNull()
     }
 }
 
@@ -248,6 +280,17 @@ class SharedServerMembersStore(
         channelId: ChannelId
     ): List<MemberProfile> =
         _state.value.channelMemberSlice(serverId, channelId).members
+
+    fun currentCanonicalMentionHandle(
+        serverId: ServerId,
+        mentionChannelId: String?,
+        memberId: String?
+    ): String? =
+        _state.value.canonicalMentionHandle(
+            serverId = serverId,
+            mentionChannelId = mentionChannelId,
+            memberId = memberId
+        )
 
     fun currentServerMembersContent(
         serverId: ServerId,
@@ -1631,8 +1674,12 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
 }
 
 private fun MemberProfile.serverMembersSuggestionHandle(): String? {
-    val canonicalHandle = handle.trim().removePrefix("@").takeIf { it.isNotBlank() } ?: return null
-    return canonicalHandle.takeUnless { it.isOpaqueServerMembersIdentityHandle(id.value) }
+    return handle.canonicalServerMembersMentionHandle(id.value)
+}
+
+internal fun String?.canonicalServerMembersMentionHandle(memberId: String?): String? {
+    val canonicalHandle = this?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() } ?: return null
+    return canonicalHandle.takeUnless { it.isOpaqueServerMembersIdentityHandle(memberId.orEmpty()) }
 }
 
 private fun String.isOpaqueServerMembersIdentityHandle(memberId: String): Boolean {

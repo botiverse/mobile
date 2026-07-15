@@ -107,6 +107,7 @@ import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.authLossTokenFingerprint
+import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
@@ -5731,7 +5732,16 @@ internal fun SharedThreadRouteContent(
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
             mentionHandleResolver = { message ->
-                message.threadMentionHandle(threadServerMembersEntry, threadMembersServerId)
+                message.threadMentionHandle(
+                    canonicalMemberHandle =
+                        threadMembersServerId?.let { serverId ->
+                            serverMembersStore?.currentCanonicalMentionHandle(
+                                serverId = serverId,
+                                mentionChannelId = memberSuggestionScopeChannelId,
+                                memberId = message.authorId
+                            )
+                        }
+                )
             },
             onExportShareImage = { rect ->
                 bridge.exportThreadShareImage(
@@ -10006,6 +10016,11 @@ private fun ThreadPageContent(
                                         nonce = insertMentionRequestNonce,
                                         handle = handle
                                     )
+                            } else if (handle == null) {
+                                diagnosticsLogger(
+                                    "thread_direct_mention_rejected reason=canonical_handle_unavailable " +
+                                        "messageId=${message.id} authorId=${message.authorId}"
+                                )
                             }
                         },
                         onOpenMarkdownTag = openMarkdownTag,
@@ -15741,7 +15756,7 @@ internal fun KuiklyThreadMessageItem.threadMentionHandle(
 ): String? {
     if (threadAuthorBadgeLabel() != null) return null
     val cleanAuthorId = authorId.trim().takeIf { it.isNotBlank() }
-    return threadMentionHandleFromRoster(
+    return threadMentionHandleFromCanonicalStore(
         serverMembersState.threadMentionAuthorHandle(serverId, cleanAuthorId)
     )
 }
@@ -15757,26 +15772,55 @@ internal fun KuiklyThreadMessageItem.threadMentionHandle(
             .takeIf { entry -> entry.serverId == serverId?.value?.trim() }
             ?.members
             ?.firstOrNull { member -> member.id.value.trim() == cleanAuthorId }
-            ?.handle
-            .threadMentionHandleValue()
-    return threadMentionHandleFromRoster(rosterHandle)
+            ?.let { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
+    return threadMentionHandleFromCanonicalStore(rosterHandle)
 }
 
-private fun KuiklyThreadMessageItem.threadMentionHandleFromRoster(rosterHandle: String?): String? {
-    rosterHandle?.let { return it }
+internal fun KuiklyThreadMessageItem.threadMentionHandle(canonicalMemberHandle: String?): String? =
+    if (threadAuthorBadgeLabel() != null) {
+        null
+    } else {
+        threadMentionHandleFromCanonicalStore(
+            canonicalMemberHandle.canonicalServerMembersMentionHandle(authorId)
+        )
+    }
+
+private fun KuiklyThreadMessageItem.threadMentionHandleFromCanonicalStore(canonicalHandle: String?): String? {
+    canonicalHandle?.let { return it }
     val cleanAuthorId = authorId.trim().takeIf { it.isNotBlank() }
-    val explicitAuthorHandle = authorHandle.threadMentionExplicitAuthorHandle(authorName)
+    val explicitAuthorHandle = authorHandle.threadMentionExplicitAuthorHandle(authorName, cleanAuthorId)
     if (explicitAuthorHandle != null) return explicitAuthorHandle
-    return cleanAuthorId
+    return null
 }
 
 private fun SharedServerMembersState.threadMentionAuthorHandle(
     serverId: ServerId?,
     authorId: String?
-): String? =
-    memberProfile(serverId, authorId)
-        ?.handle
-        .threadMentionHandleValue()
+): String? {
+    val cleanAuthorId = authorId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val cleanServerId = serverId?.value?.trim()?.takeIf { it.isNotBlank() }
+    val channelHandle =
+        channelMemberSlices.values
+            .asSequence()
+            .filter { slice -> cleanServerId == null || slice.serverId?.trim() == cleanServerId }
+            .flatMap { slice -> slice.members.asSequence() }
+            .filter { member -> member.id.value.trim() == cleanAuthorId }
+            .mapNotNull { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
+            .firstOrNull()
+    if (channelHandle != null) return channelHandle
+    val entries =
+        if (cleanServerId != null) {
+            listOfNotNull(entriesByServerId[cleanServerId])
+        } else {
+            entriesByServerId.values.toList()
+        }
+    return entries
+        .asSequence()
+        .flatMap { entry -> entry.members.asSequence() }
+        .filter { member -> member.id.value.trim() == cleanAuthorId }
+        .mapNotNull { member -> member.handle.canonicalServerMembersMentionHandle(member.id.value) }
+        .firstOrNull()
+}
 
 private fun String?.threadMentionHandleValue(): String? =
     this
@@ -15784,12 +15828,12 @@ private fun String?.threadMentionHandleValue(): String? =
         ?.removePrefix("@")
         ?.takeIf { it.isNotBlank() }
 
-private fun String.threadMentionExplicitAuthorHandle(authorName: String): String? {
+private fun String.threadMentionExplicitAuthorHandle(authorName: String, authorId: String?): String? {
     val handle = threadMentionHandleValue() ?: return null
     val presentationName = authorName.threadMentionHandleValue()
     if (presentationName != null && handle == presentationName) return null
     if (handle.any { it.isWhitespace() }) return null
-    return handle
+    return handle.canonicalServerMembersMentionHandle(authorId)
 }
 
 private fun KuiklyThreadMessageItem.isDeletedThreadAuthor(): Boolean =
