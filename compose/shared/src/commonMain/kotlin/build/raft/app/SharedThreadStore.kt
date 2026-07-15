@@ -496,6 +496,7 @@ internal class SharedThreadDataSource(
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
+    private val homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
     private val messageStore: SharedThreadMessageStore? = null,
     payloadStore: SharedThreadPayloadStore? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
@@ -531,6 +532,7 @@ internal class SharedThreadDataSource(
         serverMembersStore: SharedServerMembersStore? = null,
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
+        homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
         messageStore: SharedThreadMessageStore? = null,
         payloadStore: SharedThreadPayloadStore? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
@@ -546,6 +548,7 @@ internal class SharedThreadDataSource(
         serverMembersStore = serverMembersStore,
         conversationRepository = conversationRepository,
         channelRepository = channelRepository,
+        homeSnapshotProvider = homeSnapshotProvider,
         messageStore = messageStore,
         payloadStore = payloadStore,
         agentsApiClient = agentsApiClient,
@@ -2736,7 +2739,12 @@ internal class SharedThreadDataSource(
 
     private suspend fun currentHomeSnapshot(session: StoredAuthSession): HomeSnapshot? {
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+        homeSnapshotProvider?.invoke(serverId)?.let { snapshot ->
+            diagnosticsLogger("thread_home_context source=shared_home_store serverId=${serverId.value}")
+            return snapshot
+        }
         val repository = channelRepository ?: return null
+        diagnosticsLogger("thread_home_context source=repository serverId=${serverId.value}")
         return (repository.getHome(serverId) as? DataResult.Content)?.data
     }
 
@@ -2858,7 +2866,8 @@ internal data class SharedThreadRenderSlice(
     val timelineSlice: ThreadTimelineSlice,
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     val highlightedMentions: Set<String>,
-    val accessResolution: ThreadAccessResolution
+    val accessResolution: ThreadAccessResolution,
+    val canonicalAccessResolved: Boolean
 )
 
 private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
@@ -2867,7 +2876,8 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         timelineSlice = timelineSlice,
         replyMetadataByParentId = replyMetadataByParentId,
         highlightedMentions = highlightedMentions,
-        accessResolution = accessResolution
+        accessResolution = accessResolution,
+        canonicalAccessResolved = canonicalAccessResolved
     )
 
 /**
@@ -2902,6 +2912,7 @@ internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data class ApplyRouteIntent(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
+    data object RetryAccessResolution : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyLocalSendStarted(val message: KuiklyThreadMessageItem) : SharedThreadIntent
     data class ApplyLocalSendFailure(
@@ -3042,6 +3053,9 @@ internal class SharedThreadStore(
                         accept(intent)
                     }
             }
+            SharedThreadIntent.RetryAccessResolution -> {
+                scope.launch { accept(intent) }
+            }
             is SharedThreadIntent.AppendSentPage,
             is SharedThreadIntent.ApplyRouteIntent,
             is SharedThreadIntent.ApplyLocalSendStarted,
@@ -3100,6 +3114,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.Start -> start(intent.payload)
             is SharedThreadIntent.ApplyRouteIntent -> applyRouteIntent(intent.payload)
             SharedThreadIntent.Refresh -> refresh(lastRoutePayload ?: _state.value.payload, advanceRouteStaleToken())
+            SharedThreadIntent.RetryAccessResolution -> retryAccessResolution()
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
             is SharedThreadIntent.ApplyLocalSendFailure ->
@@ -3491,6 +3506,31 @@ internal class SharedThreadStore(
                     )
                 }
             }
+    }
+
+    private suspend fun retryAccessResolution() {
+        val routePayload = lastRoutePayload ?: _state.value.payload
+        initialAccessStateMutex.withLock {
+            val currentState = _state.value
+            if (
+                currentState.accessResolution != ThreadAccessResolution.Error ||
+                !currentState.canonicalAccessResolved
+            ) {
+                return
+            }
+            diagnosticsLogger?.invoke(
+                "thread_access_retry_start threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                    "canonicalAccessResolved=${currentState.canonicalAccessResolved}"
+            )
+            reduceState(
+                currentState.copy(
+                    accessResolution = ThreadAccessResolution.Loading,
+                    initialHomeAccessLookupComplete = false,
+                    initialHomeAccessCandidate = null
+                )
+            )
+        }
+        launchInitialAccessResolution(routePayload, routeStaleToken)
     }
 
     private fun launchBackgroundHomeContextHydration(routePayload: KuiklyThreadScreenPayload) {

@@ -1638,6 +1638,51 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun activityReplyThreadUsesCanonicalHomeStoreSnapshotWithoutDuplicateHomeRequest() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route = activityReplyPayload(
+            parentKind = ConversationKind.Channel,
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            threadId = "thread-m1"
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "network reply",
+                            conversation = replyThreadConversation(joined = false, canSend = false)
+                        )
+                    )
+            )
+        val channelRepository = FakeChannelRepository { DataResult.Error(ScreenError("unexpected_home_request")) }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                channelRepository = channelRepository,
+                homeSnapshotProvider = { joinedHomeSnapshot() }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        assertEquals(0, channelRepository.homeCalls)
+        assertEquals(1, repository.getReplyThreadRequests.size)
+        assertTrue(store.state.value.payload.joined)
+        assertTrue(store.state.value.payload.composer.enabled)
+        scope.cancel()
+    }
+
+    @Test
     fun activityReplyThreadUsesJoinedJointParentAccess() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val route = activityReplyPayload(
@@ -1802,13 +1847,15 @@ class SharedThreadStoreTest {
             )
         )
 
-        store.dispatch(SharedThreadIntent.Refresh)
+        assertEquals(1, repository.getReplyThreadRequests.size)
+        store.dispatch(SharedThreadIntent.RetryAccessResolution)
         withTimeout(1_000) {
             while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
                 delay(10)
             }
         }
         assertEquals(2, channelRepository.homeCalls)
+        assertEquals(1, repository.getReplyThreadRequests.size)
         assertTrue(store.state.value.payload.joined)
         assertTrue(store.state.value.payload.composer.enabled)
         scope.cancel()
