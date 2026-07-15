@@ -41,7 +41,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import java.util.Collections
-import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.Continuation
@@ -146,34 +146,34 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun concurrentReconnectWithTheSameWitnessDeliversOnlyTheCurrentSocketGeneration() {
-        val generationPublishBarrier = CyclicBarrier(2)
-        val fence =
-            RealtimeSocketGenerationFence(
-                beforeGenerationPublish = { generationPublishBarrier.await(5, TimeUnit.SECONDS) }
-            )
-        val context =
-            RealtimeSocketConnectionContext(
-                serverId = ServerId("server-1"),
-                witness =
-                    RealtimeConnectionWitnessToken(
-                        scopeLeaseId = "lease-1",
-                        principalId = "user-1",
-                        authGeneration = 1,
-                        connectionFamilyId = "family-1",
-                    ),
-            )
-        val generations = Collections.synchronizedList(mutableListOf<RealtimeSocketGeneration>())
-        val executor = Executors.newFixedThreadPool(2)
-        try {
-            val first = executor.submit { generations += fence.begin(context) }
-            val second = executor.submit { generations += fence.begin(context) }
-            first.get(5, TimeUnit.SECONDS)
-            second.get(5, TimeUnit.SECONDS)
-        } finally {
-            executor.shutdownNow()
+    fun queuedOldListenerWritesNothingAfterSuccessorReplacementReturns() {
+        val fence = RealtimeSocketGenerationFence()
+        val context = realtimeSocketContext()
+        lateinit var firstGeneration: RealtimeSocketGeneration
+        var oldDeliveries = 0
+        var newDeliveries = 0
+
+        fence.replace(context) { firstGeneration = it }
+        fence.replace(context) { successorGeneration ->
+            assertTrue(fence.runIfCurrent(successorGeneration) { newDeliveries += 1 })
         }
+        assertFalse(fence.runIfCurrent(firstGeneration) { oldDeliveries += 1 })
+
+        assertEquals(0, oldDeliveries)
+        assertEquals(1, newDeliveries)
+    }
+
+    @Test
+    fun identicalGenerationFieldsStillRequireExactCurrentTokenIdentity() {
+        val fence = RealtimeSocketGenerationFence(generationIdForOracle = { 1L })
+        val context = realtimeSocketContext()
+        val generations = mutableListOf<RealtimeSocketGeneration>()
+        fence.replace(context) { generations += it }
+        fence.replace(context) { generations += it }
         assertEquals(2, generations.size)
+        assertEquals(generations[0].generationId, generations[1].generationId)
+        assertEquals(generations[0].context, generations[1].context)
+        assertFalse(generations[0] === generations[1])
         var downstreamDeliveries = 0
 
         val retainedListeners =
@@ -188,6 +188,73 @@ class RealtimeRepositoryTest {
 
         assertEquals(1, downstreamDeliveries)
     }
+
+    @Test
+    fun reconnectCannotPublishBetweenOldListenerCheckAndDelivery() {
+        val oldListenerPassedCurrentCheck = CountDownLatch(1)
+        val releaseOldListener = CountDownLatch(1)
+        val fence =
+            RealtimeSocketGenerationFence(
+                beforeCurrentDelivery = {
+                    oldListenerPassedCurrentCheck.countDown()
+                    assertTrue(releaseOldListener.await(5, TimeUnit.SECONDS))
+                }
+            )
+        val context = realtimeSocketContext()
+        lateinit var oldGeneration: RealtimeSocketGeneration
+        fence.replace(context) { oldGeneration = it }
+        val successorAttempted = CountDownLatch(1)
+        val successorReturned = CountDownLatch(1)
+        var downstreamDeliveries = 0
+        val eventOrder = Collections.synchronizedList(mutableListOf<String>())
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val oldDelivery =
+                executor.submit {
+                    fence.runIfCurrent(oldGeneration) {
+                        downstreamDeliveries += 1
+                        eventOrder += "old-write"
+                    }
+                }
+            assertTrue(oldListenerPassedCurrentCheck.await(5, TimeUnit.SECONDS))
+            val successorConnect =
+                executor.submit {
+                    successorAttempted.countDown()
+                    fence.replace(context) {}
+                    eventOrder += "successor-return"
+                    successorReturned.countDown()
+                }
+
+            assertTrue(successorAttempted.await(5, TimeUnit.SECONDS))
+            assertFalse(
+                "successor return must wait for the old delivery that already owns the linearization point",
+                successorReturned.await(100, TimeUnit.MILLISECONDS),
+            )
+            releaseOldListener.countDown()
+            oldDelivery.get(5, TimeUnit.SECONDS)
+            successorConnect.get(5, TimeUnit.SECONDS)
+
+            assertEquals(listOf("old-write", "successor-return"), eventOrder.toList())
+            assertEquals(1, downstreamDeliveries)
+            assertFalse(fence.runIfCurrent(oldGeneration) { downstreamDeliveries += 1 })
+            assertEquals(1, downstreamDeliveries)
+        } finally {
+            releaseOldListener.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    private fun realtimeSocketContext(): RealtimeSocketConnectionContext =
+        RealtimeSocketConnectionContext(
+            serverId = ServerId("server-1"),
+            witness =
+                RealtimeConnectionWitnessToken(
+                    scopeLeaseId = "lease-1",
+                    principalId = "user-1",
+                    authGeneration = 1,
+                    connectionFamilyId = "family-1",
+                ),
+        )
 
     @Test
     fun repositoryInjectsSessionTokenAndSelectedServerIntoRealtimeClient() {
