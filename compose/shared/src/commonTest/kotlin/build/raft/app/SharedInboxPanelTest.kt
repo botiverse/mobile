@@ -282,6 +282,82 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityUpdatePresentationDoesNotAutoAnchorTailPagination() {
+        val previous =
+            listOf(
+                activityItem(key = "channel:channel-top"),
+                activityItem(key = "channel:channel-next")
+            )
+        val current = previous + activityItem(key = "channel:older-page")
+
+        assertEquals(
+            ActivityUpdatePresentation(pendingIncrement = 0, shouldAutoAnchorTop = false),
+            activityUpdatePresentation(
+                previousItems = previous,
+                currentItems = current,
+                nearTop = true,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
+    fun activityUpdatePresentationAutoAnchorsGenuineTopUpdateWhenParked() {
+        val previous = listOf(activityItem(key = "channel:channel-old-top"))
+        val current =
+            listOf(
+                activityItem(key = "channel:channel-new"),
+                activityItem(key = "channel:channel-old-top")
+            )
+
+        assertEquals(
+            ActivityUpdatePresentation(pendingIncrement = 0, shouldAutoAnchorTop = true),
+            activityUpdatePresentation(
+                previousItems = previous,
+                currentItems = current,
+                nearTop = true,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
+    fun activityUpdatePresentationDefersTopUpdateDuringUserScroll() {
+        val previous = listOf(activityItem(key = "channel:channel-old-top"))
+        val current =
+            listOf(
+                activityItem(key = "channel:channel-new"),
+                activityItem(key = "channel:channel-old-top")
+            )
+
+        assertEquals(
+            ActivityUpdatePresentation(pendingIncrement = 1, shouldAutoAnchorTop = false),
+            activityUpdatePresentation(
+                previousItems = previous,
+                currentItems = current,
+                nearTop = true,
+                isScrollInProgress = true
+            )
+        )
+    }
+
+    @Test
+    fun activityUpdatePresentationDoesNotAutoAnchorReadStateMutation() {
+        val previous = listOf(activityItem(key = "channel:channel-top", unreadCount = 1))
+        val current = listOf(activityItem(key = "channel:channel-top", unreadCount = 0))
+
+        assertEquals(
+            ActivityUpdatePresentation(pendingIncrement = 0, shouldAutoAnchorTop = false),
+            activityUpdatePresentation(
+                previousItems = previous,
+                currentItems = current,
+                nearTop = true,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
     fun activityTimeLabelFormatsLatestActivityBeforeRendering() {
         val item =
             activityItem(
