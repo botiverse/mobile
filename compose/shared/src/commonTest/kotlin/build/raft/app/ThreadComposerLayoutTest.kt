@@ -377,6 +377,32 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionSearchDebounceDoesNotTurnLoadedSourcesBackIntoLoading() {
+        assertEquals(
+            SharedMembersLoadStatus.Loaded,
+            threadComposerEffectiveSuggestionStatus(
+                triggerActive = true,
+                rankingReady = false,
+                usesImmediateSuggestions = false,
+                sourceStatus = SharedMembersLoadStatus.Loaded
+            )
+        )
+    }
+
+    @Test
+    fun suggestionSearchKeepsRealSourceLoadingVisible() {
+        assertEquals(
+            SharedMembersLoadStatus.InFlight,
+            threadComposerEffectiveSuggestionStatus(
+                triggerActive = true,
+                rankingReady = false,
+                usesImmediateSuggestions = false,
+                sourceStatus = SharedMembersLoadStatus.InFlight
+            )
+        )
+    }
+
+    @Test
     fun enterAcceptsMemberSuggestionBeforeSendWhenItemsAreVisible() {
         assertEquals(
             ThreadComposerEnterAction.AcceptMemberSuggestion,
