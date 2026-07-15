@@ -23,6 +23,7 @@ import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentIssueReportRepository
+import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueReportSubmission
 import build.raft.app.data.AgentAppLoginItem
 import build.raft.app.data.AgentAppLoginLoadState
@@ -958,7 +959,8 @@ private enum class MembersAgentDetailVisualMode {
     Profile,
     LifecycleActions,
     AvatarManagement,
-    ReportIssue
+    ReportIssue,
+    ReportIssueSuccess
 }
 
 private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMode =
@@ -966,6 +968,7 @@ private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMod
         "lifecycle_actions" -> MembersAgentDetailVisualMode.LifecycleActions
         "avatar_management" -> MembersAgentDetailVisualMode.AvatarManagement
         "report_issue" -> MembersAgentDetailVisualMode.ReportIssue
+        "report_issue_success" -> MembersAgentDetailVisualMode.ReportIssueSuccess
         else -> MembersAgentDetailVisualMode.Profile
     }
 
@@ -1867,10 +1870,13 @@ private class MemberDetailRouteProvider(
         bridge.toast(successMessage)
     }
 
-    fun copyDiagnostics(diagnostics: String, successMessage: String) {
-        bridge.copyToPasteboard(diagnostics)
+    fun copyText(text: String, successMessage: String) {
+        bridge.copyToPasteboard(text)
         bridge.toast(successMessage)
     }
+
+    fun copyDiagnostics(diagnostics: String, successMessage: String) =
+        copyText(diagnostics, successMessage)
 
     suspend fun loadAgentPanelTabOrder(): DataResult<List<String>> =
         when (val result = settingsRepository.getServerSidebarOrder()) {
@@ -1899,7 +1905,7 @@ private class MemberDetailRouteProvider(
         member: MemberProfile,
         detail: AgentDetailSnapshot?,
         request: SharedAgentIssueReportRequest
-    ): Boolean {
+    ): DataResult<AgentIssueReportResult> {
         bridge.log("agent_diagnostics_report ${request.diagnostics.toMemberDetailDiagnosticsLine()}")
         val result = agentIssueReportRepository.submit(
             AgentIssueReportSubmission(
@@ -1915,9 +1921,10 @@ private class MemberDetailRouteProvider(
                 liveActivity = request.liveActivity
             )
         )
-        val ok = result is DataResult.Content
-        bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
-        return ok
+        if (result !is DataResult.Content) {
+            bridge.toast("Unable to report agent issue")
+        }
+        return result
     }
 }
 
@@ -2297,7 +2304,9 @@ private fun MemberDetailPageContent() {
                                 provider.copyDiagnostics(diagnostics, diagnosticsCopied)
                             }
 
-                            override suspend fun reportIssue(request: SharedAgentIssueReportRequest): Boolean {
+                            override suspend fun reportIssue(
+                                request: SharedAgentIssueReportRequest
+                            ): DataResult<AgentIssueReportResult> {
                                 return provider.reportIssue(
                                     server = current.server,
                                     member = member,
@@ -2397,6 +2406,7 @@ private fun MemberDetailPageContent() {
                         provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
                     },
                     onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
+                    onCopyAgentIssueReference = provider.bridge::copyToPasteboard,
                     onReportAgentIssue = agentDetailActions::reportIssue,
                     onUnavailableAction = { bridge.toast(it) },
                     timeContext = timeContext,
@@ -2597,7 +2607,17 @@ private fun MemberDetailVisualSeedContent(
             DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
         },
         onCopyAgentDiagnostics = {},
-        onReportAgentIssue = { true },
+        onReportAgentIssue = {
+            DataResult.Content(
+                AgentIssueReportResult(
+                    reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
+                    artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
+                    serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
+                    issueDescription = "The agent stopped responding after a long-running command.",
+                    transcriptRequested = true
+                )
+            )
+        },
         onUnavailableAction = {},
         timeContext = payload.toSlockTimeContext(),
         initialVisualMode = visualMode,
@@ -3375,7 +3395,8 @@ private fun MembersDetailContent(
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
     onCopyAgentDiagnostics: (String) -> Unit,
-    onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> Boolean)?,
+    onCopyAgentIssueReference: (String) -> Unit = onCopyAgentDiagnostics,
+    onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?,
     onUnavailableAction: (String) -> Unit,
     timeContext: SlockTimeContext,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
@@ -3430,6 +3451,8 @@ private fun MembersDetailContent(
         mutableStateOf(false)
     }
     var reportIssueDialogOpen by remember(member.id.value) { mutableStateOf(false) }
+    var issueReportReceipt by remember(member.id.value) { mutableStateOf<AgentIssueReportResult?>(null) }
+    var issueReportReferenceCopied by remember(member.id.value) { mutableStateOf(false) }
     var restartResetSelection by remember(member.id.value) {
         mutableStateOf(MembersAgentLifecycleAction.Restart)
     }
@@ -3490,6 +3513,17 @@ private fun MembersDetailContent(
             }
             MembersAgentDetailVisualMode.ReportIssue -> {
                 reportIssueDialogOpen = true
+            }
+            MembersAgentDetailVisualMode.ReportIssueSuccess -> {
+                issueReportReceipt =
+                    AgentIssueReportResult(
+                        reportId = "7e91c120-f424-42d7-96e5-21eb816866d0",
+                        artifactId = "95d629bd-3ed7-42ff-97eb-3ed35c6dc6ab",
+                        serverId = "65598229-cd0a-4e92-96f3-c33e7e2e4cc1",
+                        issueDescription = "The agent stopped responding after a long-running command.",
+                        transcriptRequested = true
+                    )
+                issueReportReferenceCopied = false
             }
             MembersAgentDetailVisualMode.Profile -> Unit
         }
@@ -3671,7 +3705,7 @@ private fun MembersDetailContent(
                     includeRuntimeTranscript = includeRuntimeTranscript,
                     liveActivity = storeState.agentRealtimeActivityLogs[member.id].orEmpty()
                 )
-            val reported =
+            val result =
                 if (sharedAgentDetailStore != null && agentDetailActions != null) {
                     sharedAgentDetailStore.reportIssue(request, agentDetailActions)
                 } else {
@@ -3680,18 +3714,27 @@ private fun MembersDetailContent(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
-                        false
+                        DataResult.Error(ScreenError("agent_issue_report_failed"))
                     }
+                }
+            val errorCode =
+                when (result) {
+                    is DataResult.Content -> null
+                    is DataResult.Empty -> result.reason.name
+                    is DataResult.Error -> result.error.code
+                    is DataResult.NoPermission -> result.blocker.code
                 }
             diagnosticActionState =
                 MembersAgentDiagnosticActionState(
                     actionKey = "report",
                     inProgress = false,
-                    errorCode = if (reported) null else "agent_issue_report_failed",
-                    successLabel = issueReported.takeIf { reported }
+                    errorCode = errorCode,
+                    successLabel = issueReported.takeIf { errorCode == null }
                 )
-            if (reported) {
+            if (result is DataResult.Content) {
                 reportIssueDialogOpen = false
+                issueReportReceipt = result.data
+                issueReportReferenceCopied = false
             }
         }
     }
@@ -3872,7 +3915,11 @@ private fun MembersDetailContent(
                                         onRunLifecycleAction = { runLifecycleAction(it) },
                                         onOpenRestartReset = { openRestartResetDialog() },
                                         onCopyDiagnostics = { copyDiagnostics() },
-                                        onReportIssue = { reportIssueDialogOpen = true },
+                                        onReportIssue = {
+                                            issueReportReceipt = null
+                                            issueReportReferenceCopied = false
+                                            reportIssueDialogOpen = true
+                                        },
                                         timeContext = timeContext,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
@@ -4017,6 +4064,20 @@ private fun MembersDetailContent(
                     if (reportState?.inProgress != true) {
                         reportIssueDialogOpen = false
                     }
+                }
+            )
+        }
+        issueReportReceipt?.let { receipt ->
+            MembersAgentIssueReportReceiptDialog(
+                receipt = receipt,
+                referenceCopied = issueReportReferenceCopied,
+                onCopyReference = {
+                    onCopyAgentIssueReference(buildMembersAgentIssueReportReference(receipt))
+                    issueReportReferenceCopied = true
+                },
+                onDismiss = {
+                    issueReportReceipt = null
+                    issueReportReferenceCopied = false
                 }
             )
         }
@@ -4667,6 +4728,145 @@ private fun MembersAgentIssueReportOption(
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
             color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
         )
+    }
+}
+
+internal fun buildMembersAgentIssueReportReference(
+    receipt: AgentIssueReportResult
+): String = buildList {
+    add("reportId: ${receipt.reportId}")
+    add("serverId: ${receipt.serverId}")
+    receipt.artifactId?.takeIf { it.isNotBlank() }?.let { artifactId ->
+        add("artifactId: $artifactId")
+    }
+    receipt.issueDescription?.takeIf { it.isNotBlank() }?.let { description ->
+        add("issueDescription:\n$description")
+    }
+}.joinToString("\n")
+
+@Composable
+private fun MembersAgentIssueReportReferenceRow(
+    label: String,
+    value: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label.uppercase(),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.6f)
+        )
+        Text(
+            text = value,
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
+@Composable
+private fun MembersAgentIssueReportReceiptDialog(
+    receipt: AgentIssueReportResult,
+    referenceCopied: Boolean,
+    onCopyReference: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.member_report_issue_success_title).uppercase(),
+        maxWidth = 384.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22,
+        onDismiss = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(SlockColor.AccentLime)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.CircleCheckBig,
+                    modifier = Modifier.size(24.dp),
+                    color = SlockColor.TextBlackArgb
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = stringResource(MR.strings.member_report_issue_success_body),
+                    style = SlockType.ButtonBold,
+                    color = SlockColor.TextBlack,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = stringResource(MR.strings.member_report_issue_success_hint),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                    textAlign = TextAlign.Center
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_reference_label))
+                MembersAgentIssueReportReferenceRow(
+                    label = stringResource(MR.strings.member_report_issue_report_id),
+                    value = receipt.reportId
+                )
+                receipt.artifactId?.takeIf { it.isNotBlank() }?.let { artifactId ->
+                    MembersAgentIssueReportReferenceRow(
+                        label = stringResource(MR.strings.member_report_issue_artifact_id),
+                        value = artifactId
+                    )
+                }
+                MembersAgentIssueReportReferenceRow(
+                    label = stringResource(MR.strings.member_report_issue_server_id),
+                    value = receipt.serverId
+                )
+                if (receipt.transcriptRequested) {
+                    MembersAgentIssueReportReferenceRow(
+                        label = stringResource(MR.strings.member_report_issue_runtime_transcript_label),
+                        value = stringResource(MR.strings.member_report_issue_runtime_transcript_queued)
+                    )
+                }
+                SlockBrutalActionButton(
+                    label =
+                        if (referenceCopied) {
+                            stringResource(MR.strings.member_report_issue_reference_copied)
+                        } else {
+                            stringResource(MR.strings.member_report_issue_copy_reference)
+                        },
+                    leadingIcon = if (referenceCopied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    minHeight = 28.dp,
+                    onClick = onCopyReference
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.common_done),
+                    backgroundColor = SlockColor.AccentLime,
+                    onClick = onDismiss
+                )
+            }
+        }
     }
 }
 

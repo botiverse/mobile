@@ -107,6 +107,8 @@ class AgentIssueReportRepositoryTest {
         val content = assertIs<DataResult.Content<AgentIssueReportResult>>(result)
         assertEquals("report-1", content.data.reportId)
         assertEquals("artifact-1", content.data.artifactId)
+        assertEquals("server-1", content.data.serverId)
+        assertEquals("Report button was not connected", content.data.issueDescription)
         assertTrue(content.data.transcriptRequested)
         assertTrue(hashedBundle.contains("\"schemaVersion\":\"slock-feedback-export-v2\""))
         assertTrue(hashedBundle.contains("\"mobileDiagnostics\":\"agentId=agent-1\\nstatus=Working\""))

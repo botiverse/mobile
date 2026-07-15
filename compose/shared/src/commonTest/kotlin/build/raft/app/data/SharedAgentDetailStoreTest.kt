@@ -429,17 +429,29 @@ class SharedAgentDetailStoreTest {
 
             override fun copyDiagnostics(diagnostics: String) = Unit
 
-            override suspend fun reportIssue(request: SharedAgentIssueReportRequest): Boolean {
+            override suspend fun reportIssue(
+                request: SharedAgentIssueReportRequest
+            ): DataResult<AgentIssueReportResult> {
                 forwarded = request
                 assertEquals("report", s.state.value.diagnosticActionInFlight)
-                return true
+                return DataResult.Content(
+                    AgentIssueReportResult(
+                        reportId = "report-12345678",
+                        artifactId = "artifact-12345678",
+                        serverId = "server-1",
+                        issueDescription = "Agent stopped responding",
+                        transcriptRequested = true
+                    )
+                )
             }
 
             override suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
                 DataResult.Empty(EmptyReason.NoMembers)
         }
 
-        assertTrue(s.reportIssue(request, actions))
+        val result = s.reportIssue(request, actions)
+        assertTrue(result is DataResult.Content)
+        assertEquals("report-12345678", (result as DataResult.Content).data.reportId)
         assertEquals(request, forwarded)
         assertNull(s.state.value.diagnosticActionInFlight)
         assertEquals("Issue reported", s.state.value.lastActionResult?.successLabel)

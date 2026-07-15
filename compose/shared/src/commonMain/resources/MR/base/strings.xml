@@ -595,6 +595,17 @@
     <string name="member_report_issue_submit">Report Issue</string>
     <string name="member_report_issue_submitting">Submitting...</string>
     <string name="member_report_issue_failed">Unable to submit the report: %1$s</string>
+    <string name="member_report_issue_success_title">Report submitted</string>
+    <string name="member_report_issue_success_body">Feedback export uploaded.</string>
+    <string name="member_report_issue_success_hint">The bundle includes the issue description plus the client-side context you selected.</string>
+    <string name="member_report_issue_reference_label">Report reference</string>
+    <string name="member_report_issue_report_id">Report ID</string>
+    <string name="member_report_issue_artifact_id">Artifact ID</string>
+    <string name="member_report_issue_server_id">Server ID</string>
+    <string name="member_report_issue_runtime_transcript_label">Runtime Transcript</string>
+    <string name="member_report_issue_runtime_transcript_queued">Queued as a background trace bundle.</string>
+    <string name="member_report_issue_copy_reference">Copy report reference</string>
+    <string name="member_report_issue_reference_copied">Copied</string>
     <string name="member_action_switch_runtime_config">Switch Runtime Config</string>
     <string name="member_action_start_agent">Start Agent</string>
     <string name="member_action_stop_agent">Stop Agent</string>

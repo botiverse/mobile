@@ -1280,6 +1280,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersAgentIssueReportSuccess() {
+        captureKmpComponentCase(
+            caseId = "components.members.agent-issue-report-success",
+            pageName = "compose_members_agent_detail_visual",
+            pageData = JSONObject().put("visualMode", "report_issue_success"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureChannelMembersPanel() {
         captureKmpComponentCase(
             caseId = "components.channel.members.panel",
