@@ -39,7 +39,11 @@ class MessageSoleApplyLaneTest {
 
     private val serverId = "server-1"
     private val channelId = "channel-1"
-    private val scopeKey = SyncScopeKey(serverId = serverId, scopeId = channelId, scopeKind = "channel")
+    private val scopeKey = SyncScopeKey(
+        partition = DurablePartitionKey(serverId, "principal-1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+        scopeId = channelId,
+        scopeKind = "channel",
+    )
 
     /** In-memory one-txn stand-in: records applied frames; can be armed to fail the next N commits. */
     private class RecordingAdapter : FoldPersistenceAdapter {

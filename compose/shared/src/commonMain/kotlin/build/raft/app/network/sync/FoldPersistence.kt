@@ -15,12 +15,26 @@ import build.raft.app.model.MessageId
  * This file is the contract the RED tests target; the SQLite-backed implementation lands next.
  */
 
-/** Identifies the scope a frame belongs to (server + scope + kind). Composite fact keys derive from this. */
+/** Identifies one scope inside an explicit durable server/principal/consumer partition. */
 data class SyncScopeKey(
-    val serverId: String,
+    val partition: DurablePartitionKey,
     val scopeId: SyncScopeId,
     val scopeKind: String,
-)
+) {
+    init {
+        requireOpaqueDurableIdentity("scopeId", scopeId)
+        requireOpaqueDurableIdentity("scopeKind", scopeKind)
+    }
+
+    val serverId: String
+        get() = partition.serverId
+
+    val principalId: String
+        get() = partition.principalId
+
+    val consumerId: String
+        get() = partition.consumerId
+}
 
 /** The durable per-scope cursor + epoch (mirror of `syncCursorEntity`) committed with the facts. */
 data class PersistedCursor(

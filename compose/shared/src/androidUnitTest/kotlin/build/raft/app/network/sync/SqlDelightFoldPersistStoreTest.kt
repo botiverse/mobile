@@ -57,7 +57,19 @@ class SqlDelightFoldPersistStoreTest {
         return SlockSqlDatabase(driver) to driver
     }
 
-    private val scope = SyncScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
+    private fun scopeKey(
+        serverId: String = "s1",
+        principalId: String = "p1",
+        consumerId: String = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+        scopeId: String = "c1",
+        scopeKind: String = "channel",
+    ) = SyncScopeKey(
+        partition = DurablePartitionKey(serverId, principalId, consumerId),
+        scopeId = scopeId,
+        scopeKind = scopeKind,
+    )
+
+    private val scope = scopeKey()
 
     private fun store(db: SlockSqlDatabase, onDecodeFailure: (SyncScopeKey, String) -> Unit = { _, _ -> }) =
         SqlDelightFoldPersistStore(db, now = { 100L }, onDecodeFailure = onDecodeFailure)
@@ -127,7 +139,13 @@ class SqlDelightFoldPersistStoreTest {
     fun scalarColumnsEqualExtractOfDecodedPayload() = runBlocking {
         val (db, _) = freshDb()
         adapter(db).applyFrame(frame(scope, row("m1", 5)))
-        val stored = db.queries.selectServerBackedMessagesForChannel("s1", "channel", "c1").executeAsList().single()
+        val stored = db.queries.selectServerBackedMessagesForChannel(
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsList().single()
         val decoded = decodeCanonicalFact(stored.canonicalFactJson)!!
         assertEquals(stored.id, decoded.id)
         assertEquals(stored.channelId, decoded.channelId)
@@ -140,12 +158,12 @@ class SqlDelightFoldPersistStoreTest {
         val (db, _) = freshDb()
         adapter(db).applyFrame(frame(scope, row("m1", 1)))
         // Same server+scopeId but a DIFFERENT scopeKind must not see it (a channel vs a thread on c1).
-        val sameIdOtherKind = SyncScopeKey("s1", "c1", "thread")
+        val sameIdOtherKind = scopeKey(scopeKind = "thread")
         assertTrue(store(db).readFacts(sameIdOtherKind).isEmpty(), "different scopeKind (same scopeId) must be isolated")
         // Different server must not see it.
-        assertTrue(store(db).readFacts(SyncScopeKey("s2", "c1", "channel")).isEmpty(), "different server must be isolated")
+        assertTrue(store(db).readFacts(scopeKey(serverId = "s2")).isEmpty(), "different server must be isolated")
         // Different channelId must not see it.
-        assertTrue(store(db).readFacts(SyncScopeKey("s1", "c2", "channel")).isEmpty(), "different channelId must be isolated")
+        assertTrue(store(db).readFacts(scopeKey(scopeId = "c2")).isEmpty(), "different channelId must be isolated")
         assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id })
     }
 
@@ -154,16 +172,16 @@ class SqlDelightFoldPersistStoreTest {
         val (db, _) = freshDb()
         // A channel and a thread sharing serverId + scopeId must NOT collide on the cursor.
         adapter(db).applyFrame(frame(scope, row("m1", 5)))
-        adapter(db).applyFrame(frame(SyncScopeKey("s1", "c1", "thread"), row("t1", 9)))
+        adapter(db).applyFrame(frame(scopeKey(scopeKind = "thread"), row("t1", 9)))
         assertEquals(5L, store(db).readCursor(scope)?.latestSeq)
-        assertEquals(9L, store(db).readCursor(SyncScopeKey("s1", "c1", "thread"))?.latestSeq)
+        assertEquals(9L, store(db).readCursor(scopeKey(scopeKind = "thread"))?.latestSeq)
     }
 
     @Test
     fun crossScopeSameIdFailStopsOnRealApplyFrame() = runBlocking {
         val (db, _) = freshDb()
         adapter(db).applyFrame(frame(scope, row("dup", 1)))
-        val other = SyncScopeKey("s1", "c2", "channel")
+        val other = scopeKey(scopeId = "c2")
         assertFailsWith<FoldPersistScopeConflict> {
             adapter(db).applyFrame(frame(other, row("dup", 2, other)))
         }
@@ -196,7 +214,13 @@ class SqlDelightFoldPersistStoreTest {
         assertTrue(facts.isEmpty(), "restore must not return a row whose scalar drifted from its payload")
         assertEquals(listOf("m1"), poisoned, "the drifted row is a counted poison-gate input")
         // Restore-purity: the payload itself was never mutated — it still decodes to the true fact.
-        val payload = db.queries.selectServerBackedMessagesForChannel("s1", "channel", "c1").executeAsList().single().canonicalFactJson
+        val payload = db.queries.selectServerBackedMessagesForChannel(
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsList().single().canonicalFactJson
         assertEquals(3L, decodeCanonicalFact(payload)?.seq, "the payload seq is untouched; only the scalar was tampered")
     }
 

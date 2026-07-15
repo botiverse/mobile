@@ -33,6 +33,8 @@ import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.SyncScopeKey
+import build.raft.app.network.sync.DurablePartitionKey
+import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +49,11 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
 
     private val serverId = "server-1"
     private val channelId = "channel-1"
-    private val scopeKey = SyncScopeKey(serverId = serverId, scopeId = channelId, scopeKind = "channel")
+    private val scopeKey = SyncScopeKey(
+        partition = DurablePartitionKey(serverId, "principal-1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+        scopeId = channelId,
+        scopeKind = "channel",
+    )
 
     private class FakeFlagsApi(private val enabled: Boolean) : SlockFeatureFlagsApi {
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =

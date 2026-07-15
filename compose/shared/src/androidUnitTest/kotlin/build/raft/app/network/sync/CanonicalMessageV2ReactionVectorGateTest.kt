@@ -62,7 +62,7 @@ class CanonicalMessageV2ReactionVectorGateTest {
                 context = ReactionNormalizationContext(
                     serverId = input.string("serverId"),
                     messageId = input.string("messageId"),
-                    parentScopeKey = SyncScopeKey(
+                    parentScopeKey = ReactionParentScopeKey(
                         serverId = scope.string("serverId"),
                         scopeKind = scope.string("scopeKind"),
                         scopeId = scope.string("scopeId"),
@@ -124,7 +124,11 @@ class CanonicalMessageV2ReactionVectorGateTest {
                 ReactionNormalizationContext(
                     serverId = input.string("serverId"),
                     messageId = input.string("messageId"),
-                    parentScopeKey = SyncScopeKey(scope.string("serverId"), scope.string("scopeId"), scope.string("scopeKind")),
+                    parentScopeKey = ReactionParentScopeKey(
+                        scope.string("serverId"),
+                        scope.string("scopeId"),
+                        scope.string("scopeKind"),
+                    ),
                     authority = authority,
                 ),
                 input["reactions"]!!.jsonArray.map { element ->

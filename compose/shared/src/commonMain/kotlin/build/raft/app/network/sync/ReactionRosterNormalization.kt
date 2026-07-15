@@ -55,6 +55,18 @@ data class ReactionViewerOverlaySnapshot(
 )
 
 /**
+ * Non-durable grouping key used only inside one already principal-scoped reaction cache instance.
+ *
+ * This deliberately has no conversion to/from [SyncScopeKey]: reaction normalization must not fabricate a
+ * durable principal or accidentally enter the fold persistence API.
+ */
+data class ReactionParentScopeKey(
+    val serverId: String,
+    val scopeId: String,
+    val scopeKind: String,
+)
+
+/**
  * A complete compatibility seed. Partial/malformed V1 rosters never become a loaded-empty cache entry.
  *
  * Forward ledger: V1 has no partial-roster marker, so `complete` is the only legal value in this adapter.
@@ -62,7 +74,7 @@ data class ReactionViewerOverlaySnapshot(
  * that prove partial input cannot clear or replace a complete cache entry.
  */
 data class ReactionActorsReadCacheSeed(
-    val parentScopeKey: SyncScopeKey,
+    val parentScopeKey: ReactionParentScopeKey,
     val messageId: String,
     val emoji: String,
     val actors: List<ReactionActorRef>,
@@ -87,7 +99,7 @@ sealed interface ReactionIngressAuthority {
 data class ReactionNormalizationContext(
     val serverId: String,
     val messageId: String,
-    val parentScopeKey: SyncScopeKey,
+    val parentScopeKey: ReactionParentScopeKey,
     val authority: ReactionIngressAuthority,
 )
 
@@ -327,13 +339,13 @@ class BoundedReactionActorsReadCache(
     maxEntries: Int,
 ) {
     private data class Entry(
-        val parentScopeKey: SyncScopeKey,
+        val parentScopeKey: ReactionParentScopeKey,
         val actors: List<ReactionActorRef>,
     )
 
     private val capacity = maxEntries.also { require(principalScope.isNotBlank() && it > 0) }
     private val entries = linkedMapOf<ReactionActorsDiscussionRef, Entry>()
-    private val keysByParentScope = mutableMapOf<SyncScopeKey, MutableSet<ReactionActorsDiscussionRef>>()
+    private val keysByParentScope = mutableMapOf<ReactionParentScopeKey, MutableSet<ReactionActorsDiscussionRef>>()
 
     fun seed(seed: ReactionActorsReadCacheSeed) {
         remove(seed.discussion)
@@ -352,7 +364,7 @@ class BoundedReactionActorsReadCache(
         return ReactionActorsCacheLookup.Loaded(entry.actors)
     }
 
-    fun clearScope(parentScopeKey: SyncScopeKey) {
+    fun clearScope(parentScopeKey: ReactionParentScopeKey) {
         keysByParentScope.remove(parentScopeKey).orEmpty().forEach(entries::remove)
     }
 
