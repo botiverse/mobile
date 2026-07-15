@@ -10201,7 +10201,8 @@ private fun ThreadPageContent(
                         },
                         onOpenMember = { item ->
                             item.memberDetailIdentity()?.let(onOpenMemberProfile)
-                        }
+                        },
+                        onOpenUrl = openMarkdownUrl
                     )
                 }
             "forwardTargets" ->
@@ -14409,7 +14410,8 @@ private fun ThreadMessageCard(
                         } else if (richContentEnabled && forwardBundle != null) {
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
-                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                onOpenUrl = onOpenMarkdownUrl
                             )
                         } else if (message.body.isNotBlank()) {
                             if (richContentEnabled) {
@@ -18128,7 +18130,8 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
 @Composable
 private fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenUrl: (String) -> Unit = {}
 ) {
     // Aligned to the react ForwardedBundleCard: an inline bordered white card that
     // renders the forwarded messages in place (header title + count, then each message's
@@ -18196,10 +18199,13 @@ private fun ThreadForwardBundleCard(
                     }
                 }
                 if (item.body.isNotBlank()) {
-                    Text(
-                        text = item.body,
-                        style = ThreadMessageBodyTextStyle,
-                        color = SlockColor.TextBlack
+                    // Web's ForwardedBundleCard renders each forwarded body
+                    // through MarkdownContent — plain Text left **bold**,
+                    // [links](…) and `code` raw (task #63).
+                    SlockMarkdownBody(
+                        body = item.body,
+                        textStyle = ThreadMessageBodyTextStyle,
+                        onOpenUrl = onOpenUrl
                     )
                 }
                 if (item.attachmentCount > 0) {
@@ -18219,7 +18225,8 @@ private fun ThreadForwardBundleModal(
     bundle: ForwardMessageBundle,
     memberAvatarResolver: SlockMemberAvatarResolver,
     onDismiss: () -> Unit,
-    onOpenMember: (ForwardMessageItem) -> Unit
+    onOpenMember: (ForwardMessageItem) -> Unit,
+    onOpenUrl: (String) -> Unit = {}
 ) {
     SlockUnifiedDialog(
         title = bundle.localizedForwardTitle(),
@@ -18256,7 +18263,8 @@ private fun ThreadForwardBundleModal(
                         ThreadForwardBundleMessageRow(
                             item = bundle.messages[index],
                             memberAvatarResolver = memberAvatarResolver,
-                            onOpenMember = onOpenMember
+                            onOpenMember = onOpenMember,
+                            onOpenUrl = onOpenUrl
                         )
                     }
                 }
@@ -18269,7 +18277,8 @@ private fun ThreadForwardBundleModal(
 private fun ThreadForwardBundleMessageRow(
     item: ForwardMessageItem,
     memberAvatarResolver: SlockMemberAvatarResolver,
-    onOpenMember: (ForwardMessageItem) -> Unit
+    onOpenMember: (ForwardMessageItem) -> Unit,
+    onOpenUrl: (String) -> Unit = {}
 ) {
     val avatarWireValue =
         rememberSlockMemberAvatarWireValue(memberAvatarResolver, item.authorId)
@@ -18315,10 +18324,11 @@ private fun ThreadForwardBundleMessageRow(
                 }
             }
             if (item.body.isNotBlank()) {
-                Text(
-                    text = item.body,
-                    style = ThreadMessageBodyTextStyle,
-                    color = SlockColor.TextBlack
+                // Same markdown treatment as the inline bundle card (task #63).
+                SlockMarkdownBody(
+                    body = item.body,
+                    textStyle = ThreadMessageBodyTextStyle,
+                    onOpenUrl = onOpenUrl
                 )
             }
             if (item.attachmentCount > 0) {
@@ -18709,7 +18719,10 @@ internal fun ThreadForwardBundleVisualScreen() {
                             authorKind = "agent",
                             avatarLabel = "C",
                             timestampLabel = "10:38",
-                            body = "Captured the Android visual artifact and queued React parity.",
+                            // Markdown on purpose: forwarded bodies render through
+                            // SlockMarkdownBody (task #63) — the capture must show
+                            // bold ink + code chip, not literal ** and backticks.
+                            body = "Captured the **Android visual artifact** and queued `React parity`.",
                             attachmentCount = 0
                         ),
                         ForwardMessageItem(
