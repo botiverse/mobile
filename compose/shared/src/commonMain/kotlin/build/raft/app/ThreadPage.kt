@@ -18324,77 +18324,6 @@ private fun ThreadForwardBundleCard(
     }
 }
 
-@Composable
-private fun ThreadForwardBundleMessageRow(
-    item: ForwardMessageItem,
-    memberAvatarResolver: SlockMemberAvatarResolver,
-    onOpenMember: (ForwardMessageItem) -> Unit,
-    onOpenUrl: (String) -> Unit = {}
-) {
-    val avatarWireValue =
-        rememberSlockMemberAvatarWireValue(memberAvatarResolver, item.authorId)
-            ?: item.avatarWireValue
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Button(
-            onClick = { onOpenMember(item) },
-            pressFeedback = false,
-            modifier = Modifier.size(32.dp).background(Color.Transparent)
-        ) {
-            SlockAvatar(
-                avatarWireValue = avatarWireValue,
-                label = item.avatarLabel.ifBlank { item.authorName.take(1) },
-                avatarSize = 32.dp
-            )
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
-                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { onOpenMember(item) }.weight(1f, fill = false)
-                )
-                item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
-                    Text(
-                        text = timestamp,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            if (item.body.isNotBlank()) {
-                // Same markdown treatment as the inline bundle card (task #63).
-                SlockMarkdownBody(
-                    body = item.body,
-                    textStyle = ThreadMessageBodyTextStyle,
-                    onOpenUrl = onOpenUrl
-                )
-            }
-            if (item.attachmentCount > 0) {
-                Text(
-                    text = item.localizedForwardAttachmentLabel(),
-                    // Attachment label is content (react renders per-file chips, non-mono);
-                    // keep it proportional. Space Mono stays on the timestamp only.
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray
-                )
-            }
-        }
-    }
-}
-
 private fun ForwardMessageBundle.forwardTitle(): String =
     title.takeIf { it.isNotBlank() }
         ?: sourceTitle.takeIf { it.isNotBlank() }?.let { "$it chat history" }
@@ -18795,21 +18724,58 @@ private fun ThreadForwardBundleScreen() {
             }
         )
         val messages = bundle?.messages.orEmpty()
-        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        // Rows reuse the STANDARD chat message renderer (artin, task #64
+        // follow-up): same avatar/author/timestamp/markdown chrome and spacing
+        // as the thread flow, no bespoke dividers. Action callbacks are no-ops
+        // — this is a read-only list; only markdown links stay live.
+        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = SlockSpacing.Sm)) {
             items(messages.size, key = { messages[it].id }) { index ->
-                if (index > 0) {
-                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+                val item = messages[index]
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    ThreadMessageCard(
+                        message = item.toThreadMessageItemForBundlePage(),
+                        onShowActions = {},
+                        onOpenMember = {},
+                        onOpenThread = {},
+                        onOpenTask = {},
+                        onOpenTaskStatusMenu = {},
+                        onToggleReaction = {},
+                        onOpenAttachment = {},
+                        onOpenMarkdownTag = {},
+                        onOpenMarkdownUrl = { url -> bridge.openUrl(url) },
+                        showReplyAction = false,
+                        showSaveAction = false,
+                        taskOpenEnabled = false,
+                        taskStatusActionsEnabled = false
+                    )
+                    if (item.attachmentCount > 0) {
+                        Text(
+                            text = item.localizedForwardAttachmentLabel(),
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                            color = SlockColor.TextMutedGray,
+                            modifier = Modifier.padding(start = 60.dp, bottom = SlockSpacing.Sm)
+                        )
+                    }
                 }
-                ThreadForwardBundleMessageRow(
-                    item = messages[index],
-                    memberAvatarResolver = EmptySlockMemberAvatarResolver,
-                    onOpenMember = {},
-                    onOpenUrl = { url -> bridge.openUrl(url) }
-                )
             }
         }
     }
 }
+
+// The bundle page renders read-only standard rows; forwarded items carry only
+// a subset of message fields, so map what exists and let the card's defaults
+// cover the rest.
+private fun ForwardMessageItem.toThreadMessageItemForBundlePage(): KuiklyThreadMessageItem =
+    KuiklyThreadMessageItem(
+        id = id,
+        authorId = authorId,
+        authorName = authorName,
+        authorKind = authorKind,
+        avatarLabel = avatarLabel.ifBlank { authorName.take(1) },
+        avatarWireValue = avatarWireValue,
+        timestampLabel = timestampLabel,
+        body = body
+    )
 
 @Page("compose_thread_forward_bundle_visual", supportInLocal = true)
 internal class ComposeThreadForwardBundleVisualPage : build.raft.app.base.BasePager() {
