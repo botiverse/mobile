@@ -329,10 +329,10 @@
     <string name="thread_composer_mention_notify_hint">不添加成员，仅发送一次性通知。</string>
     <string name="thread_composer_mention_dismiss_hint">无需处理时可忽略此提醒。</string>
     <string name="thread_composer_mention_not_in_channel">%1$s 不在 %2$s 中。%3$s</string>
-    <string name="thread_composer_mention_added_chip">✓ 已添加</string>
+    <string name="thread_composer_mention_added_chip">已添加</string>
     <string name="thread_composer_mention_adding_chip">添加中</string>
     <string name="thread_composer_mention_add_chip">添加</string>
-    <string name="thread_composer_mention_notified_chip">✓ 已通知</string>
+    <string name="thread_composer_mention_notified_chip">已通知</string>
     <string name="thread_composer_mention_notifying_chip">通知中</string>
     <string name="thread_composer_mention_notify_chip">通知</string>
     <string name="thread_composer_attachment_upload_failed">上传失败</string>

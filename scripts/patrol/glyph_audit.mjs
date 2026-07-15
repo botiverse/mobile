@@ -20,7 +20,24 @@ const LIVE = args.includes("--live");
 const REPO = arg("--repo", "botiverse/mobile");
 const CAP = Number(arg("--cap", "5"));
 
-const ROOT = "compose/shared/src/commonMain/kotlin/build/raft/app";
+// Roots cover every layer that can put a glyph on screen (artin's "还有啥
+// 文件可能有" sweep, 2026-07-15): shared Kotlin, MR string RESOURCES (the
+// composer "✓ Added" chips hid there — .kt-only scanning missed them),
+// both host app layers, and OHOS ArkTS.
+const KOTLIN_ROOTS = [
+  "compose/shared/src/commonMain/kotlin/build/raft/app",
+  "compose/androidApp/src/main/java",
+];
+const RESOURCE_GLOBS = [
+  "compose/shared/src/commonMain/resources/MR/base/strings.xml",
+  "compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml",
+  "compose/androidApp/src/main/res/values/strings.xml",
+  "compose/androidApp/src/main/res/values-zh-rCN/strings.xml",
+];
+const HOST_ROOTS = [
+  { dir: "compose/iosApp/iosApp", exts: [".m", ".swift"] },
+  { dir: "compose/ohosApp", exts: [".ets"] },
+];
 const GLYPHS = /[✓✔✗✘✕×➜➔←↑↓▲▼►◄▶◀‣▪✦★☆]/;
 const EXCLUDE_FILE = [/Test\.kt$/, /visualFixtures\//];
 const EXCLUDE_LINE = [
@@ -30,24 +47,44 @@ const EXCLUDE_LINE = [
   /body\s*=/,                      // fixture/sample message bodies
 ];
 
-function* kotlinFiles(dir) {
+function* walk(dir, exts) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) yield* kotlinFiles(p);
-    else if (e.name.endsWith(".kt") && !EXCLUDE_FILE.some((re) => re.test(p))) yield p;
+    if (e.isDirectory()) yield* walk(p, exts);
+    else if (exts.some((x) => e.name.endsWith(x)) && !EXCLUDE_FILE.some((re) => re.test(p))) yield p;
   }
 }
 
 const byFile = new Map();
-for (const file of kotlinFiles(ROOT)) {
+const record = (file, i, line) => {
+  if (!byFile.has(file)) byFile.set(file, []);
+  byFile.get(file).push({ line: i + 1, text: line.trim() });
+};
+for (const root of KOTLIN_ROOTS) {
+  if (!fs.existsSync(root)) continue;
+  for (const file of walk(root, [".kt"])) {
+    fs.readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+      if (!GLYPHS.test(line)) return;
+      if (EXCLUDE_LINE.some((re) => re.test(line))) return;
+      // Only flag glyphs inside string/char literals (UI-bound), not identifiers.
+      if (!/["'][^"']*[✓✔✗✘✕×➜➔←↑↓▲▼►◄▶◀‣▪✦★☆][^"']*["']/.test(line)) return;
+      record(file, i, line);
+    });
+  }
+}
+for (const file of RESOURCE_GLOBS) {
+  if (!fs.existsSync(file)) continue;
   fs.readFileSync(file, "utf8").split("\n").forEach((line, i) => {
-    if (!GLYPHS.test(line)) return;
-    if (EXCLUDE_LINE.some((re) => re.test(line))) return;
-    // Only flag glyphs inside string/char literals (UI-bound), not identifiers.
-    if (!/["'][^"']*[✓✔✗✘✕×➜➔←↑↓▲▼►◄▶◀‣▪✦★☆][^"']*["']/.test(line)) return;
-    if (!byFile.has(file)) byFile.set(file, []);
-    byFile.get(file).push({ line: i + 1, text: line.trim() });
+    if (GLYPHS.test(line) && /<string /.test(line)) record(file, i, line);
   });
+}
+for (const { dir, exts } of HOST_ROOTS) {
+  if (!fs.existsSync(dir)) continue;
+  for (const file of walk(dir, exts)) {
+    fs.readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+      if (GLYPHS.test(line) && !EXCLUDE_LINE.some((re) => re.test(line))) record(file, i, line);
+    });
+  }
 }
 
 const findings = [...byFile.entries()].map(([file, hits]) => {
