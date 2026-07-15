@@ -93,3 +93,7 @@ node scripts/visual_patrol.mjs --analysis gh-pages --comparison react__android -
 ## font-audit lens
 
 `scripts/patrol/font_audit.mjs` flags typography-contract suspects: naked `fontWeight = FontWeight.X` with no family dispatch on the line (Kuikly encodes weight in the family NAME — naked weight renders the original family, see SlockDesignTokens.kt), and raw `FontFamily(...)` constructed outside the tokens file. The markdown pipeline auto-repairs via `withResolvedSlockFontFamily`; plain `Text()` does not. Cap 5/run nightly.
+
+## glyph-audit lens
+
+`scripts/patrol/glyph_audit.mjs` flags unicode glyph characters (✓ × arrows …) used inside UI string literals — affordances must be Lucide icons (task #494). Typographic uses (masking dots, the → upgrade hint, fixture bodies, comments) are excluded; new legit patterns extend the exclusion list. Cap 5/run in the nightly job.
