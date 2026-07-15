@@ -918,6 +918,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdCodeEmail() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-code-email",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-code-email")
+                    .put("visualFixture", "md_code_email"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdBlockquote() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-blockquote",
