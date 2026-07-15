@@ -1196,6 +1196,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureTasksPanelChineseLocalization() {
+        captureKmpComponentCase(
+            caseId = "components.tasks.panel.zh-cn",
+            pageName = "compose_tasks_panel_visual",
+            pageData = JSONObject().put("fixture", "zh-cn-localization"),
+            crop = TASKS_PANEL_STATES_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureTasksStatusMenu() {
         captureKmpComponentCase(
             caseId = "components.tasks.status-menu",
