@@ -145,33 +145,108 @@ class SlockSandboxWebViewHostMessageTest {
 }
 
 /**
- * The shared authority for a web-base-URL's origin. Used by BOTH URL builders and
- * session-mutating callsites when they declare the `expectedHostEventOrigin` for a
- * `SlockSandboxWebView` bridge install (@MingQi review r7 #4). Pure string function —
- * no ambient env access, no `android.net.Uri`. Env authority stays on the caller side.
+ * The shared authority for a web-base-URL's canonical origin. Used by BOTH URL
+ * builders and session-mutating callsites when they declare the
+ * `expectedHostEventOrigin` for a `SlockSandboxWebView` bridge install (@MingQi
+ * review r7 #4). Pure string function — no ambient env access, no `android.net.Uri`.
+ * Env authority stays on the caller side.
+ *
+ * Canonicalisation contract (@MingQi review r8): default ports elided; explicit
+ * non-default ports preserved; IPv6 bracketed; port range 1..65535.
  */
 class SharedSettingsWebOriginTest {
 
-    @Test fun `https https url yields scheme host origin`() {
+    // ── Basic origin extraction ──────────────────────────────────────────────
+
+    @Test fun `https url yields scheme host origin`() {
         assertEquals("https://app.raft.build", sharedSettingsWebOrigin("https://app.raft.build/s/x/settings"))
     }
 
-    @Test fun `staging base with a path — only origin is compared, path discarded`() {
-        // MingQi review r7 #4: "staging base 带 /s/botiverse/ 也只比较 origin"
+    @Test fun `staging base with a path — only origin, path discarded`() {
         assertEquals(
             "https://raft-app-staging.botiverse.dev",
             sharedSettingsWebOrigin("https://raft-app-staging.botiverse.dev/s/botiverse/")
         )
     }
 
-    @Test fun `explicit port is preserved`() {
-        assertEquals("http://localhost:5173", sharedSettingsWebOrigin("http://localhost:5173/s/x"))
-        assertEquals("https://internal.example.com:8443", sharedSettingsWebOrigin("https://internal.example.com:8443/"))
-    }
-
     @Test fun `scheme is lowercased`() {
         assertEquals("https://app.raft.build", sharedSettingsWebOrigin("HTTPS://APP.RAFT.BUILD/x"))
     }
+
+    // ── Default-port canonicalisation (@MingQi review r8 A#2 fix) ─────────────
+
+    @Test fun `https no port equals https 443 explicit`() {
+        val implicit = sharedSettingsWebOrigin("https://x.example.com/")
+        val explicit = sharedSettingsWebOrigin("https://x.example.com:443/")
+        assertEquals(implicit, explicit)
+        assertEquals("https://x.example.com", implicit)
+    }
+
+    @Test fun `http no port equals http 80 explicit`() {
+        val implicit = sharedSettingsWebOrigin("http://x.example.com/")
+        val explicit = sharedSettingsWebOrigin("http://x.example.com:80/")
+        assertEquals(implicit, explicit)
+        assertEquals("http://x.example.com", implicit)
+    }
+
+    @Test fun `https non-default port preserved`() {
+        assertEquals("https://x.example.com:8443", sharedSettingsWebOrigin("https://x.example.com:8443/"))
+    }
+
+    @Test fun `http non-default port preserved`() {
+        assertEquals("http://localhost:5173", sharedSettingsWebOrigin("http://localhost:5173/s/x"))
+    }
+
+    @Test fun `port cross-scheme is not equivalent — http 443 is not https no-port`() {
+        // Different scheme is a different origin regardless of port matching a different
+        // scheme's default.
+        assertEquals("http://x.example.com:443", sharedSettingsWebOrigin("http://x.example.com:443/"))
+        assertEquals("https://x.example.com", sharedSettingsWebOrigin("https://x.example.com/"))
+    }
+
+    // ── Port range validation ─────────────────────────────────────────────────
+
+    @Test fun `port out of range is rejected`() {
+        assertNull(sharedSettingsWebOrigin("https://x.example.com:0/"), "port 0 out of range")
+        assertNull(sharedSettingsWebOrigin("https://x.example.com:65536/"), "port 65536 out of range")
+        assertNull(sharedSettingsWebOrigin("https://x.example.com:-1/"), "negative port (non-numeric char)")
+        assertNull(sharedSettingsWebOrigin("https://x.example.com:999999/"), "very large port")
+    }
+
+    @Test fun `port at range boundary is accepted`() {
+        assertEquals("https://x.example.com:1", sharedSettingsWebOrigin("https://x.example.com:1/"))
+        assertEquals("https://x.example.com:65535", sharedSettingsWebOrigin("https://x.example.com:65535/"))
+    }
+
+    // ── IPv6 (@MingQi review r8 A#2 fix) ──────────────────────────────────────
+
+    @Test fun `IPv6 loopback with port`() {
+        assertEquals("https://[::1]:8443", sharedSettingsWebOrigin("https://[::1]:8443/api"))
+    }
+
+    @Test fun `IPv6 without port defaults`() {
+        // https + IPv6 with no explicit port canonicalises to no-port form.
+        assertEquals("https://[::1]", sharedSettingsWebOrigin("https://[::1]/api"))
+    }
+
+    @Test fun `IPv6 full address`() {
+        assertEquals(
+            "https://[2001:db8::1]:8080",
+            sharedSettingsWebOrigin("https://[2001:db8::1]:8080/x")
+        )
+    }
+
+    @Test fun `IPv6 default port elided`() {
+        assertEquals("https://[::1]", sharedSettingsWebOrigin("https://[::1]:443/api"))
+        assertEquals("http://[::1]", sharedSettingsWebOrigin("http://[::1]:80/api"))
+    }
+
+    @Test fun `IPv6 malformed brackets are rejected`() {
+        assertNull(sharedSettingsWebOrigin("https://[::1/api"), "unclosed bracket")
+        assertNull(sharedSettingsWebOrigin("https://[::1]x/api"), "junk after bracket")
+    }
+
+    // ── Rejection cases ──────────────────────────────────────────────────────
 
     @Test fun `non-http schemes are rejected`() {
         assertNull(sharedSettingsWebOrigin("file:///android_asset/index.html"))
@@ -192,6 +267,11 @@ class SharedSettingsWebOriginTest {
         assertNull(sharedSettingsWebOrigin("https://user@app.raft.build/x"))
     }
 
+    @Test fun `control chars and embedded whitespace are rejected`() {
+        assertNull(sharedSettingsWebOrigin("https://x.example.com \n/x"))
+        assertNull(sharedSettingsWebOrigin("https://x.example.com/x\u0000"))
+    }
+
     @Test fun `malformed URLs are rejected`() {
         assertNull(sharedSettingsWebOrigin(null))
         assertNull(sharedSettingsWebOrigin(""))
@@ -201,18 +281,5 @@ class SharedSettingsWebOriginTest {
         assertNull(sharedSettingsWebOrigin("https:app.raft.build"), "no ://")
         assertNull(sharedSettingsWebOrigin("https://host:abc/"), "non-numeric port")
         assertNull(sharedSettingsWebOrigin("https://host:/"), "empty port")
-    }
-
-    @Test fun `default-port ordering — same host different port is a different origin`() {
-        // MingQi review r7 #4: "default/effective port 规范化负向". If a caller writes an
-        // explicit port that happens to equal the default, we return the string as written
-        // — same-string-compare semantics. The upstream authority (`webBaseUrl`) supplies
-        // exactly one form; renderers only ever compare. This test pins that ANY differing
-        // port representation produces a distinct origin (the caller controls canonicalisation).
-        val explicit = sharedSettingsWebOrigin("https://x.example.com:443/")
-        val implicit = sharedSettingsWebOrigin("https://x.example.com/")
-        assertEquals("https://x.example.com:443", explicit)
-        assertEquals("https://x.example.com", implicit)
-        assertTrue(explicit != implicit)
     }
 }

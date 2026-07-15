@@ -331,10 +331,23 @@ private fun Any?.optStringValue(key: String, fallback: String): String =
     }
 
 /**
- * Pure function returning the origin (scheme + host + optional port) of a web-base
- * URL. Used by BOTH URL builders and by session-mutating callsites when they need
- * to declare the `expectedHostEventOrigin` for a `SlockSandboxWebView` bridge
- * install — one source of truth so the two cannot drift (@MingQi review r7 #4).
+ * Pure function returning the CANONICAL origin (scheme + host + effective-port
+ * form) of a web-base URL. Used by BOTH URL builders and by session-mutating
+ * callsites when they need to declare the `expectedHostEventOrigin` for a
+ * `SlockSandboxWebView` bridge install — one source of truth so the two cannot
+ * drift (@MingQi review r7 #4).
+ *
+ * ── Canonicalisation contract (@MingQi review r8 msg=2155c116 A#2) ──────────
+ *   - Scheme: lowercased.
+ *   - Host: lowercased. Bracketed IPv6 authority (`[::1]`) preserved verbatim
+ *     inside the brackets; the parser recognises the `]:port` separator so
+ *     `https://[::1]:8443` yields origin `https://[::1]:8443`.
+ *   - Port: DEFAULT PORT ELIDED. `https/no-port == https/:443` and
+ *     `http/no-port == http/:80` yield the same origin string (no port
+ *     suffix). Explicit non-default ports preserved as written.
+ *   - Range: port must be 1..65535 numeric. Out-of-range or non-numeric → null.
+ *   - Userinfo (`user:pw@host`): rejected.
+ *   - Non-HTTP(S) schemes: rejected.
  *
  * Reads only the URL string, no ambient env access — the caller supplies the
  * `webBaseUrl` from its own env-aware layer (`SharedApiEnvironmentStore.current().webUrl`
@@ -346,6 +359,8 @@ private fun Any?.optStringValue(key: String, fallback: String): String =
  */
 internal fun sharedSettingsWebOrigin(webUrl: String?): String? {
     val url = webUrl?.trim().takeUnless(String?::isNullOrBlank) ?: return null
+    // Reject any control character or whitespace embedded in the URL.
+    if (url.any { it.isWhitespace() || it.code < 0x20 }) return null
     val schemeEnd = url.indexOf("://")
     if (schemeEnd < 2) return null
     val scheme = url.substring(0, schemeEnd).lowercase()
@@ -355,10 +370,35 @@ internal fun sharedSettingsWebOrigin(webUrl: String?): String? {
     val authority = if (hostEnd < 0) afterScheme else afterScheme.substring(0, hostEnd)
     if (authority.isBlank()) return null
     if (authority.contains('@')) return null  // userinfo not accepted
-    val portColon = authority.indexOf(':')
-    val host = (if (portColon < 0) authority else authority.substring(0, portColon)).lowercase()
+
+    // Split host + port. Bracketed IPv6 requires special handling because host
+    // itself contains colons: `[::1]:8080` → host = `[::1]`, port = `8080`.
+    val (host, port) = if (authority.startsWith('[')) {
+        val closeBracket = authority.indexOf(']')
+        if (closeBracket < 0) return null
+        val h = authority.substring(0, closeBracket + 1)
+        val rest = authority.substring(closeBracket + 1)
+        val p = when {
+            rest.isEmpty() -> null
+            rest.startsWith(':') -> rest.substring(1)
+            else -> return null  // characters after `]` other than `:port`
+        }
+        h to p
+    } else {
+        val portColon = authority.indexOf(':')
+        val h = if (portColon < 0) authority else authority.substring(0, portColon)
+        val p = if (portColon < 0) null else authority.substring(portColon + 1)
+        h to p
+    }
     if (host.isBlank()) return null
-    val port = if (portColon < 0) null else authority.substring(portColon + 1)
-    if (port != null && (port.isBlank() || port.any { !it.isDigit() })) return null
-    return if (port == null) "$scheme://$host" else "$scheme://$host:$port"
+
+    val lowerHost = if (host.startsWith('[')) host else host.lowercase()
+
+    if (port == null) return "$scheme://$lowerHost"
+    if (port.isBlank() || port.any { !it.isDigit() }) return null
+    val portNum = port.toIntOrNull() ?: return null
+    if (portNum !in 1..65535) return null
+    // Default-port canonicalisation: drop the port when it equals the scheme's default.
+    val defaultPort = if (scheme == "https") 443 else 80
+    return if (portNum == defaultPort) "$scheme://$lowerHost" else "$scheme://$lowerHost:$portNum"
 }
