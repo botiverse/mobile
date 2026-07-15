@@ -906,6 +906,46 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun homeListPositionRestoreRequiresUncontestedViewportOwnership() {
+        assertTrue(
+            shouldRestoreHomeListPosition(
+                listStateServerId = "server-a",
+                listPositionServerId = "server-b",
+                restoreStartUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4,
+                isScrollInProgress = false
+            )
+        )
+        assertFalse(
+            shouldRestoreHomeListPosition(
+                listStateServerId = "server-a",
+                listPositionServerId = "server-b",
+                restoreStartUserScrollGeneration = 4,
+                currentUserScrollGeneration = 5,
+                isScrollInProgress = false
+            )
+        )
+        assertFalse(
+            shouldRestoreHomeListPosition(
+                listStateServerId = "server-a",
+                listPositionServerId = "server-b",
+                restoreStartUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4,
+                isScrollInProgress = true
+            )
+        )
+        assertFalse(
+            shouldRestoreHomeListPosition(
+                listStateServerId = "server-a",
+                listPositionServerId = "server-a",
+                restoreStartUserScrollGeneration = 4,
+                currentUserScrollGeneration = 4,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
     fun appShellServerLazyListPositionsIgnoreBlankServerId() {
         val positions = AppShellServerLazyListPositions()
         assertEquals(
