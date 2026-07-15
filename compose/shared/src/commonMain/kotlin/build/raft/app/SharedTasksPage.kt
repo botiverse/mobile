@@ -75,6 +75,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -1192,10 +1193,18 @@ private fun SharedTaskCard(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val assigneeDisplayName = task.tasksAssigneeDisplayName()
                 Text(
-                    text = task.tasksAssigneeDisplayName()?.let { "@$it" }
+                    text = assigneeDisplayName?.let { "@$it" }
                         ?: stringResource(MR.strings.tasks_assignee_unassigned),
-                    style = SlockType.Caption,
+                    style =
+                        if (assigneeDisplayName != null) {
+                            SlockType.Caption
+                                .withSlockFontWeight(FontWeight.Bold)
+                                .copy(fontSize = 11.sp, lineHeight = 14.sp)
+                        } else {
+                            SlockType.Caption
+                        },
                     color = SlockColor.TextBlack.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
