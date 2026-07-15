@@ -60,6 +60,12 @@ class MembersDirectMessageLaunchTest {
         assertEquals(20_275L, payload.todayEpochDay)
         assertEquals(1_756_963_200_000L, payload.nowEpochMillis)
         assertEquals(SlockTimeFormat12Hour, payload.timeFormat)
+
+        val pageData = payload.toThreadPageData()
+        assertEquals("", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString("dmPeerName"))
+        assertEquals("", pageData.optString("dmPeerAvatar"))
     }
 
     @Test

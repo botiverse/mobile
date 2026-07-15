@@ -1371,8 +1371,15 @@ internal fun MembersPageContent() {
                     bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
                 } else {
                     agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
-                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-                        .openPage(MEMBER_DETAIL_PAGE, pageData)
+                    pager.openSlockPage(
+                        pageName = MEMBER_DETAIL_PAGE,
+                        pageData = pageData,
+                        storeScopeOverride = storeScope,
+                        onMissingScope = {
+                            bridge.toast(openProfileFailed)
+                            bridge.log("members_detail_open_skip reason=missing_shell_scope instanceId=${payload.instanceId}")
+                        }
+                    )
                 }
             }
         },
@@ -2732,11 +2739,12 @@ private fun Pager.openMembersReminderMessage(
                 onUnavailableAction(unavailableMessage)
                 return
             }
-    val pageData =
-        launchPayload.toThreadPageData()
-            .put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-            .also { data -> storeScope.initialServerId?.let { data.put(SLOCK_SHELL_SERVER_ID, it) } }
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
+    openSlockPage(
+        pageName = THREAD_PAGE,
+        pageData = launchPayload.toThreadPageData(),
+        storeScopeOverride = storeScope,
+        onMissingScope = { onUnavailableAction(unavailableMessage) }
+    )
 }
 
 private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
@@ -2759,8 +2767,11 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
             if (launchPayload == null) {
                 onUnavailableAction(unavailableMessage)
             } else {
-                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-                    .openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+                pager.openSlockPage(
+                    pageName = THREAD_PAGE,
+                    pageData = launchPayload.toThreadPageData(),
+                    onMissingScope = { onUnavailableAction(unavailableMessage) }
+                )
             }
         }
         is DataResult.Empty ->

@@ -736,8 +736,7 @@ internal data class ThreadMembersPageRoute(
 
 internal fun KuiklyThreadScreenPayload.toThreadMembersPageData(
     serverId: ServerId,
-    channelId: ChannelId,
-    storeScope: SlockShellStoreScope
+    channelId: ChannelId
 ): JSONObject =
     JSONObject().apply {
         put("pageName", THREAD_MEMBERS_PAGE)
@@ -748,8 +747,6 @@ internal fun KuiklyThreadScreenPayload.toThreadMembersPageData(
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
         put("timeFormat", timeFormat)
-        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
     }
 
 internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute? {
@@ -2230,15 +2227,23 @@ private fun ThreadPageScreen() {
             bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
             return
         }
-        val pageData =
-            launchPayload.toThreadPageData()
-                .put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-                .also { data ->
-                    (threadParentNavigationServerId(serverIdOverride) ?: storeScope.initialServerId)
-                        ?.let { data.put(SLOCK_SHELL_SERVER_ID, it) }
-                }
+        val targetStoreScope =
+            SlockShellStoreScope.create(
+                shellInstanceId = storeScope.shellInstanceId,
+                initialServerId = threadParentNavigationServerId(serverIdOverride) ?: storeScope.initialServerId
+            )
         val openPage = {
-            routerModule.openPage(THREAD_PAGE, pageData)
+            pager.openSlockPage(
+                pageName = THREAD_PAGE,
+                pageData = launchPayload.toThreadPageData(),
+                storeScopeOverride = targetStoreScope,
+                onMissingScope = {
+                    bridge.toast(unableToOpenThreadLabel)
+                    bridge.logWarn(
+                        "thread_open_skip reason=missing_shell_scope instanceId=${nextPayload.instanceId}"
+                    )
+                }
+            )
         }
         if (nextPayload.sourceThreadId?.isNotBlank() == true &&
             (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty())
@@ -2247,7 +2252,7 @@ private fun ThreadPageScreen() {
             openPage()
             return
         }
-        routerModule.openPage(THREAD_PAGE, pageData)
+        openPage()
     }
     SharedThreadRouteContent(
         initialPayload = payload,
@@ -2356,13 +2361,24 @@ private fun ThreadPageScreen() {
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(candidate.agentId))
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(candidate.agentId, candidate))
                     }
-                routerModule.openPage(MEMBER_DETAIL_PAGE, pageData)
+                pager.openSlockPage(
+                    pageName = MEMBER_DETAIL_PAGE,
+                    pageData = pageData,
+                    onMissingScope = {
+                        bridge.toast(unableToOpenProfileLabel)
+                        bridge.logWarn(
+                            "thread_member_profile_skip reason=missing_shell_scope memberId=$memberId " +
+                                "instanceId=${currentPayload.instanceId}"
+                        )
+                    }
+                )
             }
         },
         onOpenMembersPager = { currentPayload, serverId, channelId, currentStoreScope ->
-            routerModule.openPage(
-                THREAD_MEMBERS_PAGE,
-                currentPayload.toThreadMembersPageData(serverId, channelId, currentStoreScope)
+            pager.openSlockPage(
+                pageName = THREAD_MEMBERS_PAGE,
+                pageData = currentPayload.toThreadMembersPageData(serverId, channelId),
+                storeScopeOverride = currentStoreScope
             )
         }
     )
@@ -2450,6 +2466,7 @@ private fun ThreadMembersPageScreen() {
     var removeMemberStatus by remember { mutableStateOf("idle") }
     var removingMemberId by remember { mutableStateOf<String?>(null) }
     var removeMemberErrorCode by remember { mutableStateOf<String?>(null) }
+    val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
 
     fun openMember(member: KuiklyThreadMemberItem) {
         val identity = member.memberDetailIdentity() ?: return
@@ -2458,7 +2475,17 @@ private fun ThreadMembersPageScreen() {
             ?.let { profile ->
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(profile))
             }
-        router.openPage(MEMBER_DETAIL_PAGE, pageData)
+        pager.openSlockPage(
+            pageName = MEMBER_DETAIL_PAGE,
+            pageData = pageData,
+            onMissingScope = {
+                bridge.toast(unableToOpenProfileLabel)
+                bridge.logWarn(
+                    "thread_member_profile_skip reason=missing_shell_scope memberId=${identity.memberId.value} " +
+                        "instanceId=${route.instanceId}"
+                )
+            }
+        )
     }
 
     fun removeMember(member: KuiklyThreadMemberItem) {

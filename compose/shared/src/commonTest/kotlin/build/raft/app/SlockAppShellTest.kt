@@ -2715,7 +2715,8 @@ class SlockAppShellTest {
             )
 
         assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
-        assertEquals("server-a", pageData.optString("serverId"))
+        assertEquals("server-a", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString("serverId"))
         assertEquals(false, pageData.optBoolean("slockDocumentShell", false))
     }
 
@@ -2728,7 +2729,8 @@ class SlockAppShellTest {
                 suppressRestoreLanding = true
             )
 
-        assertEquals("server-b", pageData.optString("serverId"))
+        assertEquals("server-b", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString("serverId"))
         assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
         assertEquals(false, pageData.optBoolean("slockDocumentShell", false))
         assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
@@ -2742,7 +2744,8 @@ class SlockAppShellTest {
                 selectedServerId = "server-a"
             )
 
-        assertEquals("server-a", pageData.optString("serverId"))
+        assertEquals("server-a", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString("serverId"))
         assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
         assertEquals(false, pageData.optBoolean("slockDocumentShell", false))
     }
