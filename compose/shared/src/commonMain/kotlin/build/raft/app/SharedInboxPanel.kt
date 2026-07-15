@@ -613,6 +613,22 @@ private fun SharedActivityList(
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
     LaunchedEffect(snapshot.items) {
+        val visibleItemKeys =
+            listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
+                itemInfo.key as? String
+            }
+        if (
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                visibleItemKeys = visibleItemKeys,
+                currentItemKeys = snapshot.items.map(InboxItem::key)
+            )
+        ) {
+            pendingUpdateCount = 0
+            listState.scrollToItem(0)
+        }
+    }
+    LaunchedEffect(snapshot.items) {
         val selected = selectedItemKey
         if (selected != null && snapshot.items.none { it.key == selected }) {
             selectedItemKey = null
@@ -1446,6 +1462,16 @@ internal fun activityShouldRequestLoadMore(
 
 private fun LazyListState.isActivityNearTop(): Boolean =
     firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
+
+internal fun activityListShouldRecoverVisibleContent(
+    firstVisibleItemIndex: Int,
+    visibleItemKeys: List<String>,
+    currentItemKeys: List<String>
+): Boolean {
+    if (firstVisibleItemIndex <= 0 || currentItemKeys.isEmpty()) return false
+    val currentKeys = currentItemKeys.toSet()
+    return visibleItemKeys.none(currentKeys::contains)
+}
 
 internal data class ActivityUpdatePresentation(
     val pendingIncrement: Int,
