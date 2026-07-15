@@ -1402,10 +1402,11 @@ private fun EnvVarsEditor(
                             .let { if (enabled) it.clickable { onChange(entries.toMutableList().also { it.removeAt(idx) }) } else it }
                             .padding(horizontal = 8.dp)
                 ) {
-                    Text(
-                        text = "×",
-                        style = SlockType.Caption,
-                        color = if (enabled) SlockColor.AccentRed else SlockColor.TextMutedGray
+                    // Icon affordances are Lucide, never text glyphs (task #494).
+                    SlockLucideIcon(
+                        name = SlockLucideIconName.X,
+                        color = if (enabled) SlockColor.AccentRedArgb else SlockColor.TextMutedGrayArgb,
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }

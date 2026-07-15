@@ -46,6 +46,7 @@ internal data class SlockBrutalDropdownMenuItem(
     val label: String,
     val icon: SlockLucideIconName? = null,
     val trailing: String? = null,
+    val trailingIcon: SlockLucideIconName? = null,
     val destructive: Boolean = false,
     val enabled: Boolean = true
 )
@@ -246,6 +247,15 @@ private fun SlockBrutalDropdownMenuRow(
                 color = SlockColor.TextBlack.copy(alpha = 0.40f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+        }
+        item.trailingIcon?.let {
+            // Icon affordances are Lucide, never text glyphs (task #494) —
+            // e.g. the selected-item check the raft-ui menu shows.
+            SlockLucideIcon(
+                name = it,
+                color = SlockColor.TextBlackArgb,
+                modifier = Modifier.size(14.dp)
             )
         }
     }

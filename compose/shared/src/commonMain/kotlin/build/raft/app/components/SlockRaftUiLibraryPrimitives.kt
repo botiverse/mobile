@@ -623,7 +623,8 @@ internal fun SlockRaftUiMenuSurface(
                     id = item.id,
                     label = item.label,
                     icon = item.icon,
-                    trailing = item.trailing ?: if (item.selected) "✓" else null,
+                    trailing = item.trailing,
+                    trailingIcon = if (item.selected && item.trailing == null) SlockLucideIconName.Check else null,
                     destructive = item.destructive,
                     enabled = item.enabled
                 )

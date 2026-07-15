@@ -2498,6 +2498,7 @@ private fun PendingMentionActionRow(
                     stringResource(MR.strings.thread_composer_mention_added_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
+                    leadingIcon = SlockLucideIconName.Check,
                     onClick = {}
                 )
             } else if (canInvite) {
@@ -2517,6 +2518,7 @@ private fun PendingMentionActionRow(
                     stringResource(MR.strings.thread_composer_mention_notified_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
+                    leadingIcon = SlockLucideIconName.Check,
                     onClick = {}
                 )
             } else if (canNotify) {
@@ -3079,6 +3081,7 @@ private fun ComposerTextChip(
     text: String,
     variant: ComposerTextChipVariant,
     enabled: Boolean = true,
+    leadingIcon: SlockLucideIconName? = null,
     onClick: () -> Unit
 ) {
     if (variant == ComposerTextChipVariant.MutedText) {
@@ -3098,13 +3101,25 @@ private fun ComposerTextChip(
     }
 
     if (variant == ComposerTextChipVariant.Disabled) {
-        Box(
+        Row(
             modifier =
                 Modifier
                     .background(SlockColor.TextBlack.copy(alpha = 0.04f))
                     .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            // Success-state marks are Lucide icons, not "✓" text glyphs
+            // (task #494 follow-up — the glyph used to live in the string
+            // resource itself).
+            leadingIcon?.let {
+                SlockLucideIcon(
+                    name = it,
+                    color = SlockColor.TextMutedGrayArgb,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
             Text(
                 text = text,
                 style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
