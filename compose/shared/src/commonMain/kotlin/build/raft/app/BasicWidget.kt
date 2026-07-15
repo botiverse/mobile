@@ -103,6 +103,32 @@ internal val SlockImagePreviewLetterboxColor: Color = SlockColor.SurfaceWhite
 /** Thumbnail contract: preserve ratio while filling the fixed preview frame. */
 internal val SlockImageThumbnailContentScale: ContentScale = ContentScale.Crop
 
+internal data class SlockImagePreviewLoadingPresentation(
+    val fallbackUnderlaySource: String?,
+    val showLoadingOverlay: Boolean
+)
+
+internal fun slockImagePreviewLoadingPresentation(
+    activeSource: String?,
+    fallbackSource: String?,
+    showLoadingIndicator: Boolean,
+    activeSucceeded: Boolean,
+    activeFailed: Boolean
+): SlockImagePreviewLoadingPresentation {
+    val active = activeSource?.trim()?.takeIf { it.isNotBlank() }
+    val fallback = fallbackSource?.trim()?.takeIf { it.isNotBlank() }
+    val fallbackUnderlay = fallback?.takeIf { it != active }
+    val fallbackKeepsContentVisible =
+        fallback != null && !(active == fallback && activeFailed)
+    return SlockImagePreviewLoadingPresentation(
+        fallbackUnderlaySource = fallbackUnderlay.takeUnless { activeSucceeded },
+        showLoadingOverlay =
+            showLoadingIndicator &&
+                !activeSucceeded &&
+                !fallbackKeepsContentVisible
+    )
+}
+
 @Composable
 fun SlockCachedImage(
     source: String?,
@@ -152,6 +178,22 @@ internal fun SlockAspectFitImagePreviewSurface(
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {
+            val loadingPresentation =
+                slockImagePreviewLoadingPresentation(
+                    activeSource = activeSource,
+                    fallbackSource = normalizedFallback,
+                    showLoadingIndicator = showLoadingIndicator,
+                    activeSucceeded = imageState is AsyncImagePainter.State.Success,
+                    activeFailed = imageState is AsyncImagePainter.State.Error
+                )
+            loadingPresentation.fallbackUnderlaySource?.let { underlaySource ->
+                SlockCachedImage(
+                    source = underlaySource,
+                    contentDescription = contentDescription,
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             if (zoomable) {
                 SlockZoomableCachedImage(
                     source = activeSource.orEmpty(),
@@ -180,7 +222,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                     }
                 )
             }
-            if (showLoadingIndicator && imageState !is AsyncImagePainter.State.Success) {
+            if (loadingPresentation.showLoadingOverlay) {
                 SlockImagePreviewLoadingOverlay(
                     failed = imageState is AsyncImagePainter.State.Error,
                     placeholderLabel = placeholderLabel,
