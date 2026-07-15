@@ -45,6 +45,10 @@ import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
+import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
+import build.raft.app.network.sync.SqlDelightFoldPersistStore
+import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
+import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
@@ -215,10 +219,25 @@ internal class SlockSharedStoreProvider private constructor(
         )
 
     /**
-     * Provider-central T3 seam shared by every realtime owner backed by this database. The seam-only lane is
-     * deliberately dormant: guarded accept does not invoke it until the frozen RED matrix is reviewed.
+     * One provider-central current-grant shadow lane shared by every realtime owner backed by this database.
+     * The server flag defaults OFF; when enabled, guarded canonical frames synchronously fold, commit, strict
+     * read back, and atomically publish before the unchanged legacy continuation runs.
      */
-    private val currentGrantMessageShadowCommitLane = CurrentGrantMessageShadowCommitLane()
+    private val currentGrantMessageShadowCommitLane =
+        CurrentGrantMessageShadowCommitLane(
+            strictReader = SqlDelightStrictMessageScopeSnapshotReader(sqlDatabase),
+            persistence =
+                DefaultFoldPersistenceAdapter(
+                    runner = SqlDelightFoldPersistTransactionRunner(sqlDatabase),
+                    store = SqlDelightFoldPersistStore(sqlDatabase, now = ::defaultNowMillis),
+                ),
+            isEnabledForServer = { serverId ->
+                serverFeatureFlags.isEnabled(
+                    ServerId(serverId),
+                    SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                )
+            },
+        )
 
     init {
         updateNetworkKmmRecoveryEnvironment()
@@ -377,6 +396,7 @@ internal class SlockSharedStoreProvider private constructor(
                     tasksDataStore = tasksDataStore,
                     cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                     runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
+                    runWithCurrentMessageGrant = realtimeAuthorityProvider::runWithCurrentMessageGrant,
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
                     it.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
@@ -849,6 +869,7 @@ internal class SlockSharedStoreProvider private constructor(
                         tasksDataStore = tasksDataStore,
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
+                        runWithCurrentMessageGrant = realtimeAuthorityProvider::runWithCurrentMessageGrant,
                     ),
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -999,8 +1020,8 @@ internal class SharedRealtimeDomainEventOwner(
     // that don't exercise it). Invisible to sinks and fail-open; the legacy unowned path can only emit a
     // bounded partition-denial diagnostic and never persists.
     private var messageShadowFoldLane: SyncCoreMessageShadowFoldLane? = null
-    // Provider-central T3 seam. Installed across owners but intentionally not invoked by guarded accept in
-    // the seam-only slice; pure REDs bind the frozen ordering/authority contract before GREEN activation.
+    // Provider-central T3 lane. Guarded canonical entries invoke it before acceptedKeys/recovery/sinks;
+    // every owner sharing this database installs the same instance.
     private var currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane? = null
     private var reactionShadowLane: SyncCoreReactionShadowLane? = null
 
@@ -1075,9 +1096,9 @@ internal class SharedRealtimeDomainEventOwner(
         }
 
     /**
-     * Dormant T3 owner entry shared by selected-server and background-unread guarded projections. Production
-     * providers do not pass [runWithCurrentMessageGrant] in the seam-only slice, so both entries take their
-     * exact legacy [runIfCurrentGrant] path. Tests activate the nullable runner only after this seam is sealed.
+     * T3 owner entry shared by selected-server and background-unread guarded projections. A nullable runner
+     * preserves the exact legacy [runIfCurrentGrant] path for standalone/test owners; provider-owned owners
+     * run the central canonical shadow lane first, then continue through the unchanged legacy path.
      */
     private suspend fun runGuardedCanonicalShadowFirst(
         grant: RealtimeGrantRecord,
