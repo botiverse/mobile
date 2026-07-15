@@ -1734,7 +1734,11 @@ fun SlockMarkdownBody(
             // text above and below. Web renders border-l-2 with no vertical
             // padding — the border is precisely the content box.
             blockQuoteText = PaddingValues(0.dp),
-            blockQuoteBar = PaddingValues.Absolute(left = 4.dp, top = 0.dp, right = 4.dp, bottom = 0.dp)
+            // Horizontal geometry mirrors web too (artin, task #62 follow-up):
+            // border-l-2 sits flush at the quote origin and pl-3 puts the text
+            // 12dp after it — total 14dp indent, not the library's 4+2+4+16.
+            blockQuote = PaddingValues(start = 12.dp, top = 0.dp, end = 0.dp, bottom = 0.dp),
+            blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp)
         )
     }
     val components = remember {
