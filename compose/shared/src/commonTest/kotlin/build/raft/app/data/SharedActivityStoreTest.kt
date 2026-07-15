@@ -605,6 +605,132 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun processReadPredictionClearsActivityAndOlderFailureCannotRestoreIt() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2))
+            )
+        val ownerFactory = { serverId: String, accountId: String ->
+            ReadReceiptOwner("production", accountId, serverId)
+        }
+        val store = activityStore(scope, inbox, readReceiptOwnerFactory = ownerFactory)
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+        val prediction =
+            ReadReceiptPrediction(
+                owner = owner,
+                channelId = ChannelId("channel-1"),
+                revision = 2L,
+                target = ReadReceiptTarget.All
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.applyReadReceiptPrediction(
+            prediction.copy(
+                owner = owner.copy(environmentId = "staging"),
+                revision = 1L
+            )
+        )
+        assertEquals(2, store.state.value.items.single().unreadCount)
+        store.applyReadReceiptPrediction(prediction)
+        store.handleReadReceiptFailure(
+            ReadReceiptRequest.All(
+                channelId = ChannelId("channel-1"),
+                owner = owner,
+                revision = 1L
+            )
+        )
+
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(1, inbox.initialLoadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun processReadPredictionSerializesWithRealtimePatchWithoutLosingEitherTransition() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val realtimeOwnerHeld = CompletableDeferred<Unit>()
+        val releaseRealtimeOwner = CompletableDeferred<Unit>()
+        val predictionEnteredOwner = CompletableDeferred<Unit>()
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(threadItem("thread-channel-1", unreadCount = 2)),
+                            totalUnreadCount = 2
+                        )
+                    )
+            )
+        val ownerFactory = { serverId: String, accountId: String ->
+            ReadReceiptOwner("production", accountId, serverId)
+        }
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                readReceiptOwnerFactory = ownerFactory,
+                onRealtimePatchOwnerEntered = {
+                    realtimeOwnerHeld.complete(Unit)
+                    runBlocking { releaseRealtimeOwner.await() }
+                },
+                onReadReceiptPredictionOwnerEntered = {
+                    predictionEnteredOwner.complete(Unit)
+                }
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+
+        val realtimeJob =
+            scope.launch {
+                store.dispatch(
+                    SharedActivityIntent.ApplyRealtimeEvent(
+                        MessageNew(
+                            message(
+                                id = "message-concurrent",
+                                channelId = "thread-channel-1",
+                                body = "Concurrent realtime preview"
+                            )
+                        )
+                    )
+                )
+            }
+        withTimeout(2_000L) { realtimeOwnerHeld.await() }
+
+        val predictionJob =
+            scope.launch {
+                store.dispatch(
+                    SharedActivityIntent.ApplyReadReceiptPrediction(
+                        ReadReceiptPrediction(
+                            owner = owner,
+                            channelId = ChannelId("thread-channel-1"),
+                            revision = 1L,
+                            target = ReadReceiptTarget.All
+                        )
+                    )
+                )
+            }
+        val enteredWhileRealtimeHeld =
+            withTimeoutOrNull(200L) {
+                predictionEnteredOwner.await()
+            }
+        assertEquals(null, enteredWhileRealtimeHeld)
+
+        releaseRealtimeOwner.complete(Unit)
+        realtimeJob.join()
+        predictionJob.join()
+
+        val item = store.state.value.items.single()
+        assertEquals(MessageId("message-concurrent"), item.latestActivityMessageId)
+        assertEquals("Concurrent realtime preview", item.latestActivityPreview)
+        assertEquals(0, item.unreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertTrue(predictionEnteredOwner.isCompleted)
+        scope.cancel()
+    }
+
+    @Test
     fun markReadAllowsLaterUnreadWithDifferentAnchor() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
@@ -2394,11 +2520,13 @@ class SharedActivityStoreTest {
         },
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
         tailPrewarmDepthCap: Int = 20,
+        readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
         onUnreadCountsChanged: () -> Unit = {},
         realtimeReconcileDelayMillis: Long = 150L,
         afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
         beforeRealtimeHighWaterFold: () -> Unit = {},
-        onRealtimePatchOwnerEntered: () -> Unit = {}
+        onRealtimePatchOwnerEntered: () -> Unit = {},
+        onReadReceiptPredictionOwnerEntered: () -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
             authStore = authStore,
@@ -2413,12 +2541,14 @@ class SharedActivityStoreTest {
             prewarmReplyThread = prewarmReplyThread,
             replyThreadFreshnessLedger = replyThreadFreshnessLedger,
             tailPrewarmDepthCap = tailPrewarmDepthCap,
+            readReceiptOwnerFactory = readReceiptOwnerFactory,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope,
             realtimeReconcileDelayMillis = realtimeReconcileDelayMillis,
             afterRealtimeReconcileTerminalDecision = afterRealtimeReconcileTerminalDecision,
             beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
-            onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered
+            onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered,
+            onReadReceiptPredictionOwnerEntered = onReadReceiptPredictionOwnerEntered
         )
 
     private fun readStateEvent(

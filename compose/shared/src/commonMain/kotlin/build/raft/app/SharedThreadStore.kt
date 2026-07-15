@@ -27,6 +27,8 @@ import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ChannelProfileUpdateRequest
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ReadReceiptResult
+import build.raft.app.data.ReadReceiptCoordinator
+import build.raft.app.data.ReadReceiptOwner
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.DataRequestPriority
@@ -966,6 +968,8 @@ internal class SharedThreadDataSource(
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
+    private val readReceiptCoordinator: ReadReceiptCoordinator? = null,
+    private val readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
     /**
      * Task #43: shared create-agent coordinator used by the action-card
@@ -1003,6 +1007,8 @@ internal class SharedThreadDataSource(
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
+        readReceiptCoordinator: ReadReceiptCoordinator? = null,
+        readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
     ) : this(
@@ -1020,6 +1026,8 @@ internal class SharedThreadDataSource(
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
         savedStatusRepository = savedStatusRepository,
+        readReceiptCoordinator = readReceiptCoordinator,
+        readReceiptOwnerFactory = readReceiptOwnerFactory,
         diagnosticsLogger = diagnosticsLogger,
         createAgentCoordinator = createAgentCoordinator
     )
@@ -2698,6 +2706,17 @@ internal class SharedThreadDataSource(
     suspend fun markVisibleChannelRead(channelId: String, latestSeq: Long?): DataResult<ReadReceiptResult> {
         if (channelId.isBlank()) {
             return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        }
+        val coordinator = readReceiptCoordinator
+        val ownerFactory = readReceiptOwnerFactory
+        if (coordinator != null && ownerFactory != null) {
+            val session = readSession() ?: return authSessionRequiredResult()
+            val serverId =
+                selectedServerStore?.selectedServerId?.value
+                    ?: session.currentServerId
+                    ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
+            val owner = ownerFactory(serverId, session.user.id)
+            return coordinator.awaitReadToSeq(owner, ChannelId(channelId), latestSeq ?: 0L)
         }
         val response =
             try {
@@ -4879,7 +4898,7 @@ internal class SharedThreadStore(
             )
             try {
                 val result = dataSource.markVisibleChannelRead(current.channelId, current.latestSeq)
-                if (result is DataResult.Content) {
+                if (result is DataResult.Content || result is DataResult.Empty) {
                     lastCompletedReadMarker = current
                     lastCompletedReadAt = TimeSource.Monotonic.markNow()
                 }

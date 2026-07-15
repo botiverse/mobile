@@ -20,6 +20,51 @@ import kotlin.test.assertEquals
 
 class SharedHomeSearchSavedStoreTest {
     @Test
+    fun processReadPredictionClearsMatchingSavedAndSearchOwnerOnly() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val unreadItem =
+            inboxItem("message-unread").copy(
+                unreadCount = 2,
+                firstUnreadMessageId = MessageId("message-unread")
+            )
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = ImmediateReadReceiptRepository()
+            )
+        val ownerFactory = { serverId: String, accountId: String ->
+            ReadReceiptOwner("production", accountId, serverId)
+        }
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(items = listOf(unreadItem)),
+                searchRepository = FakeSearchRepository(items = listOf(unreadItem)),
+                scope = scope,
+                searchDebounceMillis = 0L,
+                readReceiptCoordinator = coordinator,
+                readReceiptOwnerFactory = ownerFactory
+            )
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+
+        coordinator.markReadAll(
+            ReadReceiptOwner("production", "other-user", "server-1"),
+            ChannelId("channel-1")
+        )
+        assertEquals(2, store.state.value.saved.items.single().unreadCount)
+        assertEquals(2, store.state.value.search.items.single().unreadCount)
+
+        coordinator.markReadAll(
+            ReadReceiptOwner("production", "user-1", "server-1"),
+            ChannelId("channel-1")
+        )
+        assertEquals(0, store.state.value.saved.items.single().unreadCount)
+        assertEquals(0, store.state.value.search.items.single().unreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun savedPanelLoadsAndUnsaveRemovesItem() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
@@ -676,6 +721,26 @@ class SharedHomeSearchSavedStoreTest {
             unsavedMessageId = messageId
             return DataResult.Content(SavedMessageMutationResult(messageId))
         }
+    }
+
+    private class ImmediateReadReceiptRepository : ReadReceiptRepository {
+        override suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot> =
+            DataResult.Empty(EmptyReason.NoInboxItems)
+
+        override suspend fun markChannelReadToSeq(
+            channelId: ChannelId,
+            seq: Long
+        ): DataResult<ReadReceiptResult> =
+            DataResult.Content(ReadReceiptResult(channelId = channelId, seq = seq))
+
+        override suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult> =
+            DataResult.Content(ReadReceiptResult(channelId = channelId))
+
+        override suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult> =
+            DataResult.Content(ReadReceiptResult(channelId = channelId, unreadCount = 1))
+
+        override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> =
+            DataResult.Content(ReadReceiptResult())
     }
 
     private class FakeSearchRepository(

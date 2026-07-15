@@ -87,6 +87,7 @@ private object SharedActivityPersistSpec :
                     intent is SharedActivityIntent.MarkDone ||
                     intent is SharedActivityIntent.MarkRead ||
                     intent is SharedActivityIntent.MarkUnread ||
+                    intent is SharedActivityIntent.ApplyReadReceiptPrediction ||
                     intent is SharedActivityIntent.ApplyRealtimeSummaryEvent
                 )
 

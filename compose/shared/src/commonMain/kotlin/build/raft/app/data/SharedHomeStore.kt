@@ -29,6 +29,8 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -96,6 +98,8 @@ internal class SharedHomeStore(
     },
     private val perReceiverStateVersionStore: PerReceiverStateVersionStore =
         PerReceiverStateVersionStore(InMemorySlockKeyValueStore()),
+    private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
+    private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     /**
      * #211: callback invoked when a pin/unpin or pinned-sort-mode PATCH
      * fails. The host (SettingsHomePage) typically wires this to
@@ -112,7 +116,9 @@ internal class SharedHomeStore(
      * to match the OHOS datetime klib stability rule we adopted in
      * `d56ed07d`; UI layer formats via `SlockTime` if needed.
      */
-    private val nowMillis: () -> Long = { defaultNowMillis() }
+    private val nowMillis: () -> Long = { defaultNowMillis() },
+    private val beforeRealtimeHomeStateCommit: () -> Unit = {},
+    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
 ) : SharedConversationIdentityProvider {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -138,6 +144,10 @@ internal class SharedHomeStore(
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
+    private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
+    // Process read predictions and local realtime message patches are concurrent producers.
+    // Own both read/transform/publish sequences here so neither can publish from a stale state.
+    private val readProjectionOwnerLock = SynchronizedObject()
 
     fun snapshotFor(serverId: ServerId): HomeSnapshot? =
         (_state.value.content as? SharedHomeContentState.Content)
@@ -174,6 +184,8 @@ internal class SharedHomeStore(
         setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
             DataResult.Empty(EmptyReason.NoChannels)
         },
+        readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
+        readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
         pinUpdateFailureCallback: (String) -> Unit = {}
     ) {
         loadJob?.cancel()
@@ -190,11 +202,24 @@ internal class SharedHomeStore(
         this.markChannelUnread = markChannelUnread
         this.archiveChannel = archiveChannel
         this.setChannelActivityMuted = setChannelActivityMuted
+        this.readReceiptCoordinator = readReceiptCoordinator
+        this.readReceiptOwnerFactory = readReceiptOwnerFactory
         this.pinUpdateFailureCallback = pinUpdateFailureCallback
         diagnosticsLogger("home_runtime_integrations_updated")
     }
 
     fun dispatch(intent: SharedHomeIntent) {
+        when (intent) {
+            is SharedHomeIntent.ApplyReadReceiptPrediction -> {
+                applyReadReceiptPrediction(intent.prediction)
+                return
+            }
+            is SharedHomeIntent.ApplyReadReceiptFailure -> {
+                handleReadReceiptFailure(intent.request)
+                return
+            }
+            else -> Unit
+        }
         if (intent.loadsHome) {
             if (debounceInFlightHomeLoad(intent)) {
                 return
@@ -243,6 +268,9 @@ internal class SharedHomeStore(
         supplementalConversationIdentityStates.clear()
         conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
+        synchronized(readProjectionOwnerLock) {
+            readPredictionRevisions = emptyMap()
+        }
     }
 
     suspend fun awaitRealtimeSettled() {
@@ -421,7 +449,11 @@ internal class SharedHomeStore(
                 applyPerReceiverServerOrder(intent.update)
             is SharedHomeIntent.ApplyPerReceiverPinned ->
                 applyPerReceiverPinned(intent.update)
-            }
+            is SharedHomeIntent.ApplyReadReceiptPrediction ->
+                applyReadReceiptPrediction(intent.prediction)
+            is SharedHomeIntent.ApplyReadReceiptFailure ->
+                handleReadReceiptFailure(intent.request)
+        }
         }
     }
 
@@ -525,7 +557,9 @@ internal class SharedHomeStore(
             applyPerReceiverPinnedChanged(serverId, event)
             return
         }
-        applyRealtimeHomeEventLocally(serverId, event)
+        synchronized(readProjectionOwnerLock) {
+            applyRealtimeHomeEventLocally(serverId, event)
+        }
     }
 
     private fun applyBackgroundServerUnreadEvent(serverId: ServerId, event: RealtimeEvent): Boolean {
@@ -819,6 +853,7 @@ internal class SharedHomeStore(
             selectedServerId = nextBaseSnapshot.server.id,
             isStale = false
         )
+        beforeRealtimeHomeStateCommit()
         val changed =
             reduceState(
                 current.copy(
@@ -1596,6 +1631,16 @@ internal class SharedHomeStore(
             return
         }
         if (target.unreadCount <= 0) return
+        val coordinator = readReceiptCoordinator
+        val owner =
+            readReceiptOwnerFactory?.invoke(
+                current.snapshot.server.id.value,
+                current.snapshot.currentMember.id.value
+            )
+        if (coordinator != null && owner != null) {
+            applyReadReceiptPrediction(coordinator.markReadAll(owner, target.messageStreamChannelId()))
+            return
+        }
         val previous = current
         val channelId = target.messageStreamChannelId()
         applyHomeSnapshotLocally { it.withConversationUnread(conversationId, 0) }
@@ -1608,6 +1653,43 @@ internal class SharedHomeStore(
                 pinUpdateFailureCallback("Unable to mark conversation read")
             }
         }
+    }
+
+    internal fun applyReadReceiptPrediction(prediction: ReadReceiptPrediction) {
+        synchronized(readProjectionOwnerLock) {
+            onReadReceiptPredictionOwnerEntered()
+            val current = _state.value.content as? SharedHomeContentState.Content ?: return@synchronized
+            if (!current.snapshot.matchesReadReceiptOwner(prediction.owner)) return@synchronized
+            val previousRevision = readPredictionRevisions[prediction.channelId]
+            if (previousRevision != null && previousRevision >= prediction.revision) return@synchronized
+            readPredictionRevisions = readPredictionRevisions + (prediction.channelId to prediction.revision)
+            applyHomeSnapshotLocally(
+                transform = { snapshot ->
+                    snapshot.withConversationUnread(prediction.channelId.value, 0)
+                },
+                intentOverride = SharedHomeIntent.ApplyReadReceiptPrediction(prediction)
+            )
+        }
+    }
+
+    internal fun handleReadReceiptFailure(request: ReadReceiptRequest) {
+        val shouldRefresh =
+            synchronized(readProjectionOwnerLock) {
+                val current = _state.value.content as? SharedHomeContentState.Content ?: return@synchronized false
+                if (!current.snapshot.matchesReadReceiptOwner(request.owner)) return@synchronized false
+                if (readPredictionRevisions[request.channelId] != request.revision) return@synchronized false
+                readPredictionRevisions = readPredictionRevisions - request.channelId
+                true
+            }
+        if (shouldRefresh) dispatch(SharedHomeIntent.Refresh)
+    }
+
+    private fun HomeSnapshot.matchesReadReceiptOwner(owner: ReadReceiptOwner): Boolean {
+        val serverId = server.id.value
+        val accountId = currentMember.id.value
+        if (serverId != owner.serverId || accountId != owner.accountId) return false
+        val ownerFactory = readReceiptOwnerFactory ?: return true
+        return ownerFactory(serverId, accountId) == owner
     }
 
     private suspend fun markConversationUnread(conversationId: String) {
@@ -1907,7 +1989,10 @@ internal class SharedHomeStore(
             .shouldApply
     }
 
-    private fun applyHomeSnapshotLocally(transform: (HomeSnapshot) -> HomeSnapshot): Boolean {
+    private fun applyHomeSnapshotLocally(
+        intentOverride: SharedHomeIntent? = null,
+        transform: (HomeSnapshot) -> HomeSnapshot
+    ): Boolean {
         val current = _state.value.content as? SharedHomeContentState.Content ?: return false
         val nextSnapshot = transform(current.snapshot)
         val nextBaseSnapshot = transform(current.baseSnapshot)
@@ -1932,7 +2017,8 @@ internal class SharedHomeStore(
                         isStale = false,
                         nowMillis = nowMillis
                     )
-            )
+            ),
+            intentOverride = intentOverride
         )
         return true
     }
@@ -1999,9 +2085,13 @@ internal class SharedHomeStore(
         reduceState(_state.value.copy(notifications = next))
     }
 
-    private fun reduceState(nextState: SharedHomeState): Boolean {
+    private fun reduceState(
+        nextState: SharedHomeState,
+        intentOverride: SharedHomeIntent? = null
+    ): Boolean {
         val previousState = _state.value
-        val intent = stateDiagnosticsIntent
+        val intent = intentOverride ?: stateDiagnosticsIntent
+        val diagnosticsReason = intentOverride?.toSharedHomeIntentDiagnosticsLabel() ?: stateDiagnosticsReason
         val finalState =
             if (intent == null || persistSlices.isEmpty()) {
                 nextState
@@ -2025,7 +2115,7 @@ internal class SharedHomeStore(
             }
         }
         diagnosticsLogger(
-            "shared_home_state_change reason=$stateDiagnosticsReason " +
+            "shared_home_state_change reason=$diagnosticsReason " +
                 "previous=${previousState.toSharedHomeStateDiagnosticsSummary()} " +
                 "next=${finalState.toSharedHomeStateDiagnosticsSummary()}"
         )
@@ -2268,6 +2358,8 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.ApplyPerReceiverNotificationPrefs -> "notification_prefs:${update.serverId.value}:${update.channelId.value}:${update.version}"
         is SharedHomeIntent.ApplyPerReceiverServerOrder -> "server_order:${update.serverId.value}:${update.version}"
         is SharedHomeIntent.ApplyPerReceiverPinned -> "pinned:${update.serverId.value}:${update.version}"
+        is SharedHomeIntent.ApplyReadReceiptPrediction -> "read_prediction:${prediction.channelId.value}:${prediction.revision}"
+        is SharedHomeIntent.ApplyReadReceiptFailure -> "read_failure:${request.channelId.value}:${request.revision}"
     }
 
 private fun RealtimeEvent.toSharedHomeChannelFoldEvent(): SharedHomeChannelFoldEvent =
@@ -2742,6 +2834,8 @@ sealed interface SharedHomeIntent {
     data class ApplyPerReceiverNotificationPrefs(val update: PerReceiverNotificationPrefsUpdate) : SharedHomeIntent
     data class ApplyPerReceiverServerOrder(val update: PerReceiverServerOrderUpdate) : SharedHomeIntent
     data class ApplyPerReceiverPinned(val update: PerReceiverPinnedUpdate) : SharedHomeIntent
+    data class ApplyReadReceiptPrediction(val prediction: ReadReceiptPrediction) : SharedHomeIntent
+    data class ApplyReadReceiptFailure(val request: ReadReceiptRequest) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -2776,7 +2870,9 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
             is SharedHomeIntent.ApplyPerReceiverServerOrder,
-            is SharedHomeIntent.ApplyPerReceiverPinned -> false
+            is SharedHomeIntent.ApplyPerReceiverPinned,
+            is SharedHomeIntent.ApplyReadReceiptPrediction,
+            is SharedHomeIntent.ApplyReadReceiptFailure -> false
         }
 
 private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
@@ -2811,7 +2907,9 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
             is SharedHomeIntent.ApplyPerReceiverServerOrder,
-            is SharedHomeIntent.ApplyPerReceiverPinned -> false
+            is SharedHomeIntent.ApplyPerReceiverPinned,
+            is SharedHomeIntent.ApplyReadReceiptPrediction,
+            is SharedHomeIntent.ApplyReadReceiptFailure -> false
         }
 
 private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
@@ -2846,7 +2944,9 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
             is SharedHomeIntent.ApplyPerReceiverServerOrder,
-            is SharedHomeIntent.ApplyPerReceiverPinned -> false
+            is SharedHomeIntent.ApplyPerReceiverPinned,
+            is SharedHomeIntent.ApplyReadReceiptPrediction,
+            is SharedHomeIntent.ApplyReadReceiptFailure -> false
         }
 
 sealed interface SharedHomeContentState {

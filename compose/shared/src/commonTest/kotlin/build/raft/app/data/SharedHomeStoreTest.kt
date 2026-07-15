@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -3679,6 +3680,165 @@ class SharedHomeStoreTest {
         assertEquals(1, unreadSnapshot.channels.single().unreadCount)
         assertEquals(1, unreadSnapshot.unreadTotal)
         assertEquals(listOf(ChannelId("channel-1")), unreadCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun processReadPredictionClearsHomeAndOlderFailureCannotRestoreIt() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    SharedHomeDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        api = api,
+                        parseHome = { payload, _ ->
+                            DataResult.Content(
+                                sampleHome(payload.serverId).copy(
+                                    channels =
+                                        listOf(
+                                            channel("channel-1", "general").copy(
+                                                unreadCount = 3,
+                                                unreadCountKnown = true
+                                            )
+                                        ),
+                                    unreadTotal = 3,
+                                    server = ServerSummary(payload.serverId, "Slock Community", unreadCount = 3)
+                                )
+                            )
+                        }
+                    ),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("production", accountId, serverId)
+                }
+            )
+        store.accept(SharedHomeIntent.Start)
+        val callsAfterLoad = api.calls.toList()
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+
+        store.applyReadReceiptPrediction(
+            ReadReceiptPrediction(
+                owner.copy(environmentId = "staging"),
+                ChannelId("channel-1"),
+                revision = 1L,
+                target = ReadReceiptTarget.All
+            )
+        )
+        assertEquals(
+            3,
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().unreadCount
+        )
+        store.applyReadReceiptPrediction(
+            ReadReceiptPrediction(owner, ChannelId("channel-1"), revision = 2L, target = ReadReceiptTarget.All)
+        )
+        store.handleReadReceiptFailure(
+            ReadReceiptRequest.All(ChannelId("channel-1"), owner = owner, revision = 1L)
+        )
+
+        val snapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, snapshot.channels.single().unreadCount)
+        assertEquals(0, snapshot.unreadTotal)
+        assertEquals(callsAfterLoad, api.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun processReadPredictionSerializesWithRealtimePatchWithoutLosingEitherTransition() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val realtimeCommitHeld = CompletableDeferred<Unit>()
+        val releaseRealtimeCommit = CompletableDeferred<Unit>()
+        val predictionEnteredOwner = CompletableDeferred<Unit>()
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general").copy(
+                            unreadCount = 3,
+                            unreadCountKnown = true
+                        )
+                    ),
+                unreadTotal = 3,
+                server = ServerSummary(ServerId("server-1"), "Slock Community", unreadCount = 3)
+            )
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(home),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("production", accountId, serverId)
+                },
+                beforeRealtimeHomeStateCommit = {
+                    realtimeCommitHeld.complete(Unit)
+                    runBlocking { releaseRealtimeCommit.await() }
+                },
+                onReadReceiptPredictionOwnerEntered = {
+                    predictionEnteredOwner.complete(Unit)
+                }
+            )
+        store.accept(SharedHomeIntent.Start)
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+        val otherMember =
+            sampleMember().copy(
+                id = MemberId("member-2"),
+                displayName = "Cindy",
+                handle = "cindy@slock.ai"
+            )
+
+        val realtimeJob =
+            scope.launch {
+                store.accept(
+                    SharedHomeIntent.ApplyRealtimeEvent(
+                        serverId = "server-1",
+                        event =
+                            MessageNew(
+                                Message(
+                                    id = MessageId("message-concurrent"),
+                                    threadId = ThreadId("channel-1"),
+                                    channelId = ChannelId("channel-1"),
+                                    seq = 4,
+                                    author = otherMember,
+                                    timestampLabel = "12:04",
+                                    body = "concurrent realtime"
+                                )
+                            )
+                    )
+                )
+            }
+        withTimeout(2_000L) { realtimeCommitHeld.await() }
+
+        val predictionJob =
+            scope.launch {
+                store.dispatch(
+                    SharedHomeIntent.ApplyReadReceiptPrediction(
+                        ReadReceiptPrediction(
+                            owner = owner,
+                            channelId = ChannelId("channel-1"),
+                            revision = 1L,
+                            target = ReadReceiptTarget.All
+                        )
+                    )
+                )
+            }
+        val enteredWhileRealtimeHeld =
+            withTimeoutOrNull(200L) {
+                predictionEnteredOwner.await()
+            }
+        assertEquals(null, enteredWhileRealtimeHeld)
+
+        releaseRealtimeCommit.complete(Unit)
+        realtimeJob.join()
+        predictionJob.join()
+
+        val content = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("concurrent realtime", content.snapshot.channels.single().lastMessagePreview)
+        assertEquals("concurrent realtime", content.baseSnapshot.channels.single().lastMessagePreview)
+        assertEquals(0, content.snapshot.channels.single().unreadCount)
+        assertEquals(0, content.snapshot.unreadTotal)
+        assertTrue(predictionEnteredOwner.isCompleted)
         scope.cancel()
     }
 

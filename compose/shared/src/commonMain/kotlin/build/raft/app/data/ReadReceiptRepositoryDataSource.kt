@@ -22,15 +22,28 @@ private suspend fun SlockNetworkClient.channelUnreadCounts(
 private suspend fun SlockNetworkClient.markChannelReadToSeq(
     priority: DataRequestPriority,
     channelId: ChannelId,
-    bodyText: String
+    bodyText: String,
+    serverId: ServerId? = null
 ): HomeNetworkResponse =
-    request(priority, "channels/${channelId.value}/read", method = "POST", bodyText = bodyText)
+    request(
+        priority,
+        "channels/${channelId.value}/read",
+        method = "POST",
+        serverIdOverride = serverId,
+        bodyText = bodyText
+    )
 
 private suspend fun SlockNetworkClient.markChannelReadAll(
     priority: DataRequestPriority,
-    channelId: ChannelId
+    channelId: ChannelId,
+    serverId: ServerId? = null
 ): HomeNetworkResponse =
-    request(priority, "channels/${channelId.value}/read-all", method = "POST")
+    request(
+        priority,
+        "channels/${channelId.value}/read-all",
+        method = "POST",
+        serverIdOverride = serverId
+    )
 
 private suspend fun SlockNetworkClient.markChannelUnread(
     priority: DataRequestPriority,
@@ -67,7 +80,16 @@ class RealReadReceiptRepository(
         channelId: ChannelId,
         seq: Long
     ): DataResult<ReadReceiptResult> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
+        return markChannelReadToSeq(context.server.id, channelId, seq)
+    }
+
+    internal suspend fun markChannelReadToSeq(
+        serverId: ServerId,
+        channelId: ChannelId,
+        seq: Long
+    ): DataResult<ReadReceiptResult> {
+        serverContext(serverId) ?: return authRequired()
         if (seq <= 0L) return DataResult.Empty(EmptyReason.NoMessages)
         return executeReadReceipt(
             emptyReason = EmptyReason.NoMessages,
@@ -75,7 +97,8 @@ class RealReadReceiptRepository(
                 networkClient.markChannelReadToSeq(
                     DataRequestPriority.Visible,
                     channelId,
-                    buildSharedReadSeqBody(seq)
+                    buildSharedReadSeqBody(seq),
+                    serverId
                 )
             },
             source = "read_channel_seq",
@@ -90,10 +113,18 @@ class RealReadReceiptRepository(
     }
 
     override suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
+        return markChannelReadAll(context.server.id, channelId)
+    }
+
+    internal suspend fun markChannelReadAll(
+        serverId: ServerId,
+        channelId: ChannelId
+    ): DataResult<ReadReceiptResult> {
+        serverContext(serverId) ?: return authRequired()
         return executeReadReceipt(
             emptyReason = EmptyReason.NoMessages,
-            block = { networkClient.markChannelReadAll(DataRequestPriority.Visible, channelId) },
+            block = { networkClient.markChannelReadAll(DataRequestPriority.Visible, channelId, serverId) },
             source = "read_channel_all",
             mapper = { bodyText ->
                 parseReadReceiptResult(bodyText, fallbackChannelId = channelId)
@@ -173,6 +204,95 @@ class RealReadReceiptRepository(
             )
             DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
         }
+    }
+}
+
+/**
+ * Auth view used by a process read-receipt owner.
+ *
+ * The network middleware re-reads this store immediately before signing HTTP, so an account
+ * switch between coordinator validation and transport fails closed instead of borrowing the new
+ * account's token for an old owner. The selected server is similarly fixed to the owner bucket.
+ */
+internal class ReadReceiptOwnerAuthSessionStore(
+    private val delegate: SlockAuthSessionStore,
+    private val owner: ReadReceiptOwner
+) : SlockAuthSessionStore by delegate {
+    override suspend fun readSession(): StoredAuthSession? {
+        val session = delegate.readSession() ?: return null
+        if (session.user.id != owner.accountId) return null
+        val server = session.servers.firstOrNull { it.id == owner.serverId } ?: return null
+        return session.copy(
+            selectedServerId = server.id,
+            selectedServerSlug = server.slug,
+            allowImplicitServerFallback = false
+        )
+    }
+
+    override suspend fun saveSession(session: StoredAuthSession) = Unit
+
+    override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) = Unit
+
+    override suspend fun replaceAuthenticatedSessionPreservingSelection(session: StoredAuthSession) = Unit
+
+    override suspend fun updateTokens(accessToken: String, refreshToken: String) {
+        val current = readSession() ?: return
+        delegate.rotateTokensIfMatch(
+            expectedAccessToken = current.accessToken,
+            expectedRefreshToken = current.refreshToken,
+            newAccessToken = accessToken,
+            newRefreshToken = refreshToken
+        )
+    }
+
+    override suspend fun rotateTokensIfMatch(
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        newAccessToken: String,
+        newRefreshToken: String
+    ): StoredAuthSession? {
+        if (readSession() == null) return null
+        return delegate.rotateTokensIfMatch(
+            expectedAccessToken = expectedAccessToken,
+            expectedRefreshToken = expectedRefreshToken,
+            newAccessToken = newAccessToken,
+            newRefreshToken = newRefreshToken
+        )?.takeIf { it.user.id == owner.accountId && it.servers.any { server -> server.id == owner.serverId } }
+    }
+
+    override suspend fun updateMetadata(
+        expectedAccountId: String?,
+        transform: (StoredAuthSession) -> StoredAuthSession
+    ) = Unit
+
+    override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) = Unit
+
+    override suspend fun clearSession(reason: String, source: String) {
+        val current = readSession() ?: return
+        delegate.clearSessionIfMatches(
+            expectedAccountId = owner.accountId,
+            expectedAccessToken = current.accessToken,
+            expectedRefreshToken = current.refreshToken,
+            reason = reason,
+            source = source
+        )
+    }
+
+    override suspend fun clearSessionIfMatches(
+        expectedAccountId: String,
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        reason: String,
+        source: String
+    ): Boolean {
+        if (expectedAccountId != owner.accountId || readSession() == null) return false
+        return delegate.clearSessionIfMatches(
+            expectedAccountId = expectedAccountId,
+            expectedAccessToken = expectedAccessToken,
+            expectedRefreshToken = expectedRefreshToken,
+            reason = reason,
+            source = source
+        )
     }
 }
 

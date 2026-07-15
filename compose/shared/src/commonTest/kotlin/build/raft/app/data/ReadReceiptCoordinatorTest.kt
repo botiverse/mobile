@@ -4,10 +4,14 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -46,8 +50,8 @@ class ReadReceiptCoordinatorTest {
         assertEquals(listOf(channelId, channelId), optimisticReads)
         assertEquals(
             listOf<ReadReceiptRequest>(
-                ReadReceiptRequest.ToSeq(channelId, 10L),
-                ReadReceiptRequest.ToSeq(channelId, 12L)
+                ReadReceiptRequest.ToSeq(channelId, 10L, revision = 1L),
+                ReadReceiptRequest.ToSeq(channelId, 12L, revision = 2L)
             ),
             results
         )
@@ -85,7 +89,7 @@ class ReadReceiptCoordinatorTest {
         val channelId = ChannelId("channel-retry")
 
         coordinator.markReadToSeq(channelId, 42L)
-        repository.completeNext(DataResult.Empty(EmptyReason.NoMessages))
+        repository.completeNext(DataResult.Error(ScreenError(code = "read_failed")))
         coordinator.markReadToSeq(channelId, 42L)
 
         assertEquals(
@@ -96,8 +100,30 @@ class ReadReceiptCoordinatorTest {
     }
 
     @Test
-    fun failedReadInvokesFailureCallback() = runBlocking {
+    fun emptyReadResponseIsSuccessfulAndAcknowledgesSeq() = runBlocking {
         val repository = FakeReadReceiptRepository(nextResult = DataResult.Empty(EmptyReason.NoMessages))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val failures = mutableListOf<ReadReceiptRequest>()
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = repository,
+                onFailure = { request, _ -> failures += request }
+            )
+        val channelId = ChannelId("channel-empty-success")
+
+        coordinator.markReadToSeq(channelId, 3L)
+        repository.completeNext()
+        coordinator.markReadToSeq(channelId, 3L)
+
+        assertEquals(listOf<ReadCall>(ReadCall.ToSeq(channelId, 3L)), repository.calls)
+        assertEquals(emptyList(), failures)
+        scope.cancel()
+    }
+
+    @Test
+    fun failedReadInvokesFailureCallback() = runBlocking {
+        val repository = FakeReadReceiptRepository(nextResult = DataResult.Error(ScreenError(code = "read_failed")))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val failures = mutableListOf<ReadReceiptRequest>()
         val coordinator =
@@ -111,7 +137,10 @@ class ReadReceiptCoordinatorTest {
         coordinator.markReadToSeq(channelId, 3L)
         repository.completeNext()
 
-        assertEquals(listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 3L)), failures)
+        assertEquals(
+            listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 3L, revision = 1L)),
+            failures
+        )
         scope.cancel()
     }
 
@@ -148,13 +177,131 @@ class ReadReceiptCoordinatorTest {
         coordinator.markReadToSeq(channelId, 7L)
         repository.completeNext()
 
-        assertEquals(listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 7L)), runnerRequests)
+        assertEquals(
+            listOf<ReadReceiptRequest>(ReadReceiptRequest.ToSeq(channelId, 7L, revision = 1L)),
+            runnerRequests
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun activityReadAllAndThreadVisibleSeqJoinOneOwnerFlight() = runBlocking {
+        val repository = FakeReadReceiptRepository()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val predictions = mutableListOf<ReadReceiptPrediction>()
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = repository,
+                onPrediction = { predictions += it }
+            )
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+        val channelId = ChannelId("channel-shared")
+
+        coordinator.markReadAll(owner, channelId)
+        val threadResult = async(start = CoroutineStart.UNDISPATCHED) { coordinator.awaitReadToSeq(owner, channelId, 42L) }
+
+        assertEquals(listOf<ReadCall>(ReadCall.All(channelId)), repository.calls)
+        assertEquals(1, predictions.size)
+        repository.completeNext()
+        assertTrue(threadResult.await() is DataResult.Content)
+        scope.cancel()
+    }
+
+    @Test
+    fun newerReadAllPredictionPreventsOlderSeqFailureRollback() = runBlocking {
+        val repository = FakeReadReceiptRepository()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val failures = mutableListOf<ReadReceiptRequest>()
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = repository,
+                onFailure = { request, _ -> failures += request }
+            )
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+        val channelId = ChannelId("channel-supersede")
+
+        coordinator.markReadToSeq(owner, channelId, 10L)
+        coordinator.markReadAll(owner, channelId)
+        repository.completeNext(DataResult.Error(ScreenError(code = "old_failed")))
+
+        assertEquals(emptyList(), failures)
+        assertEquals(
+            listOf<ReadCall>(ReadCall.ToSeq(channelId, 10L), ReadCall.All(channelId)),
+            repository.calls
+        )
+        repository.completeNext()
+        scope.cancel()
+    }
+
+    @Test
+    fun sameChannelAcrossDifferentOwnersDoesNotCoalesce() = runBlocking {
+        val repository = FakeReadReceiptRepository()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val coordinator = ReadReceiptCoordinator(scope = scope, repository = repository)
+        val channelId = ChannelId("channel-owner")
+
+        coordinator.markReadAll(ReadReceiptOwner("production", "user-1", "server-1"), channelId)
+        coordinator.markReadAll(ReadReceiptOwner("staging", "user-1", "server-1"), channelId)
+
+        assertEquals(listOf<ReadCall>(ReadCall.All(channelId), ReadCall.All(channelId)), repository.calls)
+        repository.completeNext()
+        repository.completeNext()
+        scope.cancel()
+    }
+
+    @Test
+    fun staleOwnerIsRejectedBeforeTransport() = runBlocking {
+        val repository = FakeReadReceiptRepository()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val failures = mutableListOf<ReadReceiptRequest>()
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = repository,
+                ownerValidator = { false },
+                onFailure = { request, _ -> failures += request }
+            )
+        val owner = ReadReceiptOwner("production", "old-user", "server-1")
+
+        coordinator.markReadAll(owner, ChannelId("channel-stale-owner"))
+
+        assertEquals(emptyList(), repository.calls)
+        assertEquals(1, failures.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun clearSuppressesLateCompletionFromOldGeneration() = runBlocking {
+        val repository = FakeReadReceiptRepository(ignoreCancellation = true)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val results = mutableListOf<ReadReceiptRequest>()
+        val failures = mutableListOf<ReadReceiptRequest>()
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = repository,
+                onResult = { request, _ -> results += request },
+                onFailure = { request, _ -> failures += request }
+            )
+
+        coordinator.markReadAll(
+            ReadReceiptOwner("production", "user-1", "server-1"),
+            ChannelId("channel-cleared")
+        )
+        coordinator.clear()
+        repository.completeNext(DataResult.Error(ScreenError(code = "late_failure")))
+
+        assertEquals(emptyList(), results)
+        assertEquals(emptyList(), failures)
         scope.cancel()
     }
 
     private class FakeReadReceiptRepository(
         private val nextResult: DataResult<ReadReceiptResult> =
-            DataResult.Content(ReadReceiptResult())
+            DataResult.Content(ReadReceiptResult()),
+        private val ignoreCancellation: Boolean = false
     ) : ReadReceiptRepository {
         val calls = mutableListOf<ReadCall>()
         private val pending = ArrayDeque<CompletableDeferred<DataResult<ReadReceiptResult>>>()
@@ -169,14 +316,14 @@ class ReadReceiptCoordinatorTest {
             calls += ReadCall.ToSeq(channelId, seq)
             val deferred = CompletableDeferred<DataResult<ReadReceiptResult>>()
             pending += deferred
-            return deferred.await()
+            return if (ignoreCancellation) withContext(NonCancellable) { deferred.await() } else deferred.await()
         }
 
         override suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult> {
             calls += ReadCall.All(channelId)
             val deferred = CompletableDeferred<DataResult<ReadReceiptResult>>()
             pending += deferred
-            return deferred.await()
+            return if (ignoreCancellation) withContext(NonCancellable) { deferred.await() } else deferred.await()
         }
 
         override suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult> =
