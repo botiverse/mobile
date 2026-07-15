@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.applySelectedServerTerminalRealtimeTransition
 import build.raft.app.realtimeConnectionWitnessOrNull
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -191,6 +193,78 @@ class RealtimeLiveCutoverGateTest {
         transitionJob.join()
         assertEquals(listOf("server-a"), fixture.domainWrites)
         fixture.close()
+    }
+
+    @Test
+    fun membershipRemovedAndServerDeletedTerminalWritesCannotEscapeTheGrantGate() = runBlocking {
+        listOf("server_membership_removed", "server_deleted").forEach { terminalReason ->
+            val fixture = fixture("terminal-$terminalReason", installDefaultSink = false)
+            try {
+                fixture.auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
+                val authority = assertNotNull(fixture.provider.authorityFlow("shell").value)
+                val grant = assertNotNull(fixture.callbackGate.resolveExistingGrant(authority.witness, "server-a"))
+                var selectedServerId: String? = "server-a"
+                val clearEntered = CompletableDeferred<Unit>()
+                val releaseClear = CompletableDeferred<Unit>()
+                var restoreCount = 0
+
+                val terminalJob =
+                    launch {
+                        assertTrue(
+                            applySelectedServerTerminalRealtimeTransition(
+                                grant = grant,
+                                eventServerId = "server-a",
+                                isSelected = { selectedServerId == it },
+                                runIfCurrentGrant = fixture.provider::runIfCurrentGrant,
+                                disconnectAndReset = {},
+                                clearSelectedServer = {
+                                    clearEntered.complete(Unit)
+                                    releaseClear.await()
+                                    selectedServerId = null
+                                },
+                                restoreAuthGate = { restoreCount += 1 },
+                            )
+                        )
+                    }
+                clearEntered.await()
+
+                val transitionFinished = CompletableDeferred<Unit>()
+                val transitionJob =
+                    launch {
+                        fixture.auth.replace(
+                            session().copy(selectedServerId = "server-b"),
+                            AuthSessionEvent.TokensRotated(generation = 2),
+                        )
+                        fixture.provider.authorityFlow("shell").first { next ->
+                            next != null &&
+                                next.witness.connectionFamilyId != authority.witness.connectionFamilyId
+                        }
+                        selectedServerId = "server-b"
+                        transitionFinished.complete(Unit)
+                    }
+
+                val transitionCrossedBeforeTerminalWrite =
+                    try {
+                        withTimeoutOrNull(100L) {
+                            transitionFinished.await()
+                            true
+                        } ?: false
+                    } finally {
+                        releaseClear.complete(Unit)
+                    }
+                terminalJob.join()
+                transitionJob.join()
+
+                assertFalse(
+                    transitionCrossedBeforeTerminalWrite,
+                    "$terminalReason must hold the registry linearization point through clear+restore",
+                )
+                assertEquals("server-b", selectedServerId)
+                assertEquals(1, restoreCount)
+            } finally {
+                fixture.close()
+            }
+        }
     }
 
     private suspend fun fixture(

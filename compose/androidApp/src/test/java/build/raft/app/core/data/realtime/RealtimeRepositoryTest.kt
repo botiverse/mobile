@@ -19,6 +19,7 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
+import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
@@ -93,7 +94,7 @@ class RealtimeRepositoryTest {
         val logs = mutableListOf<String>()
         val rawEvents = mutableListOf<String>()
         val client = SocketIoRealtimeClient(transport = transport, logger = logs::add)
-        client.observeRawEvents { eventName, _ -> rawEvents += eventName }
+        client.observeRawEvents { _, eventName, _ -> rawEvents += eventName }
 
         client.connect(
             RealtimeConnectRequest(
@@ -138,6 +139,32 @@ class RealtimeRepositoryTest {
         val intervalLogs = record()
         assertEquals(1, intervalLogs.count { it.startsWith("event_success_summary ") })
         assertTrue(intervalLogs.single { it.startsWith("event_success_summary ") }.contains("count=2"))
+    }
+
+    @Test
+    fun reconnectWithTheSameWitnessRejectsThePreviousSocketGeneration() {
+        val fence = RealtimeSocketGenerationFence()
+        val context =
+            RealtimeSocketConnectionContext(
+                serverId = ServerId("server-1"),
+                witness =
+                    RealtimeConnectionWitnessToken(
+                        scopeLeaseId = "lease-1",
+                        principalId = "user-1",
+                        authGeneration = 1,
+                        connectionFamilyId = "family-1",
+                    ),
+            )
+        val firstSocketGeneration = fence.begin(context)
+        val secondSocketGeneration = fence.begin(context)
+        var downstreamDeliveries = 0
+
+        if (fence.accepts(firstSocketGeneration)) downstreamDeliveries += 1
+        if (fence.accepts(secondSocketGeneration)) downstreamDeliveries += 1
+
+        assertEquals(1, downstreamDeliveries)
+        assertFalse(fence.accepts(firstSocketGeneration))
+        assertTrue(fence.accepts(secondSocketGeneration))
     }
 
     @Test
