@@ -662,6 +662,34 @@ internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
 
 internal fun slockTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
 
+private const val SlockAutoFocusMaxAttempts = 3
+private const val SlockAutoFocusRetryDelayMs = 100L
+
+internal fun slockTextFieldAutoFocusShouldRetry(
+    autoFocus: Boolean,
+    isFocused: Boolean,
+    completedAttempts: Int
+): Boolean = autoFocus && !isFocused && completedAttempts < SlockAutoFocusMaxAttempts
+
+@Composable
+private fun SlockTextFieldAutoFocusEffect(
+    autoFocus: Boolean,
+    isFocused: Boolean,
+    focusRequester: FocusRequester
+) {
+    val currentIsFocused by rememberUpdatedState(isFocused)
+    LaunchedEffect(autoFocus, focusRequester) {
+        var completedAttempts = 0
+        while (slockTextFieldAutoFocusShouldRetry(autoFocus, currentIsFocused, completedAttempts)) {
+            delay(SlockAutoFocusRetryDelayMs)
+            if (!currentIsFocused) {
+                focusRequester.requestFocus()
+            }
+            completedAttempts += 1
+        }
+    }
+}
+
 @Composable
 internal fun TextField(
     modifier: Modifier = Modifier,
@@ -747,12 +775,7 @@ internal fun TextField(
         }
     )
 
-    LaunchedEffect(autoFocus) {
-        if (autoFocus) {
-            delay(100)
-            focusRequester.requestFocus()
-        }
-    }
+    SlockTextFieldAutoFocusEffect(autoFocus, lastFocus, focusRequester)
 }
 
 @Composable
@@ -834,12 +857,7 @@ internal fun TextField(
         }
     )
 
-    LaunchedEffect(autoFocus) {
-        if (autoFocus) {
-            delay(100)
-            focusRequester.requestFocus()
-        }
-    }
+    SlockTextFieldAutoFocusEffect(autoFocus, lastFocus, focusRequester)
 }
 
 private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
