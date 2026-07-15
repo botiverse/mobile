@@ -24,6 +24,8 @@ import build.raft.app.data.ChannelMemberActionResult
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ChannelRepository
+import build.raft.app.data.ChannelProfileUpdateRequest
+import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ReadReceiptResult
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
@@ -958,6 +960,7 @@ internal class SharedThreadDataSource(
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
     private val homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
+    private val channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
     private val messageStore: SharedThreadMessageStore? = null,
     payloadStore: SharedThreadPayloadStore? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
@@ -994,6 +997,7 @@ internal class SharedThreadDataSource(
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
         homeSnapshotProvider: ((ServerId) -> HomeSnapshot?)? = null,
+        channelProfileUpdateSink: suspend (ChannelProfileUpdateResult) -> Unit = {},
         messageStore: SharedThreadMessageStore? = null,
         payloadStore: SharedThreadPayloadStore? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
@@ -1010,6 +1014,7 @@ internal class SharedThreadDataSource(
         conversationRepository = conversationRepository,
         channelRepository = channelRepository,
         homeSnapshotProvider = homeSnapshotProvider,
+        channelProfileUpdateSink = channelProfileUpdateSink,
         messageStore = messageStore,
         payloadStore = payloadStore,
         agentsApiClient = agentsApiClient,
@@ -1268,6 +1273,23 @@ internal class SharedThreadDataSource(
     suspend fun joinChannel(channelId: ChannelId) =
         channelRepository?.joinChannel(channelId)
             ?: DataResult.Error(ScreenError("channel_repository_unavailable", retryable = false))
+
+    suspend fun updateChannelProfile(
+        channelId: ChannelId,
+        name: String,
+        description: String
+    ): DataResult<ChannelProfileUpdateResult> =
+        channelRepository?.updateChannelProfile(
+            ChannelProfileUpdateRequest(
+                channelId = channelId,
+                name = name,
+                description = description
+            )
+        ) ?: DataResult.Error(ScreenError("channel_repository_unavailable", retryable = false))
+
+    suspend fun publishChannelProfileUpdate(result: ChannelProfileUpdateResult) {
+        channelProfileUpdateSink(result)
+    }
 
     suspend fun cacheCanonicalPayload(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         cachePayload(payload)
@@ -3452,6 +3474,8 @@ internal data class SharedThreadState(
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
     val initialHomeAccessCandidate: ConversationAccessCandidate? = null,
+    val channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
+    val channelProfileUpdateErrorCode: String? = null,
     val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
     /**
      * Key (typically source thread id) the [membersLoadStatus] is bound to.
@@ -3466,6 +3490,13 @@ internal enum class ThreadAccessResolution {
     Resolved,
     Error,
     NoPermission
+}
+
+internal enum class ChannelProfileUpdateStatus {
+    Idle,
+    InFlight,
+    Succeeded,
+    Failed
 }
 
 internal data class ThreadHomeContextResolution(
@@ -3485,7 +3516,9 @@ internal data class SharedThreadRenderSlice(
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     val highlightedMentions: Set<String>,
     val accessResolution: ThreadAccessResolution,
-    val canonicalAccessResolved: Boolean
+    val canonicalAccessResolved: Boolean,
+    val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
+    val channelProfileUpdateErrorCode: String?
 )
 
 private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
@@ -3495,7 +3528,9 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         replyMetadataByParentId = replyMetadataByParentId,
         highlightedMentions = highlightedMentions,
         accessResolution = accessResolution,
-        canonicalAccessResolved = canonicalAccessResolved
+        canonicalAccessResolved = canonicalAccessResolved,
+        channelProfileUpdateStatus = channelProfileUpdateStatus,
+        channelProfileUpdateErrorCode = channelProfileUpdateErrorCode
     )
 
 /**
@@ -3569,6 +3604,14 @@ internal sealed interface SharedThreadIntent {
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
     data class ApplyChannelJoined(val channelId: String) : SharedThreadIntent
+    data class UpdateChannelProfile(
+        val channelId: String,
+        val originalName: String,
+        val originalDescription: String,
+        val name: String,
+        val description: String
+    ) : SharedThreadIntent
+    data object ClearChannelProfileUpdateStatus : SharedThreadIntent
     data class SelectTab(val tab: String) : SharedThreadIntent
     data class FocusMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
     data class ApplyMembersPatch(
@@ -3728,6 +3771,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyMessageSaved,
             is SharedThreadIntent.ApplyChannelJoined,
+            is SharedThreadIntent.UpdateChannelProfile,
+            SharedThreadIntent.ClearChannelProfileUpdateStatus,
             is SharedThreadIntent.SelectTab,
             is SharedThreadIntent.FocusMessage,
             is SharedThreadIntent.ApplyMembersPatch,
@@ -3792,6 +3837,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyChannelJoined -> applyChannelJoined(intent.channelId)
+            is SharedThreadIntent.UpdateChannelProfile -> updateChannelProfile(intent)
+            SharedThreadIntent.ClearChannelProfileUpdateStatus -> clearChannelProfileUpdateStatus()
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
             is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
@@ -5655,6 +5702,130 @@ internal class SharedThreadStore(
                 sentAttachmentIds = sentAttachmentIds
             )
         }
+    }
+
+    private suspend fun updateChannelProfile(intent: SharedThreadIntent.UpdateChannelProfile) {
+        val current = _state.value
+        val routeIdentity = current.payload.resolveThreadRouteIdentity()
+        val staleToken = routeStaleToken
+        if (
+            routeIdentity.surfaceKind != KuiklyThreadSurfaceKind.Channel ||
+            routeIdentity.timelineChannelId != intent.channelId ||
+            current.channelProfileUpdateStatus == ChannelProfileUpdateStatus.InFlight
+        ) {
+            return
+        }
+        val name = intent.name.trim()
+        val description = intent.description.trim()
+        val originalName = intent.originalName.trim()
+        val originalDescription = intent.originalDescription.trim()
+        if (name == originalName && description == originalDescription) {
+            diagnosticsLogger?.invoke(
+                "thread_channel_profile_update_skip channelId=${intent.channelId} reason=unchanged"
+            )
+            reduceState(
+                current.copy(
+                    channelProfileUpdateStatus = ChannelProfileUpdateStatus.Succeeded,
+                    channelProfileUpdateErrorCode = null
+                )
+            )
+            return
+        }
+        diagnosticsLogger?.invoke(
+            "thread_channel_profile_update_start channelId=${intent.channelId} " +
+                "nameChanged=${name != originalName} descriptionChanged=${description != originalDescription}"
+        )
+        reduceState(
+            current.copy(
+                channelProfileUpdateStatus = ChannelProfileUpdateStatus.InFlight,
+                channelProfileUpdateErrorCode = null
+            )
+        )
+        val result = dataSource.updateChannelProfile(ChannelId(intent.channelId), name, description)
+        if (!channelProfileUpdateStillCurrent(staleToken, routeIdentity, intent.channelId, "after_network")) {
+            return
+        }
+        when (result) {
+            is DataResult.Content -> {
+                val canonical = result.data
+                if (canonical.channelId != ChannelId(intent.channelId)) {
+                    diagnosticsLogger?.invoke(
+                        "thread_channel_profile_update_identity_mismatch requested=${intent.channelId} " +
+                            "response=${canonical.channelId.value}"
+                    )
+                    failChannelProfileUpdate("channel_update_identity_mismatch")
+                    return
+                }
+                reducePayloadPatch(cachePayload = true) { payload ->
+                    payload.copy(title = canonical.name, subtitle = canonical.description)
+                }
+                try {
+                    dataSource.publishChannelProfileUpdate(canonical)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (exception: Exception) {
+                    diagnosticsLogger?.invoke(
+                        "thread_channel_profile_update_projection_failed channelId=${canonical.channelId.value} " +
+                            "exception=${exception::class.simpleName}"
+                    )
+                }
+                if (!channelProfileUpdateStillCurrent(staleToken, routeIdentity, intent.channelId, "after_projection")) {
+                    return
+                }
+                diagnosticsLogger?.invoke(
+                    "thread_channel_profile_update_success channelId=${canonical.channelId.value}"
+                )
+                reduceState(
+                    _state.value.copy(
+                        channelProfileUpdateStatus = ChannelProfileUpdateStatus.Succeeded,
+                        channelProfileUpdateErrorCode = null
+                    )
+                )
+            }
+            is DataResult.Error -> failChannelProfileUpdate(result.error.code)
+            is DataResult.NoPermission -> failChannelProfileUpdate(result.blocker.code)
+            is DataResult.Empty -> failChannelProfileUpdate("channel_update_empty")
+        }
+    }
+
+    private fun channelProfileUpdateStillCurrent(
+        staleToken: MviStaleToken,
+        routeIdentity: ThreadRouteIdentity,
+        channelId: String,
+        stage: String
+    ): Boolean {
+        val currentPayload = _state.value.payload
+        if (
+            staleToken.isCurrent(routeStaleToken) &&
+            currentPayload.resolveThreadRouteIdentity() == routeIdentity
+        ) {
+            return true
+        }
+        diagnosticsLogger?.invoke(
+            "thread_channel_profile_update_stale_drop channelId=$channelId stage=$stage " +
+                "token=${staleToken.value} currentToken=${routeStaleToken.value} " +
+                "currentRoute=${currentPayload.resolveThreadRouteIdentity().instanceKey}"
+        )
+        return false
+    }
+
+    private fun failChannelProfileUpdate(errorCode: String) {
+        diagnosticsLogger?.invoke("thread_channel_profile_update_failed errorCode=$errorCode")
+        reduceState(
+            _state.value.copy(
+                channelProfileUpdateStatus = ChannelProfileUpdateStatus.Failed,
+                channelProfileUpdateErrorCode = errorCode
+            )
+        )
+    }
+
+    private fun clearChannelProfileUpdateStatus() {
+        reduceState(
+            _state.value.copy(
+                channelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
+                channelProfileUpdateErrorCode = null
+            )
+        )
     }
 
     private fun reduceState(nextState: SharedThreadState): Boolean {

@@ -89,6 +89,9 @@ class SharedMembersStoreTest {
             channelId: ChannelId,
             visibility: ChannelVisibility
         ): DataResult<ChannelUpdateResult> = error("unused")
+        override suspend fun updateChannelProfile(
+            request: ChannelProfileUpdateRequest
+        ): DataResult<ChannelProfileUpdateResult> = error("unused")
         override suspend fun setChannelActivityMuted(
             channelId: ChannelId,
             muted: Boolean

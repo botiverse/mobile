@@ -62,6 +62,17 @@ internal suspend fun SlockNetworkClient.updateChannel(
         bodyText = JSONObject().put("visibility", visibility.wireValue).toString()
     )
 
+private suspend fun SlockNetworkClient.updateChannelProfile(
+    priority: DataRequestPriority,
+    request: ChannelProfileUpdateRequest
+): HomeNetworkResponse =
+    request(
+        priority,
+        "channels/${request.channelId.value}",
+        method = "PATCH",
+        bodyText = buildChannelProfileUpdateBody(request)
+    )
+
 private suspend fun SlockNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels/dm", method = "POST", bodyText = bodyText)
 
@@ -193,6 +204,47 @@ class RealChannelRepository(
             source = "channel_update_visibility",
             mapper = { ChannelUpdateResult(channelId) }
         )
+    }
+
+    override suspend fun updateChannelProfile(
+        request: ChannelProfileUpdateRequest
+    ): DataResult<ChannelProfileUpdateResult> {
+        currentContext() ?: return authRequired()
+        val channelId = request.channelId
+        val name = request.name.trim()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        if (!name.isValidChannelName()) {
+            return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
+        }
+        val canonicalRequest = request.copy(name = name, description = request.description.trim())
+        if (canonicalRequest.description.length > 500) {
+            return DataResult.Error(ScreenError(code = "channel_description_too_long", retryable = false))
+        }
+        val result = executeChannel(
+            emptyReason = EmptyReason.NoChannels,
+            block = {
+                networkClient.updateChannelProfile(
+                    DataRequestPriority.Foreground,
+                    canonicalRequest
+                )
+            },
+            source = "channel_update_profile",
+            mapper = { bodyText ->
+                parseSharedChannelProfileUpdateResult(bodyText)
+                    ?: throw IllegalStateException("Update channel response missing channel")
+            }
+        )
+        val content = result as? DataResult.Content<ChannelProfileUpdateResult> ?: return result
+        if (content.data.channelId != channelId) {
+            warningLogger(
+                "channel_update_profile_identity_mismatch requested=${channelId.value} " +
+                    "response=${content.data.channelId.value}"
+            )
+            return DataResult.Error(
+                ScreenError(code = "channel_update_identity_mismatch", retryable = false)
+            )
+        }
+        return content
     }
 
     override suspend fun setChannelActivityMuted(
@@ -351,6 +403,20 @@ private fun buildCreateChannelBody(request: CreateChannelRequest): String =
             userIds = request.userMemberIds.cleanCreateChannelIds(),
             targetServerSlug = request.targetServerSlug?.trim()?.takeIf { it.isNotBlank() },
             invitedPeople = request.invitedPeople.cleanCreateChannelIds()
+        )
+    )
+
+@Serializable
+private data class ChannelProfileUpdateRequestBody(
+    val name: String,
+    val description: String
+)
+
+private fun buildChannelProfileUpdateBody(request: ChannelProfileUpdateRequest): String =
+    channelRepositoryJson.encodeToString(
+        ChannelProfileUpdateRequestBody(
+            name = request.name.trim(),
+            description = request.description.trim()
         )
     )
 

@@ -238,6 +238,15 @@ fun parseSharedCreateChannelResult(bodyText: String): CreateChannelResult? = run
     )
 }.getOrNull()
 
+fun parseSharedChannelProfileUpdateResult(bodyText: String): ChannelProfileUpdateResult? = runCatching {
+    val channel = homeJson.decodeFromString(HomeChannelWireDto.serializer(), bodyText).toChannelRow()
+    ChannelProfileUpdateResult(
+        channelId = channel.channelId ?: error("Update channel response missing channel id"),
+        name = channel.name,
+        description = channel.subtitle
+    )
+}.getOrNull()
+
 fun parseSharedOpenDirectMessageResult(bodyText: String): OpenDirectMessageResult? = runCatching {
     OpenDirectMessageResult(
         conversation = homeJson.decodeFromString(HomeDirectMessageWireDto.serializer(), bodyText)

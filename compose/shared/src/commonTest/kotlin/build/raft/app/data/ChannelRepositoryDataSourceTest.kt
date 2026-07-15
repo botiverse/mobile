@@ -147,6 +147,91 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
+    fun updateChannelProfileSendsCanonicalPatchAndReturnsCanonicalChannel() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"channel-1","name":"renamed","description":"Canonical description","type":"channel","joined":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result =
+            repository.updateChannelProfile(
+                ChannelProfileUpdateRequest(
+                    channelId = ChannelId("channel-1"),
+                    name = " renamed ",
+                    description = " Canonical description "
+                )
+            )
+
+        val updated = assertIs<DataResult.Content<ChannelProfileUpdateResult>>(result).data
+        assertEquals(ChannelId("channel-1"), updated.channelId)
+        assertEquals("renamed", updated.name)
+        assertEquals("Canonical description", updated.description)
+        assertEquals(
+            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1")),
+            network.requests
+        )
+        val body = network.bodies.single().asJsonObject()
+        assertEquals(setOf("name", "description"), body.keys)
+        assertEquals("renamed", body["name"]?.jsonPrimitive?.content)
+        assertEquals("Canonical description", body["description"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun updateChannelProfileSendsEmptyDescriptionToClearIt() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody = """{"id":"channel-1","name":"general","description":"","type":"channel","joined":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        repository.updateChannelProfile(
+            ChannelProfileUpdateRequest(ChannelId("channel-1"), "general", "   ")
+        )
+
+        assertEquals("", network.bodies.single().asJsonObject()["description"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun updateChannelProfileRejectsInvalidNameBeforeNetwork() = runBlocking {
+        val network = FakeChannelNetworkClient()
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result =
+            repository.updateChannelProfile(
+                ChannelProfileUpdateRequest(ChannelId("channel-1"), "not valid", "description")
+            )
+
+        assertEquals("channel_name_invalid", assertIs<DataResult.Error>(result).error.code)
+        assertEquals(emptyList(), network.requests)
+    }
+
+    @Test
+    fun updateChannelProfileRejectsMismatchedCanonicalChannelIdentity() = runBlocking {
+        val logs = mutableListOf<String>()
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"channel-2","name":"wrong-channel","description":"Wrong","type":"channel","joined":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network, logs::add)
+
+        val result =
+            repository.updateChannelProfile(
+                ChannelProfileUpdateRequest(ChannelId("channel-1"), "renamed", "Description")
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("channel_update_identity_mismatch", error.code)
+        assertEquals(false, error.retryable)
+        assertEquals(
+            listOf("channel_update_profile_identity_mismatch requested=channel-1 response=channel-2"),
+            logs
+        )
+    }
+
+    @Test
     fun channelCacheAllowsJoinedStateToBecomeFalse() = runBlocking {
         val network =
             FakeChannelNetworkClient(

@@ -109,6 +109,7 @@ import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.isSupportedCommitAction
+import build.raft.app.data.isValidChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -2197,6 +2198,15 @@ private fun ThreadPageScreen() {
                     ),
                 channelRepository = channelRepository,
                 homeSnapshotProvider = sharedHomeStore?.let { store -> store::snapshotFor },
+                channelProfileUpdateSink = { result ->
+                    sharedHomeStore?.accept(
+                        SharedHomeIntent.ChannelProfileUpdated(
+                            channelId = result.channelId,
+                            name = result.name,
+                            description = result.description
+                        )
+                    )
+                },
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
@@ -5695,6 +5705,8 @@ internal fun SharedThreadRouteContent(
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
             canonicalAccessResolved = renderSlice.canonicalAccessResolved,
+            channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
+            channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
             replyMetadataByParentId = replyMetadataByParentId,
             headerDisplay = headerDisplayModel,
             composerSurface = composerSurface,
@@ -5776,6 +5788,20 @@ internal fun SharedThreadRouteContent(
                 bridge.saveThreadShareImage(path)
             },
             onBack = onBack,
+            onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
+                threadViewModel.dispatch(
+                    SharedThreadIntent.UpdateChannelProfile(
+                        channelId = channelId,
+                        originalName = originalName,
+                        originalDescription = originalDescription,
+                        name = name,
+                        description = description
+                    )
+                )
+            },
+            onClearChannelProfileUpdateStatus = {
+                threadViewModel.dispatch(SharedThreadIntent.ClearChannelProfileUpdateStatus)
+            },
             onThreadEvent = { action, itemId, attachmentId, tab ->
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
@@ -9641,6 +9667,8 @@ private fun ThreadPageContent(
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
     canonicalAccessResolved: Boolean,
+    channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
+    channelProfileUpdateErrorCode: String? = null,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     headerDisplay: ThreadHeaderDisplayModel,
     composerSurface: ThreadComposerSurface,
@@ -9684,6 +9712,8 @@ private fun ThreadPageContent(
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onBack: () -> Unit,
+    onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
+    onClearChannelProfileUpdateStatus: () -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
@@ -9742,6 +9772,12 @@ private fun ThreadPageContent(
         onTasksIntent(SharedTasksRouteIntent.Start)
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(channelProfileUpdateStatus, activeModal) {
+        if (channelProfileUpdateStatus == ChannelProfileUpdateStatus.Succeeded) {
+            if (activeModal == "settings") activeModal = null
+            onClearChannelProfileUpdateStatus()
+        }
+    }
     // Full bundles open a dedicated pager page (task #64); capture the pager at
     // composable scope so the tap handler can route.
     val threadScreenPagerForForwardBundle = LocalActivity.current.getPager() as Pager
@@ -10432,9 +10468,22 @@ private fun ThreadPageContent(
                     channelName = headerDisplay.title,
                     subtitle = headerDisplay.subtitle,
                     actions = payload.settingsActions,
-                    onDismiss = { activeModal = null },
+                    updateStatus = channelProfileUpdateStatus,
+                    updateErrorCode = channelProfileUpdateErrorCode,
+                    onDismiss = {
+                        if (channelProfileUpdateStatus != ChannelProfileUpdateStatus.InFlight) {
+                            activeModal = null
+                            onClearChannelProfileUpdateStatus()
+                        }
+                    },
+                    onSave = { originalName, originalDescription, name, description ->
+                        payload.resolveThreadRouteIdentity().timelineChannelId?.let { channelId ->
+                            onUpdateChannelProfile(channelId, originalName, originalDescription, name, description)
+                        }
+                    },
                     onOpenAction = { actionId ->
                         activeModal = null
+                        onClearChannelProfileUpdateStatus()
                         onThreadEvent("settingsAction", actionId, null, null)
                     }
                 )
@@ -20068,7 +20117,10 @@ private fun ThreadSettingsModal(
     channelName: String,
     subtitle: String?,
     actions: List<KuiklyThreadSettingsAction>,
+    updateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
+    updateErrorCode: String? = null,
     onDismiss: () -> Unit,
+    onSave: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onOpenAction: (String) -> Unit
 ) {
     var name by remember(channelName) { mutableStateOf(channelName) }
@@ -20088,6 +20140,11 @@ private fun ThreadSettingsModal(
     }
     val activeDanger = dangerAction
     val archiveConfirmationMatches = confirmationName.trim() == channelName.trim()
+    val trimmedName = name.trim()
+    val trimmedDescription = description.trim()
+    val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
+    val profileValid = trimmedName.isValidChannelName() && trimmedDescription.length <= 500
+    val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
     SlockUnifiedDialog(
         title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
         onDismiss = onDismiss
@@ -20111,15 +20168,43 @@ private fun ThreadSettingsModal(
                     fieldMinHeight = 66.dp,
                     maxLines = 2
                 )
+                if (trimmedName.isNotEmpty() && !trimmedName.isValidChannelName()) {
+                    Text(
+                        text = stringResource(MR.strings.channel_create_error_name_format),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.AccentRed
+                    )
+                }
+                if (updateStatus == ChannelProfileUpdateStatus.Failed) {
+                    Text(
+                        text =
+                            if (updateErrorCode == "channel_name_invalid") {
+                                stringResource(MR.strings.channel_create_error_name_format)
+                            } else {
+                                stringResource(MR.strings.thread_settings_update_failed)
+                            },
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.AccentRed
+                    )
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Spacer(modifier = Modifier.weight(1f))
                     // React's Edit Channel form buttons carry no leading icons
                     // (btn-brutal text-only Cancel / Save Changes) — task #348.
                     SlockModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
                     SlockModalActionButton(
-                        label = stringResource(MR.strings.thread_action_save_changes),
+                        label =
+                            if (profileSaving) {
+                                stringResource(MR.strings.thread_settings_saving)
+                            } else {
+                                stringResource(MR.strings.thread_action_save_changes)
+                            },
                         color = SlockColor.AccentPink,
-                        onClick = onDismiss
+                        icon = SlockLucideIconName.Loader.takeIf { profileSaving },
+                        enabled = profileValid && profileChanged && !profileSaving,
+                        onClick = {
+                            onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
+                        }
                     )
                 }
                 if (dangerActions.isNotEmpty()) {
