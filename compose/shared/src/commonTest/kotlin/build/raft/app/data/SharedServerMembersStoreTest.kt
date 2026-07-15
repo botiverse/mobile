@@ -956,6 +956,33 @@ class SharedServerMembersStoreTest {
         assertEquals("赵梓淇", suggestion.displayName)
         assertEquals(true, suggestion.inMentionChannel)
         assertEquals(memberId, suggestion.memberId)
+        assertEquals(
+            "赵梓淇",
+            store.currentCanonicalMentionHandle(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1",
+                memberId = memberId
+            )
+        )
+    }
+
+    @Test
+    fun canonicalMentionHandleFailsClosedWhenOnlyOpaqueIdentityIsLoaded() = runBlocking {
+        val repository = FakeMemberRepository()
+        val memberId = "123e4567-e89b-12d3-a456-426614174000"
+        repository.membersByServer["server-1"] =
+            listOf(member(memberId, "赵梓淇").copy(handle = memberId))
+        val store = SharedServerMembersStore(repository)
+
+        store.refreshMembers(ServerId("server-1"))
+
+        assertNull(
+            store.currentCanonicalMentionHandle(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "channel-1",
+                memberId = memberId
+            )
+        )
     }
 
     @Test

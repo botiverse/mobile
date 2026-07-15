@@ -295,7 +295,7 @@ class ThreadRenderSignatureTest {
     }
 
     @Test
-    fun threadMentionHandle_fallsBackToStableAuthorIdNotDisplayName() {
+    fun threadMentionHandle_failsClosedInsteadOfUsingAuthorIdOrDisplayName() {
         val message =
             KuiklyThreadMessageItem(
                 id = "message-1",
@@ -305,7 +305,76 @@ class ThreadRenderSignatureTest {
                 authorKind = "agent"
             )
 
-        assertEquals("agent-1", message.threadMentionHandle())
+        assertEquals(null, message.threadMentionHandle())
+    }
+
+    @Test
+    fun threadMentionHandle_prefersCanonicalJointChannelHandleOverOpaqueRosterHandle() {
+        val authorId = "b8f607a0-d819-49e5-bdc7-59bc3a86fd37"
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = authorId,
+                authorName = "赵梓淇",
+                authorHandle = authorId,
+                authorKind = "human"
+            )
+        val membersState =
+            SharedServerMembersState(
+                entriesByServerId =
+                    mapOf(
+                        "server-1" to
+                            SharedServerMembersEntry(
+                                serverId = "server-1",
+                                members =
+                                    listOf(
+                                        MemberProfile(
+                                            id = MemberId(authorId),
+                                            displayName = "赵梓淇",
+                                            handle = authorId,
+                                            kind = MemberKind.Human
+                                        )
+                                    )
+                            )
+                    ),
+                channelMemberSlices =
+                    mapOf(
+                        SharedServerChannelMembersScope("server-1", "joint-channel-1") to
+                            SharedServerChannelMembersSlice(
+                                serverId = "server-1",
+                                channelId = "joint-channel-1",
+                                members =
+                                    listOf(
+                                        MemberProfile(
+                                            id = MemberId(authorId),
+                                            displayName = "赵梓淇",
+                                            handle = "zhao-ziqi",
+                                            kind = MemberKind.Human
+                                        )
+                                    )
+                            )
+                    )
+            )
+
+        assertEquals(
+            "zhao-ziqi",
+            message.threadMentionHandle(membersState, ServerId("server-1"))
+        )
+    }
+
+    @Test
+    fun threadMentionHandle_rejectsOpaqueFirstFrameAuthorHandleWhenCanonicalMemberIsMissing() {
+        val authorId = "b8f607a0-d819-49e5-bdc7-59bc3a86fd37"
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = authorId,
+                authorName = "赵梓淇",
+                authorHandle = authorId,
+                authorKind = "human"
+            )
+
+        assertEquals(null, message.threadMentionHandle())
     }
 
     @Test
