@@ -247,9 +247,7 @@ fun avatarWireValueForRenderedAvatar(
     avatarUrl: String? = null,
     gravatarHash: String? = null
 ): String? {
-    val explicitAvatarWireValue =
-        avatarWireValue?.appAvatarWireValueOrNull()
-            ?: avatarUrl?.appAvatarWireValueOrNull()
+    val explicitAvatarWireValue = explicitAvatarWireValue(kind, avatarWireValue, avatarUrl)
     return explicitAvatarWireValue
         ?: avatarWireValueForAvatarSlot(
             kind = kind,
@@ -267,9 +265,7 @@ fun resolveAvatarSlot(
     avatarUrl: String? = null,
     gravatarHash: String? = null
 ): AvatarSlotResolution {
-    val explicitWireValue =
-        avatarWireValue?.appAvatarWireValueOrNull()
-            ?: avatarUrl?.appAvatarWireValueOrNull()
+    val explicitWireValue = explicitAvatarWireValue(kind, avatarWireValue, avatarUrl)
     val wireValue =
         explicitWireValue
             ?: gravatarHash?.humanGravatarAvatarWireValueOrNull(kind)
@@ -291,16 +287,23 @@ fun agentAvatarFallbackWireValue(id: String): String =
 private val Sha256HexRegex = Regex("^[0-9a-fA-F]{64}$")
 private const val GravatarAvatarWirePrefix = "gravatar:"
 
-fun String.humanGravatarAvatarWireValueOrNull(kind: MemberKind): String? =
+internal fun String.normalizedGravatarHashOrNull(): String? =
     trim()
-        .takeIf { kind == MemberKind.Human && Sha256HexRegex.matches(it) }
+        .takeIf(Sha256HexRegex::matches)
         ?.lowercase()
+
+fun String.humanGravatarAvatarWireValueOrNull(kind: MemberKind): String? =
+    takeIf { kind == MemberKind.Human }
+        ?.normalizedGravatarHashOrNull()
         ?.let { "$GravatarAvatarWirePrefix$it" }
 
+internal fun String.gravatarHashOrNull(): String? =
+    takeIf { startsWith(GravatarAvatarWirePrefix) }
+        ?.removePrefix(GravatarAvatarWirePrefix)
+        ?.normalizedGravatarHashOrNull()
+
 fun String.gravatarAvatarHttpUrlOrNull(): String? =
-    removePrefix(GravatarAvatarWirePrefix)
-        .takeIf { startsWith(GravatarAvatarWirePrefix) && Sha256HexRegex.matches(it) }
-        ?.lowercase()
+    gravatarHashOrNull()
         ?.let { "https://www.gravatar.com/avatar/$it?s=160&d=404" }
 
 fun String.isLegacyGravatarAvatarUrl(): Boolean =
@@ -310,6 +313,38 @@ fun String.appAvatarWireValueOrNull(): String? =
     trim()
         .takeIf { it.isNotBlank() }
         ?.takeUnless { it.isLegacyGravatarAvatarUrl() }
+
+private val SlockUploadedHumanAvatarPath =
+    Regex("^/(?:api/)?avatars/users/[0-9a-f]+\\.webp$", RegexOption.IGNORE_CASE)
+
+internal fun String.slockUploadedHumanAvatarWireValueOrNull(): String? {
+    val normalized = trim().takeIf { it.isNotBlank() } ?: return null
+    val path =
+        if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+            val authorityStart = normalized.indexOf("://") + 3
+            val authorityEnd = normalized.indexOf('/', startIndex = authorityStart)
+            if (authorityEnd < 0) return null
+            normalized.substring(authorityEnd)
+        } else {
+            normalized
+        }
+            .substringBefore('?')
+            .substringBefore('#')
+    return normalized.takeIf { SlockUploadedHumanAvatarPath.matches(path) }
+}
+
+private fun explicitAvatarWireValue(
+    kind: MemberKind,
+    avatarWireValue: String?,
+    avatarUrl: String?
+): String? =
+    if (kind == MemberKind.Human) {
+        avatarWireValue?.slockUploadedHumanAvatarWireValueOrNull()
+            ?: avatarUrl?.slockUploadedHumanAvatarWireValueOrNull()
+    } else {
+        avatarWireValue?.appAvatarWireValueOrNull()
+            ?: avatarUrl?.appAvatarWireValueOrNull()
+    }
 
 fun String.appAvatarApiFallbackUrl(apiBaseUrl: String?): String? {
     val normalizedSource = trim()

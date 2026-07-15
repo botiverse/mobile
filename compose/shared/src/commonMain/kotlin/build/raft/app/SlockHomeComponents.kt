@@ -34,7 +34,9 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.gravatarAvatarHttpUrlOrNull
+import build.raft.app.model.gravatarHashOrNull
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
+import build.raft.app.model.slockGravatarSessionLoadCache
 import build.raft.app.resources.MR
 import com.tencent.kuikly.core.manager.BridgeManager
 import com.tencent.kuikly.core.module.RouterModule
@@ -4316,6 +4318,9 @@ internal fun SlockAvatar(
                 it.startsWith("http://") || it.startsWith("https://")
             }
     }
+    val gravatarHash = remember(displayAvatarWireValue) {
+        displayAvatarWireValue?.gravatarHashOrNull()
+    }
     val pixelSpec = remember(displayAvatarWireValue) {
         traceMarkdownSectionNonComposable(SlockAvatarTraceNames.IDENTIFY) {
             displayAvatarWireValue?.toPixelAvatarSpec()
@@ -4335,6 +4340,7 @@ internal fun SlockAvatar(
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
                 source = httpAvatarSource,
+                gravatarHash = gravatarHash,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -4347,6 +4353,7 @@ internal fun SlockAvatar(
 @Composable
 private fun SlockAvatarHttpImage(
     source: String,
+    gravatarHash: String? = null,
     modifier: Modifier = Modifier
 ) {
     // Implementation note: Kuikly's `KuiklyPainter` (returned by
@@ -4358,9 +4365,39 @@ private fun SlockAvatarHttpImage(
     // unconditionally *does* exercise the painter's native draw path
     // (`onDraw` -> `imageCacheManager.loadImage(src)`) and the underlying
     // `KuiklyImageBitmap.status` transitions correctly to `isReady = true`
-    // once the fetch completes. We therefore render Image unconditionally
-    // and the default app avatar underneath remains visible when loading fails.
+    // once the fetch completes. We render the Image while a request is eligible
+    // and keep the default app avatar underneath. Gravatar failures are shared
+    // for this process. This painter API does not expose HTTP status, so
+    // failures use a bounded cooldown instead of being treated as permanent
+    // 404s; offline/DNS/timeout failures become retryable after the cooldown.
+    var retryDelayMillis by remember(gravatarHash) {
+        mutableStateOf(
+            gravatarHash?.let(slockGravatarSessionLoadCache::retryDelayMillis) ?: 0L
+        )
+    }
+    if (retryDelayMillis > 0L) {
+        LaunchedEffect(gravatarHash, retryDelayMillis) {
+            delay(retryDelayMillis)
+            retryDelayMillis =
+                gravatarHash?.let(slockGravatarSessionLoadCache::retryDelayMillis) ?: 0L
+        }
+        return
+    }
+
     val painter = rememberSlockAvatarHttpPainter(source)
+    val imageState by painter.state.collectAsState()
+    LaunchedEffect(imageState, gravatarHash) {
+        val hash = gravatarHash ?: return@LaunchedEffect
+        when (imageState) {
+            is AsyncImagePainter.State.Error -> {
+                slockGravatarSessionLoadCache.recordFailure(hash)
+                retryDelayMillis = slockGravatarSessionLoadCache.retryDelayMillis(hash)
+            }
+            is AsyncImagePainter.State.Success ->
+                slockGravatarSessionLoadCache.recordSuccess(hash)
+            else -> Unit
+        }
+    }
     Image(
         painter = painter,
         contentDescription = null,
