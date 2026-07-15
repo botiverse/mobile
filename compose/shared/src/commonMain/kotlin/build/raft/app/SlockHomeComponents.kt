@@ -1098,6 +1098,17 @@ internal fun SlockStructuralHomeShell(
     var listStateServerId by remember { mutableStateOf(listPositionServerId) }
     var listPremeasureServerId by remember { mutableStateOf(currentServerId) }
     var listPremeasureLimit by remember { mutableStateOf(homeListInitialBeyondBoundsItemCount()) }
+    val homeUserScrollGeneration = remember { HomeUserScrollGeneration() }
+    val listPositionRestoreStartUserScrollGeneration =
+        remember(
+            listPositionServerId,
+            initialListPosition.firstVisibleItemIndex,
+            initialListPosition.firstVisibleItemScrollOffset
+        ) {
+            // Capture the restore intent at composition time. A pointer move
+            // before the effect gets the viewport retires this intent.
+            homeUserScrollGeneration.value
+        }
     val captureRowAnchors = !listState.isScrollInProgress
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
     DisposableEffect(listState, currentServerId) {
@@ -1236,10 +1247,22 @@ internal fun SlockStructuralHomeShell(
                                 listStateServerId,
                                 listState.toAppShellLazyListPosition()
                             )
-                            listState.scrollToItem(
-                                initialListPosition.firstVisibleItemIndex,
-                                initialListPosition.firstVisibleItemScrollOffset
-                            )
+                            if (
+                                shouldRestoreHomeListPosition(
+                                    listStateServerId = listStateServerId,
+                                    listPositionServerId = listPositionServerId,
+                                    restoreStartUserScrollGeneration = listPositionRestoreStartUserScrollGeneration,
+                                    currentUserScrollGeneration = homeUserScrollGeneration.value,
+                                    isScrollInProgress = listState.isScrollInProgress
+                                )
+                            ) {
+                                listState.scrollToItem(
+                                    initialListPosition.firstVisibleItemIndex,
+                                    initialListPosition.firstVisibleItemScrollOffset
+                                )
+                            }
+                            // A skipped restore is consumed too: otherwise a later,
+                            // unrelated effect restart could pull the user back.
                             listStateServerId = listPositionServerId
                         }
                         if (listPremeasureServerId != currentServerId) {
@@ -1264,6 +1287,11 @@ internal fun SlockStructuralHomeShell(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
+                                    .touchListener { type, _ ->
+                                        if (type == TouchType.Move) {
+                                            homeUserScrollGeneration.value += 1
+                                        }
+                                    }
                                     .scrollToTop {
                                         listScope.launch {
                                             listState.animateScrollToTopExpressive()
@@ -1917,6 +1945,21 @@ internal fun homeSidebarInteractionIdentity(section: String, identity: String): 
 internal fun homeListStateOwnerMatches(snapshotServerId: String?, listStateServerId: String?): Boolean =
     snapshotServerId?.trim()?.takeIf { it.isNotEmpty() } ==
         listStateServerId?.trim()?.takeIf { it.isNotEmpty() }
+
+internal fun shouldRestoreHomeListPosition(
+    listStateServerId: String?,
+    listPositionServerId: String?,
+    restoreStartUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int,
+    isScrollInProgress: Boolean
+): Boolean =
+    listStateServerId != listPositionServerId &&
+        restoreStartUserScrollGeneration == currentUserScrollGeneration &&
+        !isScrollInProgress
+
+private class HomeUserScrollGeneration(
+    var value: Int = 0
+)
 
 internal class HomeSidebarLazyKeyRegistry {
     private data class SectionKeys(

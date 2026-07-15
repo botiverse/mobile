@@ -388,6 +388,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -465,6 +466,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -9662,6 +9664,11 @@ private fun SharedQuiverFeedbackContent(
             )
         )
     }
+    var previousEntryIds by remember(accountId) {
+        mutableStateOf(entries.map(SettingsQuiverFeedbackEntry::id))
+    }
+    var allowBottomAnchor by remember(accountId) { mutableStateOf(true) }
+    val feedbackEntryIds = remember(entries) { entries.map(SettingsQuiverFeedbackEntry::id) }
     // task #92 close-out: server + Hands SDKs support 9 files with presigned
     // large-file upload; the per-file byte cap is platform-dependent (OHOS SDK
     // still caps at 50MB).
@@ -9686,9 +9693,38 @@ private fun SharedQuiverFeedbackContent(
         }
     }
 
-    LaunchedEffect(entries.size, busy) {
-        if (entries.isNotEmpty()) {
-            listState.scrollToItem(entries.lastIndex)
+    val feedbackLastListIndex = settingsFeedbackLastListIndex(entries.size, busy)
+    LaunchedEffect(accountId, listState, feedbackLastListIndex) {
+        snapshotFlow {
+            SettingsFeedbackBottomAnchorAvailabilityState(
+                currentAllow = allowBottomAnchor,
+                isScrollInProgress = listState.isScrollInProgress,
+                isAtBottom = listState.isSettingsFeedbackAtBottom(feedbackLastListIndex)
+            )
+        }
+            .distinctUntilChanged()
+            .collect { state ->
+                val nextAllow = resolveSettingsFeedbackBottomAnchorAllowed(state)
+                if (allowBottomAnchor != nextAllow) {
+                    allowBottomAnchor = nextAllow
+                }
+            }
+    }
+
+    LaunchedEffect(feedbackEntryIds, busy) {
+        val update =
+            settingsFeedbackBottomUpdatePresentation(
+                previousEntryIds = previousEntryIds,
+                currentEntryIds = feedbackEntryIds,
+                busy = busy,
+                allowBottomAnchor = allowBottomAnchor,
+                isScrollInProgress = listState.isScrollInProgress
+            )
+        previousEntryIds = feedbackEntryIds
+        // Busy-only transitions (including attachment picking) are not a
+        // conversation append and therefore never acquire the viewport.
+        update.targetIndex?.let { targetIndex ->
+            listState.scrollToItem(targetIndex)
         }
     }
 
@@ -9938,6 +9974,60 @@ private fun SharedQuiverFeedbackContent(
                 keyboardLiftBottomContentPadding = bottomContentPadding
             )
         }
+    }
+}
+
+internal data class SettingsFeedbackBottomAnchorAvailabilityState(
+    val currentAllow: Boolean,
+    val isScrollInProgress: Boolean,
+    val isAtBottom: Boolean
+)
+
+internal fun resolveSettingsFeedbackBottomAnchorAllowed(
+    state: SettingsFeedbackBottomAnchorAvailabilityState
+): Boolean =
+    when {
+        state.isScrollInProgress -> false
+        state.isAtBottom -> true
+        else -> state.currentAllow
+    }
+
+internal data class SettingsFeedbackBottomUpdatePresentation(
+    val targetIndex: Int?
+)
+
+internal fun settingsFeedbackBottomUpdatePresentation(
+    previousEntryIds: List<Int>,
+    currentEntryIds: List<Int>,
+    busy: Boolean,
+    allowBottomAnchor: Boolean,
+    isScrollInProgress: Boolean
+): SettingsFeedbackBottomUpdatePresentation {
+    val appendedConversationEntry =
+        currentEntryIds.lastOrNull()?.let { latestEntryId ->
+            latestEntryId !in previousEntryIds
+        } == true
+    val targetIndex =
+        if (appendedConversationEntry && allowBottomAnchor && !isScrollInProgress) {
+            settingsFeedbackLastListIndex(currentEntryIds.size, busy)
+        } else {
+            null
+        }
+    return SettingsFeedbackBottomUpdatePresentation(targetIndex = targetIndex)
+}
+
+internal fun settingsFeedbackLastListIndex(entryCount: Int, busy: Boolean): Int =
+    when {
+        entryCount <= 0 && !busy -> -1
+        busy -> entryCount
+        else -> entryCount - 1
+    }
+
+private fun LazyListState.isSettingsFeedbackAtBottom(lastIndex: Int): Boolean {
+    if (lastIndex <= 0) return true
+    if (!canScrollForward) return true
+    return layoutInfo.visibleItemsInfo.any { item ->
+        item.index == lastIndex && item.offset + item.size <= layoutInfo.viewportEndOffset + 4
     }
 }
 

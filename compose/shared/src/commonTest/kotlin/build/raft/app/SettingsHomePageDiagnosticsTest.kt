@@ -485,6 +485,117 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
+    fun feedbackBottomAnchorFollowsGenuineConversationAppendWhenParked() {
+        assertEquals(
+            SettingsFeedbackBottomUpdatePresentation(targetIndex = 2),
+            settingsFeedbackBottomUpdatePresentation(
+                previousEntryIds = listOf(0, 1),
+                currentEntryIds = listOf(0, 1, 2),
+                busy = false,
+                allowBottomAnchor = true,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
+    fun feedbackBottomAnchorTargetsBusySentinelAfterConversationAppend() {
+        assertEquals(
+            SettingsFeedbackBottomUpdatePresentation(targetIndex = 3),
+            settingsFeedbackBottomUpdatePresentation(
+                previousEntryIds = listOf(0, 1),
+                currentEntryIds = listOf(0, 1, 2),
+                busy = true,
+                allowBottomAnchor = true,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
+    fun feedbackBottomAnchorDefersAppendDuringUserScroll() {
+        assertEquals(
+            SettingsFeedbackBottomUpdatePresentation(targetIndex = null),
+            settingsFeedbackBottomUpdatePresentation(
+                previousEntryIds = listOf(0),
+                currentEntryIds = listOf(0, 1),
+                busy = true,
+                allowBottomAnchor = true,
+                isScrollInProgress = true
+            )
+        )
+        assertFalse(
+            resolveSettingsFeedbackBottomAnchorAllowed(
+                SettingsFeedbackBottomAnchorAvailabilityState(
+                    currentAllow = true,
+                    isScrollInProgress = true,
+                    isAtBottom = true
+                )
+            )
+        )
+    }
+
+    @Test
+    fun feedbackBottomAnchorIgnoresBusyToggleAndNonAppendMutation() {
+        assertEquals(
+            SettingsFeedbackBottomUpdatePresentation(targetIndex = null),
+            settingsFeedbackBottomUpdatePresentation(
+                previousEntryIds = listOf(0, 1),
+                currentEntryIds = listOf(0, 1),
+                busy = true,
+                allowBottomAnchor = true,
+                isScrollInProgress = false
+            )
+        )
+        assertEquals(
+            SettingsFeedbackBottomUpdatePresentation(targetIndex = null),
+            settingsFeedbackBottomUpdatePresentation(
+                previousEntryIds = listOf(0, 1),
+                currentEntryIds = listOf(0, 1),
+                busy = false,
+                allowBottomAnchor = true,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
+    fun feedbackBottomAnchorRecognizesCoalescedRetryOutcomeAsNewTailEntry() {
+        assertEquals(
+            SettingsFeedbackBottomUpdatePresentation(targetIndex = 1),
+            settingsFeedbackBottomUpdatePresentation(
+                previousEntryIds = listOf(0, 1),
+                currentEntryIds = listOf(0, 2),
+                busy = false,
+                allowBottomAnchor = true,
+                isScrollInProgress = false
+            )
+        )
+    }
+
+    @Test
+    fun feedbackBottomAnchorKeepsHistoryViewportUntilUserReturnsToBottom() {
+        assertFalse(
+            resolveSettingsFeedbackBottomAnchorAllowed(
+                SettingsFeedbackBottomAnchorAvailabilityState(
+                    currentAllow = false,
+                    isScrollInProgress = false,
+                    isAtBottom = false
+                )
+            )
+        )
+        assertTrue(
+            resolveSettingsFeedbackBottomAnchorAllowed(
+                SettingsFeedbackBottomAnchorAvailabilityState(
+                    currentAllow = false,
+                    isScrollInProgress = false,
+                    isAtBottom = true
+                )
+            )
+        )
+    }
+
+    @Test
     fun indexedLocalizedTemplatesKeepLocaleSpecificArgumentOrder() {
         assertEquals(
             "来自 Android 发布运行时 的 3 个库",
