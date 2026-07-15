@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.network.sync.DurablePartitionKey
+import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -22,6 +24,14 @@ internal data class RealtimeScopeAuthority(
 ) {
     fun grant(serverId: String): RealtimeGrantRecord? = grantsByServer[serverId]
 }
+
+/**
+ * Ephemeral T3 capability produced only while the registry still holds the captured grant current. It
+ * intentionally exposes the durable partition and nothing from the grant/witness/generation authority.
+ */
+internal data class CurrentMessageCommitContext(
+    val partition: DurablePartitionKey,
+)
 
 /**
  * Provider-owned lifecycle adapter for the Foundation v1.2 registry.
@@ -113,6 +123,28 @@ internal class RealtimeAuthorityProvider(
         grant: RealtimeGrantRecord,
         block: suspend () -> Unit,
     ): Boolean = registry.runIfCurrentGrant(grant, block)
+
+    /**
+     * Reuses the registry's current-grant linearization for the provider-central message shadow lane.
+     * Provider-owned guarded canonical New/Updated frames enter that lane before acceptedKeys, recovery, and
+     * sinks; standalone owners with a null runner keep their exact legacy path.
+     */
+    suspend fun runWithCurrentMessageGrant(
+        capturedGrant: RealtimeGrantRecord,
+        block: suspend (CurrentMessageCommitContext) -> Unit,
+    ): Boolean =
+        registry.runIfCurrentGrant(capturedGrant) {
+            block(
+                CurrentMessageCommitContext(
+                    partition =
+                        DurablePartitionKey(
+                            serverId = capturedGrant.serverId,
+                            principalId = capturedGrant.principalId,
+                            consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+                        ),
+                ),
+            )
+        }
 
     private suspend fun reconcileInitialSession() {
         lifecycleMutex.withLock {

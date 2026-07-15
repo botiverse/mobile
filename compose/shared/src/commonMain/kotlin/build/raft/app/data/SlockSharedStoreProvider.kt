@@ -42,6 +42,13 @@ import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.SlockNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.sync.CanonicalMessageFoldInput
+import build.raft.app.network.sync.CanonicalMessageFoldKind
+import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
+import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
+import build.raft.app.network.sync.SqlDelightFoldPersistStore
+import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
+import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
@@ -211,12 +218,34 @@ internal class SlockSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
+    /**
+     * One provider-central current-grant shadow lane shared by every realtime owner backed by this database.
+     * The server flag defaults OFF; when enabled, guarded canonical frames synchronously fold, commit, strict
+     * read back, and atomically publish before the unchanged legacy continuation runs.
+     */
+    private val currentGrantMessageShadowCommitLane =
+        CurrentGrantMessageShadowCommitLane(
+            strictReader = SqlDelightStrictMessageScopeSnapshotReader(sqlDatabase),
+            persistence =
+                DefaultFoldPersistenceAdapter(
+                    runner = SqlDelightFoldPersistTransactionRunner(sqlDatabase),
+                    store = SqlDelightFoldPersistStore(sqlDatabase, now = ::defaultNowMillis),
+                ),
+            isEnabledForServer = { serverId ->
+                serverFeatureFlags.isEnabled(
+                    ServerId(serverId),
+                    SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                )
+            },
+        )
+
     init {
         updateNetworkKmmRecoveryEnvironment()
         // Attach the flag-gated `sync_core_messages_v0` shadow fold+persist lane to the legacy-scope owner.
         // (The owner is constructed in create() before this instance exists, so serverFeatureFlags can only
         // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
+        realtimeDomainEventOwner.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         realtimeAuthorityProvider.start(threadSendScope)
         threadSendScope.launch {
@@ -367,8 +396,10 @@ internal class SlockSharedStoreProvider private constructor(
                     tasksDataStore = tasksDataStore,
                     cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                     runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
+                    runWithCurrentMessageGrant = realtimeAuthorityProvider::runWithCurrentMessageGrant,
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
+                    it.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
                     it.installReactionShadowLane(buildReactionShadowLane())
                 }
             }
@@ -838,6 +869,7 @@ internal class SlockSharedStoreProvider private constructor(
                         tasksDataStore = tasksDataStore,
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
+                        runWithCurrentMessageGrant = realtimeAuthorityProvider::runWithCurrentMessageGrant,
                     ),
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -972,6 +1004,8 @@ internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null,
     private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
     private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
+    private val runWithCurrentMessageGrant:
+        (suspend (RealtimeGrantRecord, suspend (CurrentMessageCommitContext) -> Unit) -> Boolean)? = null,
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
     private var guardedSinks: RealtimeGuardedDomainEventSinks? = null
@@ -986,10 +1020,17 @@ internal class SharedRealtimeDomainEventOwner(
     // that don't exercise it). Invisible to sinks and fail-open; the legacy unowned path can only emit a
     // bounded partition-denial diagnostic and never persists.
     private var messageShadowFoldLane: SyncCoreMessageShadowFoldLane? = null
+    // Provider-central T3 lane. Guarded canonical entries invoke it before acceptedKeys/recovery/sinks;
+    // every owner sharing this database installs the same instance.
+    private var currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane? = null
     private var reactionShadowLane: SyncCoreReactionShadowLane? = null
 
     fun installMessageShadowFoldLane(lane: SyncCoreMessageShadowFoldLane) {
         messageShadowFoldLane = lane
+    }
+
+    fun installCurrentGrantMessageShadowCommitLane(lane: CurrentGrantMessageShadowCommitLane) {
+        currentGrantMessageShadowCommitLane = lane
     }
 
     fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {
@@ -1041,8 +1082,8 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "unknown",
     ): Boolean =
-        runIfCurrentGrant(grant) {
-            acceptGuarded(grant.serverId, event, source)
+        runGuardedCanonicalShadowFirst(grant, event, source) { serverId, acceptedEvent, acceptedSource ->
+            acceptGuarded(serverId, acceptedEvent, acceptedSource)
         }
 
     suspend fun acceptHomeUnreadProjection(
@@ -1050,9 +1091,62 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "unknown",
     ): Boolean =
-        runIfCurrentGrant(grant) {
-            acceptGuardedHomeUnreadProjection(grant.serverId, event, source)
+        runGuardedCanonicalShadowFirst(grant, event, source) { serverId, acceptedEvent, acceptedSource ->
+            acceptGuardedHomeUnreadProjection(serverId, acceptedEvent, acceptedSource)
         }
+
+    /**
+     * T3 owner entry shared by selected-server and background-unread guarded projections. A nullable runner
+     * preserves the exact legacy [runIfCurrentGrant] path for standalone/test owners; provider-owned owners
+     * run the central canonical shadow lane first, then continue through the unchanged legacy path.
+     */
+    private suspend fun runGuardedCanonicalShadowFirst(
+        grant: RealtimeGrantRecord,
+        event: RealtimeEvent,
+        source: String,
+        legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
+    ): Boolean {
+        val currentMessageRunner = runWithCurrentMessageGrant
+            ?: return runIfCurrentGrant(grant) {
+                legacyContinuation(grant.serverId, event, source)
+            }
+        val foldInput = event.canonicalMessageFoldInputOrNull()
+        if (foldInput == null) {
+            return runIfCurrentGrant(grant) {
+                legacyContinuation(grant.serverId, event, source)
+            }
+        }
+        return currentMessageRunner(grant) { context ->
+            val lane = currentGrantMessageShadowCommitLane
+            if (lane != null) {
+                val legacyKey = event.realtimeDomainKey(context.partition.serverId)
+                if (legacyKey != null) {
+                    try {
+                        lane.commit(
+                            partition = context.partition,
+                            legacyKey = build.raft.app.network.sync.LegacyRealtimeDedupKey(legacyKey),
+                            foldInput = foldInput,
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (throwable: Throwable) {
+                        try {
+                            guardedSinks?.log?.invoke(
+                                "current_grant_message_shadow_failed source=$source " +
+                                    "serverId=${context.partition.serverId} " +
+                                    "error=${throwable::class.simpleName ?: "unknown"}"
+                            )
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Throwable) {
+                            // Diagnostics are best-effort; a logger failure must not block legacy fail-open.
+                        }
+                    }
+                }
+            }
+            legacyContinuation(context.partition.serverId, event, source)
+        }
+    }
 
     override fun accept(serverId: String, event: RealtimeEvent, source: String) {
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
@@ -1341,6 +1435,17 @@ private fun RealtimeEvent.refreshesMemberDetail(): Boolean =
         this is ServerPlanUpdated
 
 private const val AcceptedRealtimeKeyLimit = 256
+
+private fun RealtimeEvent.canonicalMessageFoldInputOrNull(): CanonicalMessageFoldInput? =
+    when (this) {
+        is MessageNew -> decodedCanonical?.let { carry ->
+            CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.New, carry)
+        }
+        is MessageUpdated -> decodedCanonical?.let { carry ->
+            CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.Updated, carry)
+        }
+        else -> null
+    }
 
 private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
     when (this) {
