@@ -11394,7 +11394,10 @@ class SharedThreadStoreTest {
 
     private fun SharedThreadDataSource.cachePayloadForTest(
         payload: KuiklyThreadScreenPayload
-    ): Boolean = cachePayload(payload, serverId = "server-1")
+    ): Boolean {
+        runBlocking { readSession() }
+        return cachePayload(payload, serverId = "server-1")
+    }
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
