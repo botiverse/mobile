@@ -26,10 +26,55 @@ import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class SharedInboxPanelTest {
+    @Test
+    fun activityTailSentinelRequestsNextPageWhenMoreContentExists() {
+        assertTrue(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+    }
+
+    @Test
+    fun activityTailSentinelDoesNotDuplicateAnInFlightRequest() {
+        assertFalse(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                loadingMore = true,
+                loadMoreErrorCode = null
+            )
+        )
+    }
+
+    @Test
+    fun activityTailSentinelLeavesFailureOnExplicitRetry() {
+        assertFalse(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                loadingMore = false,
+                loadMoreErrorCode = "Network"
+            )
+        )
+    }
+
+    @Test
+    fun activityTailSentinelStopsAtTerminalPage() {
+        assertFalse(
+            activityShouldRequestLoadMore(
+                hasMore = false,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+    }
+
     @Test
     fun activityThreadIconUsesTheSameMutedToneAsReadPrimaryText() {
         val readThread = activityItem(key = "thread:read").copy(kind = InboxItemKind.Thread)

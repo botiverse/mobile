@@ -648,15 +648,6 @@ private fun SharedActivityList(
                 }
             }
     }
-    LaunchedEffect(snapshot.items.size, snapshot.hasMore, loadingMore) {
-        snapshotFlow { listState.isActivityLoadMoreThreshold(snapshot.items.size) }
-            .distinctUntilChanged()
-            .collect { shouldLoad ->
-                if (shouldLoad && snapshot.hasMore && !loadingMore) {
-                    onIntent(SharedActivityIntent.LoadMore)
-                }
-            }
-    }
     LaunchedEffect(listState, snapshot.server.id, snapshot.items) {
         val activityItemsByKey = snapshot.items.associateBy(InboxItem::key)
         snapshotFlow {
@@ -723,15 +714,28 @@ private fun SharedActivityList(
                     }
                 )
             }
-            when {
-                loadingMore -> {
-                    item(key = "activity_load_more") {
-                        SharedActivityLoadingMoreRow()
+            if (snapshot.hasMore || loadingMore || loadMoreErrorCode != null) {
+                item(key = "activity_load_more") {
+                    val shouldRequest = activityShouldRequestLoadMore(
+                        hasMore = snapshot.hasMore,
+                        loadingMore = loadingMore,
+                        loadMoreErrorCode = loadMoreErrorCode
+                    )
+                    // The footer is the tail sentinel. Entering composition is a stronger and
+                    // more portable signal than observing LazyList layoutInfo: the latter did not
+                    // emit on the affected Kuikly/Android build, leaving the user at the end of
+                    // the first page with neither a request nor failure feedback (task #539).
+                    // Keep a stable effect key so appending a page cannot immediately cascade into
+                    // another request before the footer has actually left and re-entered view.
+                    LaunchedEffect(Unit) {
+                        if (shouldRequest) {
+                            latestOnIntent(SharedActivityIntent.LoadMore)
+                        }
                     }
-                }
-                snapshot.hasMore && loadMoreErrorCode != null -> {
-                    item(key = "activity_load_more_error") {
+                    if (loadMoreErrorCode != null) {
                         SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
+                    } else {
+                        SharedActivityLoadingMoreRow()
                     }
                 }
             }
@@ -1432,11 +1436,11 @@ internal fun InboxItem.activityFooterSlots(
     return slots
 }
 
-private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int): Boolean {
-    if (lastActivityRowIndex < 1) return false
-    val visibleLastIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return false
-    return visibleLastIndex >= lastActivityRowIndex - 3
-}
+internal fun activityShouldRequestLoadMore(
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    loadMoreErrorCode: String?
+): Boolean = hasMore && !loadingMore && loadMoreErrorCode == null
 
 private fun LazyListState.isActivityNearTop(): Boolean =
     firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
