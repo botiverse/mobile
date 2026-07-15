@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
 import kotlinx.serialization.Serializable
@@ -152,6 +153,10 @@ private fun WireForwardedBundleItem.toForwardMessageItem(fallbackIndex: Int): Fo
         avatarLabel = resolvedAuthorName.removePrefix("@").take(1).uppercase(),
         timestampLabel = sourceCreatedAt.orEmpty(),
         body = contentSnapshot,
-        attachmentCount = attachmentSnapshots.size
+        attachmentCount = attachmentSnapshots.size,
+        attachments =
+            attachmentSnapshots.map {
+                ForwardMessageAttachment(filename = it.filename, mimeType = it.mimeType)
+            }
     )
 }
