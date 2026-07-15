@@ -42,6 +42,8 @@ import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.SlockNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.sync.CanonicalMessageFoldInput
+import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
@@ -981,6 +983,8 @@ internal class SharedRealtimeDomainEventOwner(
     private val tasksDataStore: SharedTasksDataStore? = null,
     private val cursorStore: RealtimeAppliedSeqCursorStore? = null,
     private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
+    private val runWithCurrentMessageGrant:
+        (suspend (RealtimeGrantRecord, suspend (CurrentMessageCommitContext) -> Unit) -> Boolean)? = null,
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
     private var guardedSinks: RealtimeGuardedDomainEventSinks? = null
@@ -1057,8 +1061,8 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "unknown",
     ): Boolean =
-        runIfCurrentGrant(grant) {
-            acceptGuarded(grant.serverId, event, source)
+        runGuardedCanonicalShadowFirst(grant, event, source) { serverId, acceptedEvent, acceptedSource ->
+            acceptGuarded(serverId, acceptedEvent, acceptedSource)
         }
 
     suspend fun acceptHomeUnreadProjection(
@@ -1066,9 +1070,53 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "unknown",
     ): Boolean =
-        runIfCurrentGrant(grant) {
-            acceptGuardedHomeUnreadProjection(grant.serverId, event, source)
+        runGuardedCanonicalShadowFirst(grant, event, source) { serverId, acceptedEvent, acceptedSource ->
+            acceptGuardedHomeUnreadProjection(serverId, acceptedEvent, acceptedSource)
         }
+
+    /**
+     * Dormant T3 owner entry shared by selected-server and background-unread guarded projections. Production
+     * providers do not pass [runWithCurrentMessageGrant] in the seam-only slice, so both entries take their
+     * exact legacy [runIfCurrentGrant] path. Tests activate the nullable runner only after this seam is sealed.
+     */
+    private suspend fun runGuardedCanonicalShadowFirst(
+        grant: RealtimeGrantRecord,
+        event: RealtimeEvent,
+        source: String,
+        legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
+    ): Boolean {
+        val foldInput = event.canonicalMessageFoldInputOrNull()
+        val currentMessageRunner = runWithCurrentMessageGrant
+        if (foldInput == null || currentMessageRunner == null) {
+            return runIfCurrentGrant(grant) {
+                legacyContinuation(grant.serverId, event, source)
+            }
+        }
+        return currentMessageRunner(grant) { context ->
+            val lane = currentGrantMessageShadowCommitLane
+            if (lane != null) {
+                val legacyKey = event.realtimeDomainKey(context.partition.serverId)
+                if (legacyKey != null) {
+                    try {
+                        lane.commit(
+                            partition = context.partition,
+                            legacyKey = build.raft.app.network.sync.LegacyRealtimeDedupKey(legacyKey),
+                            foldInput = foldInput,
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (throwable: Throwable) {
+                        guardedSinks?.log?.invoke(
+                            "current_grant_message_shadow_failed source=$source " +
+                                "serverId=${context.partition.serverId} " +
+                                "error=${throwable::class.simpleName ?: "unknown"}"
+                        )
+                    }
+                }
+            }
+            legacyContinuation(context.partition.serverId, event, source)
+        }
+    }
 
     override fun accept(serverId: String, event: RealtimeEvent, source: String) {
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
@@ -1357,6 +1405,17 @@ private fun RealtimeEvent.refreshesMemberDetail(): Boolean =
         this is ServerPlanUpdated
 
 private const val AcceptedRealtimeKeyLimit = 256
+
+private fun RealtimeEvent.canonicalMessageFoldInputOrNull(): CanonicalMessageFoldInput? =
+    when (this) {
+        is MessageNew -> decodedCanonical?.let { carry ->
+            CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.New, carry)
+        }
+        is MessageUpdated -> decodedCanonical?.let { carry ->
+            CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.Updated, carry)
+        }
+        else -> null
+    }
 
 private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
     when (this) {

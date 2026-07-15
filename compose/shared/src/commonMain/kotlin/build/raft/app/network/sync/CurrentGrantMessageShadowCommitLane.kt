@@ -3,6 +3,7 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
+import build.raft.app.data.SlockSqlDatabase
 import kotlinx.atomicfu.atomic
 
 /** Compatibility event kind used by the existing process-local realtime dedup key. */
@@ -56,8 +57,10 @@ internal data class CommittedMessageScopeSnapshot(
 )
 
 internal enum class StrictMessageRestoreCorruptionKind {
+    ReaderNotImplemented,
     FactDecodeFailed,
     FactScalarMismatch,
+    FactPartitionMismatch,
     FactScopeMismatch,
     DuplicateFactId,
     FactOrderInvalid,
@@ -83,12 +86,63 @@ internal fun interface StrictMessageScopeSnapshotReader {
         val Unavailable = StrictMessageScopeSnapshotReader { scope ->
             StrictMessageRestoreResult.Corrupt(
                 StrictMessageRestoreCorruption(
-                    kind = StrictMessageRestoreCorruptionKind.CursorMissing,
+                    kind = StrictMessageRestoreCorruptionKind.ReaderNotImplemented,
                     factId = scope.scopeId,
                 ),
             )
         }
     }
+}
+
+/** Raw stored columns consumed by the strict validator before any lossy canonical mapping. */
+internal data class StrictMessageStoredFact(
+    val serverId: String,
+    val principalId: String,
+    val consumerId: String,
+    val id: String,
+    val channelId: String,
+    val scopeKind: String,
+    val seq: Long,
+    val createdAt: String,
+    val canonicalFactJson: String,
+)
+
+/** Dormant validator seam. GREEN supplies the exact decode/scalar/partition/scope/order/cursor checks. */
+internal class StrictMessageScopeSnapshotValidator {
+    fun validate(
+        scope: SyncScopeKey,
+        storedFacts: List<StrictMessageStoredFact>,
+        cursor: PersistedCursor?,
+    ): StrictMessageRestoreResult {
+        @Suppress("UNUSED_VARIABLE")
+        val seamInputs = Triple(scope, storedFacts, cursor)
+        return StrictMessageRestoreResult.Corrupt(
+            StrictMessageRestoreCorruption(StrictMessageRestoreCorruptionKind.ReaderNotImplemented),
+        )
+    }
+}
+
+internal data class StrictMessageSqlDelightReaderHooks(
+    /** Synchronous only: SQLDelight's transaction callback is backed by runBlocking. */
+    val afterFactsRead: () -> Unit = {},
+)
+
+/**
+ * Instantiable strict SQLDelight reader seam. It is deliberately unbound from the provider/central lane and
+ * returns ReaderNotImplemented until the correction REDs prove validation and one-snapshot read semantics.
+ */
+internal class SqlDelightStrictMessageScopeSnapshotReader(
+    internal val database: SlockSqlDatabase,
+    internal val validator: StrictMessageScopeSnapshotValidator = StrictMessageScopeSnapshotValidator(),
+    internal val hooks: StrictMessageSqlDelightReaderHooks = StrictMessageSqlDelightReaderHooks(),
+) : StrictMessageScopeSnapshotReader {
+    override suspend fun read(scope: SyncScopeKey): StrictMessageRestoreResult =
+        StrictMessageRestoreResult.Corrupt(
+            StrictMessageRestoreCorruption(
+                kind = StrictMessageRestoreCorruptionKind.ReaderNotImplemented,
+                factId = scope.scopeId,
+            ),
+        )
 }
 
 /** Observed before restore/write so rollback and pre-publish faults cannot erase collision evidence. */
