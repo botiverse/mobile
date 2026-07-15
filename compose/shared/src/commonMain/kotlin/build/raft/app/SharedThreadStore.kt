@@ -146,6 +146,7 @@ private const val SharedThreadPrewarmMaxConcurrency = 2
 private const val SharedThreadPrewarmStartIntervalMillis = 100L
 private const val SharedThreadZeroReplyOriginHydrationGraceMillis = 300L
 private const val SharedThreadFreshnessMessageFactLimit = 512
+private const val SharedThreadReplyCountFactLimit = 2_048
 private const val SharedThreadPrewarmGenerationSupersededCode = "thread_prewarm_generation_superseded"
 
 class SharedThreadFreshnessGeneration internal constructor(
@@ -167,6 +168,17 @@ private data class SharedThreadMessageMutationKey(
     val messageId: MessageId
 )
 
+private data class SharedThreadReplyCountKey(
+    val key: SharedThreadPayloadCacheKey,
+    val principalId: String,
+    val parentMessageId: String
+)
+
+internal data class SharedThreadReplyCountFact(
+    val threadChannelId: String?,
+    val replyCount: Int
+)
+
 internal class SharedThreadFreshnessLedger(
     private val messageFactLimit: Int = SharedThreadFreshnessMessageFactLimit
 ) {
@@ -174,6 +186,8 @@ internal class SharedThreadFreshnessLedger(
     private val generations = mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val messageFacts = LinkedHashMap<SharedThreadMessageMutationKey, Message>()
     private val summaryFacts = mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadSummaryFact>()
+    // Summary-authoritative reply totals remain useful when a timeline mutation supersedes the full payload generation.
+    private val replyCountFacts = LinkedHashMap<SharedThreadReplyCountKey, SharedThreadReplyCountFact>()
 
     fun capture(serverId: String, threadId: String): SharedThreadFreshnessGeneration =
         synchronized(lock) {
@@ -242,6 +256,39 @@ internal class SharedThreadFreshnessLedger(
             true
         }
 
+    fun recordReplyCountFacts(
+        serverId: String,
+        threadId: String,
+        principalId: String,
+        facts: List<Pair<String, SharedThreadReplyCountFact>>
+    ) {
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            facts.forEach { (parentMessageId, fact) ->
+                val factKey = SharedThreadReplyCountKey(key, principalId, parentMessageId)
+                replyCountFacts.remove(factKey)
+                replyCountFacts[factKey] = fact
+            }
+            while (replyCountFacts.size > SharedThreadReplyCountFactLimit) {
+                replyCountFacts.remove(replyCountFacts.keys.firstOrNull() ?: break)
+            }
+        }
+    }
+
+    fun applyReplyCountFacts(
+        serverId: String,
+        threadId: String,
+        principalId: String,
+        payload: KuiklyThreadScreenPayload
+    ): KuiklyThreadScreenPayload =
+        synchronized(lock) {
+            applyReplyCountFactsLocked(
+                key = SharedThreadPayloadCacheKey(serverId, threadId),
+                principalId = principalId,
+                payload = payload
+            )
+        }
+
     fun invalidateServer(serverId: String) {
         synchronized(lock) {
             generations.keys
@@ -253,6 +300,9 @@ internal class SharedThreadFreshnessLedger(
             summaryFacts.keys
                 .filter { key -> key.serverId == serverId }
                 .forEach(summaryFacts::remove)
+            replyCountFacts.keys
+                .filter { fact -> fact.key.serverId == serverId }
+                .forEach(replyCountFacts::remove)
         }
     }
 
@@ -286,6 +336,39 @@ internal class SharedThreadFreshnessLedger(
             generations.clear()
             messageFacts.clear()
             summaryFacts.clear()
+            replyCountFacts.clear()
+        }
+    }
+
+    private fun applyReplyCountFactsLocked(
+        key: SharedThreadPayloadCacheKey,
+        principalId: String,
+        payload: KuiklyThreadScreenPayload
+    ): KuiklyThreadScreenPayload {
+        fun merge(message: KuiklyThreadMessageItem): KuiklyThreadMessageItem {
+            val factKey = SharedThreadReplyCountKey(key, principalId, message.id)
+            val accepted = replyCountFacts[factKey] ?: return message
+            val nextThreadChannelId = accepted.threadChannelId ?: message.threadChannelId
+            val nextReplyCount = accepted.replyCount
+            return if (
+                nextThreadChannelId == message.threadChannelId &&
+                nextReplyCount == message.replyCount
+            ) {
+                message
+            } else {
+                message.copy(
+                    threadChannelId = nextThreadChannelId,
+                    replyCount = nextReplyCount
+                )
+            }
+        }
+
+        val nextOrigin = payload.originMessage?.let(::merge)
+        val nextMessages = payload.messages.map(::merge)
+        return if (nextOrigin == payload.originMessage && nextMessages == payload.messages) {
+            payload
+        } else {
+            payload.copy(originMessage = nextOrigin, messages = nextMessages)
         }
     }
 }
@@ -485,11 +568,12 @@ internal class SharedThreadPayloadStore(
         mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private var lastPrewarmStartedAt: TimeMark? = null
 
-    fun get(serverId: String, threadId: String): KuiklyThreadScreenPayload? {
+    fun get(serverId: String, threadId: String, principalId: String = ""): KuiklyThreadScreenPayload? {
         val generation = freshnessLedger.capture(serverId, threadId)
         return payloads.value[SharedThreadPayloadCacheKey(serverId, threadId)]
             ?.takeIf { entry -> entry.generation === generation }
             ?.payload
+            ?.let { payload -> freshnessLedger.applyReplyCountFacts(serverId, threadId, principalId, payload) }
     }
 
     fun put(serverId: String, threadId: String, payload: KuiklyThreadScreenPayload) {
@@ -507,6 +591,22 @@ internal class SharedThreadPayloadStore(
                 current + (generation.key to SharedThreadPayloadEntry(payload, generation))
             }
         }
+
+    fun recordReplyCountFacts(
+        serverId: String,
+        threadId: String,
+        principalId: String,
+        facts: List<Pair<String, SharedThreadReplyCountFact>>
+    ) {
+        freshnessLedger.recordReplyCountFacts(serverId, threadId, principalId, facts)
+    }
+
+    fun applyReplyCountFacts(
+        serverId: String,
+        threadId: String,
+        principalId: String = "",
+        payload: KuiklyThreadScreenPayload
+    ): KuiklyThreadScreenPayload = freshnessLedger.applyReplyCountFacts(serverId, threadId, principalId, payload)
 
     fun captureGeneration(serverId: String, threadId: String): SharedThreadFreshnessGeneration =
         freshnessLedger.capture(serverId, threadId)
@@ -923,10 +1023,12 @@ internal class SharedThreadDataSource(
     private val messageResolver = messageStore ?: SharedThreadMessageStore()
     private val replyThreadResolveCache = mutableMapOf<ReplyThreadResolveKey, String>()
     private val cacheServerId = MutableStateFlow("")
+    private val cachePrincipalId = MutableStateFlow("")
 
     suspend fun readSession(): StoredAuthSession? =
         sessionStore.readSession()?.also { session ->
             cacheServerId.value = session.currentServerId.orEmpty()
+            cachePrincipalId.value = session.user.id
         }
 
     fun cachePayload(
@@ -971,7 +1073,7 @@ internal class SharedThreadDataSource(
     }
 
     fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? =
-        payloadCache.get(cacheServerId.value, threadId)
+        payloadCache.get(cacheServerId.value, threadId, cachePrincipalId.value)
 
     // Reserved for UNRECOVERABLE scenarios only (task #562 boundary):
     // permission/visibility loss, epoch/server switches, identity proof
@@ -1624,7 +1726,17 @@ internal class SharedThreadDataSource(
                     }
                 is DataResult.Error -> return payloadResult
                 is DataResult.NoPermission -> return payloadResult
-        }
+            }
+                .let { canonicalPayload ->
+                    canonicalPayload.cacheThreadId()?.let { resolvedThreadId ->
+                        payloadCache.applyReplyCountFacts(
+                            serverId = session.currentServerId.orEmpty(),
+                            threadId = resolvedThreadId,
+                            principalId = session.user.id,
+                            payload = canonicalPayload
+                        )
+                    } ?: canonicalPayload
+                }
         cacheReplyThreadResolution(payload)
         if (canonicalRequestGeneration != null) {
             payloadCache.recordCanonicalSuccess(canonicalRequestGeneration)
@@ -1787,7 +1899,8 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun fetchFollowedThreadPayload(
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: KuiklyThreadScreenPayload,
+        onSummaries: (ThreadReplySummariesSnapshot) -> Unit = {}
     ): DataResult<KuiklyThreadScreenPayload> {
         if (conversationRepository == null) return DataResult.Content(basePayload)
         if (basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
@@ -1804,7 +1917,32 @@ internal class SharedThreadDataSource(
                 threadId = ThreadId(resolvedThreadId),
                 parentMessageIds = parentMessageIds
             )
-            .map { summaries -> basePayload.withReplySummaries(summaries) }
+            .map { summaries ->
+                onSummaries(summaries)
+                basePayload.withReplySummaries(summaries)
+            }
+    }
+
+    fun cacheReplyCountProjection(
+        threadId: String,
+        snapshot: ThreadReplySummariesSnapshot
+    ) {
+        val facts =
+            snapshot.threads.mapNotNull { summary ->
+                val parentMessageId = summary.parentMessageId?.value ?: return@mapNotNull null
+                parentMessageId to
+                    SharedThreadReplyCountFact(
+                        threadChannelId = (summary.threadChannelId ?: summary.channelId).value,
+                        replyCount = summary.replyCount
+                    )
+            }
+        if (facts.isEmpty()) return
+        payloadCache.recordReplyCountFacts(
+            serverId = cacheServerId.value,
+            threadId = threadId,
+            principalId = cachePrincipalId.value,
+            facts = facts
+        )
     }
 
     /**
@@ -4241,6 +4379,7 @@ internal class SharedThreadStore(
         if (!beforeFetch.hasRenderableThreadContent()) {
             return
         }
+        var replySummaries: ThreadReplySummariesSnapshot? = null
         val followedPayload =
             if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
                 // ReplyThread loads are already scoped to a single canonical stream,
@@ -4254,7 +4393,10 @@ internal class SharedThreadStore(
                 beforeFetch
             } else {
                 val followedStartedAt = TimeSource.Monotonic.markNow()
-                val followedResult = dataSource.fetchFollowedThreadPayload(beforeFetch)
+                val followedResult =
+                    dataSource.fetchFollowedThreadPayload(beforeFetch) { snapshot ->
+                        replySummaries = snapshot
+                    }
                 diagnosticsLogger?.invoke(
                     "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
                         "result=${followedResult.threadDiagnosticsResult()} " +
@@ -4278,6 +4420,11 @@ internal class SharedThreadStore(
                     "ignored=true reason=stale_route durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
             return
+        }
+        replySummaries?.let { snapshot ->
+            routePayload.cacheThreadId()?.let { threadId ->
+                dataSource.cacheReplyCountProjection(threadId, snapshot)
+            }
         }
         val patch =
             enriched

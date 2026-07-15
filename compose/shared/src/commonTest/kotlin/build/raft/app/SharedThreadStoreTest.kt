@@ -446,6 +446,79 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun replyCountFactsSurviveTimelineGenerationButRemainServerScoped() {
+        val store = SharedThreadPayloadStore()
+        val enriched =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "parent",
+                            threadChannelId = "thread-m1",
+                            replyCount = 7
+                        )
+                    )
+            )
+        val canonicalWithoutSummaries =
+            enriched.copy(
+                messages =
+                    enriched.messages.map { message ->
+                        message.copy(threadChannelId = null, replyCount = 0)
+                    }
+            )
+
+        store.put("server-1", "channel-1", enriched)
+        store.recordReplyCountFacts(
+            serverId = "server-1",
+            threadId = "channel-1",
+            principalId = "user-1",
+            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 7))
+        )
+        store.freshnessLedger.advance("server-1", "channel-1")
+
+        assertNull(store.get("server-1", "channel-1"))
+        assertEquals(
+            7,
+            store.applyReplyCountFacts("server-1", "channel-1", "user-1", canonicalWithoutSummaries)
+                .messages.single().replyCount
+        )
+        assertEquals(
+            0,
+            store.applyReplyCountFacts("server-1", "channel-1", "user-2", canonicalWithoutSummaries)
+                .messages.single().replyCount
+        )
+        assertEquals(
+            0,
+            store.applyReplyCountFacts("server-2", "channel-1", "user-1", canonicalWithoutSummaries)
+                .messages.single().replyCount
+        )
+
+        store.recordReplyCountFacts(
+            serverId = "server-1",
+            threadId = "channel-1",
+            principalId = "user-1",
+            facts = listOf("m1" to SharedThreadReplyCountFact("thread-m1", 3))
+        )
+        assertEquals(
+            3,
+            store.applyReplyCountFacts("server-1", "channel-1", "user-1", canonicalWithoutSummaries)
+                .messages.single().replyCount
+        )
+
+        store.freshnessLedger.invalidateServer("server-1")
+
+        assertEquals(
+            0,
+            store.applyReplyCountFacts("server-1", "channel-1", "user-1", canonicalWithoutSummaries)
+                .messages.single().replyCount
+        )
+    }
+
+    @Test
     fun sharedThreadPayloadStorePoolsPrewarmRequestsGlobally() = runBlocking {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
@@ -5389,6 +5462,59 @@ class SharedThreadStoreTest {
         assertTrue(message.isThreadFollowed)
         assertEquals(0, api.channelMessageCalls)
         scope.cancel()
+    }
+
+    @Test
+    fun reopenUsesReplyCountProjectionBeforeSecondarySummaryReturns() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "channel-1",
+                                        id = "m1",
+                                        seq = 10,
+                                        body = "parent",
+                                        replyCount = 0
+                                    )
+                                )
+                        )
+                    ),
+                threadReplySummariesResult = replySummaries(replyCount = 7)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        val firstStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
+
+        firstStore.accept(SharedThreadIntent.Start(basePayload()))
+        delay(1L)
+        assertEquals(7, firstStore.state.value.payload.messages.single().replyCount)
+
+        payloadStore.freshnessLedger.advance("server-1", "channel-1")
+        repository.threadReplySummariesResult = replySummaries(replyCount = 9)
+        repository.threadReplySummariesStarted = CompletableDeferred()
+        repository.releaseThreadReplySummaries = CompletableDeferred()
+        val secondStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
+
+        secondStore.accept(SharedThreadIntent.Start(basePayload()))
+        repository.threadReplySummariesStarted?.await()
+
+        assertEquals(7, secondStore.state.value.payload.messages.single().replyCount)
+
+        repository.releaseThreadReplySummaries?.complete(Unit)
+        delay(1L)
+        assertEquals(9, secondStore.state.value.payload.messages.single().replyCount)
+        appScope.cancel()
     }
 
     @Test
@@ -11060,6 +11186,8 @@ class SharedThreadStoreTest {
     ) : ConversationRepository {
         var getThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetThread: CompletableDeferred<Unit>? = null
+        var threadReplySummariesStarted: CompletableDeferred<Unit>? = null
+        var releaseThreadReplySummaries: CompletableDeferred<Unit>? = null
         var getReplyThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetReplyThread: CompletableDeferred<Unit>? = null
         val messageContextStartedById: MutableMap<MessageId, CompletableDeferred<Unit>> = mutableMapOf()
@@ -11106,6 +11234,8 @@ class SharedThreadStoreTest {
             parentMessageIds: List<MessageId>
         ): DataResult<ThreadReplySummariesSnapshot> {
             getThreadReplySummariesRequests += threadId to parentMessageIds
+            threadReplySummariesStarted?.complete(Unit)
+            releaseThreadReplySummaries?.await()
             return threadReplySummariesResult
         }
 
@@ -11842,6 +11972,25 @@ class SharedThreadStoreTest {
                 conversation = conversation,
                 messages = messages,
                 parentMessage = parentMessage
+            )
+
+        private fun replySummaries(replyCount: Int): DataResult<ThreadReplySummariesSnapshot> =
+            DataResult.Content(
+                ThreadReplySummariesSnapshot(
+                    threads =
+                        listOf(
+                            InboxItem(
+                                key = "thread:m1",
+                                kind = InboxItemKind.Thread,
+                                channelId = ChannelId("thread-m1"),
+                                channelName = "reply thread",
+                                threadChannelId = ChannelId("thread-m1"),
+                                parentChannelId = ChannelId("channel-1"),
+                                parentMessageId = MessageId("m1"),
+                                replyCount = replyCount
+                            )
+                        )
+                )
             )
 
         private fun conversationSummary(threadId: String = "channel-1"): ConversationSummary =
