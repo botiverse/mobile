@@ -82,6 +82,8 @@ private val ThreadComposerTextFieldMaxHeight = 80.dp
 private val ThreadComposerToolbarMinHeight = 28.dp
 private val ThreadComposerIconButtonSize = 26.dp
 private val ThreadComposerIconSize = 14.dp
+private val ThreadComposerActionShadowOffset = 2.dp
+private val ThreadComposerLeftActionGroupSpacing = 6.dp
 private const val ThreadComposerAttachmentTrayMaxWidthDp = 321
 private const val ThreadComposerAttachmentImageTileSizeDp = 64
 private const val ThreadComposerAttachmentFileTileWidthDp = 128
@@ -1508,7 +1510,7 @@ internal fun ThreadComposerContent(
                         Row(
                             modifier = Modifier.heightIn(min = ThreadComposerToolbarMinHeight),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
                         ) {
                             if (state.attachmentActionsEnabled) {
                                 ComposerIconButton(SlockLucideIconName.ImagePlus, composerEnabled) {
@@ -3013,7 +3015,7 @@ private fun ComposerIconButton(
         disabledShadowColor = SlockColor.ShadowBlack,
         disabledIconColor = disabledIconColor,
         size = ThreadComposerIconButtonSize,
-        shadowOffset = 2.dp,
+        shadowOffset = ThreadComposerActionShadowOffset,
         iconSize = ThreadComposerIconSize,
         iconSpinning = iconSpinning
     )
@@ -3050,10 +3052,13 @@ private fun ComposerSendButton(
         disabledShadowColor = ThreadComposerDisabledSendShadow,
         disabledIconColor = ThreadComposerDisabledSendIconArgb,
         size = ThreadComposerIconButtonSize,
-        shadowOffset = 2.dp,
+        shadowOffset = ThreadComposerActionShadowOffset,
         iconSize = ThreadComposerIconSize
     )
 }
+
+internal fun threadComposerVisibleLeftActionGapDp(): Float =
+    (ThreadComposerLeftActionGroupSpacing + ThreadComposerActionShadowOffset).value
 
 private enum class ComposerTextChipVariant {
     Pink,
