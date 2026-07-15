@@ -356,6 +356,19 @@ internal fun threadComposerSuggestionRefreshRequest(
     }
 }
 
+internal fun threadComposerEffectiveSuggestionStatus(
+    triggerActive: Boolean,
+    rankingReady: Boolean,
+    usesImmediateSuggestions: Boolean,
+    sourceStatus: SharedMembersLoadStatus
+): SharedMembersLoadStatus {
+    if (!triggerActive || rankingReady || usesImmediateSuggestions) return sourceStatus
+    return when (sourceStatus) {
+        SharedMembersLoadStatus.InFlight -> SharedMembersLoadStatus.InFlight
+        else -> sourceStatus
+    }
+}
+
 internal fun threadComposerSuggestionPanelState(
     focused: Boolean,
     trigger: KuiklyComposerSuggestionTrigger,
@@ -1171,25 +1184,19 @@ internal fun ThreadComposerContent(
     val channelUsesImmediateSuggestions =
         (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)?.query?.isBlank() == true
     val effectiveMemberSuggestionsStatus =
-        if (
-            suggestionTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger &&
-            !memberRankingReady &&
-            !memberUsesImmediateSuggestions
-        ) {
-            SharedMembersLoadStatus.InFlight
-        } else {
-            state.memberSuggestionsStatus
-        }
+        threadComposerEffectiveSuggestionStatus(
+            triggerActive = suggestionTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger,
+            rankingReady = memberRankingReady,
+            usesImmediateSuggestions = memberUsesImmediateSuggestions,
+            sourceStatus = state.memberSuggestionsStatus
+        )
     val effectiveChannelSuggestionsStatus =
-        if (
-            suggestionTrigger is KuiklyComposerSuggestionTrigger.ChannelTrigger &&
-            !channelRankingReady &&
-            !channelUsesImmediateSuggestions
-        ) {
-            SharedMembersLoadStatus.InFlight
-        } else {
-            state.channelSuggestionsStatus
-        }
+        threadComposerEffectiveSuggestionStatus(
+            triggerActive = suggestionTrigger is KuiklyComposerSuggestionTrigger.ChannelTrigger,
+            rankingReady = channelRankingReady,
+            usesImmediateSuggestions = channelUsesImmediateSuggestions,
+            sourceStatus = state.channelSuggestionsStatus
+        )
     val suggestionPanelState =
         threadComposerSuggestionPanelState(
             focused = focused,
