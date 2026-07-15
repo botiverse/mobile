@@ -112,6 +112,7 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.MemberId
@@ -177,6 +178,8 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -18200,6 +18203,66 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     }
 }
 
+// Mirrors web ForwardedBundleCard's attachment chips: FileText icon + filename
+// + "· KIND" (mime subtype, uppercased). Legacy payloads without snapshots fall
+// back to the muted count label.
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ThreadForwardAttachmentChips(item: ForwardMessageItem, modifier: Modifier = Modifier) {
+    if (item.attachments.isNotEmpty()) {
+        FlowRow(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            item.attachments.forEach { attachment ->
+                Row(
+                    modifier =
+                        Modifier
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                            .background(SlockColor.SurfaceWhite)
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    SlockLucideIcon(
+                        name = SlockLucideIconName.FileText,
+                        color = SlockColor.TextBlackArgb,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Text(
+                        text = attachment.filename,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
+                        text = "· ${forwardAttachmentKindLabel(attachment.mimeType)}",
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    } else if (item.attachmentCount > 0) {
+        Text(
+            text = item.localizedForwardAttachmentLabel(),
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+            color = SlockColor.TextMutedGray,
+            modifier = modifier
+        )
+    }
+}
+
+private fun forwardAttachmentKindLabel(mimeType: String?): String {
+    if (mimeType.isNullOrBlank()) return "FILE"
+    val subtype = mimeType.substringAfter('/', mimeType)
+    return subtype.split('+', '.', '-').firstOrNull()?.uppercase()?.takeIf { it.isNotBlank() } ?: "FILE"
+}
+
 private const val ThreadForwardBundleInlinePreviewLimit = 3
 
 @Composable
@@ -18288,13 +18351,7 @@ private fun ThreadForwardBundleCard(
                         onOpenUrl = onOpenUrl
                     )
                 }
-                if (item.attachmentCount > 0) {
-                    Text(
-                        text = item.localizedForwardAttachmentLabel(),
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = SlockColor.TextMutedGray
-                    )
-                }
+                ThreadForwardAttachmentChips(item)
             }
         }
         if (onOpenAll != null && bundle.displayCount() > ThreadForwardBundleInlinePreviewLimit) {
@@ -18748,12 +18805,10 @@ private fun ThreadForwardBundleScreen() {
                         taskOpenEnabled = false,
                         taskStatusActionsEnabled = false
                     )
-                    if (item.attachmentCount > 0) {
-                        Text(
-                            text = item.localizedForwardAttachmentLabel(),
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                            color = SlockColor.TextMutedGray,
-                            modifier = Modifier.padding(start = 60.dp, bottom = SlockSpacing.Sm)
+                    if (item.attachments.isNotEmpty() || item.attachmentCount > 0) {
+                        ThreadForwardAttachmentChips(
+                            item = item,
+                            modifier = Modifier.padding(start = 60.dp, end = SlockSpacing.Md, bottom = SlockSpacing.Sm)
                         )
                     }
                 }
@@ -18825,7 +18880,12 @@ internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
                     avatarLabel = "a",
                     timestampLabel = "10:31",
                     body = "",
-                    attachmentCount = 2
+                    attachmentCount = 2,
+                    attachments =
+                        listOf(
+                            ForwardMessageAttachment("visual-parity-notes.pdf", "application/pdf"),
+                            ForwardMessageAttachment("home-rows-android.png", "image/png")
+                        )
                 ),
                 ForwardMessageItem(
                     id = "fwd-3",
@@ -18835,7 +18895,8 @@ internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
                     avatarLabel = "A",
                     timestampLabel = "09:58",
                     body = "Search parity now covers sender filters and time ranges.",
-                    attachmentCount = 1
+                    attachmentCount = 1,
+                    attachments = listOf(ForwardMessageAttachment("capture-timing.log", "text/plain"))
                 ),
                 ForwardMessageItem(
                     id = "fwd-4",

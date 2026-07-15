@@ -346,7 +346,17 @@ data class ForwardMessageItem(
     val avatarWireValue: String? = null,
     val timestampLabel: String = "",
     val body: String = "",
-    val attachmentCount: Int = 0
+    val attachmentCount: Int = 0,
+    // Snapshot metadata (filename + mime) when the wire provides it; the web
+    // ForwardedBundleCard renders these as per-file chips. Legacy payloads
+    // carry only a count and leave this empty.
+    val attachments: List<ForwardMessageAttachment> = emptyList()
+)
+
+@Serializable
+data class ForwardMessageAttachment(
+    val filename: String = "",
+    val mimeType: String? = null
 )
 
 @Serializable
