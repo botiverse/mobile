@@ -101,6 +101,8 @@ import build.raft.app.model.safeDisplayNameOrNull
 import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -135,7 +137,7 @@ private data class ReplyThreadResolveKey(
     val parentMessageId: String
 )
 
-private data class SharedThreadPayloadCacheKey(
+internal data class SharedThreadPayloadCacheKey(
     val serverId: String,
     val threadId: String
 )
@@ -143,6 +145,155 @@ private data class SharedThreadPayloadCacheKey(
 private const val SharedThreadPrewarmMaxConcurrency = 2
 private const val SharedThreadPrewarmStartIntervalMillis = 100L
 private const val SharedThreadZeroReplyOriginHydrationGraceMillis = 300L
+private const val SharedThreadFreshnessMessageFactLimit = 512
+private const val SharedThreadPrewarmGenerationSupersededCode = "thread_prewarm_generation_superseded"
+
+class SharedThreadFreshnessGeneration internal constructor(
+    internal val key: SharedThreadPayloadCacheKey
+)
+
+internal data class SharedThreadSummaryFact(
+    val replyCount: Int,
+    val latestActivityMessageId: String?,
+    val latestActivityPreview: String?,
+    val latestActivityAt: String?,
+    val lastMessageId: String?,
+    val lastMessagePreview: String?,
+    val lastMessageAt: String?
+)
+
+private data class SharedThreadMessageMutationKey(
+    val key: SharedThreadPayloadCacheKey,
+    val messageId: MessageId
+)
+
+internal class SharedThreadFreshnessLedger(
+    private val messageFactLimit: Int = SharedThreadFreshnessMessageFactLimit
+) {
+    private val lock = SynchronizedObject()
+    private val generations = mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
+    private val messageFacts = LinkedHashMap<SharedThreadMessageMutationKey, Message>()
+    private val summaryFacts = mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadSummaryFact>()
+
+    fun capture(serverId: String, threadId: String): SharedThreadFreshnessGeneration =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            generations.getOrPut(key) { SharedThreadFreshnessGeneration(key) }
+        }
+
+    fun advance(serverId: String, threadId: String): SharedThreadFreshnessGeneration =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            SharedThreadFreshnessGeneration(key).also { generations[key] = it }
+        }
+
+    fun advanceAndRun(
+        serverId: String,
+        threadId: String,
+        block: (previous: SharedThreadFreshnessGeneration?, current: SharedThreadFreshnessGeneration) -> Unit
+    ): SharedThreadFreshnessGeneration =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            val previous = generations[key]
+            val current = SharedThreadFreshnessGeneration(key)
+            generations[key] = current
+            block(previous, current)
+            current
+        }
+
+    fun acceptMessageMutation(serverId: String, threadId: String, message: Message): Boolean =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            val mutationKey = SharedThreadMessageMutationKey(key, message.id)
+            if (messageFacts[mutationKey] == message) return@synchronized false
+            messageFacts.remove(mutationKey)
+            messageFacts[mutationKey] = message
+            while (messageFacts.size > messageFactLimit.coerceAtLeast(1)) {
+                messageFacts.remove(messageFacts.keys.firstOrNull() ?: break)
+            }
+            generations[key] = SharedThreadFreshnessGeneration(key)
+            true
+        }
+
+    fun acceptSummary(
+        serverId: String,
+        threadId: String,
+        fact: SharedThreadSummaryFact
+    ): Boolean =
+        synchronized(lock) {
+            val key = SharedThreadPayloadCacheKey(serverId, threadId)
+            val previous = summaryFacts[key]
+            if (previous == null) {
+                summaryFacts[key] = fact
+                return@synchronized false
+            }
+            if (previous == fact) return@synchronized false
+            if (fact.replyCount < previous.replyCount) return@synchronized false
+            if (
+                fact.replyCount == previous.replyCount &&
+                fact.latestActivityAt != null &&
+                previous.latestActivityAt != null &&
+                fact.latestActivityAt < previous.latestActivityAt
+            ) {
+                return@synchronized false
+            }
+            summaryFacts[key] = fact
+            generations[key] = SharedThreadFreshnessGeneration(key)
+            true
+        }
+
+    fun invalidateServer(serverId: String) {
+        synchronized(lock) {
+            generations.keys
+                .filter { key -> key.serverId == serverId }
+                .forEach { key -> generations[key] = SharedThreadFreshnessGeneration(key) }
+            messageFacts.keys
+                .filter { mutation -> mutation.key.serverId == serverId }
+                .forEach(messageFacts::remove)
+            summaryFacts.keys
+                .filter { key -> key.serverId == serverId }
+                .forEach(summaryFacts::remove)
+        }
+    }
+
+    fun isCurrent(generation: SharedThreadFreshnessGeneration): Boolean =
+        synchronized(lock) { generations[generation.key] === generation }
+
+    fun runIfCurrent(
+        generation: SharedThreadFreshnessGeneration,
+        block: () -> Unit
+    ): Boolean =
+        synchronized(lock) {
+            if (generations[generation.key] !== generation) return@synchronized false
+            block()
+            true
+        }
+
+    fun advanceIfCurrent(
+        generation: SharedThreadFreshnessGeneration,
+        block: (current: SharedThreadFreshnessGeneration) -> Unit
+    ): Boolean =
+        synchronized(lock) {
+            if (generations[generation.key] !== generation) return@synchronized false
+            val current = SharedThreadFreshnessGeneration(generation.key)
+            generations[generation.key] = current
+            block(current)
+            true
+        }
+
+    internal fun clearForTest() {
+        synchronized(lock) {
+            generations.clear()
+            messageFacts.clear()
+            summaryFacts.clear()
+        }
+    }
+}
+
+private data class SharedThreadPayloadEntry(
+    val payload: KuiklyThreadScreenPayload,
+    val generation: SharedThreadFreshnessGeneration
+)
 
 private data class PendingReactionRealtimeGuard(
     val messageId: String,
@@ -250,40 +401,91 @@ internal class SharedThreadMessageStore(
 internal class SharedThreadPayloadStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     maxConcurrentPrewarms: Int = SharedThreadPrewarmMaxConcurrency,
-    private val prewarmStartIntervalMillis: Long = SharedThreadPrewarmStartIntervalMillis
+    private val prewarmStartIntervalMillis: Long = SharedThreadPrewarmStartIntervalMillis,
+    internal val freshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger()
 ) {
-    private val payloads = MutableStateFlow<Map<SharedThreadPayloadCacheKey, KuiklyThreadScreenPayload>>(emptyMap())
+    private val payloads = MutableStateFlow<Map<SharedThreadPayloadCacheKey, SharedThreadPayloadEntry>>(emptyMap())
     private val prewarmMutex = Mutex()
     private val prewarmPool = Semaphore(maxConcurrentPrewarms.coerceAtLeast(1))
     private val prewarmStartMutex = Mutex()
     private val prewarmInFlight = mutableMapOf<SharedThreadPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
-    private val prewarmReady = mutableSetOf<SharedThreadPayloadCacheKey>()
+    private val prewarmInFlightGenerations =
+        mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
+    private val prewarmReadyGenerations =
+        mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
+    private val prewarmFailureGenerations =
+        mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val prewarmFailures = mutableMapOf<SharedThreadPayloadCacheKey, DataResult<KuiklyThreadScreenPayload>>()
     private val failedPrewarmTakeovers =
         mutableMapOf<SharedThreadPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
+    private val failedPrewarmTakeoverGenerations =
+        mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val failedPrewarmTakeoverResults =
         mutableMapOf<SharedThreadPayloadCacheKey, DataResult<KuiklyThreadScreenPayload>>()
+    private val failedPrewarmTakeoverResultGenerations =
+        mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private var lastPrewarmStartedAt: TimeMark? = null
 
-    fun get(serverId: String, threadId: String): KuiklyThreadScreenPayload? =
-        payloads.value[SharedThreadPayloadCacheKey(serverId, threadId)]
-            ?: serverId.takeIf { it.isNotBlank() }
-                ?.let { payloads.value[SharedThreadPayloadCacheKey("", threadId)] }
+    fun get(serverId: String, threadId: String): KuiklyThreadScreenPayload? {
+        val generation = freshnessLedger.capture(serverId, threadId)
+        return payloads.value[SharedThreadPayloadCacheKey(serverId, threadId)]
+            ?.takeIf { entry -> entry.generation === generation }
+            ?.payload
+    }
 
     fun put(serverId: String, threadId: String, payload: KuiklyThreadScreenPayload) {
-        payloads.update { current -> current + (SharedThreadPayloadCacheKey(serverId, threadId) to payload) }
+        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+        val generation = freshnessLedger.capture(serverId, threadId)
+        payloads.update { current -> current + (key to SharedThreadPayloadEntry(payload, generation)) }
     }
+
+    fun putIfCurrent(
+        generation: SharedThreadFreshnessGeneration,
+        payload: KuiklyThreadScreenPayload
+    ): Boolean =
+        freshnessLedger.runIfCurrent(generation) {
+            payloads.update { current ->
+                current + (generation.key to SharedThreadPayloadEntry(payload, generation))
+            }
+        }
+
+    fun captureGeneration(serverId: String, threadId: String): SharedThreadFreshnessGeneration =
+        freshnessLedger.capture(serverId, threadId)
 
     fun remove(serverId: String, threadId: String) {
         val key = SharedThreadPayloadCacheKey(serverId, threadId)
         val legacyKey = SharedThreadPayloadCacheKey("", threadId)
-        payloads.update { current ->
-            current - key - legacyKey
+        freshnessLedger.advanceAndRun(serverId, threadId) { previous, _ ->
+            payloads.update { current ->
+                current.filterKeys { candidate ->
+                    if (candidate == legacyKey) return@filterKeys false
+                    if (candidate != key) return@filterKeys true
+                    val entry = current[candidate]
+                    previous != null && entry?.generation !== previous
+                }
+            }
         }
     }
 
+    fun removeIfCurrent(generation: SharedThreadFreshnessGeneration): Boolean =
+        freshnessLedger.advanceIfCurrent(generation) {
+            payloads.update { current ->
+                current.filterKeys { candidate ->
+                    if (candidate == SharedThreadPayloadCacheKey("", generation.key.threadId)) {
+                        return@filterKeys false
+                    }
+                    candidate != generation.key || current[candidate]?.generation !== generation
+                }
+            }
+        }
+
     fun values(serverId: String): Collection<KuiklyThreadScreenPayload> =
-        payloads.value.filterKeys { key -> key.serverId == serverId || key.serverId.isBlank() }.values
+        payloads.value
+            .filter { (key, entry) ->
+                key.serverId == serverId && freshnessLedger.isCurrent(entry.generation)
+            }
+            .values
+            .map { entry -> entry.payload }
 
     suspend fun prewarm(
         serverId: String,
@@ -291,17 +493,38 @@ internal class SharedThreadPayloadStore(
         fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val key = SharedThreadPayloadCacheKey(serverId, threadId)
-        val cached =
-            prewarmMutex.withLock {
-                if (key in prewarmReady) payloads.value[key] else null
-            }
-        if (cached != null) return@coroutineScope DataResult.Content(cached)
+        val generation = freshnessLedger.capture(serverId, threadId)
 
+        var cached: KuiklyThreadScreenPayload? = null
         var created: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
         val deferred =
             prewarmMutex.withLock {
+                if (prewarmReadyGenerations[key] !== generation) {
+                    prewarmReadyGenerations.remove(key)
+                }
+                if (prewarmFailureGenerations[key] !== generation) {
+                    prewarmFailures.remove(key)
+                    prewarmFailureGenerations.remove(key)
+                }
+                if (prewarmInFlightGenerations[key] !== generation) {
+                    prewarmInFlight.remove(key)
+                    prewarmInFlightGenerations.remove(key)
+                    failedPrewarmTakeovers.remove(key)
+                    failedPrewarmTakeoverGenerations.remove(key)
+                    failedPrewarmTakeoverResults.remove(key)
+                    failedPrewarmTakeoverResultGenerations.remove(key)
+                }
+                if (prewarmReadyGenerations[key] === generation) {
+                    cached = payloads.value[key]
+                        ?.takeIf { entry -> entry.generation === generation }
+                        ?.payload
+                    if (cached != null) return@withLock null
+                    prewarmReadyGenerations.remove(key)
+                }
                 prewarmInFlight[key]
+                    ?.takeIf { prewarmInFlightGenerations[key] === generation }
                     ?: failedPrewarmTakeovers[key]
+                        ?.takeIf { failedPrewarmTakeoverGenerations[key] === generation }
                     ?: scope.async(start = CoroutineStart.LAZY) {
                         try {
                             val result =
@@ -309,14 +532,28 @@ internal class SharedThreadPayloadStore(
                                     awaitPrewarmStartRateLimit()
                                     fetch()
                                 }
-                            if (result is DataResult.Content) {
-                                prewarmMutex.withLock {
-                                    prewarmReady += key
-                                    prewarmFailures.remove(key)
-                                    failedPrewarmTakeoverResults.remove(key)
+                            prewarmMutex.withLock {
+                                val currentJob = currentCoroutineContext()[Job]
+                                if (
+                                    prewarmInFlightGenerations[key] === generation &&
+                                    prewarmInFlight[key] === currentJob
+                                ) {
+                                    freshnessLedger.runIfCurrent(generation) {
+                                        if (result is DataResult.Content) {
+                                            payloads.update { current ->
+                                                current + (key to SharedThreadPayloadEntry(result.data, generation))
+                                            }
+                                            prewarmReadyGenerations[key] = generation
+                                            prewarmFailures.remove(key)
+                                            prewarmFailureGenerations.remove(key)
+                                            failedPrewarmTakeoverResults.remove(key)
+                                            failedPrewarmTakeoverResultGenerations.remove(key)
+                                        } else {
+                                            prewarmFailures[key] = result
+                                            prewarmFailureGenerations[key] = generation
+                                        }
+                                    }
                                 }
-                            } else {
-                                prewarmMutex.withLock { prewarmFailures[key] = result }
                             }
                             result
                         } finally {
@@ -324,34 +561,54 @@ internal class SharedThreadPayloadStore(
                             prewarmMutex.withLock {
                                 if (prewarmInFlight[key] === currentJob) {
                                     prewarmInFlight.remove(key)
+                                    prewarmInFlightGenerations.remove(key)
                                 }
                             }
                         }
                     }.also { candidate ->
                         prewarmFailures.remove(key)
                         failedPrewarmTakeoverResults.remove(key)
+                        failedPrewarmTakeoverResultGenerations.remove(key)
                         prewarmInFlight[key] = candidate
+                        prewarmInFlightGenerations[key] = generation
                         created = candidate
                     }
             }
+        cached?.let { return@coroutineScope DataResult.Content(it) }
+        val shared = deferred ?: error("prewarm generation lookup missing")
         created?.start()
-        deferred.await()
+        shared.await()
     }
 
     suspend fun joinOrConsumePrewarm(serverId: String, threadId: String): DataResult<KuiklyThreadScreenPayload>? {
         val key = SharedThreadPayloadCacheKey(serverId, threadId)
         val lookup =
             prewarmMutex.withLock {
+                val generation = freshnessLedger.capture(serverId, threadId)
                 val cached =
-                    if (prewarmReady.remove(key)) {
+                    if (prewarmReadyGenerations[key] === generation) {
+                        prewarmReadyGenerations.remove(key)
                         payloads.value[key]
+                            ?.takeIf { entry -> entry.generation === generation }
+                            ?.payload
                     } else {
                         null
                     }
-                SharedThreadPrewarmLookup(cached = cached, inFlight = prewarmInFlight[key])
+                SharedThreadPrewarmLookup(
+                    generation = generation,
+                    cached = cached,
+                    inFlight = prewarmInFlight[key]
+                        ?.takeIf { prewarmInFlightGenerations[key] === generation },
+                    failure = prewarmFailures[key]
+                        ?.takeIf { prewarmFailureGenerations[key] === generation }
+                )
             }
         lookup.cached?.let { return DataResult.Content(it) }
-        return lookup.inFlight?.await() ?: prewarmMutex.withLock { prewarmFailures[key] }
+        val result = lookup.inFlight?.await() ?: lookup.failure
+        if (result == null || freshnessLedger.isCurrent(lookup.generation)) return result
+        return DataResult.Error(
+            ScreenError(code = SharedThreadPrewarmGenerationSupersededCode, retryable = true)
+        )
     }
 
     suspend fun takeOverFailedPrewarm(
@@ -360,70 +617,106 @@ internal class SharedThreadPayloadStore(
         fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val key = SharedThreadPayloadCacheKey(serverId, threadId)
-        var immediate: DataResult<KuiklyThreadScreenPayload>? = null
-        var fetchDirectly = false
-        var created: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
-        val deferred =
-            prewarmMutex.withLock {
-                payloads.value[key]?.let { payload ->
-                    immediate = DataResult.Content(payload)
-                    return@withLock null
-                }
-                failedPrewarmTakeoverResults[key]?.let { result ->
-                    immediate = result
-                    return@withLock null
-                }
-                failedPrewarmTakeovers[key]
-                    ?: prewarmInFlight[key]
-                    ?: if (prewarmFailures[key] != null) {
-                        prewarmMutexTakeover(key, fetch).also { candidate ->
+        while (true) {
+            var immediate: DataResult<KuiklyThreadScreenPayload>? = null
+            var created: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
+            lateinit var generation: SharedThreadFreshnessGeneration
+            val deferred =
+                prewarmMutex.withLock {
+                    generation = freshnessLedger.capture(serverId, threadId)
+                    if (prewarmReadyGenerations[key] === generation) {
+                        val readyPayload = payloads.value[key]
+                            ?.takeIf { entry -> entry.generation === generation }
+                            ?.payload
+                        if (readyPayload != null) {
+                            readyPayload.let { payload ->
+                                immediate = DataResult.Content(payload)
+                                return@withLock null
+                            }
+                        } else {
+                            prewarmReadyGenerations.remove(key)
+                        }
+                    }
+                    if (failedPrewarmTakeoverResultGenerations[key] !== generation) {
+                        failedPrewarmTakeoverResults.remove(key)
+                        failedPrewarmTakeoverResultGenerations.remove(key)
+                    }
+                    if (failedPrewarmTakeoverGenerations[key] !== generation) {
+                        failedPrewarmTakeovers.remove(key)
+                        failedPrewarmTakeoverGenerations.remove(key)
+                    }
+                    failedPrewarmTakeoverResults[key]?.let { result ->
+                        immediate = result
+                        return@withLock null
+                    }
+                    failedPrewarmTakeovers[key]
+                        ?: prewarmInFlight[key]?.takeIf { prewarmInFlightGenerations[key] === generation }
+                        ?: prewarmMutexTakeover(key, generation, fetch).also { candidate ->
                             failedPrewarmTakeovers[key] = candidate
-                            prewarmReady.remove(key)
+                            failedPrewarmTakeoverGenerations[key] = generation
+                            prewarmReadyGenerations.remove(key)
                             prewarmInFlight.remove(key)
+                            prewarmInFlightGenerations.remove(key)
                             created = candidate
                         }
-                    } else {
-                        fetchDirectly = true
-                        null
+                }
+            val result =
+                immediate
+                    ?: run {
+                        val shared = deferred ?: error("failed prewarm takeover lookup missing")
+                        created?.start()
+                        shared.await()
                     }
-            }
-        immediate?.let { return@coroutineScope it }
-        if (fetchDirectly) return@coroutineScope fetch()
-        val shared = deferred ?: error("failed prewarm takeover lookup missing")
-        created?.start()
-        shared.await()
+            if (freshnessLedger.isCurrent(generation)) return@coroutineScope result
+        }
     }
 
-    suspend fun recordCanonicalSuccess(serverId: String, threadId: String) {
-        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+    suspend fun recordCanonicalSuccess(generation: SharedThreadFreshnessGeneration) {
+        val key = generation.key
         prewarmMutex.withLock {
-            prewarmFailures.remove(key)
-            failedPrewarmTakeoverResults.remove(key)
-            // An explicit canonical retry is the manual escape from a failed
-            // prewarm generation. Detach any older app-scope takeover so its
-            // later completion cannot make that terminal failure sticky again.
-            failedPrewarmTakeovers.remove(key)
+            freshnessLedger.runIfCurrent(generation) {
+                prewarmFailures.remove(key)
+                prewarmFailureGenerations.remove(key)
+                failedPrewarmTakeoverResults.remove(key)
+                failedPrewarmTakeoverResultGenerations.remove(key)
+                // An explicit canonical retry is the manual escape from a failed
+                // prewarm generation. Detach any older app-scope takeover so its
+                // later completion cannot make that terminal failure sticky again.
+                failedPrewarmTakeovers.remove(key)
+                failedPrewarmTakeoverGenerations.remove(key)
+            }
         }
     }
 
     private fun prewarmMutexTakeover(
         key: SharedThreadPayloadCacheKey,
+        generation: SharedThreadFreshnessGeneration,
         fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
     ): Deferred<DataResult<KuiklyThreadScreenPayload>> =
         failedPrewarmTakeovers[key]
+            ?.takeIf { failedPrewarmTakeoverGenerations[key] === generation }
             ?: scope.async(start = CoroutineStart.LAZY) {
                 try {
                     val result = fetch()
                     prewarmMutex.withLock {
                         val currentJob = currentCoroutineContext()[Job]
-                        if (failedPrewarmTakeovers[key] === currentJob) {
-                            if (result is DataResult.Content) {
-                                payloads.update { current -> current + (key to result.data) }
-                                prewarmReady += key
-                                prewarmFailures.remove(key)
-                                failedPrewarmTakeoverResults.remove(key)
-                            } else {
-                                failedPrewarmTakeoverResults[key] = result
+                        if (
+                            failedPrewarmTakeovers[key] === currentJob
+                        ) {
+                            freshnessLedger.runIfCurrent(generation) {
+                                if (result is DataResult.Content) {
+                                    payloads.update { current ->
+                                        current + (key to SharedThreadPayloadEntry(result.data, generation))
+                                    }
+                                    prewarmReadyGenerations[key] = generation
+                                    prewarmFailures.remove(key)
+                                    prewarmFailureGenerations.remove(key)
+                                    failedPrewarmTakeoverResults.remove(key)
+                                    failedPrewarmTakeoverResultGenerations.remove(key)
+                                } else {
+                                    failedPrewarmTakeoverResults[key] = result
+                                    failedPrewarmTakeoverResultGenerations[key] = generation
+                                }
                             }
                         }
                     }
@@ -433,6 +726,7 @@ internal class SharedThreadPayloadStore(
                     prewarmMutex.withLock {
                         if (failedPrewarmTakeovers[key] === currentJob) {
                             failedPrewarmTakeovers.remove(key)
+                            failedPrewarmTakeoverGenerations.remove(key)
                         }
                     }
                 }
@@ -457,18 +751,25 @@ internal class SharedThreadPayloadStore(
         prewarmInFlight.values.forEach { it.cancel() }
         failedPrewarmTakeovers.values.forEach { it.cancel() }
         prewarmInFlight.clear()
-        prewarmReady.clear()
+        prewarmInFlightGenerations.clear()
+        prewarmReadyGenerations.clear()
         prewarmFailures.clear()
+        prewarmFailureGenerations.clear()
         failedPrewarmTakeovers.clear()
+        failedPrewarmTakeoverGenerations.clear()
         failedPrewarmTakeoverResults.clear()
+        failedPrewarmTakeoverResultGenerations.clear()
         lastPrewarmStartedAt = null
         payloads.value = emptyMap()
+        freshnessLedger.clearForTest()
     }
 }
 
 private data class SharedThreadPrewarmLookup(
+    val generation: SharedThreadFreshnessGeneration,
     val cached: KuiklyThreadScreenPayload?,
-    val inFlight: Deferred<DataResult<KuiklyThreadScreenPayload>>?
+    val inFlight: Deferred<DataResult<KuiklyThreadScreenPayload>>?,
+    val failure: DataResult<KuiklyThreadScreenPayload>?
 )
 
 private fun Message.needsSharedThreadMessageStoreHydration(): Boolean =
@@ -570,27 +871,43 @@ internal class SharedThreadDataSource(
 
     fun cachePayload(
         payload: KuiklyThreadScreenPayload,
-        serverId: String = cacheServerId.value
-    ) {
-        val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
+        serverId: String = cacheServerId.value,
+        expectedGeneration: SharedThreadFreshnessGeneration? = null
+    ): Boolean {
+        val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return false
         val cacheablePayload =
             payload
                 .withoutTransientLocalSendingMessages()
                 .withOriginReplyCountAtLeastLoadedReplies()
                 .asLoadedEmptyReplyThreadPayload()
         if (cacheablePayload.hasRenderableThreadContent()) {
-            payloadCache.put(
-                serverId,
-                threadId,
+            val candidate =
                 cacheablePayload.copy(
                     status = if (cacheablePayload.isLoadedEmptyReplyThread()) "empty" else "content",
                     backgroundRefreshing = false,
                     errorCode = null
                 )
-            )
+            if (expectedGeneration == null) {
+                payloadCache.put(serverId, threadId, candidate)
+            } else {
+                if (
+                    expectedGeneration.key != SharedThreadPayloadCacheKey(serverId, threadId) ||
+                    !payloadCache.putIfCurrent(expectedGeneration, candidate)
+                ) {
+                    return false
+                }
+            }
         } else {
-            payloadCache.remove(serverId, threadId)
+            if (expectedGeneration == null) {
+                payloadCache.remove(serverId, threadId)
+            } else if (
+                expectedGeneration.key != SharedThreadPayloadCacheKey(serverId, threadId) ||
+                !payloadCache.removeIfCurrent(expectedGeneration)
+            ) {
+                return false
+            }
         }
+        return true
     }
 
     fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? =
@@ -1174,6 +1491,19 @@ internal class SharedThreadDataSource(
                     )
                 )
             }
+        var canonicalRequestGeneration: SharedThreadFreshnessGeneration? = null
+        suspend fun fetchCanonicalPayloadForCurrentGeneration(): DataResult<KuiklyThreadScreenPayload> {
+            val resolvedThreadId = threadId ?: return fetchCanonicalPayload()
+            while (true) {
+                val generation =
+                    payloadCache.captureGeneration(session.currentServerId.orEmpty(), resolvedThreadId)
+                val result = fetchCanonicalPayload()
+                if (payloadCache.freshnessLedger.isCurrent(generation)) {
+                    canonicalRequestGeneration = generation
+                    return result
+                }
+            }
+        }
         val payloadResult =
             if (failedPrewarm && threadId != null) {
                 payloadCache.takeOverFailedPrewarm(
@@ -1182,7 +1512,7 @@ internal class SharedThreadDataSource(
                     fetch = { fetchCanonicalPayload() }
                 )
             } else {
-                fetchCanonicalPayload()
+                fetchCanonicalPayloadForCurrentGeneration()
             }
         val payload =
             when (payloadResult) {
@@ -1199,11 +1529,15 @@ internal class SharedThreadDataSource(
                 is DataResult.NoPermission -> return payloadResult
         }
         cacheReplyThreadResolution(payload)
-        if (threadId != null) {
-            payloadCache.recordCanonicalSuccess(session.currentServerId.orEmpty(), threadId)
+        if (canonicalRequestGeneration != null) {
+            payloadCache.recordCanonicalSuccess(canonicalRequestGeneration)
         }
-        if (persistResult) {
-            cachePayload(payload)
+        if (persistResult && canonicalRequestGeneration != null) {
+            cachePayload(
+                payload = payload,
+                serverId = session.currentServerId.orEmpty(),
+                expectedGeneration = canonicalRequestGeneration
+            )
         }
         return DataResult.Content(payload)
     }
@@ -1238,7 +1572,10 @@ internal class SharedThreadDataSource(
                 originParentMessageId = key.parentMessageId
             )
         val result =
-            payloadCache.prewarm(key.serverId, key.threadChannelId) {
+            payloadCache.prewarm(
+                serverId = key.serverId,
+                threadId = key.threadChannelId
+            ) {
                 val fetched =
                     fetchInitialReplyThreadPayloadFromRepository(
                         session = session,
@@ -1257,10 +1594,9 @@ internal class SharedThreadDataSource(
                         is DataResult.Error -> return@prewarm fetched
                         is DataResult.NoPermission -> return@prewarm fetched
                     }
-                cacheReplyThreadResolution(payload)
-                cachePayload(payload, key.serverId)
                 DataResult.Content(payload)
             }
+        (result as? DataResult.Content)?.data?.let(::cacheReplyThreadResolution)
         return when (result) {
             is DataResult.Content -> DataResult.Content(Unit)
             is DataResult.Empty -> result

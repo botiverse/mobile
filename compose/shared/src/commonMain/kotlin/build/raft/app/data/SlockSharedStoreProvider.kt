@@ -525,6 +525,7 @@ internal class SlockSharedStoreProvider private constructor(
                     tasksDataStore = tasksDataStore,
                     persistSlices = listOf(activityPersistSlice),
                     prewarmReplyThread = prewarmReplyThread,
+                    replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                     onUnreadCountsChanged = onUnreadCountsChanged,
                     diagnosticsLogger = diagnosticsLogger
                 )
@@ -542,6 +543,7 @@ internal class SlockSharedStoreProvider private constructor(
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 persistSlices = listOf(activityPersistSlice),
                 prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
+                replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {

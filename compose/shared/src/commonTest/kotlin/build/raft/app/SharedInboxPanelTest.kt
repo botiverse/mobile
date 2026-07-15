@@ -76,7 +76,7 @@ class SharedInboxPanelTest {
         assertEquals("parent-channel", marker?.key?.parentChannelId)
         assertEquals("parent-message", marker?.key?.parentMessageId)
         assertEquals("reply-thread", marker?.key?.threadChannelId)
-        assertEquals("2:reply-1:reply-2:", marker?.activityVersion)
+        assertEquals(null, marker?.contentGeneration)
         assertEquals(null, unreadReply.copy(unreadCount = 0).toReplyThreadPrewarmMarker("server-1"))
         assertEquals(null, unreadReply.copy(kind = InboxItemKind.Channel).toReplyThreadPrewarmMarker("server-1"))
         assertEquals(null, unreadReply.copy(threadChannelId = null).toReplyThreadPrewarmMarker("server-1"))
