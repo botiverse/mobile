@@ -7261,6 +7261,7 @@ class ThreadPayloadTest {
     fun threadStoreRetryEventsDispatchRealStoreIntentsInsteadOfFallingThroughAsUnsupported() {
         mapOf(
             "retryThreadLoad" to SharedThreadIntent.Refresh::class,
+            "retryThreadAccess" to SharedThreadIntent.RetryAccessResolution::class,
             "retryLoadOlder" to SharedThreadIntent.LoadOlder::class,
             "retryLoadNewer" to SharedThreadIntent.LoadNewer::class,
         ).forEach { (action, expectedIntentClass) ->
@@ -7274,6 +7275,12 @@ class ThreadPayloadTest {
         val dispatched = mutableListOf<SharedThreadIntent>()
         assertEquals(false, handleThreadStoreRetryEvent("openTask", dispatched::add))
         assertEquals(emptyList(), dispatched)
+    }
+
+    @Test
+    fun threadRetrySeparatesCanonicalLoadFailureFromParentAccessProofFailure() {
+        assertEquals("retryThreadLoad", threadRetryAction(canonicalAccessResolved = false))
+        assertEquals("retryThreadAccess", threadRetryAction(canonicalAccessResolved = true))
     }
 
     @Test

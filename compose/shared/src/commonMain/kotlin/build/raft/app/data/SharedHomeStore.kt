@@ -138,6 +138,12 @@ internal class SharedHomeStore(
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
+
+    fun snapshotFor(serverId: ServerId): HomeSnapshot? =
+        (_state.value.content as? SharedHomeContentState.Content)
+            ?.snapshot
+            ?.takeIf { snapshot -> snapshot.server.id == serverId }
+
     private var stateDiagnosticsReason: String = "unknown"
     private var stateDiagnosticsIntent: SharedHomeIntent? = null
 

@@ -430,6 +430,9 @@ internal fun KuiklyThreadScreenPayload.threadRouteMountPlan(
 internal fun ThreadAccessResolution.shouldRenderThreadAccessRetry(): Boolean =
     this == ThreadAccessResolution.Error
 
+internal fun threadRetryAction(canonicalAccessResolved: Boolean): String =
+    if (canonicalAccessResolved) "retryThreadAccess" else "retryThreadLoad"
+
 internal fun handleThreadStoreRetryEvent(
     action: String,
     dispatch: (SharedThreadIntent) -> Unit,
@@ -437,6 +440,7 @@ internal fun handleThreadStoreRetryEvent(
     val intent =
         when (action) {
             "retryThreadLoad" -> SharedThreadIntent.Refresh
+            "retryThreadAccess" -> SharedThreadIntent.RetryAccessResolution
             "retryLoadOlder" -> SharedThreadIntent.LoadOlder
             "retryLoadNewer" -> SharedThreadIntent.LoadNewer
             else -> return false
@@ -2097,6 +2101,7 @@ private fun ThreadPageScreen() {
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
+    val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val threadPageCoroutineScope = rememberCoroutineScope()
     var authLossReportInProgress by remember { mutableStateOf(false) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
@@ -2167,6 +2172,7 @@ private fun ThreadPageScreen() {
             memberRepository,
             serverMembersStore,
             channelRepository,
+            sharedHomeStore,
             sharedStores.threadMessageStore,
             createAgentCoordinator
         ) {
@@ -2183,6 +2189,7 @@ private fun ThreadPageScreen() {
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,
+                homeSnapshotProvider = sharedHomeStore?.let { store -> store::snapshotFor },
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
@@ -5640,6 +5647,7 @@ internal fun SharedThreadRouteContent(
             payload = renderedThread,
             timelineSlice = renderedTimelineSlice,
             accessResolution = renderSlice.accessResolution,
+            canonicalAccessResolved = renderSlice.canonicalAccessResolved,
             replyMetadataByParentId = replyMetadataByParentId,
             headerDisplay = headerDisplayModel,
             composerSurface = composerSurface,
@@ -9478,6 +9486,7 @@ private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     timelineSlice: ThreadTimelineSlice,
     accessResolution: ThreadAccessResolution,
+    canonicalAccessResolved: Boolean,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     headerDisplay: ThreadHeaderDisplayModel,
     composerSurface: ThreadComposerSurface,
@@ -9869,7 +9878,14 @@ private fun ThreadPageContent(
                         accessErrorLabels.forErrorCode(payload.errorCode)
                             ?: stringResource(MR.strings.thread_error_access_resolution),
                     actionLabel = stringResource(MR.strings.common_retry),
-                    onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
+                    onClick = {
+                        onThreadEvent(
+                            threadRetryAction(canonicalAccessResolved),
+                            null,
+                            null,
+                            null
+                        )
+                    }
                 )
             } else if (accessResolution == ThreadAccessResolution.NoPermission) {
                 ThreadStateMessage(
