@@ -167,7 +167,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
@@ -287,8 +286,6 @@ private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
-internal const val ThreadInitialMarkdownPreparseMessageCount = 80
-private const val ThreadMarkdownPreparseDebugEntryLimit = 80
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
 internal enum class ThreadPickedAttachmentComposerAction {
@@ -11142,19 +11139,13 @@ private fun ThreadChatTab(
 
 private data class ThreadMarkdownPreparsePlan(
     val key: String,
-    val priorityCandidates: List<ThreadMarkdownPreparseCandidate>,
-    val deferredCandidates: List<ThreadMarkdownPreparseCandidate>,
-    val priorityParserCandidateCount: Int,
-    val deferredParserCandidateCount: Int,
-    val debugEntries: List<String> = emptyList()
-) {
-    val candidates: List<ThreadMarkdownPreparseCandidate> = priorityCandidates + deferredCandidates
-    val parserCandidateCount: Int = priorityParserCandidateCount + deferredParserCandidateCount
-}
+    val priorityCandidates: List<ThreadMarkdownPreparseCandidate>
+)
 
 private data class ThreadMarkdownVisiblePreparsePlan(
     val key: String,
-    val candidates: List<ThreadMarkdownPreparseCandidate>
+    val candidates: List<ThreadMarkdownPreparseCandidate>,
+    val prewarmBeforeItems: Int
 )
 
 private data class ThreadMarkdownPreparseCandidate(
@@ -11165,22 +11156,6 @@ private data class ThreadMarkdownPreparseCandidate(
 
 private const val ThreadMarkdownPriorityPreparseMessageCount = 4
 private const val ThreadMarkdownFocusedPreparseRadius = 25
-private const val ThreadMarkdownInitialPreparseStartFrames = 2
-
-private suspend fun awaitThreadMarkdownPreparseFrameSlot() {
-    withFrameNanos { }
-}
-
-private suspend fun awaitThreadMarkdownInitialPreparseStartSlot() {
-    repeat(ThreadMarkdownInitialPreparseStartFrames) {
-        awaitThreadMarkdownPreparseFrameSlot()
-    }
-}
-
-private fun List<ThreadMarkdownPreparseCandidate>.parserCandidateCount(): Int =
-    mapNotNull { candidate -> candidate.body.preparedSlockMarkdownFullRendererContentOrNull() }
-        .distinct()
-        .size
 
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     contentExtrasVisible: Boolean,
@@ -11194,38 +11169,26 @@ private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
         expandedLongMessageIds = expandedLongMessageIds,
         longMessageCollapseEnabled = longMessageCollapseEnabled
     )
-    val parserCandidateCount = orderedCandidates.parserCandidateCount()
-    if (parserCandidateCount == 0) {
+    val priorityCandidates = orderedCandidates.threadMarkdownPriorityPreparseCandidates()
+    if (priorityCandidates.none { candidate ->
+            candidate.body.preparedSlockMarkdownFullRendererContentOrNull() != null
+        }
+    ) {
         return emptyThreadMarkdownPreparsePlan()
     }
-    val priorityCandidates = orderedCandidates.threadMarkdownPriorityPreparseCandidates()
-    val priorityCandidateIds = priorityCandidates.mapTo(mutableSetOf()) { candidate -> candidate.id }
-    val deferredCandidates = orderedCandidates.filterNot { candidate -> candidate.id in priorityCandidateIds }
     return ThreadMarkdownPreparsePlan(
         key =
-            orderedCandidates.joinToString(separator = "|") { candidate ->
+            priorityCandidates.joinToString(separator = "|") { candidate ->
                 "${candidate.id}:${candidate.body.length}:${candidate.body.hashCode()}"
             },
-        priorityCandidates = priorityCandidates,
-        deferredCandidates = deferredCandidates,
-        priorityParserCandidateCount = priorityCandidates.parserCandidateCount(),
-        deferredParserCandidateCount = deferredCandidates.parserCandidateCount(),
-        debugEntries =
-            orderedCandidates
-                .take(ThreadMarkdownPreparseDebugEntryLimit)
-                .map { candidate ->
-                    "id=${candidate.id.take(15)} len=${candidate.body.length} hash=${candidate.body.hashCode().toString(16)}"
-                }
+        priorityCandidates = priorityCandidates
     )
 }
 
 private fun emptyThreadMarkdownPreparsePlan(): ThreadMarkdownPreparsePlan =
     ThreadMarkdownPreparsePlan(
         key = "",
-        priorityCandidates = emptyList(),
-        deferredCandidates = emptyList(),
-        priorityParserCandidateCount = 0,
-        deferredParserCandidateCount = 0
+        priorityCandidates = emptyList()
     )
 
 private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
@@ -11317,25 +11280,43 @@ internal fun ThreadTimelineSlice.initialMarkdownPreparsePriorityCandidateIds(
 internal fun ThreadTimelineSlice.initialMarkdownPreparseCandidateIds(
     contentExtrasVisible: Boolean
 ): List<String> =
-    threadInitialMarkdownPreparsePlan(contentExtrasVisible).candidates.map { it.id }
+    threadInitialMarkdownPreparsePlan(contentExtrasVisible).priorityCandidates.map { it.id }
 
 internal fun ThreadTimelineSlice.visibleMarkdownPreparseCandidateIds(
     firstVisibleItemIndex: Int,
     lastVisibleItemIndex: Int,
     overscanItems: Int,
+    prewarmBeforeItems: Int = 0,
     contentExtrasVisible: Boolean
 ): List<String> =
     threadVisibleMarkdownPreparsePlan(
         firstVisibleItemIndex = firstVisibleItemIndex,
         lastVisibleItemIndex = lastVisibleItemIndex,
         overscanItems = overscanItems,
+        prewarmBeforeItems = prewarmBeforeItems,
         contentExtrasVisible = contentExtrasVisible
     ).candidates.map { it.id }
+
+internal fun ThreadTimelineSlice.visibleMarkdownPreparseCandidateSignature(
+    firstVisibleItemIndex: Int,
+    lastVisibleItemIndex: Int,
+    overscanItems: Int,
+    prewarmBeforeItems: Int = 0,
+    contentExtrasVisible: Boolean
+): String =
+    threadVisibleMarkdownPreparsePlan(
+        firstVisibleItemIndex = firstVisibleItemIndex,
+        lastVisibleItemIndex = lastVisibleItemIndex,
+        overscanItems = overscanItems,
+        prewarmBeforeItems = prewarmBeforeItems,
+        contentExtrasVisible = contentExtrasVisible
+    ).key
 
 private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
     firstVisibleItemIndex: Int,
     lastVisibleItemIndex: Int,
     overscanItems: Int,
+    prewarmBeforeItems: Int = 0,
     contentExtrasVisible: Boolean,
     expandedLongMessageIds: Set<String> = emptySet(),
     longMessageCollapseEnabled: Boolean = true
@@ -11348,7 +11329,12 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
         return emptyThreadMarkdownVisiblePreparsePlan()
     }
 
-    val expandedFirst = (firstVisibleItemIndex - overscanItems.coerceAtLeast(0)).coerceAtLeast(0)
+    val expandedFirst =
+        (
+            firstVisibleItemIndex -
+                overscanItems.coerceAtLeast(0) -
+                prewarmBeforeItems.coerceAtLeast(0)
+        ).coerceAtLeast(0)
     val expandedLast = lastVisibleItemIndex + overscanItems.coerceAtLeast(0)
     val candidates =
         buildList {
@@ -11389,12 +11375,13 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
             candidates.joinToString(separator = "|") { candidate ->
                 "${candidate.id}:${candidate.body.length}:${candidate.body.hashCode()}"
             },
-        candidates = candidates
+        candidates = candidates,
+        prewarmBeforeItems = prewarmBeforeItems.coerceAtLeast(0)
     )
 }
 
 private fun emptyThreadMarkdownVisiblePreparsePlan(): ThreadMarkdownVisiblePreparsePlan =
-    ThreadMarkdownVisiblePreparsePlan(key = "", candidates = emptyList())
+    ThreadMarkdownVisiblePreparsePlan(key = "", candidates = emptyList(), prewarmBeforeItems = 0)
 
 private const val ThreadOriginListItemIndex = 0
 
@@ -11685,9 +11672,11 @@ private fun ThreadMessagesList(
             latestItemIndex = latestItemIndex,
             messageCount = renderPayload.messages.size
         )
+    val markdownTimelineSignature =
+        timelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible)
     val initialMarkdownPreparsePlan =
         remember(
-            timelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible),
+            markdownTimelineSignature,
             focusedMessageTargetSignature,
             contentExtrasVisible,
             expandedLongMessageIds,
@@ -11707,7 +11696,7 @@ private fun ThreadMessagesList(
     ) {
         if (initialMarkdownPreparsePlan.key.isEmpty()) {
             diagnosticsLogger(
-                "thread_markdown_preparse_plan scope=loaded_latest_first result=empty " +
+                "thread_markdown_preparse_plan scope=priority_anchor result=empty " +
                     "messages=${renderPayload.messages.size} extrasVisible=$contentExtrasVisible"
             )
             return@LaunchedEffect
@@ -11740,91 +11729,12 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(
         threadInstanceKey,
-        initialMarkdownPreparsePlan.key,
-        focusedMessageTargetSignature,
-        initialBottomAnchorReady
-    ) {
-        if (initialMarkdownPreparsePlan.key.isEmpty() || initialMarkdownPreparsePlan.deferredCandidates.isEmpty()) {
-            return@LaunchedEffect
-        }
-        if (!initialBottomAnchorReady) {
-            diagnosticsLogger(
-                "thread_markdown_preparse_plan scope=loaded_latest_first result=deferred " +
-                    "messages=${renderPayload.messages.size} latestItemIndex=$latestItemIndex " +
-                    "focused=${renderPayload.focusedMessageId?.isNotBlank() == true}"
-            )
-            return@LaunchedEffect
-        }
-        awaitThreadMarkdownInitialPreparseStartSlot()
-        diagnosticsLogger(
-            "thread_markdown_preparse_plan scope=loaded_latest_first " +
-                "bodyCandidates=${initialMarkdownPreparsePlan.deferredCandidates.size} " +
-                "parserCandidates=${initialMarkdownPreparsePlan.deferredParserCandidateCount} " +
-                "priorityBodyCandidates=${initialMarkdownPreparsePlan.priorityCandidates.size} " +
-                "batchSize=$ThreadInitialMarkdownPreparseMessageCount messages=${renderPayload.messages.size} " +
-                "origin=${renderPayload.originMessage != null} " +
-                "entriesShown=${initialMarkdownPreparsePlan.debugEntries.size} " +
-                "entries=${initialMarkdownPreparsePlan.debugEntries.joinToString(separator = ";")}"
-        )
-        val startedAt = TimeSource.Monotonic.markNow()
-        try {
-            var parsedCount = 0
-            var cacheHitCount = 0
-            var requestedCount = 0
-            var scheduledCount = 0
-            val batches = initialMarkdownPreparsePlan.deferredCandidates.chunked(ThreadInitialMarkdownPreparseMessageCount)
-            batches.forEachIndexed { index, batch ->
-                if (index > 0) {
-                    awaitThreadMarkdownPreparseFrameSlot()
-                }
-                val batchStartedAt = TimeSource.Monotonic.markNow()
-                val result =
-                    prepareSlockMarkdownFullRendererBodies(
-                        bodies = batch.map { candidate -> candidate.body },
-                        maxBodies = batch.size
-                    )
-                requestedCount += result.requestedCount
-                parsedCount += result.parsedCount
-                cacheHitCount += result.cacheHitCount
-                scheduledCount += result.scheduledCount
-                val batchDurationMs = batchStartedAt.elapsedNow().inWholeMilliseconds
-                diagnosticsLogger(
-                    "thread_markdown_preparse_batch scope=loaded_latest_first " +
-                        "batch=${index + 1}/${batches.size} bodyCandidates=${batch.size} " +
-                        "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
-                        "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
-                        "messages=${renderPayload.messages.size} " +
-                        "durationMs=$batchDurationMs"
-                )
-            }
-            val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-            diagnosticsLogger(
-                "thread_markdown_preparse scope=loaded_latest_first " +
-                    "bodyCandidates=${initialMarkdownPreparsePlan.deferredCandidates.size} " +
-                    "parserCandidates=${initialMarkdownPreparsePlan.deferredParserCandidateCount} " +
-                    "priorityBodyCandidates=${initialMarkdownPreparsePlan.priorityCandidates.size} " +
-                    "batchParserRequests=$requestedCount scheduled=$scheduledCount " +
-                    "parsed=$parsedCount cacheHit=$cacheHitCount " +
-                    "batches=${batches.size} " +
-                    "messages=${renderPayload.messages.size} durationMs=$durationMs"
-            )
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Throwable) {
-            diagnosticsLogger(
-                "thread_markdown_preparse scope=loaded_latest_first result=failed " +
-                    "messages=${renderPayload.messages.size} error=${error::class.simpleName}"
-            )
-        }
-    }
-    LaunchedEffect(
-        threadInstanceKey,
-        initialMarkdownPreparsePlan.key,
+        markdownTimelineSignature,
         contentExtrasVisible,
         lazyItemCount,
         expandedLongMessageIds
     ) {
-        if (!contentExtrasVisible || initialMarkdownPreparsePlan.key.isEmpty()) {
+        if (!contentExtrasVisible || markdownTimelineSignature.isEmpty()) {
             return@LaunchedEffect
         }
         snapshotFlow {
@@ -11832,10 +11742,13 @@ private fun ThreadMessagesList(
             if (visibleItems.isEmpty()) {
                 emptyThreadMarkdownVisiblePreparsePlan()
             } else {
+                val firstVisibleItemIndex = visibleItems.minOf { item -> item.index }
+                val lastVisibleItemIndex = visibleItems.maxOf { item -> item.index }
                 renderPayload.threadVisibleMarkdownPreparsePlan(
-                    firstVisibleItemIndex = visibleItems.minOf { item -> item.index },
-                    lastVisibleItemIndex = visibleItems.maxOf { item -> item.index },
+                    firstVisibleItemIndex = firstVisibleItemIndex,
+                    lastVisibleItemIndex = lastVisibleItemIndex,
                     overscanItems = threadMessagesBeyondBoundsItemCount(lazyItemCount),
+                    prewarmBeforeItems = lastVisibleItemIndex - firstVisibleItemIndex + 1,
                     contentExtrasVisible = contentExtrasVisible,
                     expandedLongMessageIds = expandedLongMessageIds,
                     longMessageCollapseEnabled = longMessageCollapseEnabled
@@ -11860,6 +11773,7 @@ private fun ThreadMessagesList(
                         "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
                         "messages=${renderPayload.messages.size} " +
                         "overscan=${threadMessagesBeyondBoundsItemCount(lazyItemCount)} " +
+                        "prewarmBefore=${visiblePreparsePlan.prewarmBeforeItems} " +
                         "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                 )
             }
@@ -12037,7 +11951,12 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         val boundaryIndex = renderPayload.threadHistoryBoundaryListItemIndex()
-        snapshotFlow { listState.isThreadOlderAutoLoadThreshold(boundaryIndex) }
+        snapshotFlow {
+            listState.isThreadOlderAutoLoadThreshold(
+                boundaryIndex = boundaryIndex,
+                userScrollGeneration = userScrollGeneration.value
+            )
+        }
             .distinctUntilChanged()
             .collect { shouldLoad ->
                 if (shouldLoad) {
@@ -13781,19 +13700,27 @@ internal fun shouldRestoreThreadOlderPageAnchor(
     currentUserScrollGeneration: Int
 ): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
-private fun LazyListState.isThreadOlderAutoLoadThreshold(boundaryIndex: Int): Boolean {
+private fun LazyListState.isThreadOlderAutoLoadThreshold(
+    boundaryIndex: Int,
+    userScrollGeneration: Int
+): Boolean {
     if (boundaryIndex < 0) return false
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= boundaryIndex) return false
     val firstVisibleIndex = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: return false
     return shouldThreadAutoLoadOlderMessages(
         boundaryIndex = boundaryIndex,
-        firstVisibleIndex = firstVisibleIndex
+        firstVisibleIndex = firstVisibleIndex,
+        userScrollGeneration = userScrollGeneration
     )
 }
 
-internal fun shouldThreadAutoLoadOlderMessages(boundaryIndex: Int, firstVisibleIndex: Int): Boolean {
-    if (boundaryIndex < 0 || firstVisibleIndex < 0) return false
+internal fun shouldThreadAutoLoadOlderMessages(
+    boundaryIndex: Int,
+    firstVisibleIndex: Int,
+    userScrollGeneration: Int
+): Boolean {
+    if (boundaryIndex < 0 || firstVisibleIndex < 0 || userScrollGeneration <= 0) return false
     return firstVisibleIndex <= boundaryIndex + ThreadOlderAutoLoadVisibleItemThreshold
 }
 
