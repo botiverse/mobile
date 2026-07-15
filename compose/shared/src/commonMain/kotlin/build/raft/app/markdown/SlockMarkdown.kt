@@ -77,6 +77,7 @@ import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
+import com.tencent.kuiklybase.markdown.model.markdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
 import kotlinx.coroutines.async
@@ -1725,8 +1726,20 @@ fun SlockMarkdownBody(
         markdownPadding(
             block = 0.dp,
             paragraphVerPadding = PaddingValues(vertical = 0.dp),
-            codeBlock = PaddingValues(SlockSpacing.Sm)
+            codeBlock = PaddingValues(SlockSpacing.Sm),
+            // Blockquote rail must span EXACTLY the quoted content's height
+            // (task #62): the library defaults pad the quote text by 4dp
+            // vertically and inset the bar by 2dp, so the rail overshot the
+            // text above and below. Web renders border-l-2 with no vertical
+            // padding — the border is precisely the content box.
+            blockQuoteText = PaddingValues(0.dp),
+            blockQuoteBar = PaddingValues.Absolute(left = 4.dp, top = 0.dp, right = 4.dp, bottom = 0.dp)
         )
+    }
+    val dimens = remember {
+        // Web blockquote is border-l-2 (2px); the library default 1dp rail
+        // reads hairline-thin on device (task #62).
+        markdownDimens(blockQuoteThickness = 2.dp)
     }
     val components = remember {
         markdownComponents(
@@ -1783,6 +1796,7 @@ fun SlockMarkdownBody(
                     textProvider = SlockMarkdownTextProvider,
                     annotator = annotator,
                     padding = padding,
+                    dimens = dimens,
                     components = components,
                     modifier = markdownModifier
                 )
