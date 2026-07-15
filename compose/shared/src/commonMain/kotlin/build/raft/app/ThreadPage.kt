@@ -178,6 +178,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestur
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
@@ -204,7 +205,6 @@ import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -14324,7 +14324,6 @@ private fun ThreadMessageCard(
                     } else {
                         Modifier
                             .weight(1f)
-                            .threadMessagePressRipple(pressed = pressed, origin = pressRippleOrigin)
                             .threadMessageLongPressActions(
                                 messageId = message.id,
                                 captureLongPressAnchor = captureLongPressAnchor,
@@ -14340,6 +14339,10 @@ private fun ThreadMessageCard(
                 Box(
                     modifier = contentModifier
                 ) {
+                    ThreadMessagePressRipple(
+                        pressed = pressed,
+                        origin = pressRippleOrigin
+                    )
                     Column(
                         modifier =
                             Modifier
@@ -15464,10 +15467,10 @@ private const val ThreadMessageRippleAlpha = 0.10f
 private val ThreadMessageRippleMinRadius = 24.dp
 
 @Composable
-private fun Modifier.threadMessagePressRipple(
+private fun BoxScope.ThreadMessagePressRipple(
     pressed: Boolean,
     origin: Offset?
-): Modifier {
+) {
     val expansion by animateFloatAsState(
         targetValue = if (origin != null) 1f else 0f,
         animationSpec = tween(durationMillis = if (origin != null) ThreadMessageRippleExpandMs else 0),
@@ -15479,19 +15482,31 @@ private fun Modifier.threadMessagePressRipple(
             tween(durationMillis = if (pressed) ThreadMessageRippleExpandMs else ThreadMessageRippleFadeMs),
         label = "thread-message-ripple-alpha"
     )
-    if (origin == null) return this
-    return drawBehind {
-        if (washAlpha <= 0f || expansion <= 0f) return@drawBehind
+    if (!shouldDrawThreadMessagePressRipple(origin != null, washAlpha, expansion)) return
+    val rippleOrigin = origin ?: return
+    Canvas(modifier = Modifier.matchParentSize()) {
         val coverRadius = hypot(size.width, size.height)
         val minRadius = ThreadMessageRippleMinRadius.toPx()
-        val radius = minRadius + (coverRadius - minRadius) * expansion
+        val radius = threadMessageRippleRadius(minRadius, coverRadius, expansion)
         drawCircle(
             color = Color.Black.copy(alpha = washAlpha),
             radius = radius,
-            center = origin
+            center = rippleOrigin
         )
     }
 }
+
+internal fun shouldDrawThreadMessagePressRipple(
+    hasOrigin: Boolean,
+    washAlpha: Float,
+    expansion: Float
+): Boolean = hasOrigin && washAlpha > 0f && expansion > 0f
+
+internal fun threadMessageRippleRadius(
+    minRadius: Float,
+    coverRadius: Float,
+    expansion: Float
+): Float = minRadius + (coverRadius - minRadius) * expansion
 
 @Composable
 private fun Modifier.threadMessageLongPressActions(
