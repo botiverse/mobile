@@ -1,5 +1,6 @@
 #include "napi/native_api.h"
 #include "libshared_api.h"
+#include "SlockOhosImageAdapter.h"
 #include <hilog/log.h>
 #include <Kuikly/Kuikly.h>
 #include <cstring>
@@ -118,6 +119,7 @@ static void RegisterSlockLogAdapter() {
 static napi_value InitKuikly(napi_env env, napi_callback_info /*info*/) {
     RegisterSlockLogAdapter();
     RegisterSlockFontAdapters();
+    RegisterSlockOhosImageAdapter(env);
     auto api = libshared_symbols();
     int handler = api->kotlin.root.raftInitKuikly();
     napi_value result;

@@ -54,5 +54,17 @@ set_target_properties(resource_compose
         PROPERTIES
         IMPORTED_LOCATION ${NATIVERENDER_ROOT_PATH}/../../../libs/${OHOS_ARCH}/libresource_compose.so)
 
-add_library(entry SHARED napi_init.cpp)
-target_link_libraries(entry PUBLIC libace_napi.z.so libhilog_ndk.z.so kuikly_shared kuikly_render pbcurlwrapper openssl resource_compose)
+add_library(entry SHARED
+        napi_init.cpp
+        SlockOhosImageAdapter.cpp)
+target_link_libraries(entry PUBLIC
+        libace_napi.z.so
+        libace_ndk.z.so
+        libhilog_ndk.z.so
+        libpixelmap.so
+        libimage_source.so
+        kuikly_shared
+        kuikly_render
+        pbcurlwrapper
+        openssl
+        resource_compose)
