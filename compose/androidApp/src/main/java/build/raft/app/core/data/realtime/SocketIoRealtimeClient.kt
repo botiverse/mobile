@@ -75,53 +75,69 @@ class SocketIoRealtimeClient(
     private var lastHeartbeatAtMillis: Long? = null
     private var lastInboundEventAtMillis: Long? = null
     private var resumeProjectionRetryLastSeq: Long? = null
-    private var watchdogCancel: (() -> Unit)? = null
+    private var nextWatchdogEpoch = 0L
+    private var watchdogRegistration: WatchdogRegistration? = null
     private val successDiagnostics = RealtimeSuccessDiagnostics(clockMillis)
-    var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
-        private set
+    private var connectionState: RealtimeConnectionState = RealtimeConnectionState.Disconnected
+
+    val state: RealtimeConnectionState
+        get() = transport.linearize { connectionState }
 
     fun setAuthRefreshProvider(provider: ((String) -> RealtimeAuth?)?) {
-        authRefreshProvider = provider
+        transport.linearize { authRefreshProvider = provider }
     }
 
     fun connect(request: RealtimeConnectRequest) {
-        if (connectedServerId != request.auth.serverId.value) {
-            joinedChannels.clear()
-            connectedServerId = request.auth.serverId.value
+        transport.linearize {
+            if (connectedServerId != request.auth.serverId.value) {
+                joinedChannels.clear()
+                connectedServerId = request.auth.serverId.value
+            }
+            currentAuth = request.auth
+            val connectionContext = RealtimeSocketConnectionContext(request.auth.serverId, request.witness)
+            currentConnectionContext = connectionContext
+            cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
+            resumeProjectionRetryLastSeq = null
+            connectionState = RealtimeConnectionState.Connecting
+            lastHeartbeatAtMillis = null
+            lastInboundEventAtMillis = null
+            diagnostics?.onConnectRequested(request.auth.serverId, request.lastSeq)
+            ensureTransportListeners()
+            restartHeartbeatWatchdog()
+            logger("client_connect_start serverId=${request.auth.serverId.value} lastSeq=${request.lastSeq}")
+            transport.connect(request.auth.toWireMap(), connectionContext)
         }
-        currentAuth = request.auth
-        val connectionContext = RealtimeSocketConnectionContext(request.auth.serverId, request.witness)
-        currentConnectionContext = connectionContext
-        cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
-        resumeProjectionRetryLastSeq = null
-        state = RealtimeConnectionState.Connecting
-        lastHeartbeatAtMillis = null
-        lastInboundEventAtMillis = null
-        diagnostics?.onConnectRequested(request.auth.serverId, request.lastSeq)
-        ensureTransportListeners()
-        startHeartbeatWatchdog()
-        logger("client_connect_start serverId=${request.auth.serverId.value} lastSeq=${request.lastSeq}")
-        transport.connect(request.auth.toWireMap(), connectionContext)
     }
 
     fun disconnect() {
-        logger("client_disconnect serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size}")
-        stopHeartbeatWatchdog()
-        currentConnectionContext = null
-        transport.disconnect()
-        state = RealtimeConnectionState.Disconnected
-        diagnostics?.onIntentionalDisconnect(
+        transport.linearize {
+            val disconnectedServerId = connectedServerId
+            logger("client_disconnect serverId=${disconnectedServerId.orEmpty()} joinedRooms=${joinedChannels.size}")
+            stopHeartbeatWatchdog()
+            currentConnectionContext = null
+            currentAuth = null
+            connectedServerId = null
+            joinedChannels.clear()
+            cursor = RealtimeCursorPolicy.fromAppliedSeq(0L)
+            resumeProjectionRetryLastSeq = null
+            connectionState = RealtimeConnectionState.Disconnected
+            transport.disconnect()
+            diagnostics?.onIntentionalDisconnect(
                 reason = "client_disconnect",
-                serverId = connectedServerId?.let(::ServerId)
-        )
+                serverId = disconnectedServerId?.let(::ServerId),
+            )
+        }
     }
 
-    fun checkHeartbeatSilence(nowMillis: Long = clockMillis()): Boolean {
+    fun checkHeartbeatSilence(nowMillis: Long = clockMillis()): Boolean =
+        transport.linearize { checkHeartbeatSilenceLocked(nowMillis) }
+
+    private fun checkHeartbeatSilenceLocked(nowMillis: Long): Boolean {
         val shouldReconnect =
             RealtimeHeartbeatWatchdog.shouldForceReconnect(
                 RealtimeHeartbeatWatchdogSnapshot(
-                    connected = state == RealtimeConnectionState.Connected ||
-                        state == RealtimeConnectionState.RoomsJoined,
+                    connected = connectionState == RealtimeConnectionState.Connected ||
+                        connectionState == RealtimeConnectionState.RoomsJoined,
                     lastHeartbeatAtMillis = lastHeartbeatAtMillis,
                     lastInboundEventAtMillis = lastInboundEventAtMillis
                 ),
@@ -138,7 +154,7 @@ class SocketIoRealtimeClient(
             reason = "app_heartbeat_silent",
             serverId = connectedServerId?.let(::ServerId)
         )
-        state = RealtimeConnectionState.Connecting
+        connectionState = RealtimeConnectionState.Connecting
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = nowMillis
         rebaselineCursor(reason = "heartbeat_silent")
@@ -148,138 +164,144 @@ class SocketIoRealtimeClient(
     }
 
     fun joinChannel(channelId: ChannelId) {
-        val added = joinedChannels.add(channelId)
-        logger("join_room channelId=${channelId.value} replay=false added=$added")
-        if (!added) return
-        emitRoomPayload(RealtimeSocketEvents.JoinChannel, channelId.value)
+        transport.linearize {
+            val added = joinedChannels.add(channelId)
+            logger("join_room channelId=${channelId.value} replay=false added=$added")
+            if (!added) return@linearize
+            emitRoomPayload(RealtimeSocketEvents.JoinChannel, channelId.value)
+        }
     }
 
     fun leaveChannel(channelId: ChannelId) {
-        val removed = joinedChannels.remove(channelId)
-        logger("leave_room channelId=${channelId.value} removed=$removed")
-        if (!removed) return
-        emitRoomPayload(RealtimeSocketEvents.LeaveChannel, channelId.value)
+        transport.linearize {
+            val removed = joinedChannels.remove(channelId)
+            logger("leave_room channelId=${channelId.value} removed=$removed")
+            if (!removed) return@linearize
+            emitRoomPayload(RealtimeSocketEvents.LeaveChannel, channelId.value)
+        }
     }
 
     fun emitRoomCommand(eventName: String, payload: String, force: Boolean = false) {
-        when (eventName) {
-            RealtimeSocketEvents.JoinChannel -> {
-                val channelId = ChannelId(payload)
-                val added = joinedChannels.add(channelId)
-                logger("join_room channelId=${channelId.value} replay=false added=$added force=$force")
-                if (!added && !force) return
-                emitRoomPayload(eventName, channelId.value)
+        transport.linearize {
+            when (eventName) {
+                RealtimeSocketEvents.JoinChannel -> {
+                    val channelId = ChannelId(payload)
+                    val added = joinedChannels.add(channelId)
+                    logger("join_room channelId=${channelId.value} replay=false added=$added force=$force")
+                    if (!added && !force) return@linearize
+                    emitRoomPayload(eventName, channelId.value)
+                }
+                RealtimeSocketEvents.LeaveChannel -> {
+                    val channelId = ChannelId(payload)
+                    val removed = joinedChannels.remove(channelId)
+                    logger("leave_room channelId=${channelId.value} removed=$removed")
+                    if (!removed) return@linearize
+                    emitRoomPayload(eventName, channelId.value)
+                }
+                else -> emitRoomPayload(eventName, payload)
             }
-            RealtimeSocketEvents.LeaveChannel -> {
-                val channelId = ChannelId(payload)
-                val removed = joinedChannels.remove(channelId)
-                logger("leave_room channelId=${channelId.value} removed=$removed")
-                if (!removed) return
-                emitRoomPayload(eventName, channelId.value)
-            }
-            else -> emitRoomPayload(eventName, payload)
         }
     }
 
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription {
-        listeners += listener
-        return RealtimeSubscription { listeners -= listener }
+        transport.linearize { listeners += listener }
+        return RealtimeSubscription { transport.linearize { listeners -= listener } }
     }
 
     fun observeRawEvents(
         listener: (context: RealtimeSocketConnectionContext, eventName: String, rawPayload: Any?) -> Unit
     ): RealtimeSubscription {
-        rawListeners += listener
-        return RealtimeSubscription { rawListeners -= listener }
+        transport.linearize { rawListeners += listener }
+        return RealtimeSubscription { transport.linearize { rawListeners -= listener } }
     }
 
     private fun ensureTransportListeners() {
         if (transportSubscriptions.isNotEmpty()) return
-        transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) { _, _ ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) { capturedContext, _ ->
             markInbound()
             startHeartbeatWatchdog()
-            state = RealtimeConnectionState.Connected
-            diagnostics?.onConnected(connectedServerId?.let(::ServerId))
+            connectionState = RealtimeConnectionState.Connected
+            diagnostics?.onConnected(capturedContext.serverId)
             logger(
-                "client_connected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} " +
+                "client_connected serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +
                     "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
             )
             rejoinChannels(reason = "connect")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) { _, _ ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) { capturedContext, _ ->
             markInbound()
-            state = RealtimeConnectionState.RoomsJoined
+            connectionState = RealtimeConnectionState.RoomsJoined
             diagnostics?.onRoomsJoined(
-                connectedServerId?.let(::ServerId),
+                capturedContext.serverId,
                 cursor.resumeLastSeq.takeIf { it > 0L }
             )
             logger(
-                "rooms_joined serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} " +
+                "rooms_joined serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +
                     "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
             )
             emitSyncResume(reason = "rooms_joined")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { _, payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { capturedContext, payload ->
             markInbound()
-            state = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
+            connectionState = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
             diagnostics?.onConnectionFailed(
                     reason = payload?.toString().orEmpty(),
-                    serverId = connectedServerId?.let(::ServerId)
+                    serverId = capturedContext.serverId,
             )
-            logger("client_connect_error serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
+            logger("client_connect_error serverId=${capturedContext.serverId.value} reason=${payload?.javaClass?.simpleName.orEmpty()}")
             if (payload.isAuthFailurePayload()) {
                 refreshTransportAuth(reason = "connect_error")
             }
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.Disconnect) { _, _ ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.Disconnect) { capturedContext, _ ->
             stopHeartbeatWatchdog()
-            state = RealtimeConnectionState.Disconnected
+            connectionState = RealtimeConnectionState.Disconnected
             diagnostics?.onDisconnected(
                     reason = "transport_disconnect",
-                    serverId = connectedServerId?.let(::ServerId)
+                    serverId = capturedContext.serverId,
             )
-            logger("client_disconnected serverId=${connectedServerId.orEmpty()}")
+            logger("client_disconnected serverId=${capturedContext.serverId.value}")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.Reconnect) { _, _ ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.Reconnect) { capturedContext, _ ->
             markInbound()
             startHeartbeatWatchdog()
-            state = RealtimeConnectionState.Connected
+            connectionState = RealtimeConnectionState.Connected
             rebaselineCursor(reason = "transport_reconnect")
-            diagnostics?.onConnected(connectedServerId?.let(::ServerId))
+            diagnostics?.onConnected(capturedContext.serverId)
             logger(
-                "client_reconnected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} " +
+                "client_reconnected serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +
                     "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
             )
             rejoinChannels(reason = "reconnect")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectAttempt) { _, payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectAttempt) { capturedContext, payload ->
             refreshTransportAuth(reason = "reconnect_attempt")
-            logger("client_reconnect_attempt serverId=${connectedServerId.orEmpty()} payload=${payload?.toString().orEmpty()}")
+            logger("client_reconnect_attempt serverId=${capturedContext.serverId.value} payload=${payload?.toString().orEmpty()}")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectError) { _, payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectError) { capturedContext, payload ->
             diagnostics?.onConnectionFailed(
                     reason = payload?.toString().orEmpty(),
-                    serverId = connectedServerId?.let(::ServerId)
+                    serverId = capturedContext.serverId,
             )
-            logger("client_reconnect_error serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
+            logger("client_reconnect_error serverId=${capturedContext.serverId.value} reason=${payload?.javaClass?.simpleName.orEmpty()}")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectFailed) { _, payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectFailed) { capturedContext, payload ->
             stopHeartbeatWatchdog()
-            state = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
+            connectionState = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
             diagnostics?.onConnectionFailed(
                     reason = payload?.toString().orEmpty(),
-                    serverId = connectedServerId?.let(::ServerId)
+                    serverId = capturedContext.serverId,
             )
-            logger("client_reconnect_failed serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
+            logger("client_reconnect_failed serverId=${capturedContext.serverId.value} reason=${payload?.javaClass?.simpleName.orEmpty()}")
         }
         RealtimeWireEventNames.forEach { eventName ->
-            transportSubscriptions += transport.on(eventName) { _, payload ->
+            transportSubscriptions += transport.on(eventName) { capturedContext, payload ->
                 markInbound(eventName)
                 val payloadServerId = payload.serverIdOrNull()
-                val currentServerId = connectedServerId
-                if (payloadServerId != null && currentServerId != null && payloadServerId != currentServerId) {
+                val capturedServerId = capturedContext.serverId.value
+                if (payloadServerId != null && payloadServerId != capturedServerId) {
                     logger(
-                        "event_skip reason=server_mismatch eventName=$eventName payloadServerId=$payloadServerId connectedServerId=$currentServerId payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
+                        "event_skip reason=server_mismatch eventName=$eventName payloadServerId=$payloadServerId connectedServerId=$capturedServerId payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
                     )
                     return@on
                 }
@@ -292,8 +314,7 @@ class SocketIoRealtimeClient(
                             "payloadType=${payload?.javaClass?.simpleName.orEmpty()} durationMs=$mapDurationMs"
                     )
                     if (shouldFanOutRawEvent(eventName, serverAhead = false)) {
-                        val connectionContext = currentConnectionContext ?: return@on
-                        rawListeners.toList().forEach { it(connectionContext, eventName, payload) }
+                        rawListeners.toList().forEach { it(capturedContext, eventName, payload) }
                     }
                     return@on
                 }
@@ -303,8 +324,7 @@ class SocketIoRealtimeClient(
                 }
                 val shouldFanOutRaw = shouldFanOutRawEvent(eventName, cursorUpdate.serverAhead)
                 if (shouldFanOutRaw) {
-                    val connectionContext = currentConnectionContext ?: return@on
-                    rawListeners.toList().forEach { it(connectionContext, eventName, payload) }
+                    rawListeners.toList().forEach { it(capturedContext, eventName, payload) }
                 }
                 successDiagnostics.record(
                     eventName = eventName,
@@ -314,7 +334,7 @@ class SocketIoRealtimeClient(
                     serverMaxSeq = cursor.serverMaxSeq,
                     listenerCount = listeners.size,
                     rawFanOut = shouldFanOutRaw,
-                    serverId = connectedServerId.orEmpty()
+                    serverId = capturedServerId,
                 ).forEach(logger)
             }
         }
@@ -374,13 +394,28 @@ class SocketIoRealtimeClient(
     }
 
     private fun startHeartbeatWatchdog() {
-        if (watchdogCancel != null) return
-        watchdogCancel = watchdogScheduler { checkHeartbeatSilence(clockMillis()) }
+        if (watchdogRegistration != null) return
+        nextWatchdogEpoch += 1L
+        val epoch = nextWatchdogEpoch
+        val cancel =
+            watchdogScheduler {
+                transport.linearize {
+                    if (watchdogRegistration?.epoch != epoch) return@linearize
+                    checkHeartbeatSilenceLocked(clockMillis())
+                }
+            }
+        watchdogRegistration = WatchdogRegistration(epoch, cancel)
+    }
+
+    private fun restartHeartbeatWatchdog() {
+        stopHeartbeatWatchdog()
+        startHeartbeatWatchdog()
     }
 
     private fun stopHeartbeatWatchdog() {
-        watchdogCancel?.invoke()
-        watchdogCancel = null
+        val registration = watchdogRegistration
+        watchdogRegistration = null
+        registration?.cancel?.invoke()
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = null
     }
@@ -400,19 +435,31 @@ class SocketIoRealtimeClient(
             logger("auth_refresh_skip reason=$reason result=missing_session")
             return
         }
-        if (previous?.serverId != null && previous.serverId != next.serverId) {
-            joinedChannels.clear()
-        }
         if (previous == next) {
             logger("auth_refresh_skip reason=$reason result=unchanged serverId=${next.serverId.value}")
             return
         }
+        val previousContext = currentConnectionContext ?: run {
+            logger("auth_refresh_skip reason=$reason result=missing_connection")
+            return
+        }
+        val serverChanged = previous?.serverId != null && previous.serverId != next.serverId
+        if (serverChanged) {
+            joinedChannels.clear()
+            cursor = RealtimeCursorPolicy.fromAppliedSeq(0L)
+            resumeProjectionRetryLastSeq = null
+        }
         currentAuth = next
         connectedServerId = next.serverId.value
         logger("auth_refresh_apply reason=$reason serverId=${next.serverId.value} tokenChanged=${previous?.token != next.token}")
-        state = RealtimeConnectionState.Connecting
-        val connectionContext = currentConnectionContext ?: return
-        transport.connect(next.toWireMap(), connectionContext)
+        connectionState = RealtimeConnectionState.Connecting
+        val nextContext =
+            RealtimeSocketConnectionContext(
+                serverId = next.serverId,
+                witness = previousContext.witness,
+            )
+        currentConnectionContext = nextContext
+        transport.connect(next.toWireMap(), nextContext)
     }
 
     private fun dispatch(event: RealtimeEvent): RealtimeCursorUpdate {
@@ -432,6 +479,11 @@ class SocketIoRealtimeClient(
         listeners.toList().forEach { it(event) }
         return cursorUpdate
     }
+
+    private data class WatchdogRegistration(
+        val epoch: Long,
+        val cancel: () -> Unit,
+    )
 
     companion object {
         const val DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL
