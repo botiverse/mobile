@@ -14336,12 +14336,29 @@ private fun ThreadMessageCard(
             Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
+                .then(
+                    if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
+                        Modifier.threadMessageLongPressActions(
+                            messageId = message.id,
+                            captureLongPressAnchor = captureLongPressAnchor,
+                            onShowActions = onShowActions,
+                            onPressChanged = { isPressed, position ->
+                                pressed = isPressed
+                                if (position != null) {
+                                    pressRippleOrigin = position
+                                }
+                            }
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
                     .background(threadMessageFocusHighlightColor(focusAlpha))
                     .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -14382,27 +14399,11 @@ private fun ThreadMessageCard(
                             .weight(1f)
                             .clickable(onClick = onToggleShareSelection)
                     } else {
-                        Modifier
-                            .weight(1f)
-                            .threadMessageLongPressActions(
-                                messageId = message.id,
-                                captureLongPressAnchor = captureLongPressAnchor,
-                                onShowActions = onShowActions,
-                                onPressChanged = { isPressed, position ->
-                                    pressed = isPressed
-                                    if (position != null) {
-                                        pressRippleOrigin = position
-                                    }
-                                }
-                            )
+                        Modifier.weight(1f)
                     }
                 Box(
                     modifier = contentModifier
                 ) {
-                    ThreadMessagePressRipple(
-                        pressed = pressed,
-                        origin = pressRippleOrigin
-                    )
                     Column(
                         modifier =
                             Modifier
@@ -14658,6 +14659,10 @@ private fun ThreadMessageCard(
                 }
             }
         }
+        ThreadMessagePressRipple(
+            pressed = pressed,
+            origin = pressRippleOrigin
+        )
     }
 }
 
@@ -15527,6 +15532,9 @@ private const val ThreadMessageRippleFadeMs = 240
 private const val ThreadMessageRippleResetMarginMs = 60L
 private const val ThreadMessageRippleAlpha = 0.10f
 private val ThreadMessageRippleMinRadius = 24.dp
+
+internal fun threadMessageUsesFullRowLongPressActions(shareSelectionActive: Boolean): Boolean =
+    !shareSelectionActive
 
 @Composable
 private fun BoxScope.ThreadMessagePressRipple(
