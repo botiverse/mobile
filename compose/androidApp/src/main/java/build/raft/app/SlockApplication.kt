@@ -14,7 +14,6 @@ import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.warmUpSlockJsonParseDispatcher
 import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
-import com.tencent.kuiklybase.markdown.model.warmUpSlockMarkdownParseDispatcher
 import kotlinx.coroutines.runBlocking
 
 class SlockApplication : Application() {
@@ -59,7 +58,6 @@ class SlockApplication : Application() {
         installAndroidAppScopePlatformFileResolver(this)
         installAndroidAppScopeEventBus(this)
         warmUpSlockJsonParseDispatcher()
-        warmUpSlockMarkdownParseDispatcher()
         AndroidAppScopeRealtimeOwner.install(this)
         runCatching {
             runBlocking {
