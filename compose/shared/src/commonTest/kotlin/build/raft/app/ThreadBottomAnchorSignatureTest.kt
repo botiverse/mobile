@@ -529,7 +529,7 @@ class ThreadBottomAnchorSignatureTest {
     @Test
     fun markdownPreparseSignature_changesWhenOlderLoadedBodyChanges() {
         val messagesA =
-            (0 until ThreadInitialMarkdownPreparseMessageCount + 2).map { index ->
+            (0 until 100).map { index ->
                 message("m$index", body = "body-$index")
             }
         val messagesB =
@@ -667,13 +667,34 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun markdownPreparseOrder_keepsFocusedWindowBeforeLatestRemainder() {
+    fun markdownPreparseCandidates_areBoundedToFocusedPriorityWindow() {
         val messages = (0 until 8).map { index -> message("m$index") }
         val slice = payload(messages = messages).copy(focusedMessageId = "m3").timelineSlice()
 
         assertEquals(
-            listOf("m3", "m2", "m4", "m1", "m5", "m0", "m6", "m7"),
+            listOf("m3", "m2", "m4", "m1"),
             slice.initialMarkdownPreparseCandidateIds(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
+    fun jointSizedTimeline_retainsHistoryButBoundsInitialMarkdownWork() {
+        val messages = (0 until 100).map { index -> message("m$index", body = "body-$index") }
+        val slice = payload(messages = messages).timelineSlice()
+
+        assertEquals(100, slice.messages.size)
+        assertEquals(
+            listOf("m99", "m98", "m97", "m96"),
+            slice.initialMarkdownPreparseCandidateIds(contentExtrasVisible = true)
+        )
+        assertEquals(
+            listOf("m95", "m96", "m97", "m98", "m99"),
+            slice.visibleMarkdownPreparseCandidateIds(
+                firstVisibleItemIndex = 100,
+                lastVisibleItemIndex = 100,
+                overscanItems = 4,
+                contentExtrasVisible = true
+            )
         )
     }
 
@@ -688,6 +709,23 @@ class ThreadBottomAnchorSignatureTest {
                 firstVisibleItemIndex = 4,
                 lastVisibleItemIndex = 4,
                 overscanItems = 1,
+                contentExtrasVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun visibleMarkdownPreparseWarmsOneMeasuredViewportBeforeOverscan() {
+        val messages = (0 until 20).map { index -> message("m$index") }
+        val slice = payload(messages = messages).timelineSlice()
+
+        assertEquals(
+            (3..14).map { index -> "m$index" },
+            slice.visibleMarkdownPreparseCandidateIds(
+                firstVisibleItemIndex = 10,
+                lastVisibleItemIndex = 14,
+                overscanItems = 1,
+                prewarmBeforeItems = 5,
                 contentExtrasVisible = true
             )
         )
@@ -709,6 +747,75 @@ class ThreadBottomAnchorSignatureTest {
                 firstVisibleItemIndex = 2,
                 lastVisibleItemIndex = 2,
                 overscanItems = 2,
+                contentExtrasVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun visibleMarkdownPreparseRunsWhenLatestPriorityBodiesAreBlank() {
+        val messages =
+            listOf(
+                message("older-complex", body = "```kotlin\nprintln(\"older\")\n```"),
+                message("m1", body = ""),
+                message("m2", body = ""),
+                message("m3", body = ""),
+                message("m4", body = "")
+            )
+        val slice = payload(messages = messages).timelineSlice()
+
+        assertTrue(slice.initialMarkdownPreparseCandidateIds(contentExtrasVisible = true).isEmpty())
+        assertEquals(
+            listOf("older-complex"),
+            slice.visibleMarkdownPreparseCandidateIds(
+                firstVisibleItemIndex = 1,
+                lastVisibleItemIndex = 1,
+                overscanItems = 0,
+                contentExtrasVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun visibleMarkdownPreparseUsesUpdatedOffscreenBody() {
+        val before =
+            payload(
+                messages =
+                    listOf(
+                        message("older", body = "```kotlin\nprintln(\"before\")\n```"),
+                        message("m1", body = "latest-1"),
+                        message("m2", body = "latest-2"),
+                        message("m3", body = "latest-3"),
+                        message("m4", body = "latest-4")
+                    )
+            ).timelineSlice()
+        val after =
+            before.copy(
+                messages =
+                    before.messages.map { message ->
+                        if (message.id == "older") {
+                            message.copy(body = "```kotlin\nprintln(\"after\")\n```")
+                        } else {
+                            message
+                        }
+                    }
+            )
+
+        assertEquals(
+            before.initialMarkdownPreparseCandidateIds(contentExtrasVisible = true),
+            after.initialMarkdownPreparseCandidateIds(contentExtrasVisible = true)
+        )
+        assertNotEquals(
+            before.visibleMarkdownPreparseCandidateSignature(
+                firstVisibleItemIndex = 1,
+                lastVisibleItemIndex = 1,
+                overscanItems = 0,
+                contentExtrasVisible = true
+            ),
+            after.visibleMarkdownPreparseCandidateSignature(
+                firstVisibleItemIndex = 1,
+                lastVisibleItemIndex = 1,
+                overscanItems = 0,
                 contentExtrasVisible = true
             )
         )

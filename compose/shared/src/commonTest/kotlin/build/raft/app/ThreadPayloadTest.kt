@@ -1434,9 +1434,38 @@ class ThreadPayloadTest {
 
     @Test
     fun threadOlderAutoLoadStartsBeforeBoundaryIsVisible() {
-        assertFalse(shouldThreadAutoLoadOlderMessages(boundaryIndex = 0, firstVisibleIndex = 9))
-        assertTrue(shouldThreadAutoLoadOlderMessages(boundaryIndex = 0, firstVisibleIndex = 8))
-        assertTrue(shouldThreadAutoLoadOlderMessages(boundaryIndex = 0, firstVisibleIndex = 0))
+        assertFalse(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 0,
+                firstVisibleIndex = 9,
+                userScrollGeneration = 1
+            )
+        )
+        assertTrue(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 0,
+                firstVisibleIndex = 8,
+                userScrollGeneration = 1
+            )
+        )
+        assertTrue(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 0,
+                firstVisibleIndex = 0,
+                userScrollGeneration = 1
+            )
+        )
+    }
+
+    @Test
+    fun threadOlderAutoLoadIgnoresProgrammaticEntryScroll() {
+        assertFalse(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 0,
+                firstVisibleIndex = 0,
+                userScrollGeneration = 0
+            )
+        )
     }
 
     @Test
