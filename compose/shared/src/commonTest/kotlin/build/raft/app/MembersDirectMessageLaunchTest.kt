@@ -7,6 +7,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.SlockTimeFormat12Hour
 import build.raft.app.model.ServerId
@@ -20,6 +21,61 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MembersDirectMessageLaunchTest {
+    @Test
+    fun humanSelfProfileKeepsMessageActionAvailable() {
+        val member =
+            MemberProfile(
+                id = MemberId("user-self"),
+                displayName = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human,
+                membershipStatus = "active",
+                serverId = ServerId("server-1")
+            )
+
+        assertEquals(
+            MembersDirectMessageEligibility.Self,
+            membersDirectMessageEligibility(
+                member = member,
+                currentUserId = "user-self",
+                currentServerId = "server-1"
+            )
+        )
+    }
+
+    @Test
+    fun remoteOrRemovedHumanProfileDoesNotExposeMessageAction() {
+        val member =
+            MemberProfile(
+                id = MemberId("user-partner"),
+                displayName = "Partner",
+                handle = "partner",
+                kind = MemberKind.Human,
+                membershipStatus = "active",
+                serverId = ServerId("server-partner")
+            )
+
+        assertEquals(
+            MembersDirectMessageEligibility.Unavailable,
+            membersDirectMessageEligibility(
+                member = member,
+                currentUserId = "user-self",
+                currentServerId = "server-1"
+            )
+        )
+        assertEquals(
+            MembersDirectMessageEligibility.Unavailable,
+            membersDirectMessageEligibility(
+                member = member.copy(
+                    serverId = ServerId("server-1"),
+                    membershipStatus = "removed"
+                ),
+                currentUserId = "user-self",
+                currentServerId = "server-1"
+            )
+        )
+    }
+
     @Test
     fun agentDetailUsesIconOnlyHeaderMessageAction() {
         assertTrue(membersHeaderMessageUsesIconOnly(MemberKind.Agent))
