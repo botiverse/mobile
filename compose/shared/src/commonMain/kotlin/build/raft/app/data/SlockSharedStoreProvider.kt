@@ -42,6 +42,7 @@ import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.SlockNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
@@ -211,12 +212,19 @@ internal class SlockSharedStoreProvider private constructor(
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
+    /**
+     * Provider-central T3 seam shared by every realtime owner backed by this database. The seam-only lane is
+     * deliberately dormant: guarded accept does not invoke it until the frozen RED matrix is reviewed.
+     */
+    private val currentGrantMessageShadowCommitLane = CurrentGrantMessageShadowCommitLane()
+
     init {
         updateNetworkKmmRecoveryEnvironment()
         // Attach the flag-gated `sync_core_messages_v0` shadow fold+persist lane to the legacy-scope owner.
         // (The owner is constructed in create() before this instance exists, so serverFeatureFlags can only
         // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
+        realtimeDomainEventOwner.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         realtimeAuthorityProvider.start(threadSendScope)
         threadSendScope.launch {
@@ -369,6 +377,7 @@ internal class SlockSharedStoreProvider private constructor(
                     runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
+                    it.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
                     it.installReactionShadowLane(buildReactionShadowLane())
                 }
             }
@@ -986,10 +995,17 @@ internal class SharedRealtimeDomainEventOwner(
     // that don't exercise it). Invisible to sinks and fail-open; the legacy unowned path can only emit a
     // bounded partition-denial diagnostic and never persists.
     private var messageShadowFoldLane: SyncCoreMessageShadowFoldLane? = null
+    // Provider-central T3 seam. Installed across owners but intentionally not invoked by guarded accept in
+    // the seam-only slice; pure REDs bind the frozen ordering/authority contract before GREEN activation.
+    private var currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane? = null
     private var reactionShadowLane: SyncCoreReactionShadowLane? = null
 
     fun installMessageShadowFoldLane(lane: SyncCoreMessageShadowFoldLane) {
         messageShadowFoldLane = lane
+    }
+
+    fun installCurrentGrantMessageShadowCommitLane(lane: CurrentGrantMessageShadowCommitLane) {
+        currentGrantMessageShadowCommitLane = lane
     }
 
     fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {

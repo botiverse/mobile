@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.network.sync.DurablePartitionKey
+import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -22,6 +24,14 @@ internal data class RealtimeScopeAuthority(
 ) {
     fun grant(serverId: String): RealtimeGrantRecord? = grantsByServer[serverId]
 }
+
+/**
+ * Ephemeral T3 capability produced only while the registry still holds the captured grant current. It
+ * intentionally exposes the durable partition and nothing from the grant/witness/generation authority.
+ */
+internal data class CurrentMessageCommitContext(
+    val partition: DurablePartitionKey,
+)
 
 /**
  * Provider-owned lifecycle adapter for the Foundation v1.2 registry.
@@ -113,6 +123,27 @@ internal class RealtimeAuthorityProvider(
         grant: RealtimeGrantRecord,
         block: suspend () -> Unit,
     ): Boolean = registry.runIfCurrentGrant(grant, block)
+
+    /**
+     * Seam-only T3 entry. No production caller uses it yet: the RED slice first binds the frozen schedules,
+     * then GREEN may route guarded canonical messages through this existing registry linearization point.
+     */
+    suspend fun runWithCurrentMessageGrant(
+        capturedGrant: RealtimeGrantRecord,
+        block: suspend (CurrentMessageCommitContext) -> Unit,
+    ): Boolean =
+        registry.runIfCurrentGrant(capturedGrant) {
+            block(
+                CurrentMessageCommitContext(
+                    partition =
+                        DurablePartitionKey(
+                            serverId = capturedGrant.serverId,
+                            principalId = capturedGrant.principalId,
+                            consumerId = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+                        ),
+                ),
+            )
+        }
 
     private suspend fun reconcileInitialSession() {
         lifecycleMutex.withLock {
