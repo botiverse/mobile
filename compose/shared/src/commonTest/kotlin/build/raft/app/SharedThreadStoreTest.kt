@@ -1210,7 +1210,7 @@ class SharedThreadStoreTest {
             )
 
         assertEquals(2, repository.getReplyThreadRequests.size)
-        assertEquals(listOf("reply-1", "reply-2"), visible.data.messages.map { it.id.value })
+        assertEquals(listOf("reply-1", "reply-2"), visible.data.messages.map { it.id })
         assertEquals(listOf(DataRequestPriority.Background, DataRequestPriority.Background), repository.getReplyThreadPriorities)
     }
 
