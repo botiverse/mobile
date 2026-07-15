@@ -4224,7 +4224,7 @@ private fun MembersDetailHeader(
             member.kind == MemberKind.Agent ->
                 summary?.description?.takeIf { it.isNotBlank() }
                     ?: member.description?.takeIf { it.isNotBlank() }
-            else -> member.detailHandle
+            else -> null
         }
     val avatarClick = onAvatarClick
     val topSafeArea = slockTopSafeAreaPadding()
@@ -5381,8 +5381,21 @@ private fun MembersHumanProfileSummary(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            if (member.membershipStatus == "removed") {
-                MembersHumanRoleChip(stringResource(MR.strings.member_role_removed), SlockColor.EmptyStateGray)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = member.detailHandle,
+                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (member.membershipStatus == "removed") {
+                    MembersHumanRoleChip(stringResource(MR.strings.member_role_removed), SlockColor.EmptyStateGray)
+                }
             }
         }
     }
