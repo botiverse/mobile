@@ -117,6 +117,12 @@ kotlin {
                 implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
             }
         }
+        val androidInstrumentedTest by getting {
+            dependencies {
+                implementation(libs.androidx.junit)
+                implementation(libs.androidx.espresso.core)
+            }
+        }
 
         val iosX64Main by getting
         val iosArm64Main by getting
@@ -276,10 +282,17 @@ android {
     compileSdk = 34
     defaultConfig {
         minSdk = 21
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     sourceSets {
         named("main") {
             assets.srcDirs("src/commonMain/assets")
+        }
+        named("test") {
+            resources.srcDir("src/commonMain/sqldelight/databases")
+        }
+        named("androidTest") {
+            assets.srcDir("src/commonMain/sqldelight/databases")
         }
     }
 }

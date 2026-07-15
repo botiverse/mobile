@@ -18,7 +18,11 @@ import kotlin.test.assertTrue
 
 class FoldPersistenceOneTxnTest {
 
-    private val scope = SyncScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
+    private val scope = SyncScopeKey(
+        partition = DurablePartitionKey("s1", "p1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+        scopeId = "c1",
+        scopeKind = "channel",
+    )
 
     private fun row(id: String, seq: Long) = CanonicalMessageRow(
         id = id,

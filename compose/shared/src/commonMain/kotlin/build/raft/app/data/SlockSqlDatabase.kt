@@ -6,6 +6,7 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlPreparedStatement
 import build.raft.app.shared.data.local.SlockDatabase
 import build.raft.app.shared.data.local.SlockDatabaseQueries
+import kotlinx.coroutines.runBlocking
 
 internal class SlockSqlDatabase(
     private val driver: SqlDriver
@@ -40,13 +41,15 @@ internal class SlockSqlDatabase(
     }
 
     suspend fun transaction(block: suspend SlockSqlDatabase.() -> Unit) {
-        execute("BEGIN IMMEDIATE")
-        try {
-            block()
-            execute("COMMIT")
-        } catch (throwable: Throwable) {
-            runCatching { execute("ROLLBACK") }
-            throw throwable
+        // Use SQLDelight's driver transaction API so every statement is pinned to the same physical
+        // connection. Raw BEGIN/COMMIT execute calls are not sufficient for pooled file-backed JDBC: each
+        // call may acquire a different connection, making COMMIT observe no active transaction. The store
+        // block is synchronous SQL today; runBlocking keeps its suspend-shaped contract inside the driver's
+        // thread-confined transaction callback on Android/JDBC/Native.
+        database.transaction {
+            runBlocking {
+                block(this@SlockSqlDatabase)
+            }
         }
     }
 
@@ -70,10 +73,9 @@ internal class SlockSqlDatabase(
             ?: RelationalValue.Null
 
     companion object {
-        // #491 P1: fresh DB file for the sync-core persistence baseline. Bumping the filename (v2->v3)
-        // starts a brand-new DB with schema/migration history reset to zero — the pre-release reset
-        // means no live DB to migrate, so the epoch cursor column + (seq,id) restore index ship as the
-        // Fresh schema v1: pre-release caches are replaceable server mirrors, so v3 is abandoned.
+        // The v4 filename is stable. SQLDelight schema v1 is the checked-in compatibility baseline and v2
+        // migrates only the canonical message/cursor core into the durable S/P/C partition while preserving
+        // outbox and every non-core definition.
         const val DatabaseName: String = "slock_cache_v4.db"
 
         val Schema = SlockDatabase.Schema

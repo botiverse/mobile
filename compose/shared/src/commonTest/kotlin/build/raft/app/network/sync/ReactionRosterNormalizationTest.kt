@@ -10,12 +10,12 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ReactionRosterNormalizationTest {
-    private val scope = SyncScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
+    private val scope = ReactionParentScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
 
     private fun context(
         authority: ReactionIngressAuthority = ReactionIngressAuthority.ReceiverPrivate("u2"),
         messageId: String = "m1",
-        parentScopeKey: SyncScopeKey = scope,
+        parentScopeKey: ReactionParentScopeKey = scope,
     ) = ReactionNormalizationContext(
         serverId = "s1",
         messageId = messageId,
@@ -307,7 +307,7 @@ class ReactionRosterNormalizationTest {
 
     @Test
     fun typedCacheClearsAllChildEntriesForParentScopeWithoutGlobalScanSemantics() {
-        val otherScope = SyncScopeKey(serverId = "s1", scopeId = "c2", scopeKind = "channel")
+        val otherScope = ReactionParentScopeKey(serverId = "s1", scopeId = "c2", scopeKind = "channel")
         val cache = BoundedReactionActorsReadCache(principalScope = "user:u2", maxEntries = 3)
         val first = normalized(listOf(LegacyReactionRosterDto("like", 0))).readCacheSeed.single()
         val second = normalized(listOf(LegacyReactionRosterDto("fire", 0))).readCacheSeed.single()

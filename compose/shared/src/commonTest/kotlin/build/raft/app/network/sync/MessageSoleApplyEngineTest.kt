@@ -309,7 +309,11 @@ class MessageSoleApplyEngineTest {
         // And therefore the production construction path can never build a lane in slice-2.
         val lane = MessageSoleApplyLane.createIfEligible(
             perScopeControl = true,
-            scopeKey = SyncScopeKey(serverId = "s", scopeId = "c", scopeKind = "channel"),
+            scopeKey = SyncScopeKey(
+                partition = DurablePartitionKey("s", "p", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID),
+                scopeId = "c",
+                scopeKind = "channel",
+            ),
             adapter = object : FoldPersistenceAdapter {
                 override suspend fun applyFrame(frame: FoldPersistFrame) = Unit
                 override suspend fun restore(scope: SyncScopeKey): RestoredFoldState =

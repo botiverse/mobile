@@ -28,7 +28,7 @@ internal class SyncCoreReactionShadowLane(
                     context = ReactionNormalizationContext(
                         serverId = resolvedServerId,
                         messageId = decoded.row.id,
-                        parentScopeKey = SyncScopeKey(
+                        parentScopeKey = ReactionParentScopeKey(
                             serverId = resolvedServerId,
                             scopeId = decoded.row.channelId,
                             scopeKind = SHADOW_SCOPE_KIND,

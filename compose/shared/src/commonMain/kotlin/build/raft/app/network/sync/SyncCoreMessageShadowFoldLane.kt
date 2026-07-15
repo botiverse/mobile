@@ -10,6 +10,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
+internal enum class PartitionDenialReason(val wireValue: String) {
+    PrincipalUnavailable("principal_unavailable"),
+}
+
+internal data class PartitionDenied(
+    val reason: PartitionDenialReason,
+    val deniedFrameCount: Int,
+)
+
 /**
  * The `sync_core_messages_v0` "sole-apply t0" SHADOW fold+persist lane for message-canonical frames.
  *
@@ -52,17 +61,22 @@ internal class SyncCoreMessageShadowFoldLane(
         featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
 
     /**
-     * Fold one canonical message frame into the shadow core, then persist that channel scope's resulting fact
-     * window off the caller thread. [updated] selects [MessageDomainEvent.Updated] vs [MessageDomainEvent.New].
-     * [epoch] is the caller's per-scope recovery epoch (consistent with the legacy cursor). FAIL-OPEN: the
-     * whole body is guarded; the async persist uses runCatching; nothing propagates to the caller.
+     * Fold one canonical message frame into the shadow core, then persist the channel scope derived from the
+     * canonical payload inside [partition]. [updated] selects [MessageDomainEvent.Updated] vs
+     * [MessageDomainEvent.New]. Callers cannot supply a second scope identity that could disagree with the
+     * payload, and no server-only/principal-inferred overload exists.
      */
     fun foldAndPersist(
-        resolvedServerId: String,
+        partition: DurablePartitionKey,
         decoded: CanonicalMessageCarry,
         updated: Boolean,
         epoch: SyncEpoch?,
     ) {
+        val scopeKey = SyncScopeKey(
+            partition = partition,
+            scopeId = decoded.row.channelId,
+            scopeKind = MESSAGE_SCOPE_KIND,
+        )
         try {
             synchronized(foldAndEnqueueLock) {
                 val row = decoded.row
@@ -79,7 +93,7 @@ internal class SyncCoreMessageShadowFoldLane(
                     .get(channelId)
                     .orEmpty()
                 val frame = FoldPersistFrame(
-                    scope = SyncScopeKey(resolvedServerId, channelId, SHADOW_SCOPE_KIND),
+                    scope = scopeKey,
                     facts = facts,
                     cursor = PersistedCursor(
                         // Updated frames carry the message creation seq. Persist the host watermark so
@@ -94,14 +108,42 @@ internal class SyncCoreMessageShadowFoldLane(
                     rebaseline = false,
                     prunedFactIds = emptyList(),
                 )
-                if (persistQueue.trySend(QueuedPersistFrame(resolvedServerId, frame)).isFailure) {
-                    logShadowFailure(resolvedServerId, IllegalStateException("shadow persist queue unavailable"))
+                if (persistQueue.trySend(QueuedPersistFrame(scopeKey.serverId, frame)).isFailure) {
+                    logShadowFailure(scopeKey.serverId, IllegalStateException("shadow persist queue unavailable"))
                 }
             }
         } catch (throwable: Throwable) {
-            logShadowFailure(resolvedServerId, throwable)
+            logShadowFailure(scopeKey.serverId, throwable)
         }
     }
+
+    /** Fail closed when a legacy/unowned caller cannot supply the durable principal partition. */
+    fun partitionDenied(
+        serverId: String,
+        reason: PartitionDenialReason,
+    ): PartitionDenied =
+        partitionDenied(serverId, reason, deniedFrameCount = 1)
+
+    /** Emit one bounded diagnostic for a denied eligible batch without logging identity or content. */
+    fun partitionDenied(
+        serverId: String,
+        reason: PartitionDenialReason,
+        deniedFrameCount: Int,
+    ): PartitionDenied =
+        PartitionDenied(
+            reason = reason,
+            deniedFrameCount = deniedFrameCount.also { count ->
+                require(count > 0) { "deniedFrameCount must be positive" }
+            },
+        ).also {
+            runCatching {
+                logger(
+                    "sync_core_partition_persist_denied reason=${reason.wireValue} " +
+                        "serverId=$serverId consumer=$SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID " +
+                        "deniedFrameCount=$deniedFrameCount",
+                )
+            }
+        }
 
     /** Start the per-scope generation before the host issues the authoritative snapshot request. */
     internal fun beginAuthoritativeRebaseline(scopeId: SyncScopeId, generation: Long): Boolean =
@@ -121,7 +163,7 @@ internal class SyncCoreMessageShadowFoldLane(
     }
 
     companion object {
-        private const val SHADOW_SCOPE_KIND: String = "channel"
+        private const val MESSAGE_SCOPE_KIND: String = "channel"
 
         /** Build the production lane over the real SQLite one-txn persistence for [sqlDatabase]. */
         fun create(

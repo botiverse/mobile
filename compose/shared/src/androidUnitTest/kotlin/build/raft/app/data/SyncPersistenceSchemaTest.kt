@@ -11,8 +11,9 @@ import kotlin.test.assertNull
 /**
  * #491 P1 schema gate — FRESH baseline, no migration (pre-release DB reset, `slock_cache_v4.db`). The
  * sync-core persistence ships as a canonical-native schema version 1: messageEntity holds the lossless
- * `canonicalFactJson` + minimal scope/order scalars (no presentation columns), with the full 3-part-scope
- * `(serverId, scopeKind, channelId, seq, id)` restore index and the per-scope epoch cursor column.
+ * `canonicalFactJson` + minimal scope/order scalars (no presentation columns), with the full durable
+ * partition + scope `(serverId, principalId, consumerId, scopeKind, channelId, seq, id)` restore index and
+ * the per-partition-scope epoch cursor column.
  *
  * A fresh `Schema.create` must produce: the nullable epoch column, that tie-break index with the exact
  * column order, `seq NOT NULL` (pending never enters), and the canonical `(seq, id)` restore ordering.
@@ -34,16 +35,16 @@ class SyncPersistenceSchemaTest {
         assertEquals("TEXT", epoch.type)
         driver.execute(
             null,
-            "INSERT INTO syncCursorEntity(scopeId, serverId, scopeKind, latestSeq, updatedAtMs) " +
-                "VALUES ('scope1','s1','channel', 42, 300);",
+            "INSERT INTO syncCursorEntity(scopeId, serverId, principalId, consumerId, scopeKind, latestSeq, updatedAtMs) " +
+                "VALUES ('scope1','s1','p1','sync-core.messages.v1','channel', 42, 300);",
             0,
         )
         assertNull(driver.singleText("SELECT epoch FROM syncCursorEntity WHERE scopeId='scope1';"))
 
         // 2) canonical tie-break index exists with the EXACT column order.
         assertEquals(
-            listOf("serverId", "scopeKind", "channelId", "seq", "id"),
-            driver.indexColumns("messageEntity_channelSeqId"),
+            listOf("serverId", "principalId", "consumerId", "scopeKind", "channelId", "seq", "id"),
+            driver.indexColumns("messageEntity_partitionChannelSeqId"),
         )
 
         // 3) canonical-native schema contract: messageEntity carries the lossless `canonicalFactJson` +
@@ -59,7 +60,13 @@ class SyncPersistenceSchemaTest {
         driver.insertMessage(id = "m2", seq = 7)
         driver.insertMessage(id = "m1", seq = 7)
         val restored = SlockDatabase(driver).slockDatabaseQueries
-            .selectServerBackedMessagesForChannel(serverId = "s1", scopeKind = "channel", channelId = "c1")
+            .selectServerBackedMessagesForChannel(
+                serverId = "s1",
+                principalId = "p1",
+                consumerId = "sync-core.messages.v1",
+                scopeKind = "channel",
+                channelId = "c1",
+            )
             .executeAsList()
             .map { it.id }
         assertEquals(listOf("m1", "m2"), restored)
@@ -73,8 +80,8 @@ class SyncPersistenceSchemaTest {
 
     private fun JdbcSqliteDriver.insertMessage(id: String, seq: Int) = execute(
         null,
-        "INSERT INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson) " +
-            "VALUES ('$id','s1','c1','channel', $seq, 't', '{\"version\":1,\"id\":\"$id\"}');",
+        "INSERT INTO messageEntity(serverId, principalId, consumerId, id, channelId, scopeKind, seq, createdAt, canonicalFactJson) " +
+            "VALUES ('s1','p1','sync-core.messages.v1','$id','c1','channel', $seq, 't', '{\"version\":1,\"id\":\"$id\"}');",
         0,
     )
 

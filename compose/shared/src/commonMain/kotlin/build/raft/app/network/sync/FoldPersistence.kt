@@ -15,12 +15,26 @@ import build.raft.app.model.MessageId
  * This file is the contract the RED tests target; the SQLite-backed implementation lands next.
  */
 
-/** Identifies the scope a frame belongs to (server + scope + kind). Composite fact keys derive from this. */
+/** Identifies one scope inside an explicit durable server/principal/consumer partition. */
 data class SyncScopeKey(
-    val serverId: String,
+    val partition: DurablePartitionKey,
     val scopeId: SyncScopeId,
     val scopeKind: String,
-)
+) {
+    init {
+        requireOpaqueDurableIdentity("scopeId", scopeId)
+        requireOpaqueDurableIdentity("scopeKind", scopeKind)
+    }
+
+    val serverId: String
+        get() = partition.serverId
+
+    val principalId: String
+        get() = partition.principalId
+
+    val consumerId: String
+        get() = partition.consumerId
+}
 
 /** The durable per-scope cursor + epoch (mirror of `syncCursorEntity`) committed with the facts. */
 data class PersistedCursor(
@@ -47,6 +61,22 @@ data class FoldPersistFrame(
     /** Retention gate — empty in the one-txn increment; pruning joins the SAME transaction when present. */
     val prunedFactIds: List<MessageId> = emptyList(),
 )
+
+/** A frame fact whose payload channel does not match the declared durable scope. */
+internal class FoldPersistScopeMismatch(
+    scope: SyncScopeKey,
+    fact: CanonicalMessageRow,
+) : IllegalArgumentException(
+    "canonical fact ${fact.id} channelId=${fact.channelId} does not match " +
+        "scope channelId=${scope.scopeId} in " +
+        "${scope.serverId}/${scope.principalId}/${scope.consumerId}/${scope.scopeKind}",
+)
+
+/** Validate payload-to-scope identity before opening a transaction or touching a direct store. */
+internal fun requireFactsMatchScope(scope: SyncScopeKey, facts: List<CanonicalMessageRow>) {
+    facts.firstOrNull { fact -> fact.channelId != scope.scopeId }
+        ?.let { fact -> throw FoldPersistScopeMismatch(scope, fact) }
+}
 
 /** The durable post-state for a scope: the fact window plus the cursor + epoch. */
 data class RestoredFoldState(
@@ -112,6 +142,9 @@ class DefaultFoldPersistenceAdapter(
 ) : FoldPersistenceAdapter {
 
     override suspend fun applyFrame(frame: FoldPersistFrame) {
+        // Identity validation is deliberately outside runner.run: an invalid frame must fail before BEGIN,
+        // so it cannot advance a cursor or produce any other storage side effect.
+        requireFactsMatchScope(frame.scope, frame.facts)
         // The ONE-TXN gate: everything the frame changes commits in a single runner.run { }. Pruning,
         // fact upserts, timeline-index maintenance, and the cursor+epoch all live inside this one boundary,
         // so §9.9's transaction-count invariant holds (exactly one commit) and no torn window can exist.

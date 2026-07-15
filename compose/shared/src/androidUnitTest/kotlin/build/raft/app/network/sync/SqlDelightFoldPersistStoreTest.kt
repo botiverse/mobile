@@ -4,17 +4,17 @@
  * Proves the store-level DoD on a REAL backend (backend-neutral one-txn tests can't): one applied frame =
  * exactly one real BEGIN + COMMIT (0 rollback); mid-block process death = one real ROLLBACK to the complete
  * pre-frame state; a full 19-field + nested canonical row survives round-trip through the JSON payload; the
- * scalar columns equal what you extract from decoding that payload; every SQL touch is FULL 3-part scoped
- * (serverId + scopeKind + scopeId — a same-scopeId different-scopeKind or different-server scope must not
- * collide); a cross-scope same-id collision fail-stops on the REAL applyFrame path; a projection-tampered
+ * scalar columns equal what you extract from decoding that payload; every SQL touch is scoped by the full
+ * durable partition + scope (serverId + principalId + consumerId + scopeKind + scopeId); a cross-scope
+ * same-partition id collision fail-stops on the REAL applyFrame path; a projection-tampered
  * scalar is poisoned (restore never returns a drifted row, and the payload itself is untouched); a malformed
  * row is a counted poison-gate input; and persist->restore preserves the resolved null/empty/value states.
  */
 package build.raft.app.network.sync
 
+import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
@@ -40,13 +40,13 @@ class SqlDelightFoldPersistStoreTest {
         var begin = 0; private set
         var commit = 0; private set
         var rollback = 0; private set
-        override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
-            when (sql.trim().uppercase().substringBefore(' ')) {
-                "BEGIN" -> begin++
-                "COMMIT" -> commit++
-                "ROLLBACK" -> rollback++
+
+        override fun newTransaction(): QueryResult<Transacter.Transaction> {
+            begin += 1
+            return delegate.newTransaction().also { result ->
+                result.value.afterCommit { commit += 1 }
+                result.value.afterRollback { rollback += 1 }
             }
-            return delegate.execute(identifier, sql, parameters, binders)
         }
     }
 
@@ -57,7 +57,19 @@ class SqlDelightFoldPersistStoreTest {
         return SlockSqlDatabase(driver) to driver
     }
 
-    private val scope = SyncScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
+    private fun scopeKey(
+        serverId: String = "s1",
+        principalId: String = "p1",
+        consumerId: String = SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID,
+        scopeId: String = "c1",
+        scopeKind: String = "channel",
+    ) = SyncScopeKey(
+        partition = DurablePartitionKey(serverId, principalId, consumerId),
+        scopeId = scopeId,
+        scopeKind = scopeKind,
+    )
+
+    private val scope = scopeKey()
 
     private fun store(db: SlockSqlDatabase, onDecodeFailure: (SyncScopeKey, String) -> Unit = { _, _ -> }) =
         SqlDelightFoldPersistStore(db, now = { 100L }, onDecodeFailure = onDecodeFailure)
@@ -127,7 +139,13 @@ class SqlDelightFoldPersistStoreTest {
     fun scalarColumnsEqualExtractOfDecodedPayload() = runBlocking {
         val (db, _) = freshDb()
         adapter(db).applyFrame(frame(scope, row("m1", 5)))
-        val stored = db.queries.selectServerBackedMessagesForChannel("s1", "channel", "c1").executeAsList().single()
+        val stored = db.queries.selectServerBackedMessagesForChannel(
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsList().single()
         val decoded = decodeCanonicalFact(stored.canonicalFactJson)!!
         assertEquals(stored.id, decoded.id)
         assertEquals(stored.channelId, decoded.channelId)
@@ -140,12 +158,12 @@ class SqlDelightFoldPersistStoreTest {
         val (db, _) = freshDb()
         adapter(db).applyFrame(frame(scope, row("m1", 1)))
         // Same server+scopeId but a DIFFERENT scopeKind must not see it (a channel vs a thread on c1).
-        val sameIdOtherKind = SyncScopeKey("s1", "c1", "thread")
+        val sameIdOtherKind = scopeKey(scopeKind = "thread")
         assertTrue(store(db).readFacts(sameIdOtherKind).isEmpty(), "different scopeKind (same scopeId) must be isolated")
         // Different server must not see it.
-        assertTrue(store(db).readFacts(SyncScopeKey("s2", "c1", "channel")).isEmpty(), "different server must be isolated")
+        assertTrue(store(db).readFacts(scopeKey(serverId = "s2")).isEmpty(), "different server must be isolated")
         // Different channelId must not see it.
-        assertTrue(store(db).readFacts(SyncScopeKey("s1", "c2", "channel")).isEmpty(), "different channelId must be isolated")
+        assertTrue(store(db).readFacts(scopeKey(scopeId = "c2")).isEmpty(), "different channelId must be isolated")
         assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id })
     }
 
@@ -154,16 +172,16 @@ class SqlDelightFoldPersistStoreTest {
         val (db, _) = freshDb()
         // A channel and a thread sharing serverId + scopeId must NOT collide on the cursor.
         adapter(db).applyFrame(frame(scope, row("m1", 5)))
-        adapter(db).applyFrame(frame(SyncScopeKey("s1", "c1", "thread"), row("t1", 9)))
+        adapter(db).applyFrame(frame(scopeKey(scopeKind = "thread"), row("t1", 9)))
         assertEquals(5L, store(db).readCursor(scope)?.latestSeq)
-        assertEquals(9L, store(db).readCursor(SyncScopeKey("s1", "c1", "thread"))?.latestSeq)
+        assertEquals(9L, store(db).readCursor(scopeKey(scopeKind = "thread"))?.latestSeq)
     }
 
     @Test
     fun crossScopeSameIdFailStopsOnRealApplyFrame() = runBlocking {
         val (db, _) = freshDb()
         adapter(db).applyFrame(frame(scope, row("dup", 1)))
-        val other = SyncScopeKey("s1", "c2", "channel")
+        val other = scopeKey(scopeId = "c2")
         assertFailsWith<FoldPersistScopeConflict> {
             adapter(db).applyFrame(frame(other, row("dup", 2, other)))
         }
@@ -196,7 +214,13 @@ class SqlDelightFoldPersistStoreTest {
         assertTrue(facts.isEmpty(), "restore must not return a row whose scalar drifted from its payload")
         assertEquals(listOf("m1"), poisoned, "the drifted row is a counted poison-gate input")
         // Restore-purity: the payload itself was never mutated — it still decodes to the true fact.
-        val payload = db.queries.selectServerBackedMessagesForChannel("s1", "channel", "c1").executeAsList().single().canonicalFactJson
+        val payload = db.queries.selectServerBackedMessagesForChannel(
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsList().single().canonicalFactJson
         assertEquals(3L, decodeCanonicalFact(payload)?.seq, "the payload seq is untouched; only the scalar was tampered")
     }
 

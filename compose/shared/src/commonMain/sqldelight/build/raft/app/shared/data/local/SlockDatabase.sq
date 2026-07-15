@@ -102,17 +102,21 @@ CREATE INDEX threadFollowEntity_parentMessageId ON threadFollowEntity(serverId, 
 -- CanonicalMessageRow.toAppMessage). Pending/optimistic/outbox rows NEVER enter this table — `seq NOT NULL`
 -- makes that structural, so `clearScope` is a plain full-scope delete (no exceptions).
 CREATE TABLE messageEntity (
-  id TEXT NOT NULL PRIMARY KEY,
   serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  id TEXT NOT NULL,
   channelId TEXT NOT NULL,
   scopeKind TEXT NOT NULL,
   seq INTEGER NOT NULL,
   createdAt TEXT NOT NULL,
-  canonicalFactJson TEXT NOT NULL
+  canonicalFactJson TEXT NOT NULL,
+  PRIMARY KEY (serverId, principalId, consumerId, id)
 );
 
 -- Canonical (seq, id) tie-break order for server-backed restore/timeline reads (#491 P1).
-CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, scopeKind, channelId, seq, id);
+CREATE INDEX messageEntity_partitionChannelSeqId
+ON messageEntity(serverId, principalId, consumerId, scopeKind, channelId, seq, id);
 
 -- attachmentEntity / messageReactionEntity / savedMessageEntity were removed with the canonical-native
 -- rebuild: all three had zero live consumers, and the canonical fact (attachments, reactions) is stored
@@ -167,6 +171,8 @@ CREATE INDEX memberProfileEntity_membershipStatus ON memberProfileEntity(serverI
 CREATE TABLE syncCursorEntity (
   scopeId TEXT NOT NULL,
   serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
   scopeKind TEXT NOT NULL,
   latestSeq INTEGER,
   oldestLoadedSeq INTEGER,
@@ -175,9 +181,9 @@ CREATE TABLE syncCursorEntity (
   hasLoadedNewest INTEGER NOT NULL DEFAULT 1,
   updatedAtMs INTEGER NOT NULL,
   epoch TEXT,
-  -- Full 3-part scope key: a channel and a thread (etc.) that happen to share serverId + scopeId must not
-  -- collide on the cursor. scopeKind is part of the identity, so it is in the PK.
-  PRIMARY KEY (serverId, scopeKind, scopeId)
+  -- Full durable partition + scope key: a channel and a thread (etc.) that happen to share a partition and
+  -- scopeId must not collide on the cursor. scopeKind is part of the identity, so it is in the PK.
+  PRIMARY KEY (serverId, principalId, consumerId, scopeKind, scopeId)
 );
 
 CREATE TABLE outboxMessageEntity (
@@ -393,29 +399,51 @@ WHERE serverId = ?
 -- dialect does not parse `ON CONFLICT ... DO UPDATE`. The pair (run in this order, in one transaction) is an
 -- in-place upsert: OR IGNORE creates the row when absent (an id conflict is ignored, NOT replaced), and the
 -- UPDATE sets the canonical facts for both the new and the pre-existing row. The UPDATE is SCOPED to the full
--- serverId+scopeKind+channelId, so a (contractually impossible) cross-scope id collision updates 0 rows
+-- partition+scopeKind+channelId, so a (contractually impossible) same-partition cross-scope id collision
+-- updates 0 rows
 -- rather than another scope's fact — the store then fail-stops on that 0-row result.
 insertCanonicalFactIfAbsent:
-INSERT OR IGNORE INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO messageEntity(
+  serverId,
+  principalId,
+  consumerId,
+  id,
+  channelId,
+  scopeKind,
+  seq,
+  createdAt,
+  canonicalFactJson
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateCanonicalFact:
 UPDATE messageEntity
 SET seq = ?, createdAt = ?, canonicalFactJson = ?
-WHERE id = ? AND serverId = ? AND scopeKind = ? AND channelId = ?;
+WHERE id = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND channelId = ?;
 
 -- Count matching rows for the fail-stop guard: after insert-or-ignore + scoped update, the store asserts
 -- exactly this row exists in THIS full scope. 0 = a cross-scope same-id collision (contract violation).
 countCanonicalFactInScope:
 SELECT COUNT(*) FROM messageEntity
-WHERE id = ? AND serverId = ? AND scopeKind = ? AND channelId = ?;
+WHERE id = ?
+  AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND channelId = ?;
 
 -- Clear a scope's canonical server facts (snapshot rebaseline). No exclusions: savedMessageEntity was
 -- removed (zero live consumers), so there is no cross-domain CASCADE to work around, and pending never
--- enters (seq NOT NULL). Just the full 3-part scope.
+-- enters (seq NOT NULL). The full durable partition + scope identity is required.
 clearCanonicalFactsForScope:
 DELETE FROM messageEntity
 WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
   AND scopeKind = ?
   AND channelId = ?;
 
@@ -424,6 +452,8 @@ deleteCanonicalFactInScope:
 DELETE FROM messageEntity
 WHERE id = ?
   AND serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
   AND scopeKind = ?
   AND channelId = ?;
 
@@ -552,6 +582,8 @@ upsertSyncCursor:
 INSERT OR REPLACE INTO syncCursorEntity(
   scopeId,
   serverId,
+  principalId,
+  consumerId,
   scopeKind,
   latestSeq,
   oldestLoadedSeq,
@@ -560,12 +592,14 @@ INSERT OR REPLACE INTO syncCursorEntity(
   hasLoadedNewest,
   updatedAtMs,
   epoch
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSyncCursor:
 SELECT *
 FROM syncCursorEntity
 WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
   AND scopeKind = ?
   AND scopeId = ?;
 
@@ -579,6 +613,8 @@ selectServerBackedMessagesForChannel:
 SELECT *
 FROM messageEntity
 WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
   AND scopeKind = ?
   AND channelId = ?
 ORDER BY seq, id;
