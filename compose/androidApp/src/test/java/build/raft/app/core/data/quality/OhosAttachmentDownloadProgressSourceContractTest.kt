@@ -22,7 +22,7 @@ class OhosAttachmentDownloadProgressSourceContractTest {
         assertTrue(source.contains("\"receiving\""))
         assertTrue(source.contains("\"complete\""))
         assertTrue(source.contains("firstPositiveBytes || now - lastProgressAt >= 250"))
-        assertTrue(source.contains("const tempPath = `${path}.part-${attemptToken}`;"))
+        assertTrue(source.contains("const tempPath = `${'$'}{path}.part-${'$'}{attemptToken}`;"))
         assertFalse(source.contains("emitAttachmentDownloadProgressIfNeeded"))
         assertFalse(source.contains("percent - lastPercent >= 2"))
         assertFalse(source.contains("now - lastProgressAt >= 750"))
