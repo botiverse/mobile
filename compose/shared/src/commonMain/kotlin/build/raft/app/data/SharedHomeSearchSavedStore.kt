@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
@@ -34,6 +35,8 @@ class SharedHomeSearchSavedStore(
     private val scope: CoroutineScope,
     private val timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() },
     private val searchDebounceMillis: Long = SearchDebounceMillis,
+    private val readReceiptCoordinator: ReadReceiptCoordinator? = null,
+    private val readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedHomeSearchSavedState())
@@ -44,6 +47,22 @@ class SharedHomeSearchSavedStore(
     private var searchDebounceJob: Job? = null
     private var senderFiltersJob: Job? = null
     private var searchRequestToken: Long = 0L
+    private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
+
+    init {
+        readReceiptCoordinator?.let { coordinator ->
+            scope.launch {
+                coordinator.predictions.collect { prediction ->
+                    applyReadReceiptPrediction(prediction)
+                }
+            }
+            scope.launch {
+                coordinator.failures.collect { failure ->
+                    handleReadReceiptFailure(failure.request)
+                }
+            }
+        }
+    }
 
     fun dispatch(intent: SharedHomeSearchSavedIntent) {
         when (intent) {
@@ -200,6 +219,39 @@ class SharedHomeSearchSavedStore(
         searchDebounceJob = null
         senderFiltersJob = null
         searchRequestToken++
+    }
+
+    private suspend fun applyReadReceiptPrediction(prediction: ReadReceiptPrediction) {
+        val session = authStore.readSession() ?: return
+        val serverId = session.currentServerId ?: return
+        val owner = readReceiptOwnerFactory?.invoke(serverId, session.user.id) ?: return
+        if (owner != prediction.owner) return
+        val previousRevision = readPredictionRevisions[prediction.channelId]
+        if (previousRevision != null && previousRevision >= prediction.revision) return
+        readPredictionRevisions = readPredictionRevisions + (prediction.channelId to prediction.revision)
+        fun List<InboxItem>.clearPredictedUnread(): List<InboxItem> =
+            map { item ->
+                if (item.readReceiptChannelId() == prediction.channelId && item.unreadCount > 0) {
+                    item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                } else {
+                    item
+                }
+            }
+        _state.value =
+            _state.value.copy(
+                saved = _state.value.saved.copy(items = _state.value.saved.items.clearPredictedUnread()),
+                search = _state.value.search.copy(items = _state.value.search.items.clearPredictedUnread())
+            )
+    }
+
+    private suspend fun handleReadReceiptFailure(request: ReadReceiptRequest) {
+        val session = authStore.readSession() ?: return
+        val serverId = session.currentServerId ?: return
+        val owner = readReceiptOwnerFactory?.invoke(serverId, session.user.id) ?: return
+        if (owner != request.owner || readPredictionRevisions[request.channelId] != request.revision) return
+        readPredictionRevisions = readPredictionRevisions - request.channelId
+        if (_state.value.saved.loaded) loadSaved(refresh = true, pullRefresh = false)
+        if (_state.value.search.searched) runSearch(refresh = true)
     }
 
     private fun loadSenderFilters() {
@@ -805,6 +857,8 @@ class SharedHomeSearchSavedViewModel(
     serverMembersStore: SharedServerMembersStore? = null,
     savedStateCache: SharedHomeSavedStateCache? = null,
     timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() },
+    readReceiptCoordinator: ReadReceiptCoordinator? = null,
+    readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     diagnosticsLogger: (String) -> Unit = {}
 ) : ViewModel() {
     private val storeDelegate =
@@ -818,6 +872,8 @@ class SharedHomeSearchSavedViewModel(
                 savedStateCache = savedStateCache,
                 scope = viewModelScope,
                 timeRangeBoundsProvider = timeRangeBoundsProvider,
+                readReceiptCoordinator = readReceiptCoordinator,
+                readReceiptOwnerFactory = readReceiptOwnerFactory,
                 diagnosticsLogger = diagnosticsLogger
             )
         }

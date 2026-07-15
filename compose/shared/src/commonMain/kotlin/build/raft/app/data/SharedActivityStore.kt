@@ -79,6 +79,8 @@ class SharedActivityStore internal constructor(
     private var serverMembersStore: SharedServerMembersStore? = null,
     private var tasksDataStore: SharedTasksDataStore? = null,
     private val perReceiverStateVersionStore: PerReceiverStateVersionStore,
+    private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
+    private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     private var prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
@@ -91,7 +93,8 @@ class SharedActivityStore internal constructor(
     private val realtimeReconcileDelayMillis: Long = SharedActivityRealtimeReconcileDelayMillis,
     private val afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
-    private val onRealtimePatchOwnerEntered: () -> Unit = {}
+    private val onRealtimePatchOwnerEntered: () -> Unit = {},
+    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -103,6 +106,8 @@ class SharedActivityStore internal constructor(
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
     private var pendingReadStateFacts: Map<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint> = emptyMap()
     private var reconciledReadStateFacts: Map<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint> = emptyMap()
+    private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
+    private var readPredictionItemKeys: Map<ChannelId, Set<String>> = emptyMap()
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
     private var visibleReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private var tailReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
@@ -131,6 +136,8 @@ class SharedActivityStore internal constructor(
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
+        readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
+        readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ) {
@@ -148,6 +155,8 @@ class SharedActivityStore internal constructor(
             this.replyThreadFreshnessLedger = replyThreadFreshnessLedger
         }
         this.persistSlices = persistSlices
+        this.readReceiptCoordinator = readReceiptCoordinator
+        this.readReceiptOwnerFactory = readReceiptOwnerFactory
         if (onUnreadCountsChanged != null) {
             this.onUnreadCountsChanged = onUnreadCountsChanged
         }
@@ -168,6 +177,8 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.MarkDone -> markDone(intent.item)
             is SharedActivityIntent.MarkRead -> markRead(intent.item)
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
+            is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
+            is SharedActivityIntent.ApplyReadReceiptFailure -> handleReadReceiptFailure(intent.request)
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             is SharedActivityIntent.ApplyRealtimeEvent -> {
@@ -214,9 +225,11 @@ class SharedActivityStore internal constructor(
 
     fun reset() {
         clear()
-        unreadClearOverrides = emptyMap()
-        doneOverrides = emptyMap()
         synchronized(realtimeOwnerLock) {
+            unreadClearOverrides = emptyMap()
+            doneOverrides = emptyMap()
+            readPredictionRevisions = emptyMap()
+            readPredictionItemKeys = emptyMap()
             reconciledReadStateFacts = emptyMap()
             _state.value = SharedActivityState()
         }
@@ -1147,7 +1160,7 @@ class SharedActivityStore internal constructor(
             removeItemOptimistically(item)
             return
         }
-        val targetChannelId = item.activityActionChannelId()
+        val targetChannelId = item.readReceiptChannelId()
         if (targetChannelId == null) {
             forgetDone(item.key)
             refreshAfterFailure(previous, "activity_thread_channel_missing")
@@ -1174,9 +1187,20 @@ class SharedActivityStore internal constructor(
         if (item.unreadCount <= 0) return
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
-        val targetChannelId = item.activityActionChannelId()
+        val targetChannelId = item.readReceiptChannelId()
         if (targetChannelId == null) {
             refreshAfterFailure(previous, "activity_thread_channel_missing")
+            return
+        }
+        val owner =
+            _state.value.ownerServerId?.let { serverId ->
+                _state.value.ownerUserId?.let { userId ->
+                    readReceiptOwnerFactory?.invoke(serverId, userId)
+                }
+            }
+        val coordinator = readReceiptCoordinator
+        if (owner != null && coordinator != null) {
+            applyReadReceiptPrediction(coordinator.markReadAll(owner, targetChannelId))
             return
         }
         val key = item.key
@@ -1218,10 +1242,84 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    internal fun applyReadReceiptPrediction(prediction: ReadReceiptPrediction) {
+        synchronized(realtimeOwnerLock) {
+            onReadReceiptPredictionOwnerEntered()
+            val current = _state.value
+            if (!current.matchesReadReceiptOwner(prediction.owner)) return@synchronized
+            val previousRevision = readPredictionRevisions[prediction.channelId]
+            if (previousRevision != null && previousRevision >= prediction.revision) return@synchronized
+            val snapshot = current.snapshot ?: return@synchronized
+            val matchingUnread =
+                snapshot.items.filter { item ->
+                    item.unreadCount > 0 && item.readReceiptChannelId() == prediction.channelId
+                }
+            readPredictionRevisions = readPredictionRevisions + (prediction.channelId to prediction.revision)
+            if (matchingUnread.isEmpty()) return@synchronized
+            rememberUnreadCleared(matchingUnread)
+            val matchingKeys = matchingUnread.mapTo(mutableSetOf(), InboxItem::key)
+            readPredictionItemKeys = readPredictionItemKeys + (prediction.channelId to matchingKeys)
+            val removedUnreadCount = matchingUnread.sumOf(InboxItem::unreadCount)
+            val updatedItems =
+                if (current.selectedFilter.keepsReadActivityRows()) {
+                    snapshot.items.map { item ->
+                        if (item.key in matchingKeys) {
+                            item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+                        } else {
+                            item
+                        }
+                    }
+                } else {
+                    snapshot.items.filterNot { item -> item.key in matchingKeys }
+                }
+            reduceState(
+                SharedActivityIntent.ApplyReadReceiptPrediction(prediction),
+                current.copy(
+                    snapshot =
+                        snapshot.copy(
+                            items = updatedItems,
+                            totalCount =
+                                if (current.selectedFilter.keepsReadActivityRows()) {
+                                    snapshot.totalCount
+                                } else {
+                                    maxOf(0, snapshot.totalCount - matchingKeys.size)
+                                },
+                            totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - removedUnreadCount)
+                        ),
+                    errorCode = null
+                )
+            )
+        }
+    }
+
+    internal fun handleReadReceiptFailure(request: ReadReceiptRequest) {
+        val shouldRefresh =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                if (!current.matchesReadReceiptOwner(request.owner)) return@synchronized false
+                if (readPredictionRevisions[request.channelId] != request.revision) return@synchronized false
+                readPredictionRevisions = readPredictionRevisions - request.channelId
+                readPredictionItemKeys[request.channelId].orEmpty().forEach(::forgetUnreadCleared)
+                readPredictionItemKeys = readPredictionItemKeys - request.channelId
+                true
+            }
+        if (shouldRefresh) {
+            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+        }
+    }
+
+    private fun SharedActivityState.matchesReadReceiptOwner(owner: ReadReceiptOwner): Boolean {
+        val serverId = ownerServerId ?: return false
+        val accountId = ownerUserId ?: return false
+        if (serverId != owner.serverId || accountId != owner.accountId) return false
+        val ownerFactory = readReceiptOwnerFactory ?: return true
+        return ownerFactory(serverId, accountId) == owner
+    }
+
     private fun markUnread(item: InboxItem) {
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
-        val targetChannelId = item.activityActionChannelId()
+        val targetChannelId = item.readReceiptChannelId()
         if (targetChannelId == null) {
             refreshAfterFailure(previous, "activity_thread_channel_missing")
             return
@@ -1565,6 +1663,8 @@ sealed interface SharedActivityIntent {
     data class MarkDone(val item: InboxItem) : SharedActivityIntent
     data class MarkRead(val item: InboxItem) : SharedActivityIntent
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
+    data class ApplyReadReceiptPrediction(val prediction: ReadReceiptPrediction) : SharedActivityIntent
+    data class ApplyReadReceiptFailure(val request: ReadReceiptRequest) : SharedActivityIntent
     data class PrewarmVisibleReplyThreads(
         val markers: Set<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
@@ -1720,7 +1820,7 @@ data class SharedActivitySenderProfile(
     val displayName: String
 )
 
-private fun InboxItem.activityActionChannelId(): ChannelId? =
+internal fun InboxItem.readReceiptChannelId(): ChannelId? =
     if (kind == InboxItemKind.Thread) threadChannelId else channelId
 
 private fun InboxItem.activityUnreadAnchor(): MessageId? =

@@ -2223,6 +2223,8 @@ private fun ThreadPageScreen() {
                         networkClient = networkClient,
                         warningLogger = { message -> bridge.log("thread_saved_repository $message") }
                     ),
+                readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
+                readReceiptOwnerFactory = sharedStores::readReceiptOwner,
                 createAgentCoordinator = createAgentCoordinator,
                 diagnosticsLogger = { message -> bridge.log("thread_api $message") }
             )

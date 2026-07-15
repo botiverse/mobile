@@ -214,6 +214,8 @@ import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealReadReceiptRepository
+import build.raft.app.data.ReadReceiptCoordinator
+import build.raft.app.data.ReadReceiptOwner
 import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.RealSearchRepository
 import build.raft.app.data.RealSettingsRepository
@@ -864,7 +866,9 @@ private data class HomeSecondaryRouteEnvironment(
     val storeScope: SlockShellStoreScope,
     val shellScope: SlockAppShellScope,
     val conversationIdentityProvider: SharedConversationIdentityProvider?,
-    val sharedHomeStore: SharedHomeStore?
+    val sharedHomeStore: SharedHomeStore?,
+    val readReceiptCoordinator: ReadReceiptCoordinator,
+    val readReceiptOwnerFactory: (String, String) -> ReadReceiptOwner
 )
 
 @Composable
@@ -943,7 +947,9 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             storeScope = storeScope,
             shellScope = shellScope,
             conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
-            sharedHomeStore = sharedStores.sharedHomeStore(storeScope)
+            sharedHomeStore = sharedStores.sharedHomeStore(storeScope),
+            readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
+            readReceiptOwnerFactory = sharedStores::readReceiptOwner
         )
     }
 }
@@ -1344,6 +1350,8 @@ private fun rememberHomeSearchSavedViewModel(
             memberRepository = memberRepository,
             serverMembersStore = environment.serverMembersStore,
             savedStateCache = environment.homeSavedStateCache,
+            readReceiptCoordinator = environment.readReceiptCoordinator,
+            readReceiptOwnerFactory = environment.readReceiptOwnerFactory,
             timeRangeBoundsProvider = { range -> environment.timeContext.toSearchIsoBounds(range) }
         )
     }
@@ -2599,6 +2607,8 @@ private fun SlockAppShellContent(
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
+                readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
+                readReceiptOwnerFactory = sharedStores::readReceiptOwner,
                 diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity_thread_prewarm")
             )
         }
@@ -2713,6 +2723,8 @@ private fun SlockAppShellContent(
                 memberRepository = memberRepository,
                 serverMembersStore = appShellServerMembersStore,
                 savedStateCache = sharedStores.homeSavedStateCache,
+                readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
+                readReceiptOwnerFactory = sharedStores::readReceiptOwner,
                 timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) },
                 diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
             )

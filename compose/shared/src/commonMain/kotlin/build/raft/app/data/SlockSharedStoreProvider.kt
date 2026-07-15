@@ -64,6 +64,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlin.coroutines.EmptyCoroutineContext
 
 private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
@@ -117,6 +119,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authLossFunnel: SharedAuthLossFunnel,
     val networkClient: SlockNetworkClient,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
+    private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -147,6 +150,9 @@ internal class SlockSharedStoreProvider private constructor(
     private val realtimeAuthorityRegistrations = SlockShellScopedStoreCache<String>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
+    private val processReadReceiptLock = SynchronizedObject()
+    private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
+    private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
     private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
     private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
@@ -522,6 +528,8 @@ internal class SlockSharedStoreProvider private constructor(
                 markChannelUnread = markChannelUnread,
                 archiveChannel = archiveChannel,
                 setChannelActivityMuted = setChannelActivityMuted,
+                readReceiptCoordinator = processReadReceiptCoordinator(),
+                readReceiptOwnerFactory = ::readReceiptOwner,
                 pinUpdateFailureCallback = pinUpdateFailureCallback
             )
             return store
@@ -544,6 +552,8 @@ internal class SlockSharedStoreProvider private constructor(
                 archiveChannel = archiveChannel,
                 setChannelActivityMuted = setChannelActivityMuted,
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
+                readReceiptCoordinator = processReadReceiptCoordinator(),
+                readReceiptOwnerFactory = ::readReceiptOwner,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
                 persistSlices = listOf(homeIdentityPersistSlice)
             )
@@ -571,6 +581,8 @@ internal class SlockSharedStoreProvider private constructor(
                     serverMembersStore = serverMembersStore,
                     tasksDataStore = tasksDataStore,
                     persistSlices = listOf(activityPersistSlice),
+                    readReceiptCoordinator = processReadReceiptCoordinator(),
+                    readReceiptOwnerFactory = ::readReceiptOwner,
                     prewarmReplyThread = prewarmReplyThread,
                     replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                     onUnreadCountsChanged = onUnreadCountsChanged,
@@ -588,6 +600,8 @@ internal class SlockSharedStoreProvider private constructor(
                 serverMembersStore = serverMembersStore(scope),
                 tasksDataStore = tasksDataStore,
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
+                readReceiptCoordinator = processReadReceiptCoordinator(),
+                readReceiptOwnerFactory = ::readReceiptOwner,
                 persistSlices = listOf(activityPersistSlice),
                 prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
                 replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
@@ -600,6 +614,107 @@ internal class SlockSharedStoreProvider private constructor(
             )
         }
     }
+
+    fun processReadReceiptCoordinator(): ReadReceiptCoordinator =
+        synchronized(processReadReceiptLock) {
+            processReadReceiptCoordinator
+                ?: createProcessReadReceiptCoordinator().also { coordinator ->
+                    processReadReceiptCoordinator = coordinator
+                }
+        }
+
+    private fun createProcessReadReceiptCoordinator(): ReadReceiptCoordinator {
+        val repository =
+            RealReadReceiptRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = sharedInfoLogger("SlockReadReceipt", "process_read_receipt")
+            )
+        return ReadReceiptCoordinator(
+            scope = threadSendScope,
+            repository = repository,
+            requestRunner = { request, defaultRequest ->
+                if (request.owner == ReadReceiptOwner.Legacy) {
+                    defaultRequest()
+                } else {
+                    val serverId = ServerId(request.owner.serverId)
+                    val ownerRepository = processReadReceiptRepository(request.owner)
+                    when (request) {
+                        is ReadReceiptRequest.ToSeq ->
+                            ownerRepository.markChannelReadToSeq(serverId, request.channelId, request.seq)
+                        is ReadReceiptRequest.All ->
+                            ownerRepository.markChannelReadAll(serverId, request.channelId)
+                    }
+                }
+            },
+            ownerValidator = { owner ->
+                val session = authStore.readSession()
+                apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/') == owner.environmentId &&
+                    session != null &&
+                    session.user.id == owner.accountId &&
+                    session.servers.any { server -> server.id == owner.serverId }
+            },
+            onPrediction = { prediction ->
+                homeStores.entries().forEach { (_, store) ->
+                    store.dispatch(SharedHomeIntent.ApplyReadReceiptPrediction(prediction))
+                }
+                homeActivityStores.entries().forEach { (_, store) ->
+                    store.dispatch(SharedActivityIntent.ApplyReadReceiptPrediction(prediction))
+                }
+            },
+            onResult = { request, result ->
+                sharedInfoLogger("SlockReadReceipt", "process_read_receipt")(
+                    "result owner=${request.owner.serverId}:${request.owner.accountId} " +
+                        "channelId=${request.channelId.value} revision=${request.revision} " +
+                        "result=${result::class.simpleName.orEmpty()}"
+                )
+            },
+            onFailure = { request, result ->
+                homeStores.entries().forEach { (_, store) ->
+                    store.dispatch(SharedHomeIntent.ApplyReadReceiptFailure(request))
+                }
+                homeActivityStores.entries().forEach { (_, store) ->
+                    store.dispatch(SharedActivityIntent.ApplyReadReceiptFailure(request))
+                }
+                sharedWarnLogger("SlockReadReceipt", "process_read_receipt")(
+                    "failure owner=${request.owner.serverId}:${request.owner.accountId} " +
+                        "channelId=${request.channelId.value} revision=${request.revision} " +
+                        "result=${result::class.simpleName.orEmpty()}"
+                )
+            }
+        )
+    }
+
+    private fun processReadReceiptRepository(owner: ReadReceiptOwner): RealReadReceiptRepository =
+        synchronized(processReadReceiptLock) {
+            processReadReceiptRepositories.getOrPut(owner) {
+                val ownerSessionStore = ReadReceiptOwnerAuthSessionStore(authStore, owner)
+                RealReadReceiptRepository(
+                    sessionStore = ownerSessionStore,
+                    networkClient = ownerScopedNetworkClientFactory(ownerSessionStore, owner.environmentId),
+                    logger = sharedInfoLogger("SlockReadReceipt", "process_read_receipt")
+                )
+            }
+        }
+
+    internal fun clearProcessReadReceiptCore() {
+        val coordinator =
+            synchronized(processReadReceiptLock) {
+                processReadReceiptRepositories.clear()
+                processReadReceiptCoordinator
+            }
+        coordinator?.clear()
+    }
+
+    fun readReceiptOwner(
+        serverId: String,
+        accountId: String
+    ): ReadReceiptOwner =
+        ReadReceiptOwner(
+            environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/'),
+            accountId = accountId.trim(),
+            serverId = serverId.trim()
+        )
 
     private suspend fun clearActiveShellServerSelections() {
         // A queued invalidation can resume after a new login. In that case the
@@ -789,6 +904,23 @@ internal class SlockSharedStoreProvider private constructor(
                     executor = networkExecutor
                 )
             }
+            val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient =
+                { sessionStore, ownerApiBaseUrl ->
+                    SharedSlockNetworkClient(
+                        sessionStore = sessionStore,
+                        baseUrlProvider = { ownerApiBaseUrl },
+                        warningLogger = networkWarningLogger,
+                        criticalWarningLogger =
+                            sharedWarnLogger(
+                                "SlockSharedNetwork",
+                                "shared_network",
+                                SlockPlatformLogHint.AuthCritical
+                            ),
+                        requestScheduler = networkRequestScheduler,
+                        platformFileResolver = platformFileResolver,
+                        executor = networkExecutor
+                    )
+                }
             val networkClient = scopedNetworkClientFactory(authStore)
             val processServerMembersRepository =
                 RealMemberRepository(
@@ -897,6 +1029,7 @@ internal class SlockSharedStoreProvider private constructor(
                 authLossFunnel = authLossFunnel,
                 networkClient = networkClient,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
+                ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
@@ -966,6 +1099,13 @@ internal class SlockSharedStoreProvider private constructor(
                     source = authStore.authSessionEvents,
                     scope = pushLifecycleScope
                 )
+                pushLifecycleScope.launch {
+                    authStore.authSessionEvents.collect { event ->
+                        if (event is AuthSessionEvent.Authenticated || event is AuthSessionEvent.Cleared) {
+                            provider.clearProcessReadReceiptCore()
+                        }
+                    }
+                }
             }
         }
     }
