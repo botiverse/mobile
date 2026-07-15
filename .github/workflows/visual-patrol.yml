@@ -92,6 +92,16 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             ${{ steps.mode.outputs.live }} | tee renderer-coverage-report.json
 
+      - name: Run font audit (typography contract lens)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          node scripts/patrol/font_audit.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --cap 5 \
+            ${{ steps.mode.outputs.live }} | tee font-audit-report.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: visual-patrol-report
@@ -99,6 +109,7 @@ jobs:
             patrol-report.json
             token-audit-report.json
             renderer-coverage-report.json
+            font-audit-report.json
 
   # After filing, adversarially verify each open drift issue with a 3x M3 panel:
   # majority "real problem" -> label `verified` (enters the fix queue); otherwise the
