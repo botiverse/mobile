@@ -155,6 +155,7 @@ import build.raft.app.data.SharedHomeShellStore
 import build.raft.app.data.RealtimeGuardedDomainEventSinks
 import build.raft.app.data.RealtimeShellCallbackGate
 import build.raft.app.data.RealtimeConnectionWitness
+import build.raft.app.data.RealtimeGrantRecord
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
@@ -3942,12 +3943,13 @@ private fun SlockAppShellContent(
                         }
                         return@launch
                     }
-                    if (
-                        event is ServerMembershipRemoved &&
-                        selectedServerStore.isSelected(event.serverId.value)
-                    ) {
-                        val accepted =
-                            sharedStores.realtimeAuthorityProvider.runIfCurrentGrant(grant) {
+                    if (event is ServerMembershipRemoved) {
+                        applySelectedServerTerminalRealtimeTransition(
+                            grant = grant,
+                            eventServerId = event.serverId.value,
+                            isSelected = selectedServerStore::isSelected,
+                            runIfCurrentGrant = sharedStores.realtimeAuthorityProvider::runIfCurrentGrant,
+                            disconnectAndReset = {
                                 slockLogWarn(
                                     "SlockRealtimeDomain",
                                     "shared_realtime_server_membership_removed serverId=${event.serverId.value}"
@@ -3959,19 +3961,23 @@ private fun SlockAppShellContent(
                                     explicitClose = true
                                 )
                                 latestResetAppShellSessionState()
-                            }
-                        if (accepted) {
-                            shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
-                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-                        }
+                            },
+                            clearSelectedServer = {
+                                shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            },
+                            restoreAuthGate = {
+                                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                            },
+                        )
                         return@launch
                     }
-                    if (
-                        event is ServerDeleted &&
-                        selectedServerStore.isSelected(event.serverId.value)
-                    ) {
-                        val accepted =
-                            sharedStores.realtimeAuthorityProvider.runIfCurrentGrant(grant) {
+                    if (event is ServerDeleted) {
+                        applySelectedServerTerminalRealtimeTransition(
+                            grant = grant,
+                            eventServerId = event.serverId.value,
+                            isSelected = selectedServerStore::isSelected,
+                            runIfCurrentGrant = sharedStores.realtimeAuthorityProvider::runIfCurrentGrant,
+                            disconnectAndReset = {
                                 slockLogWarn(
                                     "SlockRealtimeDomain",
                                     "shared_realtime_server_deleted serverId=${event.serverId.value}"
@@ -3983,11 +3989,14 @@ private fun SlockAppShellContent(
                                     explicitClose = true
                                 )
                                 latestResetAppShellSessionState()
-                            }
-                        if (accepted) {
-                            shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
-                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-                        }
+                            },
+                            clearSelectedServer = {
+                                shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            },
+                            restoreAuthGate = {
+                                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                            },
+                        )
                         return@launch
                     }
                     val accepted = appShellRealtimeDomainEventOwner.accept(grant, event, source = "app_shell")
@@ -17942,6 +17951,23 @@ internal fun resolveSharedShellRealtimeServerId(
 ): String? =
     eventData.optString("serverId").takeIf { it.isNotBlank() }
         ?: event.serverIdHint()?.value
+
+internal suspend fun applySelectedServerTerminalRealtimeTransition(
+    grant: RealtimeGrantRecord,
+    eventServerId: String,
+    isSelected: (String) -> Boolean,
+    runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean,
+    disconnectAndReset: suspend () -> Unit,
+    clearSelectedServer: suspend () -> Unit,
+    restoreAuthGate: suspend () -> Unit,
+): Boolean {
+    if (!isSelected(eventServerId)) return false
+    val accepted = runIfCurrentGrant(grant, disconnectAndReset)
+    if (!accepted) return false
+    clearSelectedServer()
+    restoreAuthGate()
+    return true
+}
 
 internal fun JSONObject.realtimeConnectionWitnessOrNull(): RealtimeConnectionWitness? {
     val scopeLeaseId = optString(SlockRealtimeNotifyContract.KeyAuthorityScopeLeaseId).trim()

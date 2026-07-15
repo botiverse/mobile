@@ -17,15 +17,15 @@ class SocketIoSocketTransport(
 ) : RealtimeSocketTransport {
     private val listeners = mutableMapOf<String, MutableSet<(Any?) -> Unit>>()
     private val boundListeners = mutableMapOf<BoundEvent, Emitter.Listener>()
+    private val generationFence = RealtimeSocketGenerationFence()
     private var socket: Socket? = null
-    private var currentContext: RealtimeSocketConnectionContext? = null
 
     override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
         build.raft.app.core.data.diagnostics.SlockAppLog.d(
             "SlockRealtime",
             "transport_connect_start serverId=${auth["serverId"].orEmpty()} hasToken=${auth["token"].isNullOrBlank().not()}"
         )
-        currentContext = context
+        val generation = generationFence.begin(context)
         socket?.disconnect()
         socket = IO.socket(
             socketUrl,
@@ -37,7 +37,7 @@ class SocketIoSocketTransport(
         ).also { newSocket ->
             listeners.forEach { (eventName, eventListeners) ->
                 eventListeners.forEach { listener ->
-                    bindListener(newSocket, eventName, listener, context)
+                    bindListener(newSocket, eventName, listener, generation)
                 }
             }
             newSocket.connect()
@@ -46,7 +46,7 @@ class SocketIoSocketTransport(
 
     override fun disconnect() {
         build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", "transport_disconnect")
-        currentContext = null
+        generationFence.clear()
         socket?.disconnect()
     }
 
@@ -60,9 +60,9 @@ class SocketIoSocketTransport(
 
     override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription {
         listeners.getOrPut(eventName) { mutableSetOf() } += listener
-        val context = currentContext
-        if (context != null) {
-            socket?.let { bindListener(it, eventName, listener, context) }
+        val generation = generationFence.currentOrNull()
+        if (generation != null) {
+            socket?.let { bindListener(it, eventName, listener, generation) }
         }
         return RealtimeSubscription {
             listeners[eventName]?.remove(listener)
@@ -74,13 +74,13 @@ class SocketIoSocketTransport(
         socket: Socket,
         eventName: String,
         listener: (Any?) -> Unit,
-        context: RealtimeSocketConnectionContext,
+        generation: RealtimeSocketGeneration,
     ) {
         val key = BoundEvent(eventName, listener)
         unbindListener(eventName, listener)
         val emitter = socket.emitterFor(eventName)
         val socketListener = Emitter.Listener { args ->
-            if (currentContext != context) return@Listener
+            if (!generationFence.accepts(generation)) return@Listener
             listener(args.firstOrNull())
         }
         boundListeners[key] = socketListener
@@ -109,6 +109,25 @@ class SocketIoSocketTransport(
             Manager.EVENT_RECONNECT_FAILED
         )
     }
+}
+
+internal data class RealtimeSocketGeneration(
+    val context: RealtimeSocketConnectionContext,
+)
+
+internal class RealtimeSocketGenerationFence {
+    private var current: RealtimeSocketGeneration? = null
+
+    fun begin(context: RealtimeSocketConnectionContext): RealtimeSocketGeneration =
+        RealtimeSocketGeneration(context).also { current = it }
+
+    fun clear() {
+        current = null
+    }
+
+    fun currentOrNull(): RealtimeSocketGeneration? = current
+
+    fun accepts(generation: RealtimeSocketGeneration): Boolean = current == generation
 }
 
 internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String, Any>): Any =
