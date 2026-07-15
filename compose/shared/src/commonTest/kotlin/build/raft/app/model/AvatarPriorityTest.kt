@@ -60,11 +60,29 @@ class AvatarPriorityTest {
             )
         )
         assertEquals(
-            "https://cdn.raft.build/avatars/users/cindy.webp",
+            "https://cdn.raft.build/avatars/users/0123456789abcdef.webp",
             avatarWireValueForAvatarSlot(
                 kind = MemberKind.Human,
                 id = "user-1",
-                avatarWireValue = "https://cdn.raft.build/avatars/users/cindy.webp",
+                avatarWireValue = "https://cdn.raft.build/avatars/users/0123456789abcdef.webp",
+                gravatarHash = hash
+            )
+        )
+        assertEquals(
+            "gravatar:${hash.lowercase()}",
+            avatarWireValueForAvatarSlot(
+                kind = MemberKind.Human,
+                id = "user-1",
+                avatarWireValue = "https://lh3.googleusercontent.com/a/provider-default",
+                gravatarHash = hash
+            )
+        )
+        assertEquals(
+            "gravatar:${hash.lowercase()}",
+            avatarWireValueForRenderedAvatar(
+                kind = MemberKind.Human,
+                id = "user-1",
+                avatarWireValue = "https://avatars.githubusercontent.com/u/123456",
                 gravatarHash = hash
             )
         )
@@ -83,6 +101,27 @@ class AvatarPriorityTest {
             "gravatar:${hash.lowercase()}".gravatarAvatarHttpUrlOrNull()
         )
         assertNull("https://www.gravatar.com/avatar/${hash.lowercase()}".gravatarAvatarHttpUrlOrNull())
+    }
+
+    @Test
+    fun humanUploadedAvatarRecognitionMatchesWebPathContract() {
+        assertEquals(
+            "/api/avatars/users/0123456789abcdef.webp",
+            "/api/avatars/users/0123456789abcdef.webp".slockUploadedHumanAvatarWireValueOrNull()
+        )
+        assertEquals(
+            "https://cdn.slock.ai/avatars/users/0123456789abcdef.webp?cache=1",
+            "https://cdn.slock.ai/avatars/users/0123456789abcdef.webp?cache=1"
+                .slockUploadedHumanAvatarWireValueOrNull()
+        )
+        assertNull(
+            "https://lh3.googleusercontent.com/a/provider-default"
+                .slockUploadedHumanAvatarWireValueOrNull()
+        )
+        assertNull(
+            "https://cdn.slock.ai/avatars/agents/0123456789abcdef.webp"
+                .slockUploadedHumanAvatarWireValueOrNull()
+        )
     }
 
     @Test
