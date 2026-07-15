@@ -723,7 +723,17 @@ private fun SlockHomeConversationItem.toThreadLaunchConversationIdentity(): Thre
             } else {
                 null
             },
-        kind = conversationKind
+        kind = conversationKind,
+        dmPeerIdentity =
+            if (conversationKind == ConversationKind.DirectMessage) {
+                memberDetailIdentityFromWire(
+                    memberId = presenceMemberId,
+                    kindWireValue = peerType,
+                    source = MemberDetailIdentitySource.DirectoryDmPeer
+                )
+            } else {
+                null
+            }
     )
 }
 

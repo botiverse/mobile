@@ -40,6 +40,7 @@ internal data class WireThreadLaunchPayload(
     val parentSurfaceKind: String? = null,
     val parentChannelKind: String? = null,
     val parentNavigationHint: String? = null,
+    val dmPeerIdentity: MemberDetailIdentity? = null,
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
     val selectedTab: String = "chat",
@@ -129,6 +130,7 @@ internal data class WireThreadLaunchPayload(
             parentSurfaceKind = resolvedParentSurfaceKind,
             parentChannelKind = resolvedParentChannelKind,
             parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
+            dmPeerIdentity = dmPeerIdentity.takeIf { routeKinds.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
             memberScopedMentions = routeKinds.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
             originParentMessageId =
                 if (isReplyThread) {
@@ -361,6 +363,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         parentSurfaceKind = parentSurfaceKind.parsedThreadParentSurfaceKindOrNull(),
         parentChannelKind = parentChannelKind.normalizedThreadChannelKind(),
         parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
+        dmPeerIdentity = dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
         originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
         focusedMessageId = focusedMessageId.nonBlank(),
         selectedTab = selectedTab,
