@@ -60,6 +60,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.withLink
 import com.tencent.kuikly.compose.ui.text.withStyle
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.isSpecified
@@ -77,6 +78,7 @@ import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
+import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
 import kotlinx.coroutines.async
@@ -1725,7 +1727,14 @@ fun SlockMarkdownBody(
         markdownPadding(
             block = 0.dp,
             paragraphVerPadding = PaddingValues(vertical = 0.dp),
-            codeBlock = PaddingValues(SlockSpacing.Sm)
+            codeBlock = PaddingValues(SlockSpacing.Sm),
+            // Blockquote rail must span EXACTLY the quoted content's height
+            // (task #62): the library defaults pad the quote text by 4dp
+            // vertically and inset the bar by 2dp, so the rail overshot the
+            // text above and below. Web renders border-l-2 with no vertical
+            // padding — the border is precisely the content box.
+            blockQuoteText = PaddingValues(0.dp),
+            blockQuoteBar = PaddingValues.Absolute(left = 4.dp, top = 0.dp, right = 4.dp, bottom = 0.dp)
         )
     }
     val components = remember {
@@ -1783,6 +1792,7 @@ fun SlockMarkdownBody(
                     textProvider = SlockMarkdownTextProvider,
                     annotator = annotator,
                     padding = padding,
+                    dimens = SlockMarkdownDimens,
                     components = components,
                     modifier = markdownModifier
                 )
@@ -1798,6 +1808,22 @@ fun SlockMarkdownBody(
 // to see fresh `colors` references each time and run full recomposition + initial
 // Text measure even when nothing actually changed.
 private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
+
+// File-level singleton for the same #192 stable-reference reason as the colors
+// above (`markdownDimens(...)` is @Composable and would allocate a fresh
+// instance every recomposition). Values mirror the library defaults except the
+// blockquote rail: web renders border-l-2 (2px), the 1dp default reads
+// hairline-thin on device (task #62).
+private object SlockMarkdownDimens : MarkdownDimens {
+    override val dividerThickness: Dp = 0.5.dp
+    override val codeBackgroundCornerSize: Dp = 8.dp
+    override val blockQuoteThickness: Dp = 2.dp
+    override val tableMaxWidth: Dp = Dp.Unspecified
+    override val tableCellWidth: Dp = 160.dp
+    override val tableSeparatorThickness: Dp = 1.dp
+    override val tableCellPadding: Dp = 12.dp
+    override val tableCornerSize: Dp = 8.dp
+}
 private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
 private val SlockMarkdownMinimumInlineLineHeight = 22.sp
 private val SlockMarkdownDividerColor = SlockColor.BorderBlack.copy(alpha = 0.22f)
