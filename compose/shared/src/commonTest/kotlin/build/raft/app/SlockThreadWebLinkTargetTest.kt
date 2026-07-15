@@ -130,6 +130,94 @@ class SlockThreadWebLinkTargetTest {
         assertEquals("channel-123", payload.resolveThreadComposer().mentionChannelId)
     }
 
+    @Test
+    fun canonicalChannelThreadLinkResolvesWithoutDirectoryProjection() {
+        val target =
+            requireNotNull(
+                (
+                    "https://app.raft.build/s/botiverse/channel/channel-123" +
+                        "?msg=reply-456&thread=channel-123%3Aparent-789"
+                    ).toSlockThreadWebLinkTarget()
+            )
+
+        val request =
+            requireNotNull(
+                target.resolveMarkdownOpenRequest(
+                    serverId = "server-1",
+                    conversationDirectory = emptyList<SharedConversationDirectoryProjection>()
+                        .toSharedConversationDirectoryState()
+                )
+            )
+        val payload =
+            requireNotNull(
+                buildAppShellThreadPayload(
+                    request.conversationIdentity,
+                    anchorMessageId = request.anchorMessageId
+                )
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel-123", payload.parentChannelId)
+        assertEquals("parent-789", payload.parentMessageId)
+        assertEquals("reply-456", payload.focusedMessageId)
+        assertEquals(ConversationKind.Channel, payload.resolveThreadRouteIdentity().parentConversationKind)
+    }
+
+    @Test
+    fun canonicalChannelLinkResolvesWithoutDirectoryProjection() {
+        val target =
+            requireNotNull(
+                "https://app.raft.build/s/botiverse/channel/channel-123?msg=message-456"
+                    .toSlockThreadWebLinkTarget()
+            )
+
+        val request =
+            requireNotNull(
+                target.resolveMarkdownOpenRequest(
+                    serverId = "server-1",
+                    conversationDirectory = emptyList<SharedConversationDirectoryProjection>()
+                        .toSharedConversationDirectoryState()
+                )
+            )
+
+        assertEquals(ConversationKind.Channel, request.conversationIdentity.kind)
+        assertEquals("channel-123", request.conversationIdentity.channelId?.value)
+        assertEquals("message-456", request.anchorMessageId)
+    }
+
+    @Test
+    fun canonicalDmThreadLinkResolvesWithoutDirectoryProjection() {
+        val target =
+            requireNotNull(
+                (
+                    "https://app.raft.build/s/botiverse/dm/dm-123" +
+                        "?msg=reply-456&thread=dm-123%3Aparent-789"
+                    ).toSlockThreadWebLinkTarget()
+            )
+
+        val request =
+            requireNotNull(
+                target.resolveMarkdownOpenRequest(
+                    serverId = "server-1",
+                    conversationDirectory = emptyList<SharedConversationDirectoryProjection>()
+                        .toSharedConversationDirectoryState()
+                )
+            )
+        val payload =
+            requireNotNull(
+                buildAppShellThreadPayload(
+                    request.conversationIdentity,
+                    anchorMessageId = request.anchorMessageId
+                )
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("dm-123", payload.parentChannelId)
+        assertEquals("parent-789", payload.parentMessageId)
+        assertEquals("reply-456", payload.focusedMessageId)
+        assertEquals(ConversationKind.DirectMessage, payload.resolveThreadRouteIdentity().parentConversationKind)
+    }
+
     private fun channelDirectory() =
         listOf(
             SharedConversationDirectoryProjection(

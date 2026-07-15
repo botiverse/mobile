@@ -1419,12 +1419,15 @@ internal fun SlockThreadWebLinkTarget.resolveMarkdownOpenRequest(
     conversationDirectory: SharedConversationDirectoryState
 ): HomeMessageOpenRequest? {
     val parentMessage = threadParentMessageId?.takeIf { it.isNotBlank() }
-    val kind =
-        when {
-            parentMessage != null -> ConversationKind.Thread
-            routeKind == KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+    val routeConversationKind =
+        when (routeKind) {
+            KuiklyThreadSurfaceKind.Channel -> ConversationKind.Channel
+            KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
             else -> null
         }
+    val kind =
+        ConversationKind.Thread.takeIf { parentMessage != null }
+            ?: routeConversationKind
     val sourceIdentity =
         ConversationOpenSourceMessageIdentity(
             source = ConversationOpenSource.Markdown,
@@ -1433,10 +1436,10 @@ internal fun SlockThreadWebLinkTarget.resolveMarkdownOpenRequest(
             parentChannelId = channelId.takeIf { parentMessage != null && it.isNotBlank() },
             parentMessageId = parentMessage,
             conversationKind = kind,
-            parentConversationKind =
-                ConversationKind.DirectMessage.takeIf {
-                    parentMessage != null && routeKind == KuiklyThreadSurfaceKind.DirectMessage
-                }
+            // The canonical permalink path is typed identity, not a guessed fallback.
+            // Preserve its channel/dm kind so #855 can rebuild safely when the local
+            // conversation directory has not hydrated this target yet.
+            parentConversationKind = routeConversationKind.takeIf { parentMessage != null }
         )
     return (resolveOpenRequest(serverId, sourceIdentity, conversationDirectory)
         as? ConversationOpenResolution.Resolved)
