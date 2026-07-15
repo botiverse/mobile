@@ -1810,21 +1810,22 @@ class SharedThreadStoreTest {
                 }
                 DataResult.Content(joinedHomeSnapshot())
             }
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "network reply",
+                            conversation = replyThreadConversation(joined = false, canSend = false)
+                        )
+                    )
+            )
         val dataSource =
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository =
-                    FakeConversationRepository(
-                        threadResult =
-                            DataResult.Content(
-                                threadSnapshot(
-                                    threadId = "thread-m1",
-                                    body = "network reply",
-                                    conversation = replyThreadConversation(joined = false, canSend = false)
-                                )
-                            )
-                    ),
+                conversationRepository = repository,
                 channelRepository = channelRepository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
