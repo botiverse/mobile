@@ -38,6 +38,8 @@ internal data class AgentIssueReportSubmission(
 internal data class AgentIssueReportResult(
     val reportId: String,
     val artifactId: String?,
+    val serverId: String,
+    val issueDescription: String?,
     val transcriptRequested: Boolean
 )
 
@@ -121,6 +123,8 @@ internal class AgentIssueReportRepository(
                 AgentIssueReportResult(
                     reportId = created.id,
                     artifactId = created.artifactId,
+                    serverId = serverId.value,
+                    issueDescription = submission.description.trim().takeIf { it.isNotBlank() },
                     transcriptRequested = transcriptRequested
                 )
             )

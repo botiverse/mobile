@@ -92,7 +92,7 @@ internal interface SharedAgentDetailActions {
 
     fun copyDiagnostics(diagnostics: String)
 
-    suspend fun reportIssue(request: SharedAgentIssueReportRequest): Boolean
+    suspend fun reportIssue(request: SharedAgentIssueReportRequest): DataResult<AgentIssueReportResult>
 
     suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile>
 }
@@ -392,24 +392,34 @@ internal class SharedAgentDetailStore(
         )
     }
 
-    suspend fun reportIssue(request: SharedAgentIssueReportRequest, actions: SharedAgentDetailActions): Boolean {
+    suspend fun reportIssue(
+        request: SharedAgentIssueReportRequest,
+        actions: SharedAgentDetailActions
+    ): DataResult<AgentIssueReportResult> {
         dispatch(SharedAgentDetailIntent.StartDiagnosticAction("report"))
-        val reported =
+        val result =
             try {
                 actions.reportIssue(request)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                false
+                DataResult.Error(ScreenError("agent_issue_report_failed"))
+            }
+        val errorCode =
+            when (result) {
+                is DataResult.Content -> null
+                is DataResult.Empty -> result.reason.name
+                is DataResult.Error -> result.error.code
+                is DataResult.NoPermission -> result.blocker.code
             }
         dispatch(
             SharedAgentDetailIntent.FinishDiagnosticAction(
                 actionKey = "report",
-                successLabel = "Issue reported".takeIf { reported },
-                errorCode = if (reported) null else "agent_issue_report_failed"
+                successLabel = "Issue reported".takeIf { errorCode == null },
+                errorCode = errorCode
             )
         )
-        return reported
+        return result
     }
 
     private fun DataResult<AgentLifecycleActionResult>.lifecycleErrorCode(
