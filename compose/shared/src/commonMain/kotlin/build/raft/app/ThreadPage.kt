@@ -181,6 +181,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
@@ -277,7 +278,9 @@ import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
-private const val ThreadMessagesMaxBeyondBoundsItemCount = 4
+private const val ThreadMessagesMinBeyondBoundsItemCount = 8
+private const val ThreadMessagesMaxBeyondBoundsItemCount = 24
+private const val ThreadMessagesRepresentativeRowStepDp = 64f
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
@@ -527,7 +530,7 @@ private class ThreadFirstViewportProbe(
             "threadId=${timelineSlice.sourceThreadId.orEmpty()} instanceId=$instanceId " +
             "originStatus=${timelineSlice.originStatus} hasOrigin=${timelineSlice.originMessage != null} " +
             "messagesTotal=${timelineSlice.messages.size} totalItems=$lazyItemCount " +
-            "beyondBounds=${threadMessagesBeyondBoundsItemCount(lazyItemCount)} " +
+            "beyondBounds=${stats.beyondBoundsItems} " +
             "composedMessageRows=${composedMessageKeys.size} " +
             "composedMessageRange=${firstComposedMessageIndex.asThreadProbeRangeStart()}..$lastComposedMessageIndex " +
             "placedMessageRows=${placedMessageKeys.size} " +
@@ -11500,22 +11503,14 @@ private fun ThreadMessagesList(
     val showReplyEmptyState =
         renderPayload.messages.isEmpty() && renderPayload.originStatus != "none" && !showReplyLoadingSkeleton
     val lazyItemCount =
-        remember(
-            renderPayload.originStatus,
-            renderPayload.canLoadMoreBefore,
-            renderPayload.messages.size,
-            renderPayload.canLoadMoreAfter,
-            showReplyEmptyState
-        ) {
-            threadMessagesLazyItemCount(
-                originStatus = renderPayload.originStatus,
-                showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
-                messagesCount = renderPayload.messages.size,
-                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                showReplyEmptyState = showReplyEmptyState || showReplyLoadingSkeleton,
-                showBottomScrollPadding = true
-            )
-        }
+        threadMessagesLazyItemCount(
+            originStatus = renderPayload.originStatus,
+            showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
+            messagesCount = renderPayload.messages.size,
+            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+            showReplyEmptyState = showReplyEmptyState || showReplyLoadingSkeleton,
+            showBottomScrollPadding = true
+        )
     // Bottom-anchor signature: only the fields the anchor logic actually
     // reads. The previous remember keys listed the full payload message
     // list reference) which invalidated the cache on any list
@@ -11532,6 +11527,13 @@ private fun ThreadMessagesList(
         initialFirstVisibleItemIndex =
             threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
+    var measuredThreadViewportHeightDp by remember(threadInstanceKey) { mutableStateOf(0f) }
+    val viewportMeasurementReady = threadViewportMeasurementReady(measuredThreadViewportHeightDp)
+    val threadLazyWindowConsumerCounts =
+        threadLazyWindowConsumerCounts(
+            itemCount = lazyItemCount,
+            viewportHeightDp = measuredThreadViewportHeightDp
+        )
     val coroutineScope = rememberCoroutineScope()
     val duplicateMessageRandomIds =
         remember(renderPayload.messages) {
@@ -11751,6 +11753,7 @@ private fun ThreadMessagesList(
         markdownTimelineSignature,
         contentExtrasVisible,
         lazyItemCount,
+        threadLazyWindowConsumerCounts,
         expandedLongMessageIds
     ) {
         if (!contentExtrasVisible || markdownTimelineSignature.isEmpty()) {
@@ -11766,7 +11769,7 @@ private fun ThreadMessagesList(
                 renderPayload.threadVisibleMarkdownPreparsePlan(
                     firstVisibleItemIndex = firstVisibleItemIndex,
                     lastVisibleItemIndex = lastVisibleItemIndex,
-                    overscanItems = threadMessagesBeyondBoundsItemCount(lazyItemCount),
+                    overscanItems = threadLazyWindowConsumerCounts.markdownPreparseOverscanItems,
                     prewarmBeforeItems = lastVisibleItemIndex - firstVisibleItemIndex + 1,
                     contentExtrasVisible = contentExtrasVisible,
                     expandedLongMessageIds = expandedLongMessageIds,
@@ -11791,7 +11794,7 @@ private fun ThreadMessagesList(
                         "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
                         "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
                         "messages=${renderPayload.messages.size} " +
-                        "overscan=${threadMessagesBeyondBoundsItemCount(lazyItemCount)} " +
+                        "overscan=${threadLazyWindowConsumerCounts.markdownPreparseOverscanItems} " +
                         "prewarmBefore=${visiblePreparsePlan.prewarmBeforeItems} " +
                         "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                 )
@@ -11872,10 +11875,24 @@ private fun ThreadMessagesList(
     }
     var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
-    LaunchedEffect(threadInstanceKey, renderPayload.messages.size, lazyItemCount) {
+    LaunchedEffect(
+        threadInstanceKey,
+        renderPayload.messages.size,
+        lazyItemCount,
+        viewportMeasurementReady,
+        threadLazyWindowConsumerCounts
+    ) {
+        if (!viewportMeasurementReady) {
+            return@LaunchedEffect
+        }
         repeat(ThreadBottomAnchorMinimumAttempts + 1) { attempt ->
             listState.awaitThreadMessagesLayoutFrame()
-            val stats = listState.threadLazyWindowStats(renderPayload, lazyItemCount)
+            val stats =
+                listState.threadLazyWindowStats(
+                    timelineSlice = renderPayload,
+                    lazyItemCount = lazyItemCount,
+                    beyondBoundsItems = threadLazyWindowConsumerCounts.diagnosticsBeyondBoundsItems
+                )
             if (stats.visibleItems > 0) {
                 diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
                 if (firstViewportProbe.markLogged()) {
@@ -12409,7 +12426,10 @@ private fun ThreadMessagesList(
     }
     ThreadReactionAtlasProvider {
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            LaunchedEffect(threadInstanceKey, maxHeight) {
+                measuredThreadViewportHeightDp = maxHeight.value
+            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
@@ -12445,7 +12465,7 @@ private fun ThreadMessagesList(
                         )
                     ),
                 verticalArrangement = Arrangement.Bottom,
-                beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
+                beyondBoundsItemCount = threadLazyWindowConsumerCounts.listBeyondBoundsItems
             ) {
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
@@ -13222,9 +13242,45 @@ internal fun threadMessagesLazyItemCount(
         (if (showReplyEmptyState) 1 else 0) +
         (if (showBottomScrollPadding) 1 else 0)
 
-internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
-    itemCount.coerceAtLeast(0)
-        .coerceAtMost(ThreadMessagesMaxBeyondBoundsItemCount)
+internal fun threadMessagesBeyondBoundsItemCount(
+    itemCount: Int,
+    viewportHeightDp: Float = 0f,
+    representativeRowStepDp: Float = ThreadMessagesRepresentativeRowStepDp
+): Int =
+    slockViewportBeyondBoundsItemCount(
+        itemCount = itemCount,
+        viewportHeightDp = viewportHeightDp,
+        representativeRowStepDp = representativeRowStepDp,
+        minimumItems = ThreadMessagesMinBeyondBoundsItemCount,
+        maximumItems = ThreadMessagesMaxBeyondBoundsItemCount
+    )
+
+internal data class ThreadLazyWindowConsumerCounts(
+    val listBeyondBoundsItems: Int,
+    val markdownPreparseOverscanItems: Int,
+    val diagnosticsBeyondBoundsItems: Int
+)
+
+internal fun threadLazyWindowConsumerCounts(
+    itemCount: Int,
+    viewportHeightDp: Float,
+    representativeRowStepDp: Float = ThreadMessagesRepresentativeRowStepDp
+): ThreadLazyWindowConsumerCounts {
+    val measuredCount =
+        threadMessagesBeyondBoundsItemCount(
+            itemCount = itemCount,
+            viewportHeightDp = viewportHeightDp,
+            representativeRowStepDp = representativeRowStepDp
+        )
+    return ThreadLazyWindowConsumerCounts(
+        listBeyondBoundsItems = measuredCount,
+        markdownPreparseOverscanItems = measuredCount,
+        diagnosticsBeyondBoundsItems = measuredCount
+    )
+}
+
+internal fun threadViewportMeasurementReady(viewportHeightDp: Float): Boolean =
+    viewportHeightDp.isFinite() && viewportHeightDp > 0f
 
 private data class ThreadLazyWindowStats(
     val totalItems: Int,
@@ -13243,7 +13299,8 @@ private fun threadMessagePerformanceKey(messageId: String, index: Int): String =
 
 private fun LazyListState.threadLazyWindowStats(
     timelineSlice: ThreadTimelineSlice,
-    lazyItemCount: Int
+    lazyItemCount: Int,
+    beyondBoundsItems: Int
 ): ThreadLazyWindowStats {
     val visibleItems = layoutInfo.visibleItemsInfo
     val firstVisibleItem = visibleItems.firstOrNull()?.index ?: -1
@@ -13257,7 +13314,7 @@ private fun LazyListState.threadLazyWindowStats(
     return ThreadLazyWindowStats(
         totalItems = lazyItemCount,
         totalMessages = timelineSlice.messages.size,
-        beyondBoundsItems = threadMessagesBeyondBoundsItemCount(lazyItemCount),
+        beyondBoundsItems = beyondBoundsItems,
         visibleItems = visibleItems.size,
         firstVisibleItem = firstVisibleItem,
         lastVisibleItem = lastVisibleItem,

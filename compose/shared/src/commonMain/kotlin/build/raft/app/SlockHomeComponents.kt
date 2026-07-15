@@ -130,7 +130,6 @@ import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -185,11 +184,10 @@ private val HomeServerBadgeContentGap = 6.dp
 private val HomeServerBadgeChevronSize = 16.dp
 private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
-private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMinBeyondBoundsItemCount = 6
 private const val HomeListMaxBeyondBoundsItemCount = 24
-private const val HomeListOverscanViewportFraction = 2f / 3f
+private const val HomeListOverscanViewportFraction = 1f
 private const val HomeListRepresentativeRowStepDp = 34f
 private const val HomeListServerSwitchRampStep = 3
 private const val HomeServerSwitcherMaxBeyondBoundsItemCount = 6
@@ -1054,6 +1052,7 @@ internal fun SlockStructuralHomeShell(
     val jointChannelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.JointChannel)
     val directMessageSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.DirectMessage)
     val pinnedSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.Pinned)
+    val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled)
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
@@ -1063,7 +1062,13 @@ internal fun SlockStructuralHomeShell(
             channelsExpanded = channelsExpanded,
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
-            pinnedExpanded = pinnedExpanded
+            pinnedExpanded = pinnedExpanded,
+            hasPullToRefreshItem = pullToRefreshEnabled,
+            hasInlineError = inlineError != null,
+            channelSkeletonCount =
+                if (channelsExpanded && showLoadingSkeletons) HomeLoadingChannelSkeletonRows else 0,
+            directMessageSkeletonCount =
+                if (directMessagesExpanded && showLoadingSkeletons) HomeLoadingDirectMessageSkeletonRows else 0
         )
     val lazyKeyRegistry = remember { HomeSidebarLazyKeyRegistry() }
     val pinnedLazyKeys =
@@ -1124,7 +1129,6 @@ internal fun SlockStructuralHomeShell(
     }
     val listScope = rememberCoroutineScope()
     var pullRefreshActive by remember(currentServerId) { mutableStateOf(false) }
-    val pullToRefreshEnabled = homePullToRefreshEnabled(contentRefreshEnabled)
     LaunchedEffect(contentRefreshing, pullToRefreshEnabled) {
         if (!contentRefreshing || !pullToRefreshEnabled) {
             pullRefreshActive = false
@@ -1900,35 +1904,21 @@ private fun Dp.max(other: Dp): Dp =
     if (this >= other) this else other
 
 internal fun sharedListBeyondBoundsItemCount(itemCount: Int): Int =
-    itemCount.coerceIn(
-        minimumValue = SharedListDefaultBeyondBoundsItemCount,
-        maximumValue = SharedListMaxBeyondBoundsItemCount
-    )
+    itemCount.coerceAtLeast(0).coerceAtMost(SharedListMaxBeyondBoundsItemCount)
 
 internal fun homeListBeyondBoundsItemCount(
     itemCount: Int,
     viewportHeightDp: Float,
     representativeRowStepDp: Float = HomeListRepresentativeRowStepDp
-): Int {
-    val viewportTarget =
-        if (
-            viewportHeightDp.isFinite() && viewportHeightDp > 0f &&
-            representativeRowStepDp.isFinite() && representativeRowStepDp > 0f
-        ) {
-            ceil(viewportHeightDp * HomeListOverscanViewportFraction / representativeRowStepDp).toInt()
-        } else {
-            HomeListMinBeyondBoundsItemCount
-        }
-    val boundedTarget =
-        viewportTarget.coerceIn(
-            minimumValue = HomeListMinBeyondBoundsItemCount,
-            maximumValue = HomeListMaxBeyondBoundsItemCount
-        )
-    return itemCount.coerceIn(
-        minimumValue = HomeListMinBeyondBoundsItemCount,
-        maximumValue = boundedTarget
+): Int =
+    slockViewportBeyondBoundsItemCount(
+        itemCount = itemCount,
+        viewportHeightDp = viewportHeightDp,
+        representativeRowStepDp = representativeRowStepDp,
+        minimumItems = HomeListMinBeyondBoundsItemCount,
+        maximumItems = HomeListMaxBeyondBoundsItemCount,
+        viewportFraction = HomeListOverscanViewportFraction
     )
-}
 
 internal fun homeListInitialBeyondBoundsItemCount(): Int = HomeListMinBeyondBoundsItemCount
 
@@ -1991,10 +1981,7 @@ internal class HomeSidebarLazyKeyRegistry {
 }
 
 internal fun homeServerSwitcherBeyondBoundsItemCount(itemCount: Int): Int =
-    itemCount.coerceIn(
-        minimumValue = SharedListDefaultBeyondBoundsItemCount,
-        maximumValue = HomeServerSwitcherMaxBeyondBoundsItemCount
-    )
+    itemCount.coerceAtLeast(0).coerceAtMost(HomeServerSwitcherMaxBeyondBoundsItemCount)
 
 internal fun homeLazyItemCount(
     channelsCount: Int,
@@ -2004,10 +1991,14 @@ internal fun homeLazyItemCount(
     channelsExpanded: Boolean,
     jointChannelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
-    pinnedExpanded: Boolean = false
+    pinnedExpanded: Boolean = false,
+    hasPullToRefreshItem: Boolean = true,
+    hasInlineError: Boolean = false,
+    channelSkeletonCount: Int = 0,
+    directMessageSkeletonCount: Int = 0
 ): Int {
     val fixedItems =
-        1 + // pull refresh
+        (if (hasPullToRefreshItem) 1 else 0) +
             1 + // top spacer
             1 + // search
             1 + // activity
@@ -2022,6 +2013,9 @@ internal fun homeLazyItemCount(
     return fixedItems +
         jointSectionItems +
         pinnedSectionItems +
+        (if (hasInlineError) 1 else 0) +
+        channelSkeletonCount.coerceAtLeast(0) +
+        directMessageSkeletonCount.coerceAtLeast(0) +
         (if (channelsExpanded) channelsCount else 0) +
         (if (jointChannelsExpanded) jointCount else 0) +
         (if (directMessagesExpanded) directMessagesCount else 0) +

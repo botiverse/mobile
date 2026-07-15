@@ -122,7 +122,8 @@ class SharedTasksPageTest {
 
     @Test
     fun tasksBeyondBoundsKeepsSceneEnterPremeasureSmall() {
-        assertEquals(1, sharedTasksBeyondBoundsItemCount(0))
+        assertEquals(0, sharedTasksBeyondBoundsItemCount(0))
+        assertEquals(1, sharedTasksBeyondBoundsItemCount(1))
         assertEquals(4, sharedTasksBeyondBoundsItemCount(40))
         assertEquals(4, sharedTasksBeyondBoundsItemCount(1752))
     }

@@ -3154,12 +3154,14 @@ internal fun MembersListContent(
             inviteHumanError = null
         }
     }
+    val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
     val lazyItemCount =
         membersLazyItemCount(
             agents = agents,
             humansCount = humans.size,
             agentsExpanded = agentsExpanded,
-            humansExpanded = humansExpanded
+            humansExpanded = humansExpanded,
+            hasPullToRefreshItem = showPullToRefreshItem
         )
 
     val listState =
@@ -3202,7 +3204,7 @@ internal fun MembersListContent(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
-            if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
+            if (showPullToRefreshItem) {
                 slockRaftPullToRefreshItem(
                     state = pullToRefreshState,
                     scrollState = listState,
@@ -3394,10 +3396,11 @@ internal fun membersLazyItemCount(
     agents: List<MemberProfile>,
     humansCount: Int,
     agentsExpanded: Boolean,
-    humansExpanded: Boolean
+    humansExpanded: Boolean,
+    hasPullToRefreshItem: Boolean = true
 ): Int {
     val fixedItems =
-        1 + // pull refresh indicator
+        (if (hasPullToRefreshItem) 1 else 0) +
             1 + // top spacer
             1 + // agents header
             1 + // humans header
