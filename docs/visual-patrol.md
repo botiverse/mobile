@@ -89,3 +89,7 @@ node scripts/visual_patrol.mjs --analysis gh-pages --comparison react__android -
 ## renderer-coverage lens
 
 `scripts/patrol/renderer_coverage.mjs` statically diffs the markdown library type universe (org.jetbrains:markdown 0.7.5 — refresh the embedded list on upgrade) against the types the fork actually dispatches, minus a justified allowlist. Unhandled types are silent-drop candidates (the task #493 EMAIL_AUTOLINK class). Dynamic sibling: `MarkdownContentIntegrityTest` in commonTest asserts content survives rendering for known shapes.
+
+## font-audit lens
+
+`scripts/patrol/font_audit.mjs` flags typography-contract suspects: naked `fontWeight = FontWeight.X` with no family dispatch on the line (Kuikly encodes weight in the family NAME — naked weight renders the original family, see SlockDesignTokens.kt), and raw `FontFamily(...)` constructed outside the tokens file. The markdown pipeline auto-repairs via `withResolvedSlockFontFamily`; plain `Text()` does not. Cap 5/run nightly.
