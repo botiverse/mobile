@@ -182,7 +182,7 @@ data class ChatLayoutPreferenceSnapshot(
         LargeScreenNavigationPreference.entries,
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = false,
-    val imageAnnotationEnabled: Boolean = false,
+    val imageAnnotationEnabled: Boolean = true,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = true,
@@ -276,7 +276,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readImageAnnotationEnabledSync(): Boolean =
-        store.getBoolean(KEY_IMAGE_ANNOTATION_ENABLED, false)
+        store.getBoolean(KEY_IMAGE_ANNOTATION_ENABLED, true)
 
     override suspend fun readImageAnnotationEnabled(): Boolean =
         readImageAnnotationEnabledSync()

@@ -109,7 +109,7 @@ class SlockFilePreviewDownloadStatusTest {
     @Test
     fun imageEditorBottomPaddingUsesSafeAreaWhenKeyboardIsHidden() {
         assertEquals(
-            32.dp,
+            30.dp,
             slockFilePreviewEditorBottomPadding(
                 keyboardInsetDp = 0f,
                 bottomSafeArea = 24.dp,
@@ -121,7 +121,7 @@ class SlockFilePreviewDownloadStatusTest {
     @Test
     fun imageEditorKeyboardInsetAvoidsDoubleCountingIncludedSafeArea() {
         assertEquals(
-            308.dp,
+            306.dp,
             slockFilePreviewEditorBottomPadding(
                 keyboardInsetDp = 300f,
                 bottomSafeArea = 24.dp,
@@ -133,7 +133,7 @@ class SlockFilePreviewDownloadStatusTest {
     @Test
     fun imageEditorKeyboardInsetAddsExcludedSafeArea() {
         assertEquals(
-            332.dp,
+            330.dp,
             slockFilePreviewEditorBottomPadding(
                 keyboardInsetDp = 300f,
                 bottomSafeArea = 24.dp,

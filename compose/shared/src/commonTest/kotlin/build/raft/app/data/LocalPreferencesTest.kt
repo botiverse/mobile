@@ -70,7 +70,7 @@ class LocalPreferencesTest {
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.longMessageCollapseEnabled)
-        assertEquals(false, snapshot.imageAnnotationEnabled)
+        assertEquals(true, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
         assertEquals(true, snapshot.composerSendKeyEnabled)
@@ -140,6 +140,7 @@ class LocalPreferencesTest {
         assertEquals(false, disabledActivityTaskStatusBadges.activityTaskStatusBadgesEnabled)
         assertEquals(false, disabledCompact.compactConsecutiveMessages)
         assertEquals(true, enabledComposerSendKey.composerSendKeyEnabled)
+        assertEquals(false, restoredDisabledCompact.imageAnnotationEnabled)
         assertEquals(false, restoredDisabledCompact.compactConsecutiveMessages)
         assertEquals(true, restoredDisabledCompact.composerSendKeyEnabled)
     }
