@@ -13,17 +13,17 @@ import kotlinx.coroutines.withContext
 
 class SlockMarkdownParseDispatcherTest {
     @Test
-    fun androidMarkdownParsingSharesDefaultDispatcherWithTwoWayParallelism() = runBlocking {
+    fun androidMarkdownParsingSerializesConcurrentCallers() = runBlocking {
         val active = AtomicInteger(0)
         val maximumActive = AtomicInteger(0)
-        val firstPairStarted = CountDownLatch(2)
+        val firstStarted = CountDownLatch(1)
         val release = CountDownLatch(1)
 
         val jobs = List(4) {
             async(SlockMarkdownParseDispatcher) {
                 val running = active.incrementAndGet()
                 maximumActive.updateAndGet { current -> maxOf(current, running) }
-                firstPairStarted.countDown()
+                firstStarted.countDown()
                 try {
                     release.await(5, TimeUnit.SECONDS)
                 } finally {
@@ -34,15 +34,15 @@ class SlockMarkdownParseDispatcherTest {
 
         try {
             assertTrue(
-                withContext(Dispatchers.IO) { firstPairStarted.await(5, TimeUnit.SECONDS) },
-                "two parser tasks should start without serializing all Markdown work"
+                withContext(Dispatchers.IO) { firstStarted.await(5, TimeUnit.SECONDS) },
+                "the first Markdown parser task should start"
             )
             Thread.sleep(100)
-            assertEquals(2, maximumActive.get())
+            assertEquals(SLOCK_MARKDOWN_PARSE_PARALLELISM, maximumActive.get())
         } finally {
             release.countDown()
         }
         jobs.forEach { it.await() }
-        assertEquals(2, maximumActive.get())
+        assertEquals(SLOCK_MARKDOWN_PARSE_PARALLELISM, maximumActive.get())
     }
 }

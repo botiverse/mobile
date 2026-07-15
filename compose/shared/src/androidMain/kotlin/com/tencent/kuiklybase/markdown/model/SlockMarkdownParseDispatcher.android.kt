@@ -6,5 +6,5 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal actual val SlockMarkdownParseDispatcher: CoroutineDispatcher by lazy {
-    Dispatchers.Default.limitedParallelism(2)
+    Dispatchers.Default.limitedParallelism(SLOCK_MARKDOWN_PARSE_PARALLELISM)
 }

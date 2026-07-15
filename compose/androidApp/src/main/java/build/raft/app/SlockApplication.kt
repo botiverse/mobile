@@ -12,7 +12,6 @@ import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.installAndroidAppScopeEventBus
-import build.raft.app.data.warmUpSlockJsonParseDispatcher
 import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
 import kotlinx.coroutines.runBlocking
 
@@ -57,7 +56,6 @@ class SlockApplication : Application() {
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)
         installAndroidAppScopeEventBus(this)
-        warmUpSlockJsonParseDispatcher()
         AndroidAppScopeRealtimeOwner.install(this)
         runCatching {
             runBlocking {
