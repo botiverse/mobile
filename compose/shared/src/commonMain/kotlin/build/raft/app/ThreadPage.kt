@@ -18179,6 +18179,8 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     }
 }
 
+private const val ThreadForwardBundleInlinePreviewLimit = 3
+
 @Composable
 private fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
