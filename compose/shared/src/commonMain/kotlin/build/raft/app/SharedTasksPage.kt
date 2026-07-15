@@ -259,15 +259,26 @@ internal fun SharedTasksPanel(
 
 @Composable
 private fun SharedTasksHeader(
-    subtitle: String = "Channel tasks",
+    subtitle: String? = null,
     refreshing: Boolean = false
 ) {
     SlockTopPageHeader(
         title = stringResource(MR.strings.tasks_title),
-        subtitle = subtitle,
+        subtitle = subtitle ?: stringResource(MR.strings.tasks_header_channel_tasks),
         iconName = SlockLucideIconName.SquareCheckBig,
         refreshing = refreshing
     )
+}
+
+@Composable
+private fun localizedTasksHeaderSubtitle(totalTasks: Int, visibleTasks: Int = totalTasks): String {
+    val safeTotal = totalTasks.coerceAtLeast(0)
+    val safeVisible = visibleTasks.coerceIn(0, safeTotal)
+    return if (safeVisible != safeTotal) {
+        stringResource(MR.strings.tasks_header_channel_tasks_filtered, safeVisible, safeTotal)
+    } else {
+        stringResource(MR.strings.tasks_header_channel_tasks_count, safeTotal)
+    }
 }
 
 internal fun tasksHeaderSubtitle(totalTasks: Int, visibleTasks: Int = totalTasks): String {
@@ -503,7 +514,7 @@ private fun SharedTasksLoadedBodyContent(
         if (showHeader) {
             SharedTasksHeader(
                 subtitle =
-                    tasksHeaderSubtitle(
+                    localizedTasksHeaderSubtitle(
                         totalTasks = content.tasks.size,
                         visibleTasks = visibleContent.filteredTasks.size
                     ),
@@ -683,7 +694,7 @@ private fun SharedTasksLoadedBodyContent(
                 SlockFilterPopover(
                     anchor = channelAnchor,
                     title = stringResource(MR.strings.tasks_filter_channel),
-                    searchPlaceholder = "Search channels",
+                    searchPlaceholder = stringResource(MR.strings.tasks_search_channels),
                     searchText = presentationState.channelSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
                     options = channelFilterOptions,
@@ -696,7 +707,7 @@ private fun SharedTasksLoadedBodyContent(
                 SlockFilterPopover(
                     anchor = creatorAnchor,
                     title = stringResource(MR.strings.tasks_filter_creator),
-                    searchPlaceholder = "Search creators",
+                    searchPlaceholder = stringResource(MR.strings.tasks_search_creators),
                     searchText = presentationState.creatorSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
                     options = creatorFilterOptions,
@@ -709,7 +720,7 @@ private fun SharedTasksLoadedBodyContent(
                 SlockFilterPopover(
                     anchor = assigneeAnchor,
                     title = stringResource(MR.strings.tasks_filter_assignee),
-                    searchPlaceholder = "Search assignees",
+                    searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
                     searchText = presentationState.assigneeSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
                     options = assigneeFilterOptions,
@@ -725,7 +736,7 @@ private fun SharedTasksLoadedBodyContent(
             SlockTaskStatusMenuOverlay(
                 anchor = statusMenuAnchor,
                 items = TaskStatus.values().map { next ->
-                    SlockBaseMenuItem(id = next.name, label = next.label)
+                    SlockBaseMenuItem(id = next.name, label = next.localizedLabel())
                 },
                 selectedId = task.status.name,
                 onDismiss = { statusMenuTask = null },
@@ -802,9 +813,12 @@ private fun SharedTasksToolbar(
     onCreateClick: () -> Unit
 ) {
     val anyFilterActive = selectedChannels.isNotEmpty() || selectedCreatorIds.isNotEmpty() || selectedAssigneeIds.isNotEmpty()
+    val channelLabel = stringResource(MR.strings.tasks_chip_channel)
+    val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
+    val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
     val channelChip: @Composable () -> Unit = {
         SlockAnchoredToolbarChip(
-            label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
+            label = if (selectedChannels.isEmpty()) channelLabel else "$channelLabel · ${selectedChannels.size}",
             iconName = SlockLucideIconName.Hash,
             // react filter chips are Title case (no uppercase transform) — task #373.
             uppercase = false,
@@ -815,7 +829,7 @@ private fun SharedTasksToolbar(
     }
     val creatorChip: @Composable () -> Unit = {
         SlockAnchoredToolbarChip(
-            label = if (selectedCreatorIds.isEmpty()) "Creator" else "Creator · ${selectedCreatorIds.size}",
+            label = if (selectedCreatorIds.isEmpty()) creatorLabel else "$creatorLabel · ${selectedCreatorIds.size}",
             iconName = SlockLucideIconName.CircleUser,
             uppercase = false,
             active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
@@ -825,7 +839,7 @@ private fun SharedTasksToolbar(
     }
     val assigneeChip: @Composable () -> Unit = {
         SlockAnchoredToolbarChip(
-            label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
+            label = if (selectedAssigneeIds.isEmpty()) assigneeLabel else "$assigneeLabel · ${selectedAssigneeIds.size}",
             iconName = SlockLucideIconName.User,
             uppercase = false,
             active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
@@ -1179,7 +1193,8 @@ private fun SharedTaskCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = task.tasksAssigneeDisplayName()?.let { "@$it" } ?: "Unassigned",
+                    text = task.tasksAssigneeDisplayName()?.let { "@$it" }
+                        ?: stringResource(MR.strings.tasks_assignee_unassigned),
                     style = SlockType.Caption,
                     color = SlockColor.TextBlack.copy(alpha = 0.7f),
                     maxLines = 1,
@@ -1191,7 +1206,11 @@ private fun SharedTaskCard(
                 // Sentence-case label + trailing pencil mirror React's editable status
                 // badge (InlineBadgeEditor with uppercase={false}).
                 SlockAnchoredMetaChip(
-                    label = if (updating) "Updating" else task.status.label,
+                    label = if (updating) {
+                        stringResource(MR.strings.tasks_state_updating)
+                    } else {
+                        task.status.localizedLabel()
+                    },
                     iconName = null,
                     color = task.status.color,
                     onClick = if (updating) null else onStatusBadgeClick,
@@ -1219,7 +1238,7 @@ internal fun tasksStatusChipClickIdentity(taskId: String, status: TaskStatus): S
 @Composable
 private fun SharedTasksStatusLabel(
     status: TaskStatus,
-    label: String = status.label,
+    label: String? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1235,7 +1254,7 @@ private fun SharedTasksStatusLabel(
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
-            text = label.uppercase(),
+            text = (label ?: status.localizedLabel()).uppercase(),
             style = SlockType.TabLabel,
             color = SlockColor.TextBlack,
             maxLines = 1,
@@ -1351,25 +1370,17 @@ private fun SharedTasksStateBody(
     )
 }
 
-private val TaskStatus.label: String
-    get() =
+@Composable
+internal fun TaskStatus.localizedLabel(): String =
+    stringResource(
         when (this) {
-            TaskStatus.Todo -> "Todo"
-            TaskStatus.InProgress -> "In Progress"
-            TaskStatus.InReview -> "In Review"
-            TaskStatus.Done -> "Done"
-            TaskStatus.Closed -> "Closed"
+            TaskStatus.Todo -> MR.strings.tasks_status_todo
+            TaskStatus.InProgress -> MR.strings.tasks_status_in_progress
+            TaskStatus.InReview -> MR.strings.tasks_status_in_review
+            TaskStatus.Done -> MR.strings.tasks_status_done
+            TaskStatus.Closed -> MR.strings.tasks_status_closed
         }
-
-private val TaskStatus.shortLabel: String
-    get() =
-        when (this) {
-            TaskStatus.Todo -> "Todo"
-            TaskStatus.InProgress -> "Doing"
-            TaskStatus.InReview -> "Review"
-            TaskStatus.Done -> "Done"
-            TaskStatus.Closed -> "Closed"
-        }
+    )
 
 private val TaskStatus.color: com.tencent.kuikly.compose.ui.graphics.Color
     get() =

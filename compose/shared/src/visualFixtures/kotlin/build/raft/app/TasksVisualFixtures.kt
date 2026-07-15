@@ -2,18 +2,22 @@ package build.raft.app
 
 import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockAnchoredMetaChip
+import build.raft.app.data.AppLocale
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.TaskWireDto
 import build.raft.app.data.TasksContent
 import build.raft.app.data.TasksPresentationState
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksViewMode
+import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -24,6 +28,9 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+
+private const val TasksPanelChineseLocalizationFixture = "zh-cn-localization"
 
 // Canonical /tasks/server rows for components.tasks.panel.states — same rows as
 // packages/visual-testing/shared/tasksFixture.json in the React repo, built through the
@@ -149,6 +156,18 @@ private val tasksPanelStatusMenuRecycleTasks: List<TaskSummary> =
 
 @Composable
 internal fun TasksPanelVisualContent(fixture: String = "") {
+    val chineseLocalizationFixture = fixture == TasksPanelChineseLocalizationFixture
+    val previousLocaleType = remember(chineseLocalizationFixture) { StringDesc.localeType }
+    if (chineseLocalizationFixture) {
+        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
+    }
+    DisposableEffect(chineseLocalizationFixture) {
+        onDispose {
+            if (chineseLocalizationFixture) {
+                StringDesc.localeType = previousLocaleType
+            }
+        }
+    }
     val tasks =
         if (fixture == TasksPanelStatusMenuRecycleFixture) {
             tasksPanelStatusMenuRecycleTasks
@@ -222,7 +241,7 @@ internal fun TasksStatusMenuVisualContent() {
         // box is pinned to react's measured chip border-box, 98x24dp at (16,18)dp —
         // the 10sp/20dp-min defaults rendered an 80x20dp chip (task #370).
         SlockAnchoredMetaChip(
-            label = "In Progress",
+            label = TaskStatus.InProgress.localizedLabel(),
             iconName = null,
             color = SlockColor.AccentCyan,
             onClick = {},
@@ -239,7 +258,7 @@ internal fun TasksStatusMenuVisualContent() {
             anchor = with(density) { Offset(16.dp.toPx(), 42.dp.toPx()) },
             items =
                 TaskStatus.entries.map { status ->
-                    SlockBaseMenuItem(id = status.name, label = tasksStatusMenuVisualLabel(status))
+                    SlockBaseMenuItem(id = status.name, label = status.localizedLabel())
                 },
             selectedId = TaskStatus.InProgress.name,
             onDismiss = {},
@@ -247,14 +266,3 @@ internal fun TasksStatusMenuVisualContent() {
         )
     }
 }
-
-// Mirrors the private TaskStatus.label mapping in SharedTasksPage.kt so the menu rows
-// read exactly like the product's status menu.
-private fun tasksStatusMenuVisualLabel(status: TaskStatus): String =
-    when (status) {
-        TaskStatus.Todo -> "Todo"
-        TaskStatus.InProgress -> "In Progress"
-        TaskStatus.InReview -> "In Review"
-        TaskStatus.Done -> "Done"
-        TaskStatus.Closed -> "Closed"
-    }

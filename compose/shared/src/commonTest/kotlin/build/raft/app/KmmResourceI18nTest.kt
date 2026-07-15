@@ -72,6 +72,41 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun tasksPageChromeStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.tasks_header_channel_tasks,
+            MR.strings.tasks_chip_channel,
+            MR.strings.tasks_chip_creator,
+            MR.strings.tasks_chip_assignee,
+            MR.strings.tasks_search_channels,
+            MR.strings.tasks_search_creators,
+            MR.strings.tasks_search_assignees,
+            MR.strings.tasks_assignee_unassigned,
+            MR.strings.tasks_state_updating,
+            MR.strings.tasks_status_todo,
+            MR.strings.tasks_status_in_progress,
+            MR.strings.tasks_status_in_review,
+            MR.strings.tasks_status_done,
+            MR.strings.tasks_status_closed
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "tasks page chrome resources must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.tasks_header_channel_tasks_count.format(listOf(42)),
+            MR.strings.tasks_header_channel_tasks_filtered.format(listOf(12, 42))
+        ).forEach { desc ->
+            assertTrue(
+                desc is ResourceFormattedStringDesc,
+                "formatted tasks header resources must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun homeShellStringResourcesAreGenerated() {
         val homeResources = listOf(
             MR.strings.home_notification_center_title,
