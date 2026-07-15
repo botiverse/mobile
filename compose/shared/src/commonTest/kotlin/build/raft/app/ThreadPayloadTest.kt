@@ -6951,6 +6951,8 @@ class ThreadPayloadTest {
         assertEquals("human", pageData.optString("memberKind"))
         assertEquals("", pageData.optString("sourceServerId"))
         assertEquals("thread-member-detail-thread-1-human-artin", pageData.optString("instanceId"))
+        assertEquals("", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("profile"))
         assertEquals("480", pageData.optString("localOffsetMinutes"))
@@ -6974,8 +6976,7 @@ class ThreadPayloadTest {
         val pageData =
             payload.toThreadMembersPageData(
                 serverId = ServerId("server-1"),
-                channelId = ChannelId("channel-1"),
-                storeScope = SlockShellStoreScope.create("shell-1", "server-1")
+                channelId = ChannelId("channel-1")
             )
 
         assertEquals(THREAD_MEMBERS_PAGE, pageData.optString("pageName"))
@@ -6985,8 +6986,8 @@ class ThreadPayloadTest {
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("memberCandidates"))
         assertEquals("", pageData.optString("title"))
-        assertEquals("shell-1", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
-        assertEquals("server-1", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertEquals(
             ThreadMembersPageRoute(
                 instanceId = "thread-members-thread-1",
@@ -6999,6 +7000,24 @@ class ThreadPayloadTest {
             ),
             pageData.toThreadMembersPageRouteOrNull()
         )
+    }
+
+    @Test
+    fun threadMembersTargetServerSurvivesDifferentInheritedShellOwnerServer() {
+        val pageData =
+            KuiklyThreadScreenPayload(instanceId = "thread-1", sourceThreadId = "channel-1")
+                .toThreadMembersPageData(
+                    serverId = ServerId("server-target"),
+                    channelId = ChannelId("channel-1")
+                )
+                .withSlockShellStoreScope(
+                    SlockShellStoreScope.create("shell-a", "server-owner")
+                )
+
+        assertEquals("server-target", pageData.optString("serverId"))
+        assertEquals("server-owner", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals(ServerId("server-target"), pageData.toThreadMembersPageRouteOrNull()?.serverId)
+        assertEquals("server-owner", pageData.slockShellStoreScopeOrNull()?.initialServerId)
     }
 
     @Test

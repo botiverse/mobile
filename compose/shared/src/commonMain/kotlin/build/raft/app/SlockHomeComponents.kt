@@ -612,7 +612,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
  * #228: open the thread page for a conversation that the sidebar / pinned list
  * references by id. Replaces the prior host-bridge action path
  * which went through the host bridge and silently failed to preserve surfaceKind.
- * Direct `pager.openPage("compose_thread", payload)` route keeps surfaceKind intact
+ * Direct scoped navigation to `compose_thread` keeps surfaceKind intact
  * so the thread page's `#226` showMembers/showSettings guards and `#227` header label
  * both see the correct kind (Channel / DirectMessage / ReplyThread).
  */
@@ -625,8 +625,7 @@ private fun openThreadPageFromConversationId(
         buildHomeConversationThreadLaunchPayload(payload, conversationId)
             ?: return
     if (!homeConversationOpenBarrier.tryAcquire(launchPayload.instanceId)) return
-    val pageData = threadLaunchPageData(launchPayload)
-    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", pageData)
+    pager.openSlockPage(THREAD_PAGE, threadLaunchPageData(launchPayload))
 }
 
 private fun Pager.openThreadPageFromConversation(
@@ -639,7 +638,7 @@ private fun Pager.openThreadPageFromConversation(
             timeContext = null,
             instanceIdOverride = instanceIdOverride
         ) ?: return
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", threadLaunchPageData(launchPayload))
+    openSlockPage(THREAD_PAGE, threadLaunchPageData(launchPayload))
 }
 
 internal suspend fun ChannelRepository.openPinnedMemberDirectMessage(

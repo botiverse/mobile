@@ -13571,8 +13571,14 @@ private fun SharedMembersScreen(
                             bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
                         } else {
                             agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
-                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-                                .openPage(MEMBER_DETAIL_PAGE, pageData)
+                            pager.openSlockPage(
+                                pageName = MEMBER_DETAIL_PAGE,
+                                pageData = pageData,
+                                onMissingScope = {
+                                    bridge.toast("Unable to open profile")
+                                    bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
+                                }
+                            )
                         }
                     }
                 },
@@ -17605,11 +17611,11 @@ private fun Pager.openStandaloneThreadLaunchPayload(
     launchPayload: WireThreadLaunchPayload,
     storeScope: SlockShellStoreScope
 ) {
-    val pageData =
-        threadLaunchPageData(launchPayload)
-            .put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-            .also { data -> storeScope.initialServerId?.let { data.put(SLOCK_SHELL_SERVER_ID, it) } }
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
+    openSlockPage(
+        pageName = THREAD_PAGE,
+        pageData = threadLaunchPageData(launchPayload),
+        storeScopeOverride = storeScope
+    )
 }
 
 private fun Pager.closeHomeSecondaryPage() {
@@ -17757,10 +17763,12 @@ private fun Pager.openHomeSearchEntity(
             put("pageName", MEMBER_DETAIL_PAGE)
             put("payload", payload.toString())
             put("instanceId", instanceId)
-            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
-            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
         }
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(MEMBER_DETAIL_PAGE, pageData)
+    openSlockPage(
+        pageName = MEMBER_DETAIL_PAGE,
+        pageData = pageData,
+        storeScopeOverride = storeScope
+    )
 }
 
 internal fun buildStandaloneConversationThreadLaunchPayload(
