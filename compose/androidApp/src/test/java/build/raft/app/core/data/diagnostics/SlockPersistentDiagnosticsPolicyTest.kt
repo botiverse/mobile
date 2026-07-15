@@ -66,4 +66,20 @@ class SlockPersistentDiagnosticsPolicyTest {
             )
         )
     }
+
+    @Test
+    fun keepsExplicitRecoveryEvidenceEvenWithoutRelyingOnTheSlowRequestThreshold() {
+        listOf(
+            "staleH2Detected=true freshRetry=false connectionRolloverRateLimited=false",
+            "staleH2Detected=false freshRetry=true connectionRolloverRateLimited=false",
+            "staleH2Detected=false freshRetry=false connectionRolloverRateLimited=true"
+        ).forEach { recoveryFields ->
+            assertTrue(
+                SlockPersistentDiagnosticsPolicy.shouldPersist(
+                    "warn",
+                    "shared_network slock_networkkmm_execute_finish code=200 totalMs=120 $recoveryFields"
+                )
+            )
+        }
+    }
 }

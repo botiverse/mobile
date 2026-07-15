@@ -1,7 +1,12 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -38,6 +43,177 @@ class SharedServerFeatureFlagsTest {
         val flags = SharedServerFeatureFlags(api)
         flags.prefetch(server)
         assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+    }
+
+    @Test
+    fun recoveryFlagForwardsAuthoritativeReasonToPlatformBridge() = runBlocking {
+        val evaluations = mutableListOf<String>()
+        var observedGeneration = 0L
+        val api =
+            FakeApi(
+                ok(
+                    """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                )
+            )
+        val flags =
+            SharedServerFeatureFlags(api) { serverId, key, enabled, reason, context, generation ->
+                observedGeneration = generation
+                evaluations += "${serverId.value}|$key|$enabled|$reason|$context"
+            }
+
+        flags.prefetch(server, evaluationContext = "production-env")
+
+        assertEquals(
+            listOf(
+                "s1|$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY|false|kill_switch|production-env"
+            ),
+            evaluations
+        )
+        assertTrue(observedGeneration > 0L)
+    }
+
+    @Test
+    fun observerFailureDoesNotBlockTheResolvedFeatureSnapshot() = runBlocking {
+        val diagnostics = mutableListOf<String>()
+        val flags =
+            SharedServerFeatureFlags(
+                api =
+                    FakeApi(
+                        ok(
+                            """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
+                        )
+                    ),
+                diagnosticsLogger = diagnostics::add,
+                onEvaluation = { _, _, _, _, _, _ -> error("observer failed") }
+            )
+
+        val snapshot = flags.prefetch(server)
+
+        assertTrue(snapshot.resolved)
+        assertTrue(flags.isEnabled(server, ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY))
+        assertTrue(diagnostics.any { it.contains("evaluation_observer_failed") })
+    }
+
+    @Test
+    fun olderSameServerResponseCannotOverwriteSnapshotButStillCarriesGlobalGeneration() = runBlocking {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var callCount = 0
+        val api =
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(
+                    serverId: ServerId,
+                    keys: List<String>
+                ): HomeNetworkResponse =
+                    when (++callCount) {
+                        1 -> {
+                            firstStarted.complete(Unit)
+                            releaseFirst.await()
+                            ok(
+                                """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                            )
+                        }
+                        else ->
+                            ok(
+                                """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
+                            )
+                    }
+            }
+        val evaluations = mutableListOf<Triple<Boolean, String?, Long>>()
+        val diagnostics = mutableListOf<String>()
+        val flags =
+            SharedServerFeatureFlags(
+                api = api,
+                diagnosticsLogger = diagnostics::add,
+                onEvaluation = { _, _, enabled, reason, _, generation ->
+                    evaluations += Triple(enabled, reason, generation)
+                }
+            )
+
+        val first = async { flags.prefetch(server) }
+        firstStarted.await()
+        val second = async { flags.prefetch(server) }
+        second.await()
+        releaseFirst.complete(Unit)
+        first.await()
+
+        assertTrue(flags.isEnabled(server, ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY))
+        assertEquals(listOf(true to "default", false to "kill_switch"), evaluations.map { it.first to it.second })
+        assertTrue(evaluations[0].third > evaluations[1].third)
+        assertTrue(diagnostics.any { it.contains("stale_ignored") })
+    }
+
+    @Test
+    fun newerFailedRequestDoesNotDiscardAnOlderAuthoritativeResponse() = runBlocking {
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        var callCount = 0
+        val api =
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(
+                    serverId: ServerId,
+                    keys: List<String>
+                ): HomeNetworkResponse =
+                    when (++callCount) {
+                        1 -> {
+                            firstStarted.complete(Unit)
+                            releaseFirst.await()
+                            ok(
+                                """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                            )
+                        }
+                        else -> HomeNetworkResponse(code = 500, bodyText = null)
+                    }
+            }
+        val evaluations = mutableListOf<Triple<Boolean, String?, Long>>()
+        val flags =
+            SharedServerFeatureFlags(api = api) { _, _, enabled, reason, _, generation ->
+                evaluations += Triple(enabled, reason, generation)
+            }
+
+        val first = async { flags.prefetch(server) }
+        firstStarted.await()
+        val second = async { flags.prefetch(server) }
+        second.await()
+        releaseFirst.complete(Unit)
+        first.await()
+
+        assertFalse(flags.isEnabled(server, ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY))
+        assertEquals(listOf(false to "kill_switch"), evaluations.map { it.first to it.second })
+        assertTrue(evaluations.single().third > 0L)
+    }
+
+    @Test
+    fun cancelledPrefetchCannotPublishOrApplyANonCooperativeLateResponse() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val api =
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(
+                    serverId: ServerId,
+                    keys: List<String>
+                ): HomeNetworkResponse {
+                    started.complete(Unit)
+                    withContext(NonCancellable) { release.await() }
+                    return ok(
+                        """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                    )
+                }
+            }
+        val evaluations = mutableListOf<Triple<Boolean, String?, Long>>()
+        val flags =
+            SharedServerFeatureFlags(api = api) { _, _, enabled, reason, _, generation ->
+                evaluations += Triple(enabled, reason, generation)
+            }
+
+        val prefetch = launch { flags.prefetch(server) }
+        started.await()
+        prefetch.cancel()
+        release.complete(Unit)
+        prefetch.join()
+
+        assertFalse(flags.snapshotFor(server).resolved)
+        assertTrue(evaluations.isEmpty())
     }
 
     @Test

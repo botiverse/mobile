@@ -27,6 +27,9 @@ internal object SlockPersistentDiagnosticsPolicy {
             contains("slock_networkkmm_error") ||
             contains("slock_networkkmm_execute_failed") ||
             contains("slock_networkkmm_multipart_failed") ||
+            contains("staleh2detected=true") ||
+            contains("freshretry=true") ||
+            contains("connectionrolloverratelimited=true") ||
             contains("transport_timing") ||
             contains("[dns]") ||
             contains("[tls]") ||

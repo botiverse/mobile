@@ -72,7 +72,8 @@ internal data class SelectedServerSelection(
 
 internal class SelectedServerStore internal constructor(
     val scope: SlockShellStoreScope,
-    private val mutex: Mutex = Mutex()
+    private val mutex: Mutex = Mutex(),
+    private val onSelectionChanged: (String?) -> Unit = {}
 ) {
     private val requestedInitialServerId = scope.initialServerId
     private var ownerUserId: String? = null
@@ -87,6 +88,10 @@ internal class SelectedServerStore internal constructor(
     private val _disposed = MutableStateFlow(false)
     val disposed: StateFlow<Boolean> = _disposed.asStateFlow()
 
+    init {
+        onSelectionChanged(_selectedServerId.value)
+    }
+
     fun isSelected(serverId: String?): Boolean {
         val normalized = serverId?.trim()?.takeIf { it.isNotBlank() }
         return normalized != null && selectedServerId.value == normalized
@@ -96,7 +101,7 @@ internal class SelectedServerStore internal constructor(
         mutex.withLock {
             val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
             selectionInitialized = true
-            _selectedServerId.value = normalizedServerId
+            setSelectedServerId(normalizedServerId)
             selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
             selection()
         }
@@ -108,19 +113,19 @@ internal class SelectedServerStore internal constructor(
                 val initialSelection =
                     requestedInitialServerId
                         ?.takeIf { requested -> session.servers.any { it.id == requested } }
-                _selectedServerId.value = initialSelection ?: session.selectedServerId
+                setSelectedServerId(initialSelection ?: session.selectedServerId)
                 selectedServerSlug =
                     session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
                         ?: session.selectedServerSlug
                 selectionInitialized = true
             } else if (!selectionInitialized) {
-                _selectedServerId.value = session.selectedServerId
+                setSelectedServerId(session.selectedServerId)
                 selectedServerSlug = session.selectedServerSlug
                 selectionInitialized = true
             } else if (selectedServerId.value != null && session.servers.none { it.id == selectedServerId.value }) {
                 // Losing the selected membership does not authorize inheriting another
                 // shell's process last-used server.
-                _selectedServerId.value = null
+                setSelectedServerId(null)
                 selectedServerSlug = null
             } else if (selectedServerSlug == null) {
                 selectedServerSlug = session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
@@ -131,7 +136,7 @@ internal class SelectedServerStore internal constructor(
     internal suspend fun clearSelection() {
         mutex.withLock {
             ownerUserId = null
-            _selectedServerId.value = requestedInitialServerId
+            setSelectedServerId(requestedInitialServerId)
             selectedServerSlug = null
             selectionInitialized = requestedInitialServerId != null
         }
@@ -140,7 +145,7 @@ internal class SelectedServerStore internal constructor(
     internal suspend fun clearActiveSelection() {
         mutex.withLock {
             ownerUserId = null
-            _selectedServerId.value = null
+            setSelectedServerId(null)
             selectedServerSlug = null
             selectionInitialized = false
         }
@@ -152,7 +157,15 @@ internal class SelectedServerStore internal constructor(
             serverSlug = selectedServerSlug
         )
 
+    private fun setSelectedServerId(serverId: String?) {
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
+        if (_selectedServerId.value == normalizedServerId) return
+        onSelectionChanged(normalizedServerId)
+        _selectedServerId.value = normalizedServerId
+    }
+
     internal fun dispose() {
+        onSelectionChanged(null)
         _disposed.value = true
     }
 }

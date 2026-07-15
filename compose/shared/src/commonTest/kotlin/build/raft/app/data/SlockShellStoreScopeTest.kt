@@ -24,6 +24,46 @@ import kotlin.test.assertTrue
 
 class SlockShellStoreScopeTest {
     @Test
+    fun selectionFencePublishesBeforeStateFlowAndDisposeSynchronouslyClearsIt() = runBlocking {
+        val events = mutableListOf<String>()
+        lateinit var store: SelectedServerStore
+        var constructing = true
+        store =
+            SelectedServerStore(
+                scope = SlockShellStoreScope.create("shell-fenced"),
+                onSelectionChanged = { serverId ->
+                    if (!constructing) {
+                        events += "$serverId|flow=${store.selectedServerId.value}"
+                    }
+                }
+            )
+        constructing = false
+
+        store.select("server-1", "one")
+        store.dispose()
+
+        assertEquals(
+            listOf(
+                "server-1|flow=null",
+                "null|flow=server-1"
+            ),
+            events
+        )
+    }
+
+    @Test
+    fun nonNullInitialServerPublishesTheSelectionFenceDuringConstruction() {
+        val events = mutableListOf<String?>()
+
+        SelectedServerStore(
+            scope = SlockShellStoreScope.create("shell-initial", "server-1"),
+            onSelectionChanged = events::add
+        )
+
+        assertEquals(listOf<String?>("server-1"), events)
+    }
+
+    @Test
     fun selectedServerStoreOwnsSelectionWhenPersistedSessionDefaultLags() = runBlocking {
         val store = SelectedServerStore(SlockShellStoreScope.create("shell-selection", "server-1"))
         val staleSession = session().copy(selectedServerId = "server-1", selectedServerSlug = "one")
