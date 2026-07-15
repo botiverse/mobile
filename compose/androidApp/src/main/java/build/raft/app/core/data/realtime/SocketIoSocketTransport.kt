@@ -20,7 +20,6 @@ class SocketIoSocketTransport(
     private val generationFence = RealtimeSocketGenerationFence()
     private var socket: Socket? = null
 
-    @Synchronized
     override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
         build.raft.app.core.data.diagnostics.SlockAppLog.d(
             "SlockRealtime",
@@ -49,36 +48,36 @@ class SocketIoSocketTransport(
         }
     }
 
-    @Synchronized
     override fun disconnect() {
-        build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", "transport_disconnect")
-        generationFence.clear()
-        socket?.disconnect()
-    }
-
-    @Synchronized
-    override fun emit(eventName: String, payload: Map<String, Any>) {
-        build.raft.app.core.data.diagnostics.SlockAppLog.d(
-            "SlockRealtime",
-            "transport_emit eventName=$eventName keys=${payload.keys.joinToString("|")}"
-        )
-        socket?.emit(eventName, realtimeSocketIoWirePayload(eventName, payload))
-    }
-
-    @Synchronized
-    override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription {
-        listeners.getOrPut(eventName) { mutableSetOf() } += listener
-        val generation = generationFence.currentOrNull()
-        if (generation != null) {
-            socket?.let { bindListener(it, eventName, listener, generation) }
+        generationFence.clear {
+            build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", "transport_disconnect")
+            socket?.disconnect()
         }
-        return RealtimeSubscription {
-            synchronized(this@SocketIoSocketTransport) {
-                listeners[eventName]?.remove(listener)
-                unbindListener(eventName, listener)
+    }
+
+    override fun emit(eventName: String, payload: Map<String, Any>) {
+        generationFence.withCurrent {
+            build.raft.app.core.data.diagnostics.SlockAppLog.d(
+                "SlockRealtime",
+                "transport_emit eventName=$eventName keys=${payload.keys.joinToString("|")}"
+            )
+            socket?.emit(eventName, realtimeSocketIoWirePayload(eventName, payload))
+        }
+    }
+
+    override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription =
+        generationFence.withCurrent { generation ->
+            listeners.getOrPut(eventName) { mutableSetOf() } += listener
+            if (generation != null) {
+                socket?.let { bindListener(it, eventName, listener, generation) }
+            }
+            RealtimeSubscription {
+                generationFence.withCurrent {
+                    listeners[eventName]?.remove(listener)
+                    unbindListener(eventName, listener)
+                }
             }
         }
-    }
 
     private fun bindListener(
         socket: Socket,
@@ -131,6 +130,7 @@ internal class RealtimeSocketGenerationFence(
     private val generationIdForOracle: (() -> Long)? = null,
     private val beforeCurrentDelivery: (() -> Unit)? = null,
 ) {
+    private val linearizationLock = Any()
     private var nextGenerationId = 0L
     @Volatile
     private var current: RealtimeSocketGeneration? = null
@@ -145,25 +145,34 @@ internal class RealtimeSocketGenerationFence(
     fun <T> replace(
         context: RealtimeSocketConnectionContext,
         block: (RealtimeSocketGeneration) -> T,
-    ): T = block(allocate(context))
+    ): T =
+        synchronized(linearizationLock) {
+            block(allocate(context))
+        }
 
-    fun clear() {
-        current = null
-    }
+    fun <T> clear(block: () -> T): T =
+        synchronized(linearizationLock) {
+            current = null
+            block()
+        }
 
-    fun currentOrNull(): RealtimeSocketGeneration? = current
+    fun <T> withCurrent(block: (RealtimeSocketGeneration?) -> T): T =
+        synchronized(linearizationLock) {
+            block(current)
+        }
 
-    fun accepts(generation: RealtimeSocketGeneration): Boolean = current === generation
+    private fun accepts(generation: RealtimeSocketGeneration): Boolean = current === generation
 
     fun runIfCurrent(
         generation: RealtimeSocketGeneration,
         block: () -> Unit,
-    ): Boolean {
-        if (!accepts(generation)) return false
-        beforeCurrentDelivery?.invoke()
-        block()
-        return true
-    }
+    ): Boolean =
+        synchronized(linearizationLock) {
+            if (!accepts(generation)) return@synchronized false
+            beforeCurrentDelivery?.invoke()
+            block()
+            true
+        }
 }
 
 internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String, Any>): Any =
