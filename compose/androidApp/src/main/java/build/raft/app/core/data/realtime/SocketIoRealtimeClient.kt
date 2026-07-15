@@ -49,7 +49,19 @@ class SocketIoRealtimeClient(
     private val eventMapper: RealtimeEventMapper = RealtimeEventMapper(),
     private val logger: (String) -> Unit = {},
     private val diagnostics: RealtimeClientDiagnostics? = null,
-    private val clockMillis: () -> Long = { System.currentTimeMillis() }
+    private val clockMillis: () -> Long = { System.currentTimeMillis() },
+    private val watchdogScheduler: ((tick: () -> Unit) -> (() -> Unit)) = { tick ->
+        val timer = Timer("slock-realtime-heartbeat-watchdog", true)
+        timer.scheduleAtFixedRate(
+            object : TimerTask() {
+                override fun run() = tick()
+            },
+            RealtimeHeartbeatWatchdog.CHECK_INTERVAL_MILLIS,
+            RealtimeHeartbeatWatchdog.CHECK_INTERVAL_MILLIS,
+        )
+        timer::cancel
+    },
+    private val beforeHeartbeatReconnect: (() -> Unit)? = null,
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
@@ -63,7 +75,7 @@ class SocketIoRealtimeClient(
     private var lastHeartbeatAtMillis: Long? = null
     private var lastInboundEventAtMillis: Long? = null
     private var resumeProjectionRetryLastSeq: Long? = null
-    private var watchdogTimer: Timer? = null
+    private var watchdogCancel: (() -> Unit)? = null
     private val successDiagnostics = RealtimeSuccessDiagnostics(clockMillis)
     var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         private set
@@ -130,6 +142,7 @@ class SocketIoRealtimeClient(
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = nowMillis
         rebaselineCursor(reason = "heartbeat_silent")
+        beforeHeartbeatReconnect?.invoke()
         transport.connect(auth.toWireMap(), connectionContext)
         return true
     }
@@ -182,7 +195,7 @@ class SocketIoRealtimeClient(
 
     private fun ensureTransportListeners() {
         if (transportSubscriptions.isNotEmpty()) return
-        transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) {
+        transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) { _, _ ->
             markInbound()
             startHeartbeatWatchdog()
             state = RealtimeConnectionState.Connected
@@ -193,7 +206,7 @@ class SocketIoRealtimeClient(
             )
             rejoinChannels(reason = "connect")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) {
+        transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) { _, _ ->
             markInbound()
             state = RealtimeConnectionState.RoomsJoined
             diagnostics?.onRoomsJoined(
@@ -206,7 +219,7 @@ class SocketIoRealtimeClient(
             )
             emitSyncResume(reason = "rooms_joined")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { _, payload ->
             markInbound()
             state = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
             diagnostics?.onConnectionFailed(
@@ -218,7 +231,7 @@ class SocketIoRealtimeClient(
                 refreshTransportAuth(reason = "connect_error")
             }
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.Disconnect) {
+        transportSubscriptions += transport.on(RealtimeSocketEvents.Disconnect) { _, _ ->
             stopHeartbeatWatchdog()
             state = RealtimeConnectionState.Disconnected
             diagnostics?.onDisconnected(
@@ -227,7 +240,7 @@ class SocketIoRealtimeClient(
             )
             logger("client_disconnected serverId=${connectedServerId.orEmpty()}")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.Reconnect) {
+        transportSubscriptions += transport.on(RealtimeSocketEvents.Reconnect) { _, _ ->
             markInbound()
             startHeartbeatWatchdog()
             state = RealtimeConnectionState.Connected
@@ -239,18 +252,18 @@ class SocketIoRealtimeClient(
             )
             rejoinChannels(reason = "reconnect")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectAttempt) { payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectAttempt) { _, payload ->
             refreshTransportAuth(reason = "reconnect_attempt")
             logger("client_reconnect_attempt serverId=${connectedServerId.orEmpty()} payload=${payload?.toString().orEmpty()}")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectError) { payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectError) { _, payload ->
             diagnostics?.onConnectionFailed(
                     reason = payload?.toString().orEmpty(),
                     serverId = connectedServerId?.let(::ServerId)
             )
             logger("client_reconnect_error serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
         }
-        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectFailed) { payload ->
+        transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectFailed) { _, payload ->
             stopHeartbeatWatchdog()
             state = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
             diagnostics?.onConnectionFailed(
@@ -260,7 +273,7 @@ class SocketIoRealtimeClient(
             logger("client_reconnect_failed serverId=${connectedServerId.orEmpty()} reason=${payload?.javaClass?.simpleName.orEmpty()}")
         }
         RealtimeWireEventNames.forEach { eventName ->
-            transportSubscriptions += transport.on(eventName) { payload ->
+            transportSubscriptions += transport.on(eventName) { _, payload ->
                 markInbound(eventName)
                 val payloadServerId = payload.serverIdOrNull()
                 val currentServerId = connectedServerId
@@ -361,23 +374,13 @@ class SocketIoRealtimeClient(
     }
 
     private fun startHeartbeatWatchdog() {
-        if (watchdogTimer != null) return
-        watchdogTimer = Timer("slock-realtime-heartbeat-watchdog", true).also { timer ->
-            timer.scheduleAtFixedRate(
-                object : TimerTask() {
-                    override fun run() {
-                        checkHeartbeatSilence(clockMillis())
-                    }
-                },
-                RealtimeHeartbeatWatchdog.CHECK_INTERVAL_MILLIS,
-                RealtimeHeartbeatWatchdog.CHECK_INTERVAL_MILLIS
-            )
-        }
+        if (watchdogCancel != null) return
+        watchdogCancel = watchdogScheduler { checkHeartbeatSilence(clockMillis()) }
     }
 
     private fun stopHeartbeatWatchdog() {
-        watchdogTimer?.cancel()
-        watchdogTimer = null
+        watchdogCancel?.invoke()
+        watchdogCancel = null
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = null
     }

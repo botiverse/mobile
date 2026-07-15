@@ -1300,29 +1300,48 @@ class RealtimeRepositoryTest {
     }
 
     private class FakeRealtimeSocketTransport : RealtimeSocketTransport {
-        val handlers = mutableMapOf<String, MutableList<(Any?) -> Unit>>()
+        private val linearizationLock = Any()
+        val handlers =
+            mutableMapOf<String, MutableList<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
         var lastAuth: Map<String, String> = emptyMap()
         val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
         var connectCount = 0
+        private var currentContext: RealtimeSocketConnectionContext? = null
+
+        override fun <T> linearize(block: () -> T): T = synchronized(linearizationLock, block)
 
         override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
-            connectCount += 1
-            lastAuth = auth
+            linearize {
+                connectCount += 1
+                lastAuth = auth
+                currentContext = context
+            }
         }
 
-        override fun disconnect() = Unit
+        override fun disconnect() {
+            linearize { currentContext = null }
+        }
 
         override fun emit(eventName: String, payload: Map<String, Any>) {
-            emitted += eventName to payload
+            linearize { emitted += eventName to payload }
         }
 
-        override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription {
-            handlers.getOrPut(eventName) { mutableListOf() } += listener
-            return RealtimeSubscription { handlers[eventName]?.remove(listener) }
-        }
+        override fun on(
+            eventName: String,
+            listener: (RealtimeSocketConnectionContext, Any?) -> Unit,
+        ): RealtimeSubscription =
+            linearize {
+                handlers.getOrPut(eventName) { mutableListOf() } += listener
+                RealtimeSubscription {
+                    linearize { handlers[eventName]?.remove(listener) }
+                }
+            }
 
         fun receive(eventName: String, payload: Any? = null) {
-            handlers[eventName].orEmpty().forEach { it(payload) }
+            linearize {
+                val context = checkNotNull(currentContext)
+                handlers[eventName].orEmpty().forEach { it(context, payload) }
+            }
         }
     }
 

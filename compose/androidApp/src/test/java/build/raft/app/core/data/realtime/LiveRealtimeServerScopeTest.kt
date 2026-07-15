@@ -39,14 +39,14 @@ class LiveRealtimeServerScopeTest {
         var heartbeatSeq: Long? = null
         var responseCurrentSeq: Long? = null
 
-        transport.on(RealtimeSocketEvents.Connect) { connected.countDown() }
-        transport.on(RealtimeSocketEvents.RoomsJoined) { roomsJoined.countDown() }
-        transport.on(RealtimeSocketEvents.Heartbeat) { payload ->
+        transport.on(RealtimeSocketEvents.Connect) { _, _ -> connected.countDown() }
+        transport.on(RealtimeSocketEvents.RoomsJoined) { _, _ -> roomsJoined.countDown() }
+        transport.on(RealtimeSocketEvents.Heartbeat) { _, payload ->
             val json = payload as? JSONObject
             heartbeatSeq = json?.optLong("seq")
             heartbeat.countDown()
         }
-        transport.on(RealtimeSocketEvents.SyncResumeResponse) { payload ->
+        transport.on(RealtimeSocketEvents.SyncResumeResponse) { _, payload ->
             val json = payload as? JSONObject
             responseCurrentSeq = json?.optLong("currentSeq")
             syncResumeResponse.countDown()
@@ -129,7 +129,7 @@ class LiveRealtimeServerScopeTest {
         val connected = CountDownLatch(1)
         val realtimePayload = CountDownLatch(1)
         SocketIoRealtimeClient.RealtimeWireEventNames.forEach { eventName ->
-            transport.on(eventName) { payload ->
+            transport.on(eventName) { _, payload ->
                 artifact.record(
                     "socket_event",
                     mapOf(
@@ -142,8 +142,8 @@ class LiveRealtimeServerScopeTest {
                 realtimePayload.countDown()
             }
         }
-        transport.on(RealtimeSocketEvents.Connect) { connected.countDown() }
-        transport.on(RealtimeSocketEvents.RoomsJoined) { payload ->
+        transport.on(RealtimeSocketEvents.Connect) { _, _ -> connected.countDown() }
+        transport.on(RealtimeSocketEvents.RoomsJoined) { _, payload ->
             artifact.record(
                 "socket_rooms_joined",
                 mapOf(
@@ -211,7 +211,7 @@ class LiveRealtimeServerScopeTest {
         val connectCount = AtomicInteger(0)
         val receivedPreviousServerMessage = CountDownLatch(1)
         val targetBody = "live previous server message $suffix"
-        transport.on(RealtimeSocketEvents.Connect) {
+        transport.on(RealtimeSocketEvents.Connect) { _, _ ->
             if (connectCount.incrementAndGet() == 1) {
                 firstConnected.countDown()
             } else {
