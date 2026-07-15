@@ -7450,6 +7450,24 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun systemMessageTimestampUsesMonoWithoutChangingBodyFont() {
+        val annotated =
+            buildThreadSystemMessageAnnotatedBody(
+                systemBody = "10:00 Cindy joined the channel",
+                timestampLabel = "10:00"
+            )
+
+        assertEquals("10:00 Cindy joined the channel", annotated.text)
+        assertEquals(2, annotated.spanStyles.size)
+        assertEquals(0, annotated.spanStyles[0].start)
+        assertEquals(5, annotated.spanStyles[0].end)
+        assertEquals(SlockMonoFamily, annotated.spanStyles[0].item.fontFamily)
+        assertEquals(6, annotated.spanStyles[1].start)
+        assertEquals(30, annotated.spanStyles[1].end)
+        assertEquals(null, annotated.spanStyles[1].item.fontFamily)
+    }
+
+    @Test
     fun sanitizesSystemMessageInlineWhitespaceWithoutNativeRegexEscapes() {
         assertEquals(
             "one two three four five",

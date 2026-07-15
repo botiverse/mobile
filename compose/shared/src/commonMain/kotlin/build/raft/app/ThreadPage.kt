@@ -220,6 +220,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -14177,6 +14178,28 @@ private const val ThreadShareCaptureScrollSettleMs = 96L
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
+internal fun buildThreadSystemMessageAnnotatedBody(
+    systemBody: String,
+    timestampLabel: String
+): AnnotatedString =
+    buildAnnotatedString {
+        pushStyle(
+            SpanStyle(
+                color = ThreadSystemMessageTimeColor,
+                fontFamily = SlockMonoFamily
+            )
+        )
+        append(timestampLabel)
+        pop()
+        val body = systemBody.removePrefix(timestampLabel).trimStart()
+        if (body.isNotBlank()) {
+            append(" ")
+            pushStyle(SpanStyle(color = ThreadSystemMessageBodyColor))
+            append(body)
+            pop()
+        }
+    }
+
 @Composable
 private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
@@ -14193,18 +14216,7 @@ private fun ThreadSystemMessageRow(
         }
     val annotatedSystemBody =
         remember(systemBody, timestampLabel) {
-            buildAnnotatedString {
-                pushStyle(SpanStyle(color = ThreadSystemMessageTimeColor))
-                append(timestampLabel)
-                pop()
-                val body = systemBody.removePrefix(timestampLabel).trimStart()
-                if (body.isNotBlank()) {
-                    append(" ")
-                    pushStyle(SpanStyle(color = ThreadSystemMessageBodyColor))
-                    append(body)
-                    pop()
-                }
-            }
+            buildThreadSystemMessageAnnotatedBody(systemBody, timestampLabel)
         }
     Column(
         modifier =
