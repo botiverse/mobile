@@ -1,10 +1,10 @@
 package build.raft.app.shared
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class AttachmentDownloadProgressSamplerTest {
     @Test
@@ -21,7 +21,7 @@ class AttachmentDownloadProgressSamplerTest {
         val sampler = AttachmentDownloadProgressSampler()
         sampler.onResponseStart(nowMs = 1_000L)
 
-        val sample = assertNotNull(
+        val sample = assertNotNullValue(
             sampler.sample(downloadedBytes = 1L, totalBytes = 10_000L, nowMs = 1_010L)
         )
 
@@ -35,7 +35,7 @@ class AttachmentDownloadProgressSamplerTest {
         sampler.onResponseStart(nowMs = 1_000L)
         assertNotNull(sampler.sample(downloadedBytes = 64L * 1024L, totalBytes = 4L * 1024L * 1024L, nowMs = 8_000L))
 
-        val sample = assertNotNull(
+        val sample = assertNotNullValue(
             sampler.sample(
                 downloadedBytes = 640L * 1024L,
                 totalBytes = 4L * 1024L * 1024L,
@@ -63,7 +63,7 @@ class AttachmentDownloadProgressSamplerTest {
         sampler.onResponseStart(nowMs = 1_000L)
         assertNotNull(sampler.sample(downloadedBytes = 32L * 1024L, totalBytes = null, nowMs = 1_010L))
 
-        val sample = assertNotNull(
+        val sample = assertNotNullValue(
             sampler.sample(downloadedBytes = 288L * 1024L, totalBytes = null, nowMs = 1_600L)
         )
 
@@ -78,7 +78,7 @@ class AttachmentDownloadProgressSamplerTest {
         assertNotNull(sampler.sample(downloadedBytes = 64L * 1024L, totalBytes = 1L * 1024L * 1024L, nowMs = 1_010L))
         assertNotNull(sampler.sample(downloadedBytes = 320L * 1024L, totalBytes = 1L * 1024L * 1024L, nowMs = 1_600L))
 
-        val afterStall = assertNotNull(
+        val afterStall = assertNotNullValue(
             sampler.sample(downloadedBytes = 384L * 1024L, totalBytes = 1L * 1024L * 1024L, nowMs = 4_000L)
         )
 
@@ -90,10 +90,15 @@ class AttachmentDownloadProgressSamplerTest {
         val sampler = AttachmentDownloadProgressSampler()
         sampler.onResponseStart(nowMs = 1_000L)
 
-        val complete = assertNotNull(
+        val complete = assertNotNullValue(
             sampler.sample(downloadedBytes = 10_000L, totalBytes = 10_000L, nowMs = 1_010L, complete = true)
         )
 
         assertEquals(100, complete.percent)
+    }
+
+    private fun <T : Any> assertNotNullValue(value: T?): T {
+        assertNotNull(value)
+        return requireNotNull(value)
     }
 }
