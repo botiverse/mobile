@@ -394,10 +394,13 @@ internal fun ThreadTimelineSlice.focusedMessageTargetSignature(): String =
     buildString {
         append(focusedMessageId.orEmpty())
         append(':')
-        append(originStatus)
-        append(':')
-        append(originMessage?.id.orEmpty())
-        append(':')
+        val focusedOriginId = originMessage?.id ?: originParentMessageId
+        if (!focusedMessageId.isNullOrBlank() && focusedMessageId == focusedOriginId) {
+            append(originStatus)
+            append(':')
+            append(originMessage?.id.orEmpty())
+            append(':')
+        }
         append(messageIndexSignature())
     }
 

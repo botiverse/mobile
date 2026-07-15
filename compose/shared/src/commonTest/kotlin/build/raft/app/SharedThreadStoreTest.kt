@@ -112,6 +112,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -155,6 +157,7 @@ class SharedThreadStoreTest {
     @Test
     fun sharedThreadMessageStoreDeduplicatesConcurrentMessageFetches() = runBlocking {
         val store = SharedThreadMessageStore()
+        val server = ServerId("server-1")
         val parentChannel = ChannelId("channel-1")
         val parentMessageId = MessageId("m1")
         val firstFetchStarted = CompletableDeferred<Unit>()
@@ -162,28 +165,57 @@ class SharedThreadStoreTest {
         var fetchCount = 0
         val first =
             async {
-                store.getOrFetch(parentChannel, parentMessageId) {
+                store.resolve(server, parentChannel, parentMessageId) {
                     fetchCount += 1
                     firstFetchStarted.complete(Unit)
                     releaseFetch.await()
-                    message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+                    SharedThreadMessageResolution.Loaded(
+                        message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+                    )
                 }
             }
         firstFetchStarted.await()
         val second =
             async {
-                store.getOrFetch(parentChannel, parentMessageId) {
+                store.resolve(server, parentChannel, parentMessageId) {
                     fetchCount += 1
-                    message(threadId = "channel-1", id = "m1", seq = 1, body = "duplicate fetch")
+                    SharedThreadMessageResolution.Loaded(
+                        message(threadId = "channel-1", id = "m1", seq = 1, body = "duplicate fetch")
+                    )
                 }
             }
 
         releaseFetch.complete(Unit)
 
-        assertEquals("parent body", first.await()?.body)
-        assertEquals("parent body", second.await()?.body)
+        assertEquals("parent body", (first.await() as SharedThreadMessageResolution.Loaded).message.body)
+        assertEquals("parent body", (second.await() as SharedThreadMessageResolution.Loaded).message.body)
         assertEquals(1, fetchCount)
-        assertEquals("parent body", store.get(parentChannel, parentMessageId)?.body)
+        assertEquals("parent body", store.get(server, parentChannel, parentMessageId)?.body)
+    }
+
+    @Test
+    fun sharedThreadMessageStoreSeparatesSameMessageIdentityAcrossServers() = runBlocking {
+        val store = SharedThreadMessageStore()
+        val channel = ChannelId("channel-1")
+        val messageId = MessageId("m1")
+
+        val first =
+            store.resolve(ServerId("server-1"), channel, messageId) {
+                SharedThreadMessageResolution.Loaded(
+                    message(threadId = "channel-1", id = "m1", seq = 1, body = "server one")
+                )
+            }
+        val second =
+            store.resolve(ServerId("server-2"), channel, messageId) {
+                SharedThreadMessageResolution.Loaded(
+                    message(threadId = "channel-1", id = "m1", seq = 1, body = "server two")
+                )
+            }
+
+        assertEquals("server one", (first as SharedThreadMessageResolution.Loaded).message.body)
+        assertEquals("server two", (second as SharedThreadMessageResolution.Loaded).message.body)
+        assertEquals("server one", store.get(ServerId("server-1"), channel, messageId)?.body)
+        assertEquals("server two", store.get(ServerId("server-2"), channel, messageId)?.body)
     }
 
     @Test
@@ -1327,6 +1359,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val messageStore = SharedThreadMessageStore()
         messageStore.upsert(
+            ServerId("server-1"),
             ChannelId("channel-1"),
             message(threadId = "channel-1", id = "m1", seq = 1, body = "stored parent body")
         )
@@ -5752,6 +5785,227 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun focusedReplyCommitsTimelineBeforeParentAndCachesLateOrigin() = runBlocking {
+        val parentMessageId = MessageId("parent-1")
+        val focusedMessageId = MessageId("reply-focus-1")
+        val releaseParent = CompletableDeferred<Unit>()
+        val parentStarted = CompletableDeferred<Unit>()
+        val repository =
+            FakeConversationRepository(
+                messageContextResultsById =
+                    mapOf(
+                        focusedMessageId to
+                            DataResult.Content(
+                                focusedReplySnapshot(
+                                    threadId = "thread-parent-1",
+                                    parentChannelId = "parent-channel-1",
+                                    parentMessageId = parentMessageId.value,
+                                    focusedMessageId = focusedMessageId.value
+                                )
+                            ),
+                        parentMessageId to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "parent-channel-1",
+                                    messages =
+                                        listOf(
+                                            message(
+                                                threadId = "parent-channel-1",
+                                                channelId = "parent-channel-1",
+                                                id = parentMessageId.value,
+                                                seq = 1,
+                                                body = "late parent"
+                                            )
+                                        )
+                                )
+                            )
+                    )
+            ).also { fake ->
+                fake.messageContextStartedById[parentMessageId] = parentStarted
+                fake.releaseMessageContextById[parentMessageId] = releaseParent
+            }
+        val messageStore = SharedThreadMessageStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                messageStore = messageStore
+            )
+        val route = focusedReplyRoute()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(route))
+        withTimeout(1_000L) { parentStarted.await() }
+
+        val beforeParent = store.state.value.payload
+        assertEquals("content", beforeParent.status)
+        assertEquals(listOf("reply-focus-1"), beforeParent.messages.map { it.id })
+        assertEquals("loading", beforeParent.originStatus)
+        assertNull(beforeParent.originMessage)
+
+        releaseParent.complete(Unit)
+        val afterParent =
+            withTimeout(1_000L) {
+                store.state.map { it.payload }.first { it.originStatus == "loaded" }
+            }
+        assertEquals(listOf("reply-focus-1"), afterParent.messages.map { it.id })
+        assertEquals("late parent", afterParent.originMessage?.body)
+        assertEquals(null, afterParent.errorCode)
+
+        val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val secondStore = SharedThreadStore(dataSource = dataSource, scope = secondScope)
+        secondStore.accept(SharedThreadIntent.Start(route.copy(focusedMessageRequestNonce = 2)))
+        assertEquals("loaded", secondStore.state.value.payload.originStatus)
+        assertEquals("late parent", secondStore.state.value.payload.originMessage?.body)
+        assertEquals(1, repository.getMessageContextRequests.count { it == parentMessageId })
+        scope.cancel()
+        secondScope.cancel()
+    }
+
+    @Test
+    fun focusedReplyParentFailureIsTerminalWithoutReplacingTimeline() = runBlocking {
+        val parentMessageId = MessageId("parent-1")
+        val focusedMessageId = MessageId("reply-focus-1")
+        val repository =
+            FakeConversationRepository(
+                messageContextResultsById =
+                    mapOf(
+                        focusedMessageId to
+                            DataResult.Content(
+                                focusedReplySnapshot(
+                                    threadId = "thread-parent-1",
+                                    parentChannelId = "parent-channel-1",
+                                    parentMessageId = parentMessageId.value,
+                                    focusedMessageId = focusedMessageId.value
+                                )
+                            ),
+                        parentMessageId to
+                            DataResult.Error(
+                                ScreenError(code = "thread_parent_timeout", retryable = true)
+                            )
+                    )
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedThreadIntent.Start(focusedReplyRoute()))
+        val payload =
+            withTimeout(1_000L) {
+                store.state.map { it.payload }.first { it.originStatus == "error" }
+            }
+
+        assertEquals("content", payload.status)
+        assertEquals(listOf("reply-focus-1"), payload.messages.map { it.id })
+        assertEquals("thread_parent_timeout", payload.originErrorCode)
+        assertNull(payload.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun focusedReplyParentCompletionCannotMutateLaterRoute() = runBlocking {
+        val parentMessageId = MessageId("parent-1")
+        val focusedMessageId = MessageId("reply-focus-1")
+        val laterFocusedMessageId = MessageId("later-target")
+        val releaseParent = CompletableDeferred<Unit>()
+        val parentStarted = CompletableDeferred<Unit>()
+        val repository =
+            FakeConversationRepository(
+                messageContextResultsById =
+                    mapOf(
+                        focusedMessageId to
+                            DataResult.Content(
+                                focusedReplySnapshot(
+                                    threadId = "thread-parent-1",
+                                    parentChannelId = "parent-channel-1",
+                                    parentMessageId = parentMessageId.value,
+                                    focusedMessageId = focusedMessageId.value
+                                )
+                            ),
+                        parentMessageId to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "parent-channel-1",
+                                    messages =
+                                        listOf(
+                                            message(
+                                                threadId = "parent-channel-1",
+                                                channelId = "parent-channel-1",
+                                                id = parentMessageId.value,
+                                                seq = 1,
+                                                body = "stale parent"
+                                            )
+                                        )
+                                )
+                            ),
+                        laterFocusedMessageId to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "channel-2",
+                                    messages =
+                                        listOf(
+                                            message(
+                                                threadId = "channel-2",
+                                                channelId = "channel-2",
+                                                id = laterFocusedMessageId.value,
+                                                seq = 3,
+                                                body = "later route"
+                                            )
+                                        ),
+                                    conversation = conversationSummary("channel-2")
+                                ).copy(highlightedMessageId = laterFocusedMessageId)
+                            )
+                    )
+            ).also { fake ->
+                fake.messageContextStartedById[parentMessageId] = parentStarted
+                fake.releaseMessageContextById[parentMessageId] = releaseParent
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedThreadIntent.Start(focusedReplyRoute()))
+        withTimeout(1_000L) { parentStarted.await() }
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    instanceId = "shared-shell-thread-channel-2",
+                    sourceThreadId = "channel-2",
+                    streamChannelId = "channel-2",
+                    focusedMessageId = laterFocusedMessageId.value
+                )
+            )
+        )
+        releaseParent.complete(Unit)
+        yield()
+
+        val payload = store.state.value.payload
+        assertEquals("channel-2", payload.sourceThreadId)
+        assertEquals(listOf("later route"), payload.messages.map { it.body })
+        assertEquals("none", payload.originStatus)
+        assertNull(payload.originMessage)
+        scope.cancel()
+    }
+
+    @Test
     fun fetchThreadPayloadFallsBackWhenFocusedMessageContextDoesNotMatchRouteThread() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
@@ -8946,14 +9200,17 @@ class SharedThreadStoreTest {
         assertEquals("loaded", payload.originStatus)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
         assertEquals(listOf(MessageId("m1")), repository.getMessageContextRequests)
-        assertEquals("parent body", messageStore.get(ChannelId("channel-1"), MessageId("m1"))?.body)
+        assertEquals(
+            "parent body",
+            messageStore.get(ServerId("server-1"), ChannelId("channel-1"), MessageId("m1"))?.body
+        )
     }
 
     @Test
     fun fetchThreadPayloadReusesStoredReplyOriginMessageBeforeNetworkContext() = runBlocking {
         val canonicalParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "stored parent body")
         val messageStore = SharedThreadMessageStore()
-        messageStore.upsert(ChannelId("channel-1"), canonicalParent)
+        messageStore.upsert(ServerId("server-1"), ChannelId("channel-1"), canonicalParent)
         val repository =
             FakeConversationRepository(
                 threadResult =
@@ -10683,6 +10940,7 @@ class SharedThreadStoreTest {
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
         var messageContextResult: DataResult<ThreadSnapshot> =
             DataResult.Error(ScreenError(code = "message_context_not_configured", retryable = false)),
+        var messageContextResultsById: Map<MessageId, DataResult<ThreadSnapshot>> = emptyMap(),
         var messageContextDelayMillis: Long = 0L,
         var createThreadResult: DataResult<ThreadActionResult> =
             DataResult.Content(
@@ -10698,6 +10956,8 @@ class SharedThreadStoreTest {
         var releaseGetThread: CompletableDeferred<Unit>? = null
         var getReplyThreadStarted: CompletableDeferred<Unit>? = null
         var releaseGetReplyThread: CompletableDeferred<Unit>? = null
+        val messageContextStartedById: MutableMap<MessageId, CompletableDeferred<Unit>> = mutableMapOf()
+        val releaseMessageContextById: MutableMap<MessageId, CompletableDeferred<Unit>> = mutableMapOf()
         val getThreadRequests: MutableList<ThreadId> = mutableListOf()
         val getThreadIncludeFollowedSummaries: MutableList<Boolean> = mutableListOf()
         val getThreadLimits: MutableList<Int> = mutableListOf()
@@ -10795,10 +11055,12 @@ class SharedThreadStoreTest {
         override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> {
             getMessageContextRequests += messageId
             getMessageContextChannelIdRequests += channelId
+            messageContextStartedById[messageId]?.complete(Unit)
+            releaseMessageContextById[messageId]?.await()
             if (messageContextDelayMillis > 0L) {
                 delay(messageContextDelayMillis)
             }
-            return messageContextResult
+            return messageContextResultsById[messageId] ?: messageContextResult
         }
 
         override suspend fun getMessageContext(
@@ -10892,6 +11154,18 @@ class SharedThreadStoreTest {
             sourceThreadId = "channel-1",
             status = "loading",
             canSend = true
+        )
+
+    private fun focusedReplyRoute(): KuiklyThreadScreenPayload =
+        basePayload().copy(
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            sourceThreadId = "thread-parent-1",
+            streamChannelId = "thread-parent-1",
+            parentChannelId = "parent-channel-1",
+            parentMessageId = "parent-1",
+            originParentMessageId = "parent-1",
+            originStatus = "loading",
+            focusedMessageId = "reply-focus-1"
         )
 
     private fun directMessagePayload(): KuiklyThreadScreenPayload =
@@ -11417,6 +11691,38 @@ class SharedThreadStoreTest {
         )
 
     companion object {
+        private fun focusedReplySnapshot(
+            threadId: String,
+            parentChannelId: String,
+            parentMessageId: String,
+            focusedMessageId: String
+        ): ThreadSnapshot =
+            threadSnapshot(
+                threadId = threadId,
+                messages =
+                    listOf(
+                        message(
+                            threadId = threadId,
+                            channelId = threadId,
+                            id = focusedMessageId,
+                            seq = 2,
+                            body = "focused reply"
+                        )
+                    ),
+                parentMessage = null,
+                conversation =
+                    conversationSummary(threadId).copy(
+                        kind = ConversationKind.Thread,
+                        channelId = ChannelId(threadId),
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId(parentChannelId),
+                                parentMessageId = MessageId(parentMessageId),
+                                streamChannelId = ChannelId(threadId)
+                            )
+                    )
+            ).copy(highlightedMessageId = MessageId(focusedMessageId))
+
         private fun threadSnapshot(
             threadId: String = "channel-1",
             body: String = "repository body",

@@ -243,15 +243,19 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun focusedMessageAnchorWaitsForLoadingOriginOnly() {
-        // task #567: a "loading" origin placeholder above the timeline still
-        // changes size when it resolves — the anchor must hold until then.
-        assertFalse(focusedMessageAnchorOriginSettled("loading"))
-        // Every terminal state anchors immediately.
-        assertTrue(focusedMessageAnchorOriginSettled("none"))
-        assertTrue(focusedMessageAnchorOriginSettled("loaded"))
-        assertTrue(focusedMessageAnchorOriginSettled("missing"))
-        assertTrue(focusedMessageAnchorOriginSettled("error"))
+    fun focusedMessageAnchorDoesNotDependOnOriginSettlement() {
+        // Hands eeb5ede7: MessageContext is the focused route's primary
+        // authority. The target request is runnable as soon as its row exists;
+        // parent/origin hydration is an independent late layout mutation that
+        // the bounded session may correct without delaying first focus.
+        val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+        assertTrue(
+            shouldRunFocusedMessageAnchor(
+                targetIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null
+            )
+        )
     }
 
     @Test
@@ -501,6 +505,31 @@ class ThreadBottomAnchorSignatureTest {
         assertEquals(-1, loading.focusedMessageListItemIndex())
         assertEquals(-1, loaded.focusedMessageListItemIndex())
         assertNotEquals(loading.focusedMessageTargetSignature(), loaded.focusedMessageTargetSignature())
+    }
+
+    @Test
+    fun focusedReplyTargetSignature_ignoresIndependentOriginHydration() {
+        val loading =
+            payload(
+                originStatus = "loading",
+                originMessage = null,
+                messages = listOf(message("reply-1"), message("reply-2"))
+            ).copy(
+                originParentMessageId = "parent-message",
+                focusedMessageId = "reply-1"
+            ).timelineSlice()
+        val loaded =
+            payload(
+                originStatus = "content",
+                originMessage = message("parent-message"),
+                messages = listOf(message("reply-1"), message("reply-2"))
+            ).copy(
+                originParentMessageId = "parent-message",
+                focusedMessageId = "reply-1"
+            ).timelineSlice()
+
+        assertEquals(loading.focusedMessageListItemIndex(), loaded.focusedMessageListItemIndex())
+        assertEquals(loading.focusedMessageTargetSignature(), loaded.focusedMessageTargetSignature())
     }
 
     @Test

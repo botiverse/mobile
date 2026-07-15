@@ -133,6 +133,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private data class ReplyThreadResolveKey(
+    val serverId: String,
     val parentChannelId: String,
     val parentMessageId: String
 )
@@ -302,23 +303,36 @@ private data class PendingReactionRealtimeGuard(
 )
 
 internal data class SharedThreadMessageKey(
+    val serverId: ServerId,
     val channelId: ChannelId,
     val messageId: MessageId
 )
+
+internal sealed interface SharedThreadMessageResolution {
+    data class Loaded(val message: Message) : SharedThreadMessageResolution
+    data object Missing : SharedThreadMessageResolution
+    data class Error(val code: String) : SharedThreadMessageResolution
+}
+
+internal sealed interface SharedThreadOriginResolution {
+    data class Loaded(val message: KuiklyThreadMessageItem) : SharedThreadOriginResolution
+    data object Missing : SharedThreadOriginResolution
+    data class Error(val code: String) : SharedThreadOriginResolution
+}
 
 internal class SharedThreadMessageStore(
     private val limit: Int = 256
 ) {
     private val messages = LinkedHashMap<SharedThreadMessageKey, Message>()
     private val replyThreadStreams = LinkedHashMap<ReplyThreadResolveKey, String>()
-    private val inFlight = mutableMapOf<SharedThreadMessageKey, Deferred<Message?>>()
+    private val inFlight = mutableMapOf<SharedThreadMessageKey, Deferred<SharedThreadMessageResolution>>()
     private val inFlightMutex = Mutex()
 
-    fun get(channelId: ChannelId, messageId: MessageId): Message? =
-        messages[SharedThreadMessageKey(channelId, messageId)]
+    fun get(serverId: ServerId, channelId: ChannelId, messageId: MessageId): Message? =
+        messages[SharedThreadMessageKey(serverId, channelId, messageId)]
 
-    fun upsert(channelId: ChannelId, message: Message): Message {
-        val key = SharedThreadMessageKey(channelId, message.id)
+    fun upsert(serverId: ServerId, channelId: ChannelId, message: Message): Message {
+        val key = SharedThreadMessageKey(serverId, channelId, message.id)
         val existing = messages[key]
         val selected =
             if (existing != null && !existing.needsSharedThreadMessageStoreHydration() && message.needsSharedThreadMessageStoreHydration()) {
@@ -332,12 +346,17 @@ internal class SharedThreadMessageStore(
         return selected
     }
 
-    fun getReplyThreadStream(parentChannelId: String, parentMessageId: String): String? =
-        replyThreadStreams[ReplyThreadResolveKey(parentChannelId, parentMessageId)]
+    fun getReplyThreadStream(serverId: ServerId, parentChannelId: String, parentMessageId: String): String? =
+        replyThreadStreams[ReplyThreadResolveKey(serverId.value, parentChannelId, parentMessageId)]
 
-    fun upsertReplyThreadStream(parentChannelId: String, parentMessageId: String, threadChannelId: String) {
+    fun upsertReplyThreadStream(
+        serverId: ServerId,
+        parentChannelId: String,
+        parentMessageId: String,
+        threadChannelId: String
+    ) {
         if (parentChannelId.isBlank() || parentMessageId.isBlank() || threadChannelId.isBlank()) return
-        val key = ReplyThreadResolveKey(parentChannelId, parentMessageId)
+        val key = ReplyThreadResolveKey(serverId.value, parentChannelId, parentMessageId)
         replyThreadStreams.remove(key)
         replyThreadStreams[key] = threadChannelId
         while (replyThreadStreams.size > limit) {
@@ -346,24 +365,37 @@ internal class SharedThreadMessageStore(
         }
     }
 
-    suspend fun getOrFetch(
+    suspend fun resolve(
+        serverId: ServerId,
         channelId: ChannelId,
         messageId: MessageId,
-        fetch: suspend () -> Message?
-    ): Message? = coroutineScope {
-        get(channelId, messageId)
+        fetch: suspend () -> SharedThreadMessageResolution
+    ): SharedThreadMessageResolution = coroutineScope {
+        get(serverId, channelId, messageId)
             ?.takeIf { message -> message.matchesSharedThreadMessageStoreKey(channelId, messageId) }
-            ?.let { message -> return@coroutineScope message }
-        val key = SharedThreadMessageKey(channelId, messageId)
+            ?.let { message -> return@coroutineScope SharedThreadMessageResolution.Loaded(message) }
+        val key = SharedThreadMessageKey(serverId, channelId, messageId)
         val deferred =
             inFlightMutex.withLock {
-                get(channelId, messageId)
+                get(serverId, channelId, messageId)
                     ?.takeIf { message -> message.matchesSharedThreadMessageStoreKey(channelId, messageId) }
-                    ?.let { message -> return@coroutineScope message }
+                    ?.let { message -> return@coroutineScope SharedThreadMessageResolution.Loaded(message) }
                 inFlight[key] ?: async {
-                    fetch()
-                        ?.takeIf { message -> message.matchesSharedThreadMessageStoreKey(channelId, messageId) }
-                        ?.let { message -> upsert(channelId, message) }
+                    when (val result = fetch()) {
+                        is SharedThreadMessageResolution.Loaded -> {
+                            val message =
+                                result.message.takeIf { candidate ->
+                                    candidate.matchesSharedThreadMessageStoreKey(channelId, messageId)
+                                }
+                            if (message == null) {
+                                SharedThreadMessageResolution.Error("thread_parent_context_identity_mismatch")
+                            } else {
+                                SharedThreadMessageResolution.Loaded(upsert(serverId, channelId, message))
+                            }
+                        }
+                        SharedThreadMessageResolution.Missing -> result
+                        is SharedThreadMessageResolution.Error -> result
+                    }
                 }.also { inFlight[key] = it }
             }
         try {
@@ -933,18 +965,50 @@ internal class SharedThreadDataSource(
             basePayload.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: return basePayload
+        val session = readSession() ?: return basePayload
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return basePayload
         val parent =
             getCachedReplyParentMessage(
+                serverId = serverId,
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId
             ) ?: return basePayload
-        val currentUserId = readSession()?.user?.id
         return basePayload.copy(
-            originMessage = parent.toKuiklyThreadMessageItem(currentUserId),
+            originMessage = parent.toKuiklyThreadMessageItem(session.user.id),
             originParentMessageId = parentMessageId,
             originStatus = "loading",
             originErrorCode = null
         )
+    }
+
+    suspend fun resolveReplyOrigin(
+        basePayload: KuiklyThreadScreenPayload
+    ): SharedThreadOriginResolution {
+        if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+            return SharedThreadOriginResolution.Missing
+        }
+        val parentChannelId =
+            basePayload.parentChannelId?.takeIf { it.isNotBlank() }
+                ?: return SharedThreadOriginResolution.Error("thread_parent_channel_missing")
+        val parentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: return SharedThreadOriginResolution.Error("thread_parent_message_missing")
+        val session = readSession()
+            ?: return SharedThreadOriginResolution.Error("thread_parent_context_session_missing")
+        return when (
+            val resolution = resolveReplyParentMessageFromStore(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId
+            )
+        ) {
+            is SharedThreadMessageResolution.Loaded ->
+                SharedThreadOriginResolution.Loaded(
+                    resolution.message.toKuiklyThreadMessageItem(session.user.id)
+                )
+            SharedThreadMessageResolution.Missing -> SharedThreadOriginResolution.Missing
+            is SharedThreadMessageResolution.Error -> SharedThreadOriginResolution.Error(resolution.code)
+        }
     }
 
     fun rememberReplyParentCandidate(
@@ -964,7 +1028,8 @@ internal class SharedThreadDataSource(
                     channelId = channelId,
                     diagnostics = diagnosticsLogger,
                 ) ?: return
-        messageResolver.upsert(channelId = channelId, message = projectedParent)
+        val serverId = cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
+        messageResolver.upsert(serverId = serverId, channelId = channelId, message = projectedParent)
         diagnosticsLogger(
             "thread_parent_context_store_seed parentChannelId=${channelId.value} " +
                 "parentMessageId=${parentMessage.id} threadChannelId=${threadChannelId.orEmpty()}"
@@ -1000,8 +1065,10 @@ internal class SharedThreadDataSource(
         homeConversationContextResolution(payload).payload
 
     private fun cachedReplyThreadStreamId(parentChannelId: String, parentMessageId: String): String? =
-        replyThreadResolveCache[ReplyThreadResolveKey(parentChannelId, parentMessageId)]
-            ?: messageStore?.getReplyThreadStream(parentChannelId, parentMessageId)
+        cacheServerId.value.takeIf { it.isNotBlank() }?.let { serverId ->
+            replyThreadResolveCache[ReplyThreadResolveKey(serverId, parentChannelId, parentMessageId)]
+                ?: messageStore?.getReplyThreadStream(ServerId(serverId), parentChannelId, parentMessageId)
+        }
 
     private fun KuiklyThreadScreenPayload.matchesCachedReplyThreadStreamResolution(): Boolean {
         val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
@@ -1063,8 +1130,9 @@ internal class SharedThreadDataSource(
     ) {
         if (parentChannelId.isBlank() || parentMessageId.isBlank() || threadChannelId.isBlank()) return
         if (parentChannelId == threadChannelId) return
-        replyThreadResolveCache[ReplyThreadResolveKey(parentChannelId, parentMessageId)] = threadChannelId
-        messageStore?.upsertReplyThreadStream(parentChannelId, parentMessageId, threadChannelId)
+        val serverId = cacheServerId.value.takeIf { it.isNotBlank() } ?: return
+        replyThreadResolveCache[ReplyThreadResolveKey(serverId, parentChannelId, parentMessageId)] = threadChannelId
+        messageStore?.upsertReplyThreadStream(ServerId(serverId), parentChannelId, parentMessageId, threadChannelId)
     }
 
     suspend fun joinChannel(channelId: ChannelId) =
@@ -2637,14 +2705,18 @@ internal class SharedThreadDataSource(
         }
         return DataResult.Content(
             context
-                .withCachedReplyParentMessage(basePayload)
+                .withCachedReplyParentMessage(
+                    basePayload = basePayload,
+                    serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                )
                 .withConversationAccessFallback(accessFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
         )
     }
 
     private fun ThreadSnapshot.withCachedReplyParentMessage(
-        basePayload: KuiklyThreadScreenPayload
+        basePayload: KuiklyThreadScreenPayload,
+        serverId: ServerId?
     ): ThreadSnapshot {
         val isReplyThread =
             basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
@@ -2662,6 +2734,7 @@ internal class SharedThreadDataSource(
                 ?: return this
         val parent =
             getCachedReplyParentMessage(
+                serverId = serverId ?: return this,
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId
             ) ?: return this
@@ -2851,13 +2924,34 @@ internal class SharedThreadDataSource(
         parentChannelId: String,
         parentMessageId: String,
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground
-    ): Message? {
+    ): Message? =
+        when (
+            val resolution = resolveReplyParentMessageFromStore(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                requestPriority = requestPriority
+            )
+        ) {
+            is SharedThreadMessageResolution.Loaded -> resolution.message
+            SharedThreadMessageResolution.Missing,
+            is SharedThreadMessageResolution.Error -> null
+        }
+
+    private suspend fun resolveReplyParentMessageFromStore(
+        parentChannelId: String,
+        parentMessageId: String,
+        requestPriority: DataRequestPriority = DataRequestPriority.Foreground
+    ): SharedThreadMessageResolution {
+        val session = readSession()
+            ?: return SharedThreadMessageResolution.Error("thread_parent_context_session_missing")
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+            ?: return SharedThreadMessageResolution.Error("thread_parent_context_server_missing")
         val parentChannel = ChannelId(parentChannelId)
         val parentMessage = MessageId(parentMessageId)
-        val cachedParent = messageResolver.get(parentChannel, parentMessage)
+        val cachedParent = messageResolver.get(serverId, parentChannel, parentMessage)
             ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
         val parent =
-            messageResolver.getOrFetch(parentChannel, parentMessage) {
+            messageResolver.resolve(serverId, parentChannel, parentMessage) {
                 val startedAt = TimeSource.Monotonic.markNow()
                 val contextResult =
                     fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
@@ -2868,25 +2962,45 @@ internal class SharedThreadDataSource(
                         "parentMessageId=$parentMessageId result=${contextResult.threadDiagnosticsResult()} " +
                         "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                 )
-                val context = (contextResult as? DataResult.Content)?.data ?: return@getOrFetch null
-                context.parentMessage?.takeIf { message -> message.id == parentMessage }
-                    ?: context.messages.firstOrNull { message -> message.id == parentMessage }
+                when (contextResult) {
+                    is DataResult.Content -> {
+                        val message =
+                            contextResult.data.parentMessage?.takeIf { message -> message.id == parentMessage }
+                                ?: contextResult.data.messages.firstOrNull { message -> message.id == parentMessage }
+                        message
+                            ?.let { resolved -> SharedThreadMessageResolution.Loaded(resolved) }
+                            ?: SharedThreadMessageResolution.Missing
+                    }
+                    is DataResult.Empty -> SharedThreadMessageResolution.Missing
+                    is DataResult.Error -> SharedThreadMessageResolution.Error(contextResult.error.code)
+                    is DataResult.NoPermission -> SharedThreadMessageResolution.Error(contextResult.blocker.code)
+                }
             }
-        if (cachedParent != null && parent == cachedParent) {
+        if (cachedParent != null && parent is SharedThreadMessageResolution.Loaded && parent.message == cachedParent) {
             diagnosticsLogger(
                 "thread_parent_context_store_hit parentChannelId=$parentChannelId parentMessageId=$parentMessageId"
             )
         }
-        return parent?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
+        return when (parent) {
+            is SharedThreadMessageResolution.Loaded -> {
+                parent.message
+                    .takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
+                    ?.let { resolved -> SharedThreadMessageResolution.Loaded(resolved) }
+                    ?: SharedThreadMessageResolution.Error("thread_parent_context_identity_mismatch")
+            }
+            SharedThreadMessageResolution.Missing -> parent
+            is SharedThreadMessageResolution.Error -> parent
+        }
     }
 
     private fun getCachedReplyParentMessage(
+        serverId: ServerId,
         parentChannelId: String,
         parentMessageId: String
     ): Message? {
         val parentChannel = ChannelId(parentChannelId)
         val parentMessage = MessageId(parentMessageId)
-        return messageResolver.get(parentChannel, parentMessage)
+        return messageResolver.get(serverId, parentChannel, parentMessage)
             ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
     }
 
@@ -2920,7 +3034,8 @@ internal class SharedThreadDataSource(
                 ?: messages.firstOrNull { message -> message.id == targetMessageId }
                 ?: return this
         if (candidate.matchesReplyOriginParent(parentChannel, targetMessageId)) {
-            messageResolver.upsert(parentChannel, candidate)
+            val serverId = cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
+            messageResolver.upsert(serverId, parentChannel, candidate)
         }
         return this
     }
@@ -3356,6 +3471,7 @@ internal class SharedThreadStore(
 
     private var loadJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
+    private var focusedOriginHydrationJob: Job? = null
     private var initialAccessResolutionJob: Job? = null
     private var homeContextHydrationJob: Job? = null
     private var backgroundMembersHydrationJob: Job? = null
@@ -3414,6 +3530,8 @@ internal class SharedThreadStore(
                 }
                 secondaryTimelineRefreshJob?.cancel()
                 secondaryTimelineRefreshJob = null
+                focusedOriginHydrationJob?.cancel()
+                focusedOriginHydrationJob = null
                 homeContextHydrationJob?.cancel()
                 homeContextHydrationJob = null
                 backgroundMembersHydrationJob?.cancel()
@@ -3535,6 +3653,8 @@ internal class SharedThreadStore(
         loadJob = null
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob = null
+        focusedOriginHydrationJob?.cancel()
+        focusedOriginHydrationJob = null
         initialAccessResolutionJob?.cancel()
         initialAccessResolutionJob = null
         homeContextHydrationJob?.cancel()
@@ -3557,6 +3677,8 @@ internal class SharedThreadStore(
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
+        focusedOriginHydrationJob?.cancel()
+        focusedOriginHydrationJob = null
         val session = dataSource.readSession()
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
         val routeContextPayload =
@@ -3796,6 +3918,7 @@ internal class SharedThreadStore(
                 "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds} " +
                 nextPayload.originDiagnostics()
         )
+        launchFocusedOriginHydrationIfNeeded(basePayload, staleToken)
         if (!resolvingInitialAccessAtStart) {
             launchBackgroundHomeContextHydration(basePayload)
         }
@@ -3808,6 +3931,93 @@ internal class SharedThreadStore(
         if (nextPayload.hasRenderableThreadContent()) {
             launchBackgroundMembersHydration(basePayload)
         }
+    }
+
+    private fun launchFocusedOriginHydrationIfNeeded(
+        routePayload: KuiklyThreadScreenPayload,
+        staleToken: MviStaleToken
+    ) {
+        val currentPayload = _state.value.payload
+        if (
+            routePayload.focusedMessageId.isNullOrBlank() ||
+            currentPayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread ||
+            currentPayload.originStatus != "loading" ||
+            currentPayload.parentChannelId.isNullOrBlank() ||
+            (currentPayload.parentMessageId.isNullOrBlank() && currentPayload.originParentMessageId.isNullOrBlank())
+        ) {
+            return
+        }
+        val parentChannelId = currentPayload.parentChannelId.orEmpty()
+        val parentMessageId =
+            currentPayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: currentPayload.originParentMessageId.orEmpty()
+        focusedOriginHydrationJob?.cancel()
+        focusedOriginHydrationJob =
+            scope.launch {
+                val resolution = dataSource.resolveReplyOrigin(currentPayload)
+                val latest = _state.value.payload
+                if (
+                    !staleTokenStillCurrent(
+                        staleToken,
+                        "thread_focused_origin",
+                        "after_fetch",
+                        routePayload,
+                        latest
+                    ) ||
+                    !routeStillCurrent(routePayload, "thread_focused_origin", "after_fetch", latest) ||
+                    latest.parentChannelId != parentChannelId ||
+                    (latest.parentMessageId?.takeIf { it.isNotBlank() }
+                        ?: latest.originParentMessageId.orEmpty()) != parentMessageId
+                ) {
+                    return@launch
+                }
+                val emitted =
+                    reducePayloadPatchAndCache(cachePayload = true) { payload ->
+                        if (
+                            !staleTokenStillCurrent(
+                                staleToken,
+                                "thread_focused_origin",
+                                "apply",
+                                routePayload,
+                                payload
+                            ) ||
+                            !routeStillCurrent(routePayload, "thread_focused_origin", "apply", payload) ||
+                            payload.parentChannelId != parentChannelId ||
+                            (payload.parentMessageId?.takeIf { it.isNotBlank() }
+                                ?: payload.originParentMessageId.orEmpty()) != parentMessageId
+                        ) {
+                            return@reducePayloadPatchAndCache payload
+                        }
+                        when (resolution) {
+                            is SharedThreadOriginResolution.Loaded ->
+                                payload.copy(
+                                    originMessage = resolution.message,
+                                    originParentMessageId = parentMessageId,
+                                    originStatus = "loaded",
+                                    originErrorCode = null
+                                )
+                            SharedThreadOriginResolution.Missing ->
+                                payload.copy(
+                                    originMessage = null,
+                                    originParentMessageId = parentMessageId,
+                                    originStatus = "missing",
+                                    originErrorCode = null
+                                )
+                            is SharedThreadOriginResolution.Error ->
+                                payload.copy(
+                                    originMessage = null,
+                                    originParentMessageId = parentMessageId,
+                                    originStatus = "error",
+                                    originErrorCode = resolution.code
+                                )
+                        }
+                    }
+                diagnosticsLogger?.invoke(
+                    "thread_focused_origin_result parentChannelId=$parentChannelId " +
+                        "parentMessageId=$parentMessageId result=${resolution.focusedOriginDiagnosticsResult()} " +
+                        "emitted=$emitted timelineMutation=false"
+                )
+            }
     }
 
     private fun launchInitialAccessResolution(
@@ -5459,6 +5669,13 @@ private fun DataResult<*>.threadDiagnosticsResult(): String =
         is DataResult.Empty -> "empty:${reason.name}"
         is DataResult.Error -> "error:${error.code}"
         is DataResult.NoPermission -> "no_permission:${blocker.code}"
+    }
+
+private fun SharedThreadOriginResolution.focusedOriginDiagnosticsResult(): String =
+    when (this) {
+        is SharedThreadOriginResolution.Loaded -> "loaded"
+        SharedThreadOriginResolution.Missing -> "missing"
+        is SharedThreadOriginResolution.Error -> "error:$code"
     }
 
 private fun KuiklyThreadScreenPayload.originDiagnostics(): String =

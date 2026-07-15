@@ -12155,17 +12155,9 @@ private fun ThreadMessagesList(
         renderPayload.focusedMessageId,
         renderPayload.focusedMessageRequestNonce,
         focusedMessageTargetSignature,
-        renderPayload.originStatus,
         lazyItemCount
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        // task #567: the origin/parent row above the timeline resolves
-        // asynchronously; anchoring against its loading placeholder measures a
-        // viewport that then shifts when the resolved row grows. Wait for a
-        // terminal origin status — the effect re-fires on the key change.
-        if (!focusedMessageAnchorOriginSettled(renderPayload.originStatus)) {
-            return@LaunchedEffect
-        }
         val targetIdentity =
             focusedMessageAnchorIdentity(
                 messageId = targetMessageId,
@@ -13445,18 +13437,6 @@ internal fun shouldRunFocusedMessageAnchor(
     scrollInterruptedIdentity: String?
 ): Boolean =
     targetIdentity != consumedIdentity && targetIdentity != scrollInterruptedIdentity
-
-// task #567 (Quiver cddfcd85): on reply-thread surfaces the origin/parent row
-// starts as a "loading" placeholder and is replaced by the resolved parent
-// message after an async fetch. A focused anchor consumed during "loading"
-// positions the viewport against pre-resolution content and the one-shot
-// never re-runs — first entry lands a few items above the target, while a
-// second entry reads the parent from the store cache (origin already
-// "loaded"/"missing" before the anchor) and is correct. Every terminal status
-// ("none" on channel surfaces, "loaded", "missing", errors) is settled; only
-// the transient "loading" holds the anchor back.
-internal fun focusedMessageAnchorOriginSettled(originStatus: String): Boolean =
-    originStatus != "loading"
 
 // task #567 anchor-session tuning. Rationale, so future re-tuning needs no
 // archaeology:
