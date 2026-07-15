@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -12,6 +13,26 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class ChannelRepositoryDataSourceTest {
+    @Test
+    fun openUserDirectMessageAllowsCurrentUserAsTheTarget() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"dm-self","name":"Self DM","type":"dm","peerType":"user","peerId":"user-1","peerName":"Artin"}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result = repository.openUserDirectMessage(MemberId("user-1"))
+
+        val opened = assertIs<DataResult.Content<OpenDirectMessageResult>>(result).data
+        assertEquals("dm-self", opened.conversation.channelId?.value)
+        assertEquals(
+            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "POST", "channels/dm")),
+            network.requests
+        )
+        assertEquals("user-1", network.bodies.single().asJsonObject()["userId"]?.jsonPrimitive?.content)
+    }
+
     @Test
     fun createChannelSendsInitialMembersInCreateBodyWithoutPostCreateMemberCalls() = runBlocking {
         val network =

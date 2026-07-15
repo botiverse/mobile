@@ -327,6 +327,39 @@ internal fun membersCanRemoveHumanMember(
     }
 }
 
+internal enum class MembersDirectMessageEligibility {
+    Self,
+    Peer,
+    Unavailable
+}
+
+internal fun membersDirectMessageEligibility(
+    member: MemberProfile,
+    currentUserId: String?,
+    currentServerId: String?,
+    deleted: Boolean = false
+): MembersDirectMessageEligibility {
+    val memberId = member.id.value.trim()
+    if (memberId.isBlank() || member.kind == MemberKind.System || deleted) {
+        return MembersDirectMessageEligibility.Unavailable
+    }
+    val membershipStatus = member.membershipStatus?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    if (membershipStatus != null && membershipStatus != "active") {
+        return MembersDirectMessageEligibility.Unavailable
+    }
+    if (member.kind == MemberKind.Human) {
+        val memberServerId = member.serverId?.value?.trim().orEmpty()
+        val activeServerId = currentServerId?.trim().orEmpty()
+        if (memberServerId.isNotBlank() && activeServerId.isNotBlank() && memberServerId != activeServerId) {
+            return MembersDirectMessageEligibility.Unavailable
+        }
+        if (memberId == currentUserId?.trim()) {
+            return MembersDirectMessageEligibility.Self
+        }
+    }
+    return MembersDirectMessageEligibility.Peer
+}
+
 internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =
     MembersAgentDetailTab.entries.filter { tab ->
         when {
@@ -2334,6 +2367,8 @@ private fun MemberDetailPageContent() {
                     }
                 MembersDetailContent(
                     member = member,
+                    currentUserId = current.currentUserId,
+                    currentServerId = current.server.id.value,
                     agentDetailState = agentDetailState,
                     agentMachineRuntimes =
                         membersAgentMachineRuntimeIds(
@@ -2505,6 +2540,8 @@ private fun MemberDetailPageContent() {
                 )
             MembersDetailContent(
                 member = current.member,
+                currentUserId = current.currentUserId,
+                currentServerId = current.server.id.value,
                 agentDetailState = MembersAgentDetailLoadState.Idle,
                 canViewPrivateAgentSurfaces = { _, _ -> false },
                 canManageAgent = { _, _ -> false },
@@ -3377,6 +3414,8 @@ internal fun membersLazyItemCount(
 @Composable
 private fun MembersDetailContent(
     member: MemberProfile,
+    currentUserId: String? = null,
+    currentServerId: String? = null,
     agentDetailState: MembersAgentDetailLoadState,
     agentMachineRuntimes: List<String> = emptyList(),
     agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
@@ -3794,6 +3833,8 @@ private fun MembersDetailContent(
             val runtimeErrorText = member.membersAgentRuntimeErrorText(detail, agentStatusIndicatorState)
             MembersDetailHeader(
                 member = member,
+                currentUserId = currentUserId,
+                currentServerId = currentServerId,
                 detail = detail,
                 deleted = deleted,
                 canManage = canManage,
@@ -4196,6 +4237,8 @@ private fun DataResult<AgentWorkspaceTreeSnapshot>.toMembersWorkspaceTreeState()
 @Composable
 private fun MembersDetailHeader(
     member: MemberProfile,
+    currentUserId: String?,
+    currentServerId: String?,
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
     canManage: Boolean,
@@ -4208,6 +4251,13 @@ private fun MembersDetailHeader(
     onRequestManagementMenu: (Offset?) -> Unit
 ) {
     val summary = detail?.summary
+    val directMessageEligibility =
+        membersDirectMessageEligibility(
+            member = member,
+            currentUserId = currentUserId,
+            currentServerId = currentServerId,
+            deleted = deleted
+        )
     val threeDotButtonAnchor = remember { SlockMutableOffsetRef() }
     val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     val headerMetaLabel =
@@ -4277,19 +4327,20 @@ private fun MembersDetailHeader(
                     }
                 }
             }
-            if (membersHeaderMessageUsesIconOnly(member.kind)) {
+            if (
+                directMessageEligibility != MembersDirectMessageEligibility.Unavailable &&
+                membersHeaderMessageUsesIconOnly(member.kind)
+            ) {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.MessageSquare,
                     onClick = onOpenDirectMessage,
                     contentDescription = stringResource(MR.strings.member_label_message),
-                    enabled = !deleted,
                     size = MembersActionSize
                 )
-            } else {
+            } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
                 SlockBrutalActionButton(
                     label = stringResource(MR.strings.member_label_message),
                     leadingIcon = SlockLucideIconName.MessageSquare,
-                    enabled = member.kind != MemberKind.System && !deleted,
                     minHeight = MembersActionSize,
                     modifier = Modifier.widthIn(min = 92.dp),
                     onClick = onOpenDirectMessage
