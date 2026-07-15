@@ -4,17 +4,17 @@
  * Proves the store-level DoD on a REAL backend (backend-neutral one-txn tests can't): one applied frame =
  * exactly one real BEGIN + COMMIT (0 rollback); mid-block process death = one real ROLLBACK to the complete
  * pre-frame state; a full 19-field + nested canonical row survives round-trip through the JSON payload; the
- * scalar columns equal what you extract from decoding that payload; every SQL touch is FULL 3-part scoped
- * (serverId + scopeKind + scopeId — a same-scopeId different-scopeKind or different-server scope must not
- * collide); a cross-scope same-id collision fail-stops on the REAL applyFrame path; a projection-tampered
+ * scalar columns equal what you extract from decoding that payload; every SQL touch is scoped by the full
+ * durable partition + scope (serverId + principalId + consumerId + scopeKind + scopeId); a cross-scope
+ * same-partition id collision fail-stops on the REAL applyFrame path; a projection-tampered
  * scalar is poisoned (restore never returns a drifted row, and the payload itself is untouched); a malformed
  * row is a counted poison-gate input; and persist->restore preserves the resolved null/empty/value states.
  */
 package build.raft.app.network.sync
 
+import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
@@ -40,13 +40,13 @@ class SqlDelightFoldPersistStoreTest {
         var begin = 0; private set
         var commit = 0; private set
         var rollback = 0; private set
-        override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
-            when (sql.trim().uppercase().substringBefore(' ')) {
-                "BEGIN" -> begin++
-                "COMMIT" -> commit++
-                "ROLLBACK" -> rollback++
+
+        override fun newTransaction(): QueryResult<Transacter.Transaction> {
+            begin += 1
+            return delegate.newTransaction().also { result ->
+                result.value.afterCommit { commit += 1 }
+                result.value.afterRollback { rollback += 1 }
             }
-            return delegate.execute(identifier, sql, parameters, binders)
         }
     }
 

@@ -983,7 +983,8 @@ internal class SharedRealtimeDomainEventOwner(
 
     // Flag-gated `sync_core_messages_v0` shadow fold+persist lane. Null until the provider installs it (see
     // installMessageShadowFoldLane); a null lane means the shadow path is entirely absent (e.g. unit tests
-    // that don't exercise it). Invisible to sinks and fail-open — see foldPersistMessageShadow.
+    // that don't exercise it). Invisible to sinks and fail-open; the legacy unowned path can only emit a
+    // bounded partition-denial diagnostic and never persists.
     private var messageShadowFoldLane: SyncCoreMessageShadowFoldLane? = null
     private var reactionShadowLane: SyncCoreReactionShadowLane? = null
 
@@ -1062,8 +1063,9 @@ internal class SharedRealtimeDomainEventOwner(
         }
         val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
         if (acceptedEvents.isEmpty()) return
-        // `sync_core_messages_v0` SHADOW fold+persist, BEFORE the sink fan-out and invisible to it. Flag-gated
-        // and fail-open (foldPersistMessageShadow never throws), so the legacy path below is untouched.
+        // `sync_core_messages_v0` SHADOW partition gate, BEFORE the sink fan-out and invisible to it. This
+        // legacy overload has no principal, so only canonical MessageNew/Updated frames are counted and
+        // denied; non-message and non-canonical events produce no diagnostic. The sink path stays untouched.
         // Slice-2 lane insert point: when sole-apply becomes eligible (CANONICAL_FACT_SOLE_APPLY_ELIGIBLE,
         // V2 envelope), the per-scope MessageSoleApplyLane replaces this shadow persist HERE — message
         // frames route through fold+commit (one-txn) FIRST and only fan out to the sinks below on
@@ -1071,7 +1073,20 @@ internal class SharedRealtimeDomainEventOwner(
         // false-gated, so no lane exists in production and this path stays byte-identical.
         messageShadowFoldLane?.let { lane ->
             if (lane.isEnabled()) {
-                lane.partitionDenied(resolvedServerId, PartitionDenialReason.PrincipalUnavailable)
+                val deniedFrameCount = acceptedEvents.count { acceptedEvent ->
+                    when (acceptedEvent) {
+                        is MessageNew -> acceptedEvent.decodedCanonical != null
+                        is MessageUpdated -> acceptedEvent.decodedCanonical != null
+                        else -> false
+                    }
+                }
+                if (deniedFrameCount > 0) {
+                    lane.partitionDenied(
+                        serverId = resolvedServerId,
+                        reason = PartitionDenialReason.PrincipalUnavailable,
+                        deniedFrameCount = deniedFrameCount,
+                    )
+                }
             }
         }
         reactionShadowLane?.let { lane ->

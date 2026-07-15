@@ -11,8 +11,9 @@ import kotlin.test.assertNull
 /**
  * #491 P1 schema gate — FRESH baseline, no migration (pre-release DB reset, `slock_cache_v4.db`). The
  * sync-core persistence ships as a canonical-native schema version 1: messageEntity holds the lossless
- * `canonicalFactJson` + minimal scope/order scalars (no presentation columns), with the full 3-part-scope
- * `(serverId, scopeKind, channelId, seq, id)` restore index and the per-scope epoch cursor column.
+ * `canonicalFactJson` + minimal scope/order scalars (no presentation columns), with the full durable
+ * partition + scope `(serverId, principalId, consumerId, scopeKind, channelId, seq, id)` restore index and
+ * the per-partition-scope epoch cursor column.
  *
  * A fresh `Schema.create` must produce: the nullable epoch column, that tie-break index with the exact
  * column order, `seq NOT NULL` (pending never enters), and the canonical `(seq, id)` restore ordering.

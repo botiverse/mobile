@@ -22,35 +22,147 @@ internal class SqlDelightFoldPersistStore(
     private val onDecodeFailure: (scope: SyncScopeKey, factId: String) -> Unit = { _, _ -> },
 ) : FoldPersistStore {
 
-    override suspend fun upsertFacts(scope: SyncScopeKey, facts: List<CanonicalMessageRow>): Unit =
-        throw DurablePartitionStoreWiringPending()
+    override suspend fun upsertFacts(scope: SyncScopeKey, facts: List<CanonicalMessageRow>) {
+        // Direct callers receive the same fail-stop as FoldPersistFrame, before any execute/executeQuery.
+        requireFactsMatchScope(scope, facts)
+        val q = database.queries
+        for (fact in facts) {
+            val json = encodeCanonicalFact(fact)
+            // INSERT-OR-IGNORE + scoped UPDATE = an in-place upsert without replacing a foreign-scope row.
+            q.insertCanonicalFactIfAbsent(
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                id = fact.id,
+                channelId = scope.scopeId,
+                scopeKind = scope.scopeKind,
+                seq = fact.seq,
+                createdAt = fact.createdAt,
+                canonicalFactJson = json,
+            )
+            q.updateCanonicalFact(
+                seq = fact.seq,
+                createdAt = fact.createdAt,
+                canonicalFactJson = json,
+                id = fact.id,
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                channelId = scope.scopeId,
+            )
+            val present = q.countCanonicalFactInScope(
+                id = fact.id,
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                channelId = scope.scopeId,
+            ).executeAsOne()
+            if (present == 0L) throw FoldPersistScopeConflict(scope, fact.id)
+        }
+    }
 
-    override suspend fun writeCursor(scope: SyncScopeKey, cursor: PersistedCursor): Unit =
-        throw DurablePartitionStoreWiringPending()
+    override suspend fun writeCursor(scope: SyncScopeKey, cursor: PersistedCursor) {
+        database.queries.upsertSyncCursor(
+            scopeId = scope.scopeId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            latestSeq = cursor.latestSeq,
+            oldestLoadedSeq = cursor.oldestLoadedSeq,
+            newestLoadedSeq = cursor.newestLoadedSeq,
+            hasLoadedOldest = if (cursor.hasLoadedOldest) 1L else 0L,
+            hasLoadedNewest = if (cursor.hasLoadedNewest) 1L else 0L,
+            updatedAtMs = now(),
+            epoch = cursor.epoch,
+        )
+    }
 
-    /** No-op: the partitioned timeline index is maintained by SQLite once the store wiring lands. */
+    /** No-op: the partitioned timeline index is maintained by SQLite. */
     override suspend fun maintainTimelineIndex(scope: SyncScopeKey, facts: List<CanonicalMessageRow>) = Unit
 
-    override suspend fun prune(scope: SyncScopeKey, factIds: List<MessageId>): Unit =
-        throw DurablePartitionStoreWiringPending()
+    override suspend fun prune(scope: SyncScopeKey, factIds: List<MessageId>) {
+        val q = database.queries
+        for (id in factIds) {
+            q.deleteCanonicalFactInScope(
+                id = id.value,
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                channelId = scope.scopeId,
+            )
+        }
+    }
 
-    override suspend fun clearScope(scope: SyncScopeKey): Unit =
-        throw DurablePartitionStoreWiringPending()
+    override suspend fun clearScope(scope: SyncScopeKey) {
+        database.queries.clearCanonicalFactsForScope(
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        )
+    }
 
     override suspend fun readFacts(scope: SyncScopeKey): List<CanonicalMessageRow> =
-        throw DurablePartitionStoreWiringPending()
+        database.queries
+            .selectServerBackedMessagesForChannel(
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                channelId = scope.scopeId,
+            )
+            .executeAsList()
+            .mapNotNull { row ->
+                val decoded = decodeCanonicalFact(row.canonicalFactJson)
+                    ?: return@mapNotNull run { onDecodeFailure(scope, row.id); null }
+                val consistent =
+                    row.serverId == scope.serverId &&
+                        row.principalId == scope.principalId &&
+                        row.consumerId == scope.consumerId &&
+                        row.scopeKind == scope.scopeKind &&
+                        row.id == decoded.id &&
+                        row.channelId == decoded.channelId &&
+                        row.seq == decoded.seq &&
+                        row.createdAt == decoded.createdAt &&
+                        decoded.channelId == scope.scopeId
+                if (!consistent) return@mapNotNull run { onDecodeFailure(scope, row.id); null }
+                decoded
+            }
 
     override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? =
-        throw DurablePartitionStoreWiringPending()
+        database.queries
+            .selectSyncCursor(
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                scopeKind = scope.scopeKind,
+                scopeId = scope.scopeId,
+            )
+            .executeAsOneOrNull()
+            ?.let { cursor ->
+                PersistedCursor(
+                    latestSeq = cursor.latestSeq,
+                    oldestLoadedSeq = cursor.oldestLoadedSeq,
+                    newestLoadedSeq = cursor.newestLoadedSeq,
+                    hasLoadedOldest = cursor.hasLoadedOldest != 0L,
+                    hasLoadedNewest = cursor.hasLoadedNewest != 0L,
+                    epoch = cursor.epoch,
+                )
+            }
 }
 
-/** Deliberate seam-only RED: partitioned query binding lands only after Zhao validates the pure oracle. */
-internal class DurablePartitionStoreWiringPending :
-    IllegalStateException("durable partition store wiring pending")
-
-/** A fact whose globally-unique id already exists in a different scope — a hard contract violation. */
+/** A same-partition fact id already exists in a different scope — a hard contract violation. */
 internal class FoldPersistScopeConflict(scope: SyncScopeKey, factId: String) :
-    RuntimeException("canonical fact $factId did not land in scope ${scope.serverId}/${scope.scopeKind}/${scope.scopeId} (id exists in another scope)")
+    RuntimeException(
+        "canonical fact $factId did not land in scope " +
+            "${scope.serverId}/${scope.principalId}/${scope.consumerId}/${scope.scopeKind}/${scope.scopeId} " +
+            "(id exists in another scope of the same durable partition)",
+    )
 
 /** Binds the fold transaction runner to the real SQLite BEGIN/COMMIT boundary. */
 internal class SqlDelightFoldPersistTransactionRunner(

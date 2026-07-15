@@ -438,7 +438,7 @@ WHERE id = ?
 
 -- Clear a scope's canonical server facts (snapshot rebaseline). No exclusions: savedMessageEntity was
 -- removed (zero live consumers), so there is no cross-domain CASCADE to work around, and pending never
--- enters (seq NOT NULL). Just the full 3-part scope.
+-- enters (seq NOT NULL). The full durable partition + scope identity is required.
 clearCanonicalFactsForScope:
 DELETE FROM messageEntity
 WHERE serverId = ?

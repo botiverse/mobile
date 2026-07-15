@@ -19,11 +19,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * Pure T2 RED matrix. Every durable-store test reaches the partitioned production store and is expected to
- * stop at [DurablePartitionStoreWiringPending] until the separately reviewed GREEN binding lands.
- */
-class DurablePartitionStoreRedTest {
+/** Pure T2 durable-partition matrix over the production SQLDelight store binding. */
+class DurablePartitionStoreTest {
     private class SqlCountingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
         var statementCount: Int = 0
 
@@ -233,7 +230,7 @@ class DurablePartitionStoreRedTest {
     }
 
     @Test
-    fun directStoreMismatchFailsBeforePendingWiringAndBeforeAnySql() = runBlocking {
+    fun directStoreMismatchFailsBeforeAnySql() = runBlocking {
         val counting = SqlCountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
         build.raft.app.shared.data.local.SlockDatabase.Schema.create(counting).value
         counting.statementCount = 0
@@ -247,6 +244,6 @@ class DurablePartitionStoreRedTest {
 
         assertEquals("FoldPersistScopeMismatch", failure?.let { it::class.simpleName })
         assertTrue(failure?.message.orEmpty().contains("channelId"))
-        assertEquals(0, counting.statementCount, "direct mismatch must fail before SQL and before pending binding")
+        assertEquals(0, counting.statementCount, "direct mismatch must fail before every SQL operation")
     }
 }

@@ -14,7 +14,10 @@ internal enum class PartitionDenialReason(val wireValue: String) {
     PrincipalUnavailable("principal_unavailable"),
 }
 
-internal data class PartitionDenied(val reason: PartitionDenialReason)
+internal data class PartitionDenied(
+    val reason: PartitionDenialReason,
+    val deniedFrameCount: Int,
+)
 
 /**
  * The `sync_core_messages_v0` "sole-apply t0" SHADOW fold+persist lane for message-canonical frames.
@@ -58,16 +61,22 @@ internal class SyncCoreMessageShadowFoldLane(
         featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
 
     /**
-     * Fold one canonical message frame into the shadow core, then persist that explicitly partitioned channel
-     * scope's resulting fact window off the caller thread. [updated] selects [MessageDomainEvent.Updated] vs
-     * [MessageDomainEvent.New]. No server-only/principal-inferred overload exists.
+     * Fold one canonical message frame into the shadow core, then persist the channel scope derived from the
+     * canonical payload inside [partition]. [updated] selects [MessageDomainEvent.Updated] vs
+     * [MessageDomainEvent.New]. Callers cannot supply a second scope identity that could disagree with the
+     * payload, and no server-only/principal-inferred overload exists.
      */
     fun foldAndPersist(
-        scopeKey: SyncScopeKey,
+        partition: DurablePartitionKey,
         decoded: CanonicalMessageCarry,
         updated: Boolean,
         epoch: SyncEpoch?,
     ) {
+        val scopeKey = SyncScopeKey(
+            partition = partition,
+            scopeId = decoded.row.channelId,
+            scopeKind = MESSAGE_SCOPE_KIND,
+        )
         try {
             synchronized(foldAndEnqueueLock) {
                 val row = decoded.row
@@ -113,11 +122,25 @@ internal class SyncCoreMessageShadowFoldLane(
         serverId: String,
         reason: PartitionDenialReason,
     ): PartitionDenied =
-        PartitionDenied(reason).also {
+        partitionDenied(serverId, reason, deniedFrameCount = 1)
+
+    /** Emit one bounded diagnostic for a denied eligible batch without logging identity or content. */
+    fun partitionDenied(
+        serverId: String,
+        reason: PartitionDenialReason,
+        deniedFrameCount: Int,
+    ): PartitionDenied =
+        PartitionDenied(
+            reason = reason,
+            deniedFrameCount = deniedFrameCount.also { count ->
+                require(count > 0) { "deniedFrameCount must be positive" }
+            },
+        ).also {
             runCatching {
                 logger(
                     "sync_core_partition_persist_denied reason=${reason.wireValue} " +
-                        "serverId=$serverId consumer=$SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID",
+                        "serverId=$serverId consumer=$SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID " +
+                        "deniedFrameCount=$deniedFrameCount",
                 )
             }
         }
@@ -140,6 +163,8 @@ internal class SyncCoreMessageShadowFoldLane(
     }
 
     companion object {
+        private const val MESSAGE_SCOPE_KIND: String = "channel"
+
         /** Build the production lane over the real SQLite one-txn persistence for [sqlDatabase]. */
         fun create(
             featureFlags: SharedServerFeatureFlags,

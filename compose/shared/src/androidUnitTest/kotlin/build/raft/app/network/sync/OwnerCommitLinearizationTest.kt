@@ -24,9 +24,9 @@
  */
 package build.raft.app.network.sync
 
+import app.cash.sqldelight.Transacter
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.data.SlockSqlDatabase
@@ -52,13 +52,19 @@ class OwnerCommitLinearizationTest {
         var begin = 0; private set
         var commit = 0; private set
         var rollback = 0; private set
-        override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
-            when (sql.trim().uppercase().substringBefore(' ')) {
-                "BEGIN" -> { begin++; events.add("begin") }
-                "COMMIT" -> { commit++; events.add("commit") }
-                "ROLLBACK" -> { rollback++; events.add("rollback") }
+        override fun newTransaction(): QueryResult<Transacter.Transaction> {
+            begin += 1
+            events.add("begin")
+            return delegate.newTransaction().also { result ->
+                result.value.afterCommit {
+                    commit += 1
+                    events.add("commit")
+                }
+                result.value.afterRollback {
+                    rollback += 1
+                    events.add("rollback")
+                }
             }
-            return delegate.execute(identifier, sql, parameters, binders)
         }
     }
 
