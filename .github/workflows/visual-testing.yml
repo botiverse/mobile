@@ -312,7 +312,8 @@ jobs:
             echo "## Connected-test stable signing"
             echo "- App package: \`build.raft.app.connectedtest\`"
             echo "- Instrumentation package: \`build.raft.app.connectedtest.test\`"
-            echo "- Shared signer certificate SHA-256: \`${APP_SIGNER}\`"
+            echo "- Shared signer certificate SHA-256 (legacy, ≤ API 32): \`${APP_LEGACY_SIGNER}\`"
+            echo "- Shared signer certificate SHA-256 (rotated, ≥ API 33): \`${APP_ROTATED_SIGNER}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload APKs
