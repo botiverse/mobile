@@ -1039,6 +1039,7 @@ internal class SharedThreadDataSource(
     }
 
     fun rememberReplyParentCandidate(
+        serverId: String?,
         parentChannelId: String?,
         parentMessage: KuiklyThreadMessageItem,
         threadChannelId: String?
@@ -1055,8 +1056,11 @@ internal class SharedThreadDataSource(
                     channelId = channelId,
                     diagnostics = diagnosticsLogger,
                 ) ?: return
-        val serverId = cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
-        messageResolver.upsert(serverId = serverId, channelId = channelId, message = projectedParent)
+        val exactServerId =
+            serverId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+                ?: cacheServerId.value.takeIf { it.isNotBlank() }?.let(::ServerId)
+                ?: return
+        messageResolver.upsert(serverId = exactServerId, channelId = channelId, message = projectedParent)
         diagnosticsLogger(
             "thread_parent_context_store_seed parentChannelId=${channelId.value} " +
                 "parentMessageId=${parentMessage.id} threadChannelId=${threadChannelId.orEmpty()}"

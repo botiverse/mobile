@@ -6273,6 +6273,7 @@ class SharedThreadStoreTest {
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             messageStore = messageStore
         ).rememberReplyParentCandidate(
+            serverId = "server-1",
             parentChannelId = "channel-1",
             parentMessage = parent,
             threadChannelId = "thread-m1"

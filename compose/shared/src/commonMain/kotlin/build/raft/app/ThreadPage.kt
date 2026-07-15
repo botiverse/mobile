@@ -5877,6 +5877,7 @@ internal fun SharedThreadRouteContent(
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
                     val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
                     dataSource.rememberReplyParentCandidate(
+                        serverId = currentServerId,
                         parentChannelId = parentChannelId,
                         parentMessage = parentMessage,
                         threadChannelId = parentReplyMetadata.threadChannelId
@@ -6120,6 +6121,7 @@ internal fun SharedThreadRouteContent(
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
                     val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
                     dataSource.rememberReplyParentCandidate(
+                        serverId = currentServerId,
                         parentChannelId = parentChannelId,
                         parentMessage = parentMessage,
                         threadChannelId = parentReplyMetadata.threadChannelId
