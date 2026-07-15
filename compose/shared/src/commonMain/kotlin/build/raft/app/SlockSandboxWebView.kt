@@ -329,3 +329,36 @@ private fun Any?.optStringValue(key: String, fallback: String): String =
         is JSONObject -> this.optString(key, fallback)
         else -> fallback
     }
+
+/**
+ * Pure function returning the origin (scheme + host + optional port) of a web-base
+ * URL. Used by BOTH URL builders and by session-mutating callsites when they need
+ * to declare the `expectedHostEventOrigin` for a `SlockSandboxWebView` bridge
+ * install — one source of truth so the two cannot drift (@MingQi review r7 #4).
+ *
+ * Reads only the URL string, no ambient env access — the caller supplies the
+ * `webBaseUrl` from its own env-aware layer (`SharedApiEnvironmentStore.current().webUrl`
+ * or Developer's `configuredWebBaseUrlOrNull()`). Returns null when the URL is
+ * malformed, non-http(s), or missing a host.
+ *
+ * Pure-string parser (no `android.net.Uri`) so this is testable in `commonTest`
+ * and re-used on every platform.
+ */
+internal fun sharedSettingsWebOrigin(webUrl: String?): String? {
+    val url = webUrl?.trim().takeUnless(String?::isNullOrBlank) ?: return null
+    val schemeEnd = url.indexOf("://")
+    if (schemeEnd < 2) return null
+    val scheme = url.substring(0, schemeEnd).lowercase()
+    if (scheme != "http" && scheme != "https") return null
+    val afterScheme = url.substring(schemeEnd + 3)
+    val hostEnd = afterScheme.indexOfAny(charArrayOf('/', '?', '#'))
+    val authority = if (hostEnd < 0) afterScheme else afterScheme.substring(0, hostEnd)
+    if (authority.isBlank()) return null
+    if (authority.contains('@')) return null  // userinfo not accepted
+    val portColon = authority.indexOf(':')
+    val host = (if (portColon < 0) authority else authority.substring(0, portColon)).lowercase()
+    if (host.isBlank()) return null
+    val port = if (portColon < 0) null else authority.substring(portColon + 1)
+    if (port != null && (port.isBlank() || port.any { !it.isDigit() })) return null
+    return if (port == null) "$scheme://$host" else "$scheme://$host:$port"
+}
