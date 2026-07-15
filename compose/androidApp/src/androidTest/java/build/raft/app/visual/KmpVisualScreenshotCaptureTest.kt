@@ -826,6 +826,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdBlockquote() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-blockquote",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-blockquote")
+                    .put("visualFixture", "md_blockquote"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdWrapAdjacent() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-wrap-adjacent",
