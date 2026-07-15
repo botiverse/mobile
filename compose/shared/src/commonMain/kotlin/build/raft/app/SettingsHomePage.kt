@@ -3947,7 +3947,7 @@ private fun SlockAppShellContent(
                         applySelectedServerTerminalRealtimeTransition(
                             grant = grant,
                             eventServerId = event.serverId.value,
-                            isSelected = selectedServerStore::isSelected,
+                            isSelected = { candidate -> selectedServerStore.isSelected(candidate) },
                             runIfCurrentGrant = sharedStores.realtimeAuthorityProvider::runIfCurrentGrant,
                             disconnectAndReset = {
                                 slockLogWarn(
@@ -3966,7 +3966,7 @@ private fun SlockAppShellContent(
                                 shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
                             },
                             restoreAuthGate = {
-                                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                                authGateViewModel.accept(SharedAuthGateIntent.Restore)
                             },
                         )
                         return@launch
@@ -3975,7 +3975,7 @@ private fun SlockAppShellContent(
                         applySelectedServerTerminalRealtimeTransition(
                             grant = grant,
                             eventServerId = event.serverId.value,
-                            isSelected = selectedServerStore::isSelected,
+                            isSelected = { candidate -> selectedServerStore.isSelected(candidate) },
                             runIfCurrentGrant = sharedStores.realtimeAuthorityProvider::runIfCurrentGrant,
                             disconnectAndReset = {
                                 slockLogWarn(
@@ -3994,7 +3994,7 @@ private fun SlockAppShellContent(
                                 shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
                             },
                             restoreAuthGate = {
-                                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                                authGateViewModel.accept(SharedAuthGateIntent.Restore)
                             },
                         )
                         return@launch
@@ -17961,12 +17961,17 @@ internal suspend fun applySelectedServerTerminalRealtimeTransition(
     clearSelectedServer: suspend () -> Unit,
     restoreAuthGate: suspend () -> Unit,
 ): Boolean {
-    if (!isSelected(eventServerId)) return false
-    val accepted = runIfCurrentGrant(grant, disconnectAndReset)
-    if (!accepted) return false
-    clearSelectedServer()
-    restoreAuthGate()
-    return true
+    var applied = false
+    val accepted =
+        runIfCurrentGrant(grant) {
+            if (isSelected(eventServerId)) {
+                disconnectAndReset()
+                clearSelectedServer()
+                restoreAuthGate()
+                applied = true
+            }
+        }
+    return accepted && applied
 }
 
 internal fun JSONObject.realtimeConnectionWitnessOrNull(): RealtimeConnectionWitness? {

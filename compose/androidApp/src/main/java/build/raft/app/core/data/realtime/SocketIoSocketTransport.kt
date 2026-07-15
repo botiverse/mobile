@@ -112,14 +112,19 @@ class SocketIoSocketTransport(
 }
 
 internal data class RealtimeSocketGeneration(
+    val generationId: Long,
     val context: RealtimeSocketConnectionContext,
 )
 
 internal class RealtimeSocketGenerationFence {
+    private var nextGenerationId = 0L
+    @Volatile
     private var current: RealtimeSocketGeneration? = null
 
-    fun begin(context: RealtimeSocketConnectionContext): RealtimeSocketGeneration =
-        RealtimeSocketGeneration(context).also { current = it }
+    fun begin(context: RealtimeSocketConnectionContext): RealtimeSocketGeneration {
+        nextGenerationId += 1L
+        return RealtimeSocketGeneration(nextGenerationId, context).also { current = it }
+    }
 
     fun clear() {
         current = null
