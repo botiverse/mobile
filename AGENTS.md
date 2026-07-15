@@ -128,6 +128,26 @@ git submodule update --init --recursive third_party/slock-source
   modal/popover first, then nested temporary state, then page navigation.
   Add a focused policy test when that priority is not obvious from structure.
 
+## Programmatic Scroll Ownership Rule
+
+- Before adding or changing any app-level programmatic scroll, delayed native
+  offset correction, content-size alignment, virtual-window rebase, restore,
+  pager snap, or recycled scroll-view binding, read
+  `docs/programmatic-scroll-ownership-contract.md`.
+- App code must name the viewport intent owner and the user-override fence.
+  Framework/native bridge code must additionally revalidate live scroll state
+  after every asynchronous boundary and generation-fence the current
+  owner/native-view binding.
+- Native `isDragging == false` is not sufficient during a fling: a host may be
+  in `SETTLING` while Compose still reports `isScrollInProgress`.
+- Force may bypass only the active-scroll fence. It never bypasses generation,
+  owner lifetime, reuse, target-validity, or geometry checks.
+- Do not compensate for a framework ownership bug with a changing-index
+  `scrollToItem`, or freeze canonical list/realtime state for an entire scroll.
+- Reviews must apply the contract's mechanical checklist and describe test
+  boundaries precisely. Helper/policy tests do not replace production wiring
+  review, deterministic bridge coverage, or physical-device anchor evidence.
+
 ## Kuikly Text Decoration Rule
 
 - In shared Kuikly Compose, do not put visual container modifiers such as
