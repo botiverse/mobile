@@ -808,6 +808,8 @@ private fun SlockBrutalActionButtonInnerContent(
     label: String,
     leadingIcon: SlockLucideIconName?,
     leadingIconSpinning: Boolean,
+    leadingIconSize: Dp,
+    contentSpacing: Dp,
     textStyle: TextStyle,
     enabled: Boolean,
     disabledContentColor: Color,
@@ -815,13 +817,13 @@ private fun SlockBrutalActionButtonInnerContent(
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(if (leadingIcon != null || trailingContent != null) 6.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (leadingIcon != null || trailingContent != null) contentSpacing else 0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leadingIcon != null) {
             SlockLucideIcon(
                 leadingIcon,
-                modifier = Modifier.size(12.dp),
+                modifier = Modifier.size(leadingIconSize),
                 color = if (enabled) SlockColor.TextBlackArgb else disabledIconColor,
                 spinning = leadingIconSpinning
             )
@@ -860,6 +862,8 @@ internal fun SlockBrutalActionButton(
     minHeight: Dp = 40.dp,
     leadingIcon: SlockLucideIconName? = null,
     leadingIconSpinning: Boolean = leadingIcon == SlockLucideIconName.Loader || leadingIcon == SlockLucideIconName.LoaderCircle,
+    leadingIconSize: Dp = 12.dp,
+    contentSpacing: Dp = 6.dp,
     shadowOffset: Dp = SlockShadow.Brutal,
     textStyle: TextStyle = SlockBrutalActionButtonDefaultTextStyle,
     trailingContent: (@Composable () -> Unit)? = null
@@ -900,6 +904,8 @@ internal fun SlockBrutalActionButton(
                 label = label,
                 leadingIcon = leadingIcon,
                 leadingIconSpinning = leadingIconSpinning,
+                leadingIconSize = leadingIconSize,
+                contentSpacing = contentSpacing,
                 textStyle = textStyle,
                 enabled = enabled,
                 disabledContentColor = disabledContentColor,

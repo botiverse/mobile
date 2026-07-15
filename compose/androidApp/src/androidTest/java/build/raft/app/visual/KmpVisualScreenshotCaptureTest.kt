@@ -615,6 +615,85 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureFilePreviewImageEditor() {
+        captureKmpComponentCase(
+            caseId = "components.file-preview.image-editor",
+            pageName = "compose_file_preview_editor_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-file-preview-image-editor")
+                    .put("safeAreaBottom", "24")
+                    .put("slockHostExcludesNavigationBar", false),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 1_500,
+        )
+    }
+
+    @Test
+    fun captureFilePreviewImageActions() {
+        captureKmpComponentCase(
+            caseId = "components.file-preview.image-actions",
+            pageName = "compose_file_preview_editor_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-file-preview-image-actions")
+                    .put("visualFixture", "action_bar")
+                    .put("safeAreaBottom", "24")
+                    .put("slockHostExcludesNavigationBar", false),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 1_500,
+        )
+    }
+
+    @Test
+    fun captureFilePreviewImageEditorTextIme() {
+        captureKmpComponentCase(
+            caseId = "components.file-preview.image-editor.text-ime",
+            pageName = "compose_file_preview_editor_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-file-preview-image-editor-text-ime")
+                    .put("visualFixture", "text_ime")
+                    .put("safeAreaBottom", "24")
+                    .put("slockHostExcludesNavigationBar", false),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                focusImageEditorTextField()
+                Thread.sleep(1_000)
+            },
+            suppressSoftKeyboard = false,
+            captureSystemSurface = true,
+        )
+    }
+
+    @Test
+    fun captureFilePreviewImageEditorTextImeDismissed() {
+        captureKmpComponentCase(
+            caseId = "components.file-preview.image-editor.text-ime-dismissed",
+            pageName = "compose_file_preview_editor_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-file-preview-image-editor-text-ime-dismissed")
+                    .put("visualFixture", "text_ime")
+                    .put("safeAreaBottom", "24")
+                    .put("slockHostExcludesNavigationBar", false),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                focusImageEditorTextField()
+                Thread.sleep(800)
+                tapDisplayDp(x = 124f, y = 485f)
+                Thread.sleep(1_000)
+            },
+            suppressSoftKeyboard = false,
+            captureSystemSurface = true,
+        )
+    }
+
+    @Test
     fun captureThreadFilesList() {
         captureKmpComponentCase(
             caseId = "components.thread.files.list",
@@ -1701,6 +1780,8 @@ class KmpVisualScreenshotCaptureTest {
         settleMs: Long = 1_500,
         requireReactionAtlas: Boolean = false,
         beforeScreenshot: (() -> Unit)? = null,
+        suppressSoftKeyboard: Boolean = true,
+        captureSystemSurface: Boolean = false,
         // Full-height cases (#388) only know the crop height after the page
         // reports its content bottom; invoked post-settle to replace [crop].
         cropOverride: (() -> VisualCrop)? = null
@@ -1710,19 +1791,28 @@ class KmpVisualScreenshotCaptureTest {
         val intent =
             Intent(context, SlockKuiklyActivity::class.java)
                 .putExtra("pageName", pageName)
-                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, suppressSoftKeyboard)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
         val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
         try {
-            onActivityNoIdle { applyVisualFullscreen(it) }
+            onActivityNoIdle { applyVisualFullscreen(it, hideKeyboard = suppressSoftKeyboard) }
             waitForIdleBounded()
             Thread.sleep(settleMs)
             beforeScreenshot?.invoke()
             waitForIdleBounded()
-            onActivityNoIdle { suppressVisualKeyboard(it) }
-            waitForIdleBounded()
+            if (suppressSoftKeyboard) {
+                onActivityNoIdle { suppressVisualKeyboard(it) }
+                waitForIdleBounded()
+            }
             val effectiveCrop = cropOverride?.invoke() ?: crop
-            val normalized = captureStableVisualBitmap(context, caseId, effectiveCrop, requireReactionAtlas)
+            val normalized =
+                if (captureSystemSurface) {
+                    requireNotNull(captureUiAutomationFallbackBitmap(caseId, effectiveCrop)) {
+                        "Unable to capture system surface for $caseId"
+                    }
+                } else {
+                    captureStableVisualBitmap(context, caseId, effectiveCrop, requireReactionAtlas)
+                }
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1749,10 +1839,56 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
-    private fun applyVisualFullscreen(activity: Activity) {
+    private fun tapDisplayDp(x: Float, y: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val density = instrumentation.targetContext.resources.displayMetrics.density
+        val xPx = x * density
+        val yPx = y * density
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, xPx, yPx, 0),
+            true,
+        )
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, xPx, yPx, 0),
+            true,
+        )
+    }
+
+    private fun dismissCompatibilityDialog() {
+        val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow ?: return
+        val button =
+            root.findAccessibilityNodeInfosByText("Don't Show Again").firstOrNull()
+                ?: root.findAccessibilityNodeInfosByText("OK").firstOrNull()
+                ?: return
+        button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+        Thread.sleep(500)
+    }
+
+    private fun focusImageEditorTextField() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val root = instrumentation.uiAutomation.rootInActiveWindow
+        val field = root?.findAccessibilityNodeInfosByText("Tap image to place text")?.firstOrNull()
+        if (field != null) {
+            field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+            field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+        } else {
+            tapDisplayDp(x = 120f, y = 700f)
+        }
+        Thread.sleep(300)
+        onActivityNoIdle { activity ->
+            val inputMethodManager =
+                activity.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            activity.currentFocus?.let { focused ->
+                inputMethodManager.showSoftInput(focused, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+    }
+
+    private fun applyVisualFullscreen(activity: Activity, hideKeyboard: Boolean = true) {
         activity.window.setSoftInputMode(
-            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            (if (hideKeyboard) WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN else 0) or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING,
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Draw edge-to-edge so the decor view fills the full display and the
@@ -1764,11 +1900,11 @@ class KmpVisualScreenshotCaptureTest {
             // window a true 1170x2532 with no top-inset shift.
             activity.window.setDecorFitsSystemWindows(false)
             activity.window.insetsController?.let { controller ->
-                controller.hide(
+                val hiddenTypes =
                     WindowInsets.Type.statusBars() or
                         WindowInsets.Type.navigationBars() or
-                        WindowInsets.Type.ime()
-                )
+                        if (hideKeyboard) WindowInsets.Type.ime() else 0
+                controller.hide(hiddenTypes)
                 controller.systemBarsBehavior =
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }

@@ -900,6 +900,8 @@
     <string name="file_preview_error_delete_download">无法清除缓存副本</string>
     <string name="file_preview_error_editor_loading">图片编辑器仍在加载</string>
     <string name="file_preview_error_editor_export">图片编辑导出失败</string>
+    <string name="file_preview_editor_title">编辑图片</string>
+    <string name="file_preview_editor_saving">保存中...</string>
     <string name="file_preview_error_hidden">文件已隐藏：%1$s</string>
     <string name="tasks_title">任务</string>
     <string name="tasks_unavailable">任务不可用</string>
