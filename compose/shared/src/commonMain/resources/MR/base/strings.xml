@@ -363,6 +363,8 @@
     <string name="thread_settings_name_placeholder">e.g. ai-research</string>
     <string name="thread_settings_description">Description</string>
     <string name="thread_settings_description_placeholder">What is this channel about?</string>
+    <string name="thread_settings_saving">Saving...</string>
+    <string name="thread_settings_update_failed">Could not update the channel. Try again.</string>
     <string name="thread_settings_make_private_title">MAKE CHANNEL PRIVATE</string>
     <string name="thread_settings_make_private">Make Private</string>
     <string name="thread_settings_make_private_detail">Restrict this channel to selected members</string>

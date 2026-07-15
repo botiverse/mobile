@@ -134,6 +134,35 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun channelProfileUpdatePatchesHomeAndConversationDirectoryWithoutDroppingRowState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val before = store.snapshotFor(ServerId("server-1"))!!.channels.single { it.channelId == ChannelId("channel-1") }
+
+        store.accept(
+            SharedHomeIntent.ChannelProfileUpdated(
+                channelId = ChannelId("channel-1"),
+                name = "renamed",
+                description = "Updated description"
+            )
+        )
+
+        val after = store.snapshotFor(ServerId("server-1"))!!.channels.single { it.channelId == ChannelId("channel-1") }
+        assertEquals("renamed", after.name)
+        assertEquals("Updated description", after.subtitle)
+        assertEquals(before.unreadCount, after.unreadCount)
+        assertEquals(before.lastMessageId, after.lastMessageId)
+        assertEquals("renamed", store.resolveProjection(ServerId("server-1"), "channel-1")?.title)
+        assertEquals("Updated description", store.resolveProjection(ServerId("server-1"), "channel-1")?.subtitle)
+        scope.cancel()
+    }
+
+    @Test
     fun activitySnapshotSupplementsMissingParentIdentityWithoutOverwritingHome() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(

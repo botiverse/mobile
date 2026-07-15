@@ -350,6 +350,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.UpsertNotification -> "patch:notification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "patch:notification-dismiss:$id"
         is SharedHomeIntent.ChannelCreated -> "ensure:${channel.threadId.value}"
+        is SharedHomeIntent.ChannelProfileUpdated -> "patch:channel-profile:${channelId.value}"
         is SharedHomeIntent.SetSurfaceVisible -> "patch:surface-visible:$visible"
         is SharedHomeIntent.TogglePinned -> "patch:pin:$conversationId"
         is SharedHomeIntent.SetPinnedSortMode -> "patch:pinned-sort:$mode"

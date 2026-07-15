@@ -24,6 +24,8 @@ import build.raft.app.data.AttachmentOpenTarget
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.ChannelMemberActionResult
+import build.raft.app.data.ChannelProfileUpdateRequest
+import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelMemberSnapshot
 import build.raft.app.data.ChannelArchiveResult
 import build.raft.app.data.ChannelActivityMuteSettings
@@ -154,6 +156,316 @@ private class ConcurrentTestLogBuffer {
 }
 
 class SharedThreadStoreTest {
+    @Test
+    fun channelProfileUpdateAppliesCanonicalResponseAndPublishesHomeProjection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeChannelRepository(
+                homeResult = { DataResult.Empty(EmptyReason.NoChannels) },
+                profileUpdater = {
+                    DataResult.Content(
+                        ChannelProfileUpdateResult(ChannelId("channel-1"), "canonical-name", "Canonical description")
+                    )
+                }
+            )
+        val published = mutableListOf<ChannelProfileUpdateResult>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = repository,
+                channelProfileUpdateSink = published::add
+            )
+        val initial = basePayload().copy(title = "general", subtitle = "Old description")
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = initial)
+
+        store.accept(
+            SharedThreadIntent.UpdateChannelProfile(
+                channelId = "channel-1",
+                originalName = "general",
+                originalDescription = "Old description",
+                name = " requested-name ",
+                description = " Requested description "
+            )
+        )
+
+        assertEquals(
+            listOf(ChannelProfileUpdateRequest(ChannelId("channel-1"), "requested-name", "Requested description")),
+            repository.profileUpdateRequests
+        )
+        assertEquals("canonical-name", store.state.value.payload.title)
+        assertEquals("Canonical description", store.state.value.payload.subtitle)
+        assertEquals(ChannelProfileUpdateStatus.Succeeded, store.state.value.channelProfileUpdateStatus)
+        assertEquals(
+            listOf(ChannelProfileUpdateResult(ChannelId("channel-1"), "canonical-name", "Canonical description")),
+            published
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun unchangedChannelProfileClosesWithoutRequest() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeChannelRepository()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = repository
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialPayload = basePayload().copy(title = "general", subtitle = "Description")
+            )
+
+        store.accept(
+            SharedThreadIntent.UpdateChannelProfile(
+                channelId = "channel-1",
+                originalName = "general",
+                originalDescription = "Description",
+                name = " general ",
+                description = " Description "
+            )
+        )
+
+        assertEquals(emptyList(), repository.profileUpdateRequests)
+        assertEquals(ChannelProfileUpdateStatus.Succeeded, store.state.value.channelProfileUpdateStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun failedChannelProfileUpdateKeepsCanonicalStateAndExposesError() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeChannelRepository(
+                profileUpdater = { DataResult.Error(ScreenError("channel_name_taken", retryable = false)) }
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = repository
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialPayload = basePayload().copy(title = "general", subtitle = "Old description")
+            )
+
+        store.accept(
+            SharedThreadIntent.UpdateChannelProfile(
+                channelId = "channel-1",
+                originalName = "general",
+                originalDescription = "Old description",
+                name = "renamed",
+                description = "New description"
+            )
+        )
+
+        assertEquals("general", store.state.value.payload.title)
+        assertEquals("Old description", store.state.value.payload.subtitle)
+        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.channelProfileUpdateStatus)
+        assertEquals("channel_name_taken", store.state.value.channelProfileUpdateErrorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun mismatchedChannelProfileResponseMutatesNeitherThreadNorHomeProjection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeChannelRepository(
+                profileUpdater = {
+                    DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-2"), "wrong-channel", "Wrong"))
+                }
+            )
+        val published = mutableListOf<ChannelProfileUpdateResult>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = repository,
+                channelProfileUpdateSink = published::add
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialPayload = basePayload().copy(title = "general", subtitle = "Old")
+            )
+
+        store.accept(
+            SharedThreadIntent.UpdateChannelProfile(
+                channelId = "channel-1",
+                originalName = "general",
+                originalDescription = "Old",
+                name = "renamed",
+                description = "New"
+            )
+        )
+
+        assertEquals("general", store.state.value.payload.title)
+        assertEquals("Old", store.state.value.payload.subtitle)
+        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.channelProfileUpdateStatus)
+        assertEquals("channel_update_identity_mismatch", store.state.value.channelProfileUpdateErrorCode)
+        assertEquals(emptyList(), published)
+        scope.cancel()
+    }
+
+    @Test
+    fun routeSwitchDuringChannelProfileProjectionCannotCompleteNewRouteStatus() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sinkStarted = CompletableDeferred<Unit>()
+        val releaseSink = CompletableDeferred<Unit>()
+        val repository =
+            FakeChannelRepository(
+                homeResult = { DataResult.Empty(EmptyReason.NoChannels) },
+                profileUpdater = {
+                    DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), "renamed", "New"))
+                }
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = repository,
+                channelProfileUpdateSink = {
+                    sinkStarted.complete(Unit)
+                    releaseSink.await()
+                }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = basePayload())
+        val updateJob =
+            scope.launch {
+                store.accept(
+                    SharedThreadIntent.UpdateChannelProfile(
+                        channelId = "channel-1",
+                        originalName = "channel-1",
+                        originalDescription = "",
+                        name = "renamed",
+                        description = "New"
+                    )
+                )
+            }
+        sinkStarted.await()
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    instanceId = "channel-2",
+                    sourceThreadId = "channel-2",
+                    streamChannelId = "channel-2",
+                    title = "channel-2"
+                )
+            )
+        )
+        releaseSink.complete(Unit)
+        updateJob.join()
+
+        assertEquals("channel-2", store.state.value.payload.resolveThreadRouteIdentity().timelineChannelId)
+        assertFalse(store.state.value.payload.title == "renamed")
+        assertEquals(ChannelProfileUpdateStatus.Idle, store.state.value.channelProfileUpdateStatus)
+        assertEquals(null, store.state.value.channelProfileUpdateErrorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun channelProfileProjectionFailureDoesNotLeaveSuccessfulRequestInFlight() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeChannelRepository(
+                profileUpdater = {
+                    DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), "renamed", "New"))
+                }
+            )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = repository,
+                channelProfileUpdateSink = { error("projection unavailable") }
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = logs::add,
+                initialPayload = basePayload().copy(title = "general")
+            )
+
+        store.accept(
+            SharedThreadIntent.UpdateChannelProfile(
+                channelId = "channel-1",
+                originalName = "general",
+                originalDescription = "",
+                name = "renamed",
+                description = "New"
+            )
+        )
+
+        assertEquals("renamed", store.state.value.payload.title)
+        assertEquals(ChannelProfileUpdateStatus.Succeeded, store.state.value.channelProfileUpdateStatus)
+        assertTrue(logs.any { it.startsWith("thread_channel_profile_update_projection_failed channelId=channel-1") })
+        scope.cancel()
+    }
+
+    @Test
+    fun lateChannelProfileResponseCannotMutateAnotherRoute() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val repository =
+            FakeChannelRepository(
+                homeResult = { DataResult.Empty(EmptyReason.NoChannels) },
+                profileUpdater = {
+                    started.complete(Unit)
+                    release.await()
+                    DataResult.Content(ChannelProfileUpdateResult(ChannelId("channel-1"), "late-name", "Late"))
+                }
+            )
+        val published = mutableListOf<ChannelProfileUpdateResult>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = repository,
+                channelProfileUpdateSink = published::add
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, initialPayload = basePayload())
+        val updateJob =
+            scope.launch {
+                store.accept(
+                    SharedThreadIntent.UpdateChannelProfile(
+                        channelId = "channel-1",
+                        originalName = "channel-1",
+                        originalDescription = "",
+                        name = "renamed",
+                        description = "New"
+                    )
+                )
+            }
+        started.await()
+        store.accept(
+            SharedThreadIntent.Start(
+                basePayload().copy(
+                    instanceId = "channel-2",
+                    sourceThreadId = "channel-2",
+                    streamChannelId = "channel-2",
+                    title = "channel-2"
+                )
+            )
+        )
+        release.complete(Unit)
+        updateJob.join()
+
+        assertEquals("channel-2", store.state.value.payload.resolveThreadRouteIdentity().timelineChannelId)
+        assertFalse(store.state.value.payload.title == "late-name")
+        assertEquals(emptyList(), published)
+        scope.cancel()
+    }
+
     @Test
     fun sharedThreadMessageStoreDeduplicatesConcurrentMessageFetches() = runBlocking {
         val store = SharedThreadMessageStore()
@@ -10845,9 +11157,13 @@ class SharedThreadStoreTest {
     }
 
     private class FakeChannelRepository(
+        private val profileUpdater: suspend (ChannelProfileUpdateRequest) -> DataResult<ChannelProfileUpdateResult> = {
+            error("unused")
+        },
         private val homeResult: (suspend (ServerId) -> DataResult<HomeSnapshot>)? = null
     ) : ChannelRepository {
         val createRequests: MutableList<CreateChannelRequest> = mutableListOf()
+        val profileUpdateRequests: MutableList<ChannelProfileUpdateRequest> = mutableListOf()
         var homeCalls: Int = 0
 
         override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> {
@@ -10881,6 +11197,12 @@ class SharedThreadStoreTest {
         override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> = error("unused")
         override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> = error("unused")
         override suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult> = error("unused")
+        override suspend fun updateChannelProfile(
+            request: ChannelProfileUpdateRequest
+        ): DataResult<ChannelProfileUpdateResult> {
+            profileUpdateRequests += request
+            return profileUpdater(request)
+        }
         override suspend fun setChannelActivityMuted(channelId: ChannelId, muted: Boolean): DataResult<ChannelActivityMuteSettings> = error("unused")
     }
 

@@ -363,6 +363,8 @@
     <string name="thread_settings_name_placeholder">例如：ai-research</string>
     <string name="thread_settings_description">描述</string>
     <string name="thread_settings_description_placeholder">这个频道用于讨论什么？</string>
+    <string name="thread_settings_saving">正在保存...</string>
+    <string name="thread_settings_update_failed">无法更新频道，请重试。</string>
     <string name="thread_settings_make_private_title">将频道设为私密</string>
     <string name="thread_settings_make_private">设为私密</string>
     <string name="thread_settings_make_private_detail">仅允许选中的成员访问此频道</string>

@@ -354,6 +354,14 @@ internal class SharedHomeStore(
                 dismissNotification(intent.id)
             is SharedHomeIntent.ChannelCreated ->
                 reduceState(_state.value.withCreatedChannel(intent.channel))
+            is SharedHomeIntent.ChannelProfileUpdated ->
+                reduceState(
+                    _state.value.withChannelProfile(
+                        channelId = intent.channelId,
+                        name = intent.name,
+                        description = intent.description
+                    )
+                )
             is SharedHomeIntent.SelectServer -> {
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
                 val nextSwitch =
@@ -453,6 +461,30 @@ internal class SharedHomeStore(
             content = nextContent,
             selectedConversationId = channel.threadId.value,
             selectedTopAction = null
+        )
+    }
+
+    private fun SharedHomeState.withChannelProfile(
+        channelId: ChannelId,
+        name: String,
+        description: String?
+    ): SharedHomeState {
+        val current = content as? SharedHomeContentState.Content ?: return this
+        val existing = current.baseSnapshot.channels.firstOrNull { it.channelId == channelId } ?: return this
+        val updated = existing.copy(name = name, subtitle = description)
+        return copy(
+            content =
+                contentFromDurableSnapshot(
+                    snapshot =
+                        current.baseSnapshot.copy(
+                            channels = current.baseSnapshot.channels.map { row ->
+                                if (row.channelId == channelId) updated else row
+                            }
+                        ),
+                    session = current.session,
+                    contentRefreshing = false,
+                    previousContent = current
+                )
         )
     }
 
@@ -2219,6 +2251,8 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.UpsertNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification-dismiss:$id"
         is SharedHomeIntent.ChannelCreated -> "${SharedHomeChannelFoldEvent.Ensure.wireName}:${channel.threadId.value}"
+        is SharedHomeIntent.ChannelProfileUpdated ->
+            "${SharedHomeChannelFoldEvent.Patch.wireName}:channel-profile:${channelId.value}"
         is SharedHomeIntent.SetSurfaceVisible -> "${SharedHomeChannelFoldEvent.Patch.wireName}:surface-visible:$visible"
         is SharedHomeIntent.TogglePinned -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pin:$conversationId"
         is SharedHomeIntent.SetPinnedSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pinned-sort:$mode"
@@ -2673,6 +2707,11 @@ sealed interface SharedHomeIntent {
     data class UpsertNotification(val notification: SharedHomeNotification) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: HomeChannelRow) : SharedHomeIntent
+    data class ChannelProfileUpdated(
+        val channelId: ChannelId,
+        val name: String,
+        val description: String?
+    ) : SharedHomeIntent
     data class SetSurfaceVisible(val visible: Boolean) : SharedHomeIntent
     /**
      * #211: pin or unpin a conversation. The store applies an optimistic
@@ -2722,6 +2761,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.ChannelProfileUpdated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
@@ -2756,6 +2796,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.ChannelProfileUpdated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,
@@ -2790,6 +2831,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.ChannelProfileUpdated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
             is SharedHomeIntent.SetPinnedSortMode,

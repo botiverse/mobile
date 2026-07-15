@@ -353,6 +353,7 @@ interface ChannelRepository {
     suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult>
     suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult>
     suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult>
+    suspend fun updateChannelProfile(request: ChannelProfileUpdateRequest): DataResult<ChannelProfileUpdateResult>
     suspend fun setChannelActivityMuted(channelId: ChannelId, muted: Boolean): DataResult<ChannelActivityMuteSettings>
 }
 
@@ -362,6 +363,18 @@ enum class ChannelVisibility(val wireValue: String) {
 }
 
 data class ChannelUpdateResult(val channelId: ChannelId)
+
+data class ChannelProfileUpdateRequest(
+    val channelId: ChannelId,
+    val name: String,
+    val description: String
+)
+
+data class ChannelProfileUpdateResult(
+    val channelId: ChannelId,
+    val name: String,
+    val description: String?
+)
 
 data class ChannelActivityMuteSettings(
     val channelId: ChannelId,
