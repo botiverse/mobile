@@ -623,17 +623,18 @@ private fun SharedActivityList(
         // A drag in progress means the user is NOT parked at the top even if
         // the viewport currently is: auto-scrolling would cancel the gesture
         // and yank them (task #554 pattern scan).
-        val nearTop = listState.isActivityNearTop() && !listState.isScrollInProgress
-        val increment =
-            activityPendingUpdateIncrement(
+        val nearTop = listState.isActivityNearTop()
+        val update =
+            activityUpdatePresentation(
                 previousItems = previousItems,
                 currentItems = snapshot.items,
-                nearTop = nearTop
+                nearTop = nearTop,
+                isScrollInProgress = listState.isScrollInProgress
             )
-        if (increment > 0) {
-            pendingUpdateCount += increment
+        if (update.pendingIncrement > 0) {
+            pendingUpdateCount += update.pendingIncrement
         }
-        if (nearTop && snapshot.items.isNotEmpty()) {
+        if (update.shouldAutoAnchorTop) {
             pendingUpdateCount = 0
             listState.scrollToItem(0)
         }
@@ -1462,6 +1463,30 @@ private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int)
 
 private fun LazyListState.isActivityNearTop(): Boolean =
     firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
+
+internal data class ActivityUpdatePresentation(
+    val pendingIncrement: Int,
+    val shouldAutoAnchorTop: Boolean
+)
+
+internal fun activityUpdatePresentation(
+    previousItems: List<InboxItem>,
+    currentItems: List<InboxItem>,
+    nearTop: Boolean,
+    isScrollInProgress: Boolean
+): ActivityUpdatePresentation {
+    val parkedAtTop = nearTop && !isScrollInProgress
+    val topUpdateCount =
+        activityPendingUpdateIncrement(
+            previousItems = previousItems,
+            currentItems = currentItems,
+            nearTop = false
+        )
+    return ActivityUpdatePresentation(
+        pendingIncrement = if (parkedAtTop) 0 else topUpdateCount,
+        shouldAutoAnchorTop = parkedAtTop && topUpdateCount > 0
+    )
+}
 
 // "↑ x new" counts ONLY genuinely new activity, never the user's own actions.
 // Two things qualify (task #554 follow-up — the old whole-signature diff
