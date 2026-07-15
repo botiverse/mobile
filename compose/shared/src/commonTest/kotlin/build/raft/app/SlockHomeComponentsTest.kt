@@ -1738,7 +1738,9 @@ class SlockHomeComponentsTest {
                         SlockHomeConversationItem(
                             id = "dm-agent-1",
                             name = "Product-UX-Designer",
-                            kind = "dm"
+                            kind = "dm",
+                            peerType = "agent",
+                            presenceMemberId = "agent-1"
                         )
                     )
             )
@@ -1752,6 +1754,9 @@ class SlockHomeComponentsTest {
         assertEquals("dm-agent-1", launch?.streamChannelId)
         assertEquals(null, launch?.parentChannelId)
         assertEquals(null, launch?.parentMessageId)
+        assertEquals("agent-1", launch?.dmPeerIdentity?.memberId?.value)
+        assertEquals(MemberKind.Agent, launch?.dmPeerIdentity?.kind)
+        assertEquals("agent-1", launch?.toInitialPayload("fallback")?.dmPeerIdentity?.memberId?.value)
     }
 
     @Test

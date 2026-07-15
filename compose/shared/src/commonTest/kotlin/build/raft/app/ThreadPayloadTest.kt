@@ -1956,6 +1956,32 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun directMessageLaunchWireCarriesPeerIdentityWithoutPresentationState() {
+        val identity =
+            MemberDetailIdentity(
+                memberId = MemberId("agent-1"),
+                kind = MemberKind.Agent,
+                sourceServerId = ServerId("server-1")
+            )
+        val launch =
+            WireThreadLaunchPayload(
+                instanceId = "dm-1",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                threadId = "dm-1",
+                sourceThreadId = "dm-1",
+                streamChannelId = "dm-1",
+                dmPeerIdentity = identity
+            )
+
+        val initial = launch.toInitialPayload("fallback")
+
+        assertEquals(identity, initial.dmPeerIdentity)
+        assertEquals(null, initial.dmPeerName)
+        assertEquals(null, initial.dmPeerAvatarUrl)
+        assertEquals(null, initial.dmPeerAvatarLabel)
+    }
+
+    @Test
     fun launchPayloadIgnoresLegacyPendingAttachmentRouteState() {
         val payload =
             parseThreadScreenPayload(

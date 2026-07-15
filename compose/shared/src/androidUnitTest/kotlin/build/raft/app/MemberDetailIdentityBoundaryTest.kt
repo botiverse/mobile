@@ -79,6 +79,35 @@ class MemberDetailIdentityBoundaryTest {
             ),
         ),
         BoundaryFile(
+            path = "build/raft/app/ThreadLaunchConversationIdentity.kt",
+            required = listOf(
+                "val dmPeerIdentity: MemberDetailIdentity? = null",
+                "dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage }",
+                "dmPeerIdentity = peerIdentity",
+                "source = MemberDetailIdentitySource.DirectoryDmPeer",
+            ),
+            forbidden = listOf(
+                "dmPeerMemberId",
+                "dmPeerMemberKind",
+                "dmPeerName",
+                "dmPeerAvatar",
+            ),
+        ),
+        BoundaryFile(
+            path = "build/raft/app/ThreadRoutePayload.kt",
+            required = listOf(
+                "val dmPeerIdentity: MemberDetailIdentity? = null",
+                "dmPeerIdentity = dmPeerIdentity.takeIf { routeKinds.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage }",
+            ),
+            forbidden = listOf(
+                "dmPeerMemberId",
+                "dmPeerMemberKind",
+                "dmPeerName",
+                "dmPeerAvatarUrl",
+                "dmPeerAvatarLabel",
+            ),
+        ),
+        BoundaryFile(
             path = "build/raft/app/SlockHomeComponents.kt",
             required = listOf(
                 "onPinnedMemberClick: (MemberDetailIdentity) -> Unit",

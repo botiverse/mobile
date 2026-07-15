@@ -17614,6 +17614,7 @@ internal fun buildAppShellThreadPayload(
         parentMessageId = parentMessageId,
         parentSurfaceKind = parentSurfaceKind,
         parentChannelKind = parentChannelKind,
+        dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
         memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
@@ -17899,6 +17900,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
                 null
             },
         parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
+        dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
         originParentMessageId = if (isReplyThread) parentMessageId else null,
         focusedMessageId = focusedMessageId,
         focusedMessageRequestNonce =

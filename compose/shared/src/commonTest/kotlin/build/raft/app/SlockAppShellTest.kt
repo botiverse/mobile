@@ -2015,6 +2015,47 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun activityDirectMessageOpenCarriesPeerIdentityIntoLoadingHeader() {
+        val identity =
+            MemberDetailIdentity(
+                memberId = MemberId("agent-1"),
+                kind = MemberKind.Agent,
+                sourceServerId = ServerId("server-1")
+            )
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "dm-1",
+                        aliases = setOf("dm-1", "agent-1"),
+                        conversationKind = ConversationKind.DirectMessage,
+                        surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        channelKind = "dm",
+                        title = "CC-Wow2",
+                        peerIdentity = identity
+                    )
+                )
+            )
+        val source =
+            InboxItem(
+                key = "dm:dm-1",
+                kind = InboxItemKind.DirectMessage,
+                channelId = ChannelId("dm-1"),
+                channelName = "CC-Wow2"
+            ).toConversationOpenSourceMessageIdentity()
+
+        val resolution = resolveOpenRequest("server-1", source, directory)
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        val loadingPayload = assertNotNull(buildAppShellThreadPayload(request.conversationIdentity))
+
+        assertEquals(identity, request.conversationIdentity.dmPeerIdentity)
+        assertEquals(identity, loadingPayload.dmPeerIdentity)
+        assertEquals(null, loadingPayload.dmPeerName)
+        assertEquals(null, loadingPayload.dmPeerAvatarUrl)
+    }
+
+    @Test
     fun resolveOpenRequestRebuildsThreadFromTrustedDmParentKind() {
         // t5/#419 anti-over-drop: the directory's parent projection is dropped (unresolvable),
         // but the Activity source carries a trusted typed DM parent kind -> allow a raw rebuild

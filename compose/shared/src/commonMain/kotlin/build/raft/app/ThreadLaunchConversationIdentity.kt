@@ -18,7 +18,8 @@ internal data class ThreadLaunchConversationIdentity(
     val channelType: String? = null,
     val thread: ThreadConversation? = null,
     val threadStreamChannelIdHint: ChannelId? = null,
-    val kind: ConversationKind
+    val kind: ConversationKind,
+    val dmPeerIdentity: MemberDetailIdentity? = null
 )
 
 internal fun buildThreadLaunchConversationIdentity(
@@ -29,7 +30,8 @@ internal fun buildThreadLaunchConversationIdentity(
     parentChannelId: ChannelId? = null,
     parentMessageId: MessageId? = null,
     parentSurfaceKind: String? = null,
-    parentChannelKind: String? = null
+    parentChannelKind: String? = null,
+    dmPeerIdentity: MemberDetailIdentity? = null
 ): ThreadLaunchConversationIdentity {
     val isReplyThread = kind == ConversationKind.Thread
     val stableThreadIdentity =
@@ -54,7 +56,8 @@ internal fun buildThreadLaunchConversationIdentity(
             } else {
                 null
             },
-        kind = kind
+        kind = kind,
+        dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage }
     )
 }
 
@@ -112,7 +115,8 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         parentSurfaceKind = parentKind?.toKuiklySurfaceKind(),
-        parentChannelKind = parentKind?.toWireChannelKindOrNull()
+        parentChannelKind = parentKind?.toWireChannelKindOrNull(),
+        dmPeerIdentity = peerIdentity
     )
 }
 
@@ -141,7 +145,8 @@ internal fun ConversationSummary.toThreadLaunchConversationIdentity(): ThreadLau
         channelId = channelId,
         channelType = channelType,
         thread = thread,
-        kind = kind
+        kind = kind,
+        dmPeerIdentity = directMessagePeerIdentity()
     )
 
 internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity =
@@ -150,8 +155,30 @@ internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLau
         channelId = channelId,
         channelType = channelType,
         thread = thread,
-        kind = kind
+        kind = kind,
+        dmPeerIdentity = directMessagePeerIdentity()
     )
+
+private fun ConversationSummary.directMessagePeerIdentity(): MemberDetailIdentity? =
+    directMessagePeerIdentity(kind, presenceMemberId?.value, directMessagePeerType)
+
+private fun HomeConversationRow.directMessagePeerIdentity(): MemberDetailIdentity? =
+    directMessagePeerIdentity(kind, presenceMemberId?.value, directMessagePeerType)
+
+private fun directMessagePeerIdentity(
+    kind: ConversationKind,
+    memberId: String?,
+    peerType: String?
+): MemberDetailIdentity? =
+    if (kind == ConversationKind.DirectMessage) {
+        memberDetailIdentityFromWire(
+            memberId = memberId,
+            kindWireValue = peerType,
+            source = MemberDetailIdentitySource.DirectoryDmPeer
+        )
+    } else {
+        null
+    }
 
 internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val surfaceKind = threadSurfaceKind()
