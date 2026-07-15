@@ -1396,10 +1396,9 @@ private fun SlockFilePreviewComposerImageEditor(
                 Modifier
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(
                         start = SlockSpacing.Sm,
-                        top = SlockSpacing.Sm,
+                        top = 6.dp,
                         end = SlockSpacing.Sm,
                         bottom =
                             slockFilePreviewEditorBottomPadding(
@@ -1544,7 +1543,7 @@ internal fun slockFilePreviewEditorBottomPadding(
         } else {
             bottomSafeArea
         }
-    return SlockSpacing.Sm + keyboardInset + safeAreaInset
+    return 6.dp + keyboardInset + safeAreaInset
 }
 
 private fun SlockComposerImageTextAnnotation.hitTest(point: Offset): Boolean {
