@@ -17879,7 +17879,7 @@ internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(generation: Long): String =
-    listOf("thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" }, "attempt-$generation")
+    listOf("attempt-$generation", "thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
         .joinToString(":")
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
         .take(160)

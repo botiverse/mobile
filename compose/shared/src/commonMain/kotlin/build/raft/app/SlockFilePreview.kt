@@ -3581,7 +3581,7 @@ private fun SlockFilePreviewPayload.attachmentCacheFileName(): String =
         .ifBlank { "attachment" }
 
 private fun SlockFilePreviewPayload.filePreviewDownloadId(generation: Long? = null): String =
-    listOfNotNull(source, attachmentCacheId(), attachmentCacheFileName(), generation?.let { "attempt-$it" })
+    listOfNotNull(generation?.let { "attempt-$it" }, source, attachmentCacheId(), attachmentCacheFileName())
         .joinToString(":")
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
         .take(160)
