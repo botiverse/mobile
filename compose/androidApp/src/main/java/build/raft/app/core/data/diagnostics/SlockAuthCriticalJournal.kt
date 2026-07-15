@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 
 object SlockAuthCriticalJournal {
-    private const val JournalDirName = "slock_auth_critical"
+    private const val LegacyJournalDirName = "slock_auth_critical"
     private const val JournalFileName = "slock-auth-critical.jsonl"
     private const val EntryLimit = 50
     private const val MessageMaxChars = 2_048
@@ -46,7 +46,11 @@ object SlockAuthCriticalJournal {
     private var appContext: Context? = null
 
     fun init(context: Context) {
-        appContext = context.applicationContext
+        val applicationContext = context.applicationContext
+        appContext = applicationContext
+        synchronized(fileLock) {
+            SlockGeneralLogRing.currentLaunchDir(applicationContext).mkdirs()
+        }
     }
 
     fun isCritical(message: String): Boolean = classifyAuthCriticalEvent(message) != null
@@ -78,24 +82,41 @@ object SlockAuthCriticalJournal {
         logFiles(context.applicationContext).any { it.isFile && it.length() > 0L }
 
     fun logFiles(context: Context): List<File> =
-        listOf(journalFile(context.applicationContext)).filter { it.isFile && it.length() > 0L }
+        buildList {
+            val applicationContext = context.applicationContext
+            val root = SlockGeneralLogRing.logRoot(applicationContext)
+            val sessions = sessionDirs(root).take(5)
+            sessions.map { File(it, JournalFileName) }
+                .filterTo(this) { it.isFile && it.length() > 0L }
+            if (sessions.size < 5) {
+                legacyJournalFiles(applicationContext).filterTo(this) { it.isFile && it.length() > 0L }
+            }
+        }
 
     fun recentEntries(context: Context): List<AuthCriticalJournalEntry> {
         flush()
-        val file = journalFile(context.applicationContext)
-        if (!file.isFile || file.length() == 0L) return emptyList()
+        val files = logFiles(context.applicationContext)
+        if (files.isEmpty()) return emptyList()
         return runCatching {
-            parseAuthCriticalJournalEntries(file.readLines(StandardCharsets.UTF_8))
+            parseAuthCriticalJournalEntries(
+                files.asReversed().flatMap { it.readLines(StandardCharsets.UTF_8) }
+            )
         }.getOrElse { emptyList() }
     }
 
     fun exportRecentText(context: Context, maxChars: Int = ExportMaxChars): String {
         flush()
-        val file = journalFile(context.applicationContext)
-        if (!file.isFile || file.length() == 0L) return ""
+        val files = logFiles(context.applicationContext)
+        if (files.isEmpty()) return ""
         val content =
             runCatching {
-                DiagnosticsSanitizer.sanitize(file.readText(StandardCharsets.UTF_8)).takeLast(maxChars)
+                DiagnosticsSanitizer.sanitize(
+                    files.asReversed()
+                        .flatMap { it.readLines(StandardCharsets.UTF_8) }
+                        .filter { it.isNotBlank() }
+                        .takeLast(EntryLimit)
+                        .joinToString(separator = "\n", postfix = "\n")
+                ).takeLast(maxChars)
             }.getOrElse { error ->
                 "Unable to read auth critical journal: ${error.javaClass.simpleName}"
             }
@@ -107,9 +128,10 @@ object SlockAuthCriticalJournal {
 
     fun clearFiles(context: Context) {
         runCatching {
-            journalDir(context.applicationContext).walkBottomUp()
-                .filter { it.isFile }
+            SlockGeneralLogRing.logRoot(context.applicationContext).walkTopDown()
+                .filter { it.isFile && it.name == JournalFileName }
                 .forEach { it.delete() }
+            legacyJournalDir(context.applicationContext).deleteRecursively()
         }
     }
 
@@ -120,7 +142,7 @@ object SlockAuthCriticalJournal {
         }
         runCatching {
             synchronized(fileLock) {
-                val file = journalFile(context)
+                val file = journalFileForCurrentSession(context)
                 file.parentFile?.mkdirs()
                 val existing =
                     if (file.isFile) {
@@ -136,9 +158,30 @@ object SlockAuthCriticalJournal {
         }
     }
 
-    private fun journalFile(context: Context): File = File(journalDir(context), JournalFileName)
+    internal fun relativeLogPath(context: Context, file: File): String =
+        file.relativeToOrNull(SlockGeneralLogRing.logRoot(context.applicationContext))?.invariantSeparatorsPath
+            ?: file.relativeToOrNull(legacyJournalDir(context.applicationContext))
+                ?.invariantSeparatorsPath
+                ?.let { "legacy/$it" }
+            ?: "legacy/${file.name}"
 
-    private fun journalDir(context: Context): File = File(context.filesDir, JournalDirName)
+    private fun sessionDirs(root: File): List<File> =
+        root.listFiles()
+            .orEmpty()
+            .filter { it.isDirectory && it.name.startsWith("launch-") }
+            .sortedByDescending { it.name }
+
+    private fun journalFileForCurrentSession(context: Context): File {
+        return authJournalFileIn(SlockGeneralLogRing.currentLaunchDir(context))
+    }
+
+    private fun legacyJournalFiles(context: Context): List<File> {
+        val root = legacyJournalDir(context)
+        val sessionFiles = sessionDirs(root).take(5).map { File(it, JournalFileName) }
+        return sessionFiles + File(root, JournalFileName)
+    }
+
+    private fun legacyJournalDir(context: Context): File = File(context.filesDir, LegacyJournalDirName)
 
     private fun diagnosticsTimestamp(timestampMillis: Long): String =
         requireNotNull(TimestampFormatter.get()).apply {
@@ -152,6 +195,8 @@ object SlockAuthCriticalJournal {
             }
         }
 }
+
+internal fun authJournalFileIn(launchDir: File): File = File(launchDir, "slock-auth-critical.jsonl")
 
 internal fun classifyAuthCriticalEvent(message: String): String? {
     val normalized = message.lowercase(Locale.US)

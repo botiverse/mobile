@@ -3,7 +3,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import deviceInfo from '@ohos.deviceInfo';
 import fs from '@ohos.file.fs';
 import zlib from '@ohos.zlib';
-import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
+import { SlockOhosDiagnosticEntry, SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { SLOCK_OHOS_GIT_COMMIT } from '../kuikly/generated/SlockOhosBuildMetadata';
 
 /**
@@ -21,8 +21,31 @@ const CRASH_DIR_NAME: string = 'crashes';
 const MAX_DIAGNOSTIC_EXPORT_CHARS: number = 180000;
 const FEEDBACK_FILE_PREFIX: string = 'slock-feedback-';
 const FEEDBACK_SUMMARY_NAME: string = 'slock-diagnostics-summary.txt';
+const DIAGNOSTIC_LOG_DIR_NAME: string = 'slock_diagnostics_logs';
+const DIAGNOSTIC_LOG_FILE_NAME: string = 'slock-diagnostics.jsonl';
+const DIAGNOSTIC_SESSION_PREFIX: string = 'launch-';
+const DIAGNOSTIC_MAX_SESSIONS: number = 5;
+const DIAGNOSTIC_MAX_FILES_PER_SESSION: number = 6;
+const DIAGNOSTIC_LOG_MAX_BYTES: number = 1024 * 1024;
 
 export class SlockOhosAppDiagnostics {
+  private static currentSessionDir: string = '';
+
+  static initialize(context: common.UIAbilityContext): void {
+    if (SlockOhosAppDiagnostics.currentSessionDir.length > 0) {
+      return;
+    }
+    const root = `${context.filesDir}/${DIAGNOSTIC_LOG_DIR_NAME}`;
+    SlockOhosAppDiagnostics.ensureDirectory(root);
+    const sessionId = `${DIAGNOSTIC_SESSION_PREFIX}${Date.now()}-${Math.floor(Math.random() * 0x100000000).toString(16)}`;
+    SlockOhosAppDiagnostics.currentSessionDir = `${root}/${sessionId}`;
+    SlockOhosAppDiagnostics.ensureDirectory(SlockOhosAppDiagnostics.currentSessionDir);
+    SlockOhosAppDiagnostics.pruneDiagnosticSessions(root);
+    SlockOhosDiagnostics.setPersistentRecorder((entry: SlockOhosDiagnosticEntry): void => {
+      SlockOhosAppDiagnostics.appendPersistentEntry(entry);
+    });
+  }
+
   static record(tag: string, message: string): void {
     SlockOhosDiagnostics.record(tag, message);
   }
@@ -140,23 +163,178 @@ export class SlockOhosAppDiagnostics {
     SlockOhosAppDiagnostics.ensureDirectory(uploadDir);
     SlockOhosAppDiagnostics.pruneFeedbackArchives(uploadDir);
     const archivePath = `${uploadDir}/${FEEDBACK_FILE_PREFIX}${Date.now()}.zip`;
-    const inputFiles = SlockOhosAppDiagnostics.feedbackArchiveFiles(context, diagnosticFilePath);
+    const stagedLogFiles = SlockOhosAppDiagnostics.stageRecentLaunchLogs(context, uploadDir);
+    const inputFiles = SlockOhosAppDiagnostics.feedbackArchiveFiles(context, diagnosticFilePath, stagedLogFiles);
     if (inputFiles.length === 0) {
       throw new Error('No diagnostics files available for feedback archive');
     }
-    await zlib.compressFiles(inputFiles, archivePath, {
-      level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
-    });
+    try {
+      await zlib.compressFiles(inputFiles, archivePath, {
+        level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
+      });
+    } finally {
+      stagedLogFiles.forEach((path: string): void => {
+        try {
+          fs.unlinkSync(path);
+        } catch (_error) {
+        }
+      });
+    }
     return archivePath;
   }
 
-  private static feedbackArchiveFiles(context: common.UIAbilityContext, diagnosticFilePath: string): Array<string> {
+  private static feedbackArchiveFiles(
+    context: common.UIAbilityContext,
+    diagnosticFilePath: string,
+    stagedLogFiles: Array<string>
+  ): Array<string> {
     return [
       diagnosticFilePath,
+      ...stagedLogFiles,
       ...SlockOhosAppDiagnostics.collectFiles(`${context.filesDir}/${CRASH_DIR_NAME}`),
     ].filter((path: string, index: number, paths: Array<string>) => {
       return SlockOhosAppDiagnostics.pathIsFile(path) && paths.indexOf(path) === index;
     });
+  }
+
+  private static appendPersistentEntry(entry: SlockOhosDiagnosticEntry): void {
+    if (SlockOhosAppDiagnostics.currentSessionDir.length === 0) {
+      return;
+    }
+    const activePath = `${SlockOhosAppDiagnostics.currentSessionDir}/${DIAGNOSTIC_LOG_FILE_NAME}`;
+    try {
+      if (SlockOhosAppDiagnostics.pathExists(activePath) && fs.statSync(activePath).size >= DIAGNOSTIC_LOG_MAX_BYTES) {
+        SlockOhosAppDiagnostics.rotatePersistentLogs();
+      }
+      const file = fs.openSync(
+        activePath,
+        fs.OpenMode.CREATE | fs.OpenMode.APPEND | fs.OpenMode.WRITE_ONLY
+      );
+      try {
+        fs.writeSync(file.fd, `${JSON.stringify(entry)}\n`);
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (_error) {
+    }
+  }
+
+  private static rotatePersistentLogs(): void {
+    const dir = SlockOhosAppDiagnostics.currentSessionDir;
+    for (let index = DIAGNOSTIC_MAX_FILES_PER_SESSION - 1; index >= 1; index -= 1) {
+      const source = `${dir}/${DIAGNOSTIC_LOG_FILE_NAME}.${index}`;
+      if (!SlockOhosAppDiagnostics.pathExists(source)) {
+        continue;
+      }
+      if (index === DIAGNOSTIC_MAX_FILES_PER_SESSION - 1) {
+        try {
+          fs.unlinkSync(source);
+        } catch (_error) {
+        }
+      } else {
+        const target = `${dir}/${DIAGNOSTIC_LOG_FILE_NAME}.${index + 1}`;
+        try {
+          if (SlockOhosAppDiagnostics.pathExists(target)) {
+            fs.unlinkSync(target);
+          }
+          fs.renameSync(source, target);
+        } catch (_error) {
+        }
+      }
+    }
+    const active = `${dir}/${DIAGNOSTIC_LOG_FILE_NAME}`;
+    const rotated = `${dir}/${DIAGNOSTIC_LOG_FILE_NAME}.1`;
+    try {
+      if (SlockOhosAppDiagnostics.pathExists(rotated)) {
+        fs.unlinkSync(rotated);
+      }
+      if (SlockOhosAppDiagnostics.pathExists(active)) {
+        fs.renameSync(active, rotated);
+      }
+    } catch (_error) {
+    }
+  }
+
+  private static diagnosticSessionDirectories(root: string): Array<string> {
+    if (!SlockOhosAppDiagnostics.pathIsDirectory(root)) {
+      return [];
+    }
+    try {
+      return fs.listFileSync(root)
+        .filter((name: string): boolean => name.startsWith(DIAGNOSTIC_SESSION_PREFIX))
+        .map((name: string): string => `${root}/${name}`)
+        .filter((path: string): boolean => SlockOhosAppDiagnostics.pathIsDirectory(path))
+        .sort((left: string, right: string): number => right.localeCompare(left));
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  private static pruneDiagnosticSessions(root: string): void {
+    SlockOhosAppDiagnostics.diagnosticSessionDirectories(root)
+      .slice(DIAGNOSTIC_MAX_SESSIONS)
+      .forEach((path: string): void => {
+        SlockOhosAppDiagnostics.removeDirectoryRecursively(path);
+      });
+  }
+
+  private static stageRecentLaunchLogs(context: common.UIAbilityContext, uploadDir: string): Array<string> {
+    const root = `${context.filesDir}/${DIAGNOSTIC_LOG_DIR_NAME}`;
+    const staged: Array<string> = [];
+    const sessions = SlockOhosAppDiagnostics.diagnosticSessionDirectories(root).slice(0, DIAGNOSTIC_MAX_SESSIONS);
+    sessions
+      .forEach((sessionDir: string): void => {
+        const sessionName = sessionDir.slice(sessionDir.lastIndexOf('/') + 1);
+        SlockOhosAppDiagnostics.collectFiles(sessionDir)
+          .filter((path: string): boolean => path.slice(path.lastIndexOf('/') + 1).startsWith(DIAGNOSTIC_LOG_FILE_NAME))
+          .sort((left: string, right: string): number => fs.statSync(right).mtime - fs.statSync(left).mtime)
+          .slice(0, DIAGNOSTIC_MAX_FILES_PER_SESSION)
+          .forEach((sourcePath: string): void => {
+            const sourceName = sourcePath.slice(sourcePath.lastIndexOf('/') + 1);
+            const targetPath = `${uploadDir}/${sessionName}-${sourceName}`;
+            try {
+              fs.copyFileSync(sourcePath, targetPath);
+              staged.push(targetPath);
+            } catch (_error) {
+            }
+          });
+      });
+    if (sessions.length < DIAGNOSTIC_MAX_SESSIONS && SlockOhosAppDiagnostics.pathIsDirectory(root)) {
+      try {
+        fs.listFileSync(root)
+          .map((name: string): string => `${root}/${name}`)
+          .filter((path: string): boolean => {
+            const name = path.slice(path.lastIndexOf('/') + 1);
+            return SlockOhosAppDiagnostics.pathIsFile(path) && name.startsWith(DIAGNOSTIC_LOG_FILE_NAME);
+          })
+          .sort((left: string, right: string): number => fs.statSync(right).mtime - fs.statSync(left).mtime)
+          .slice(0, DIAGNOSTIC_MAX_FILES_PER_SESSION)
+          .forEach((sourcePath: string): void => {
+            const sourceName = sourcePath.slice(sourcePath.lastIndexOf('/') + 1);
+            const targetPath = `${uploadDir}/legacy-${sourceName}`;
+            try {
+              fs.copyFileSync(sourcePath, targetPath);
+              staged.push(targetPath);
+            } catch (_error) {
+            }
+          });
+      } catch (_error) {
+      }
+    }
+    return staged;
+  }
+
+  private static removeDirectoryRecursively(path: string): void {
+    SlockOhosAppDiagnostics.collectFiles(path).forEach((filePath: string): void => {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (_error) {
+      }
+    });
+    try {
+      fs.rmdirSync(path);
+    } catch (_error) {
+    }
   }
 
   private static collectFiles(path: string): Array<string> {

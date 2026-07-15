@@ -1,5 +1,6 @@
 package build.raft.app.core.data.diagnostics
 
+import java.nio.file.Files
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,6 +9,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlockAuthCriticalJournalTest {
+    @Test
+    fun authJournalLivesInsideTheSharedLaunchDirectory() {
+        val launchDir = Files.createTempDirectory("slock-launch-auth").resolve("launch-1800000000000-a").toFile()
+
+        assertEquals(
+            launchDir.resolve("slock-auth-critical.jsonl"),
+            authJournalFileIn(launchDir)
+        )
+    }
+
     @Test
     fun classifiesOnlyAuthCriticalMarkers() {
         assertEquals(

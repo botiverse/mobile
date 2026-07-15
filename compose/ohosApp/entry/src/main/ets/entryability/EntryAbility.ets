@@ -92,6 +92,7 @@ export default class EntryAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
+    SlockOhosAppDiagnostics.initialize(this.context);
     // Crash reporting must install BEFORE any native/KNOI initialization —
     // a startup-chain crash (like the task #19 resource-bridge SIGSEGV)
     // is otherwise invisible to Hands.
