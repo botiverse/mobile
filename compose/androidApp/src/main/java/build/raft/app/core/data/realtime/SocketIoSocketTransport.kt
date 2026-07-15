@@ -20,6 +20,7 @@ class SocketIoSocketTransport(
     private val generationFence = RealtimeSocketGenerationFence()
     private var socket: Socket? = null
 
+    @Synchronized
     override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
         build.raft.app.core.data.diagnostics.SlockAppLog.d(
             "SlockRealtime",
@@ -27,29 +28,34 @@ class SocketIoSocketTransport(
         )
         val generation = generationFence.begin(context)
         socket?.disconnect()
-        socket = IO.socket(
+        val newSocket = IO.socket(
             socketUrl,
             IO.Options().apply {
                 transports = arrayOf(WebSocket.NAME)
                 reconnection = true
                 this.auth = auth
             }
-        ).also { newSocket ->
-            listeners.forEach { (eventName, eventListeners) ->
-                eventListeners.forEach { listener ->
-                    bindListener(newSocket, eventName, listener, generation)
-                }
+        )
+        listeners.forEach { (eventName, eventListeners) ->
+            eventListeners.forEach { listener ->
+                bindListener(newSocket, eventName, listener, generation)
             }
-            newSocket.connect()
         }
+        // Publish the exact socket before connect(): Socket.IO may synchronously invoke a
+        // manager listener that re-enters connect(). A later outer assignment would otherwise
+        // overwrite that successor socket after the nested connect returns.
+        socket = newSocket
+        newSocket.connect()
     }
 
+    @Synchronized
     override fun disconnect() {
         build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", "transport_disconnect")
         generationFence.clear()
         socket?.disconnect()
     }
 
+    @Synchronized
     override fun emit(eventName: String, payload: Map<String, Any>) {
         build.raft.app.core.data.diagnostics.SlockAppLog.d(
             "SlockRealtime",
@@ -58,6 +64,7 @@ class SocketIoSocketTransport(
         socket?.emit(eventName, realtimeSocketIoWirePayload(eventName, payload))
     }
 
+    @Synchronized
     override fun on(eventName: String, listener: (Any?) -> Unit): RealtimeSubscription {
         listeners.getOrPut(eventName) { mutableSetOf() } += listener
         val generation = generationFence.currentOrNull()
@@ -65,8 +72,10 @@ class SocketIoSocketTransport(
             socket?.let { bindListener(it, eventName, listener, generation) }
         }
         return RealtimeSubscription {
-            listeners[eventName]?.remove(listener)
-            unbindListener(eventName, listener)
+            synchronized(this@SocketIoSocketTransport) {
+                listeners[eventName]?.remove(listener)
+                unbindListener(eventName, listener)
+            }
         }
     }
 
@@ -112,7 +121,7 @@ class SocketIoSocketTransport(
     }
 }
 
-internal data class RealtimeSocketGeneration(
+internal class RealtimeSocketGeneration(
     val generationId: Long,
     val context: RealtimeSocketConnectionContext,
 )
@@ -137,7 +146,7 @@ internal class RealtimeSocketGenerationFence(
 
     fun currentOrNull(): RealtimeSocketGeneration? = current
 
-    fun accepts(generation: RealtimeSocketGeneration): Boolean = current == generation
+    fun accepts(generation: RealtimeSocketGeneration): Boolean = current === generation
 
     fun runIfCurrent(
         generation: RealtimeSocketGeneration,
