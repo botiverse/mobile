@@ -915,6 +915,8 @@
     <string name="file_preview_error_delete_download">Unable to clear cached copy</string>
     <string name="file_preview_error_editor_loading">Image editor is still loading</string>
     <string name="file_preview_error_editor_export">Image edit export failed</string>
+    <string name="file_preview_editor_title">Edit image</string>
+    <string name="file_preview_editor_saving">Saving...</string>
     <string name="file_preview_error_hidden">File hidden: %1$s</string>
     <string name="tasks_title">Tasks</string>
     <string name="tasks_unavailable">Tasks unavailable</string>

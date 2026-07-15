@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -101,6 +102,76 @@ class SlockFilePreviewDownloadStatusTest {
             )
 
         assertTrue(remaining.isEmpty())
+    }
+
+    @Test
+    fun imageEditorBottomPaddingUsesSafeAreaWhenKeyboardIsHidden() {
+        assertEquals(
+            32.dp,
+            slockFilePreviewEditorBottomPadding(
+                keyboardInsetDp = 0f,
+                bottomSafeArea = 24.dp,
+                keyboardInsetExcludesBottomSafeArea = false,
+            ),
+        )
+    }
+
+    @Test
+    fun imageEditorKeyboardInsetAvoidsDoubleCountingIncludedSafeArea() {
+        assertEquals(
+            308.dp,
+            slockFilePreviewEditorBottomPadding(
+                keyboardInsetDp = 300f,
+                bottomSafeArea = 24.dp,
+                keyboardInsetExcludesBottomSafeArea = false,
+            ),
+        )
+    }
+
+    @Test
+    fun imageEditorKeyboardInsetAddsExcludedSafeArea() {
+        assertEquals(
+            332.dp,
+            slockFilePreviewEditorBottomPadding(
+                keyboardInsetDp = 300f,
+                bottomSafeArea = 24.dp,
+                keyboardInsetExcludesBottomSafeArea = true,
+            ),
+        )
+    }
+
+    @Test
+    fun composerImageActionSlotsKeepEditOnlyLeft() {
+        assertEquals(
+            listOf(
+                SlockFilePreviewComposerImageActionSlot.Edit,
+                SlockFilePreviewComposerImageActionSlot.FlexibleSpacer,
+            ),
+            slockFilePreviewComposerImageActionSlots(canEdit = true, canComplete = false),
+        )
+    }
+
+    @Test
+    fun composerImageActionSlotsKeepDoneOnlyRight() {
+        assertEquals(
+            listOf(
+                SlockFilePreviewComposerImageActionSlot.FlexibleSpacer,
+                SlockFilePreviewComposerImageActionSlot.Done,
+            ),
+            slockFilePreviewComposerImageActionSlots(canEdit = false, canComplete = true),
+        )
+    }
+
+    @Test
+    fun composerImageActionSlotsKeepDualActionsAtOppositeEdges() {
+        assertEquals(
+            listOf(
+                SlockFilePreviewComposerImageActionSlot.Edit,
+                SlockFilePreviewComposerImageActionSlot.FlexibleSpacer,
+                SlockFilePreviewComposerImageActionSlot.Done,
+            ),
+            slockFilePreviewComposerImageActionSlots(canEdit = true, canComplete = true),
+        )
     }
 
     @Test

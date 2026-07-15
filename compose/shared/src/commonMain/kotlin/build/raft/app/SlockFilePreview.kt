@@ -43,6 +43,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.aspectRatio
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
@@ -70,6 +71,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -101,6 +103,7 @@ import kotlin.math.roundToInt
 import kotlin.time.TimeSource
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
+private const val SLOCK_FILE_PREVIEW_EDITOR_VISUAL_PAGE = "compose_file_preview_editor_visual"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
@@ -211,6 +214,81 @@ internal class ComposeSlockFilePreviewPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SlockFilePreviewStandalonePageContent() }
+    }
+}
+
+@Page(SLOCK_FILE_PREVIEW_EDITOR_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeSlockFilePreviewEditorVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SlockFilePreviewEditorVisualContent() }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewEditorVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val visualFixture = pager.pageData.params.optString("visualFixture")
+    val payload =
+        remember {
+            SlockFilePreviewPayload(
+                kind = "image",
+                title = "Design crop",
+                name = "design-crop.png",
+                imageUrl = SlockFilePreviewEditorVisualPreviewUri,
+                composerImageActionId = "visual-image-editor",
+                composerImageFileRef = "visual-image-editor-file",
+                composerImageCanEdit = true,
+                composerImageCanComplete = true,
+            )
+        }
+    if (visualFixture == "action_bar") {
+        SlockFilePreviewPageScaffold(
+            title = payload.previewHeaderTitle(),
+            subtitle = payload.previewHeaderSubtitle(),
+            iconName = payload.previewIconName(),
+            onBack = {},
+            contentPadding = 0.dp,
+        ) {
+            SlockFilePreviewPayloadContent(
+                payload = payload,
+                onOpenUrl = {},
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            SlockFilePreviewComposerImageActionBar(
+                payload = payload,
+                enabled = true,
+                onEdit = {},
+                onComplete = {},
+            )
+        }
+        return
+    }
+    SlockFilePreviewPageScaffold(
+        title = stringResource(MR.strings.file_preview_editor_title),
+        iconName = SlockLucideIconName.Pencil,
+        onBack = {},
+        contentPadding = 0.dp,
+        trailingContent = {
+            SlockFilePreviewImageEditorSaveButton(
+                saving = false,
+                imageAvailable = true,
+                onSave = {},
+            )
+        },
+    ) {
+        SlockFilePreviewComposerImageEditor(
+            payload = payload,
+            saving = false,
+            onCaptureRef = {},
+            initialTool =
+                if (visualFixture == "text_ime") {
+                    SlockComposerImageEditorTool.Text
+                } else {
+                    SlockComposerImageEditorTool.Pen
+                },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
     }
 }
 
@@ -772,13 +850,33 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     }
     SlockFilePreviewPageScaffold(
-        title = payload.previewHeaderTitle(),
-        subtitle = payload.previewHeaderSubtitle(),
-        iconName = payload.previewIconName(),
-        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        title = if (composerImageEditMode) stringResource(MR.strings.file_preview_editor_title) else payload.previewHeaderTitle(),
+        subtitle = if (composerImageEditMode) null else payload.previewHeaderSubtitle(),
+        iconName = if (composerImageEditMode) SlockLucideIconName.Pencil else payload.previewIconName(),
+        onBack = {
+            if (composerImageEditMode && !composerImageEditSaving) {
+                composerImageEditMode = false
+            } else if (!composerImageEditMode) {
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+            }
+        },
         contentPadding = 0.dp,
+        trailingContent =
+            if (composerImageEditMode) {
+                {
+                    SlockFilePreviewImageEditorSaveButton(
+                        saving = composerImageEditSaving,
+                        imageAvailable = payload.imageUrl != null,
+                        onSave = ::requestComposerImageEditSave,
+                    )
+                }
+            } else {
+                null
+            },
         overflowMenuItems =
-            listOfNotNull(
+            if (composerImageEditMode) {
+                emptyList()
+            } else listOfNotNull(
                 if (canOpenComments) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewCommentsActionId,
@@ -821,8 +919,6 @@ private fun SlockFilePreviewStandalonePageContent() {
                 payload = payload,
                 saving = composerImageEditSaving,
                 onCaptureRef = { composerImageEditCaptureRef = it },
-                onCancel = { composerImageEditMode = false },
-                onSave = ::requestComposerImageEditSave,
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
         } else {
@@ -959,47 +1055,104 @@ private fun SlockFilePreviewComposerImageActionBar(
 ) {
     if (payload.composerImageActionId.isBlank()) return
     if (!payload.composerImageCanEdit && !payload.composerImageCanComplete) return
+    val bottomSafeArea = slockBottomSafeAreaPadding()
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Sm),
+                .padding(
+                    start = SlockSpacing.Md,
+                    top = SlockSpacing.Sm,
+                    end = SlockSpacing.Md,
+                    bottom = SlockSpacing.Sm + bottomSafeArea,
+                ),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (payload.composerImageCanEdit) {
-            SlockBrutalActionButton(
-                label = stringResource(MR.strings.common_edit),
-                onClick = onEdit,
-                enabled = enabled && payload.imageUrl != null,
-                leadingIcon = SlockLucideIconName.Pencil,
-                minHeight = 34.dp,
-                shadowOffset = 2.dp,
-                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
-                modifier = Modifier.weight(1f)
-            )
-        }
-        if (payload.composerImageCanComplete) {
-            SlockBrutalActionButton(
-                label = stringResource(MR.strings.common_done),
-                onClick = onComplete,
-                enabled = enabled && payload.canCompleteComposerImageSelection(),
-                leadingIcon = SlockLucideIconName.Check,
-                minHeight = 34.dp,
-                shadowOffset = 2.dp,
-                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
-                modifier = Modifier.weight(1f)
-            )
+        slockFilePreviewComposerImageActionSlots(
+            canEdit = payload.composerImageCanEdit,
+            canComplete = payload.composerImageCanComplete,
+        ).forEach { slot ->
+            when (slot) {
+                SlockFilePreviewComposerImageActionSlot.Edit ->
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_edit),
+                        onClick = onEdit,
+                        enabled = enabled && payload.imageUrl != null,
+                        leadingIcon = SlockLucideIconName.Pencil,
+                        leadingIconSize = 14.dp,
+                        contentSpacing = 8.dp,
+                        minWidth = 0.dp,
+                        minHeight = 32.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
+                    )
+                SlockFilePreviewComposerImageActionSlot.FlexibleSpacer ->
+                    Box(modifier = Modifier.weight(1f))
+                SlockFilePreviewComposerImageActionSlot.Done ->
+                    SlockBrutalActionButton(
+                        label = stringResource(MR.strings.common_done),
+                        onClick = onComplete,
+                        enabled = enabled && payload.canCompleteComposerImageSelection(),
+                        leadingIcon = SlockLucideIconName.Check,
+                        leadingIconSize = 14.dp,
+                        contentSpacing = 8.dp,
+                        backgroundColor = SlockColor.BrandYellow,
+                        minWidth = 0.dp,
+                        minHeight = 32.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp)
+                    )
+            }
         }
     }
 }
+
+internal enum class SlockFilePreviewComposerImageActionSlot {
+    Edit,
+    FlexibleSpacer,
+    Done,
+}
+
+internal fun slockFilePreviewComposerImageActionSlots(
+    canEdit: Boolean,
+    canComplete: Boolean,
+): List<SlockFilePreviewComposerImageActionSlot> =
+    buildList {
+        if (canEdit) add(SlockFilePreviewComposerImageActionSlot.Edit)
+        add(SlockFilePreviewComposerImageActionSlot.FlexibleSpacer)
+        if (canComplete) add(SlockFilePreviewComposerImageActionSlot.Done)
+    }
 
 private enum class SlockComposerImageEditorTool {
     Pen,
     Text,
     Eraser
+}
+
+@Composable
+private fun SlockFilePreviewImageEditorSaveButton(
+    saving: Boolean,
+    imageAvailable: Boolean,
+    onSave: () -> Unit,
+) {
+    SlockBrutalActionButton(
+        label =
+            if (saving) {
+                stringResource(MR.strings.file_preview_editor_saving)
+            } else {
+                stringResource(MR.strings.common_save)
+            },
+        onClick = onSave,
+        enabled = !saving && imageAvailable,
+        leadingIcon = if (saving) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Check,
+        backgroundColor = SlockColor.BrandYellow,
+        minWidth = 72.dp,
+        minHeight = 32.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp),
+    )
 }
 
 private data class SlockComposerImageTextAnnotation(
@@ -1013,8 +1166,7 @@ private fun SlockFilePreviewComposerImageEditor(
     payload: SlockFilePreviewPayload,
     saving: Boolean,
     onCaptureRef: (ViewRef<DeclarativeBaseView<*, *>>) -> Unit,
-    onCancel: () -> Unit,
-    onSave: () -> Unit,
+    initialTool: SlockComposerImageEditorTool = SlockComposerImageEditorTool.Pen,
     modifier: Modifier = Modifier
 ) {
     var strokes by remember(payload.imageUrl) { mutableStateOf<List<List<Offset>>>(emptyList()) }
@@ -1023,7 +1175,18 @@ private fun SlockFilePreviewComposerImageEditor(
     var textDraft by remember(payload.imageUrl) { mutableStateOf("") }
     var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
     var nextTextAnnotationId by remember(payload.imageUrl) { mutableStateOf(0) }
-    var tool by remember(payload.imageUrl) { mutableStateOf(SlockComposerImageEditorTool.Pen) }
+    var tool by remember(payload.imageUrl, initialTool) { mutableStateOf(initialTool) }
+    var keyboardInsetDp by remember(payload.imageUrl) { mutableStateOf(0f) }
+    val bottomSafeArea = slockBottomSafeAreaPadding()
+    val keyboardInsetExcludesBottomSafeArea = slockKeyboardInsetExcludesBottomSafeArea()
+    val focusManager = LocalFocusManager.current
+    fun selectTool(nextTool: SlockComposerImageEditorTool) {
+        if (tool == SlockComposerImageEditorTool.Text && nextTool != SlockComposerImageEditorTool.Text) {
+            focusManager.clearFocus(force = true)
+            keyboardInsetDp = 0f
+        }
+        tool = nextTool
+    }
     fun eraseAt(point: Offset) {
         val nextStrokes = slockComposerImageEraseStrokes(strokes, point)
         val shouldClearActiveStroke = slockComposerImageStrokeHit(activeStroke, point)
@@ -1147,39 +1310,19 @@ private fun SlockFilePreviewComposerImageEditor(
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Sm),
+                    .padding(
+                        start = SlockSpacing.Sm,
+                        top = SlockSpacing.Sm,
+                        end = SlockSpacing.Sm,
+                        bottom =
+                            slockFilePreviewEditorBottomPadding(
+                                keyboardInsetDp = keyboardInsetDp,
+                                bottomSafeArea = bottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+                            )
+                    ),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SlockFilePreviewEditorToolButton(
-                    label = stringResource(MR.strings.file_preview_toolbar_pen),
-                    icon = SlockLucideIconName.Pencil,
-                    selected = tool == SlockComposerImageEditorTool.Pen,
-                    enabled = !saving,
-                    onClick = { tool = SlockComposerImageEditorTool.Pen },
-                    modifier = Modifier.weight(1f)
-                )
-                SlockFilePreviewEditorToolButton(
-                    label = stringResource(MR.strings.file_preview_toolbar_text),
-                    icon = SlockLucideIconName.Type,
-                    selected = tool == SlockComposerImageEditorTool.Text,
-                    enabled = !saving,
-                    onClick = { tool = SlockComposerImageEditorTool.Text },
-                    modifier = Modifier.weight(1f)
-                )
-                SlockFilePreviewEditorToolButton(
-                    label = stringResource(MR.strings.file_preview_toolbar_erase),
-                    icon = SlockLucideIconName.Eraser,
-                    selected = tool == SlockComposerImageEditorTool.Eraser,
-                    enabled = !saving,
-                    onClick = { tool = SlockComposerImageEditorTool.Eraser },
-                    modifier = Modifier.weight(1f)
-                )
-            }
             if (tool == SlockComposerImageEditorTool.Text) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1191,7 +1334,10 @@ private fun SlockFilePreviewComposerImageEditor(
                         onValueChange = { textDraft = it.take(80) },
                         placeholder = stringResource(MR.strings.file_preview_placeholder_tap_to_add_text),
                         placeholderColor = SlockColor.TextMutedGray,
-                        autoFocus = false,
+                        autoFocus = true,
+                        keyboardHeightChange = { params ->
+                            keyboardInsetDp = params.height.coerceAtLeast(0f)
+                        },
                         maxLines = 1,
                         textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
                         modifier =
@@ -1202,72 +1348,67 @@ private fun SlockFilePreviewComposerImageEditor(
                                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                     )
-                    SlockBrutalActionButton(
-                        label = stringResource(MR.strings.common_add),
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Check,
+                        contentDescription = stringResource(MR.strings.common_add),
                         onClick = ::addTextAnnotation,
                         enabled = !saving && textDraft.isNotBlank(),
-                        leadingIcon = SlockLucideIconName.Check,
-                        minWidth = 60.dp,
-                        minHeight = 34.dp,
-                        shadowOffset = 2.dp,
-                        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                        backgroundColor = SlockColor.BrandYellow,
+                        size = SlockSize.IconButton,
+                        shadowOffset = 2.dp
                     )
                 }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
-                    onClick = onCancel,
-                    enabled = !saving,
-                    leadingIcon = SlockLucideIconName.X,
-                    minHeight = 34.dp,
-                    shadowOffset = 2.dp,
-                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
-                    modifier = Modifier.weight(1f)
-                )
-                SlockBrutalActionButton(
+                SlockFilePreviewEditorToolButton(
                     label = stringResource(MR.strings.common_undo),
+                    icon = SlockLucideIconName.RotateCcw,
+                    selected = false,
+                    enabled = !saving && (strokes.isNotEmpty() || textAnnotations.isNotEmpty()),
                     onClick = {
                         when {
                             textAnnotations.isNotEmpty() -> textAnnotations = textAnnotations.dropLast(1)
                             strokes.isNotEmpty() -> strokes = strokes.dropLast(1)
                         }
-                    },
-                    enabled = !saving && (strokes.isNotEmpty() || textAnnotations.isNotEmpty()),
-                    leadingIcon = SlockLucideIconName.RotateCcw,
-                    minHeight = 34.dp,
-                    shadowOffset = 2.dp,
-                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
-                    modifier = Modifier.weight(1f)
+                    }
                 )
-                SlockBrutalActionButton(
+                SlockFilePreviewEditorToolButton(
+                    label = stringResource(MR.strings.file_preview_toolbar_pen),
+                    icon = SlockLucideIconName.Pencil,
+                    selected = tool == SlockComposerImageEditorTool.Pen,
+                    enabled = !saving,
+                    onClick = { selectTool(SlockComposerImageEditorTool.Pen) }
+                )
+                SlockFilePreviewEditorToolButton(
+                    label = stringResource(MR.strings.file_preview_toolbar_text),
+                    icon = SlockLucideIconName.Type,
+                    selected = tool == SlockComposerImageEditorTool.Text,
+                    enabled = !saving,
+                    onClick = { selectTool(SlockComposerImageEditorTool.Text) }
+                )
+                SlockFilePreviewEditorToolButton(
+                    label = stringResource(MR.strings.file_preview_toolbar_erase),
+                    icon = SlockLucideIconName.Eraser,
+                    selected = tool == SlockComposerImageEditorTool.Eraser,
+                    enabled = !saving,
+                    onClick = { selectTool(SlockComposerImageEditorTool.Eraser) }
+                )
+                SlockFilePreviewEditorToolButton(
                     label = stringResource(MR.strings.common_clear),
+                    icon = SlockLucideIconName.Trash2,
+                    selected = false,
+                    destructive = true,
+                    enabled = !saving && (strokes.isNotEmpty() || activeStroke.isNotEmpty() || textAnnotations.isNotEmpty()),
                     onClick = {
                         strokes = emptyList()
                         activeStroke = emptyList()
                         textAnnotations = emptyList()
                         textDraft = ""
-                    },
-                    enabled = !saving && (strokes.isNotEmpty() || activeStroke.isNotEmpty() || textAnnotations.isNotEmpty()),
-                    leadingIcon = SlockLucideIconName.Trash2,
-                    minHeight = 34.dp,
-                    shadowOffset = 2.dp,
-                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
-                    modifier = Modifier.weight(1f)
-                )
-                SlockBrutalActionButton(
-                    label = if (saving) "Saving" else "Save",
-                    onClick = onSave,
-                    enabled = !saving && payload.imageUrl != null,
-                    leadingIcon = if (saving) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Check,
-                    minHeight = 34.dp,
-                    shadowOffset = 2.dp,
-                    textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp),
-                    modifier = Modifier.weight(1f)
+                    }
                 )
             }
         }
@@ -1281,20 +1422,42 @@ private fun SlockFilePreviewEditorToolButton(
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    destructive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    SlockBrutalActionButton(
-        label = label,
+    SlockBrutalIconButton(
+        iconName = icon,
+        contentDescription = label,
         onClick = onClick,
         enabled = enabled,
-        leadingIcon = icon,
-        minWidth = 0.dp,
-        minHeight = 32.dp,
         shadowOffset = if (selected) 2.dp else 0.dp,
-        backgroundColor = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite,
-        textStyle = SlockType.Button.copy(fontSize = 11.sp, lineHeight = 13.sp),
+        backgroundColor =
+            when {
+                selected -> SlockColor.BrandYellow
+                destructive -> SlockColor.AccentRed.copy(alpha = 0.18f)
+                else -> SlockColor.SurfaceWhite
+            },
+        disabledBackgroundColor = SlockColor.SurfaceCream,
+        disabledIconColor = SlockColor.TextMutedGrayArgb,
+        size = SlockSize.IconButton,
+        iconSize = 18.dp,
         modifier = modifier
     )
+}
+
+internal fun slockFilePreviewEditorBottomPadding(
+    keyboardInsetDp: Float,
+    bottomSafeArea: com.tencent.kuikly.compose.ui.unit.Dp,
+    keyboardInsetExcludesBottomSafeArea: Boolean,
+): com.tencent.kuikly.compose.ui.unit.Dp {
+    val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
+    val safeAreaInset =
+        if (keyboardInsetDp > 0f && !keyboardInsetExcludesBottomSafeArea) {
+            0.dp
+        } else {
+            bottomSafeArea
+        }
+    return SlockSpacing.Sm + keyboardInset + safeAreaInset
 }
 
 private fun SlockComposerImageTextAnnotation.hitTest(point: Offset): Boolean {
@@ -1305,6 +1468,9 @@ private fun SlockComposerImageTextAnnotation.hitTest(point: Offset): Boolean {
         point.y >= position.y - 10f &&
         point.y <= position.y + height
 }
+
+private const val SlockFilePreviewEditorVisualPreviewUri =
+    "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20390%20520%22%3E%3Crect%20width%3D%22390%22%20height%3D%22520%22%20fill%3D%22%23FDE047%22%2F%3E%3Ccircle%20cx%3D%22290%22%20cy%3D%22120%22%20r%3D%2270%22%20fill%3D%22%23F472B6%22%2F%3E%3Cpath%20d%3D%22M30%20460L135%20280l75%2090%2070-65%2080%20155H30z%22%20fill%3D%22%23000000%22%2F%3E%3C%2Fsvg%3E"
 
 internal fun slockComposerImageEraseStrokes(strokes: List<List<Offset>>, point: Offset): List<List<Offset>> =
     strokes.filterNot { stroke -> slockComposerImageStrokeHit(stroke, point) }
@@ -3137,6 +3303,7 @@ internal fun SlockFilePreviewPageScaffold(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md,
+    trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     overflowMenuItems: List<SlockRaftUiMenuItem> = emptyList(),
     onOverflowMenuSelect: (String) -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
@@ -3159,18 +3326,19 @@ internal fun SlockFilePreviewPageScaffold(
                     )
                 },
                 trailingContent =
-                    if (overflowMenuItems.isNotEmpty()) {
-                        {
-                            SlockFilePreviewOverflowMenuButton(
-                                onOpenMenu = { anchor ->
-                                    menuAnchor = anchor
-                                    menuOpen = true
-                                }
-                            )
+                    trailingContent
+                        ?: if (overflowMenuItems.isNotEmpty()) {
+                            {
+                                SlockFilePreviewOverflowMenuButton(
+                                    onOpenMenu = { anchor ->
+                                        menuAnchor = anchor
+                                        menuOpen = true
+                                    }
+                                )
+                            }
+                        } else {
+                            null
                         }
-                    } else {
-                        null
-                    }
             )
             Column(
                 modifier = Modifier.fillMaxSize().padding(contentPadding),
