@@ -393,6 +393,41 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun sortChangeDuringInitialSearchStaysLoadingUntilReplacementCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = QueuedSearchRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+        assertEquals(true, store.state.value.search.loading)
+        assertEquals(false, store.state.value.search.refreshing)
+        assertEquals(emptyList(), store.state.value.search.items)
+
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
+
+        assertEquals(true, store.state.value.search.loading)
+        assertEquals(false, store.state.value.search.refreshing)
+        assertEquals(emptyList(), store.state.value.search.items)
+
+        search.completeNext("message-stale")
+        assertEquals(true, store.state.value.search.loading)
+        assertEquals(emptyList(), store.state.value.search.items)
+
+        search.completeNext("message-recent")
+        assertEquals(false, store.state.value.search.loading)
+        assertEquals(false, store.state.value.search.refreshing)
+        assertEquals(listOf("message-recent"), store.state.value.search.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun blankQueryWithFilterAutoBrowsesServerResults() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = FakeSearchRepository(items = listOf(inboxItem("message-filter-only")))

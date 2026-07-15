@@ -366,7 +366,13 @@ class SharedHomeSearchSavedStore(
             scope.launch {
                 val startedAt = TimeSource.Monotonic.markNow()
                 val previous = _state.value.search
-                val refreshInPlace = refresh && (previous.searched || previous.items.isNotEmpty())
+                // `searched` becomes true as soon as the first request starts. A filter/sort
+                // change can replace that request before it has produced any rows, so using
+                // `searched` as proof of visible content turns the replacement into
+                // refreshing=true + loading=false + items=[], which the UI presents as an
+                // empty result while the new request is still running. Only a real retained
+                // snapshot qualifies for stale-while-refresh presentation.
+                val refreshInPlace = refresh && previous.items.isNotEmpty()
                 _state.value =
                     _state.value.copy(
                         search =
