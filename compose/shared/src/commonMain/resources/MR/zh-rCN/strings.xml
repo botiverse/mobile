@@ -341,7 +341,7 @@
     <string name="thread_composer_attachment_file">文件</string>
     <string name="thread_members_title">成员（%1$d）</string>
     <string name="thread_members_agents">智能体</string>
-    <string name="thread_members_humans">真人</string>
+    <string name="thread_members_humans">人类</string>
     <string name="thread_members_removing">正在移除</string>
     <string name="thread_members_remove_failed">无法移除成员</string>
     <string name="thread_members_remove_no_permission">无法移除成员：没有权限</string>
@@ -403,7 +403,7 @@
     <string name="thread_action_card_detail_required_computer">指定设备：%1$s</string>
     <string name="thread_action_card_detail_suggested_computer">建议设备：%1$s</string>
     <string name="thread_action_card_detail_no_description">未预填描述。</string>
-    <string name="thread_action_card_detail_humans">真人：%1$s</string>
+    <string name="thread_action_card_detail_humans">人类：%1$s</string>
     <string name="thread_action_card_detail_agents">智能体：%1$s</string>
     <string name="thread_action_card_detail_service">服务：%1$s</string>
     <string name="thread_action_card_detail_agent">智能体：@%1$s</string>
@@ -411,8 +411,8 @@
     <string name="thread_action_card_label_service">服务</string>
     <string name="thread_action_card_label_agent">智能体</string>
     <string name="thread_action_card_label_scopes">权限范围：</string>
-    <string name="thread_action_card_approval_hint">%1$s 正在请求真人批准使用 %2$s。服务器安装的应用无需此批准；Marketplace 应用需要批准。</string>
-    <string name="thread_action_card_scope_identity">读取你的身份类型（真人或智能体）、Raft 主体，以及当前代表的服务器和身份。不包含内容访问权限。</string>
+    <string name="thread_action_card_approval_hint">%1$s 正在请求人类批准使用 %2$s。服务器安装的应用无需此批准；Marketplace 应用需要批准。</string>
+    <string name="thread_action_card_scope_identity">读取你的身份类型（人类或智能体）、Raft 主体，以及当前代表的服务器和身份。不包含内容访问权限。</string>
     <string name="thread_action_card_scope_openid">使用 Raft 登录并签发稳定身份令牌，仅用于身份验证。</string>
     <string name="thread_action_card_scope_profile">读取显示名称等基本资料，不访问消息、文件或智能体。</string>
     <string name="thread_action_card_scope_other">允许应用向 Raft 请求此项命名权限。</string>
@@ -621,7 +621,7 @@
     <string name="member_action_view_service">查看服务</string>
     <string name="member_action_view_logs">查看日志</string>
     <string name="member_action_use_default">使用默认值</string>
-    <string name="member_action_invite_human">邀请真人</string>
+    <string name="member_action_invite_human">邀请人类</string>
     <string name="member_action_restart">重启 %1$s</string>
     <string name="member_section_threads">话题</string>
     <string name="member_section_tasks">任务</string>
@@ -1107,7 +1107,7 @@
     <string name="agent_create_reasoning_medium">中</string>
     <string name="agent_create_reasoning_high">高</string>
     <string name="agent_create_reasoning_extra_high">极高</string>
-    <string name="agent_invite_title">邀请真人</string>
+    <string name="agent_invite_title">邀请人类</string>
     <string name="agent_invite_label_emails">邮箱</string>
     <string name="agent_invite_placeholder_email">teammate@example.com</string>
     <string name="agent_invite_label_join_link">加入链接</string>
@@ -1560,14 +1560,14 @@
     <string name="settings_server_action_save_agreement">保存协议</string>
     <string name="settings_server_label_preview">预览</string>
     <string name="settings_server_empty_agreement_preview">协议预览会显示在这里。</string>
-    <string name="settings_server_label_onboarding_agent">真人入门智能体</string>
+    <string name="settings_server_label_onboarding_agent">人类入门智能体</string>
     <string name="settings_server_onboarding_disabled">停用（不自动入门）</string>
-    <string name="settings_server_onboarding_disabled_detail">不自动分配智能体迎接新加入的真人。</string>
+    <string name="settings_server_onboarding_disabled_detail">不自动分配智能体迎接新加入的人类。</string>
     <string name="settings_server_label_new_agent_greeting">新智能体问候</string>
     <string name="settings_server_action_save_onboarding">保存入门设置</string>
-    <string name="settings_server_option_hide_humans">隐藏真人</string>
+    <string name="settings_server_option_hide_humans">隐藏人类</string>
     <string name="settings_server_option_visible">可见</string>
-    <string name="settings_server_member_permissions_detail">隐藏后，成员角色用户无法查看服务器范围的真人列表、关系图和真人数量。</string>
+    <string name="settings_server_member_permissions_detail">隐藏后，成员角色用户无法查看服务器范围的人类列表、关系图和人类数量。</string>
     <string name="settings_server_action_save_permissions">保存权限</string>
     <string name="settings_storage_subtitle">本地缓存和临时文件</string>
     <string name="settings_storage_detail">本地缓存</string>
