@@ -1702,23 +1702,25 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
 ): List<SharedMembersMemberSuggestion> {
     val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()
     for (member in this) {
+        val memberId = member.id.value.trim().takeIf { it.isNotBlank() } ?: continue
         val handle = member.serverMembersSuggestionHandle() ?: continue
-        val key = handle.lowercase()
+        val avatar = member.avatarSlotResolution()
+        val suggestion =
+            SharedMembersMemberSuggestion(
+                displayName = member.displayName.trim().ifBlank { handle },
+                handle = handle,
+                inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel,
+                sourceServerLabel = member.serverMembersSourceServerLabel(localServerId),
+                kind = member.kind,
+                description = member.description?.trim()?.takeIf { it.isNotBlank() },
+                avatarWireValue = avatar.effectiveAvatarWireValue,
+                avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
+                    ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() },
+                memberId = memberId
+            )
+        val key = suggestion.memberSuggestionIdentityKey()
         if (!deduped.containsKey(key)) {
-            val avatar = member.avatarSlotResolution()
-            deduped[key] =
-                SharedMembersMemberSuggestion(
-                    displayName = member.displayName.trim().ifBlank { handle },
-                    handle = handle,
-                    inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel,
-                    sourceServerLabel = member.serverMembersSourceServerLabel(localServerId),
-                    kind = member.kind,
-                    description = member.description?.trim()?.takeIf { it.isNotBlank() },
-                    avatarWireValue = avatar.effectiveAvatarWireValue,
-                    avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
-                        ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() },
-                    memberId = member.id.value
-                )
+            deduped[key] = suggestion
         }
     }
     return deduped.values.toList()
@@ -1784,12 +1786,12 @@ private fun List<SharedMembersMemberSuggestion>.patchMemberSuggestion(
             remove = true
         )
     }
-    val key = suggestion.memberSuggestionPatchKey()
+    val key = suggestion.memberSuggestionIdentityKey()
     if (key.isBlank()) return this
     var replaced = false
     val next =
         map { existing ->
-            if (existing.memberSuggestionPatchKey() == key) {
+            if (existing.memberSuggestionIdentityKey() == key) {
                 replaced = true
                 existing.mergePatchedSuggestion(suggestion)
             } else {
@@ -1817,11 +1819,6 @@ private fun List<SharedMembersMemberSuggestion>.removeOrMarkMemberSuggestionOuts
         }
     }
 }
-
-private fun SharedMembersMemberSuggestion.memberSuggestionPatchKey(): String =
-    memberId?.trim()?.takeIf { it.isNotBlank() }
-        ?: handle.trim().lowercase().takeIf { it.isNotBlank() }
-        ?: displayName.trim().lowercase()
 
 private fun SharedMembersMemberSuggestion.mergePatchedSuggestion(
     patch: SharedMembersMemberSuggestion
