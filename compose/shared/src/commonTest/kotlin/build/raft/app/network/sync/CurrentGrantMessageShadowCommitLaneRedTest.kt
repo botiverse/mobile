@@ -528,13 +528,20 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
     }
 
     @Test
-    fun strictValidatorRejectsStoredScalarMismatch() {
+    fun strictValidatorRejectsEachStoredScalarMismatchIndependently() {
         val scope = scope()
-        assertCorrupt(
-            StrictMessageRestoreCorruptionKind.FactScalarMismatch,
-            listOf(storedFact(scope, row(), seq = 99L)),
-            cursor(99),
-        )
+        val decoded = row()
+        listOf(
+            storedFact(scope, decoded, id = "stored-other-id"),
+            storedFact(scope, decoded, seq = 99L),
+            storedFact(scope, decoded, createdAt = "2026-07-15T23:59:59Z"),
+        ).forEach { scalarMismatch ->
+            assertCorrupt(
+                StrictMessageRestoreCorruptionKind.FactScalarMismatch,
+                listOf(scalarMismatch),
+                cursor(1),
+            )
+        }
     }
 
     @Test
@@ -571,12 +578,32 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
     }
 
     @Test
+    fun strictValidatorRejectsDecodedChannelOutsideRequestedScopeEvenWhenStoredChannelMatches() {
+        val scope = scope()
+        val decodedOutsideScope = row(channel = "other-channel")
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.FactScopeMismatch,
+            listOf(
+                storedFact(
+                    scope = scope,
+                    row = decodedOutsideScope,
+                    channelId = scope.scopeId,
+                ),
+            ),
+            cursor(1),
+        )
+    }
+
+    @Test
     fun strictValidatorRejectsDuplicateDecodedFactIdentity() {
         val scope = scope()
-        val duplicate = storedFact(scope, row())
+        val decoded = row(id = "canonical-id")
         assertCorrupt(
             StrictMessageRestoreCorruptionKind.DuplicateFactId,
-            listOf(duplicate, duplicate),
+            listOf(
+                storedFact(scope, decoded, id = "stored-id-a"),
+                storedFact(scope, decoded, id = "stored-id-b"),
+            ),
             cursor(1),
         )
     }
@@ -590,6 +617,35 @@ class CurrentGrantMessageShadowCommitLaneRedTest {
             StrictMessageRestoreCorruptionKind.FactOrderInvalid,
             listOf(storedFact(scope, later), storedFact(scope, earlier)),
             PersistedCursor(2L, 1L, 2L),
+        )
+    }
+
+    @Test
+    fun strictValidatorAcceptsAscendingIdTieBreakForEqualSeq() {
+        val scope = scope()
+        val a = row(id = "a", seq = 7)
+        val b = row(id = "b", seq = 7)
+        val coveringCursor = PersistedCursor(7L, 7L, 7L)
+
+        val valid = StrictMessageScopeSnapshotValidator().validate(
+            scope,
+            listOf(storedFact(scope, a), storedFact(scope, b)),
+            coveringCursor,
+        )
+        assertIs<StrictMessageRestoreResult.Valid>(valid)
+    }
+
+    @Test
+    fun strictValidatorRejectsDescendingIdTieBreakForEqualSeq() {
+        val scope = scope()
+        val a = row(id = "a", seq = 7)
+        val b = row(id = "b", seq = 7)
+        val coveringCursor = PersistedCursor(7L, 7L, 7L)
+
+        assertCorrupt(
+            StrictMessageRestoreCorruptionKind.FactOrderInvalid,
+            listOf(storedFact(scope, b), storedFact(scope, a)),
+            coveringCursor,
         )
     }
 
