@@ -94,9 +94,9 @@ export class SlockOhosDiagnostics {
   private static asyncDispatchGeneration: number = 0;
   private static upstreamPending: boolean = false;
   private static upstreamHealthy: boolean = true;
-  private static persistentRecorder: ((tag: string, message: string) => void) | null = null;
+  private static persistentRecorder: ((entry: SlockOhosDiagnosticEntry) => void) | null = null;
 
-  static setPersistentRecorder(recorder: ((tag: string, message: string) => void) | null): void {
+  static setPersistentRecorder(recorder: ((entry: SlockOhosDiagnosticEntry) => void) | null): void {
     SlockOhosDiagnostics.persistentRecorder = recorder;
   }
 
@@ -132,7 +132,7 @@ export class SlockOhosDiagnostics {
     };
     SlockOhosDiagnostics.mirrorToHiLog(entry.tag, entry.message, entry.level);
     SlockOhosDiagnostics.appendEntry(entry);
-    SlockOhosDiagnostics.persistentRecorder?.(entry.tag, entry.message);
+    SlockOhosDiagnostics.persistentRecorder?.(entry);
   }
 
   /** Fixed-cost render-caller capture; regex/format/routing run in a taskpool consumer. */
@@ -217,7 +217,7 @@ export class SlockOhosDiagnostics {
     if (mirrorToHiLog) {
       SlockOhosDiagnostics.mirrorToHiLog(safeTag, safeMessage, normalizedLevel);
     }
-    SlockOhosDiagnostics.appendEntry({
+    const persistentEntry: SlockOhosDiagnosticEntry = {
       timestampMillis: entry.timestampMillis,
       level: normalizedLevel,
       tag: safeTag,
@@ -228,8 +228,9 @@ export class SlockOhosDiagnostics {
       seq: entry.seq === undefined ? SlockOhosDiagnostics.allocateSequence() : entry.seq,
       dropped: entry.dropped === undefined ? 0 : entry.dropped,
       truncated: entry.truncated || entry.message.length > safeMessage.length,
-    });
-    SlockOhosDiagnostics.persistentRecorder?.(safeTag, safeMessage.slice(0, 280));
+    };
+    SlockOhosDiagnostics.appendEntry(persistentEntry);
+    SlockOhosDiagnostics.persistentRecorder?.(persistentEntry);
   }
 
   static recent(limit: number = 500): SlockOhosDiagnosticEntry[] {

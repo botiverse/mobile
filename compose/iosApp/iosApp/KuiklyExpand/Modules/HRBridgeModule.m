@@ -38,7 +38,8 @@ static NSUInteger const SlockDiagnosticsMessageMaxChars = 2048;
 static NSUInteger const SlockDiagnosticsRecentMaxChars = 120000;
 static unsigned long long const SlockDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
 static NSUInteger const SlockDiagnosticsLogMaxFiles = 4;
-static NSUInteger const SlockDiagnosticsAttachmentMaxLogFiles = 6;
+static NSUInteger const SlockDiagnosticsMaxLaunchSessions = 5;
+static NSUInteger const SlockDiagnosticsAttachmentMaxLogFiles = 20;
 static NSUInteger const SlockDiagnosticsMinimumRetainedSnapshotCount = 5;
 static NSTimeInterval const SlockDiagnosticsFeedbackPruneMinimumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSUInteger const SlockDiagnosticsOutstandingLimit = 512;
@@ -670,8 +671,57 @@ static NSString *SlockDiagnosticsDirectoryPath(void) {
     return [base stringByAppendingPathComponent:SlockDiagnosticsLogDirName];
 }
 
+static NSString *SlockDiagnosticsLaunchSessionIdentifier(void) {
+    static NSString *identifier;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        long long timestampMs = (long long)(NSDate.date.timeIntervalSince1970 * 1000.0);
+        identifier = [NSString stringWithFormat:@"launch-%lld-%@", timestampMs, NSUUID.UUID.UUIDString.lowercaseString];
+    });
+    return identifier;
+}
+
+static NSArray<NSString *> *SlockDiagnosticsLaunchSessionDirectories(void) {
+    NSString *root = SlockDiagnosticsDirectoryPath();
+    NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:root error:nil] ?: @[];
+    NSMutableArray<NSString *> *directories = [NSMutableArray array];
+    for (NSString *name in names) {
+        if (![name hasPrefix:@"launch-"]) {
+            continue;
+        }
+        NSString *path = [root stringByAppendingPathComponent:name];
+        BOOL isDirectory = NO;
+        if ([[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDirectory] && isDirectory) {
+            [directories addObject:path];
+        }
+    }
+    [directories sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+        return [right.lastPathComponent compare:left.lastPathComponent];
+    }];
+    return directories;
+}
+
+static NSString *SlockDiagnosticsCurrentLaunchDirectoryPath(void) {
+    static NSString *path;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSString *root = SlockDiagnosticsDirectoryPath();
+        path = [root stringByAppendingPathComponent:SlockDiagnosticsLaunchSessionIdentifier()];
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        [fileManager createDirectoryAtPath:path withIntermediateDirectories:YES attributes:nil error:nil];
+        NSArray<NSString *> *sessions = SlockDiagnosticsLaunchSessionDirectories();
+        for (NSUInteger index = SlockDiagnosticsMaxLaunchSessions; index < sessions.count; index++) {
+            NSString *candidate = sessions[index];
+            if (![candidate isEqualToString:path]) {
+                [fileManager removeItemAtPath:candidate error:nil];
+            }
+        }
+    });
+    return path;
+}
+
 static NSString *SlockDiagnosticsActiveLogPath(void) {
-    return [SlockDiagnosticsDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsLogFileName];
+    return [SlockDiagnosticsCurrentLaunchDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsLogFileName];
 }
 
 static BOOL SlockDiagnosticsIsHighSurrogate(unichar character) {
@@ -917,24 +967,40 @@ static NSArray<NSDictionary *> *SlockDiagnosticsSnapshotMemoryEntries(void) {
 }
 
 static NSArray<NSString *> *SlockDiagnosticsLogFiles(void) {
-    NSString *dir = SlockDiagnosticsDirectoryPath();
-    NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
     NSMutableArray<NSString *> *paths = [NSMutableArray array];
-    for (NSString *name in names) {
-        if (![name hasPrefix:SlockDiagnosticsLogFileName]) {
-            continue;
+    NSArray<NSString *> *sessions = SlockDiagnosticsLaunchSessionDirectories();
+    NSUInteger sessionCount = MIN(sessions.count, SlockDiagnosticsMaxLaunchSessions);
+    for (NSUInteger sessionIndex = 0; sessionIndex < sessionCount; sessionIndex++) {
+        NSString *dir = sessions[sessionIndex];
+        NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
+        NSMutableArray<NSString *> *sessionPaths = [NSMutableArray array];
+        for (NSString *name in names) {
+            if (![name hasPrefix:SlockDiagnosticsLogFileName]) {
+                continue;
+            }
+            NSString *path = [dir stringByAppendingPathComponent:name];
+            NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+            if ([attributes[NSFileSize] unsignedLongLongValue] > 0) {
+                [sessionPaths addObject:path];
+            }
         }
-        NSString *path = [dir stringByAppendingPathComponent:name];
-        NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
-        if ([attributes[NSFileSize] unsignedLongLongValue] > 0) {
-            [paths addObject:path];
+        [sessionPaths sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+            NSDate *leftDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:left error:nil] fileModificationDate] ?: NSDate.distantPast;
+            NSDate *rightDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:right error:nil] fileModificationDate] ?: NSDate.distantPast;
+            return [rightDate compare:leftDate];
+        }];
+        [paths addObjectsFromArray:sessionPaths];
+    }
+    if (sessionCount < SlockDiagnosticsMaxLaunchSessions) {
+        NSString *dir = SlockDiagnosticsDirectoryPath();
+        NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
+        for (NSString *name in names) {
+            if (![name hasPrefix:SlockDiagnosticsLogFileName]) continue;
+            NSString *path = [dir stringByAppendingPathComponent:name];
+            NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+            if ([attributes[NSFileSize] unsignedLongLongValue] > 0) [paths addObject:path];
         }
     }
-    [paths sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
-        NSDate *leftDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:left error:nil] fileModificationDate] ?: NSDate.distantPast;
-        NSDate *rightDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:right error:nil] fileModificationDate] ?: NSDate.distantPast;
-        return [rightDate compare:leftDate];
-    }];
     return paths;
 }
 
@@ -977,13 +1043,13 @@ static BOOL SlockDiagnosticsRotateLogsIfNeeded(NSString *activePath) {
 
 static BOOL SlockDiagnosticsAppendEntry(NSDictionary *entry, BOOL synchronize) {
     @try {
-        NSString *dir = SlockDiagnosticsDirectoryPath();
+        NSString *activePath = SlockDiagnosticsActiveLogPath();
+        NSString *dir = activePath.stringByDeletingLastPathComponent;
         NSFileManager *fileManager = [NSFileManager defaultManager];
         NSError *directoryError = nil;
         if (![fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:&directoryError]) {
             return NO;
         }
-        NSString *activePath = SlockDiagnosticsActiveLogPath();
         if (!SlockDiagnosticsRotateLogsIfNeeded(activePath)) {
             atomic_fetch_add_explicit(&SlockDiagnosticsRotationFailedCount, 1, memory_order_relaxed);
         }
@@ -1311,7 +1377,11 @@ static NSString *SlockDiagnosticsExportRecentText(NSUInteger maxChars) {
         for (NSUInteger index = 0; index < fileCount; index++) {
             NSString *path = files[index];
             NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
-            [text appendFormat:@"\n### %@ (%llu bytes)\n", path.lastPathComponent, [attributes[NSFileSize] unsignedLongLongValue]];
+            NSString *sessionName = path.stringByDeletingLastPathComponent.lastPathComponent;
+            NSString *displayName = [sessionName hasPrefix:@"launch-"]
+                ? [NSString stringWithFormat:@"%@/%@", sessionName, path.lastPathComponent]
+                : [NSString stringWithFormat:@"legacy/%@", path.lastPathComponent];
+            [text appendFormat:@"\n### %@ (%llu bytes)\n", displayName, [attributes[NSFileSize] unsignedLongLongValue]];
             [text appendString:SlockDiagnosticsReadTail(path, MAX(fileBudget / MAX(fileCount, 1), 1000))];
         }
         if (text.length > maxChars) {
@@ -1333,7 +1403,7 @@ static void SlockDiagnosticsClear(void) {
         NSString *dir = SlockDiagnosticsDirectoryPath();
         NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
         for (NSString *name in names) {
-            if ([name hasPrefix:SlockDiagnosticsLogFileName]) {
+            if ([name hasPrefix:SlockDiagnosticsLogFileName] || [name hasPrefix:@"launch-"]) {
                 [[NSFileManager defaultManager] removeItemAtPath:[dir stringByAppendingPathComponent:name] error:nil];
             }
         }
@@ -1550,7 +1620,12 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
             if (![fileManager isReadableFileAtPath:logPath]) {
                 continue;
             }
-            NSString *snapshotLogPath = [snapshotDir stringByAppendingPathComponent:logPath.lastPathComponent];
+            NSString *sessionName = logPath.stringByDeletingLastPathComponent.lastPathComponent;
+            NSString *snapshotLogDir = [sessionName hasPrefix:@"launch-"]
+                ? [snapshotDir stringByAppendingPathComponent:sessionName]
+                : [snapshotDir stringByAppendingPathComponent:@"legacy"];
+            [fileManager createDirectoryAtPath:snapshotLogDir withIntermediateDirectories:YES attributes:nil error:nil];
+            NSString *snapshotLogPath = [snapshotLogDir stringByAppendingPathComponent:logPath.lastPathComponent];
             if (SlockDiagnosticsWriteSanitizedSnapshotLog(logPath, snapshotLogPath)) {
                 [attachmentPaths addObject:snapshotLogPath];
             }

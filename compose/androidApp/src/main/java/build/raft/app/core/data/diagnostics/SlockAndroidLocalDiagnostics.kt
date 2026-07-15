@@ -159,14 +159,19 @@ object SlockAndroidLocalDiagnostics {
             }
             SlockGeneralLogRing.logFiles(appContext).forEach { file ->
                 if (file.isFile && file.length() > 0L) {
-                    val entryName = "app_logs/${file.name}".uniqueZipEntryName(seenNames)
+                    val relativePath = SlockGeneralLogRing.relativeLogPath(
+                        SlockGeneralLogRing.logRoot(appContext),
+                        file
+                    )
+                    val entryName = "app_logs/$relativePath".uniqueZipEntryName(seenNames)
                     zip.putNextEntry(ZipEntry(entryName))
                     file.inputStream().buffered().use { input -> input.copyTo(zip) }
                     zip.closeEntry()
                 }
             }
             SlockAuthCriticalJournal.logFiles(appContext).forEach { file ->
-                val entryName = "auth_logs/${file.name}".uniqueZipEntryName(seenNames)
+                val relativePath = SlockAuthCriticalJournal.relativeLogPath(appContext, file)
+                val entryName = "auth_logs/$relativePath".uniqueZipEntryName(seenNames)
                 zip.putNextEntry(ZipEntry(entryName))
                 file.inputStream().buffered().use { input -> input.copyTo(zip) }
                 zip.closeEntry()

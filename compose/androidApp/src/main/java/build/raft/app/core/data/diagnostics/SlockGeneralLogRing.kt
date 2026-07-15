@@ -8,6 +8,7 @@ import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -23,6 +24,7 @@ object SlockGeneralLogRing {
     private const val LegacyLogFileName = "slock-diagnostics.log"
     private const val LogMaxBytes = 1L * 1024L * 1024L
     private const val LogMaxFiles = 30
+    private const val LogMaxSessions = 5
     private const val LogMaxTotalBytes = DiagnosticsLogMaxTotalMiB * 1024L * 1024L
     private const val LogExportMaxFiles = LogMaxFiles
     private const val MemoryEntryLimit = 512
@@ -57,8 +59,20 @@ object SlockGeneralLogRing {
     @Volatile
     private var appContext: Context? = null
 
+    @Volatile
+    private var currentSessionDir: File? = null
+
     fun init(context: Context) {
-        appContext = context.applicationContext
+        val applicationContext = context.applicationContext
+        appContext = applicationContext
+        synchronized(fileLock) {
+            if (currentSessionDir == null) {
+                val root = logDir(applicationContext).apply { mkdirs() }
+                currentSessionDir = File(root, SlockDiagnosticsLaunchSession.id).apply { mkdirs() }
+                pruneOldSessions(root, currentSessionDir)
+                pruneTotalBytes(root, File(requireNotNull(currentSessionDir), LogFileName))
+            }
+        }
     }
 
     internal fun record(record: SanitizedDiagnosticLog) {
@@ -104,18 +118,32 @@ object SlockGeneralLogRing {
             nowMs = System.currentTimeMillis()
         )
 
-    internal fun logFilesIn(dir: File, nowMs: Long): List<File> =
-        dir
-            .walkTopDown()
-            .filter {
-                it.isFile &&
-                    it.length() > 0L &&
-                    isDiagnosticsLogFile(it) &&
-                    isRecentDiagnosticsLogFile(it, nowMs)
+    internal fun logFilesIn(dir: File, nowMs: Long): List<File> {
+        val sessions = diagnosticsSessionDirsIn(dir).take(LogMaxSessions)
+        val sessionGroups =
+            sessions
+                .map { sessionDir ->
+                    sessionDir.listFiles()
+                        .orEmpty()
+                        .filter {
+                            it.isFile &&
+                                it.length() > 0L &&
+                                isDiagnosticsLogFile(it) &&
+                                isRecentDiagnosticsLogFile(it, nowMs)
+                        }
+                        .sortedByDescending { it.lastModified() }
+                }
+        val legacyFallback =
+            if (sessions.size < LogMaxSessions) {
+                legacyDiagnosticsFilesIn(dir, nowMs)
+            } else {
+                emptyList()
             }
-            .toList()
-            .sortedByDescending { it.lastModified() }
-            .take(LogExportMaxFiles)
+        val groups = sessionGroups + listOfNotNull(legacyFallback.takeIf { it.isNotEmpty() })
+        val newestFromEachLaunch = groups.mapNotNull { it.firstOrNull() }
+        val remainingByRecency = groups.flatMap { it.drop(1) }.sortedByDescending { it.lastModified() }
+        return (newestFromEachLaunch + remainingByRecency).distinct().take(LogExportMaxFiles)
+    }
 
     fun exportRecentJsonl(maxChars: Int = RecentDiagnosticsMaxChars): String =
         snapshotMemoryEntries()
@@ -137,7 +165,7 @@ object SlockGeneralLogRing {
                 .take(6)
                 .joinToString(separator = "\n\n") { file ->
                     buildString {
-                        appendLine("### ${file.name} (${file.length()} bytes)")
+                        appendLine("### ${relativeLogPath(logDir(context), file)} (${file.length()} bytes)")
                         append(readTailText(file, (fileBudget / files.take(6).size).coerceAtLeast(1_000)))
                     }
                 }
@@ -174,19 +202,23 @@ object SlockGeneralLogRing {
         }
         runCatching {
             synchronized(fileLock) {
-                val dir = logDir(context).apply { mkdirs() }
+                val dir = currentSessionDir ?: File(logDir(context), SlockDiagnosticsLaunchSession.id).apply {
+                    mkdirs()
+                    currentSessionDir = this
+                }
                 val active = File(dir, LogFileName)
-                rotateLogsIfNeeded(active)
+                val rotated = rotateLogsIfNeeded(active)
                 active.appendText(entry.toJsonLine() + "\n", StandardCharsets.UTF_8)
+                if (rotated) pruneTotalBytes(logDir(context), active)
             }
         }.onFailure {
             droppedEntries.incrementAndGet()
         }
     }
 
-    private fun rotateLogsIfNeeded(active: File) {
-        if (!active.exists() || active.length() < LogMaxBytes) return
-        val dir = active.parentFile ?: return
+    private fun rotateLogsIfNeeded(active: File): Boolean {
+        if (!active.exists() || active.length() < LogMaxBytes) return false
+        val dir = active.parentFile ?: return false
         for (index in LogMaxFiles - 1 downTo 1) {
             val source = File(dir, "$LogFileName.$index")
             val target = File(dir, "$LogFileName.${index + 1}")
@@ -198,6 +230,7 @@ object SlockGeneralLogRing {
             }
         }
         active.renameTo(File(dir, "$LogFileName.1"))
+        return true
     }
 
     private fun readTailText(file: File, maxChars: Int): String =
@@ -225,6 +258,60 @@ object SlockGeneralLogRing {
         }.format(Date(timestampMillis))
 
     private fun logDir(context: Context): File = File(context.filesDir, LogDirName)
+
+    internal fun logRoot(context: Context): File = logDir(context.applicationContext)
+
+    internal fun currentLaunchDir(context: Context): File =
+        synchronized(fileLock) {
+            currentSessionDir ?: File(logDir(context.applicationContext), SlockDiagnosticsLaunchSession.id).apply {
+                mkdirs()
+                currentSessionDir = this
+            }
+        }
+
+    internal fun relativeLogPath(root: File, file: File): String =
+        file.relativeToOrNull(root)?.invariantSeparatorsPath ?: file.name
+
+    private fun diagnosticsSessionDirsIn(root: File): List<File> =
+        root.listFiles()
+            .orEmpty()
+            .filter { it.isDirectory && it.name.startsWith(SessionDirPrefix) }
+            .sortedByDescending { it.name }
+
+    private fun legacyDiagnosticsFilesIn(root: File, nowMs: Long): List<File> =
+        root.listFiles()
+            .orEmpty()
+            .filter {
+                it.isFile &&
+                    it.length() > 0L &&
+                    isDiagnosticsLogFile(it) &&
+                    isRecentDiagnosticsLogFile(it, nowMs)
+            }
+            .sortedByDescending { it.lastModified() }
+
+    private fun pruneOldSessions(root: File, activeSession: File?) {
+        diagnosticsSessionDirsIn(root)
+            .filterNot { it == activeSession }
+            .drop((LogMaxSessions - 1).coerceAtLeast(0))
+            .forEach { it.deleteRecursively() }
+    }
+
+    private fun pruneTotalBytes(root: File, activeFile: File) {
+        val files =
+            diagnosticsSessionDirsIn(root)
+                .flatMap { it.listFiles().orEmpty().filter(File::isFile) }
+                .filter(::isDiagnosticsLogFile)
+                .sortedBy { it.lastModified() }
+                .toMutableList()
+        var totalBytes = files.sumOf(File::length)
+        for (file in files) {
+            if (totalBytes <= LogMaxTotalBytes) break
+            if (file == activeFile) continue
+            val bytes = file.length()
+            if (file.delete()) totalBytes -= bytes
+        }
+        pruneOldSessions(root, activeFile.parentFile)
+    }
 
     private fun isDiagnosticsLogFile(file: File): Boolean =
         file.name.startsWith(LogFileName) || file.name.startsWith(LegacyLogFileName)
@@ -266,7 +353,13 @@ object SlockGeneralLogRing {
                 timeZone = TimeZone.getDefault()
             }
         }
+
+    private const val SessionDirPrefix = "launch-"
+}
+
+internal object SlockDiagnosticsLaunchSession {
+    val id: String = "launch-${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}"
 }
 
 internal fun diagnosticsRetentionLabel(fileCount: Int): String =
-    "Files: $fileCount (up to $DiagnosticsLogMaxTotalMiB MiB, max age 2 days)"
+    "Files: $fileCount (latest 5 launches, up to $DiagnosticsLogMaxTotalMiB MiB, max age 2 days)"
