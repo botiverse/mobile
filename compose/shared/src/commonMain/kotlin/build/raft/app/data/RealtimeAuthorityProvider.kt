@@ -125,8 +125,9 @@ internal class RealtimeAuthorityProvider(
     ): Boolean = registry.runIfCurrentGrant(grant, block)
 
     /**
-     * Seam-only T3 entry. No production caller uses it yet: the RED slice first binds the frozen schedules,
-     * then GREEN may route guarded canonical messages through this existing registry linearization point.
+     * Reuses the registry's current-grant linearization for the provider-central message shadow lane.
+     * Provider-owned guarded canonical New/Updated frames enter that lane before acceptedKeys, recovery, and
+     * sinks; standalone owners with a null runner keep their exact legacy path.
      */
     suspend fun runWithCurrentMessageGrant(
         capturedGrant: RealtimeGrantRecord,
