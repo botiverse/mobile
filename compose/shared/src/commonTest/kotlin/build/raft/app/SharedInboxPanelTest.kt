@@ -185,6 +185,50 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityListRecoversWhenRetainedViewportOnlyReferencesRemovedUnreadRows() {
+        assertEquals(
+            true,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 4,
+                visibleItemKeys = listOf("channel:opened", "activity_load_more"),
+                currentItemKeys = listOf("channel:remaining-1", "channel:remaining-2")
+            )
+        )
+    }
+
+    @Test
+    fun activityListPreservesViewportWhenAnyVisibleAnchorStillExists() {
+        assertEquals(
+            false,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 4,
+                visibleItemKeys = listOf("channel:remaining-2", "activity_load_more"),
+                currentItemKeys = listOf("channel:remaining-1", "channel:remaining-2")
+            )
+        )
+    }
+
+    @Test
+    fun activityListDoesNotRecoverAtTopOrForAnEmptyFilterResult() {
+        assertEquals(
+            false,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 0,
+                visibleItemKeys = emptyList(),
+                currentItemKeys = listOf("channel:remaining")
+            )
+        )
+        assertEquals(
+            false,
+            activityListShouldRecoverVisibleContent(
+                firstVisibleItemIndex = 4,
+                visibleItemKeys = listOf("channel:removed"),
+                currentItemKeys = emptyList()
+            )
+        )
+    }
+
+    @Test
     fun activityPendingUpdateIncrementStaysHiddenNearTop() {
         val items = listOf(activityItem(key = "channel:channel-new"), activityItem(key = "channel:channel-old-top"))
 
