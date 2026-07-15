@@ -1882,11 +1882,11 @@ internal fun shouldStartThreadTasksLoad(
 internal fun shouldBackfillThreadTasksProjection(
     payload: KuiklyThreadScreenPayload,
     taskChannelId: ChannelId?,
-    projectionStatus: SharedTasksDataStoreStatus
+    projection: SharedTasksProjectionSlice
 ): Boolean =
     shouldStartThreadTasksLoad(payload, taskChannelId) &&
         KuiklyThreadTab.fromWireValue(payload.selectedTab) == KuiklyThreadTab.Chat &&
-        projectionStatus != SharedTasksDataStoreStatus.Loaded
+        !projection.isExactScopeLoaded
 
 internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     val timelineChannelId = resolveThreadRouteIdentity().timelineChannelId ?: return null
@@ -4302,12 +4302,22 @@ internal fun SharedThreadRouteContent(
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
     }.collectAsState(SharedTasksProjectionSlice())
+    val serverTaskProjectionSlice by remember(tasksDataStore, currentServerId) {
+        tasksDataStore
+            ?.projectionFlow(
+                serverId = currentServerId,
+                scope = SharedTasksScope.Server
+            )
+            ?.distinctUntilChanged()
+            ?: MutableStateFlow(SharedTasksProjectionSlice())
+    }.collectAsState(SharedTasksProjectionSlice())
     LaunchedEffect(
         currentServerId,
         taskChannelId?.value,
         selectedThreadTab,
         payload.status,
-        taskProjectionSlice.status
+        taskProjectionSlice.status,
+        taskProjectionSlice.isExactScopeLoaded
     ) {
         val serverId = currentServerId ?: return@LaunchedEffect
         val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
@@ -4317,20 +4327,22 @@ internal fun SharedThreadRouteContent(
             !shouldBackfillThreadTasksProjection(
                 payload = currentPayload,
                 taskChannelId = resolvedTaskChannelId,
-                projectionStatus = taskProjectionSlice.status
+                projection = taskProjectionSlice
             )
         ) {
             return@LaunchedEffect
         }
         bridge.log(
             "thread_tasks_projection_backfill_start threadId=${payload.sourceThreadId.orEmpty()} " +
-                "channelId=${resolvedTaskChannelId.value} status=${taskProjectionSlice.status.name}"
+                "channelId=${resolvedTaskChannelId.value} status=${taskProjectionSlice.status.name} " +
+                "exactLoaded=${taskProjectionSlice.isExactScopeLoaded}"
         )
         when (
             val result =
                 sharedStore.loadSnapshot(
                     serverId = serverId,
-                    scope = SharedTasksScope.Channel(resolvedTaskChannelId)
+                    scope = SharedTasksScope.Channel(resolvedTaskChannelId),
+                    forceRefresh = true
                 ) {
                     tasksDataSource.loadChannelTasks(
                         channelId = resolvedTaskChannelId,
@@ -4363,8 +4375,12 @@ internal fun SharedThreadRouteContent(
         }
     }
     val linkedTasksProjection =
-        remember(taskProjectionSlice, taskProjectionReferences) {
-            taskProjectionSlice.threadLinkedTasksProjection(taskProjectionReferences)
+        remember(taskProjectionSlice, serverTaskProjectionSlice, taskProjectionReferences) {
+            threadLinkedTasksProjection(
+                channelProjectionSlice = taskProjectionSlice,
+                serverProjectionSlice = serverTaskProjectionSlice,
+                references = taskProjectionReferences
+            )
         }
     val renderedPayload =
         remember(baseRenderedPayload, threadMembersProjection) {
