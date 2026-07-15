@@ -1264,6 +1264,101 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun jointMemberSuggestionsKeepSameHandleMembersFromDifferentServers() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["joint-1"] =
+            listOf(
+                member("local-agent", "Builder").copy(
+                    handle = "builder",
+                    kind = MemberKind.Agent,
+                    serverId = ServerId("server-1"),
+                    serverName = "Local Lab"
+                ),
+                member("remote-agent", "Builder").copy(
+                    handle = "builder",
+                    kind = MemberKind.Agent,
+                    serverId = ServerId("server-2"),
+                    serverName = "Remote Lab"
+                )
+            )
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "joint-1",
+            memberScopedMentions = true
+        )
+
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "joint-1",
+                memberScopedMentions = true
+            ).suggestions
+        assertEquals(listOf("local-agent", "remote-agent"), suggestions.map { it.memberId })
+        assertEquals(listOf(null, "Remote Lab"), suggestions.map { it.sourceServerLabel })
+        assertEquals(listOf("builder", "builder"), suggestions.map { it.handle })
+        assertEquals(listOf(true, true), suggestions.map { it.inMentionChannel })
+    }
+
+    @Test
+    fun jointMemberSuggestionPatchKeepsHumanAndAgentWithCollidingIdsDistinct() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["joint-1"] =
+            listOf(
+                member("same-id", "Builder Agent").copy(handle = "builder", kind = MemberKind.Agent),
+                member("same-id", "Builder Human").copy(handle = "builder", kind = MemberKind.Human)
+            )
+        val store = SharedServerMembersStore(repository)
+        val serverId = ServerId("server-1")
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = serverId,
+            mentionChannelId = "joint-1",
+            memberScopedMentions = true
+        )
+        store.patchMentionChannelMemberSuggestion(
+            serverId = serverId,
+            mentionChannelId = "joint-1",
+            memberScopedMentions = true,
+            member = member("same-id", "Updated Human").copy(handle = "builder", kind = MemberKind.Human),
+            inMentionChannel = true
+        )
+
+        val suggestions =
+            store.state.value.memberSuggestionSlice(
+                serverId = serverId,
+                mentionChannelId = "joint-1",
+                memberScopedMentions = true
+            ).suggestions
+        assertEquals(2, suggestions.size)
+        assertEquals("Builder Agent", suggestions.single { it.kind == MemberKind.Agent }.displayName)
+        assertEquals("Updated Human", suggestions.single { it.kind == MemberKind.Human }.displayName)
+    }
+
+    @Test
+    fun memberSuggestionsFailClosedForBlankMemberIdentity() = runBlocking {
+        val repository = FakeMemberRepository()
+        repository.channelMembersByChannel["joint-1"] = listOf(member("", "Unknown").copy(handle = "unknown"))
+        val store = SharedServerMembersStore(repository)
+
+        store.ensureMemberSuggestionsForServer(
+            serverId = ServerId("server-1"),
+            mentionChannelId = "joint-1",
+            memberScopedMentions = true
+        )
+
+        assertEquals(
+            emptyList(),
+            store.state.value.memberSuggestionSlice(
+                serverId = ServerId("server-1"),
+                mentionChannelId = "joint-1",
+                memberScopedMentions = true
+            ).suggestions
+        )
+    }
+
+    @Test
     fun scopedMemberSuggestionsReuseCachedChannelMembers() = runBlocking {
         val repository = FakeMemberRepository()
         repository.membersByServer["server-1"] = listOf(member("u1", "Cindy"), member("u2", "Artin"))

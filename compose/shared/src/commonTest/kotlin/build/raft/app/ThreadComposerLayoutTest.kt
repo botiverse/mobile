@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SharedMembersLoadStatus
+import build.raft.app.model.MemberKind
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -553,6 +554,38 @@ class ThreadComposerLayoutTest {
         assertEquals(emptyList(), groups.inMentionChannel)
         assertEquals(listOf(outside), groups.notInMentionChannel)
         assertEquals(outside, listOf(channelCopy, outside, threadCopy).composerMemberSuggestionCandidateAt(99))
+    }
+
+    @Test
+    fun memberSuggestionGroupsKeepDistinctKindsAndMembersWithTheSameHandle() {
+        val localAgent =
+            KuiklyComposerMemberItem(
+                displayName = "Builder",
+                handle = "builder",
+                memberId = "local-agent",
+                kind = MemberKind.Agent,
+                inMentionChannel = true
+            )
+        val remoteAgent =
+            KuiklyComposerMemberItem(
+                displayName = "Builder",
+                handle = "builder",
+                memberId = "remote-agent",
+                kind = MemberKind.Agent,
+                inMentionChannel = true
+            )
+        val humanWithCollidingId =
+            KuiklyComposerMemberItem(
+                displayName = "Builder Human",
+                handle = "builder",
+                memberId = "local-agent",
+                kind = MemberKind.Human,
+                inMentionChannel = true
+            )
+
+        val groups = listOf(localAgent, remoteAgent, humanWithCollidingId).composerMemberSuggestionGroups()
+
+        assertEquals(listOf(localAgent, remoteAgent, humanWithCollidingId), groups.inMentionChannel)
     }
 
     @Test

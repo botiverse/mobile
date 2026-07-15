@@ -1889,8 +1889,9 @@ internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionGroups(): Co
 
 private fun KuiklyComposerMemberItem.composerMemberSuggestionKey(): String =
     memberId?.trim()?.takeIf { it.isNotBlank() }
-        ?: handle.trim().lowercase().takeIf { it.isNotBlank() }
-        ?: displayName.trim().lowercase()
+        ?.let { "${kind.name}:$it" }
+        ?: handle.trim().lowercase().takeIf { it.isNotBlank() }?.let { "${kind.name}:$it" }
+        ?: "${kind.name}:${displayName.trim().lowercase()}"
 
 internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
     filter { attachment -> attachment.isReadyThreadAttachmentForSend() }
@@ -2025,7 +2026,7 @@ private fun ComposerMemberSuggestionPanel(
                     includeHeader = false
                 ),
             itemCount = members.size,
-            itemKey = { index -> "member-${members[index].handle}" }
+            itemKey = { index -> "member-${members[index].composerMemberSuggestionKey()}" }
         ) { index ->
             val member = members[index]
             ComposerMemberSuggestionRow(
