@@ -122,6 +122,7 @@ internal class SlockSharedStoreProvider private constructor(
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val tasksDataStore: SharedTasksDataStore,
     val serverMembersStore: SharedServerMembersStore,
+    private val processServerMembersCore: ProcessServerMembersCore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -382,10 +383,24 @@ internal class SlockSharedStoreProvider private constructor(
                             networkClient = networkClient(scope),
                             logger = sharedInfoLogger("SlockServerMembers", "shell_server_members_repository")
                         ),
-                    logger = sharedInfoLogger("SlockServerMembers")
+                    logger = sharedInfoLogger("SlockServerMembers"),
+                    processCore = processServerMembersCore,
+                    processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) }
                 )
             }
         }
+
+    private suspend fun processServerMembersOwner(
+        sessionStore: SlockAuthSessionStore,
+        serverId: ServerId
+    ): ProcessServerMembersOwner? {
+        val session = sessionStore.readSession() ?: return null
+        val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+        val accountId = session.user.id.trim()
+        val normalizedServerId = serverId.value.trim()
+        if (environmentId.isBlank() || accountId.isBlank() || normalizedServerId.isBlank()) return null
+        return ProcessServerMembersOwner(environmentId, accountId, normalizedServerId)
+    }
 
     fun realtimeDomainEventOwner(scope: SlockShellStoreScope): SharedRealtimeDomainEventOwner =
         if (scope == SlockShellStoreScope.Legacy) {
@@ -775,6 +790,29 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             }
             val networkClient = scopedNetworkClientFactory(authStore)
+            val processServerMembersRepository =
+                RealMemberRepository(
+                    sessionStore = authStore,
+                    networkClient = networkClient,
+                    logger = sharedInfoLogger("SlockServerMembers", "process_server_members_repository")
+                )
+            val processServerMembersCore =
+                ProcessServerMembersCore(
+                    fetchMembers = processServerMembersRepository::getMembers,
+                    logger = sharedInfoLogger("SlockServerMembers", "process_server_members")
+                )
+            CoroutineScope(SupervisorJob()).launch {
+                authStore.authSessionEvents.collect { event ->
+                    when (event) {
+                        is AuthSessionEvent.Authenticated ->
+                            processServerMembersCore.invalidateAll(reason = "authenticated")
+                        is AuthSessionEvent.Cleared ->
+                            processServerMembersCore.invalidateAll(reason = "cleared")
+                        is AuthSessionEvent.BindingMetadataChanged,
+                        is AuthSessionEvent.TokensRotated -> Unit
+                    }
+                }
+            }
             val threadSendScope = CoroutineScope(SupervisorJob())
             val realtimeAuthorityRegistry =
                 RealtimeAuthorityRegistry(
@@ -811,15 +849,44 @@ internal class SlockSharedStoreProvider private constructor(
             }
             val serverMembersStore =
                 SharedServerMembersStore(
-                    memberRepository =
-                        RealMemberRepository(
-                            sessionStore = authStore,
-                            networkClient = networkClient,
-                            logger = sharedInfoLogger("SlockServerMembers", "shared_server_members_repository")
-                        ),
-                    logger = sharedInfoLogger("SlockServerMembers")
+                    memberRepository = processServerMembersRepository,
+                    logger = sharedInfoLogger("SlockServerMembers"),
+                    processCore = processServerMembersCore,
+                    processOwner = { serverId ->
+                        authStore.readSession()?.let { session ->
+                            val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                            val accountId = session.user.id.trim()
+                            val normalizedServerId = serverId.value.trim()
+                            if (environmentId.isBlank() || accountId.isBlank() || normalizedServerId.isBlank()) {
+                                null
+                            } else {
+                                ProcessServerMembersOwner(environmentId, accountId, normalizedServerId)
+                            }
+                        }
+                    }
                 )
-            return SlockSharedStoreProvider(
+            lateinit var provider: SlockSharedStoreProvider
+            val foregroundReconciler =
+                SharedForegroundReconciler(
+                    authStore = authStore,
+                    refreshMembers = { serverId ->
+                        val shellScope = provider.scopesForServer(serverId.value).firstOrNull()
+                        val targetStore = shellScope?.let(provider::serverMembersStore) ?: serverMembersStore
+                        sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")(
+                            "foreground_reconcile_member_owner serverId=${serverId.value} " +
+                                "owner=${shellScope?.shellInstanceId ?: "legacy_fallback"}"
+                        )
+                        targetStore.refreshMembers(
+                            serverId = serverId,
+                            priority = DataRequestPriority.Background,
+                            force = true,
+                            reason = "foreground_reconcile"
+                        )
+                    },
+                    scope = CoroutineScope(SupervisorJob()),
+                    diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
+                )
+            provider = SlockSharedStoreProvider(
                 sqlDatabase = database,
                 authKeyValueStore = authKeyValueStore,
                 sharedPreferenceStore = sharedPreferenceStore,
@@ -837,6 +904,7 @@ internal class SlockSharedStoreProvider private constructor(
                 agentPanelTabOrderStore = SharedAgentPanelTabOrderStore(),
                 tasksDataStore = tasksDataStore,
                 serverMembersStore = serverMembersStore,
+                processServerMembersCore = processServerMembersCore,
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
@@ -887,23 +955,12 @@ internal class SlockSharedStoreProvider private constructor(
                     ),
                 threadMessageStore = SharedThreadMessageStore(),
                 threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
-                foregroundReconciler =
-                    SharedForegroundReconciler(
-                        authStore = authStore,
-                        refreshMembers = { serverId ->
-                            serverMembersStore.refreshMembers(
-                                serverId = serverId,
-                                priority = DataRequestPriority.Background,
-                                force = true
-                            )
-                        },
-                        scope = CoroutineScope(SupervisorJob()),
-                        diagnosticsLogger = sharedInfoLogger("SlockForegroundReconcile", "shared_foreground_reconcile")
-                    ),
+                foregroundReconciler = foregroundReconciler,
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),
                 threadSendScope = threadSendScope
-            ).also {
+            )
+            return provider.also {
                 val pushLifecycleScope = CoroutineScope(SupervisorJob())
                 SlockPushRegistrationLifecycle.observeSessionEvents(
                     source = authStore.authSessionEvents,
