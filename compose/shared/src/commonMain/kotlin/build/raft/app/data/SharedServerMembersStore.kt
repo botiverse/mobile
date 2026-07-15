@@ -247,11 +247,25 @@ private fun MemberProfile?.toSharedServerMemberStatus(
  * server roster request so Thread, Search, Activity, Members, and add-member
  * flows do not each issue independent `getMembers(serverId)` calls.
  */
-class SharedServerMembersStore(
+class SharedServerMembersStore internal constructor(
     private val memberRepository: MemberRepository,
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    private val processCore: ProcessServerMembersCore =
+        ProcessServerMembersCore(
+            fetchMembers = memberRepository::getMembers,
+            logger = logger
+        ),
+    private val processOwner: suspend (ServerId) -> ProcessServerMembersOwner? = { serverId ->
+        ProcessServerMembersOwner(
+            environmentId = "local",
+            accountId = "local",
+            serverId = serverId.value
+        )
+    },
+    private val beforeProcessPublication: suspend () -> Unit = {}
 ) {
     private val mutex = Mutex()
+    private val publishedProcessVersionsByOwner = mutableMapOf<ProcessServerMembersOwner, Long>()
     private val deletedAgentIdsByServerId = mutableMapOf<String, Set<String>>()
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
@@ -707,128 +721,165 @@ class SharedServerMembersStore(
     suspend fun refreshMembers(
         serverId: ServerId,
         priority: DataRequestPriority = DataRequestPriority.Visible,
-        force: Boolean = false
+        force: Boolean = false,
+        reason: String = "unspecified"
     ): DataResult<Unit> {
-        return loadMembersIntoStore(serverId, priority, force)
+        return loadMembersIntoStore(serverId, priority, force, reason)
     }
 
     private suspend fun loadMembersIntoStore(
         serverId: ServerId,
         priority: DataRequestPriority,
-        force: Boolean
+        force: Boolean,
+        reason: String
     ): DataResult<Unit> {
         val startedAt = TimeSource.Monotonic.markNow()
         val key = serverId.value.trim()
         if (key.isBlank()) {
             logger(
                 "store_load domain=server_members serverId= result=error code=server_missing " +
-                    "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    "force=$force priority=${priority.name} reason=$reason " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
             return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
         }
-        cachedLoadedSnapshot(key, force)?.let {
+        val owner = processOwner(ServerId(key))
+        if (owner == null) {
             logger(
-                "store_load domain=server_members serverId=$key result=cache_hit members=${it.members.size} " +
-                    "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                "store_load domain=server_members serverId=$key result=error code=members_owner_missing " +
+                    "force=$force priority=${priority.name} reason=$reason " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
-            return DataResult.Content(Unit)
+            return authSessionRequiredResult()
         }
-        return mutex.withLock {
-            cachedLoadedSnapshot(key, force)?.let {
-                logger(
-                    "store_load domain=server_members serverId=$key result=cache_hit_locked members=${it.members.size} " +
-                        "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                )
-                return@withLock DataResult.Content(Unit)
+        val localSeed =
+            mutex.withLock {
+                if (publishedProcessVersionsByOwner[owner] == null) {
+                    cachedLoadedSnapshot(key, force = false)
+                } else {
+                    null
+                }
             }
-            val previous = _state.value.entriesByServerId[key]
-            putEntry(
-                key,
-                (previous ?: SharedServerMembersEntry(serverId = key)).copy(
-                    status = SharedServerMembersLoadStatus.InFlight,
-                    errorCode = null
-                )
+        if (localSeed != null) {
+            val seedResult = processCore.seedIfAbsent(owner, localSeed)
+            mutex.withLock {
+                if (seedResult.inserted && publishedProcessVersionsByOwner[owner] == null) {
+                    publishedProcessVersionsByOwner[owner] = seedResult.version
+                }
+            }
+        }
+        val processResult =
+            processCore.load(
+                owner = owner,
+                priority = priority,
+                force = force,
+                reason = reason,
+                onFlight = { permit ->
+                    mutex.withLock {
+                        processCore.commitFlightIfCurrent(permit) {
+                            val previous = _state.value.entriesByServerId[key]
+                            putEntry(
+                                key,
+                                (previous ?: SharedServerMembersEntry(serverId = key)).copy(
+                                    status = SharedServerMembersLoadStatus.InFlight,
+                                    errorCode = null
+                                )
+                            )
+                        }
+                    }
+                }
             )
-            val result =
-                try {
-                    memberRepository.getMembers(priority, ServerId(key))
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (throwable: Throwable) {
-                    logger("shared_server_members_load_result serverId=$key result=exception type=${throwable::class.simpleName}")
+        val currentOwner = processOwner(ServerId(key))
+        if (!processResult.publicationCurrent || currentOwner != owner) {
+            logger(
+                "store_load domain=server_members serverId=$key result=stale_owner_ignored " +
+                    "force=$force priority=${priority.name} reason=$reason " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
+        }
+        beforeProcessPublication()
+        val publishStartedAt = TimeSource.Monotonic.markNow()
+        return mutex.withLock {
+            processCore.commitIfCurrent(processResult) {
+                if (
+                    processResult.version > 0L &&
+                    publishedProcessVersionsByOwner[owner] == processResult.version
+                ) {
                     logger(
-                        "store_load domain=server_members serverId=$key result=exception code=members_exception " +
-                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                        "store_load domain=server_members serverId=$key result=version_unchanged " +
+                            "version=${processResult.version} force=$force priority=${priority.name} reason=$reason " +
+                            "reduceMs=${processResult.reduceMs} publishMs=${publishStartedAt.elapsedNow().inWholeMilliseconds} " +
+                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                     )
-                    val error = DataResult.Error(ScreenError(code = "members_exception", retryable = true))
-                    markFailure(key, previous, error.error.code)
-                    return@withLock error
+                    processResult.result.map { Unit }
+                } else {
+                    val previous = _state.value.entriesByServerId[key]
+                    val result = processResult.result
+                    when (result) {
+                        is DataResult.Content -> {
+                            val normalizedKey = result.data.server.id.value.trim().ifBlank { key }
+                            val snapshot =
+                                result.data.copy(
+                                    members =
+                                        result.data.members
+                                            .filterDeletedAgents(normalizedKey)
+                                            .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
+                                )
+                            putEntry(
+                                normalizedKey,
+                                SharedServerMembersEntry(
+                                    serverId = normalizedKey,
+                                    server = snapshot.server,
+                                    members = snapshot.members,
+                                    status = SharedServerMembersLoadStatus.Loaded,
+                                    errorCode = null
+                                )
+                            )
+                            if (normalizedKey != key) removeEntry(key)
+                            logger(
+                                "shared_server_members_load_result serverId=$normalizedKey result=content members=${snapshot.members.size}"
+                            )
+                            logger(
+                                "store_load domain=server_members serverId=$normalizedKey result=content members=${snapshot.members.size} " +
+                                    "version=${processResult.version} force=$force priority=${priority.name} reason=$reason " +
+                                    "reduceMs=${processResult.reduceMs} publishMs=${publishStartedAt.elapsedNow().inWholeMilliseconds} " +
+                                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                            )
+                            publishedProcessVersionsByOwner[owner] = processResult.version
+                        }
+                        is DataResult.Empty -> {
+                            putEntry(
+                                key,
+                                SharedServerMembersEntry(
+                                    serverId = key,
+                                    server = previous?.server,
+                                    members = emptyList(),
+                                    status = SharedServerMembersLoadStatus.Loaded,
+                                    errorCode = null
+                                )
+                            )
+                            logger("shared_server_members_load_result serverId=$key result=empty")
+                            logger(
+                                "store_load domain=server_members serverId=$key result=empty code=${result.reason.name} " +
+                                    "version=${processResult.version} force=$force priority=${priority.name} reason=$reason " +
+                                    "reduceMs=${processResult.reduceMs} publishMs=${publishStartedAt.elapsedNow().inWholeMilliseconds} " +
+                                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                            )
+                            publishedProcessVersionsByOwner[owner] = processResult.version
+                        }
+                        is DataResult.Error -> {
+                            markFailure(key, previous, result.error.code)
+                            logger("shared_server_members_load_result serverId=$key result=error code=${result.error.code}")
+                        }
+                        is DataResult.NoPermission -> {
+                            markFailure(key, previous, result.blocker.code)
+                            logger("shared_server_members_load_result serverId=$key result=no_permission code=${result.blocker.code}")
+                        }
+                    }
+                    result.map { Unit }
                 }
-            when (result) {
-                is DataResult.Content -> {
-                    val normalizedKey = result.data.server.id.value.trim().ifBlank { key }
-                    val snapshot =
-                        result.data.copy(
-                            members =
-                                result.data.members
-                                    .filterDeletedAgents(normalizedKey)
-                                    .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
-                        )
-                    putEntry(
-                        normalizedKey,
-                        SharedServerMembersEntry(
-                            serverId = normalizedKey,
-                            server = snapshot.server,
-                            members = snapshot.members,
-                            status = SharedServerMembersLoadStatus.Loaded,
-                            errorCode = null
-                        )
-                    )
-                    if (normalizedKey != key) removeEntry(key)
-                    logger(
-                        "shared_server_members_load_result serverId=$normalizedKey result=content members=${snapshot.members.size}"
-                    )
-                    logger(
-                        "store_load domain=server_members serverId=$normalizedKey result=content members=${snapshot.members.size} " +
-                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                    )
-                    return@withLock DataResult.Content(Unit)
-                }
-                is DataResult.Empty -> {
-                    putEntry(
-                        key,
-                        SharedServerMembersEntry(
-                            serverId = key,
-                            server = previous?.server,
-                            members = emptyList(),
-                            status = SharedServerMembersLoadStatus.Loaded,
-                            errorCode = null
-                        )
-                    )
-                    logger("shared_server_members_load_result serverId=$key result=empty")
-                    logger(
-                        "store_load domain=server_members serverId=$key result=empty code=${result.reason.name} " +
-                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                    )
-                }
-                is DataResult.Error -> {
-                    markFailure(key, previous, result.error.code)
-                    logger("shared_server_members_load_result serverId=$key result=error code=${result.error.code}")
-                    logger(
-                        "store_load domain=server_members serverId=$key result=error code=${result.error.code} " +
-                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                    )
-                }
-                is DataResult.NoPermission -> {
-                    markFailure(key, previous, result.blocker.code)
-                    logger("shared_server_members_load_result serverId=$key result=no_permission code=${result.blocker.code}")
-                    logger(
-                        "store_load domain=server_members serverId=$key result=no_permission code=${result.blocker.code} " +
-                            "force=$force priority=${priority.name} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                    )
-                }
-            }
-            result.map { Unit }
+            } ?: DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
         }
     }
 

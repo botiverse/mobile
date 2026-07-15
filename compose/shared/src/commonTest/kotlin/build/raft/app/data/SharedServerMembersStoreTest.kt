@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.model.*
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -12,8 +14,233 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SharedServerMembersStoreTest {
+    @Test
+    fun processFlightPublishesInFlightAndPreservesExistingRosterUntilLoaded() = runBlocking {
+        val processRepository =
+            FakeMemberRepository().apply {
+                getMembersStarted = CompletableDeferred()
+                releaseGetMembers = CompletableDeferred()
+                membersByServer["server-1"] = listOf(member("u2", "New"))
+            }
+        val store =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = ProcessServerMembersCore(processRepository::getMembers)
+            )
+        store.seed(MemberSnapshot(server("server-1"), listOf(member("u1", "Old"))))
+
+        val refresh = async { store.refreshMembers(ServerId("server-1"), force = true) }
+        processRepository.getMembersStarted?.await()
+
+        val inFlight = store.state.value.entryFor(ServerId("server-1"))
+        assertEquals(SharedServerMembersLoadStatus.InFlight, inFlight?.status)
+        assertEquals(listOf("u1"), inFlight?.members?.map { it.id.value })
+        processRepository.releaseGetMembers?.complete(Unit)
+        assertIs<DataResult.Content<Unit>>(refresh.await())
+        val loaded = store.state.value.entryFor(ServerId("server-1"))
+        assertEquals(SharedServerMembersLoadStatus.Loaded, loaded?.status)
+        assertEquals(listOf("u2"), loaded?.members?.map { it.id.value })
+    }
+
+    @Test
+    fun oldFailureCannotOverwriteNewerSuccessfulFacadePublication() = runBlocking {
+        var fetches = 0
+        val core =
+            ProcessServerMembersCore(fetchMembers = { _, _ ->
+                fetches += 1
+                if (fetches == 1) {
+                    DataResult.Error(ScreenError("first_failed"))
+                } else {
+                    DataResult.Content(MemberSnapshot(server("server-1"), listOf(member("u2", "New"))))
+                }
+            })
+        val firstBeforePublish = CompletableDeferred<Unit>()
+        val releaseFirstPublish = CompletableDeferred<Unit>()
+        var publicationCalls = 0
+        val store =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = core,
+                beforeProcessPublication = {
+                    publicationCalls += 1
+                    if (publicationCalls == 1) {
+                        firstBeforePublish.complete(Unit)
+                        releaseFirstPublish.await()
+                    }
+                }
+            )
+
+        val oldFailure = async { store.refreshMembers(ServerId("server-1"), force = true) }
+        firstBeforePublish.await()
+        assertIs<DataResult.Content<Unit>>(store.refreshMembers(ServerId("server-1"), force = true))
+        releaseFirstPublish.complete(Unit)
+
+        val stale = assertIs<DataResult.Error>(oldFailure.await())
+        assertEquals("members_owner_stale", stale.error.code)
+        assertEquals(SharedServerMembersLoadStatus.Loaded, store.state.value.entryFor(ServerId("server-1"))?.status)
+        assertEquals(listOf("u2"), store.currentServerMembers(ServerId("server-1")).map { it.id.value })
+    }
+
+    @Test
+    fun existingNewerCoreVersionIsAppliedOverOlderLocalSeed() = runBlocking {
+        val owner =
+            ProcessServerMembersOwner(
+                environmentId = "https://api.example.test",
+                accountId = "account-1",
+                serverId = "server-1"
+            )
+        val oldRepository = FakeMemberRepository()
+        val processRepository =
+            FakeMemberRepository().apply {
+                membersByServer["server-1"] = listOf(member("u2", "New"))
+            }
+        val core = ProcessServerMembersCore(processRepository::getMembers)
+        val newRepository = FakeMemberRepository()
+        val oldStore =
+            SharedServerMembersStore(
+                memberRepository = oldRepository,
+                processCore = core,
+                processOwner = { owner }
+            )
+        val newStore =
+            SharedServerMembersStore(
+                memberRepository = newRepository,
+                processCore = core,
+                processOwner = { owner }
+            )
+        oldStore.seed(MemberSnapshot(server("server-1"), listOf(member("u1", "Old"))))
+
+        assertIs<DataResult.Content<Unit>>(newStore.refreshMembers(ServerId("server-1"), force = true))
+        assertIs<DataResult.Content<Unit>>(oldStore.refreshMembers(ServerId("server-1"), force = false))
+
+        assertEquals(0, oldRepository.getMembersCalls)
+        assertEquals(0, newRepository.getMembersCalls)
+        assertEquals(1, processRepository.getMembersCalls)
+        assertEquals(listOf("u2"), oldStore.currentServerMembers(ServerId("server-1")).map { it.id.value })
+    }
+
+    @Test
+    fun invalidationBetweenCoreResultAndFacadeCommitPreventsStateWrite() = runBlocking {
+        val processRepository = FakeMemberRepository()
+        val core = ProcessServerMembersCore(processRepository::getMembers)
+        val owner =
+            ProcessServerMembersOwner(
+                environmentId = "https://api.example.test",
+                accountId = "account-1",
+                serverId = "server-1"
+            )
+        val beforePublish = CompletableDeferred<Unit>()
+        val releasePublish = CompletableDeferred<Unit>()
+        val store =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                processCore = core,
+                processOwner = { owner },
+                beforeProcessPublication = {
+                    beforePublish.complete(Unit)
+                    releasePublish.await()
+                }
+            )
+
+        val refresh = async { store.refreshMembers(ServerId("server-1"), force = true) }
+        beforePublish.await()
+        core.invalidateAll(reason = "same_account_reauthenticated")
+        releasePublish.complete(Unit)
+
+        val result = assertIs<DataResult.Error>(refresh.await())
+        assertEquals("members_owner_stale", result.error.code)
+        assertEquals(emptyList(), store.currentServerMembers(ServerId("server-1")))
+    }
+
+    @Test
+    fun shellFacadesShareProcessRosterFlightAndPublishSameVersion() = runBlocking {
+        val owner =
+            ProcessServerMembersOwner(
+                environmentId = "https://api.example.test",
+                accountId = "account-1",
+                serverId = "server-1"
+            )
+        val processRepository =
+            FakeMemberRepository().apply {
+                getMembersStarted = CompletableDeferred()
+                releaseGetMembers = CompletableDeferred()
+            }
+        val core = ProcessServerMembersCore(processRepository::getMembers)
+        val firstRepository = FakeMemberRepository()
+        val secondRepository = FakeMemberRepository()
+        val firstStore =
+            SharedServerMembersStore(
+                memberRepository = firstRepository,
+                processCore = core,
+                processOwner = { owner }
+            )
+        val secondStore =
+            SharedServerMembersStore(
+                memberRepository = secondRepository,
+                processCore = core,
+                processOwner = { owner }
+            )
+
+        val first = async { firstStore.refreshMembers(ServerId("server-1"), force = true) }
+        processRepository.getMembersStarted?.await()
+        val second = async { secondStore.refreshMembers(ServerId("server-1"), force = false) }
+        yield()
+
+        assertEquals(1, processRepository.getMembersCalls)
+        assertEquals(0, firstRepository.getMembersCalls)
+        assertEquals(0, secondRepository.getMembersCalls)
+        processRepository.releaseGetMembers?.complete(Unit)
+        assertIs<DataResult.Content<Unit>>(first.await())
+        assertIs<DataResult.Content<Unit>>(second.await())
+        assertEquals(listOf("u1"), firstStore.currentServerMembers(ServerId("server-1")).map { it.id.value })
+        assertEquals(listOf("u1"), secondStore.currentServerMembers(ServerId("server-1")).map { it.id.value })
+    }
+
+    @Test
+    fun nonForcedRefreshJoinsActiveForcedFlight() = runBlocking {
+        val repository =
+            FakeMemberRepository().apply {
+                getMembersStarted = CompletableDeferred()
+                releaseGetMembers = CompletableDeferred()
+            }
+        val store = SharedServerMembersStore(repository)
+
+        val first = async { store.refreshMembers(ServerId("server-1"), force = true) }
+        repository.getMembersStarted?.await()
+        val second = async { store.refreshMembers(ServerId("server-1"), force = false) }
+        yield()
+
+        assertEquals(1, repository.getMembersCalls)
+        repository.releaseGetMembers?.complete(Unit)
+        assertIs<DataResult.Content<Unit>>(first.await())
+        assertIs<DataResult.Content<Unit>>(second.await())
+        assertEquals(1, repository.getMembersCalls)
+    }
+
+    @Test
+    fun cancellingFirstWaiterDoesNotCancelSharedMembersFlight() = runBlocking {
+        val repository =
+            FakeMemberRepository().apply {
+                getMembersStarted = CompletableDeferred()
+                releaseGetMembers = CompletableDeferred()
+            }
+        val store = SharedServerMembersStore(repository)
+
+        val first = launch { store.refreshMembers(ServerId("server-1"), force = true) }
+        repository.getMembersStarted?.await()
+        val second = async { store.refreshMembers(ServerId("server-1"), force = true) }
+        yield()
+        first.cancelAndJoin()
+
+        assertTrue(second.isActive)
+        repository.releaseGetMembers?.complete(Unit)
+        assertIs<DataResult.Content<Unit>>(second.await())
+        assertEquals(1, repository.getMembersCalls)
+    }
+
     @Test
     fun refreshMembersCachesPerServer() = runBlocking {
         val repository = FakeMemberRepository()
@@ -1163,12 +1390,16 @@ class SharedServerMembersStoreTest {
         var removeChannelMemberCalls = 0
         var deleteAgentCalls = 0
         var retainDeletedAgentsInRoster = false
+        var getMembersStarted: CompletableDeferred<Unit>? = null
+        var releaseGetMembers: CompletableDeferred<Unit>? = null
 
         override suspend fun getMembers(
             priority: DataRequestPriority,
             serverId: ServerId
         ): DataResult<MemberSnapshot> {
             getMembersCalls += 1
+            getMembersStarted?.complete(Unit)
+            releaseGetMembers?.await()
             return DataResult.Content(MemberSnapshot(server(serverId.value), membersByServer[serverId.value].orEmpty()))
         }
 

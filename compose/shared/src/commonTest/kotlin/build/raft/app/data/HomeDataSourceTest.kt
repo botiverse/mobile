@@ -308,6 +308,42 @@ class HomeDataSourceTest {
     }
 
     @Test
+    fun agentStatusProjectionReusesLoadedMemberSnapshotWithoutNetworkRefresh() = runBlocking {
+        val members =
+            listOf(
+                MemberProfile(
+                    id = MemberId("agent-1"),
+                    displayName = "Agent One",
+                    handle = "agent-one",
+                    kind = MemberKind.Agent,
+                    presence = Presence.Active,
+                    agentStatus = AgentStatus.Working
+                )
+            )
+        val memberRepository = FakeMemberRepository(members)
+        val memberStore = SharedServerMembersStore(memberRepository)
+        memberStore.seed(
+            MemberSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                members = members
+            )
+        )
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(),
+                serverMembersStore = memberStore,
+                parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
+            )
+        val snapshot = sampleHome(ServerId("server-1"))
+
+        val patch = source.refreshAgentDirectMessageStatuses(snapshot)
+
+        assertFalse(patch.changed)
+        assertEquals(0, memberRepository.getMembersCalls)
+    }
+
+    @Test
     fun cachedHomeReadReturnsEmptyWithoutNetwork() = runBlocking {
         // readCachedHome always reports Empty(NoChannels) since the home snapshot
         // blob cache was removed (fb845a19); it must still never hit the network.
