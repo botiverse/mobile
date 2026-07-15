@@ -40,6 +40,10 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import java.util.Collections
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -142,8 +146,12 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun reconnectWithTheSameWitnessRejectsThePreviousSocketGeneration() {
-        val fence = RealtimeSocketGenerationFence()
+    fun concurrentReconnectWithTheSameWitnessDeliversOnlyTheCurrentSocketGeneration() {
+        val generationPublishBarrier = CyclicBarrier(2)
+        val fence =
+            RealtimeSocketGenerationFence(
+                beforeGenerationPublish = { generationPublishBarrier.await(5, TimeUnit.SECONDS) }
+            )
         val context =
             RealtimeSocketConnectionContext(
                 serverId = ServerId("server-1"),
@@ -155,16 +163,30 @@ class RealtimeRepositoryTest {
                         connectionFamilyId = "family-1",
                     ),
             )
-        val firstSocketGeneration = fence.begin(context)
-        val secondSocketGeneration = fence.begin(context)
+        val generations = Collections.synchronizedList(mutableListOf<RealtimeSocketGeneration>())
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val first = executor.submit { generations += fence.begin(context) }
+            val second = executor.submit { generations += fence.begin(context) }
+            first.get(5, TimeUnit.SECONDS)
+            second.get(5, TimeUnit.SECONDS)
+        } finally {
+            executor.shutdownNow()
+        }
+        assertEquals(2, generations.size)
         var downstreamDeliveries = 0
 
-        if (fence.accepts(firstSocketGeneration)) downstreamDeliveries += 1
-        if (fence.accepts(secondSocketGeneration)) downstreamDeliveries += 1
+        val retainedListeners =
+            generations.map { generation ->
+                {
+                    fence.runIfCurrent(generation) {
+                        downstreamDeliveries += 1
+                    }
+                }
+            }
+        retainedListeners.forEach { it() }
 
         assertEquals(1, downstreamDeliveries)
-        assertFalse(fence.accepts(firstSocketGeneration))
-        assertTrue(fence.accepts(secondSocketGeneration))
     }
 
     @Test
