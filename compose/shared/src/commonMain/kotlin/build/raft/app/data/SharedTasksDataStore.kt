@@ -1,7 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.model.TaskSummary
+import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskId
+import build.raft.app.model.TaskSummary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -27,6 +28,7 @@ internal enum class SharedTasksDataStoreStatus {
 
 internal data class SharedTasksProjectionSlice(
     val status: SharedTasksDataStoreStatus = SharedTasksDataStoreStatus.Idle,
+    val isExactScopeLoaded: Boolean = false,
     val tasks: List<TaskSummary> = emptyList()
 )
 
@@ -39,8 +41,12 @@ private data class SharedTasksChannelKey(
 private data class SharedTasksDataStoreState(
     val serverSnapshots: Map<String, TaskSnapshot> = emptyMap(),
     val serverSnapshotStatuses: Map<String, SharedTasksDataStoreStatus> = emptyMap(),
+    val serverSnapshotRevisions: Map<String, Long> = emptyMap(),
+    val authoritativeServerSnapshotRevisions: Map<String, Long> = emptyMap(),
     val channelSnapshots: Map<SharedTasksChannelKey, TaskSnapshot> = emptyMap(),
     val channelSnapshotStatuses: Map<SharedTasksChannelKey, SharedTasksDataStoreStatus> = emptyMap(),
+    val channelSnapshotRevisions: Map<SharedTasksChannelKey, Long> = emptyMap(),
+    val projectionRevision: Long = 0L,
     val mutationRevision: Long = 0L,
     val taskMutations: Map<SharedTasksTaskKey, SharedTasksTaskMutation> = emptyMap()
 )
@@ -105,11 +111,13 @@ internal class SharedTasksDataStore(
         serverId: String,
         scope: SharedTasksScope,
         snapshot: TaskSnapshot,
-        requestRevision: Long? = null
+        requestRevision: Long? = null,
+        requestServerSnapshotRevision: Long? = null
     ): TaskSnapshot? {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return null
         var committedSnapshot: TaskSnapshot? = null
         state.update { current ->
+            val nextProjectionRevision = current.projectionRevision + 1L
             val mergedSnapshot =
                 if (requestRevision == null) {
                     snapshot
@@ -121,28 +129,62 @@ internal class SharedTasksDataStore(
                         requestRevision = requestRevision
                     )
                 }
-            committedSnapshot = mergedSnapshot
             when (scope) {
-                SharedTasksScope.Server ->
+                SharedTasksScope.Server -> {
+                    committedSnapshot = mergedSnapshot
                     current.copy(
                         serverSnapshots = current.serverSnapshots + (normalizedServerId to mergedSnapshot),
                         serverSnapshotStatuses =
                             current.serverSnapshotStatuses +
-                                (normalizedServerId to SharedTasksDataStoreStatus.Loaded)
+                                (normalizedServerId to SharedTasksDataStoreStatus.Loaded),
+                        serverSnapshotRevisions =
+                            current.serverSnapshotRevisions + (normalizedServerId to nextProjectionRevision),
+                        authoritativeServerSnapshotRevisions =
+                            current.authoritativeServerSnapshotRevisions +
+                                (normalizedServerId to nextProjectionRevision),
+                        projectionRevision = nextProjectionRevision
                     )
+                }
                 is SharedTasksScope.Channel -> {
                     val channelKey =
                         SharedTasksChannelKey(
                             serverId = normalizedServerId,
                             channelId = scope.channelId.value.normalizedTasksStoreId()
                         )
+                    val hasNewerAuthoritativeServerSnapshot =
+                        requestServerSnapshotRevision != null &&
+                            (current.authoritativeServerSnapshotRevisions[normalizedServerId] ?: 0L) >
+                                requestServerSnapshotRevision &&
+                            current.serverSnapshotStatuses[normalizedServerId] == SharedTasksDataStoreStatus.Loaded
+                    val snapshotToCommit =
+                        if (hasNewerAuthoritativeServerSnapshot) {
+                            current.serverSnapshots[normalizedServerId]
+                                ?.forChannel(scope.channelId)
+                                ?: mergedSnapshot
+                        } else {
+                            mergedSnapshot
+                        }
+                    val hasUnroutableMutationAfterRequest =
+                        requestRevision?.let { revision ->
+                            current.hasUnroutableTaskMutationAfter(normalizedServerId, revision)
+                        } == true
+                    val channelSnapshotRevision =
+                        if (hasUnroutableMutationAfterRequest) {
+                            requestServerSnapshotRevision ?: 0L
+                        } else {
+                            nextProjectionRevision
+                        }
+                    committedSnapshot = snapshotToCommit
                     current.copy(
                         channelSnapshots =
                             current.channelSnapshots +
-                                (channelKey to mergedSnapshot),
+                                (channelKey to snapshotToCommit),
                         channelSnapshotStatuses =
                             current.channelSnapshotStatuses +
-                                (channelKey to SharedTasksDataStoreStatus.Loaded)
+                                (channelKey to SharedTasksDataStoreStatus.Loaded),
+                        channelSnapshotRevisions =
+                            current.channelSnapshotRevisions + (channelKey to channelSnapshotRevision),
+                        projectionRevision = nextProjectionRevision
                     )
                 }
             }
@@ -194,6 +236,8 @@ internal class SharedTasksDataStore(
         fetch: suspend () -> DataResult<TaskSnapshot>
     ): Deferred<DataResult<TaskSnapshot>> {
         val requestRevision = state.value.mutationRevision
+        val requestServerSnapshotRevision =
+            state.value.authoritativeServerSnapshotRevisions[key.serverId] ?: 0L
         val requestOwnerGeneration = ownerGeneration
         return scope.async(start = CoroutineStart.LAZY) {
             try {
@@ -209,7 +253,13 @@ internal class SharedTasksDataStore(
                     when (result) {
                         is DataResult.Content -> {
                             val committed =
-                                publishSnapshot(key.serverId, key.scope, result.data, requestRevision)
+                                publishSnapshot(
+                                    key.serverId,
+                                    key.scope,
+                                    result.data,
+                                    requestRevision,
+                                    requestServerSnapshotRevision
+                                )
                                     ?: return@withLock result
                             if (committed.tasks.isEmpty()) {
                                 DataResult.Empty(EmptyReason.NoTasks)
@@ -223,7 +273,8 @@ internal class SharedTasksDataStore(
                                     key.serverId,
                                     key.scope,
                                     TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()),
-                                    requestRevision
+                                    requestRevision,
+                                    requestServerSnapshotRevision
                                 ) ?: return@withLock result
                             if (committed.tasks.isEmpty()) result else DataResult.Content(committed)
                         }
@@ -247,7 +298,9 @@ internal class SharedTasksDataStore(
         val taskChannelId = task.channelId?.value.normalizedTasksStoreId()
         val taskChannelName = task.channelName.normalizedTasksChannelName()
         state.update { current ->
+            val nextProjectionRevision = current.projectionRevision + 1L
             val nextRevision = current.mutationRevision + 1L
+            val previousServerRevision = current.serverSnapshotRevisions[normalizedServerId] ?: 0L
             val serverSnapshot =
                 (current.serverSnapshots[normalizedServerId] ?: TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()))
                     .upsert(task)
@@ -267,6 +320,8 @@ internal class SharedTasksDataStore(
                     current.serverSnapshots + (normalizedServerId to serverSnapshot),
                 serverSnapshotStatuses =
                     current.serverSnapshotStatuses + (normalizedServerId to serverSnapshotStatus),
+                serverSnapshotRevisions =
+                    current.serverSnapshotRevisions + (normalizedServerId to nextProjectionRevision),
                 channelSnapshots =
                     current.channelSnapshots
                         .mapValues { (key, snapshot) ->
@@ -310,6 +365,37 @@ internal class SharedTasksDataStore(
                                 statuses + (taskChannelKey to serverSnapshotStatus)
                             }
                         },
+                channelSnapshotRevisions =
+                    current.channelSnapshotRevisions
+                        .mapValues { (key, revision) ->
+                            // A routed realtime mutation is applied to its channel snapshot and
+                            // is irrelevant to the other fresh channel snapshots. Advance those
+                            // watermarks together, but never bless a snapshot that was stale first.
+                            val isTargetChannel =
+                                (taskChannelId != null && key.channelId == taskChannelId) ||
+                                    (taskChannelName != null && key.channelName == taskChannelName)
+                            if (
+                                key.serverId == normalizedServerId &&
+                                (taskChannelId != null || isTargetChannel) &&
+                                revision >= previousServerRevision
+                            ) {
+                                nextProjectionRevision
+                            } else {
+                                revision
+                            }
+                        }
+                        .let { revisions ->
+                            if (
+                                taskChannelKey == null ||
+                                revisions.containsKey(taskChannelKey) ||
+                                serverSnapshotStatus == SharedTasksDataStoreStatus.Loaded
+                            ) {
+                                revisions
+                            } else {
+                                revisions + (taskChannelKey to nextProjectionRevision)
+                            }
+                        },
+                projectionRevision = nextProjectionRevision,
                 mutationRevision = nextRevision,
                 taskMutations =
                     current.taskMutations +
@@ -322,7 +408,9 @@ internal class SharedTasksDataStore(
     fun removeTask(serverId: String, taskId: TaskId) {
         val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
         state.update { current ->
+            val nextProjectionRevision = current.projectionRevision + 1L
             val nextRevision = current.mutationRevision + 1L
+            val previousServerRevision = current.serverSnapshotRevisions[normalizedServerId] ?: 0L
             current.copy(
                 serverSnapshots =
                     current.serverSnapshots.mapValues { (snapshotServerId, snapshot) ->
@@ -332,6 +420,26 @@ internal class SharedTasksDataStore(
                     current.channelSnapshots.mapValues { (key, snapshot) ->
                         if (key.serverId == normalizedServerId) snapshot.remove(taskId) else snapshot
                     },
+                serverSnapshotRevisions =
+                    current.serverSnapshotRevisions.let { revisions ->
+                        if (revisions.containsKey(normalizedServerId)) {
+                            revisions + (normalizedServerId to nextProjectionRevision)
+                        } else {
+                            revisions
+                        }
+                    },
+                channelSnapshotRevisions =
+                    current.channelSnapshotRevisions.mapValues { (key, revision) ->
+                        if (
+                            key.serverId == normalizedServerId &&
+                            revision >= previousServerRevision
+                        ) {
+                            nextProjectionRevision
+                        } else {
+                            revision
+                        }
+                    },
+                projectionRevision = nextProjectionRevision,
                 mutationRevision = nextRevision,
                 taskMutations =
                     current.taskMutations +
@@ -396,6 +504,7 @@ internal class SharedTasksDataStore(
         val snapshot = serverSnapshots[normalizedServerId] ?: return SharedTasksProjectionSlice()
         return SharedTasksProjectionSlice(
             status = serverSnapshotStatuses[normalizedServerId] ?: SharedTasksDataStoreStatus.Partial,
+            isExactScopeLoaded = serverSnapshotStatuses[normalizedServerId] == SharedTasksDataStoreStatus.Loaded,
             tasks = snapshot.tasks
         )
     }
@@ -421,13 +530,20 @@ internal class SharedTasksDataStore(
                 channelId = normalizedChannelId
             )
         val exactChannelStatus = channelSnapshotStatuses[exactChannelKey]
-        if (exactChannelSnapshot != null) {
-            if (exactChannelStatus == SharedTasksDataStoreStatus.Loaded) {
-                return SharedTasksProjectionSlice(
-                    status = SharedTasksDataStoreStatus.Loaded,
-                    tasks = exactChannelSnapshot.tasks
-                )
-            }
+        val exactChannelRevision = channelSnapshotRevisions[exactChannelKey] ?: 0L
+        val serverRevision = serverSnapshotRevisions[normalizedServerId] ?: 0L
+        // Loaded describes completeness at capture time. Revision ordering decides whether that
+        // exact channel capture is still authoritative relative to later server/realtime facts.
+        if (
+            exactChannelSnapshot != null &&
+            exactChannelStatus == SharedTasksDataStoreStatus.Loaded &&
+            exactChannelRevision >= serverRevision
+        ) {
+            return SharedTasksProjectionSlice(
+                status = SharedTasksDataStoreStatus.Loaded,
+                isExactScopeLoaded = true,
+                tasks = exactChannelSnapshot.tasks
+            )
         }
         val serverSnapshot = serverSnapshots[normalizedServerId]
         val serverStatus = serverSnapshotStatuses[normalizedServerId]
@@ -437,6 +553,7 @@ internal class SharedTasksDataStore(
             } else {
                 SharedTasksProjectionSlice(
                     status = exactChannelStatus ?: SharedTasksDataStoreStatus.Partial,
+                    isExactScopeLoaded = exactChannelStatus == SharedTasksDataStoreStatus.Loaded,
                     tasks = exactChannelSnapshot.tasks
                 )
             }
@@ -449,11 +566,16 @@ internal class SharedTasksDataStore(
                     (normalizedChannelName != null && taskChannelName == normalizedChannelName)
             }
         val projectedTasks =
-            exactChannelSnapshot?.tasks?.fold(channelTasks) { tasks, task ->
-                TaskSnapshot(tasks = tasks, summaryCounts = emptyMap()).upsert(task).tasks
-            } ?: channelTasks
+            if (exactChannelStatus == SharedTasksDataStoreStatus.Partial) {
+                exactChannelSnapshot?.tasks?.fold(channelTasks) { tasks, task ->
+                    TaskSnapshot(tasks = tasks, summaryCounts = emptyMap()).upsert(task).tasks
+                } ?: channelTasks
+            } else {
+                channelTasks
+            }
         return SharedTasksProjectionSlice(
             status = serverStatus ?: SharedTasksDataStoreStatus.Partial,
+            isExactScopeLoaded = false,
             tasks = projectedTasks
         )
     }
@@ -477,10 +599,20 @@ internal class SharedTasksDataStore(
                     else -> merged.remove(key.taskId)
                 }
             }
+
+    private fun SharedTasksDataStoreState.hasUnroutableTaskMutationAfter(
+        serverId: String,
+        requestRevision: Long
+    ): Boolean =
+        taskMutations.any { (key, mutation) ->
+            key.serverId == serverId &&
+                mutation.revision > requestRevision &&
+                mutation.task?.channelId == null
+        }
 }
 
 private fun SharedTasksProjectionSlice.loadedSnapshotOrNull(): TaskSnapshot? =
-    if (status == SharedTasksDataStoreStatus.Loaded) {
+    if (status == SharedTasksDataStoreStatus.Loaded && isExactScopeLoaded) {
         TaskSnapshot(tasks = tasks, summaryCounts = tasks.summaryCounts())
     } else {
         null
@@ -504,6 +636,12 @@ private fun TaskSnapshot.upsert(task: TaskSummary): TaskSnapshot {
         }
     return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
 }
+
+private fun TaskSnapshot.forChannel(channelId: ChannelId): TaskSnapshot =
+    TaskSnapshot(
+        tasks = tasks.filter { task -> task.channelId == channelId },
+        summaryCounts = emptyMap()
+    )
 
 private fun TaskSnapshot.remove(taskId: TaskId): TaskSnapshot {
     val nextTasks = tasks.filterNot { task -> task.id == taskId }

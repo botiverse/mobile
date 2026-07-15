@@ -257,6 +257,7 @@ class SharedTasksStoreTest {
         val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
 
         assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(false, slice.isExactScopeLoaded)
         assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
     }
 
@@ -310,7 +311,305 @@ class SharedTasksStoreTest {
         val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
 
         assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(true, slice.isExactScopeLoaded)
         assertEquals(listOf("task-channel"), slice.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStoreLoadsExactChannelBehindLoadedServerProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        var remoteCalls = 0
+
+        val result =
+            store.loadSnapshot(
+                serverId = "server-1",
+                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+            ) {
+                remoteCalls += 1
+                DataResult.Content(
+                    TaskSnapshot(
+                        tasks = listOf(task("task-channel", TaskStatus.InProgress, channelId = ChannelId("channel-1"))),
+                        summaryCounts = emptyMap()
+                    )
+                )
+            }
+
+        assertEquals(1, remoteCalls)
+        assertEquals(
+            listOf("task-channel"),
+            assertIs<DataResult.Content<TaskSnapshot>>(result).data.tasks.map { it.id.value }
+        )
+        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+        assertEquals(true, projection.isExactScopeLoaded)
+    }
+
+    @Test
+    fun sharedTasksDataStoreDoesNotLetOlderLoadedChannelMaskNewerServerSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
+        val oldTask = task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))
+        val newTask = task("task-new", TaskStatus.InProgress, channelId = ChannelId("channel-1"))
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot = TaskSnapshot(tasks = listOf(oldTask), summaryCounts = emptyMap())
+        )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = listOf(newTask), summaryCounts = emptyMap())
+        )
+
+        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, projection.status)
+        assertEquals(false, projection.isExactScopeLoaded)
+        assertEquals(listOf("task-new"), projection.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStoreKeepsFreshChannelLoadedAcrossUnrelatedRealtimeMutation() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-channel-1", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+        store.upsertTask(
+            serverId = "server-1",
+            task = task("task-channel-2", TaskStatus.InProgress, channelId = ChannelId("channel-2"))
+        )
+        var remoteCalls = 0
+
+        val result =
+            store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) {
+                remoteCalls += 1
+                DataResult.Error(ScreenError(code = "unexpected_request", retryable = false))
+            }
+
+        assertEquals(0, remoteCalls)
+        assertEquals(
+            listOf("task-channel-1"),
+            assertIs<DataResult.Content<TaskSnapshot>>(result).data.tasks.map { it.id.value }
+        )
+        assertEquals(
+            true,
+            store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))).isExactScopeLoaded
+        )
+    }
+
+    @Test
+    fun sharedTasksDataStoreRealtimeMutationDoesNotBlessAlreadyStaleChannelSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-server", TaskStatus.InProgress, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+        store.upsertTask(
+            serverId = "server-1",
+            task = task("task-realtime", TaskStatus.InReview, channelId = ChannelId("channel-1"))
+        )
+
+        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+
+        assertEquals(false, projection.isExactScopeLoaded)
+        assertEquals(
+            listOf("task-server", "task-realtime"),
+            projection.tasks.map { it.id.value }
+        )
+    }
+
+    @Test
+    fun sharedTasksDataStoreLateChannelContentCannotMaskNewerServerSnapshot() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedTasksDataStore(appScope)
+        val requestStarted = CompletableDeferred<Unit>()
+        val releaseRequest = CompletableDeferred<Unit>()
+        val oldTask = task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))
+        val newTask = task("task-new", TaskStatus.InProgress, channelId = ChannelId("channel-1"))
+        val load =
+            async {
+                store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) {
+                    requestStarted.complete(Unit)
+                    releaseRequest.await()
+                    DataResult.Content(TaskSnapshot(tasks = listOf(oldTask), summaryCounts = emptyMap()))
+                }
+            }
+        requestStarted.await()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = listOf(newTask), summaryCounts = emptyMap())
+        )
+        releaseRequest.complete(Unit)
+
+        assertEquals(
+            listOf("task-new"),
+            assertIs<DataResult.Content<TaskSnapshot>>(load.await()).data.tasks.map { it.id.value }
+        )
+        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+        assertEquals(true, projection.isExactScopeLoaded)
+        assertEquals(listOf("task-new"), projection.tasks.map { it.id.value })
+        appScope.cancel()
+    }
+
+    @Test
+    fun sharedTasksDataStoreLateChannelEmptyCannotMaskNewerServerSnapshot() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedTasksDataStore(appScope)
+        val requestStarted = CompletableDeferred<Unit>()
+        val releaseRequest = CompletableDeferred<Unit>()
+        val newTask = task("task-new", TaskStatus.InProgress, channelId = ChannelId("channel-1"))
+        val load =
+            async {
+                store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) {
+                    requestStarted.complete(Unit)
+                    releaseRequest.await()
+                    DataResult.Empty(EmptyReason.NoTasks)
+                }
+            }
+        requestStarted.await()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot = TaskSnapshot(tasks = listOf(newTask), summaryCounts = emptyMap())
+        )
+        releaseRequest.complete(Unit)
+
+        assertEquals(
+            listOf("task-new"),
+            assertIs<DataResult.Content<TaskSnapshot>>(load.await()).data.tasks.map { it.id.value }
+        )
+        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+        assertEquals(true, projection.isExactScopeLoaded)
+        assertEquals(listOf("task-new"), projection.tasks.map { it.id.value })
+        appScope.cancel()
+    }
+
+    @Test
+    fun sharedTasksDataStoreNameOnlyMutationDoesNotFreshenIdKeyedChannelSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        store.upsertTask(
+            serverId = "server-1",
+            task =
+                task(
+                    "task-name-only",
+                    TaskStatus.InReview,
+                    channelId = null,
+                    channelName = "general"
+                )
+        )
+
+        val projection = store.channelProjectionFlow("server-1", "channel-1", "general").first()
+
+        assertEquals(false, projection.isExactScopeLoaded)
+        assertEquals(listOf("task-name-only"), projection.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStoreUnroutableMutationsKeepInflightContentAndEmptyStale() = runBlocking {
+        val mutations =
+            listOf(
+                task(
+                    "task-name-only",
+                    TaskStatus.InReview,
+                    channelId = null,
+                    channelName = "general"
+                ),
+                task(
+                    "task-message-only",
+                    TaskStatus.InProgress,
+                    channelId = null,
+                    channelName = null
+                )
+            )
+        mutations.forEach { mutation ->
+            listOf<DataResult<TaskSnapshot>>(
+                DataResult.Empty(EmptyReason.NoTasks),
+                DataResult.Content(
+                    TaskSnapshot(
+                        tasks = listOf(task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
+                        summaryCounts = emptyMap()
+                    )
+                )
+            ).forEach { staleResult ->
+                listOf("no_server_refresh", "server_before_mutation", "server_after_mutation").forEach { ordering ->
+                    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+                    val store = SharedTasksDataStore(appScope)
+                    store.publishSnapshot(
+                        serverId = "server-1",
+                        scope = SharedTasksScope.Server,
+                        snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+                    )
+                    val requestStarted = CompletableDeferred<Unit>()
+                    val releaseRequest = CompletableDeferred<Unit>()
+                    val load =
+                        async {
+                            store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) {
+                                requestStarted.complete(Unit)
+                                releaseRequest.await()
+                                staleResult
+                            }
+                        }
+                    requestStarted.await()
+                    if (ordering == "server_before_mutation") {
+                        store.publishSnapshot(
+                            serverId = "server-1",
+                            scope = SharedTasksScope.Server,
+                            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+                        )
+                    }
+                    store.upsertTask("server-1", mutation)
+                    if (ordering == "server_after_mutation") {
+                        store.publishSnapshot(
+                            serverId = "server-1",
+                            scope = SharedTasksScope.Server,
+                            snapshot = TaskSnapshot(tasks = listOf(mutation), summaryCounts = emptyMap())
+                        )
+                    }
+                    releaseRequest.complete(Unit)
+                    load.await()
+
+                    val projection = store.channelProjectionFlow("server-1", "channel-1", "general").first()
+                    val context = "mutation=${mutation.id} result=$staleResult ordering=$ordering"
+
+                    assertEquals(false, projection.isExactScopeLoaded, context)
+                    assertEquals(
+                        listOf(mutation.id.value),
+                        store.projection("server-1", SharedTasksScope.Server).tasks.map { it.id.value },
+                        context
+                    )
+                    appScope.cancel()
+                }
+            }
+        }
     }
 
     @Test
@@ -602,11 +901,9 @@ class SharedTasksStoreTest {
                 tasks = listOf(task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
                 summaryCounts = emptyMap()
             )
-        val realtimeTask = task("task-recent", TaskStatus.InReview, channelId = ChannelId("channel-1"))
-        sharedStore.upsertTask("server-1", realtimeTask)
         sharedStore.publishSnapshot(
             serverId = "server-1",
-            scope = SharedTasksScope.Server,
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
             snapshot = snapshot
         )
         val repository = FakeTasksRepository(loadResult = DataResult.Content(snapshot))
@@ -640,7 +937,7 @@ class SharedTasksStoreTest {
             }.loadState
 
         assertEquals(
-            listOf("task-1", "task-recent"),
+            listOf("task-1"),
             assertIs<ScreenLoadState.Content<TasksContent>>(content).data.tasks.map { it.id.value }
         )
         assertFalse(viewModel.state.value.refreshing)
@@ -795,6 +1092,7 @@ class SharedTasksStoreTest {
         val projection = store.channelProjectionFlow("server-1", "channel-1", null).first()
 
         assertEquals(SharedTasksDataStoreStatus.Loaded, projection.status)
+        assertEquals(false, projection.isExactScopeLoaded)
         assertEquals(listOf("task-history", "task-recent"), projection.tasks.map { it.id.value })
     }
 
@@ -1438,7 +1736,7 @@ class SharedTasksStoreTest {
     private fun task(
         id: String,
         status: TaskStatus,
-        channelId: ChannelId = ChannelId("channel-1"),
+        channelId: ChannelId? = ChannelId("channel-1"),
         channelName: String? = null,
         title: String = "Task $id",
         assignee: MemberProfile? = null,

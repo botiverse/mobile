@@ -39,8 +39,10 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.SharedTasksDataSource
+import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
+import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
@@ -51,6 +53,7 @@ import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SlockTasksApi
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.TasksUiState
+import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.WireActionCardAction
@@ -87,6 +90,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
@@ -6718,6 +6722,161 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun newerServerTaskProjectionEnrichesMessageBehindOlderLoadedChannelSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-new",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "new task"
+            )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            TaskSummary(
+                                id = TaskId("task-new"),
+                                title = "new task",
+                                status = TaskStatus.InReview,
+                                taskNumber = 288,
+                                channelId = ChannelId("channel-1"),
+                                messageId = MessageId("message-new"),
+                                updatedAtLabel = ""
+                            )
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+
+        val projected =
+            payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
+                slice.threadLinkedTasksProjection(payload.threadLinkedTaskReferences())
+            )
+
+        assertEquals(false, slice.isExactScopeLoaded)
+        assertEquals("task-new", projected.messages.single().taskId)
+        assertEquals(288, projected.messages.single().taskNumber)
+        assertEquals("in_review", projected.messages.single().taskStatus)
+    }
+
+    @Test
+    fun realtimeTaskUpsertEnrichesMessageInLoadedExactChannelProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-realtime",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "realtime task"
+            )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        store.upsertTask(
+            serverId = "server-1",
+            task =
+                TaskSummary(
+                    id = TaskId("task-realtime"),
+                    title = "realtime task",
+                    status = TaskStatus.InProgress,
+                    taskNumber = 289,
+                    channelId = ChannelId("channel-1"),
+                    messageId = MessageId("message-realtime"),
+                    updatedAtLabel = ""
+                )
+        )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+
+        val projected =
+            payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
+                slice.threadLinkedTasksProjection(payload.threadLinkedTaskReferences())
+            )
+
+        assertEquals(true, slice.isExactScopeLoaded)
+        assertEquals("task-realtime", projected.messages.single().taskId)
+        assertEquals(289, projected.messages.single().taskNumber)
+        assertEquals("in_progress", projected.messages.single().taskStatus)
+    }
+
+    @Test
+    fun unscopedServerTaskEnrichesVisibleMessageOnlyWhileChannelProjectionIsStale() = runBlocking {
+        val store = SharedTasksDataStore()
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-unscoped",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "unscoped realtime task"
+            )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val unscopedTask =
+            TaskSummary(
+                id = TaskId("task-unscoped"),
+                title = "unscoped realtime task",
+                status = TaskStatus.InProgress,
+                taskNumber = 290,
+                channelId = null,
+                channelName = null,
+                messageId = MessageId("message-unscoped"),
+                updatedAtLabel = ""
+            )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        store.upsertTask("server-1", unscopedTask)
+        val staleChannelSlice =
+            store.channelProjectionFlow("server-1", "channel-1", "general").first()
+        val serverSlice = store.projection("server-1", SharedTasksScope.Server)
+
+        val staleProjected =
+            payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
+                threadLinkedTasksProjection(
+                    channelProjectionSlice = staleChannelSlice,
+                    serverProjectionSlice = serverSlice,
+                    references = payload.threadLinkedTaskReferences()
+                )
+            )
+
+        assertEquals(false, staleChannelSlice.isExactScopeLoaded)
+        assertEquals("task-unscoped", staleProjected.messages.single().taskId)
+        assertEquals(290, staleProjected.messages.single().taskNumber)
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
+        )
+        val freshChannelSlice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+        val freshProjected =
+            payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
+                threadLinkedTasksProjection(
+                    channelProjectionSlice = freshChannelSlice,
+                    serverProjectionSlice = serverSlice,
+                    references = payload.threadLinkedTaskReferences()
+                )
+            )
+
+        assertEquals(true, freshChannelSlice.isExactScopeLoaded)
+        assertEquals(null, freshProjected.messages.single().taskId)
+    }
+
+    @Test
     fun authoritativeEmptyLinkedTaskProjectionClearsStaleMessageTaskFacts() {
         val payload =
             KuiklyThreadScreenPayload(
@@ -6771,14 +6930,29 @@ class ThreadPayloadTest {
             shouldBackfillThreadTasksProjection(
                 payload = contentPayload,
                 taskChannelId = taskChannelId,
-                projectionStatus = SharedTasksDataStoreStatus.Idle
+                projection = SharedTasksProjectionSlice()
             )
         )
         assertFalse(
             shouldBackfillThreadTasksProjection(
                 payload = contentPayload,
                 taskChannelId = taskChannelId,
-                projectionStatus = SharedTasksDataStoreStatus.Loaded
+                projection =
+                    SharedTasksProjectionSlice(
+                        status = SharedTasksDataStoreStatus.Loaded,
+                        isExactScopeLoaded = true
+                    )
+            )
+        )
+        assertTrue(
+            shouldBackfillThreadTasksProjection(
+                payload = contentPayload,
+                taskChannelId = taskChannelId,
+                projection =
+                    SharedTasksProjectionSlice(
+                        status = SharedTasksDataStoreStatus.Loaded,
+                        isExactScopeLoaded = false
+                    )
             )
         )
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
@@ -6801,7 +6975,7 @@ class ThreadPayloadTest {
             shouldBackfillThreadTasksProjection(
                 payload = contentPayload.copy(selectedTab = "tasks"),
                 taskChannelId = taskChannelId,
-                projectionStatus = SharedTasksDataStoreStatus.Partial
+                projection = SharedTasksProjectionSlice(status = SharedTasksDataStoreStatus.Partial)
             )
         )
     }

@@ -115,6 +115,22 @@ internal fun SharedTasksProjectionSlice.threadLinkedTasksProjection(
             ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
     }
 
+internal fun threadLinkedTasksProjection(
+    channelProjectionSlice: SharedTasksProjectionSlice,
+    serverProjectionSlice: SharedTasksProjectionSlice,
+    references: ThreadLinkedTaskReferences
+): ThreadLinkedTasksProjection {
+    val channelProjection = channelProjectionSlice.threadLinkedTasksProjection(references)
+    if (channelProjectionSlice.isExactScopeLoaded) return channelProjection
+    val unscopedServerLookup =
+        serverProjectionSlice.tasks
+            .filter { task -> task.channelId == null && task.channelName.isNullOrBlank() }
+            .threadLinkedTasksByMessageLookup(references)
+    return channelProjection.copy(
+        lookup = unscopedServerLookup + channelProjection.lookup
+    )
+}
+
 internal fun threadLinkedTasksLookup(
     scopedProjection: ThreadLinkedTasksProjection,
     sharedStoreProjection: ThreadLinkedTasksProjection
