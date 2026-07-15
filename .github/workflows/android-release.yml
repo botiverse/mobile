@@ -70,10 +70,10 @@ on:
         type: boolean
         default: true
       share_ttl_seconds:
-        description: "Share page TTL in seconds (only used when create_share_page=true)"
+        description: "Optional share page TTL in seconds. Empty (default) = the share never expires."
         required: false
         type: string
-        default: "604800"
+        default: ""
 
 env:
   # The lane's android-release docs require these envs:
@@ -473,11 +473,19 @@ jobs:
             -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
             "${HANDS_API:-https://hands.build}/api/apps" \
             | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(a['id'] for a in d.get('apps',[]) if a.get('slug')=='${{ env.QUIVER_APP_SLUG }}'))")"
+          # No ttl_seconds in the body = the share never expires (server-side
+          # default). An explicit share_ttl_seconds input still sets one.
+          TTL="${{ needs.resolve.outputs.share_ttl_seconds }}"
+          if [ -n "$TTL" ]; then
+            SHARE_BODY="{\"ttl_seconds\":${TTL}}"
+          else
+            SHARE_BODY="{}"
+          fi
           SHARE_JSON="$(curl -fsS \
             -X POST \
             -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data "{\"ttl_seconds\":${{ needs.resolve.outputs.share_ttl_seconds }}}" \
+            --data "$SHARE_BODY" \
             "${HANDS_API:-https://hands.build}/api/apps/${APP_ID}/releases/${RELEASE_ID}/shares")"
           echo "$SHARE_JSON"
           SHARE_URL="$(printf '%s' "$SHARE_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['share_url'])")"
