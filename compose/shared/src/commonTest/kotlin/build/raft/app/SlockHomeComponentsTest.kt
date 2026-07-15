@@ -430,6 +430,52 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeContextAndSortMenusUseInjectedLocalizedLabels() {
+        val labels =
+            SlockHomeShellLabels(
+                closeChat = "关闭私聊",
+                archive = "归档",
+                sortChannels = "排序",
+                sortManual = "手动",
+                sortRecent = "最近",
+                sortAz = "A-Z"
+            )
+        val conversation =
+            SlockHomeConversationItem(
+                id = "dm-1",
+                name = "Cindy",
+                activityMuteSupported = false
+            )
+
+        val directMessageMenu =
+            slockHomeConversationMenuItems(
+                conversation = conversation,
+                labels = labels,
+                pinTargetIsPinned = false,
+                sortableFromMenu = true,
+                activeIsDirectMessage = true,
+                activeCanArchive = false
+            )
+        assertEquals("排序", directMessageMenu.single { it.id == "sort-channels" }.label)
+        assertEquals("关闭私聊", directMessageMenu.single { it.id == "close-dm" }.label)
+
+        val channelMenu =
+            slockHomeConversationMenuItems(
+                conversation = conversation,
+                labels = labels,
+                pinTargetIsPinned = false,
+                sortableFromMenu = false,
+                activeIsDirectMessage = false,
+                activeCanArchive = true
+            )
+        assertEquals("归档", channelMenu.single { it.id == "archive-channel" }.label)
+        assertEquals(
+            listOf("手动", "最近", "A-Z"),
+            slockHomeSortMenuItems(labels).map { it.label }
+        )
+    }
+
+    @Test
     fun homeActivitySidebarProjectionUsesSharedBadgeFormatting() {
         assertEquals(
             HomeActivitySidebarProjection(unreadLabel = "99+", totalLabel = null),

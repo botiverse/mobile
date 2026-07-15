@@ -1180,6 +1180,14 @@
     <string name="home_action_mark_as_unread">标记未读</string>
     <string name="home_action_mute">静音</string>
     <string name="home_action_unmute">取消静音</string>
+    <string name="home_action_close_chat">关闭私聊</string>
+    <string name="home_action_archive">归档</string>
+    <string name="home_action_sort">排序</string>
+    <string name="home_action_save_sort">保存排序</string>
+    <string name="home_sort_manual">手动</string>
+    <string name="home_sort_recent">最近</string>
+    <string name="home_sort_az">A-Z</string>
+    <string name="home_action_add_channel">添加频道</string>
     <string name="home_state_no_servers">没有可用的服务器</string>
     <string name="home_server_switcher_join_chinese_community">加入中文社区</string>
     <string name="home_server_switcher_join_community">加入社区服务器</string>

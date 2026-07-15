@@ -311,10 +311,10 @@ enum class SlockHomeSidebarTopSelection {
 }
 
 @Serializable
-enum class SlockSidebarSortMode(val wireValue: String, val label: String) {
-    Manual("manual", "Manual"),
-    Recent("recent", "Recent"),
-    Az("az", "A-Z");
+enum class SlockSidebarSortMode(val wireValue: String) {
+    Manual("manual"),
+    Recent("recent"),
+    Az("az");
 
     companion object {
         fun fromWireValue(value: String?): SlockSidebarSortMode =
@@ -342,6 +342,9 @@ data class SlockHomeShellLabels(
     val archive: String = "Archive",
     val sortChannels: String = "Sort",
     val saveSort: String = "Save sort",
+    val sortManual: String = "Manual",
+    val sortRecent: String = "Recent",
+    val sortAz: String = "A-Z",
     val addChannel: String = "Add channel",
     val noServersAvailable: String = "No servers available",
     val joinChineseCommunityServer: String = "Join Chinese Community",
@@ -365,6 +368,14 @@ data class SlockHomeShellLabels(
             markAsUnread = stringResource(MR.strings.home_action_mark_as_unread),
             mute = stringResource(MR.strings.home_action_mute),
             unmute = stringResource(MR.strings.home_action_unmute),
+            closeChat = stringResource(MR.strings.home_action_close_chat),
+            archive = stringResource(MR.strings.home_action_archive),
+            sortChannels = stringResource(MR.strings.home_action_sort),
+            saveSort = stringResource(MR.strings.home_action_save_sort),
+            sortManual = stringResource(MR.strings.home_sort_manual),
+            sortRecent = stringResource(MR.strings.home_sort_recent),
+            sortAz = stringResource(MR.strings.home_sort_az),
+            addChannel = stringResource(MR.strings.home_action_add_channel),
             noServersAvailable = stringResource(MR.strings.home_state_no_servers),
             joinChineseCommunityServer = stringResource(MR.strings.home_server_switcher_join_chinese_community),
             joinCommunityServer = stringResource(MR.strings.home_server_switcher_join_community),
@@ -1309,7 +1320,7 @@ internal fun SlockStructuralHomeShell(
                                         expanded = pinnedExpanded,
                                         onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
                                         showCollapsedUnreadDot = pinnedSectionHasUnread,
-                                        sortContentDescription = "Sort ${labels.pinned}",
+                                        sortContentDescription = "${labels.sortChannels} ${labels.pinned}",
                                         onSortClick = { anchor ->
                                             if (sidebarInteractionsEnabled) {
                                                 activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Pinned) null else SlockHomeSortSection.Pinned
@@ -1482,7 +1493,7 @@ internal fun SlockStructuralHomeShell(
                                             expanded = channelsExpanded,
                                             onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
                                             showCollapsedUnreadDot = channelSectionHasUnread,
-                                            sortContentDescription = "Sort ${labels.channels}",
+                                            sortContentDescription = "${labels.sortChannels} ${labels.channels}",
                                             onSortClick = { anchor ->
                                                 if (sidebarInteractionsEnabled) {
                                                     activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Channels) null else SlockHomeSortSection.Channels
@@ -1545,7 +1556,7 @@ internal fun SlockStructuralHomeShell(
                                 expanded = directMessagesExpanded,
                                 onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
                                 showCollapsedUnreadDot = directMessageSectionHasUnread,
-                                sortContentDescription = "Sort ${labels.directMessages}",
+                                sortContentDescription = "${labels.sortChannels} ${labels.directMessages}",
                                 onSortClick = { anchor ->
                                     if (sidebarInteractionsEnabled) {
                                         activeSortMenu = if (activeSortMenu == SlockHomeSortSection.DirectMessages) null else SlockHomeSortSection.DirectMessages
@@ -1665,7 +1676,7 @@ internal fun SlockStructuralHomeShell(
             activeSortMenu?.let { section ->
                 SlockBaseMenuOverlay(
                     anchor = sortMenuAnchor,
-                    items = SlockHomeSortMenuItems,
+                    items = slockHomeSortMenuItems(labels),
                     selectedId = when (section) {
                         SlockHomeSortSection.Channels, SlockHomeSortSection.JointChannels -> channelSortModeState.wireValue
                         SlockHomeSortSection.DirectMessages -> directMessageSortMode.wireValue
@@ -2062,9 +2073,17 @@ internal fun SlockSidebarSortTarget.toReorderSidebarIntent(order: List<String>):
         SlockSidebarSortTarget.Pinned -> SharedHomeIntent.ReorderSidebar(pinnedOrder = order)
     }
 
-private val SlockHomeSortMenuItems =
+internal fun slockHomeSortMenuItems(labels: SlockHomeShellLabels = SlockHomeShellLabels()): List<SlockBaseMenuItem> =
     SlockSidebarSortMode.entries.map { mode ->
-        SlockBaseMenuItem(id = mode.wireValue, label = mode.label)
+        SlockBaseMenuItem(
+            id = mode.wireValue,
+            label =
+                when (mode) {
+                    SlockSidebarSortMode.Manual -> labels.sortManual
+                    SlockSidebarSortMode.Recent -> labels.sortRecent
+                    SlockSidebarSortMode.Az -> labels.sortAz
+                }
+        )
     }
 
 internal fun homeActivitySidebarUnreadCount(
