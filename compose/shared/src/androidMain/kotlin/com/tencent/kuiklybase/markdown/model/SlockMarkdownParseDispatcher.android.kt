@@ -1,33 +1,10 @@
 package com.tencent.kuiklybase.markdown.model
 
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.asCoroutineDispatcher
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.ThreadPoolExecutor
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
-private val markdownParseThreadId = AtomicInteger(1)
-
-private val androidMarkdownParseDispatcher: CoroutineDispatcher by lazy {
-    ThreadPoolExecutor(
-        4,
-        4,
-        0L,
-        TimeUnit.MILLISECONDS,
-        LinkedBlockingQueue()
-    ) { runnable ->
-        Thread(runnable, "slock-markdown-parse-${markdownParseThreadId.getAndIncrement()}").apply {
-            isDaemon = true
-        }
-    }.apply {
-        prestartAllCoreThreads()
-    }.asCoroutineDispatcher()
-}
-
-internal actual val SlockMarkdownParseDispatcher: CoroutineDispatcher
-    get() = androidMarkdownParseDispatcher
-
-fun warmUpSlockMarkdownParseDispatcher() {
-    androidMarkdownParseDispatcher
+@OptIn(ExperimentalCoroutinesApi::class)
+internal actual val SlockMarkdownParseDispatcher: CoroutineDispatcher by lazy {
+    Dispatchers.Default.limitedParallelism(2)
 }
