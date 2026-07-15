@@ -40,6 +40,7 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
         setContent {
             when (fixture) {
                 FloatingOverlayTouchGuardModalFixture -> SlockModalPointerBarrierVisualScreen()
+                FloatingOverlayTouchGuardModalTextFieldFixture -> SlockModalTextFieldPointerVisualScreen()
                 FloatingOverlayTouchGuardTaskStatusFixture -> SlockTaskStatusMenuTouchVisualScreen()
                 else -> SlockFloatingOverlayTouchGuardVisualScreen()
             }
@@ -48,6 +49,7 @@ internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.
 }
 
 private const val FloatingOverlayTouchGuardModalFixture = "modal"
+private const val FloatingOverlayTouchGuardModalTextFieldFixture = "modal-text-field"
 private const val FloatingOverlayTouchGuardTaskStatusFixture = "task-status-menu"
 
 @Composable

@@ -6,12 +6,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalModalLayer
+import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockModalShellModel
 import build.raft.app.markdown.SlockMarkdownBody
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Arrangement
+import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
@@ -22,6 +25,8 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.TextRange
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 @Composable
@@ -80,6 +85,81 @@ internal fun SlockModalPointerBarrierVisualScreen() {
                     color = SlockColor.TextBlack
                 )
             }
+        }
+    }
+}
+
+@Composable
+internal fun SlockModalTextFieldPointerVisualScreen() {
+    val initialText = "ALPHA BRAVO CHARLIE"
+    val dialogHostState = rememberSlockUnifiedDialogHostState()
+    var underlayHit by remember { mutableStateOf(false) }
+    var fieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = initialText,
+                selection = TextRange(initialText.length)
+            )
+        )
+    }
+    val cursorMoved = fieldValue.selection.collapsed && fieldValue.selection.start in 1 until initialText.length
+    val statusColor =
+        when {
+            underlayHit -> ModalPointerBarrierLeakRed
+            cursorMoved -> ModalPointerBarrierPassGreen
+            else -> SlockColor.AccentPink
+        }
+
+    SlockUnifiedDialogHostProvider(dialogHostState) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .clickable { underlayHit = true }
+        ) {
+            SlockUnifiedDialog(
+                title = "Cursor target",
+                onDismiss = {},
+                hostRoute = "modal-text-field-pointer"
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    SlockBrutalInputField(
+                        value = fieldValue,
+                        onValueChange = { fieldValue = it },
+                        placeholder = "",
+                        autoFocus = false,
+                        containerTapRequestsFocus = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .background(statusColor)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text =
+                                when {
+                                    underlayHit -> "UNDERLAY HIT"
+                                    cursorMoved -> "CURSOR MOVED"
+                                    else -> "CURSOR AT END"
+                                },
+                            style = SlockType.Button.withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextBlack
+                        )
+                    }
+                }
+            }
+            SlockUnifiedDialogHost(
+                state = dialogHostState,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

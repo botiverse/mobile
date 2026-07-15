@@ -193,25 +193,33 @@ internal fun SlockUnifiedDialog(
     }
     val currentDialogContent =
         rememberUpdatedState<@Composable () -> Unit> {
-            SlockUnifiedDialogSurface(
-                title = title,
-                onDismiss = onDismiss,
-                modifier = modifier,
-                dismissEnabled = dismissEnabled,
-                overlayAlpha = overlayAlpha,
-                minWidth = minWidth,
-                maxWidth = maxWidth,
-                outerPadding = outerPadding,
-                contentPadding = contentPadding,
-                headerPadding = headerPadding,
-                titleFontSize = titleFontSize,
-                titleLineHeight = titleLineHeight,
-                titleMaxLines = titleMaxLines,
-                contentSpacing = contentSpacing,
-                hostBottomInset = LocalSlockUnifiedDialogHostBottomInset.current,
-                handleBack = true,
-                content = content
-            )
+            // The app-shell host decides global ordering above child pages and tabs, but the
+            // dialog must still enter Kuikly's native ModalView. Rendering the surface directly
+            // in the host leaves native editors/blank regions in the same render tree as the
+            // underlay; fixing those holes with parent nativeDispatchCapture also blocks precise
+            // TextField cursor gestures. ModalView provides the intended two-layer boundary: a
+            // full-window native touch barrier below independently interactive dialog content.
+            Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
+                SlockUnifiedDialogSurface(
+                    title = title,
+                    onDismiss = onDismiss,
+                    modifier = modifier,
+                    dismissEnabled = dismissEnabled,
+                    overlayAlpha = overlayAlpha,
+                    minWidth = minWidth,
+                    maxWidth = maxWidth,
+                    outerPadding = outerPadding,
+                    contentPadding = contentPadding,
+                    headerPadding = headerPadding,
+                    titleFontSize = titleFontSize,
+                    titleLineHeight = titleLineHeight,
+                    titleMaxLines = titleMaxLines,
+                    contentSpacing = contentSpacing,
+                    hostBottomInset = LocalSlockUnifiedDialogHostBottomInset.current,
+                    handleBack = false,
+                    content = content
+                )
+            }
         }
     val hostKey = remember { SlockUnifiedDialogHostKey() }
     DisposableEffect(hostState, hostKey, hostRoute) {
@@ -265,7 +273,7 @@ private fun SlockUnifiedDialogSurface(
                     .padding(bottom = hostBottomInset)
                     .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
                     .widthIn(min = minWidth, max = maxWidth)
-                    .slockFloatingContentClickTarget()
+                    .clickable(onClick = {})
         ) {
             Box(
                 modifier =
@@ -280,6 +288,7 @@ private fun SlockUnifiedDialogSurface(
                         .fillMaxWidth()
                         .background(SlockColor.SurfaceWhite)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .clickable(onClick = {})
                         .padding(contentPadding),
                 verticalArrangement = Arrangement.spacedBy(contentSpacing)
             ) {

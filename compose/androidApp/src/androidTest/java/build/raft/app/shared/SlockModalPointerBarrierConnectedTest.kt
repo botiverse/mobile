@@ -20,6 +20,97 @@ import kotlin.math.abs
 
 class SlockModalPointerBarrierConnectedTest {
     @Test
+    fun modalTextFieldTapMovesCursorAwayFromEnd() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
+                .putExtra(
+                    "pageData",
+                    JSONObject()
+                        .put("instanceId", "modal-text-field-pointer-connected-test")
+                        .put("fixture", "modal-text-field")
+                        .toString()
+                )
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            scenario.onActivity { activity -> activity.hideSystemBarsForPointerBarrierTest() }
+            instrumentation.waitForIdleSync()
+            SystemClock.sleep(RenderSettleMs)
+
+            val initialScreenshot = captureActivityBitmap(scenario)
+            val statusBounds = requireNotNull(initialScreenshot.findBoundsNear(FixturePink)) {
+                "Modal TextField cursor fixture did not render its pink status surface"
+            }
+            initialScreenshot.recycle()
+            val density = instrumentation.targetContext.resources.displayMetrics.density
+            tapPx(
+                scenario,
+                x = statusBounds.left + (60f * density),
+                y = statusBounds.top - (33f * density)
+            )
+            SystemClock.sleep(TapSettleMs)
+
+            val screenshot = captureActivityBitmap(scenario)
+            val cursorMovedGreenPixels = screenshot.countPixelsNear(PassGreen)
+            screenshot.recycle()
+
+            assertTrue(
+                "Modal TextField did not receive the cursor-position tap; greenPixels=$cursorMovedGreenPixels",
+                cursorMovedGreenPixels >= MinActionPixels
+            )
+        }
+    }
+
+    @Test
+    fun modalTextFieldBlankTapDoesNotReachUnderlay() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", SlockKuiklyPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
+                .putExtra(
+                    "pageData",
+                    JSONObject()
+                        .put("instanceId", "modal-text-field-blank-pointer-connected-test")
+                        .put("fixture", "modal-text-field")
+                        .toString()
+                )
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+
+        ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            scenario.onActivity { activity -> activity.hideSystemBarsForPointerBarrierTest() }
+            instrumentation.waitForIdleSync()
+            SystemClock.sleep(RenderSettleMs)
+
+            val initialScreenshot = captureActivityBitmap(scenario)
+            val statusBounds = requireNotNull(initialScreenshot.findBoundsNear(FixturePink)) {
+                "Modal TextField blank fixture did not render its pink status surface"
+            }
+            initialScreenshot.recycle()
+            val density = instrumentation.targetContext.resources.displayMetrics.density
+            // Right side of the visual input, beyond the rendered text/native editor.
+            tapPx(
+                scenario,
+                x = statusBounds.right - (20f * density),
+                y = statusBounds.top - (33f * density)
+            )
+            SystemClock.sleep(TapSettleMs)
+
+            val screenshot = captureActivityBitmap(scenario)
+            val underlayLeakRedPixels = screenshot.countPixelsNear(LeakRedUnderScrim)
+            screenshot.recycle()
+
+            assertTrue(
+                "Modal TextField blank area reached the underlay; redPixels=$underlayLeakRedPixels",
+                underlayLeakRedPixels <= MaxLeakPixels
+            )
+        }
+    }
+
+    @Test
     fun modalContentTapDoesNotClickUnderlyingMarkdownLink() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -42,14 +133,16 @@ class SlockModalPointerBarrierConnectedTest {
 
             val initialScreenshot = captureActivityBitmap(scenario)
             val initialPinkPixels = initialScreenshot.countPixelsNear(FixturePink)
+            val actionBounds = initialScreenshot.findBoundsNear(FixturePink)
             initialScreenshot.recycle()
             assertTrue(
                 "Modal pointer-barrier fixture did not render its pink action; pinkPixels=$initialPinkPixels",
                 initialPinkPixels >= MinFixturePixels
             )
+            requireNotNull(actionBounds) { "Modal pointer-barrier action bounds were missing" }
 
             // The action follows the modal header inside the centered card.
-            tapDp(instrumentation, xDp = 195f, yDp = 445f)
+            tapPx(scenario, x = actionBounds.centerX, y = actionBounds.centerY)
             SystemClock.sleep(TapSettleMs)
 
             val screenshot = captureActivityBitmap(scenario)
@@ -65,14 +158,24 @@ class SlockModalPointerBarrierConnectedTest {
         }
     }
 
-    private fun tapDp(instrumentation: Instrumentation, xDp: Float, yDp: Float) {
-        val density = instrumentation.targetContext.resources.displayMetrics.density
-        val x = xDp * density
-        val y = yDp * density
+    private fun tapPx(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        x: Float,
+        y: Float
+    ) {
         val downTime = SystemClock.uptimeMillis()
-        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0))
-        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0))
-        instrumentation.waitForIdleSync()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
+        val up = MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0)
+        try {
+            scenario.onActivity { activity ->
+                assertTrue("Failed to dispatch pointer down", activity.window.decorView.dispatchTouchEvent(down))
+                assertTrue("Failed to dispatch pointer up", activity.window.decorView.dispatchTouchEvent(up))
+            }
+        } finally {
+            down.recycle()
+            up.recycle()
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
 
     private fun captureActivityBitmap(scenario: ActivityScenario<SlockKuiklyActivity>): Bitmap {
@@ -110,6 +213,26 @@ class SlockModalPointerBarrierConnectedTest {
         return count
     }
 
+    private fun Bitmap.findBoundsNear(target: Int): PixelBounds? {
+        val row = IntArray(width)
+        var left = width
+        var top = height
+        var right = -1
+        var bottom = -1
+        for (y in 0 until height) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            for (x in row.indices) {
+                if (row[x].isNear(target, tolerance = 12)) {
+                    left = minOf(left, x)
+                    top = minOf(top, y)
+                    right = maxOf(right, x)
+                    bottom = maxOf(bottom, y)
+                }
+            }
+        }
+        return if (right >= left && bottom >= top) PixelBounds(left, top, right, bottom) else null
+    }
+
     private fun Int.isNear(target: Int, tolerance: Int): Boolean =
         abs(Color.red(this) - Color.red(target)) <= tolerance &&
             abs(Color.green(this) - Color.green(target)) <= tolerance &&
@@ -134,6 +257,16 @@ class SlockModalPointerBarrierConnectedTest {
     }
 
     private data class StatusScan(val redPixels: Int)
+
+    private data class PixelBounds(
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int
+    ) {
+        val centerX: Float get() = (left + right) / 2f
+        val centerY: Float get() = (top + bottom) / 2f
+    }
 
     private companion object {
         private const val RenderSettleMs = 2_000L
