@@ -346,9 +346,6 @@ class SlockRealtimeAppScopeEngine {
                     shouldPostBackgroundUnreadNotification = false,
                     isAppInForeground = isAppInForeground
                 )
-        val receivedLog =
-            "native_event_received event=$eventName serverId=${currentServerId.value} " +
-                "joined_rooms=${state.joinedChannelCount}"
         state.updateFromEvent(event)
         val roomCommandDecision =
             if (event is DirectMessageCreated) {
@@ -359,7 +356,7 @@ class SlockRealtimeAppScopeEngine {
         return SlockRealtimeAppScopeMappedDecision(
             serverId = currentServerId,
             eventName = eventName,
-            logMessage = receivedLog,
+            logMessage = "",
             roomCommandDecision = roomCommandDecision,
             // task #459: the tray posts only from the server-qualified stream.
             shouldPostBackgroundUnreadNotification = event is NotificationPushReceived,
@@ -382,7 +379,7 @@ class SlockRealtimeAppScopeEngine {
             serverId = currentServerId,
             eventName = eventName,
             rawPayload = rawPayload,
-            logMessage = "raw_event_notify eventName=$eventName serverId=${currentServerId.value}"
+            logMessage = ""
         )
     }
 
@@ -533,7 +530,7 @@ class SlockRealtimeAppScopeCoordinator(
 
     suspend fun onMappedEvent(event: RealtimeEvent) {
         val decision = engine.onMappedEvent(event)
-        sink.log(decision.logMessage)
+        if (decision.logMessage.isNotEmpty()) sink.log(decision.logMessage)
         val roomCommandDecision = decision.roomCommandDecision
         if (roomCommandDecision != null) {
             sink.log(roomCommandDecision.logMessage)
@@ -571,7 +568,7 @@ class SlockRealtimeAppScopeCoordinator(
                 )
             }
         }
-        sink.log(decision.logMessage)
+        if (decision.logMessage.isNotEmpty()) sink.log(decision.logMessage)
     }
 }
 

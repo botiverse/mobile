@@ -17,8 +17,55 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SharedConversationDirectoryStoreTest {
+    @Test
+    fun identityConflictsEmitOneBoundedSummaryPerDirectoryBuild() {
+        val logs = mutableListOf<String>()
+
+        val directory =
+            listOf(
+                SharedConversationDirectoryProjection(
+                    serverId = "server-1",
+                    canonicalChannelId = "canonical-1",
+                    aliases = setOf("canonical-1", "shared-alias"),
+                    conversationKind = ConversationKind.Channel,
+                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    channelKind = "channel",
+                    title = "First"
+                ),
+                SharedConversationDirectoryProjection(
+                    serverId = "server-1",
+                    canonicalChannelId = "canonical-1",
+                    aliases = setOf("canonical-1", "shared-alias"),
+                    conversationKind = ConversationKind.Joint,
+                    surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                    channelKind = "joint",
+                    title = "Replacement"
+                ),
+                SharedConversationDirectoryProjection(
+                    serverId = "server-1",
+                    canonicalChannelId = "canonical-2",
+                    aliases = setOf("canonical-2", "shared-alias"),
+                    conversationKind = ConversationKind.DirectMessage,
+                    surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                    channelKind = "direct_message",
+                    title = "Second"
+                )
+            ).toSharedConversationDirectoryState(logger = logs::add)
+
+        assertEquals(1, logs.size)
+        assertTrue(logs.single().startsWith("conversation_identity_merge_summary "))
+        assertTrue(logs.single().contains("canonicalOverlapCount=1"))
+        assertTrue(logs.single().contains("canonicalKindConflictCount=1"))
+        assertTrue(logs.single().contains("aliasAmbiguityCount=1"))
+        assertTrue(logs.single().contains("canonicalOverlapSample=canonical-1:2"))
+        assertTrue(logs.single().contains("canonicalKindConflictSample=canonical-1:Channel,Joint"))
+        assertTrue(logs.single().contains("aliasSample=shared-alias:2"))
+        assertEquals(setOf("canonical-1", "canonical-2"), directory.duplicateAliases.getValue("shared-alias"))
+    }
+
     @Test
     fun homeRowDirectoryProjectionMatchesSummaryBasedProjection() {
         val serverId = ServerId("server-1")

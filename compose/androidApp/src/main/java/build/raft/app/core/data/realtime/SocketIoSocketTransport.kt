@@ -68,10 +68,6 @@ class SocketIoSocketTransport(
         unbindListener(eventName, listener)
         val emitter = socket.emitterFor(eventName)
         val socketListener = Emitter.Listener { args ->
-            build.raft.app.core.data.diagnostics.SlockAppLog.d(
-                "SlockRealtime",
-                "transport_event eventName=$eventName payloadType=${args.firstOrNull()?.javaClass?.simpleName.orEmpty()}"
-            )
             listener(args.firstOrNull())
         }
         boundListeners[key] = socketListener

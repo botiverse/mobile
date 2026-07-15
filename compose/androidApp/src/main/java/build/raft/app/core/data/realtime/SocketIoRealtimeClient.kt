@@ -62,6 +62,7 @@ class SocketIoRealtimeClient(
     private var lastInboundEventAtMillis: Long? = null
     private var resumeProjectionRetryLastSeq: Long? = null
     private var watchdogTimer: Timer? = null
+    private val successDiagnostics = RealtimeSuccessDiagnostics(clockMillis)
     var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         private set
 
@@ -263,21 +264,35 @@ class SocketIoRealtimeClient(
                 }
                 val mapStartedAt = TimeSource.Monotonic.markNow()
                 val event = eventMapper.map(eventName, payload)
-                logger(
-                    "event_map_parse eventName=$eventName payloadType=${payload?.javaClass?.simpleName.orEmpty()} " +
-                        "mapped=${event?.realtimeDiagnosticName().orEmpty()} result=${if (event != null) "success" else "ignored"} " +
-                        "durationMs=${mapStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=caller"
-                )
-                logger(
-                    "event_received eventName=$eventName serverId=${connectedServerId.orEmpty()} mapped=${event?.realtimeDiagnosticName().orEmpty()} ${event?.realtimeDiagnosticFields().orEmpty()} payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
-                )
-                val cursorUpdate = event?.let(::dispatch)
+                val mapDurationMs = mapStartedAt.elapsedNow().inWholeMilliseconds
+                if (event == null) {
+                    logger(
+                        "event_map_ignored eventName=$eventName " +
+                            "payloadType=${payload?.javaClass?.simpleName.orEmpty()} durationMs=$mapDurationMs"
+                    )
+                    if (shouldFanOutRawEvent(eventName, serverAhead = false)) {
+                        rawListeners.toList().forEach { it(eventName, payload) }
+                    }
+                    return@on
+                }
+                val cursorUpdate = dispatch(event)
                 if (eventName == RealtimeSocketEvents.SyncResumeResponse && event is Heartbeat) {
                     requestResumeAfterProjectionRejection()
                 }
-                if (shouldFanOutRawEvent(eventName, cursorUpdate?.serverAhead == true)) {
+                val shouldFanOutRaw = shouldFanOutRawEvent(eventName, cursorUpdate.serverAhead)
+                if (shouldFanOutRaw) {
                     rawListeners.toList().forEach { it(eventName, payload) }
                 }
+                successDiagnostics.record(
+                    eventName = eventName,
+                    mappedType = event.realtimeDiagnosticName(),
+                    parseDurationMs = mapDurationMs,
+                    appliedSeq = cursor.appliedLastSeq,
+                    serverMaxSeq = cursor.serverMaxSeq,
+                    listenerCount = listeners.size,
+                    rawFanOut = shouldFanOutRaw,
+                    serverId = connectedServerId.orEmpty()
+                ).forEach(logger)
             }
         }
     }
@@ -400,10 +415,6 @@ class SocketIoRealtimeClient(
             )
         }
         diagnostics?.onEvent(event, connectedServerId?.let(::ServerId), visibleThreadId = null)
-        logger(
-            "event_dispatch type=${event.realtimeDiagnosticName()} appliedSeq=${cursor.appliedLastSeq} " +
-                "serverMaxSeq=${cursor.serverMaxSeq} listeners=${listeners.size}"
-        )
         listeners.toList().forEach { it(event) }
         return cursorUpdate
     }
@@ -431,6 +442,68 @@ class SocketIoRealtimeClient(
                 ?.takeIf(String::isNotBlank)
         is Map<*, *> -> (this["serverId"] as? String)?.takeIf(String::isNotBlank)
         else -> null
+    }
+}
+
+internal class RealtimeSuccessDiagnostics(
+    private val clockMillis: () -> Long,
+    private val summaryEventCount: Int = 64,
+    private val summaryIntervalMillis: Long = 30_000L,
+    private val slowParseMillis: Long = 16L
+) {
+    private var totalCount = 0L
+    private var pendingCount = 0
+    private var pendingRawFanOutCount = 0
+    private var maxParseDurationMs = 0L
+    private var lastSummaryAtMillis = clockMillis()
+    private val pendingTypes = linkedMapOf<String, Int>()
+
+    fun record(
+        eventName: String,
+        mappedType: String,
+        parseDurationMs: Long,
+        appliedSeq: Long,
+        serverMaxSeq: Long,
+        listenerCount: Int,
+        rawFanOut: Boolean,
+        serverId: String
+    ): List<String> {
+        totalCount += 1
+        pendingCount += 1
+        if (rawFanOut) pendingRawFanOutCount += 1
+        maxParseDurationMs = maxOf(maxParseDurationMs, parseDurationMs)
+        val normalizedType = mappedType.ifBlank { "unknown" }
+        pendingTypes[normalizedType] = pendingTypes.getOrElse(normalizedType) { 0 } + 1
+
+        val logs = mutableListOf<String>()
+        if (parseDurationMs >= slowParseMillis) {
+            logs +=
+                "event_parse_slow eventName=$eventName mapped=$normalizedType " +
+                    "durationMs=$parseDurationMs serverId=$serverId"
+        }
+        val now = clockMillis()
+        val intervalElapsed = (now - lastSummaryAtMillis).coerceAtLeast(0L) >= summaryIntervalMillis
+        if (totalCount == 1L || pendingCount >= summaryEventCount || intervalElapsed) {
+            val typeSummary =
+                pendingTypes.entries
+                    .sortedByDescending { it.value }
+                    .take(MaxSummaryTypes)
+                    .joinToString("|") { (type, count) -> "$type:$count" }
+            logs +=
+                "event_success_summary count=$pendingCount total=$totalCount rawFanOut=$pendingRawFanOutCount " +
+                    "maxParseMs=$maxParseDurationMs appliedSeq=$appliedSeq serverMaxSeq=$serverMaxSeq " +
+                    "listeners=$listenerCount serverId=$serverId lastEventName=$eventName types=$typeSummary"
+            pendingCount = 0
+            pendingRawFanOutCount = 0
+            maxParseDurationMs = 0L
+            pendingTypes.clear()
+            lastSummaryAtMillis = now
+        }
+        return logs
+    }
+
+    private companion object {
+        const val MaxSummaryTypes = 6
     }
 }
 
@@ -473,40 +546,4 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
     is PerReceiverPinnedChanged -> "pinned_updated"
     is NotificationPushReceived -> "notification_push"
-}
-
-private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
-    is MessageNew ->
-        "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
-    is MessageUpdated ->
-        "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
-    is DirectMessageCreated -> "channelId=${channelId.value}"
-    is ThreadUpdated ->
-        "threadId=${threadChannelId.value} messageId=${parentMessageId.value} replyCount=$replyCount"
-    is TaskCreated -> "tasks=${tasks.size}"
-    is TaskUpdated -> "taskId=${task.id.value}"
-    is TaskDeleted -> "taskId=${taskId.value}"
-    is MemberPresenceUpdated ->
-        "memberId=${memberId.value} presence=$presence kind=${kind?.name.orEmpty()} " +
-            "agentStatus=${agentStatus?.name.orEmpty()} statusLabel=${statusLabel.orEmpty()} " +
-            "serverSeq=${serverSeq ?: -1L} activityEntries=${activityEntries.size}"
-    is RealtimeRefreshRequired ->
-        "scope=$scope reason=$reason serverId=${serverId?.value.orEmpty()} channelId=${channelId?.value.orEmpty()} memberId=${memberId?.value.orEmpty()} subjectId=${subjectId.orEmpty()}"
-    is ServerMembershipRemoved -> "serverId=${serverId.value}"
-    is ServerDeleted -> "serverId=${serverId.value}"
-    is ServerPlanUpdated -> "serverId=${serverId.value} plan=${plan}"
-    is AgentCreated -> "agentId=${agent.id.value}"
-    is SyncResumeResponse ->
-        "currentSeq=$currentSeq messages=${messages.size} hasMore=$hasMore"
-    is Heartbeat -> "seq=$seq"
-    is PerReceiverReadStateChanged ->
-        "serverId=${serverId?.value.orEmpty()} scopes=${scopes.size} " +
-            "firstScopeId=${scopes.firstOrNull()?.scopeId?.value.orEmpty()} firstVersion=${scopes.firstOrNull()?.readStateVersion ?: -1L}"
-    is PerReceiverNotificationPrefsChanged ->
-        "serverId=${serverId?.value.orEmpty()} scopeId=${scopeId.value} version=$prefsVersion muted=${preference.activityMuted}"
-    is PerReceiverPinnedChanged ->
-        "serverId=${serverId?.value.orEmpty()} version=$pinnedVersion pinned=${pinned.size}"
-    is NotificationPushReceived ->
-        "serverId=${serverId.value} kind=${kind.name} messageId=${messageId.value} " +
-            "channelId=${channelId?.value.orEmpty()} threadId=${threadId?.value.orEmpty()}"
 }

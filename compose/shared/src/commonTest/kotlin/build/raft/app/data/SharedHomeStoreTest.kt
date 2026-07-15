@@ -104,7 +104,7 @@ class SharedHomeStoreTest {
         assertTrue(content is SharedHomeContentState.Content)
         assertEquals("server-new", content.snapshot.server.id.value)
         assertContains(refreshedLogs, "home_runtime_integrations_updated")
-        assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_receive intent=hydrate:start") })
+        assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_launch_load intent=hydrate:start") })
         assertEquals(emptyList(), originalLogs)
         storeScope.cancel()
     }
