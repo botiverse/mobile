@@ -3911,7 +3911,7 @@ internal class SlockKuiklyBridgeModule(
             val shareText = buildQuiverFeedbackShareText(ticketId, description, attachmentNames)
             withContext(Dispatchers.Main) {
                 copyText("Hands feedback", shareText)
-                Toast.makeText(appContext, "Copied — paste it in the community.", Toast.LENGTH_LONG).show()
+                Toast.makeText(appContext, appContext.getString(R.string.hands_feedback_copied_toast), Toast.LENGTH_LONG).show()
             }
             SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
             mapOf<String, Any>(
@@ -3926,7 +3926,7 @@ internal class SlockKuiklyBridgeModule(
                     "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
             )
             withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, "Feedback failed: ${it.message ?: "unknown"}", Toast.LENGTH_LONG).show()
+                Toast.makeText(appContext, appContext.getString(R.string.hands_feedback_failed_toast, it.message ?: "unknown"), Toast.LENGTH_LONG).show()
             }
             mapOf<String, Any>(
                     "status" to "error",
@@ -4196,7 +4196,7 @@ internal class SlockKuiklyBridgeModule(
                     }
             )
         }.onFailure {
-            Toast.makeText(appContext, "Unable to open share sheet", Toast.LENGTH_SHORT).show()
+            Toast.makeText(appContext, appContext.getString(R.string.share_sheet_unavailable_toast), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -4230,10 +4230,10 @@ internal class SlockKuiklyBridgeModule(
             appContext.startActivity(viewIntent)
         }.onFailure { throwable ->
             if (throwable is ActivityNotFoundException) {
-                Toast.makeText(appContext, "No app can open this link", Toast.LENGTH_SHORT)
+                Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
                         .show()
             } else {
-                Toast.makeText(appContext, "Unable to open link", Toast.LENGTH_SHORT).show()
+                Toast.makeText(appContext, appContext.getString(R.string.open_link_failed_toast), Toast.LENGTH_SHORT).show()
             }
         }
         return null
