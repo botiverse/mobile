@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedActivityFooterSlot
 import build.raft.app.activityFooterSlots
 import build.raft.app.activityTaskBadgeText
@@ -16,6 +17,7 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeRefreshRequired
@@ -55,25 +57,28 @@ private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
 
 class SharedActivityStoreTest {
     @Test
-    fun visibleReplyPrewarmDedupesStableMarkerAndRefetchesNewActivityVersion() = runBlocking {
+    fun visibleReplyPrewarmDedupesStableGenerationAndRefetchesAfterLedgerAdvance() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val ledger = SharedThreadFreshnessLedger()
         val store =
             activityStore(
                 scope = scope,
+                replyThreadFreshnessLedger = ledger,
                 prewarmReplyThread = { marker ->
                     calls += marker
                     DataResult.Content(Unit)
                 }
             )
-        val first = replyPrewarmMarker(activityVersion = "1:first:latest-1")
-        val updated = first.copy(activityVersion = "2:first:latest-2")
+        val marker = replyPrewarmMarker()
 
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(first)))
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(first)))
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(updated)))
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
 
-        assertEquals(listOf(first, updated), calls)
+        assertEquals(listOf(marker.key, marker.key), calls.map { it.key })
+        assertTrue(calls[0].contentGeneration !== calls[1].contentGeneration)
         scope.cancel()
     }
 
@@ -102,29 +107,72 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun visibleReplyPrewarmRunsLatestVersionAfterOlderInFlightCompletes() = runBlocking {
+    fun visibleReplyPrewarmRunsLatestGenerationAfterOlderInFlightCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val releaseFirst = CompletableDeferred<Unit>()
         val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
-        val first = replyPrewarmMarker(activityVersion = "1:first:latest-1")
-        val updated = first.copy(activityVersion = "2:first:latest-2")
+        val ledger = SharedThreadFreshnessLedger()
+        val marker = replyPrewarmMarker()
         val store =
             activityStore(
                 scope = scope,
+                replyThreadFreshnessLedger = ledger,
                 prewarmReplyThread = { marker ->
                     calls += marker
-                    if (marker == first) releaseFirst.await()
+                    if (calls.size == 1) releaseFirst.await()
                     DataResult.Content(Unit)
                 }
             )
 
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(first)))
-        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(updated)))
-        assertEquals(listOf(first), calls)
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        assertEquals(1, calls.size)
 
         releaseFirst.complete(Unit)
-        assertEquals(listOf(first, updated), calls)
+        assertEquals(2, calls.size)
+        assertTrue(calls[0].contentGeneration !== calls[1].contentGeneration)
         scope.cancel()
+    }
+
+    @Test
+    fun twoActivityShellOwnersShareTheSameOpaqueAppFreshnessGeneration() = runBlocking {
+        val ledger = SharedThreadFreshnessLedger()
+        val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val firstCalls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val secondCalls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val firstStore =
+            activityStore(
+                scope = firstScope,
+                replyThreadFreshnessLedger = ledger,
+                prewarmReplyThread = { marker ->
+                    firstCalls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val secondStore =
+            activityStore(
+                scope = secondScope,
+                replyThreadFreshnessLedger = ledger,
+                prewarmReplyThread = { marker ->
+                    secondCalls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val marker = replyPrewarmMarker()
+
+        firstStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        assertTrue(firstCalls.single().contentGeneration === secondCalls.single().contentGeneration)
+
+        ledger.advance(marker.key.serverId, marker.key.threadChannelId)
+        firstStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        secondStore.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        assertTrue(firstCalls.last().contentGeneration === secondCalls.last().contentGeneration)
+        assertTrue(firstCalls.first().contentGeneration !== firstCalls.last().contentGeneration)
+        firstScope.cancel()
+        secondScope.cancel()
     }
 
     @Test
@@ -143,7 +191,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
 
-        assertEquals(ordered, calls)
+        assertEquals(ordered.map { it.key }, calls.map { it.key })
         scope.cancel()
     }
 
@@ -164,7 +212,7 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
 
-        assertEquals(ordered.take(3), calls)
+        assertEquals(ordered.take(3).map { it.key }, calls.map { it.key })
         scope.cancel()
     }
 
@@ -194,7 +242,7 @@ class SharedActivityStoreTest {
             SharedActivityIntent.PrewarmActivityTail(listOf(visible, completed, fresh))
         )
 
-        assertEquals(listOf(fresh), calls)
+        assertEquals(listOf(fresh.key), calls.map { it.key })
         scope.cancel()
     }
 
@@ -234,7 +282,7 @@ class SharedActivityStoreTest {
                 scope = scope,
                 prewarmReplyThread = { marker ->
                     calls += marker
-                    if (marker == firstVisible || marker == secondVisible) releaseVisible.await()
+                    if (marker.key == firstVisible.key || marker.key == secondVisible.key) releaseVisible.await()
                     DataResult.Content(Unit)
                 }
             )
@@ -246,11 +294,11 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(tail)))
 
         // Tail cannot acquire a permit while the visible set holds both.
-        assertEquals(setOf(firstVisible, secondVisible), calls.toSet())
-        assertTrue(tail !in calls)
+        assertEquals(setOf(firstVisible.key, secondVisible.key), calls.map { it.key }.toSet())
+        assertTrue(calls.none { it.key == tail.key })
 
         releaseVisible.complete(Unit)
-        assertTrue(tail in calls)
+        assertTrue(calls.any { it.key == tail.key })
         scope.cancel()
     }
 
@@ -266,7 +314,7 @@ class SharedActivityStoreTest {
                 scope = scope,
                 prewarmReplyThread = { marker ->
                     started += marker
-                    if (marker == dropped) {
+                    if (marker.key == dropped.key) {
                         try {
                             awaitCancellation()
                         } catch (cancellation: CancellationException) {
@@ -280,13 +328,13 @@ class SharedActivityStoreTest {
 
         // "dropped" is warmed first (top of the list) and stays in-flight.
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(dropped, kept)))
-        assertEquals(listOf(dropped), started)
+        assertEquals(listOf(dropped.key), started.map { it.key })
 
         // New ordered set no longer contains "dropped" -> its in-flight job is cancelled.
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(kept)))
 
-        assertEquals(listOf(dropped), cancelled)
-        assertTrue(kept in started)
+        assertEquals(listOf(dropped.key), cancelled.map { it.key })
+        assertTrue(started.any { it.key == kept.key })
         scope.cancel()
     }
 
@@ -297,9 +345,15 @@ class SharedActivityStoreTest {
         val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
         var active = 0
         var maxActive = 0
+        val ledger = SharedThreadFreshnessLedger()
+        val firstVersion = keyedMarker("A")
+        val below = keyedMarker("B")
+        val storeMarkerKey = firstVersion.key
+        val secondVersion = firstVersion
         val store =
             activityStore(
                 scope = scope,
+                replyThreadFreshnessLedger = ledger,
                 prewarmReplyThread = { marker ->
                     calls += marker
                     active += 1
@@ -312,29 +366,28 @@ class SharedActivityStoreTest {
                     DataResult.Content(Unit)
                 }
             )
-        val firstVersion = keyedMarker("A", activityVersion = "v1")
-        val secondVersion = keyedMarker("A", activityVersion = "v2")
-        val below = keyedMarker("B")
-
         // A(v1) is warmed at the top of the tail and suspends in-flight on its gate.
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
-        assertEquals(listOf(firstVersion), calls)
+        assertEquals(1, calls.size)
 
         // Replan while A(v1) is still in-flight: A is re-versioned to v2 and B appears below it.
+        ledger.advance(storeMarkerKey.serverId, storeMarkerKey.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, below)))
 
         // The superseded A(v1) is unwound; the tail then reschedules A(v2) and warms B, one at a
         // time. Release the gates so the serial tail can drain.
-        gates.getOrPut(secondVersion) { CompletableDeferred() }.complete(Unit)
-        gates.getOrPut(below) { CompletableDeferred() }.complete(Unit)
+        val latestVersion = calls.last { it.key == storeMarkerKey }
+        gates.getOrPut(latestVersion) { CompletableDeferred() }.complete(Unit)
+        val actualBelow = calls.last { it.key == below.key }
+        gates.getOrPut(actualBelow) { CompletableDeferred() }.complete(Unit)
 
         // A(v2) must be rescheduled (no permanent warm miss) and B must be warmed.
-        assertTrue(secondVersion in calls)
-        assertTrue(below in calls)
+        assertEquals(2, calls.count { it.key == storeMarkerKey })
+        assertTrue(calls.any { it.key == below.key })
         // The tail never runs more than one prewarm concurrently across the replan.
         assertTrue(maxActive <= 1)
         // A(v1)'s stale result is discarded; only the latest version is recorded as warmed.
-        assertEquals(1, calls.count { it == firstVersion })
+        assertTrue(calls.filter { it.key == storeMarkerKey }.map { it.contentGeneration }.distinctBy { it }.size == 2)
         scope.cancel()
     }
 
@@ -346,16 +399,18 @@ class SharedActivityStoreTest {
         val drainGate = CompletableDeferred<Unit>()
         var active = 0
         var maxActive = 0
-        val firstVersion = keyedMarker("A", activityVersion = "v1")
+        val ledger = SharedThreadFreshnessLedger()
+        val firstVersion = keyedMarker("A")
         val store =
             activityStore(
                 scope = scope,
+                replyThreadFreshnessLedger = ledger,
                 prewarmReplyThread = { marker ->
                     calls += marker
                     active += 1
                     if (active > maxActive) maxActive = active
                     try {
-                        if (marker == firstVersion) {
+                        if (marker.key == firstVersion.key && calls.size == 1) {
                             running.complete(Unit)
                             try {
                                 awaitCancellation()
@@ -372,32 +427,33 @@ class SharedActivityStoreTest {
                     DataResult.Content(Unit)
                 }
             )
-        val secondVersion = keyedMarker("A", activityVersion = "v2")
+        val secondVersion = keyedMarker("A")
         val secondBelow = keyedMarker("B")
-        val thirdVersion = keyedMarker("A", activityVersion = "v3")
+        val thirdVersion = keyedMarker("A")
         val thirdBelow = keyedMarker("C")
 
         // A(v1) is warmed at the top of the tail and is now in-flight.
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
         running.await()
-        assertEquals(listOf(firstVersion), calls)
+        assertEquals(listOf(firstVersion.key), calls.map { it.key })
 
         // Two rapid consecutive replans arrive while A(v1) is still SLOWLY draining.
+        ledger.advance(firstVersion.key.serverId, firstVersion.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, secondBelow)))
+        ledger.advance(firstVersion.key.serverId, firstVersion.key.threadChannelId)
         store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(thirdVersion, thirdBelow)))
 
         // The drain barrier holds every later generation: nothing new may start while A(v1) drains.
-        assertEquals(listOf(firstVersion), calls)
+        assertEquals(listOf(firstVersion.key), calls.map { it.key })
         assertTrue(maxActive <= 1)
 
         // Once the slow drain finishes, only the LATEST generation (v3) runs, one item at a time.
         drainGate.complete(Unit)
 
-        assertTrue(thirdVersion in calls)
-        assertTrue(thirdBelow in calls)
+        assertEquals(2, calls.count { it.key == thirdVersion.key })
+        assertTrue(calls.any { it.key == thirdBelow.key })
         // The superseded v2 generation never launched (its loop was cancelled before it ran).
-        assertTrue(secondVersion !in calls)
-        assertTrue(secondBelow !in calls)
+        assertTrue(calls.none { it.key == secondBelow.key })
         // Concurrency never exceeded one across the two consecutive replans and the drain.
         assertTrue(maxActive <= 1)
         scope.cancel()
@@ -1241,6 +1297,177 @@ class SharedActivityStoreTest {
 
         assertEquals(3, store.state.value.items.single().replyCount)
         assertEquals("2026-07-13T03:05:00Z", store.state.value.items.single().latestActivityAt)
+        scope.cancel()
+    }
+
+    @Test
+    fun threadUpdatedAdvancesFreshnessOnlyForAcceptedHighWaterChange() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val ledger = SharedThreadFreshnessLedger()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(snapshot(listOf(threadItem("thread-channel-1").copy(replyCount = 2))))
+                    ),
+                replyThreadFreshnessLedger = ledger,
+                realtimeReconcileDelayMillis = 60_000L
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val initial = ledger.capture("server-1", "thread-channel-1")
+        val accepted =
+            ThreadUpdated(
+                parentMessageId = MessageId("parent-message"),
+                threadChannelId = ChannelId("thread-channel-1"),
+                replyCount = 3,
+                lastReplyAt = "2026-07-13T03:05:00Z",
+                participantIds = emptyList()
+            )
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(accepted))
+        val advanced = ledger.capture("server-1", "thread-channel-1")
+        assertTrue(initial !== advanced)
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(accepted))
+        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                accepted.copy(replyCount = 2, lastReplyAt = "2026-07-13T03:01:00Z")
+            )
+        )
+        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        scope.cancel()
+    }
+
+    @Test
+    fun messageUpdatedAdvancesOnceForSameMessageContentMutation() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val ledger = SharedThreadFreshnessLedger()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(listOf(snapshot(listOf(threadItem("thread-channel-1"))))),
+                replyThreadFreshnessLedger = ledger,
+                realtimeReconcileDelayMillis = 60_000L
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val initial = ledger.capture("server-1", "thread-channel-1")
+        val update =
+            MessageUpdated(
+                message(
+                    id = "reply-1",
+                    channelId = "thread-channel-1",
+                    body = "edited body"
+                )
+            )
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
+        val advanced = ledger.capture("server-1", "thread-channel-1")
+        assertTrue(initial !== advanced)
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(update))
+        assertTrue(advanced === ledger.capture("server-1", "thread-channel-1"))
+        scope.cancel()
+    }
+
+    @Test
+    fun canonicalReconcileAdvancesOnlyWhenAcceptedThreadContentChanges() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val ledger = SharedThreadFreshnessLedger()
+        val original = threadItem("thread-channel-1").copy(replyCount = 2)
+        val changed = original.copy(replyCount = 3, latestActivityAt = "2026-07-13T03:05:00Z")
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(snapshot(listOf(original)), snapshot(listOf(original)), snapshot(listOf(changed)))
+                    ),
+                replyThreadFreshnessLedger = ledger
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val initial = ledger.capture("server-1", "thread-channel-1")
+        store.dispatch(SharedActivityIntent.Refresh)
+        assertTrue(initial === ledger.capture("server-1", "thread-channel-1"))
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        assertTrue(initial !== ledger.capture("server-1", "thread-channel-1"))
+        scope.cancel()
+    }
+
+    @Test
+    fun staleCanonicalReconcileCannotReverseRealtimeFreshnessHighWater() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val ledger = SharedThreadFreshnessLedger()
+        val original = threadItem("thread-channel-1").copy(replyCount = 2)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots = listOf(snapshot(listOf(original)), snapshot(listOf(original)))
+                    ),
+                replyThreadFreshnessLedger = ledger,
+                realtimeReconcileDelayMillis = 60_000L
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-channel-1"),
+                    replyCount = 3,
+                    lastReplyAt = "2026-07-13T03:05:00Z",
+                    participantIds = emptyList()
+                )
+            )
+        )
+        val realtimeGeneration = ledger.capture("server-1", "thread-channel-1")
+
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(3, store.state.value.items.single().replyCount)
+        assertTrue(realtimeGeneration === ledger.capture("server-1", "thread-channel-1"))
+        scope.cancel()
+    }
+
+    @Test
+    fun syncResumeAndGapRefreshInvalidateThreadFreshnessCandidates() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val ledger = SharedThreadFreshnessLedger()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(listOf(snapshot(listOf(threadItem("thread-channel-1"))))),
+                replyThreadFreshnessLedger = ledger,
+                realtimeReconcileDelayMillis = 60_000L
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val initial = ledger.capture("server-1", "thread-channel-1")
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                SyncResumeResponse(messages = emptyList(), currentSeq = 10L, hasMore = false)
+            )
+        )
+        val afterResume = ledger.capture("server-1", "thread-channel-1")
+        assertTrue(initial !== afterResume)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Home,
+                    reason = "seq_gap",
+                    serverId = ServerId("server-1")
+                )
+            )
+        )
+        assertTrue(afterResume !== ledger.capture("server-1", "thread-channel-1"))
         scope.cancel()
     }
 
@@ -2165,6 +2392,7 @@ class SharedActivityStoreTest {
         prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
             DataResult.Empty(EmptyReason.NoMessages)
         },
+        replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
         tailPrewarmDepthCap: Int = 20,
         onUnreadCountsChanged: () -> Unit = {},
         realtimeReconcileDelayMillis: Long = 150L,
@@ -2183,6 +2411,7 @@ class SharedActivityStoreTest {
             perReceiverStateVersionStore = perReceiverStateVersionStore,
             persistSlices = persistSlices,
             prewarmReplyThread = prewarmReplyThread,
+            replyThreadFreshnessLedger = replyThreadFreshnessLedger,
             tailPrewarmDepthCap = tailPrewarmDepthCap,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope,
@@ -2209,9 +2438,7 @@ class SharedActivityStoreTest {
                 )
         )
 
-    private fun replyPrewarmMarker(
-        activityVersion: String = "1:first:latest"
-    ): ActivityReplyThreadPrewarmMarker =
+    private fun replyPrewarmMarker(): ActivityReplyThreadPrewarmMarker =
         ActivityReplyThreadPrewarmMarker(
             key =
                 ActivityReplyThreadPrewarmKey(
@@ -2219,14 +2446,10 @@ class SharedActivityStoreTest {
                     parentChannelId = "parent-channel",
                     parentMessageId = "parent-message",
                     threadChannelId = "thread-channel"
-                ),
-            activityVersion = activityVersion
+                )
         )
 
-    private fun keyedMarker(
-        id: String,
-        activityVersion: String = "1:$id"
-    ): ActivityReplyThreadPrewarmMarker =
+    private fun keyedMarker(id: String): ActivityReplyThreadPrewarmMarker =
         ActivityReplyThreadPrewarmMarker(
             key =
                 ActivityReplyThreadPrewarmKey(
@@ -2234,8 +2457,7 @@ class SharedActivityStoreTest {
                     parentChannelId = "parent-$id",
                     parentMessageId = "message-$id",
                     threadChannelId = "thread-$id"
-                ),
-            activityVersion = activityVersion
+                )
         )
 
     private class InMemoryPersistStorage : MviPersistStorage {

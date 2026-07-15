@@ -808,13 +808,6 @@ internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityRep
     val normalizedParentMessageId = parentMessageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
     val normalizedThreadChannelId = threadChannelId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
     if (normalizedThreadChannelId == normalizedParentChannelId) return null
-    val activityVersion =
-        listOf(
-            unreadCount.toString(),
-            firstUnreadMessageId?.value.orEmpty(),
-            latestActivityMessageId?.value.orEmpty(),
-            lastMessageId?.value.orEmpty()
-        ).joinToString(":")
     return ActivityReplyThreadPrewarmMarker(
         key =
             ActivityReplyThreadPrewarmKey(
@@ -822,8 +815,7 @@ internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityRep
                 parentChannelId = normalizedParentChannelId,
                 parentMessageId = normalizedParentMessageId,
                 threadChannelId = normalizedThreadChannelId
-            ),
-        activityVersion = activityVersion
+            )
     )
 }
 

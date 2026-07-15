@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.SharedThreadFreshnessGeneration
+import build.raft.app.SharedThreadFreshnessLedger
+import build.raft.app.SharedThreadSummaryFact
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
@@ -64,7 +67,7 @@ data class ActivityReplyThreadPrewarmKey(
 
 data class ActivityReplyThreadPrewarmMarker(
     val key: ActivityReplyThreadPrewarmKey,
-    val activityVersion: String
+    val contentGeneration: SharedThreadFreshnessGeneration? = null
 )
 
 class SharedActivityStore internal constructor(
@@ -79,6 +82,7 @@ class SharedActivityStore internal constructor(
     private var prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
+    private var replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
     private val tailPrewarmDepthCap: Int = SharedActivityTailPrewarmDepthCap,
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
@@ -102,8 +106,10 @@ class SharedActivityStore internal constructor(
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
     private var visibleReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private var tailReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
-    private val completedReplyPrewarmVersions = mutableMapOf<ActivityReplyThreadPrewarmKey, String>()
-    private val failedReplyPrewarmVersions = mutableMapOf<ActivityReplyThreadPrewarmKey, String>()
+    private val completedReplyPrewarmGenerations =
+        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadFreshnessGeneration>()
+    private val failedReplyPrewarmGenerations =
+        mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadFreshnessGeneration>()
     private val replyPrewarmJobs = mutableMapOf<ActivityReplyThreadPrewarmKey, Job>()
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
@@ -123,6 +129,7 @@ class SharedActivityStore internal constructor(
         serverMembersStore: SharedServerMembersStore? = this.serverMembersStore,
         tasksDataStore: SharedTasksDataStore? = this.tasksDataStore,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
+        replyThreadFreshnessLedger: SharedThreadFreshnessLedger? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
@@ -136,6 +143,9 @@ class SharedActivityStore internal constructor(
         this.tasksDataStore = tasksDataStore
         if (prewarmReplyThread != null) {
             this.prewarmReplyThread = prewarmReplyThread
+        }
+        if (replyThreadFreshnessLedger != null) {
+            this.replyThreadFreshnessLedger = replyThreadFreshnessLedger
         }
         this.persistSlices = persistSlices
         if (onUnreadCountsChanged != null) {
@@ -186,7 +196,8 @@ class SharedActivityStore internal constructor(
     }
 
     fun clear() {
-        synchronized(realtimeOwnerLock) {
+        val ownerServerId = synchronized(realtimeOwnerLock) {
+            val owner = _state.value.ownerServerId
             loadGeneration += 1L
             loadJob?.cancel()
             loadJob = null
@@ -195,7 +206,9 @@ class SharedActivityStore internal constructor(
             realtimeReconcileDirty = false
             realtimeHighWater.clear()
             pendingReadStateFacts = emptyMap()
+            owner
         }
+        ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
         clearReplyPrewarmState()
     }
 
@@ -210,7 +223,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun prewarmVisibleReplyThreads(markers: Set<ActivityReplyThreadPrewarmMarker>) {
-        val nextVisible = markers.associateBy { it.key }
+        val nextVisible = markers.map(::stampReplyThreadPrewarmMarker).associateBy { it.key }
         val previousVisible = visibleReplyPrewarmMarkers
         visibleReplyPrewarmMarkers = nextVisible
 
@@ -219,10 +232,10 @@ class SharedActivityStore internal constructor(
         nextVisible.values.forEach { marker ->
             val key = marker.key
             val enteredViewport = key !in previousVisible
-            val versionChanged = previousVisible[key]?.activityVersion != marker.activityVersion
-            if (completedReplyPrewarmVersions[key] == marker.activityVersion) return@forEach
+            val versionChanged = previousVisible[key]?.contentGeneration !== marker.contentGeneration
+            if (completedReplyPrewarmGenerations[key] === marker.contentGeneration) return@forEach
             if (replyPrewarmJobs[key]?.isActive == true) return@forEach
-            if (!enteredViewport && !versionChanged && failedReplyPrewarmVersions[key] == marker.activityVersion) {
+            if (!enteredViewport && !versionChanged && failedReplyPrewarmGenerations[key] === marker.contentGeneration) {
                 return@forEach
             }
             launchReplyThreadPrewarm(marker)
@@ -235,11 +248,11 @@ class SharedActivityStore internal constructor(
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val result = replyPrewarmSemaphore.withPermit { prewarmReplyThread(marker) }
-                    if (activeReplyPrewarmMarker(key)?.activityVersion != marker.activityVersion) return@launch
+                    if (activeReplyPrewarmMarker(key)?.contentGeneration !== marker.contentGeneration) return@launch
                     when (result) {
                         is DataResult.Content -> {
-                            completedReplyPrewarmVersions[key] = marker.activityVersion
-                            failedReplyPrewarmVersions.remove(key)
+                            marker.contentGeneration?.let { completedReplyPrewarmGenerations[key] = it }
+                            failedReplyPrewarmGenerations.remove(key)
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=success serverId=${key.serverId} " +
                                     "parentChannelId=${key.parentChannelId} parentMessageId=${key.parentMessageId} " +
@@ -247,7 +260,7 @@ class SharedActivityStore internal constructor(
                             )
                         }
                         is DataResult.Empty -> {
-                            failedReplyPrewarmVersions[key] = marker.activityVersion
+                            marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=empty reason=${result.reason.name} " +
                                     "serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
@@ -255,7 +268,7 @@ class SharedActivityStore internal constructor(
                             )
                         }
                         is DataResult.Error -> {
-                            failedReplyPrewarmVersions[key] = marker.activityVersion
+                            marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=error code=${result.error.code} " +
                                     "serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
@@ -263,7 +276,7 @@ class SharedActivityStore internal constructor(
                             )
                         }
                         is DataResult.NoPermission -> {
-                            failedReplyPrewarmVersions[key] = marker.activityVersion
+                            marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
                             diagnosticsLogger(
                                 "activity_reply_prewarm_result result=no_permission code=${result.blocker.code} " +
                                     "serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
@@ -274,8 +287,8 @@ class SharedActivityStore internal constructor(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (throwable: Throwable) {
-                    if (activeReplyPrewarmMarker(key)?.activityVersion == marker.activityVersion) {
-                        failedReplyPrewarmVersions[key] = marker.activityVersion
+                    if (activeReplyPrewarmMarker(key)?.contentGeneration === marker.contentGeneration) {
+                        marker.contentGeneration?.let { failedReplyPrewarmGenerations[key] = it }
                     }
                     diagnosticsLogger(
                         "activity_reply_prewarm_result result=exception errorType=${throwable::class.simpleName.orEmpty()} " +
@@ -287,7 +300,7 @@ class SharedActivityStore internal constructor(
                     if (replyPrewarmJobs[key] === currentJob) {
                         replyPrewarmJobs.remove(key)
                         visibleReplyPrewarmMarkers[key]
-                            ?.takeIf { latest -> latest.activityVersion != marker.activityVersion }
+                            ?.takeIf { latest -> latest.contentGeneration !== marker.contentGeneration }
                             ?.let(::launchReplyThreadPrewarm)
                     }
                 }
@@ -310,7 +323,9 @@ class SharedActivityStore internal constructor(
     // saturating the shared Semaphore, and total concurrency stays bounded by that Semaphore.
     private fun prewarmActivityTail(orderedMarkers: List<ActivityReplyThreadPrewarmMarker>) {
         val nextTail = LinkedHashMap<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker>()
-        orderedMarkers.forEach { marker -> nextTail.getOrPut(marker.key) { marker } }
+        orderedMarkers.map(::stampReplyThreadPrewarmMarker).forEach { marker ->
+            nextTail.getOrPut(marker.key) { marker }
+        }
         tailReplyPrewarmMarkers = nextTail
 
         tailPrewarmLoopJob?.cancel()
@@ -367,9 +382,9 @@ class SharedActivityStore internal constructor(
     private fun shouldLaunchTailPrewarm(marker: ActivityReplyThreadPrewarmMarker): Boolean {
         val key = marker.key
         if (key in visibleReplyPrewarmMarkers) return false
-        if (completedReplyPrewarmVersions[key] == marker.activityVersion) return false
+        if (completedReplyPrewarmGenerations[key] === marker.contentGeneration) return false
         if (replyPrewarmJobs[key]?.isActive == true) return false
-        if (failedReplyPrewarmVersions[key] == marker.activityVersion) return false
+        if (failedReplyPrewarmGenerations[key] === marker.contentGeneration) return false
         return true
     }
 
@@ -377,6 +392,51 @@ class SharedActivityStore internal constructor(
         key: ActivityReplyThreadPrewarmKey
     ): ActivityReplyThreadPrewarmMarker? =
         visibleReplyPrewarmMarkers[key] ?: tailReplyPrewarmMarkers[key]
+
+    private fun stampReplyThreadPrewarmMarker(
+        marker: ActivityReplyThreadPrewarmMarker
+    ): ActivityReplyThreadPrewarmMarker {
+        _state.value.items
+            .firstOrNull { item -> item.replyThreadPrewarmKey(marker.key.serverId) == marker.key }
+            ?.let { item ->
+                replyThreadFreshnessLedger.acceptSummary(
+                    marker.key.serverId,
+                    marker.key.threadChannelId,
+                    item.replyThreadSummaryFact()
+                )
+            }
+        val generation = replyThreadFreshnessLedger.capture(marker.key.serverId, marker.key.threadChannelId)
+        return marker.copy(contentGeneration = generation)
+    }
+
+    private fun advanceReplyThreadContent(existing: InboxItem, patched: InboxItem) {
+        val serverId = _state.value.ownerServerId ?: return
+        val key = existing.replyThreadPrewarmKey(serverId) ?: return
+        replyThreadFreshnessLedger.acceptSummary(
+            key.serverId,
+            key.threadChannelId,
+            patched.replyThreadSummaryFact()
+        )
+    }
+
+    private fun acceptMessageUpdatedFreshness(message: Message) {
+        val serverId = _state.value.ownerServerId ?: return
+        val candidateThreadIds =
+            setOfNotNull(
+                message.channelId?.value,
+                message.threadChannelId?.value,
+                message.threadId.value
+            )
+        val item =
+            _state.value.items.firstOrNull { candidate ->
+                candidate.kind == InboxItemKind.Thread &&
+                    candidateThreadIds.any { threadId ->
+                        candidate.threadChannelId?.value == threadId || candidate.channelId.value == threadId
+                    }
+            } ?: return
+        val key = item.replyThreadPrewarmKey(serverId) ?: return
+        replyThreadFreshnessLedger.acceptMessageMutation(key.serverId, key.threadChannelId, message)
+    }
 
     private fun cancelReplyPrewarmJobsNotIn(activeKeys: Set<ActivityReplyThreadPrewarmKey>) {
         replyPrewarmJobs
@@ -397,8 +457,8 @@ class SharedActivityStore internal constructor(
         replyPrewarmJobs.clear()
         visibleReplyPrewarmMarkers = emptyMap()
         tailReplyPrewarmMarkers = emptyMap()
-        completedReplyPrewarmVersions.clear()
-        failedReplyPrewarmVersions.clear()
+        completedReplyPrewarmGenerations.clear()
+        failedReplyPrewarmGenerations.clear()
     }
 
     private fun setFilter(filter: InboxFilter) {
@@ -452,6 +512,16 @@ class SharedActivityStore internal constructor(
     private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
         val event = intent.event
         if (!event.refreshesActivity()) return false
+        when (event) {
+            is MessageUpdated -> acceptMessageUpdatedFreshness(event.message)
+            is SyncResumeResponse ->
+                _state.value.ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
+            is RealtimeRefreshRequired ->
+                _state.value.ownerServerId?.let { serverId ->
+                    replyThreadFreshnessLedger.invalidateServer(serverId)
+                }
+            else -> Unit
+        }
         if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated) {
             if (intent.allowLocalPatch && _state.value.selectedFilter != InboxFilter.Mentions) {
                 when (event) {
@@ -495,6 +565,7 @@ class SharedActivityStore internal constructor(
                 latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
                 replyCount = existing.replyCount + 1
             )
+        advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         return true
@@ -525,6 +596,7 @@ class SharedActivityStore internal constructor(
                     }
             )
         if (patched == existing) return true
+        advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         return true
@@ -736,7 +808,12 @@ class SharedActivityStore internal constructor(
                             val ownerChanged =
                                 stateBeforeOwner.ownerServerId?.let { it != serverId.value } == true ||
                                     stateBeforeOwner.ownerUserId?.let { it != userId } == true
-                            if (ownerChanged) realtimeHighWater.clear()
+                            if (ownerChanged) {
+                                stateBeforeOwner.ownerServerId?.let { previousServerId ->
+                                    replyThreadFreshnessLedger.invalidateServer(previousServerId)
+                                }
+                                realtimeHighWater.clear()
+                            }
                             val stateForOwner =
                                 if (ownerChanged) {
                                     SharedActivityState(selectedFilter = stateBeforeOwner.selectedFilter)
@@ -960,7 +1037,20 @@ class SharedActivityStore internal constructor(
                         loadMoreErrorCode = if (append) result.blocker.code else null
                     )
             }
+        acceptCanonicalReplyThreadFacts(nextState)
         reduceState(intent, nextState)
+    }
+
+    private fun acceptCanonicalReplyThreadFacts(nextState: SharedActivityState) {
+        val serverId = nextState.ownerServerId ?: return
+        nextState.items.forEach { item ->
+            val key = item.replyThreadPrewarmKey(serverId) ?: return@forEach
+            replyThreadFreshnessLedger.acceptSummary(
+                key.serverId,
+                key.threadChannelId,
+                item.replyThreadSummaryFact()
+            )
+        }
     }
 
     private fun reconcileRealtimeHighWater(
@@ -1510,6 +1600,32 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
                 scope == RealtimeRefreshScope.Settings
         else -> false
     }
+
+private fun InboxItem.replyThreadPrewarmKey(serverId: String): ActivityReplyThreadPrewarmKey? {
+    if (kind != InboxItemKind.Thread) return null
+    val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    val normalizedParentChannelId = parentChannelId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedParentMessageId = parentMessageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedThreadChannelId = threadChannelId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (normalizedThreadChannelId == normalizedParentChannelId) return null
+    return ActivityReplyThreadPrewarmKey(
+        serverId = normalizedServerId,
+        parentChannelId = normalizedParentChannelId,
+        parentMessageId = normalizedParentMessageId,
+        threadChannelId = normalizedThreadChannelId
+    )
+}
+
+private fun InboxItem.replyThreadSummaryFact(): SharedThreadSummaryFact =
+    SharedThreadSummaryFact(
+        replyCount = replyCount,
+        latestActivityMessageId = latestActivityMessageId?.value,
+        latestActivityPreview = latestActivityPreview,
+        latestActivityAt = latestActivityAt,
+        lastMessageId = lastMessageId?.value,
+        lastMessagePreview = lastMessagePreview,
+        lastMessageAt = lastMessageAt
+    )
 
 private fun List<InboxItem>.withActivityThreadTaskProjection(
     serverId: String,

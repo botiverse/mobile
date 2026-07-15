@@ -321,10 +321,10 @@ class SharedThreadStoreTest {
                 channelId = "thread-m1"
             )
 
-        dataSource.cachePayload(unresolved)
+        dataSource.cachePayloadForTest(unresolved)
         assertNull(dataSource.cachedPayload("channel-1"))
 
-        dataSource.cachePayload(resolved)
+        dataSource.cachePayloadForTest(resolved)
         assertEquals("resolved reply body", dataSource.cachedPayload("thread-m1")?.messages?.single()?.body)
     }
 
@@ -463,7 +463,7 @@ class SharedThreadStoreTest {
                 payloadStore.prewarm("server-1", "thread-m1") {
                     fetchStarted.complete(Unit)
                     releaseFetch.await()
-                    dataSource.cachePayload(warmed)
+                    dataSource.cachePayloadForTest(warmed)
                     DataResult.Content(warmed)
                 }
             }
@@ -509,7 +509,7 @@ class SharedThreadStoreTest {
             )
         dataSource.readSession()
         payloadStore.prewarm("server-1", "thread-m1") {
-            dataSource.cachePayload(warmed)
+            dataSource.cachePayloadForTest(warmed)
             DataResult.Content(warmed)
         }
 
@@ -517,6 +517,291 @@ class SharedThreadStoreTest {
 
         assertEquals("completed prewarm body", (result as DataResult.Content).data.messages.single().body)
         assertEquals(emptyList(), repository.getReplyThreadRequests)
+        appScope.cancel()
+    }
+
+    @Test
+    fun supersededPrewarmCompletionCannotReplaceTheNewestActivityGeneration() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val stale =
+            contentPayloadForRoute(
+                base = route,
+                body = "stale generation",
+                id = "reply-stale",
+                channelId = "thread-m1"
+            )
+        val fresh =
+            contentPayloadForRoute(
+                base = route,
+                body = "fresh generation",
+                id = "reply-fresh",
+                channelId = "thread-m1"
+            )
+        val staleStarted = CompletableDeferred<Unit>()
+        val releaseStale = CompletableDeferred<Unit>()
+        val freshStarted = CompletableDeferred<Unit>()
+        val releaseFresh = CompletableDeferred<Unit>()
+        val stalePrewarm =
+            async {
+                payloadStore.prewarm("server-1", "thread-m1") {
+                    staleStarted.complete(Unit)
+                    releaseStale.await()
+                    DataResult.Content(stale)
+                }
+            }
+        staleStarted.await()
+        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+        val freshPrewarm =
+            async {
+                payloadStore.prewarm("server-1", "thread-m1") {
+                    freshStarted.complete(Unit)
+                    releaseFresh.await()
+                    DataResult.Content(fresh)
+                }
+            }
+        freshStarted.await()
+
+        releaseFresh.complete(Unit)
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(freshPrewarm.await())
+        releaseStale.complete(Unit)
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(stalePrewarm.await())
+
+        val consumed =
+            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+                payloadStore.joinOrConsumePrewarm("server-1", "thread-m1")
+            )
+        assertEquals("fresh generation", consumed.data.messages.single().body)
+        appScope.cancel()
+    }
+
+    @Test
+    fun lateCompletionFromSupersededInFlightGenerationPublishesNoReadyCandidate() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val stale =
+            contentPayloadForRoute(
+                base = route,
+                body = "late stale body",
+                id = "reply-stale",
+                channelId = "thread-m1"
+            )
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val prewarm =
+            async {
+                payloadStore.prewarm("server-1", "thread-m1") {
+                    started.complete(Unit)
+                    release.await()
+                    DataResult.Content(stale)
+                }
+            }
+        started.await()
+
+        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+        release.complete(Unit)
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(prewarm.await())
+
+        assertEquals(null, payloadStore.joinOrConsumePrewarm("server-1", "thread-m1"))
+        assertEquals(null, payloadStore.get("server-1", "thread-m1"))
+        appScope.cancel()
+    }
+
+    @Test
+    fun serverInvalidationMakesReadyAndOrdinaryCachedCandidatesUnusable() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val cached =
+            contentPayloadForRoute(
+                base = route,
+                body = "old candidate",
+                id = "reply-old",
+                channelId = "thread-m1"
+            )
+        payloadStore.put("server-1", "thread-m1", cached)
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            payloadStore.prewarm("server-1", "thread-m1") { DataResult.Content(cached) }
+        )
+
+        payloadStore.freshnessLedger.invalidateServer("server-1")
+
+        assertEquals(null, payloadStore.get("server-1", "thread-m1"))
+        assertEquals(null, payloadStore.joinOrConsumePrewarm("server-1", "thread-m1"))
+        appScope.cancel()
+    }
+
+    @Test
+    fun ordinaryCanonicalFetchRetriesCurrentGenerationBeforeReturningOrCaching() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        var responseIndex = 0
+        val repository = FakeConversationRepository()
+        repository.threadResultProvider = { _, _, _ ->
+            if (responseIndex++ == 0) {
+                DataResult.Content(threadSnapshot(body = "request-start stale", id = "stale"))
+            } else {
+                DataResult.Content(threadSnapshot(body = "current fresh", id = "fresh"))
+            }
+        }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        repository.getThreadStarted = started
+        repository.releaseGetThread = release
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("canonical-generation", "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        dataSource.readSession()
+        val request =
+            async {
+                dataSource.fetchThreadPayload(
+                    basePayload = basePayload(),
+                    persistResult = true,
+                    reusePrewarm = false
+                )
+            }
+        started.await()
+
+        payloadStore.freshnessLedger.advance("server-1", "channel-1")
+        release.complete(Unit)
+        val result = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(request.await())
+
+        assertEquals("current fresh", result.data.messages.single().body)
+        assertEquals("current fresh", payloadStore.get("server-1", "channel-1")?.messages?.single()?.body)
+        assertEquals(2, repository.getThreadRequests.size)
+        appScope.cancel()
+    }
+
+    @Test
+    fun visibleJoinOfSupersededPrewarmRefetchesCurrentGeneration() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "current after join", id = "fresh"))
+            )
+        suspend fun dataSource(shellId: String): SharedThreadDataSource {
+            val result = SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+            result.readSession()
+            return result
+        }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val stalePrewarm =
+            async {
+                payloadStore.prewarm("server-1", "channel-1") {
+                    started.complete(Unit)
+                    release.await()
+                    DataResult.Content(contentPayload("stale joined", id = "stale"))
+                }
+            }
+        started.await()
+        val firstVisible = async { dataSource("join-current-first").fetchThreadPayload(basePayload(), reusePrewarm = true) }
+        val secondVisible = async { dataSource("join-current-second").fetchThreadPayload(basePayload(), reusePrewarm = true) }
+        yield()
+
+        payloadStore.freshnessLedger.advance("server-1", "channel-1")
+        release.complete(Unit)
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(stalePrewarm.await())
+        val firstResult = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(firstVisible.await())
+        val secondResult = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(secondVisible.await())
+
+        assertEquals("current after join", firstResult.data.messages.single().body)
+        assertEquals("current after join", secondResult.data.messages.single().body)
+        assertEquals(1, repository.getThreadRequests.size)
+        appScope.cancel()
+    }
+
+    @Test
+    fun supersededFailedTakeoverRetriesCurrentGenerationBeforeVisibleSuccess() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        payloadStore.prewarm("server-1", "channel-1") {
+            DataResult.Error(ScreenError(code = "prewarm_offline", retryable = true))
+        }
+        var responseIndex = 0
+        val repository = FakeConversationRepository()
+        repository.threadResultProvider = { _, _, _ ->
+            if (responseIndex++ == 0) {
+                DataResult.Content(threadSnapshot(body = "stale takeover", id = "stale"))
+            } else {
+                DataResult.Content(threadSnapshot(body = "current takeover", id = "fresh"))
+            }
+        }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        repository.getThreadStarted = started
+        repository.releaseGetThread = release
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("takeover-current", "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        dataSource.readSession()
+        val visible = async { dataSource.fetchThreadPayload(basePayload(), reusePrewarm = true) }
+        started.await()
+
+        payloadStore.freshnessLedger.advance("server-1", "channel-1")
+        release.complete(Unit)
+        val result = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(visible.await())
+
+        assertEquals("current takeover", result.data.messages.single().body)
+        assertEquals(2, repository.getThreadRequests.size)
+        appScope.cancel()
+    }
+
+    @Test
+    fun removeAfterReadyPrewarmSelfHealsToOneFreshFlight() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val stale =
+            contentPayloadForRoute(
+                base = route,
+                body = "removed ready",
+                id = "removed-ready",
+                channelId = "thread-m1"
+            )
+        val fresh =
+            contentPayloadForRoute(
+                base = route,
+                body = "fresh after remove",
+                id = "fresh-after-remove",
+                channelId = "thread-m1"
+            )
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            payloadStore.prewarm("server-1", "thread-m1") { DataResult.Content(stale) }
+        )
+        payloadStore.remove("server-1", "thread-m1")
+        var freshFetches = 0
+
+        val result =
+            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+                payloadStore.prewarm("server-1", "thread-m1") {
+                    freshFetches += 1
+                    DataResult.Content(fresh)
+                }
+            )
+
+        assertEquals(1, freshFetches)
+        assertEquals("fresh after remove", result.data.messages.single().body)
         appScope.cancel()
     }
 
@@ -574,6 +859,89 @@ class SharedThreadStoreTest {
         releaseTakeover.complete(Unit)
         assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(first.await())
         assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(second.await())
+        assertEquals(1, repository.getReplyThreadRequests.size)
+        appScope.cancel()
+    }
+
+    @Test
+    fun failedNewGenerationCannotReturnThePreviousReadyPayloadDuringVisibleTakeover() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val stale =
+            contentPayloadForRoute(
+                base = route,
+                body = "stale v1",
+                id = "reply-v1",
+                channelId = "thread-m1"
+            )
+        assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+            payloadStore.prewarm("server-1", "thread-m1") {
+                DataResult.Content(stale)
+            }
+        )
+        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+        assertIs<DataResult.Error>(
+            payloadStore.prewarm("server-1", "thread-m1") {
+                DataResult.Error(ScreenError(code = "prewarm_v2_offline", retryable = true))
+            }
+        )
+
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "thread-m1",
+                                        id = "reply-fresh",
+                                        seq = 3,
+                                        body = "fresh takeover"
+                                    )
+                                ),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val takeoverStarted = CompletableDeferred<Unit>()
+        val releaseTakeover = CompletableDeferred<Unit>()
+        repository.getReplyThreadStarted = takeoverStarted
+        repository.releaseGetReplyThread = releaseTakeover
+        suspend fun dataSource(shellId: String): SharedThreadDataSource {
+            val dataSource =
+                SharedThreadDataSource(
+                    networkApi = FakeThreadApi(),
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    selectedServerStore = SelectedServerStore(SlockShellStoreScope.create(shellId, "server-1")),
+                    conversationRepository = repository,
+                    payloadStore = payloadStore
+                )
+            dataSource.readSession()
+            return dataSource
+        }
+        val first = async { dataSource("v2-takeover-first").fetchThreadPayload(route, reusePrewarm = true) }
+        takeoverStarted.await()
+        val second = async { dataSource("v2-takeover-second").fetchThreadPayload(route, reusePrewarm = true) }
+
+        assertEquals(1, repository.getReplyThreadRequests.size)
+        releaseTakeover.complete(Unit)
+        val firstPayload = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(first.await()).data
+        val secondPayload = assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(second.await()).data
+        assertEquals("fresh takeover", firstPayload.messages.single().body)
+        assertEquals("fresh takeover", secondPayload.messages.single().body)
         assertEquals(1, repository.getReplyThreadRequests.size)
         appScope.cancel()
     }
@@ -734,8 +1102,7 @@ class SharedThreadStoreTest {
                         parentChannelId = "channel-1",
                         parentMessageId = "m1",
                         threadChannelId = "thread-m1"
-                    ),
-                activityVersion = "1:reply-1:reply-1"
+                )
             )
 
         val result = dataSource.prewarmReplyThread(marker)
@@ -744,6 +1111,107 @@ class SharedThreadStoreTest {
         assertEquals(listOf(DataRequestPriority.Background), repository.getReplyThreadPriorities)
         assertEquals(listOf(DataRequestPriority.Background), repository.getMessageContextPriorities)
         assertEquals("thread-m1", dataSource.cachedPayload("thread-m1")?.sourceThreadId)
+    }
+
+    @Test
+    fun newerActivityVersionReplacesCompletedPrewarmBeforeVisibleOpen() = runBlocking {
+        val payloadStore = SharedThreadPayloadStore(prewarmStartIntervalMillis = 0L)
+        fun snapshot(messages: List<Message>) =
+            DataResult.Content(
+                threadSnapshot(
+                    threadId = "thread-m1",
+                    messages = messages,
+                    parentMessage =
+                        message(
+                            threadId = "channel-1",
+                            id = "m1",
+                            seq = 1,
+                            body = "parent"
+                        ),
+                    conversation =
+                        conversationSummary("thread-m1").copy(
+                            kind = ConversationKind.Thread,
+                            channelId = ChannelId("thread-m1"),
+                            thread =
+                                ThreadConversation(
+                                    parentChannelId = ChannelId("channel-1"),
+                                    parentMessageId = MessageId("m1"),
+                                    streamChannelId = ChannelId("thread-m1")
+                                )
+                        )
+                )
+            )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    snapshot(
+                        listOf(
+                            message(
+                                threadId = "thread-m1",
+                                id = "reply-1",
+                                seq = 2,
+                                body = "reply one"
+                            )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-version", "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        val key =
+            ActivityReplyThreadPrewarmKey(
+                serverId = "server-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                threadChannelId = "thread-m1"
+            )
+
+        assertIs<DataResult.Content<Unit>>(
+            dataSource.prewarmReplyThread(
+                ActivityReplyThreadPrewarmMarker(key = key)
+            )
+        )
+        repository.threadResult =
+            snapshot(
+                listOf(
+                    message(
+                        threadId = "thread-m1",
+                        id = "reply-1",
+                        seq = 2,
+                        body = "reply one"
+                    ),
+                    message(
+                        threadId = "thread-m1",
+                        id = "reply-2",
+                        seq = 3,
+                        body = "reply two"
+                    )
+                )
+            )
+        payloadStore.freshnessLedger.advance("server-1", "thread-m1")
+
+        assertIs<DataResult.Content<Unit>>(
+            dataSource.prewarmReplyThread(
+                ActivityReplyThreadPrewarmMarker(key = key)
+            )
+        )
+        val visible =
+            assertIs<DataResult.Content<KuiklyThreadScreenPayload>>(
+                dataSource.fetchThreadPayload(
+                    basePayload = replyPayload(parentMessageId = "m1", threadId = "thread-m1"),
+                    reusePrewarm = true
+                )
+            )
+
+        assertEquals(2, repository.getReplyThreadRequests.size)
+        assertEquals(listOf("reply-1", "reply-2"), visible.data.messages.map { it.id })
+        assertEquals(listOf(DataRequestPriority.Background, DataRequestPriority.Background), repository.getReplyThreadPriorities)
     }
 
     @Test
@@ -785,7 +1253,7 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val resolvedRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(
                 base = resolvedRoute,
                 body = "old resolved reply body",
@@ -817,7 +1285,7 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -839,7 +1307,7 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val route = basePayload()
-        dataSource.cachePayload(contentPayload("stale cached body"))
+        dataSource.cachePayloadForTest(contentPayload("stale cached body"))
         dataSource.invalidateCachedPayload(route)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -1009,7 +1477,7 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayload("cached body").copy(
                 joined = false,
                 canSend = false,
@@ -1097,7 +1565,7 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
@@ -1154,7 +1622,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
         )
-        dataSource.cachePayload(contentPayload("cached body").copy(joined = true, canSend = true))
+        dataSource.cachePayloadForTest(contentPayload("cached body").copy(joined = true, canSend = true))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val renderEvents = mutableListOf<SharedThreadRenderSlice>()
         val renderJob = launch {
@@ -1261,7 +1729,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(route, "cached reply").copy(
                 joined = false,
                 canSend = false,
@@ -1357,7 +1825,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(route, "cached reply").copy(
                 joined = false,
                 canSend = false,
@@ -1451,7 +1919,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(route, "cached reply").copy(joined = true, canSend = true)
         )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -1529,7 +1997,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(route, "cached reply").copy(joined = true, canSend = true)
         )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -1612,7 +2080,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(route, "cached dm reply", channelId = "dm-thread-1").copy(
                 joined = false,
                 canSend = false,
@@ -1931,7 +2399,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
-        dataSource.cachePayload(contentPayload("cached body").copy(joined = true, canSend = true))
+        dataSource.cachePayloadForTest(contentPayload("cached body").copy(joined = true, canSend = true))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.dispatch(SharedThreadIntent.Start(basePayload()))
@@ -1984,7 +2452,7 @@ class SharedThreadStoreTest {
                 conversationRepository = repository,
                 channelRepository = channelRepository
             )
-        dataSource.cachePayload(contentPayload("cached body").copy(joined = true, canSend = true))
+        dataSource.cachePayloadForTest(contentPayload("cached body").copy(joined = true, canSend = true))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val renderEvents = mutableListOf<SharedThreadRenderSlice>()
         val renderJob = launch {
@@ -2243,7 +2711,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(directMessagePayload(), "cached body")
                 .copy(
                     title = "Direct Message",
@@ -2334,7 +2802,7 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
         val replyRoute = replyPayload(parentMessageId = "parent-a", threadId = "thread-a")
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayloadForRoute(
                 base = replyRoute,
                 body = "reply cached",
@@ -2688,7 +3156,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -2835,7 +3303,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload().copy(title = "Readable channel")))
@@ -2897,7 +3365,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -3045,7 +3513,7 @@ class SharedThreadStoreTest {
                     )
             )
 
-        dataSource.cachePayload(payload)
+        dataSource.cachePayloadForTest(payload)
         val cachedPayload = dataSource.cachedPayload("channel-1")
 
         assertNotNull(cachedPayload)
@@ -3071,7 +3539,7 @@ class SharedThreadStoreTest {
             )
         val payload = contentPayloadForRoute(route, "body", channelId = "joint-1")
 
-        dataSource.cachePayload(payload)
+        dataSource.cachePayloadForTest(payload)
 
         val cached = localStore.readThread(ThreadId("joint-1"))
         assertNull(cached)
@@ -3169,7 +3637,7 @@ class SharedThreadStoreTest {
                         )
                 )
 
-        dataSource.cachePayload(payload)
+        dataSource.cachePayloadForTest(payload)
 
         assertNull(localStore.readThread(ThreadId("thread-parent-1")))
         val cached = dataSource.cachedPayload("thread-parent-1")
@@ -4915,8 +5383,7 @@ class SharedThreadStoreTest {
                         parentChannelId = "channel-1",
                         parentMessageId = "m1",
                         threadChannelId = "thread-m1"
-                    ),
-                activityVersion = "1:reply-1:reply-1"
+                )
             )
         val prewarm = async { dataSource.prewarmReplyThread(marker) }
         replyFetchStarted.await()
@@ -5917,7 +6384,7 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository
             )
-        dataSource.cachePayload(wrongReplyCachedPayload())
+        dataSource.cachePayloadForTest(wrongReplyCachedPayload())
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
         val observer = scope.launch {
@@ -6000,7 +6467,7 @@ class SharedThreadStoreTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository
             )
-        dataSource.cachePayload(wrongReplyCachedPayload())
+        dataSource.cachePayloadForTest(wrongReplyCachedPayload())
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
         val observer = scope.launch {
@@ -6485,7 +6952,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6527,7 +6994,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(channelMessagesResponseCode = 403),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6547,7 +7014,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6583,7 +7050,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6691,7 +7158,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6730,7 +7197,7 @@ class SharedThreadStoreTest {
     fun realtimeThreadUpdatedAppliesReplyMetadataToDirectMessageParent() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             buildSharedThreadPayloadFromMessagesPage(
                 basePayload = directMessagePayload(),
                 page =
@@ -6783,7 +7250,7 @@ class SharedThreadStoreTest {
     fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6821,7 +7288,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6858,10 +7325,10 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        dataSource.cachePayload(store.state.value.payload)
+        dataSource.cachePayloadForTest(store.state.value.payload)
         val before = store.state.value
         logs.clear()
 
@@ -6895,7 +7362,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6923,7 +7390,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6958,7 +7425,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession())
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -6983,7 +7450,7 @@ class SharedThreadStoreTest {
     fun realtimeMessageUpdatedPreservesExistingAuthorMetadata() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7012,7 +7479,7 @@ class SharedThreadStoreTest {
     fun realtimeMessageUpdatedCannotReplaceCanonicalAuthorIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7043,7 +7510,7 @@ class SharedThreadStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
         val cachedPayload = contentPayload("cached body")
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             cachedPayload.copy(
                 messages =
                     listOf(
@@ -7093,7 +7560,7 @@ class SharedThreadStoreTest {
                 originParentMessageId = "m1",
                 showModeTabs = false
             )
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             route.copy(
                 status = "content",
                 messages =
@@ -7148,7 +7615,7 @@ class SharedThreadStoreTest {
     fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7213,7 +7680,7 @@ class SharedThreadStoreTest {
     fun realtimeMessageUpdatedDoesNotRevertJustAcknowledgedLocalReactionSelection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7292,7 +7759,7 @@ class SharedThreadStoreTest {
                         KuiklyThreadReactionItem("🔥", count = 1, selected = false)
                     )
             )
-        dataSource.cachePayload(contentPayload("cached body").copy(messages = listOf(initialMessage)))
+        dataSource.cachePayloadForTest(contentPayload("cached body").copy(messages = listOf(initialMessage)))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7357,7 +7824,7 @@ class SharedThreadStoreTest {
                         )
                     )
             )
-        dataSource.cachePayload(initial)
+        dataSource.cachePayloadForTest(initial)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7424,7 +7891,7 @@ class SharedThreadStoreTest {
                         )
                     )
             )
-        dataSource.cachePayload(initial)
+        dataSource.cachePayloadForTest(initial)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7454,7 +7921,7 @@ class SharedThreadStoreTest {
     fun realtimeThreadUpdatedCanDecreaseAuthoritativeReplyCount() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayload("parent").copy(
                 messages =
                     listOf(
@@ -7499,7 +7966,7 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7523,7 +7990,7 @@ class SharedThreadStoreTest {
             contentPayload("cached body").let { content ->
                 content.copy(messages = content.messages.map { message -> message.copy(seq = 10L) })
             }
-        dataSource.cachePayload(payload)
+        dataSource.cachePayloadForTest(payload)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7543,7 +8010,7 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7595,7 +8062,7 @@ class SharedThreadStoreTest {
                         )
                     )
             )
-        dataSource.cachePayload(initial)
+        dataSource.cachePayloadForTest(initial)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7650,7 +8117,7 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("cached body"))
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7774,7 +8241,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("saveable body"))
+        dataSource.cachePayloadForTest(contentPayload("saveable body"))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -7798,7 +8265,7 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("reactable body"))
+        dataSource.cachePayloadForTest(contentPayload("reactable body"))
 
         val result = dataSource.setMessageReaction("m1", "🔥", selected = true)
 
@@ -7818,7 +8285,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("reactable body"))
+        dataSource.cachePayloadForTest(contentPayload("reactable body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7841,7 +8308,7 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
             )
-        dataSource.cachePayload(contentPayload("reactable body"))
+        dataSource.cachePayloadForTest(contentPayload("reactable body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7891,7 +8358,7 @@ class SharedThreadStoreTest {
             contentPayload("reactable body").messages.single().copy(
                 reactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
             )
-        dataSource.cachePayload(contentPayload("reactable body").copy(messages = listOf(message)))
+        dataSource.cachePayloadForTest(contentPayload("reactable body").copy(messages = listOf(message)))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7924,7 +8391,7 @@ class SharedThreadStoreTest {
                         KuiklyThreadReactionItem("🔥", count = 1, selected = false)
                     )
             )
-        dataSource.cachePayload(contentPayload("reactable body").copy(messages = listOf(message)))
+        dataSource.cachePayloadForTest(contentPayload("reactable body").copy(messages = listOf(message)))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -7971,7 +8438,7 @@ class SharedThreadStoreTest {
                         KuiklyThreadReactionItem("🔥", count = 1, selected = false)
                     )
             )
-        dataSource.cachePayload(contentPayload("reactable body").copy(messages = listOf(initialMessage)))
+        dataSource.cachePayloadForTest(contentPayload("reactable body").copy(messages = listOf(initialMessage)))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
@@ -8031,7 +8498,7 @@ class SharedThreadStoreTest {
             )
         val originalReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
         val message = contentPayload("reactable body").messages.single()
-        dataSource.cachePayload(
+        dataSource.cachePayloadForTest(
             contentPayload("reactable body").copy(
                 messages = listOf(message.copy(reactions = originalReactions))
             )
@@ -8587,7 +9054,7 @@ class SharedThreadStoreTest {
         val parent = base.messages.single()
 
         val payload = (dataSource.createOrOpenReplyThread(base, parent) as DataResult.Content).data
-        dataSource.cachePayload(payload)
+        dataSource.cachePayloadForTest(payload)
 
         val cached = localStore.readThread(ThreadId("thread-m1"))
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
@@ -10923,6 +11390,13 @@ class SharedThreadStoreTest {
                     )
                 )
         )
+    }
+
+    private fun SharedThreadDataSource.cachePayloadForTest(
+        payload: KuiklyThreadScreenPayload
+    ): Boolean {
+        runBlocking { readSession() }
+        return cachePayload(payload, serverId = "server-1")
     }
 
     private fun sampleSession(): StoredAuthSession =
