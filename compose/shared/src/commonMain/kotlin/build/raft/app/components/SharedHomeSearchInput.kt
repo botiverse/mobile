@@ -43,8 +43,8 @@ internal fun SharedHomeSearchInput(
     onQueryChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onClear: () -> Unit,
+    placeholder: String,
     autoFocus: Boolean = false,
-    placeholder: String = "Search channels, DMs, messages…",
     modifier: Modifier = Modifier
 ) {
     if (interactive) {

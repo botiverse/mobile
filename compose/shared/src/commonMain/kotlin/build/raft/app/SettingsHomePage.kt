@@ -1087,7 +1087,6 @@ private fun HomeSearchRouterContent(
         environment.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
     val listState = rememberLazyListState()
-    val scrollScope = rememberCoroutineScope()
     val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val draftProjection =
         remember(activeDraftRecords) {
@@ -1173,8 +1172,7 @@ private fun HomeSearchRouterContent(
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
-        listState = listState,
-        onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
+        listState = listState
     )
 }
 
@@ -14869,7 +14867,6 @@ private fun SharedHomeSearchPanel(
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
-    onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
@@ -14946,7 +14943,7 @@ private fun SharedHomeSearchPanel(
                 interactive = interactiveSearchField,
                 autoFocus = initialFocusInput,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
-                onTitleClick = onTitleClick
+                placeholder = stringResource(MR.strings.search_placeholder)
             )
             SharedHomeSearchDivider()
             SlockAppShellBodyTopBanner()
@@ -15233,7 +15230,7 @@ private fun SharedHomeSearchToolbar(
     interactive: Boolean = true,
     autoFocus: Boolean = false,
     topSafeAreaPadding: Dp = 0.dp,
-    onTitleClick: (() -> Unit)? = null
+    placeholder: String
 ) {
     SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
         if (onClose != null) {
@@ -15245,17 +15242,11 @@ private fun SharedHomeSearchToolbar(
                 onClick = onClose
             )
         }
-        SharedHomeSearchIconButton(
-            iconName = SlockLucideIconName.Search,
-            size = 38.dp,
-            iconSize = 18.dp,
-            background = SlockColor.BrandYellow,
-            onClick = onTitleClick ?: onSubmit
-        )
         SharedHomeSearchInput(
             query = query,
             loading = loading,
             interactive = interactive,
+            placeholder = placeholder,
             autoFocus = autoFocus,
             onQueryChange = onQueryChange,
             onSubmit = onSubmit,
