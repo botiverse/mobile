@@ -1085,9 +1085,12 @@ internal class SharedRealtimeDomainEventOwner(
         source: String,
         legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
     ): Boolean {
-        val foldInput = event.canonicalMessageFoldInputOrNull()
         val currentMessageRunner = runWithCurrentMessageGrant
-        if (foldInput == null || currentMessageRunner == null) {
+            ?: return runIfCurrentGrant(grant) {
+                legacyContinuation(grant.serverId, event, source)
+            }
+        val foldInput = event.canonicalMessageFoldInputOrNull()
+        if (foldInput == null) {
             return runIfCurrentGrant(grant) {
                 legacyContinuation(grant.serverId, event, source)
             }
@@ -1106,11 +1109,17 @@ internal class SharedRealtimeDomainEventOwner(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (throwable: Throwable) {
-                        guardedSinks?.log?.invoke(
-                            "current_grant_message_shadow_failed source=$source " +
-                                "serverId=${context.partition.serverId} " +
-                                "error=${throwable::class.simpleName ?: "unknown"}"
-                        )
+                        try {
+                            guardedSinks?.log?.invoke(
+                                "current_grant_message_shadow_failed source=$source " +
+                                    "serverId=${context.partition.serverId} " +
+                                    "error=${throwable::class.simpleName ?: "unknown"}"
+                            )
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Throwable) {
+                            // Diagnostics are best-effort; a logger failure must not block legacy fail-open.
+                        }
                     }
                 }
             }
