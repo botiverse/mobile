@@ -472,6 +472,8 @@
     <string name="thread_more_messages">%1$d more messages</string>
     <string name="thread_message_count_one">1 message</string>
     <string name="thread_message_count_many">%1$d messages</string>
+    <string name="thread_forward_view_all">View all %1$d messages</string>
+    <string name="thread_forward_bundle_fallback_title">Forwarded messages</string>
     <string name="thread_forward_selected">%1$d selected</string>
     <string name="thread_forward_placeholder_one">FORWARDED 1 MESSAGE</string>
     <string name="thread_forward_placeholder_many">FORWARDED %1$d MESSAGES</string>

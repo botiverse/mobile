@@ -472,6 +472,8 @@
     <string name="thread_more_messages">另外 %1$d 条消息</string>
     <string name="thread_message_count_one">1 条消息</string>
     <string name="thread_message_count_many">%1$d 条消息</string>
+    <string name="thread_forward_view_all">查看全部 %1$d 条</string>
+    <string name="thread_forward_bundle_fallback_title">转发的消息</string>
     <string name="thread_forward_selected">已选择 %1$d 条</string>
     <string name="thread_forward_placeholder_one">转发 1 条消息</string>
     <string name="thread_forward_placeholder_many">转发 %1$d 条消息</string>

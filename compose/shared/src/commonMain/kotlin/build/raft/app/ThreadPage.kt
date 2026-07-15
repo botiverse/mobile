@@ -263,6 +263,9 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -9629,7 +9632,9 @@ private fun ThreadPageContent(
         onTasksIntent(SharedTasksRouteIntent.Start)
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var activeForwardBundle by remember(threadInstanceKey) { mutableStateOf<ForwardMessageBundle?>(null) }
+    // Full bundles open a dedicated pager page (task #64); capture the pager at
+    // composable scope so the tap handler can route.
+    val threadScreenPagerForForwardBundle = LocalActivity.current.getPager() as Pager
     var activeForwardSelectionMode by remember(threadInstanceKey) { mutableStateOf(ThreadForwardSelectionMode.Merged) }
     var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
@@ -10002,8 +10007,7 @@ private fun ThreadPageContent(
                                 }
                         },
                         onOpenForwardBundle = { bundle ->
-                            activeForwardBundle = bundle
-                            activeModal = "forwardBundle"
+                            threadScreenPagerForForwardBundle.openThreadForwardBundlePage(bundle)
                         },
                         translationStore = translationStore,
                         onThreadContentReady = {}
@@ -10231,21 +10235,6 @@ private fun ThreadPageContent(
             }
         }
         when (activeModal) {
-            "forwardBundle" ->
-                activeForwardBundle?.let { bundle ->
-                    ThreadForwardBundleModal(
-                        bundle = bundle,
-                        memberAvatarResolver = memberAvatarResolver,
-                        onDismiss = {
-                            activeModal = null
-                            activeForwardBundle = null
-                        },
-                        onOpenMember = { item ->
-                            item.memberDetailIdentity()?.let(onOpenMemberProfile)
-                        },
-                        onOpenUrl = openMarkdownUrl
-                    )
-                }
             "forwardTargets" ->
                 ThreadForwardTargetPickerPage(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
@@ -14455,7 +14444,8 @@ private fun ThreadMessageCard(
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                onOpenUrl = onOpenMarkdownUrl
+                                onOpenUrl = onOpenMarkdownUrl,
+                                onOpenAll = { onOpenForwardBundle(forwardBundle) }
                             )
                         } else if (message.body.isNotBlank()) {
                             if (richContentEnabled) {
@@ -18183,11 +18173,14 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     }
 }
 
+private const val ThreadForwardBundleInlinePreviewLimit = 3
+
 @Composable
 private fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
     modifier: Modifier = Modifier,
-    onOpenUrl: (String) -> Unit = {}
+    onOpenUrl: (String) -> Unit = {},
+    onOpenAll: (() -> Unit)? = null
 ) {
     // Aligned to the react ForwardedBundleCard: an inline bordered white card that
     // renders the forwarded messages in place (header title + count, then each message's
@@ -18225,7 +18218,11 @@ private fun ThreadForwardBundleCard(
                 maxLines = 1
             )
         }
-        bundle.messages.forEach { item ->
+        // artin's redesign (task #64): the inline card previews at most three
+        // forwarded messages; longer bundles add a "View all N" row that opens
+        // the full-screen bundle page.
+        val previewMessages = bundle.messages.take(ThreadForwardBundleInlinePreviewLimit)
+        previewMessages.forEach { item ->
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -18273,57 +18270,28 @@ private fun ThreadForwardBundleCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ThreadForwardBundleModal(
-    bundle: ForwardMessageBundle,
-    memberAvatarResolver: SlockMemberAvatarResolver,
-    onDismiss: () -> Unit,
-    onOpenMember: (ForwardMessageItem) -> Unit,
-    onOpenUrl: (String) -> Unit = {}
-) {
-    SlockUnifiedDialog(
-        title = bundle.localizedForwardTitle(),
-        onDismiss = onDismiss,
-        minWidth = 320.dp,
-        maxWidth = 420.dp,
-        contentPadding = 0.dp,
-        headerPadding = 16.dp,
-        titleFontSize = 16,
-        titleLineHeight = 20,
-        contentSpacing = 0.dp
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text =
-                    if (bundle.displayCount() == 1) {
-                        stringResource(MR.strings.thread_message_count_one)
-                    } else {
-                        stringResource(MR.strings.thread_message_count_many, bundle.displayCount())
-                    },
-                // Forward-bundle count is content, not tabular metadata: match the react
-                // ForwardedBundleCard convention (proportional/bold count; Space Mono is
-                // reserved for the per-row timestamp only). See visual case components.thread.forward-bundle.
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
-            )
-            Box(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
-                    contentPadding = PaddingValues(bottom = 12.dp)
-                ) {
-                    items(bundle.messages.size, key = { bundle.messages[it].id }) { index ->
-                        ThreadForwardBundleMessageRow(
-                            item = bundle.messages[index],
-                            memberAvatarResolver = memberAvatarResolver,
-                            onOpenMember = onOpenMember,
-                            onOpenUrl = onOpenUrl
-                        )
-                    }
-                }
+        if (onOpenAll != null && bundle.displayCount() > ThreadForwardBundleInlinePreviewLimit) {
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenAll)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = stringResource(MR.strings.thread_forward_view_all, bundle.displayCount()),
+                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1
+                )
+                SlockLucideIcon(
+                    name = SlockLucideIconName.ChevronRight,
+                    color = SlockColor.TextBlackArgb,
+                    modifier = Modifier.size(14.dp)
+                )
             }
         }
     }
@@ -18742,6 +18710,80 @@ internal fun ThreadCommentAnchorVisualScreen() {
     }
 }
 
+const val THREAD_FORWARD_BUNDLE_PAGE = "compose_thread_forward_bundle_page"
+
+private val threadForwardBundlePageJson = Json { ignoreUnknownKeys = true }
+
+// Full forwarded-bundle list as its own single-page pager (task #64): the
+// inline card previews at most three messages; "View all N" routes here. Same
+// standalone-pager architecture as Billing/Administration so the list gets a
+// full-height viewport and a clean lifecycle. Replaces the old in-thread modal.
+internal fun Pager.openThreadForwardBundlePage(bundle: ForwardMessageBundle) {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+        THREAD_FORWARD_BUNDLE_PAGE,
+        com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
+            put("pageName", THREAD_FORWARD_BUNDLE_PAGE)
+            put("payload", threadForwardBundlePageJson.encodeToString(bundle))
+        }
+    )
+}
+
+@Page(THREAD_FORWARD_BUNDLE_PAGE, supportInLocal = true)
+internal class ComposeThreadForwardBundlePage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadForwardBundleScreen() }
+    }
+}
+
+@Composable
+private fun ThreadForwardBundleScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val bundle =
+        remember {
+            val params = pager.pageData.params
+            if (params.optString("visualFixture") == "forward_bundle") {
+                threadForwardBundleVisualFixtureBundle()
+            } else {
+                runCatching {
+                    threadForwardBundlePageJson.decodeFromString<ForwardMessageBundle>(params.optString("payload"))
+                }.getOrNull()
+            }
+        }
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopPageHeader(
+            title = bundle?.localizedForwardTitle() ?: stringResource(MR.strings.thread_forward_bundle_fallback_title),
+            iconName = SlockLucideIconName.Share2,
+            backgroundColor = SlockColor.SurfaceWhite,
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = {
+                        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                    },
+                    size = 30.dp,
+                    shadowOffset = 2.dp
+                )
+            }
+        )
+        val messages = bundle?.messages.orEmpty()
+        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            items(messages.size, key = { messages[it].id }) { index ->
+                if (index > 0) {
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+                }
+                ThreadForwardBundleMessageRow(
+                    item = messages[index],
+                    memberAvatarResolver = EmptySlockMemberAvatarResolver,
+                    onOpenMember = {},
+                    onOpenUrl = { url -> bridge.openUrl(url) }
+                )
+            }
+        }
+    }
+}
+
 @Page("compose_thread_forward_bundle_visual", supportInLocal = true)
 internal class ComposeThreadForwardBundleVisualPage : build.raft.app.base.BasePager() {
     override fun willInit() {
@@ -18752,60 +18794,78 @@ internal class ComposeThreadForwardBundleVisualPage : build.raft.app.base.BasePa
 
 @Composable
 internal fun ThreadForwardBundleVisualScreen() {
-    // Renders ThreadForwardBundleModal so the forward-bundle metadata is pinned
-    // by a fixture (task #427). Space Mono is reserved for the per-row timestamp
-    // only, matching the react ForwardedBundleCard convention; the "N messages"
-    // count and the attachment label are proportional content (react renders the
-    // count in bold and attachments as per-file chips, none of them mono).
-    // Seeded with a mixed bundle (with/without body, with/without attachments) so
-    // the count, timestamp, and attachment-label paths all render.
-    val bundle =
-        remember {
-            ForwardMessageBundle(
-                id = "bundle-visual-1",
-                title = "",
-                sourceTitle = "#design",
-                totalCount = 3,
-                messages =
-                    listOf(
-                        ForwardMessageItem(
-                            id = "fwd-1",
-                            authorId = "user-cindy",
-                            authorName = "Cindy",
-                            authorKind = "agent",
-                            avatarLabel = "C",
-                            timestampLabel = "10:38",
-                            // Markdown on purpose: forwarded bodies render through
-                            // SlockMarkdownBody (task #63) — the capture must show
-                            // bold ink + code chip, not literal ** and backticks.
-                            body = "Captured the **Android visual artifact** and queued `React parity`.",
-                            attachmentCount = 0
-                        ),
-                        ForwardMessageItem(
-                            id = "fwd-2",
-                            authorId = "user-artin",
-                            authorName = "artin",
-                            authorKind = "human",
-                            avatarLabel = "a",
-                            timestampLabel = "10:31",
-                            body = "",
-                            attachmentCount = 2
-                        ),
-                        ForwardMessageItem(
-                            id = "fwd-3",
-                            authorId = "user-ad",
-                            authorName = "Android Developer",
-                            authorKind = "agent",
-                            avatarLabel = "A",
-                            timestampLabel = "09:58",
-                            body = "Search parity now covers sender filters and time ranges.",
-                            attachmentCount = 1
-                        )
-                    )
-            )
-        }
-    ThreadForwardBundleCard(bundle = bundle)
+    // Pins the forward-bundle metadata with a fixture (task #427). Space Mono is
+    // reserved for the per-row timestamp only, matching the react
+    // ForwardedBundleCard convention. Five messages so the inline card's
+    // three-message preview cap and the "View all N" row both render (task #64);
+    // bodies keep markdown so rendered ink stays proven (task #63).
+    val bundle = remember { threadForwardBundleVisualFixtureBundle() }
+    ThreadForwardBundleCard(bundle = bundle, onOpenAll = {})
 }
+
+internal fun threadForwardBundleVisualFixtureBundle(): ForwardMessageBundle =
+    ForwardMessageBundle(
+        id = "bundle-visual-1",
+        title = "",
+        sourceTitle = "#design",
+        totalCount = 5,
+        messages =
+            listOf(
+                ForwardMessageItem(
+                    id = "fwd-1",
+                    authorId = "user-cindy",
+                    authorName = "Cindy",
+                    authorKind = "agent",
+                    avatarLabel = "C",
+                    timestampLabel = "10:38",
+                    // Markdown on purpose: forwarded bodies render through
+                    // SlockMarkdownBody (task #63) — captures must show bold
+                    // ink + code chip, not literal ** and backticks.
+                    body = "Captured the **Android visual artifact** and queued `React parity`.",
+                    attachmentCount = 0
+                ),
+                ForwardMessageItem(
+                    id = "fwd-2",
+                    authorId = "user-artin",
+                    authorName = "artin",
+                    authorKind = "human",
+                    avatarLabel = "a",
+                    timestampLabel = "10:31",
+                    body = "",
+                    attachmentCount = 2
+                ),
+                ForwardMessageItem(
+                    id = "fwd-3",
+                    authorId = "user-ad",
+                    authorName = "Android Developer",
+                    authorKind = "agent",
+                    avatarLabel = "A",
+                    timestampLabel = "09:58",
+                    body = "Search parity now covers sender filters and time ranges.",
+                    attachmentCount = 1
+                ),
+                ForwardMessageItem(
+                    id = "fwd-4",
+                    authorId = "user-qa",
+                    authorName = "QA Tester",
+                    authorKind = "agent",
+                    avatarLabel = "Q",
+                    timestampLabel = "09:45",
+                    body = "Fourth message exists to overflow the inline three-message preview.",
+                    attachmentCount = 0
+                ),
+                ForwardMessageItem(
+                    id = "fwd-5",
+                    authorId = "user-libai",
+                    authorName = "LiBai",
+                    authorKind = "agent",
+                    avatarLabel = "L",
+                    timestampLabel = "09:30",
+                    body = "Fifth message keeps the full-page list scrollable in the pager fixture.",
+                    attachmentCount = 0
+                )
+            )
+    )
 
 @Composable
 private fun ThreadForwardTargetPickerPage(

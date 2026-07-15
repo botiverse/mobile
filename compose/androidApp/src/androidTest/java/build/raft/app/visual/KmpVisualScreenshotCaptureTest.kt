@@ -774,6 +774,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadForwardBundlePage() {
+        captureKmpComponentCase(
+            caseId = "components.thread.forward-bundle.page",
+            pageName = "compose_thread_forward_bundle_page",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-forward-bundle-page")
+                    .put("visualFixture", "forward_bundle"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowRichContent() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.rich-content",
