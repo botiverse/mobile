@@ -19,6 +19,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -40,6 +41,7 @@ import android.util.DisplayMetrics
 import android.util.LruCache
 import android.util.Log
 import android.view.KeyEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -291,6 +293,15 @@ private fun StringBuilder.appendDiagnosticsExportLine(label: String, value: Stri
     append(": ")
     appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
 }
+
+internal fun threadShareChromeHeaderHeight(width: Int): Int =
+        (width * 0.12f).roundToInt().coerceIn(72, 96)
+
+internal fun threadShareChromeCaptionTextSize(width: Int): Float =
+        (width * 0.034f).coerceIn(18f, 26f)
+
+internal fun threadShareChromeOutputHeight(width: Int, contentHeight: Int): Int =
+        contentHeight.coerceAtLeast(1) + threadShareChromeHeaderHeight(width)
 
 open class SlockKuiklyActivity :
     ComponentActivity(),
@@ -2693,16 +2704,24 @@ internal class SlockKuiklyBridgeModule(
         }
         val request = JSONObject(params ?: "{}")
         hostActivity.runOnUiThread {
-            callback?.invoke(captureThreadShareImage(hostActivity, request))
+            captureThreadShareImage(hostActivity, request) { result -> callback?.invoke(result) }
         }
     }
 
-    private fun captureThreadShareImage(hostActivity: SlockKuiklyActivity, request: JSONObject): Map<String, Any> {
+    private fun captureThreadShareImage(
+        hostActivity: SlockKuiklyActivity,
+        request: JSONObject,
+        onResult: (Map<String, Any>) -> Unit
+    ) {
         val container =
                 hostActivity.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
-                        ?: return mapOf("status" to "failed", "message" to "Thread view unavailable")
+                        ?: run {
+                            onResult(mapOf("status" to "failed", "message" to "Thread view unavailable"))
+                            return
+                        }
         if (container.width <= 0 || container.height <= 0) {
-            return mapOf("status" to "failed", "message" to "Thread view is not ready")
+            onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+            return
         }
         val fragmentPaths =
                 request.optString("fragments")
@@ -2711,7 +2730,8 @@ internal class SlockKuiklyBridgeModule(
                         .filter { it.isNotBlank() }
                         .toList()
         if (fragmentPaths.isNotEmpty()) {
-            return stitchThreadShareFragments(fragmentPaths)
+            onResult(stitchThreadShareFragments(fragmentPaths))
+            return
         }
         val requestedX = request.optDouble("x", 0.0).roundToInt()
         val requestedY = request.optDouble("y", 0.0).roundToInt()
@@ -2732,17 +2752,65 @@ internal class SlockKuiklyBridgeModule(
                     container.height - top
                 }.coerceAtLeast(1)
         val bitmap =
-                runCatching {
-                    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { output ->
-                        val canvas = Canvas(output)
-                        canvas.drawColor(Color.WHITE)
-                        canvas.translate(-left.toFloat(), -top.toFloat())
-                        container.draw(canvas)
-                    }
-                }.getOrElse {
-                    return mapOf("status" to "failed", "message" to "Unable to capture image")
+                runCatching { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
+                        .getOrElse {
+                            onResult(mapOf("status" to "failed", "message" to "Unable to capture image"))
+                            return
+                        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val locationInWindow = IntArray(2)
+            container.getLocationInWindow(locationInWindow)
+            val sourceRect =
+                    Rect(
+                            locationInWindow[0] + left,
+                            locationInWindow[1] + top,
+                            locationInWindow[0] + left + width,
+                            locationInWindow[1] + top + height
+                    )
+            // Kuikly can publish the new LazyColumn placement before the
+            // corresponding Surface pixels are presented. PixelCopy issued in
+            // that window captures the preceding row even though
+            // onGloballyPositioned already reports the selected row's bounds.
+            // Cross two Android presentation frames at the platform boundary;
+            // a coroutine delay in common code does not establish this Surface
+            // ordering guarantee.
+            container.postOnAnimation {
+                container.postOnAnimation {
+                    PixelCopy.request(
+                            hostActivity.window,
+                            sourceRect,
+                            bitmap,
+                            { copyResult ->
+                                if (copyResult == PixelCopy.SUCCESS) {
+                                    onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
+                                } else {
+                                    bitmap.recycle()
+                                    onResult(
+                                            mapOf(
+                                                    "status" to "failed",
+                                                    "message" to "Unable to capture image",
+                                                    "pixelCopyResult" to copyResult
+                                            )
+                                    )
+                                }
+                            },
+                            Handler(Looper.getMainLooper())
+                    )
                 }
-        return saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true))
+            }
+            return
+        }
+        runCatching {
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+            canvas.translate(-left.toFloat(), -top.toFloat())
+            container.draw(canvas)
+        }.onSuccess {
+            onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
+        }.onFailure {
+            bitmap.recycle()
+            onResult(mapOf("status" to "failed", "message" to "Unable to capture image"))
+        }
     }
 
     private fun stitchThreadShareFragments(fragmentPaths: List<String>): Map<String, Any> {
@@ -2834,11 +2902,10 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun Bitmap.withThreadShareChrome(): Bitmap {
-        val headerHeight = (width * 0.18f).roundToInt().coerceIn(96, 132)
-        val footerHeight = (width * 0.12f).roundToInt().coerceIn(68, 92)
+        val headerHeight = threadShareChromeHeaderHeight(width)
         val horizontalInset = (width * 0.048f).roundToInt().coerceIn(26, 38).toFloat()
         val framed =
-                Bitmap.createBitmap(width, height + headerHeight + footerHeight, Bitmap.Config.ARGB_8888)
+                Bitmap.createBitmap(width, threadShareChromeOutputHeight(width, height), Bitmap.Config.ARGB_8888)
         val canvas = Canvas(framed)
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -2857,7 +2924,7 @@ internal class SlockKuiklyBridgeModule(
                         ?: captionTypeface
         val caption = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(24, 24, 24)
-            textSize = (width * 0.052f).coerceIn(26f, 34f)
+            textSize = threadShareChromeCaptionTextSize(width)
             typeface = captionTypeface
             letterSpacing = 0.045f
         }
@@ -2889,17 +2956,7 @@ internal class SlockKuiklyBridgeModule(
                 caption
         )
         canvas.drawBitmap(this, 0f, headerHeight.toFloat(), null)
-        fill.color = Color.WHITE
-        val footerTop = (headerHeight + height).toFloat()
-        canvas.drawRect(0f, footerTop, width.toFloat(), framed.height.toFloat(), fill)
-        canvas.drawText(
-                "Shared from Raft",
-                horizontalInset,
-                footerTop + footerHeight.centeredTextBaseline(caption),
-                caption
-        )
         canvas.drawLine(0f, headerHeight.toFloat(), width.toFloat(), headerHeight.toFloat(), stroke)
-        canvas.drawLine(0f, footerTop, width.toFloat(), footerTop, stroke)
         canvas.drawRect(1.5f, 1.5f, width - 1.5f, framed.height - 1.5f, stroke)
         return framed
     }
