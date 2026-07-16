@@ -586,20 +586,10 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run canonical-final actual-host regression under exact-zero egress gate
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
-          profile: pixel_6_pro
-          ram-size: 4096M
-          cores: 2
-          emulator-boot-timeout: 1200
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
-          disable-animations: true
-          script: |
-            bash -euo pipefail <<'BASH'
+      - name: Prepare canonical-final actual-host regression script
+        shell: bash
+        run: |
+            cat > "$RUNNER_TEMP/canonical-final-actual-host.sh" <<'BASH'
             set -euo pipefail
             PACKAGE=build.raft.app.connectedtest
             TEST_PACKAGE=build.raft.app.connectedtest.test
@@ -721,6 +711,21 @@ jobs:
             assert hashlib.sha256(chain.encode()).hexdigest() == terminal["chainSha256"]
             PY
             BASH
+            bash -n "$RUNNER_TEMP/canonical-final-actual-host.sh"
+
+      - name: Run canonical-final actual-host regression under exact-zero egress gate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6_pro
+          ram-size: 4096M
+          cores: 2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          script: bash "$RUNNER_TEMP/canonical-final-actual-host.sh"
 
       - name: Upload canonical-final actual-host evidence
         if: always()
