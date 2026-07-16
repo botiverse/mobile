@@ -597,8 +597,7 @@ class ThreadPayloadTest {
                     SlockTimeContext(
                         localOffsetMinutes = 0,
                         todayEpochDay = slockEpochDayForDate(2026, 6, 28)
-                    ),
-                members = emptyList()
+                    )
             ).formatCompactTimestampLabel("2026-06-27T23:50:00Z")
         )
     }

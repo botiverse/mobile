@@ -1574,6 +1574,49 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun bodyLocalPresentationKeepsFortyNineNoTagCardInputsAsExactSameInstances() {
+        val bodies =
+            List(50) { index ->
+                buildString {
+                    append("Card-boundary joint message $index ")
+                    append("stable body ".repeat(40))
+                    if (index == 0) append("@member0")
+                }
+            }
+        val noMembers = validThreadMarkdownTags()
+        val hydratedMembers = validThreadMarkdownTags(knownMentions = setOf("member0"))
+        val initial =
+            bodies.mapIndexed { index, body ->
+                slockMarkdownBodyPresentation(
+                    body = body,
+                    isTagValid = noMembers,
+                    inlineContentScope = "card-$index"
+                )
+            }
+        val hydrated =
+            bodies.mapIndexed { index, body ->
+                slockMarkdownBodyPresentation(
+                    body = body,
+                    isTagValid = hydratedMembers,
+                    resolveTagLabel = { tag ->
+                        if (tag.label == "@member0") "@Display Name" else threadMarkdownTagDisplayLabel(tag.label)
+                    },
+                    inlineContentScope = "card-$index"
+                )
+            }
+
+        assertNotSame(initial[0], hydrated[0])
+        assertEquals("@Display Name", hydrated[0].tokenPlan.tagTokens().single().resolvedLabel)
+        (1 until 50).forEach { index ->
+            assertSame(
+                initial[index],
+                hydrated[index],
+                "no-tag Card input $index must retain exact presentation identity"
+            )
+        }
+    }
+
+    @Test
     fun inlineReferencesMatchTask25Boundaries() {
         val body =
             "我已补发日报到 #raft-mobile，消息是 #raft-mobile:4752266f。也已确认主 reminder " +

@@ -3489,6 +3489,7 @@ internal data class SharedThreadState(
     val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata> = payload.toThreadReplyMetadataMap(),
     val highlightedMentions: Set<String> = emptySet(),
+    val firstContentFrameGeneration: Long = 0L,
     val accessResolution: ThreadAccessResolution = ThreadAccessResolution.Loading,
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
@@ -3534,6 +3535,7 @@ internal data class SharedThreadRenderSlice(
     val timelineSlice: ThreadTimelineSlice,
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     val highlightedMentions: Set<String>,
+    val firstContentFrameGeneration: Long,
     val accessResolution: ThreadAccessResolution,
     val canonicalAccessResolved: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
@@ -3546,6 +3548,7 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         timelineSlice = timelineSlice,
         replyMetadataByParentId = replyMetadataByParentId,
         highlightedMentions = highlightedMentions,
+        firstContentFrameGeneration = firstContentFrameGeneration,
         accessResolution = accessResolution,
         canonicalAccessResolved = canonicalAccessResolved,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
@@ -3657,7 +3660,10 @@ internal sealed interface SharedThreadIntent {
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
     data object MarkVisibleRead : SharedThreadIntent
-    data object FirstContentFrameCommitted : SharedThreadIntent
+    data class FirstContentFrameCommitted(
+        val routeKey: String,
+        val generation: Long
+    ) : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
@@ -3710,6 +3716,7 @@ internal class SharedThreadStore(
     private var lastCompletedReadAt: TimeMark? = null
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
     private var firstContentFrameCommittedRouteKey: String? = null
+    private var firstContentFrameCommittedGeneration: Long? = null
     private var pendingMembersHydration: PendingAuxiliaryHydration? = null
     private var pendingSecondaryTimelineHydration: PendingAuxiliaryHydration? = null
     private var routeStaleToken = MviStaleToken.Initial
@@ -3739,7 +3746,8 @@ internal class SharedThreadStore(
 
     private data class PendingAuxiliaryHydration(
         val routePayload: KuiklyThreadScreenPayload,
-        val staleToken: MviStaleToken
+        val staleToken: MviStaleToken,
+        val frameGeneration: Long
     )
 
     private fun KuiklyThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
@@ -3819,8 +3827,13 @@ internal class SharedThreadStore(
             SharedThreadIntent.MarkVisibleRead -> {
                 scope.launch { markVisibleRead() }
             }
-            SharedThreadIntent.FirstContentFrameCommitted -> {
-                scope.launch { markFirstContentFrameCommitted() }
+            is SharedThreadIntent.FirstContentFrameCommitted -> {
+                scope.launch {
+                    markFirstContentFrameCommitted(
+                        routeKey = intent.routeKey,
+                        generation = intent.generation
+                    )
+                }
             }
             SharedThreadIntent.LoadMembers -> {
                 scope.launch { loadMembers() }
@@ -3884,7 +3897,11 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             SharedThreadIntent.MarkVisibleRead -> markVisibleRead()
-            SharedThreadIntent.FirstContentFrameCommitted -> markFirstContentFrameCommitted()
+            is SharedThreadIntent.FirstContentFrameCommitted ->
+                markFirstContentFrameCommitted(
+                    routeKey = intent.routeKey,
+                    generation = intent.generation
+                )
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
@@ -3908,6 +3925,7 @@ internal class SharedThreadStore(
         backgroundMembersHydrationJob = null
         lastRoutePayload = null
         firstContentFrameCommittedRouteKey = null
+        firstContentFrameCommittedGeneration = null
         pendingMembersHydration = null
         pendingSecondaryTimelineHydration = null
         advanceRouteStaleToken()
@@ -3936,6 +3954,7 @@ internal class SharedThreadStore(
         val staleToken = advanceRouteStaleToken()
         lastRoutePayload = routeContextPayload
         firstContentFrameCommittedRouteKey = null
+        firstContentFrameCommittedGeneration = null
         pendingMembersHydration = null
         pendingSecondaryTimelineHydration = null
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
@@ -3976,6 +3995,7 @@ internal class SharedThreadStore(
                 SharedThreadState(
                     payload = visiblePayload,
                     highlightedMentions = emptySet(),
+                    firstContentFrameGeneration = staleToken.value,
                     accessResolution = ThreadAccessResolution.Loading,
                     canonicalAccessResolved = false,
                     initialHomeAccessLookupComplete = false,
@@ -4191,7 +4211,12 @@ internal class SharedThreadStore(
         launchSecondaryTimelineRefresh: Boolean,
         launchMembersHydration: Boolean
     ) {
-        val pending = PendingAuxiliaryHydration(routePayload = routePayload, staleToken = staleToken)
+        val pending =
+            PendingAuxiliaryHydration(
+                routePayload = routePayload,
+                staleToken = staleToken,
+                frameGeneration = _state.value.firstContentFrameGeneration
+            )
         pendingMembersHydration = pending.takeIf { launchMembersHydration }
         pendingSecondaryTimelineHydration = pending.takeIf { launchSecondaryTimelineRefresh }
         diagnosticsLogger?.invoke(
@@ -4202,14 +4227,39 @@ internal class SharedThreadStore(
         launchPendingAuxiliaryHydrationIfReady()
     }
 
-    private fun markFirstContentFrameCommitted() {
-        val currentPayload = _state.value.payload
-        val routeKey = currentPayload.resolveThreadRouteIdentity().instanceKey
-        if (firstContentFrameCommittedRouteKey == routeKey) return
+    private fun markFirstContentFrameCommitted(
+        routeKey: String,
+        generation: Long
+    ) {
+        val currentState = _state.value
+        val currentPayload = currentState.payload
+        val currentRouteKey = currentPayload.resolveThreadRouteIdentity().instanceKey
+        if (
+            routeKey.isBlank() ||
+            generation <= 0L ||
+            routeKey != currentRouteKey ||
+            generation != currentState.firstContentFrameGeneration
+        ) {
+            diagnosticsLogger?.invoke(
+                "thread_first_content_frame_committed_drop " +
+                    "routeKey=$routeKey generation=$generation " +
+                    "currentRouteKey=$currentRouteKey " +
+                    "currentGeneration=${currentState.firstContentFrameGeneration}"
+            )
+            return
+        }
+        if (
+            firstContentFrameCommittedRouteKey == routeKey &&
+            firstContentFrameCommittedGeneration == generation
+        ) {
+            return
+        }
         firstContentFrameCommittedRouteKey = routeKey
+        firstContentFrameCommittedGeneration = generation
         diagnosticsLogger?.invoke(
             "thread_first_content_frame_committed " +
-                "threadId=${currentPayload.sourceThreadId.orEmpty()} routeKey=$routeKey"
+                "threadId=${currentPayload.sourceThreadId.orEmpty()} routeKey=$routeKey " +
+                "generation=$generation"
         )
         launchPendingAuxiliaryHydrationIfReady()
     }
@@ -4243,9 +4293,16 @@ internal class SharedThreadStore(
 
     private fun PendingAuxiliaryHydration.isReadyForCommittedFrame(): Boolean {
         val pendingRouteKey = routePayload.resolveThreadRouteIdentity().instanceKey
-        if (firstContentFrameCommittedRouteKey != pendingRouteKey) return false
-        val currentPayload = _state.value.payload
         if (
+            firstContentFrameCommittedRouteKey != pendingRouteKey ||
+            firstContentFrameCommittedGeneration != frameGeneration
+        ) {
+            return false
+        }
+        val currentState = _state.value
+        val currentPayload = currentState.payload
+        if (
+            frameGeneration != currentState.firstContentFrameGeneration ||
             !staleToken.isCurrent(routeStaleToken) ||
             !routeStillCurrent(
                 routePayload,
