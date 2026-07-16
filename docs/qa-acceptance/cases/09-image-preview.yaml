@@ -1,0 +1,107 @@
+id: image-preview-in-thread
+title: "图片预览-对话流中查看图片"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Regression case from Hands feedback: P0 0ec255d7 — conversation images
+  still cannot preview in 1.4.0/main. PR #321 only fixed picker URI
+  lifecycle, this is fix-forward (task #610). Verify that tapping an
+  image in a thread opens the image preview/viewer.
+tags: [messaging, image, preview, regression, P0]
+timeout_seconds: 120
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+  - type: channel_has_image
+    params:
+      channel: "#all"
+      note: "Need at least one message with an image attachment in the test channel"
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open a channel that has image messages"
+    action_category: navigate
+    hint: "Use deeplink: compose_thread with channelId #all"
+    capture: [screenshot]
+
+  - id: wait-messages
+    goal: "Wait for messages to load"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: scroll-to-image
+    goal: "Scroll through the conversation to find a message with an image"
+    action_category: interact
+    hint: "Swipe up to scroll and look for image thumbnails in messages"
+    capture: [screenshot]
+
+  - id: tap-image
+    goal: "Tap on an image in the conversation to open full preview"
+    action_category: interact
+    hint: "Tap the image thumbnail in any message"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-preview
+    goal: "Wait for image preview/viewer to open"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-preview
+    goal: "Capture the image preview state"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: image-preview-opened
+    goal: "Image preview/viewer is open showing the full image"
+    type: visual_check
+    after_step: verify-preview
+    severity: critical
+    highlight:
+      description: "Full-screen or modal image preview"
+
+  - id: image-loaded
+    goal: "The image is actually rendered (not a broken/placeholder/blank)"
+    type: visual_check
+    after_step: verify-preview
+    severity: critical
+
+  - id: no-preview-error
+    goal: "No error indicators when opening image"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(failed|error|unable|cannot load)"
+    after_step: verify-preview
+    severity: major
+
+  - id: no-crash-image
+    goal: "App must not crash when previewing image"
+    type: no_crash
+    after_step: verify-preview
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Regression from Hands feedback P0 0ec255d7. Images in conversation
+    could not be previewed. Precondition: test channel must have at
+    least one image message.
