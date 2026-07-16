@@ -16,7 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
 internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
     override fun evaluate(invocation: CanonicalV2RedInvocation): CanonicalV2RedResult =
         when {
-            invocation.requirementId.startsWith("R1") || invocation.requirementId.startsWith("R2") ->
+            invocation.requirementId.startsWith("R1-") || invocation.requirementId.startsWith("R2-") ->
                 decodeResult(invocation.input)
             invocation.requirementId == "R3" -> manifestClosure()
             invocation.requirementId == "R4" -> ownershipClosure()
