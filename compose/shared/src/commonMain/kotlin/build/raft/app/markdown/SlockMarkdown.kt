@@ -13,7 +13,9 @@ import build.raft.app.withResolvedSlockFontFamily
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import build.raft.app.base.Utils
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +40,8 @@ import com.tencent.kuikly.compose.foundation.text.InlineTextContent
 import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -78,6 +82,9 @@ import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCode
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeBlock
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownCodeFence
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
@@ -1745,6 +1752,19 @@ fun SlockMarkdownBody(
         markdownComponents(
             horizontalRule = {
                 SlockMarkdownHorizontalRule()
+            },
+            // task #66: code blocks carry a persistent transparent copy
+            // affordance (top-right lucide copy, no plate — May task #9 native
+            // style), tap copies the whole block; brief Check as feedback.
+            codeFence = { model ->
+                MarkdownCodeFence(model.content, model.node) { code, language, style ->
+                    SlockMarkdownCodeBlockWithCopy(code, language, style)
+                }
+            },
+            codeBlock = { model ->
+                MarkdownCodeBlock(model.content, model.node) { code, language, style ->
+                    SlockMarkdownCodeBlockWithCopy(code, language, style)
+                }
             }
         )
     }
@@ -1833,6 +1853,48 @@ private val SlockMarkdownMinimumInlineLineHeight = 22.sp
 private val SlockMarkdownDividerColor = SlockColor.BorderBlack.copy(alpha = 0.22f)
 private val SlockMarkdownDividerThickness = 2.dp
 private val SlockMarkdownDividerVerticalPadding = SlockSpacing.Sm
+
+// task #66: persistent transparent copy affordance on code blocks — the old
+// native Android app had this (May task #9: transparent tap area + lucide copy
+// icon, no plate) and the KMP rewrite dropped it, leaving no way to copy code
+// on phones. Shared implementation = Android/iOS/OHOS behave identically.
+@Composable
+private fun SlockMarkdownCodeBlockWithCopy(
+    code: String,
+    language: String?,
+    style: TextStyle
+) {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500)
+            copied = false
+        }
+    }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        MarkdownCode(code = code, language = language, style = style)
+        Box(
+            // Generous transparent hit target hugging the block's top-right
+            // (the code surface is dark #111827 — translucent white icon).
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .clickable {
+                        bridge.copyToPasteboard(code)
+                        copied = true
+                    }
+                    .padding(top = 14.dp, end = 10.dp, bottom = 10.dp, start = 10.dp)
+        ) {
+            SlockLucideIcon(
+                name = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
+                color = "#B3FFFFFF",
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
 
 @Composable
 private fun SlockMarkdownHorizontalRule() {
