@@ -3906,10 +3906,12 @@ internal fun SlockAppShellContent(
                     }
                 },
                 applyAgentActivity = { event ->
+                    // task #136: members-store applyPresence moved to the
+                    // provider-installed presence sink (store lifetime, SSOT);
+                    // only the page-scoped agent-detail dispatch stays here.
                     appShellAgentDetailStore.dispatch(
                         SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
                     )
-                    appShellServerMembersStore.applyPresence(event)
                 },
                 requestMemberDetailRefresh = {
                     membersAgentDetailRefreshKey += 1

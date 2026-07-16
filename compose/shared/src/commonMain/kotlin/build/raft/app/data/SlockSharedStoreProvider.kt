@@ -529,6 +529,9 @@ internal class SlockSharedStoreProvider private constructor(
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
                     it.installReactionShadowLane(buildReactionShadowLane())
+                    // task #136: same store-lifetime presence intake as the legacy
+                    // owner, bound to this scope's members store (same scope key).
+                    it.installMemberPresenceSink(serverMembersStore(scope)::applyPresence)
                 }
             }
         }
@@ -1250,7 +1253,11 @@ internal class SlockSharedStoreProvider private constructor(
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         authorityProvider = realtimeAuthorityProvider,
                         currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
-                    ),
+                    ).also { owner ->
+                        // task #136: agent presence flows to the members store for
+                        // the owner's lifetime — never only while a page has sinks.
+                        owner.installMemberPresenceSink(serverMembersStore::applyPresence)
+                    },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
                     SharedMessageTranslationStore(
@@ -1412,6 +1419,19 @@ internal class SharedRealtimeDomainEventOwner(
 
     fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {
         reactionShadowLane = lane
+    }
+
+    // task #136 (agent-status SSOT): agent presence facts must reach the
+    // members store for the OWNER's whole lifetime, not only while a page
+    // composition happens to have sinks registered — the page-scoped sink
+    // windows were exactly how machine-offline transitions got lost on the
+    // Members surface. Installed by the provider next to the store the owner's
+    // scope belongs to; delivered on both the plain and guarded accept paths
+    // BEFORE the page sinks fan-out.
+    private var memberPresenceSink: ((MemberPresenceUpdated) -> Unit)? = null
+
+    fun installMemberPresenceSink(sink: (MemberPresenceUpdated) -> Unit) {
+        memberPresenceSink = sink
     }
 
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
@@ -1647,6 +1667,7 @@ internal class SharedRealtimeDomainEventOwner(
                 )
             }
             if (acceptedEvent is MemberPresenceUpdated && acceptedEvent.kind == build.raft.app.model.MemberKind.Agent) {
+                memberPresenceSink?.invoke(acceptedEvent)
                 activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
             } else if (acceptedEvent.refreshesMemberDetail()) {
                 if (acceptedEvent is RealtimeRefreshRequired) {
@@ -1764,6 +1785,7 @@ internal class SharedRealtimeDomainEventOwner(
             )
         }
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
+            memberPresenceSink?.invoke(event)
             activeSinks?.applyAgentActivity?.invoke(event)
         } else if (event.refreshesMemberDetail()) {
             if (event is RealtimeRefreshRequired) {
@@ -1944,8 +1966,14 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
             // suppress each other's presence updates in the app-shell fanout.
             serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it" }
                 ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}"
-        is RealtimeRefreshRequired ->
-            "refresh:$serverId:${scope.name}:$reason:${channelId?.value.orEmpty()}:${memberId?.value.orEmpty()}:${subjectId.orEmpty()}"
+        // task #136: refresh hints are idempotent TRIGGERS, not facts, and the
+        // event carries no seq — a stable key made the accepted-key ledger
+        // swallow every later identical hint (artin's device logs:
+        // accept_skip reason=duplicate key=refresh:…:Agents:agent:session:…),
+        // so a second state change for the same agent never re-fetched. No key
+        // → every hint processed; the downstream refetch already dedupes
+        // in-flight loads, so bursts stay cheap.
+        is RealtimeRefreshRequired -> null
         is ServerPlanUpdated ->
             "server:plan:$serverId:${this.serverId.value}:$plan"
         is AgentCreated ->
