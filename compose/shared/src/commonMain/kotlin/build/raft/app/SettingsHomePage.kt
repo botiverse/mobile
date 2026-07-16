@@ -19608,6 +19608,32 @@ internal fun HomeActivityVisualContent() {
 }
 
 @Composable
+internal fun HomeActivityHitTargetVisualContent() {
+    var openedKey by remember { mutableStateOf<String?>(null) }
+    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+        SharedHomeActivityPanel(
+            snapshot = homeActivityVisualSnapshot,
+            onOpenItem = { item -> openedKey = item.key },
+            onClose = {},
+            modifier = Modifier.fillMaxSize()
+        )
+        openedKey?.let { key ->
+            Text(
+                text = "ACTIVITY_HIT_TARGET_OPENED:$key",
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(4.dp),
+                style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
+                color = SlockColor.TextBlack
+            )
+        }
+    }
+}
+
+@Composable
 internal fun HomeCreateChannelDialogVisualContent() {
     Box(
         modifier =

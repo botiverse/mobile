@@ -1192,6 +1192,30 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeActivityBottomHitTarget() {
+        val openedMarker = "ACTIVITY_HIT_TARGET_OPENED:activity-thread-visual-parity"
+        captureKmpComponentCase(
+            caseId = "components.home.activity.bottom-hit-target",
+            pageName = "compose_home_activity_hit_target_visual",
+            crop = HOME_ACTIVITY_RESULTS_CROP,
+            settleMs = 4_500,
+            beforeScreenshot = {
+                // The first row's bordered surface ends at y=257dp in this
+                // fixed 342x620 fixture. y=251dp is intentionally inside the
+                // bottom 12dp white padding and outside the text/footer tree.
+                tapDp(xDp = 170f, yDp = 251f)
+                val root =
+                    requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow) {
+                        "Activity fixture accessibility root is unavailable"
+                    }
+                require(root.findAccessibilityNodeInfosByText(openedMarker).isNotEmpty()) {
+                    "Activity row bottom padding did not open the inbox item"
+                }
+            }
+        )
+    }
+
+    @Test
     fun captureHomeCreateChannelDialog() {
         captureKmpComponentCase(
             caseId = "components.home.create-channel.dialog",

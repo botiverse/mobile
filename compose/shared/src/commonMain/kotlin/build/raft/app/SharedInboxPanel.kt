@@ -884,12 +884,19 @@ private fun SharedActivityRow(
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
-        Row(
-            modifier = surfaceModifier.padding(12.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f).activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)) {
+        Column(modifier = surfaceModifier) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+                            .padding(start = 12.dp, top = 12.dp)
+                ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -961,14 +968,27 @@ private fun SharedActivityRow(
                     item = item,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
                 )
+                }
+                Row(
+                    modifier = Modifier.padding(top = 12.dp, end = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SharedActivitySmallIconButton(
+                        iconName = SlockLucideIconName.Check,
+                        clickIdentity = item.activityDoneClickIdentity(),
+                        onClick = onDone
+                    )
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SharedActivitySmallIconButton(
-                    iconName = SlockLucideIconName.Check,
-                    clickIdentity = item.activityDoneClickIdentity(),
-                    onClick = onDone
-                )
-            }
+            // This padding is visually part of the card, so keep it in the
+            // row's open/long-press target instead of leaving a dead strip
+            // below the content. The Done button above remains independent.
+            Spacer(
+                Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+                    .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+            )
         }
     }
 }
