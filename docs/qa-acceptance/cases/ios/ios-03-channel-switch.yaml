@@ -1,0 +1,91 @@
+id: ios-channel-switch
+title: "[iOS] 频道切换-在频道间导航"
+app: raft-ios
+tier: L1
+version: "0.1"
+description: "iOS variant of case-03. Verify channel switching works."
+tags: [navigation, channels, ios, regression]
+timeout_seconds: 120
+max_retries: 1
+verdict_before_cleanup: true
+
+device:
+  type: ios-simulator
+  device_name: iPhone 16
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { bundle_id: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: terminate_app
+
+steps:
+  - id: open-home
+    goal: "Open the app home screen"
+    action_category: navigate
+    capture: [screenshot]
+
+  - id: select-first-channel
+    goal: "Tap the first channel in the list"
+    action_category: interact
+    capture: [screenshot]
+
+  - id: wait-load-1
+    goal: "Wait for channel content to load"
+    action_category: wait
+    params: { duration_ms: 1500 }
+
+  - id: capture-channel-1
+    goal: "Capture first channel state"
+    action_category: verify
+    capture: [screenshot]
+
+  - id: go-back
+    goal: "Navigate back to channel list"
+    action_category: navigate
+    hint: "Use left-edge swipe or back button (iOS convention)"
+
+  - id: select-second-channel
+    goal: "Tap the second channel in the list"
+    action_category: interact
+    capture: [screenshot]
+
+  - id: wait-load-2
+    goal: "Wait for second channel to load"
+    action_category: wait
+    params: { duration_ms: 1500 }
+
+  - id: capture-channel-2
+    goal: "Capture second channel state"
+    action_category: verify
+    capture: [screenshot]
+
+assertions:
+  - id: channel-1-loaded
+    goal: "First channel content visible"
+    type: visual_check
+    after_step: capture-channel-1
+    severity: major
+
+  - id: channel-2-loaded
+    goal: "Second channel content visible"
+    type: visual_check
+    after_step: capture-channel-2
+    severity: major
+
+  - id: content-changed
+    goal: "Channel content actually changed between the two channels"
+    type: visual_check
+    after_step: capture-channel-2
+    severity: major
+
+expected:
+  result: pass
+  notes: "iOS variant. Back navigation via iOS gestures."
