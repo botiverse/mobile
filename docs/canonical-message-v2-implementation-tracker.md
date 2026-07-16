@@ -1,8 +1,8 @@
 # Canonical message V2 implementation tracker
 
 Status: **freeze v0.3 — canonical exact review pending; no GREEN or activation authorized**
-Mobile owner: HanXin (`#native` task #301)  
-Canonical review owner: Zhao (canonical task #49)  
+Mobile owner: HanXin (`#native` task #301)
+Canonical review owner: Zhao (canonical task #49)
 Audited mobile baseline: `3fb1b5c5076cc0812303b9b531c6f9b7527c6964`
 
 ## Authority and purpose
@@ -45,7 +45,7 @@ canary work are explicitly excluded.
 
 ## Frozen scope of the next two commits
 
-After canonical exact review of this v0.2 tracker, the next delivery may add only:
+After canonical exact review of this v0.3 tracker, the next delivery may add only:
 
 1. parallel V2 pure-data seams and the exact manifest/golden declarations;
 2. typed discussion identity and membership seams;
