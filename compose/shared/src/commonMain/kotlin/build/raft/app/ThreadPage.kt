@@ -7387,6 +7387,7 @@ private fun ThreadMarkdownTaskCandidateRow(
     currentChannel: Boolean,
     onClick: () -> Unit
 ) {
+    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
     val background = if (currentChannel) SlockColor.BrandYellow.copy(alpha = 0.18f) else SlockColor.SurfaceWhite
     Box(
         modifier =
@@ -14996,6 +14997,7 @@ private fun ThreadMessageCard(
 internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
     val normalizedAlpha = focusAlpha.coerceIn(0f, 1f)
     return if (normalizedAlpha > 0f) {
+        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
         SlockColor.AccentCyan.copy(alpha = 0.12f * normalizedAlpha)
     } else {
         SlockColor.SurfaceWhite
@@ -15013,6 +15015,7 @@ internal fun shouldShowThreadMessageSavedBadge(
         !hasLocalSendState &&
         isSaved
 
+// deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
 internal val ThreadMessageSavedBadgeColor = SlockColor.AccentOrange.copy(alpha = 0.15f)
 internal const val ThreadMessageSavedBadgeIconColorArgb = SlockColor.AccentOrangeArgb
 
@@ -15670,6 +15673,7 @@ private fun ThreadReactionChip(
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null
 ) {
+    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
     val background = if (reaction.selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color(0xFFEEEDE6)
     val chipModifier = Modifier
             .background(background, RoundedCornerShape(SlockRadius.Sm))
@@ -16474,6 +16478,7 @@ internal fun threadMessageRepliesMetaLabel(replyMetadata: ThreadReplyMetadata): 
 
 internal fun threadRepliesMetaChipColor(replyMetadata: ThreadReplyMetadata): Color =
     if (replyMetadata.unreadReplyCount > 0) {
+        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
         SlockColor.AccentCyan.copy(alpha = 0.2f)
     } else {
         SlockColor.SurfaceWhite
@@ -19328,6 +19333,7 @@ private fun ThreadForwardTargetPickerPage(
                         Modifier
                             .fillMaxWidth()
                             .padding(start = 16.dp, top = 12.dp, end = 16.dp)
+                            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
                             .background(SlockColor.BrandYellow.copy(alpha = 0.18f))
                             .border(SlockStroke.Default, SlockColor.BrandYellow)
                             .padding(10.dp)
@@ -20462,6 +20468,7 @@ private fun ThreadDeleteChannelWarning(channelName: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
                 .background(SlockColor.AccentRed.copy(alpha = 0.22f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 16.dp, vertical = 14.dp),

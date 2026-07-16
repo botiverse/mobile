@@ -2245,8 +2245,11 @@ private fun SlockRichTextColorToken?.toSlockMarkdownColorOrUnspecified(): Color 
     when (this) {
         SlockRichTextColorToken.TextBlack -> SlockColor.TextBlack
         SlockRichTextColorToken.BrandYellow -> SlockColor.BrandYellow
+        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1045
         SlockRichTextColorToken.BrandYellow40 -> SlockColor.BrandYellow.copy(alpha = 0.4f)
+        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1045
         SlockRichTextColorToken.AccentPink30 -> SlockColor.AccentPink.copy(alpha = 0.3f)
+        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1045
         SlockRichTextColorToken.AccentCyan30 -> SlockColor.AccentCyan.copy(alpha = 0.3f)
         SlockRichTextColorToken.SoftSignal -> SlockColor.SoftSignal
         SlockRichTextColorToken.BorderBlack30 -> SlockColor.BorderBlack.copy(alpha = 0.3f)

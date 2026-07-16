@@ -4687,6 +4687,7 @@ private fun MembersAgentIssueReportDialog(
                 modifier =
                     Modifier
                         .fillMaxWidth()
+                        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
                         .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
                         .padding(12.dp),
@@ -5326,6 +5327,7 @@ private fun MembersAgentRuntimeErrorBanner(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
             .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
     ) {
         Row(
@@ -5945,6 +5947,7 @@ private fun MembersAgentAvatarChoiceGrid(
             modifier = Modifier
                 .size(MembersAgentAvatarPickerCellSize)
                 .border(SlockStroke.Default, if (activeCustomAvatar) SlockColor.AccentPink else SlockColor.BorderBlack)
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
                 .background(if (activeCustomAvatar) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
                 .clickable(enabled = !uploading) { onUploadClick() },
             contentAlignment = Alignment.Center
@@ -5994,6 +5997,7 @@ private fun MembersAgentAvatarPickerCell(
         modifier = modifier
             .size(MembersAgentAvatarPickerCellSize)
             .border(SlockStroke.Default, if (active) SlockColor.AccentPink else SlockColor.BorderBlack)
+            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
             .background(if (active) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -7561,6 +7565,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
                     .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(12.dp),
@@ -8240,6 +8245,7 @@ private fun MembersAgentReminderCard(
             MembersAgentReminderChip(
                 iconName = SlockLucideIconName.RefreshCw,
                 text = recurrence,
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1043
                 background = SlockColor.AccentLavender.copy(alpha = 0.3f),
                 textColor = SlockColor.TextBlack
             )
