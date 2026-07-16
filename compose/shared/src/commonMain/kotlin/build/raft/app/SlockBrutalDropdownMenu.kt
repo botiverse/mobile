@@ -206,6 +206,7 @@ private fun SlockBrutalDropdownMenuRow(
     // down. Destructive rows keep their red wash.
     var pressed by remember { mutableStateOf(false) }
     val rowBackground = if (item.destructive) {
+        // deliberate react-parity wash (menu destructive row / press soft-signal, web bg-*/N); triaged token-audit #1062
         SlockColor.AccentRed.copy(alpha = 0.08f)
     } else if (pressed && item.enabled) {
         SlockColor.SoftSignal.copy(alpha = 0.30f)

@@ -1362,6 +1362,7 @@ private fun SharedTasksNotice(
         modifier =
             modifier
                 .fillMaxWidth()
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1064
                 .background(SlockColor.AccentRed.copy(alpha = 0.12f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(SlockSpacing.Sm),

@@ -927,6 +927,7 @@ private fun MachinePicker(
             !machinesErrorMessage.isNullOrBlank() -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // deliberate softened error border over flat cream (no shadow compositing risk); triaged token-audit #1063
                     .border(SlockStroke.Thin, SlockColor.AccentRed.copy(alpha = 0.5f))
                     .background(SlockColor.SurfaceCream)
                     .padding(SlockSpacing.Sm)

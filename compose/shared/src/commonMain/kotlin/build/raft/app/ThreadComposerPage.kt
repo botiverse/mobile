@@ -2737,6 +2737,7 @@ private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
                 .fillMaxSize()
                 .clickable(onClick = onRetry)
                 .slockSquareCorners()
+                // deliberate near-opaque failure scrim over the attachment thumbnail; triaged token-audit #1066
                 .background(SlockColor.AccentOrange.copy(alpha = 0.92f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(horizontal = 4.dp),
