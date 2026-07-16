@@ -4510,6 +4510,10 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(basePayload()))
         val beforeMessages = store.state.value.payload.messages
+        assertTrue(memberRepository.channelMemberRequests.isEmpty())
+        assertTrue(store.state.value.payload.members.isEmpty())
+
+        store.accept(SharedThreadIntent.FirstContentReady)
         assertEquals(2, store.state.value.payload.membersCount)
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         assertEquals(listOf("u1", "agent-1"), store.state.value.payload.members.map { it.id })
@@ -4555,7 +4559,10 @@ class SharedThreadStoreTest {
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(1, flakyMemberRepository.channelMemberCalls, "Start should background-fetch channel members")
+        assertEquals(0, flakyMemberRepository.channelMemberCalls, "members must wait for first content readiness")
+
+        store.accept(SharedThreadIntent.FirstContentReady)
+        assertEquals(1, flakyMemberRepository.channelMemberCalls, "first content readiness starts background members")
 
         store.accept(SharedThreadIntent.LoadMembers)
         val callsAfterFirstLoad = flakyMemberRepository.channelMemberCalls
@@ -4936,6 +4943,8 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         assertEquals("content", store.state.value.payload.status)
+        assertTrue(memberRepository.channelMemberRequests.isEmpty())
+        store.accept(SharedThreadIntent.FirstContentReady)
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
         assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
@@ -5759,6 +5768,8 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -5809,6 +5820,7 @@ class SharedThreadStoreTest {
         val firstStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
         firstStore.accept(SharedThreadIntent.Start(basePayload()))
+        firstStore.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
         assertEquals(7, firstStore.state.value.payload.messages.single().replyCount)
 
@@ -5819,6 +5831,7 @@ class SharedThreadStoreTest {
         val secondStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
         secondStore.accept(SharedThreadIntent.Start(basePayload()))
+        secondStore.accept(SharedThreadIntent.FirstContentReady)
         repository.threadReplySummariesStarted?.await()
 
         assertEquals(7, secondStore.state.value.payload.messages.single().replyCount)
@@ -5848,6 +5861,11 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
+        assertTrue(
+            repository.getThreadReplySummariesRequests.isEmpty(),
+            "thread summaries must not race the first content frame or bottom anchor"
+        )
+        store.accept(SharedThreadIntent.FirstContentReady)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -5950,6 +5968,7 @@ class SharedThreadStoreTest {
         releaseReplyFetch.complete(Unit)
         assertTrue(prewarm.await() is DataResult.Content)
         visibleStart.await()
+        store.accept(SharedThreadIntent.FirstContentReady)
         withTimeout(1_000L) {
             while (!logs.any { it.startsWith("thread_secondary_refresh_result") }) {
                 delay(10L)

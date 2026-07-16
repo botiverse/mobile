@@ -3657,6 +3657,7 @@ internal sealed interface SharedThreadIntent {
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
     data object MarkVisibleRead : SharedThreadIntent
+    data object FirstContentReady : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
@@ -3708,6 +3709,8 @@ internal class SharedThreadStore(
     private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadAt: TimeMark? = null
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
+    private var firstContentReadyRouteKey: String? = null
+    private var pendingAuxiliaryHydration: PendingAuxiliaryHydration? = null
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
     private val initialAccessStateMutex = Mutex()
@@ -3731,6 +3734,13 @@ internal class SharedThreadStore(
         val routeIdentity: ThreadRouteIdentity,
         val staleToken: MviStaleToken,
         var pendingTargetSeq: Long? = null,
+    )
+
+    private data class PendingAuxiliaryHydration(
+        val routePayload: KuiklyThreadScreenPayload,
+        val staleToken: MviStaleToken,
+        val launchSecondaryTimelineRefresh: Boolean,
+        val launchMembersHydration: Boolean
     )
 
     private fun KuiklyThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
@@ -3810,6 +3820,9 @@ internal class SharedThreadStore(
             SharedThreadIntent.MarkVisibleRead -> {
                 scope.launch { markVisibleRead() }
             }
+            SharedThreadIntent.FirstContentReady -> {
+                scope.launch { markFirstContentReady() }
+            }
             SharedThreadIntent.LoadMembers -> {
                 scope.launch { loadMembers() }
             }
@@ -3872,6 +3885,7 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             SharedThreadIntent.MarkVisibleRead -> markVisibleRead()
+            SharedThreadIntent.FirstContentReady -> markFirstContentReady()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
@@ -3894,6 +3908,8 @@ internal class SharedThreadStore(
         backgroundMembersHydrationJob?.cancel()
         backgroundMembersHydrationJob = null
         lastRoutePayload = null
+        firstContentReadyRouteKey = null
+        pendingAuxiliaryHydration = null
         advanceRouteStaleToken()
         reducePayloadPatch(cachePayload = true) { currentPayload ->
             if (currentPayload.newerMessagesStatus == "loading") {
@@ -3919,6 +3935,8 @@ internal class SharedThreadStore(
                 .withoutTransientLocalSendingMessages()
         val staleToken = advanceRouteStaleToken()
         lastRoutePayload = routeContextPayload
+        firstContentReadyRouteKey = null
+        pendingAuxiliaryHydration = null
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey
         val cached =
@@ -4154,14 +4172,80 @@ internal class SharedThreadStore(
         if (!resolvingInitialAccessAtStart) {
             launchBackgroundHomeContextHydration(basePayload)
         }
-        if (visiblePayload != null &&
-            nextPayload.hasRenderableThreadContent() &&
-            !basePayload.needsReplyThreadStreamResolution()
-        ) {
-            launchSecondaryTimelineRefresh(basePayload, staleToken)
+        queueAuxiliaryHydration(
+            routePayload = basePayload,
+            staleToken = staleToken,
+            launchSecondaryTimelineRefresh =
+                visiblePayload != null &&
+                    nextPayload.hasRenderableThreadContent() &&
+                    !basePayload.needsReplyThreadStreamResolution(),
+            launchMembersHydration = nextPayload.hasRenderableThreadContent()
+        )
+    }
+
+    private fun queueAuxiliaryHydration(
+        routePayload: KuiklyThreadScreenPayload,
+        staleToken: MviStaleToken,
+        launchSecondaryTimelineRefresh: Boolean,
+        launchMembersHydration: Boolean
+    ) {
+        if (!launchSecondaryTimelineRefresh && !launchMembersHydration) {
+            pendingAuxiliaryHydration = null
+            return
         }
-        if (nextPayload.hasRenderableThreadContent()) {
-            launchBackgroundMembersHydration(basePayload)
+        pendingAuxiliaryHydration =
+            PendingAuxiliaryHydration(
+                routePayload = routePayload,
+                staleToken = staleToken,
+                launchSecondaryTimelineRefresh = launchSecondaryTimelineRefresh,
+                launchMembersHydration = launchMembersHydration
+            )
+        diagnosticsLogger?.invoke(
+            "thread_auxiliary_hydration result=queued " +
+                "threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "secondary=$launchSecondaryTimelineRefresh members=$launchMembersHydration"
+        )
+        launchPendingAuxiliaryHydrationIfReady()
+    }
+
+    private fun markFirstContentReady() {
+        val currentPayload = _state.value.payload
+        val routeKey = currentPayload.resolveThreadRouteIdentity().instanceKey
+        firstContentReadyRouteKey = routeKey
+        diagnosticsLogger?.invoke(
+            "thread_first_content_ready threadId=${currentPayload.sourceThreadId.orEmpty()} routeKey=$routeKey"
+        )
+        launchPendingAuxiliaryHydrationIfReady()
+    }
+
+    private fun launchPendingAuxiliaryHydrationIfReady() {
+        val pending = pendingAuxiliaryHydration ?: return
+        val pendingRouteKey = pending.routePayload.resolveThreadRouteIdentity().instanceKey
+        if (firstContentReadyRouteKey != pendingRouteKey) return
+        val currentPayload = _state.value.payload
+        if (
+            !pending.staleToken.isCurrent(routeStaleToken) ||
+            !routeStillCurrent(
+                pending.routePayload,
+                "thread_auxiliary_hydration",
+                "launch",
+                currentPayload
+            )
+        ) {
+            pendingAuxiliaryHydration = null
+            return
+        }
+        pendingAuxiliaryHydration = null
+        diagnosticsLogger?.invoke(
+            "thread_auxiliary_hydration result=launched " +
+                "threadId=${pending.routePayload.sourceThreadId.orEmpty()} " +
+                "secondary=${pending.launchSecondaryTimelineRefresh} members=${pending.launchMembersHydration}"
+        )
+        if (pending.launchSecondaryTimelineRefresh) {
+            launchSecondaryTimelineRefresh(pending.routePayload, pending.staleToken)
+        }
+        if (pending.launchMembersHydration) {
+            launchBackgroundMembersHydration(pending.routePayload)
         }
     }
 
