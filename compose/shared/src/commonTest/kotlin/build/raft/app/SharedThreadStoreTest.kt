@@ -86,6 +86,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
+import build.raft.app.model.ForwardMessageBundle
+import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -528,6 +530,49 @@ class SharedThreadStoreTest {
         assertEquals("server two", (second as SharedThreadMessageResolution.Loaded).message.body)
         assertEquals("server one", store.get(ServerId("server-1"), channel, messageId)?.body)
         assertEquals("server two", store.get(ServerId("server-2"), channel, messageId)?.body)
+    }
+
+    @Test
+    fun sharedThreadMessageStoreTreatsForwardBundleOnlyMessageAsHydrated() = runBlocking {
+        val store = SharedThreadMessageStore()
+        val server = ServerId("server-1")
+        val channel = ChannelId("channel-1")
+        val messageId = MessageId("forward-1")
+        var fetchCount = 0
+        val forwarded =
+            message(
+                id = messageId.value,
+                seq = 1,
+                body = "",
+                forwardBundle =
+                    ForwardMessageBundle(
+                        messages =
+                            listOf(
+                                ForwardMessageItem(
+                                    id = "source-1",
+                                    authorId = "u1",
+                                    authorName = "Artin",
+                                    body = "forwarded body"
+                                )
+                            )
+                    )
+            )
+
+        val first =
+            store.resolve(server, channel, messageId) {
+                fetchCount += 1
+                SharedThreadMessageResolution.Loaded(forwarded)
+            }
+        val second =
+            store.resolve(server, channel, messageId) {
+                fetchCount += 1
+                SharedThreadMessageResolution.Error("duplicate_fetch")
+            }
+
+        assertIs<SharedThreadMessageResolution.Loaded>(first)
+        assertIs<SharedThreadMessageResolution.Loaded>(second)
+        assertEquals(1, fetchCount)
+        assertEquals("forwarded body", store.get(server, channel, messageId)?.forwardBundle?.messages?.single()?.body)
     }
 
     @Test
@@ -12333,7 +12378,8 @@ class SharedThreadStoreTest {
             replyCount: Int = 0,
             unreadReplyCount: Int = 0,
             messageType: MessageType = MessageType.Chat,
-            authorKind: MemberKind = MemberKind.Human
+            authorKind: MemberKind = MemberKind.Human,
+            forwardBundle: ForwardMessageBundle? = null
         ): Message =
             Message(
                 id = MessageId(id),
@@ -12353,7 +12399,8 @@ class SharedThreadStoreTest {
                 body = body,
                 messageType = messageType,
                 replyCount = replyCount,
-                unreadReplyCount = unreadReplyCount
+                unreadReplyCount = unreadReplyCount,
+                forwardBundle = forwardBundle
             )
 
         private fun messagesResponse(
