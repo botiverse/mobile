@@ -98,7 +98,7 @@ class AttachmentDownloadCoordinatorTest {
         val call = transport.calls.single()
         call.start(200, 4L)
         call.chunk(byteArrayOf(1, 2))
-        assertEquals("cancelled", engine.control("download-1", "cancel"))
+        assertEquals("cancelled", engine.control("download-1", null, "cancel"))
         assertTrue(call.cancelled)
         assertEquals(1, sinks.created.single().abortCount)
         val progressCount = observer.progress.size
@@ -195,6 +195,206 @@ class AttachmentDownloadCoordinatorTest {
         assertEquals(1, observer.results.size)
     }
 
+    @Test
+    fun knownLengthMustMatchExactlyIncludingDeclaredZero() {
+        listOf(5L to 4, 5L to 6).forEach { (declared, actual) ->
+            val transport = FakeTransport()
+            val sinks = FakeSinkFactory()
+            val observer = RecordingObserver()
+            val engine = AttachmentDownloadCoordinatorEngine(transport, sinks) { 1_000L }
+            engine.start(request(), observer)
+            transport.calls.single().apply {
+                start(200, declared)
+                chunk(ByteArray(actual))
+                complete(successResponse())
+            }
+            assertEquals("failed", observer.results.single().status)
+            assertEquals("content_length_mismatch", observer.results.single().errorKind)
+            assertEquals(0, sinks.created.single().commitCount)
+            assertEquals(1, sinks.created.single().abortCount)
+        }
+
+        val zeroTransport = FakeTransport()
+        val zeroObserver = RecordingObserver()
+        val zeroSinks = FakeSinkFactory()
+        val zeroEngine = AttachmentDownloadCoordinatorEngine(zeroTransport, zeroSinks) { 1_000L }
+        zeroEngine.start(request(), zeroObserver)
+        zeroTransport.calls.single().apply {
+            start(200, 0L)
+            complete(successResponse())
+        }
+        assertEquals("complete", zeroObserver.results.single().status)
+        assertEquals(1, zeroSinks.created.single().commitCount)
+        assertEquals(100, zeroObserver.progress.last().percent)
+    }
+
+    @Test
+    fun successWithoutResponseStartFailsClosed() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val observer = RecordingObserver()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks) { 1_000L }
+
+        engine.start(request(), observer)
+        transport.calls.single().complete(successResponse())
+
+        assertEquals("failed", observer.results.single().status)
+        assertEquals("missing_response_start", observer.results.single().errorKind)
+        assertEquals(0, sinks.created.single().commitCount)
+        assertEquals(1, sinks.created.single().abortCount)
+    }
+
+    @Test
+    fun byteArithmeticSaturatesAndPercentCannotOverflow() {
+        assertEquals(Long.MAX_VALUE, saturatingAdd(Long.MAX_VALUE - 2L, 10L))
+        assertEquals(Long.MAX_VALUE, saturatingMultiply(Long.MAX_VALUE / 2L + 1L, 1_000L))
+        assertEquals(99, attachmentDownloadPercent(Long.MAX_VALUE - 1L, Long.MAX_VALUE))
+        assertEquals(100, attachmentDownloadPercent(Long.MAX_VALUE, Long.MAX_VALUE))
+    }
+
+    @Test
+    fun finalProgressFailureWinsOverCommitAndSuccessTerminal() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val observer = RecordingObserver(throwOnPhase = "complete")
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks) { 1_000L }
+
+        engine.start(request(), observer)
+        transport.calls.single().apply {
+            start(200, 1L)
+            chunk(byteArrayOf(1))
+            complete(successResponse())
+        }
+
+        assertEquals(listOf("failed"), observer.results.map { it.status })
+        assertEquals("progress_callback", observer.results.single().errorKind)
+        assertEquals(0, sinks.created.single().commitCount)
+        assertEquals(1, sinks.created.single().abortCount)
+    }
+
+    @Test
+    fun progressObserverCanReenterCancelWithoutDeadlockOrDoubleTerminal() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        lateinit var engine: AttachmentDownloadCoordinatorEngine
+        val observer =
+            object : AttachmentDownloadObserver {
+                val results = mutableListOf<AttachmentDownloadResult>()
+
+                override fun onProgress(progress: AttachmentDownloadProgress) {
+                    if (progress.phase == "receiving") {
+                        assertEquals("cancelled", engine.control("download-1", progress.attemptToken, "cancel"))
+                    }
+                }
+
+                override fun onComplete(result: AttachmentDownloadResult) {
+                    results += result
+                }
+            }
+        engine = AttachmentDownloadCoordinatorEngine(transport, sinks) { 1_000L }
+
+        engine.start(request(), observer)
+        transport.calls.single().apply {
+            start(200, 2L)
+            chunk(byteArrayOf(1))
+            complete(successResponse())
+        }
+
+        assertEquals(1, observer.results.size)
+        assertEquals("cancelled", observer.results.single().status)
+        assertEquals(1, sinks.created.single().abortCount)
+        assertEquals(0, sinks.created.single().commitCount)
+    }
+
+    @Test
+    fun monotonicWatchdogCancelsNoncooperativeHeaderIdleAndWholeTimeouts() {
+        fun runTimeout(
+            request: AttachmentDownloadRequest,
+            prepare: (FakeTransportCall) -> Unit,
+            now: Long,
+            expectedKind: String
+        ) {
+            val transport = FakeTransport()
+            val sinks = FakeSinkFactory()
+            val observer = RecordingObserver()
+            var clock = 0L
+            val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, { clock })
+            engine.start(request, observer)
+            val call = transport.calls.single()
+            prepare(call)
+            clock = now
+            engine.checkTimeouts(clock)
+            assertTrue(call.cancelled, expectedKind)
+            assertEquals(expectedKind, observer.results.single().errorKind)
+            assertEquals(1, sinks.created.single().abortCount)
+            call.complete(successResponse())
+            assertEquals(1, observer.results.size)
+        }
+
+        runTimeout(
+            request().copy(connectTimeoutMillis = 100L, responseHeadersTimeoutMillis = 200L, wholeTransferTimeoutMillis = 0L),
+            prepare = {},
+            now = 300L,
+            expectedKind = "response_headers_timeout"
+        )
+        runTimeout(
+            request().copy(interChunkIdleTimeoutMillis = 250L, wholeTransferTimeoutMillis = 0L),
+            prepare = { it.start(200, null) },
+            now = 250L,
+            expectedKind = "idle_timeout"
+        )
+        runTimeout(
+            request().copy(wholeTransferTimeoutMillis = 150L),
+            prepare = {},
+            now = 150L,
+            expectedKind = "whole_timeout"
+        )
+    }
+
+    @Test
+    fun staleAttemptTokenCannotControlSameIdReplacement() {
+        val transport = FakeTransport()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, FakeSinkFactory()) { 1_000L }
+        val first = engine.start(request(), RecordingObserver())
+        val second = engine.start(request(), RecordingObserver())
+
+        assertEquals("stale", engine.control("download-1", first, "cancel"))
+        assertEquals("cancelled", engine.control("download-1", second, "cancel"))
+    }
+
+    @Test
+    fun preStartCancelTombstonePreventsSinkBeginAndTransportStart() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val observer = RecordingObserver()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks) { 1_000L }
+
+        assertEquals("cancelled", engine.control("download-prestart", null, "cancel"))
+        engine.start(request().copy(downloadId = "download-prestart"), observer)
+
+        assertTrue(sinks.created.isNotEmpty())
+        assertEquals(0, sinks.created.single().beginCount)
+        assertTrue(transport.calls.isEmpty())
+        assertEquals("cancelled", observer.results.single().status)
+    }
+
+    @Test
+    fun expiredPreStartCancelDoesNotKillAReusedDownloadId() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val observer = RecordingObserver()
+        var clock = 0L
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, { clock })
+
+        assertEquals("cancelled", engine.control("download-prestart", null, "cancel"))
+        clock = 60_000L
+        engine.start(request().copy(downloadId = "download-prestart"), observer)
+
+        assertEquals(1, sinks.created.single().beginCount)
+        assertEquals(1, transport.calls.size)
+        assertTrue(observer.results.isEmpty())
+    }
+
     private fun request(): AttachmentDownloadRequest =
         AttachmentDownloadRequest(
             downloadId = "download-1",
@@ -267,8 +467,12 @@ private class FakeSink(
     var bytes = ByteArray(0)
     var commitCount = 0
     var abortCount = 0
+    var beginCount = 0
 
-    override fun begin(): Boolean = beginSucceeds
+    override fun begin(): Boolean {
+        beginCount += 1
+        return beginSucceeds
+    }
 
     override fun write(bytes: ByteArray): Boolean {
         if (writeSucceeds) this.bytes += bytes
@@ -286,13 +490,14 @@ private class FakeSink(
 }
 
 private class RecordingObserver(
-    private val throwOnProgress: Boolean = false
+    private val throwOnProgress: Boolean = false,
+    private val throwOnPhase: String? = null
 ) : AttachmentDownloadObserver {
     val progress = mutableListOf<AttachmentDownloadProgress>()
     val results = mutableListOf<AttachmentDownloadResult>()
 
     override fun onProgress(progress: AttachmentDownloadProgress) {
-        if (throwOnProgress) error("observer failed")
+        if (throwOnProgress || progress.phase == throwOnPhase) error("observer failed")
         this.progress += progress
     }
 

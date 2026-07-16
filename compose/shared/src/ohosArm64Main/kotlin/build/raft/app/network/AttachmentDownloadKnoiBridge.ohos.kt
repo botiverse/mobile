@@ -1,7 +1,17 @@
 package build.raft.app.network
 
 import com.tencent.tmm.knoi.annotation.KNExport
+import com.tencent.tmm.knoi.annotation.ServiceConsumer
 import com.tencent.tmm.knoi.service.KNOI
+
+private const val SlockOhosAttachmentDownloadObserverService = "slockOhosAttachmentDownloadObserver"
+
+@ServiceConsumer(name = SlockOhosAttachmentDownloadObserverService)
+private interface SlockOhosAttachmentDownloadObserverSink {
+    fun onProgress(payload: Map<String, Any?>)
+
+    fun onComplete(payload: Map<String, Any?>)
+}
 
 @KNExport
 fun slockAttachmentDownloadStart(
@@ -20,14 +30,14 @@ fun slockAttachmentDownloadStart(
     )
 
 @KNExport
-fun slockAttachmentDownloadControl(downloadId: String, action: String): String =
-    AttachmentDownloadCoordinator.control(downloadId, action)
+fun slockAttachmentDownloadControl(downloadId: String, expectedAttemptToken: String, action: String): String =
+    AttachmentDownloadCoordinator.control(downloadId, expectedAttemptToken, action)
 
 private class OhosKnoiAttachmentDownloadObserver(
     private val hostRequestKey: String
 ) : AttachmentDownloadObserver {
-    private val service: SlockOhosAttachmentDownloadSink
-        get() = KNOI.get(SlockOhosAttachmentDownloadSinkService)
+    private val service: SlockOhosAttachmentDownloadObserverSink
+        get() = KNOI.get(SlockOhosAttachmentDownloadObserverService)
 
     override fun onProgress(progress: AttachmentDownloadProgress) {
         service.onProgress(

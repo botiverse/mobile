@@ -7,7 +7,7 @@ import org.junit.Test
 
 class OhosAttachmentDownloadProgressSourceContractTest {
     @Test
-    fun arkTsIsAtomicSinkOnlyAndCannotRestoreAPlatformHttpTransport() {
+    fun arkTsIsLowFrequencyObserverOnlyAndHotBytesStayInOhosArm64PosixSink() {
         val moduleSource =
             File(
                 findRepoRoot(),
@@ -18,16 +18,23 @@ class OhosAttachmentDownloadProgressSourceContractTest {
                 findRepoRoot(),
                 "compose/ohosApp/entry/src/main/ets/kuikly/SlockOhosAttachmentDownloadSink.ets"
             ).readText()
+        val posixSinkSource =
+            File(
+                findRepoRoot(),
+                "compose/shared/src/ohosArm64Main/kotlin/build/raft/app/network/AttachmentDownloadAtomicSink.ohos.kt"
+            ).readText()
 
         assertTrue(moduleSource.contains("slockOhosAttachmentDownloadSink.download("))
         assertFalse(moduleSource.contains("requestInStream"))
         assertFalse(moduleSource.contains("createHttp"))
         assertFalse(moduleSource.contains("@kit.NetworkKit"))
         assertTrue(sinkSource.contains("slockAttachmentDownloadStart"))
-        assertTrue(sinkSource.contains("fs.writeSync"))
-        assertTrue(sinkSource.contains("fs.fsyncSync"))
-        assertTrue(sinkSource.contains("fs.renameSync"))
-        assertTrue(sinkSource.contains(".part-${'$'}{this.safeToken(attemptToken)}"))
+        assertFalse(sinkSource.contains("fs.writeSync"))
+        assertFalse(sinkSource.contains("fs.fsyncSync"))
+        assertFalse(sinkSource.contains("fs.renameSync"))
+        assertTrue(posixSinkSource.contains("AttachmentDownloadAtomicFileSink"))
+        assertTrue(posixSinkSource.contains("OhosAttachmentDownloadFileOps"))
+        assertTrue(posixSinkSource.contains("platform.posix.write"))
         assertFalse(sinkSource.contains("requestInStream"))
         assertFalse(sinkSource.contains("createHttp"))
     }

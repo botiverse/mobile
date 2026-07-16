@@ -845,7 +845,11 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
         coroutineScope.launch {
-            bridge.attachmentDownloadControl(downloadId = downloadId, action = action)
+            bridge.attachmentDownloadControl(
+                downloadId = downloadId,
+                expectedAttemptToken = downloadProgress?.attemptToken,
+                action = action
+            )
         }
     }
     fun requestDeleteDownload() {

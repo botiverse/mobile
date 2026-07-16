@@ -1,56 +1,34 @@
 package build.raft.app.network
 
 import android.system.Os
-import java.io.File
-import java.io.FileOutputStream
+import android.system.OsConstants
+import java.io.FileDescriptor
 
 internal actual fun createAttachmentDownloadAtomicSink(
     targetPath: String,
     attemptToken: String
-): AttachmentDownloadAtomicSink = AndroidAttachmentDownloadAtomicSink(File(targetPath), attemptToken)
+): AttachmentDownloadAtomicSink =
+    AttachmentDownloadAtomicFileSink(targetPath, attemptToken, AndroidAttachmentDownloadFileOps)
 
 internal actual fun attachmentDownloadPauseMillis(durationMillis: Long) {
     Thread.sleep(durationMillis.coerceAtLeast(1L))
 }
 
-private class AndroidAttachmentDownloadAtomicSink(
-    private val target: File,
-    attemptToken: String
-) : AttachmentDownloadAtomicSink {
-    private val staging = File(target.parentFile, "${target.name}.part-${attemptToken.safePathToken()}")
-    private var output: FileOutputStream? = null
+private object AndroidAttachmentDownloadFileOps : AttachmentDownloadFileOps {
+    override fun open(path: String): Any =
+        Os.open(path, OsConstants.O_CREAT or OsConstants.O_TRUNC or OsConstants.O_WRONLY, 0x180)
 
-    override fun begin(): Boolean =
-        runCatching {
-            target.parentFile?.mkdirs()
-            staging.delete()
-            output = FileOutputStream(staging, false)
-            true
-        }.getOrDefault(false)
+    override fun write(handle: Any, bytes: ByteArray, offset: Int, length: Int): Int =
+        Os.write(handle as FileDescriptor, bytes, offset, length)
 
-    override fun write(bytes: ByteArray): Boolean =
-        runCatching {
-            output?.write(bytes) ?: return false
-            true
-        }.getOrDefault(false)
+    override fun fsync(handle: Any): Boolean = runCatching { Os.fsync(handle as FileDescriptor) }.isSuccess
 
-    override fun commit(): Boolean =
-        runCatching {
-            val stream = output ?: return false
-            stream.fd.sync()
-            stream.close()
-            output = null
-            if (!staging.isFile) return false
-            Os.rename(staging.absolutePath, target.absolutePath)
-            target.isFile
-        }.getOrDefault(false)
+    override fun close(handle: Any): Boolean = runCatching { Os.close(handle as FileDescriptor) }.isSuccess
 
-    override fun abort() {
-        runCatching { output?.close() }
-        output = null
-        runCatching { staging.delete() }
+    override fun rename(sourcePath: String, targetPath: String): Boolean =
+        runCatching { Os.rename(sourcePath, targetPath) }.isSuccess
+
+    override fun unlink(path: String) {
+        runCatching { Os.unlink(path) }
     }
 }
-
-private fun String.safePathToken(): String =
-    filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(80).ifBlank { "attempt" }

@@ -2040,8 +2040,9 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
         return;
     }
     NSString *fileName = SlockAttachmentExportFileName(SlockBridgeString(params[@"fileName"]));
-    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
     NSString *requestId = NSUUID.UUID.UUIDString;
+    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    if (downloadId.length == 0) downloadId = requestId;
     self.slock_attachmentExportCallback = callback;
     self.slock_attachmentExportRequestId = @"pending";
     self.slock_attachmentExportFileName = fileName;
@@ -2078,40 +2079,40 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 }
 
 - (void)onProgressProgress:(SharedAttachmentDownloadProgress *)progress {
-    if (!self.slock_attachmentExportTrackProgress || !self.slock_attachmentExportCallback ||
-        (self.slock_attachmentExportRequestId.length > 0 &&
-         ![self.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
-         ![self.slock_attachmentExportRequestId isEqualToString:progress.attemptToken])) {
-        return;
-    }
-    NSMutableDictionary *payload = [@{
-        @"status" : @"progress",
-        @"downloadId" : progress.downloadId ?: @"",
-        @"attemptToken" : progress.attemptToken ?: @"",
-        @"sequence" : @(progress.sequence),
-        @"phase" : progress.phase ?: @"",
-        @"downloadedBytes" : @(progress.downloadedBytes)
-    } mutableCopy];
-    if (progress.totalBytes) payload[@"totalBytes"] = progress.totalBytes;
-    if (progress.percent) payload[@"percent"] = progress.percent;
-    if (progress.bytesPerSecond) payload[@"bytesPerSecond"] = progress.bytesPerSecond;
-    KuiklyRenderCallback callback = self.slock_attachmentExportCallback;
-    if (callback) {
-        SlockBridgeRunOnMain(^{ callback(payload); });
-    }
-}
-
-- (void)onCompleteResult:(SharedAttachmentDownloadResult *)result {
-    if (!self.slock_attachmentExportCallback ||
-        (self.slock_attachmentExportRequestId.length > 0 &&
-         ![self.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
-         ![self.slock_attachmentExportRequestId isEqualToString:result.attemptToken])) {
-        return;
-    }
     __weak typeof(self) weakSelf = self;
     SlockBridgeRunOnMain(^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf || !strongSelf.slock_attachmentExportCallback) return;
+        if (!strongSelf.slock_attachmentExportTrackProgress || !strongSelf.slock_attachmentExportCallback ||
+            (strongSelf.slock_attachmentExportRequestId.length > 0 &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:progress.attemptToken])) {
+            return;
+        }
+        NSMutableDictionary *payload = [@{
+            @"status" : @"progress",
+            @"downloadId" : progress.downloadId ?: @"",
+            @"attemptToken" : progress.attemptToken ?: @"",
+            @"sequence" : @(progress.sequence),
+            @"phase" : progress.phase ?: @"",
+            @"downloadedBytes" : @(progress.downloadedBytes)
+        } mutableCopy];
+        if (progress.totalBytes) payload[@"totalBytes"] = progress.totalBytes;
+        if (progress.percent) payload[@"percent"] = progress.percent;
+        if (progress.bytesPerSecond) payload[@"bytesPerSecond"] = progress.bytesPerSecond;
+        strongSelf.slock_attachmentExportCallback(payload);
+    });
+}
+
+- (void)onCompleteResult:(SharedAttachmentDownloadResult *)result {
+    __weak typeof(self) weakSelf = self;
+    SlockBridgeRunOnMain(^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
+            (strongSelf.slock_attachmentExportRequestId.length > 0 &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:result.attemptToken])) {
+            return;
+        }
         if (![result.status isEqualToString:@"complete"]) {
             [strongSelf slock_finishAttachmentExport:@{
                 @"status" : result.status ?: @"failed",
@@ -2197,12 +2198,15 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     if (!callback) return;
     NSDictionary *params = SlockBridgeParams(args);
     NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    NSString *attemptToken = SlockBridgeString(params[@"attemptToken"]);
     NSString *action = SlockBridgeString(params[@"action"]);
     if (downloadId.length == 0 || action.length == 0) {
         callback(@{ @"status" : @"failed", @"message" : @"Missing download control field" });
         return;
     }
-    NSString *status = [SharedAttachmentDownloadCoordinator.shared controlDownloadId:downloadId action:action];
+    NSString *status = [SharedAttachmentDownloadCoordinator.shared controlDownloadId:downloadId
+                                                              expectedAttemptToken:attemptToken
+                                                                            action:action];
     callback(@{ @"status" : status ?: @"failed" });
 }
 

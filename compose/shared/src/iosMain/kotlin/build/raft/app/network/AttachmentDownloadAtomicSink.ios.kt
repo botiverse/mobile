@@ -4,68 +4,47 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
-import platform.Foundation.NSData
-import platform.Foundation.NSFileHandle
-import platform.Foundation.NSFileManager
 import platform.Foundation.NSThread
-import platform.Foundation.dataWithBytes
-import platform.Foundation.fileHandleForWritingAtPath
-import platform.posix.rename
+import platform.posix.O_CREAT
+import platform.posix.O_TRUNC
+import platform.posix.O_WRONLY
+import platform.posix.S_IRUSR
+import platform.posix.S_IWUSR
+import platform.posix.close as posixClose
+import platform.posix.fsync as posixFsync
+import platform.posix.open as posixOpen
+import platform.posix.rename as posixRename
+import platform.posix.unlink as posixUnlink
+import platform.posix.write as posixWrite
 
 internal actual fun createAttachmentDownloadAtomicSink(
     targetPath: String,
     attemptToken: String
-): AttachmentDownloadAtomicSink = IosAttachmentDownloadAtomicSink(targetPath, attemptToken)
+): AttachmentDownloadAtomicSink =
+    AttachmentDownloadAtomicFileSink(targetPath, attemptToken, IosAttachmentDownloadFileOps)
 
 internal actual fun attachmentDownloadPauseMillis(durationMillis: Long) {
     NSThread.sleepForTimeInterval(durationMillis.coerceAtLeast(1L).toDouble() / 1_000.0)
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private class IosAttachmentDownloadAtomicSink(
-    private val targetPath: String,
-    attemptToken: String
-) : AttachmentDownloadAtomicSink {
-    private val fileManager = NSFileManager.defaultManager()
-    private val stagingPath = "$targetPath.part-${attemptToken.safePathToken()}"
-    private var handle: NSFileHandle? = null
+private object IosAttachmentDownloadFileOps : AttachmentDownloadFileOps {
+    override fun open(path: String): Any? =
+        posixOpen(path, O_CREAT or O_TRUNC or O_WRONLY, (S_IRUSR or S_IWUSR).convert())
+            .takeIf { it >= 0 }
 
-    override fun begin(): Boolean =
-        runCatching {
-            val parent = targetPath.substringBeforeLast('/', missingDelimiterValue = "")
-            if (parent.isNotBlank()) {
-                fileManager.createDirectoryAtPath(parent, true, null, null)
-            }
-            fileManager.removeItemAtPath(stagingPath, error = null)
-            if (!fileManager.createFileAtPath(stagingPath, contents = null, attributes = null)) return false
-            handle = NSFileHandle.fileHandleForWritingAtPath(stagingPath)
-            handle != null
-        }.getOrDefault(false)
+    override fun write(handle: Any, bytes: ByteArray, offset: Int, length: Int): Int =
+        bytes.usePinned { pinned ->
+            posixWrite((handle as Int), pinned.addressOf(offset), length.convert()).toInt()
+        }
 
-    override fun write(bytes: ByteArray): Boolean =
-        runCatching {
-            val output = handle ?: return false
-            if (bytes.isEmpty()) return true
-            val data = bytes.usePinned { pinned -> NSData.dataWithBytes(pinned.addressOf(0), bytes.size.convert()) }
-            output.writeData(data)
-            true
-        }.getOrDefault(false)
+    override fun fsync(handle: Any): Boolean = posixFsync(handle as Int) == 0
 
-    override fun commit(): Boolean =
-        runCatching {
-            val output = handle ?: return false
-            output.synchronizeFile()
-            output.closeFile()
-            handle = null
-            rename(stagingPath, targetPath) == 0 && fileManager.fileExistsAtPath(targetPath)
-        }.getOrDefault(false)
+    override fun close(handle: Any): Boolean = posixClose(handle as Int) == 0
 
-    override fun abort() {
-        runCatching { handle?.closeFile() }
-        handle = null
-        runCatching { fileManager.removeItemAtPath(stagingPath, error = null) }
+    override fun rename(sourcePath: String, targetPath: String): Boolean = posixRename(sourcePath, targetPath) == 0
+
+    override fun unlink(path: String) {
+        posixUnlink(path)
     }
 }
-
-private fun String.safePathToken(): String =
-    filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(80).ifBlank { "attempt" }

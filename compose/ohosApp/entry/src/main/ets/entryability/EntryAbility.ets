@@ -21,7 +21,7 @@ import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
 import {
-  SLOCK_OHOS_ATTACHMENT_DOWNLOAD_SINK_SERVICE,
+  SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
   slockOhosAttachmentDownloadSink
 } from '../kuikly/SlockOhosAttachmentDownloadSink';
 import { Hands } from '@botiverse/hands';
@@ -220,7 +220,7 @@ export default class EntryAbility extends UIAbility {
       new SlockOhosSharedLogSink()
     );
     registerSingleServiceProvider(
-      SLOCK_OHOS_ATTACHMENT_DOWNLOAD_SINK_SERVICE,
+      SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
       slockOhosAttachmentDownloadSink
     );
     // KmmResource contract: must complete after KNOI setup()/init() and

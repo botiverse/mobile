@@ -382,12 +382,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private attachmentDownloadControl(params: KRAny, callback: KuiklyRenderCallback): void {
     const records = this.parseRecord(params);
     const downloadId = records["downloadId"] as string | undefined;
+    const attemptToken = (records["attemptToken"] as string | undefined) ?? "";
     const action = records["action"] as string | undefined;
     if (downloadId === undefined || downloadId.length === 0 || action === undefined || action.length === 0) {
       callback({ "status": "failed", "message": "Missing download control field" });
       return;
     }
-    const status = slockOhosAttachmentDownloadSink.control(downloadId, action);
+    const status = slockOhosAttachmentDownloadSink.control(downloadId, attemptToken, action);
     callback({ "status": status });
   }
 
@@ -1259,7 +1260,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         try {
           const path = `${cacheDir}/${name}`;
           const stat = fs.statSync(path);
-          if (stat.isFile()) {
+          if (stat.isFile() && !name.includes('.part')) {
             entries.push({ path: path, mtime: stat.mtime });
           }
         } catch (_) {

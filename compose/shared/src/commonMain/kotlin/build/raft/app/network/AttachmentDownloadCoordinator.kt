@@ -12,6 +12,12 @@ import com.tencent.kmm.network.service.NetworkClientConfig
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.time.TimeSource
 
@@ -57,7 +63,8 @@ interface AttachmentDownloadObserver {
  * staging and atomic publication. ArkTS/Android/iOS must not start a second HTTP transport.
  */
 object AttachmentDownloadCoordinator {
-    private val engine = AttachmentDownloadCoordinatorEngine()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val engine = AttachmentDownloadCoordinatorEngine(watchdogScope = scope)
 
     fun start(
         downloadId: String,
@@ -77,7 +84,10 @@ object AttachmentDownloadCoordinator {
             observer = observer
         )
 
-    fun control(downloadId: String, action: String): String = engine.control(downloadId, action)
+    fun control(downloadId: String, expectedAttemptToken: String? = null, action: String): String =
+        engine.control(downloadId, expectedAttemptToken, action)
+
+    fun cancelTargetAndAwaitCleanup(targetKey: String): String = engine.cancelTargetAndAwaitCleanup(targetKey)
 }
 
 internal data class AttachmentDownloadRequest(
@@ -130,12 +140,23 @@ internal class AttachmentDownloadCoordinatorEngine(
     private val transport: AttachmentDownloadTransport = NetworkKmmAttachmentDownloadTransport,
     private val sinkFactory: AttachmentDownloadSinkFactory =
         AttachmentDownloadSinkFactory(::createAttachmentDownloadAtomicSink),
-    private val nowMillis: () -> Long = { AttachmentDownloadMonotonicOrigin.elapsedNow().inWholeMilliseconds }
+    private val nowMillis: () -> Long = { AttachmentDownloadMonotonicOrigin.elapsedNow().inWholeMilliseconds },
+    private val watchdogScope: CoroutineScope? = null
 ) {
     private val lock = SynchronizedObject()
     private val activeByDownloadId = mutableMapOf<String, AttachmentDownloadAttempt>()
     private val activeByTargetKey = mutableMapOf<String, AttachmentDownloadAttempt>()
+    private val pendingPreStartCancels = linkedMapOf<String, Long>()
     private val nextAttempt = atomic(0L)
+
+    init {
+        watchdogScope?.launch {
+            while (isActive) {
+                delay(100L)
+                checkTimeouts(nowMillis())
+            }
+        }
+    }
 
     fun start(request: AttachmentDownloadRequest, observer: AttachmentDownloadObserver): String {
         if (request.downloadId.isBlank() || request.targetKey.isBlank() || request.url.isBlank() || request.targetPath.isBlank()) {
@@ -163,20 +184,57 @@ internal class AttachmentDownloadCoordinatorEngine(
                 observer = observer,
                 nowMillis = nowMillis,
                 isCurrent = { candidate -> isCurrent(candidate) },
+                commitIfCurrent = { candidate, commit -> commitIfCurrent(candidate, commit) },
+                dispatchCleanup = { cleanup ->
+                    if (watchdogScope == null) cleanup() else watchdogScope.launch { cleanup() }
+                },
+                dispatchObserver = { drain ->
+                    if (watchdogScope == null) drain() else watchdogScope.launch { drain() }
+                },
                 onTerminal = { candidate -> removeIfCurrent(candidate) }
             )
         val replaced = mutableSetOf<AttachmentDownloadAttempt>()
-        synchronized(lock) {
-            activeByDownloadId.put(request.downloadId, attempt)?.let(replaced::add)
-            activeByTargetKey.put(request.targetKey, attempt)?.let(replaced::add)
+        val cancelledBeforeStart =
+            synchronized(lock) {
+                prunePendingPreStartCancelsLocked(nowMillis())
+                if (pendingPreStartCancels.remove(request.downloadId) != null) {
+                    true
+                } else {
+                    activeByDownloadId.put(request.downloadId, attempt)?.let(replaced::add)
+                    activeByTargetKey.put(request.targetKey, attempt)?.let(replaced::add)
+                    false
+                }
+            }
+        if (cancelledBeforeStart) {
+            attempt.cancel("cancelled_before_start")
+            return attemptToken
         }
         replaced.forEach { previous -> previous.cancel("replaced") }
         attempt.start(transport)
         return attemptToken
     }
 
-    fun control(downloadId: String, action: String): String {
-        val attempt = synchronized(lock) { activeByDownloadId[downloadId] } ?: return "missing"
+    fun control(downloadId: String, expectedAttemptToken: String?, action: String): String {
+        val attempt = synchronized(lock) { activeByDownloadId[downloadId] }
+        if (attempt == null) {
+            if ((action.equals("stop", ignoreCase = true) || action.equals("cancel", ignoreCase = true)) &&
+                expectedAttemptToken.isNullOrBlank()
+            ) {
+                if (downloadId.isBlank()) return "missing"
+                synchronized(lock) {
+                    val now = nowMillis()
+                    prunePendingPreStartCancelsLocked(now)
+                    pendingPreStartCancels.remove(downloadId)
+                    pendingPreStartCancels[downloadId] = now
+                    while (pendingPreStartCancels.size > MaxPendingPreStartCancels) {
+                        pendingPreStartCancels.remove(pendingPreStartCancels.keys.first())
+                    }
+                }
+                return "cancelled"
+            }
+            return "missing"
+        }
+        if (!expectedAttemptToken.isNullOrBlank() && attempt.attemptToken != expectedAttemptToken) return "stale"
         return when (action.lowercase()) {
             "pause" -> {
                 attempt.pause()
@@ -187,11 +245,15 @@ internal class AttachmentDownloadCoordinatorEngine(
                 "resumed"
             }
             "stop", "cancel" -> {
-                attempt.cancel("cancelled")
-                "cancelled"
+                if (attempt.cancel("cancelled")) "cancelled" else "finishing"
             }
             else -> "failed"
         }
+    }
+
+    fun cancelTargetAndAwaitCleanup(targetKey: String): String {
+        val attempt = synchronized(lock) { activeByTargetKey[targetKey] } ?: return "missing"
+        return if (attempt.cancel("target_deleted", synchronousCleanup = true)) "cancelled" else "finishing"
     }
 
     private fun isCurrent(attempt: AttachmentDownloadAttempt): Boolean =
@@ -209,6 +271,33 @@ internal class AttachmentDownloadCoordinatorEngine(
                 activeByTargetKey.remove(attempt.request.targetKey)
             }
         }
+    }
+
+    private fun commitIfCurrent(attempt: AttachmentDownloadAttempt, commit: () -> Boolean): Boolean =
+        synchronized(lock) {
+            if (activeByDownloadId[attempt.request.downloadId] !== attempt ||
+                activeByTargetKey[attempt.request.targetKey] !== attempt
+            ) {
+                false
+            } else {
+                commit()
+            }
+        }
+
+    internal fun checkTimeouts(nowMillis: Long = this.nowMillis()) {
+        val attempts = synchronized(lock) { activeByDownloadId.values.distinct() }
+        attempts.forEach { attempt -> attempt.checkTimeout(nowMillis) }
+    }
+
+    private fun prunePendingPreStartCancelsLocked(nowMillis: Long) {
+        pendingPreStartCancels.entries.removeAll { (_, recordedAtMillis) ->
+            nowMillis - recordedAtMillis >= PendingPreStartCancelTtlMillis
+        }
+    }
+
+    private companion object {
+        const val MaxPendingPreStartCancels = 256
+        const val PendingPreStartCancelTtlMillis = 60_000L
     }
 }
 
@@ -255,29 +344,55 @@ private object NetworkKmmAttachmentDownloadTransport : AttachmentDownloadTranspo
 
 private class AttachmentDownloadAttempt(
     val request: AttachmentDownloadRequest,
-    private val attemptToken: String,
+    val attemptToken: String,
     private val sink: AttachmentDownloadAtomicSink,
     private val observer: AttachmentDownloadObserver,
     private val nowMillis: () -> Long,
     private val isCurrent: (AttachmentDownloadAttempt) -> Boolean,
+    private val commitIfCurrent: (AttachmentDownloadAttempt, () -> Boolean) -> Boolean,
+    private val dispatchCleanup: ((() -> Unit) -> Unit),
+    private val dispatchObserver: ((() -> Unit) -> Unit),
     private val onTerminal: (AttachmentDownloadAttempt) -> Unit
 ) {
-    private val callbackLock = SynchronizedObject()
-    private val terminal = atomic(false)
+    private val operationLock = SynchronizedObject()
+    private val observerGateLock = SynchronizedObject()
+    private val state = atomic(StateActive)
     private val paused = atomic(false)
     private val callRef = atomic<AttachmentDownloadTransportCall?>(null)
+    private val sinkState = atomic(SinkNotStarted)
+    private val publishedDownloadedBytes = atomic(0L)
+    private val publishedTotalBytes = atomic<Long?>(null)
+    private val publishedContentType = atomic<String?>(null)
+    private val startedAtMillis = nowMillis()
+    private val responseStartedAtMillis = atomic<Long?>(null)
+    private val lastActivityAtMillis = atomic(startedAtMillis)
     private var sequence = 0L
     private var downloadedBytes = 0L
     private var totalBytes: Long? = null
+    private var responseStarted = false
     private var contentType: String? = null
     private var previousSampleAtMillis: Long? = null
     private var previousSampleBytes = 0L
     private var lastEmittedAtMillis: Long? = null
+    private val observerEventQueue = mutableListOf<() -> Unit>()
+    private var observerQueueDraining = false
+    private var terminalObserverQueued = false
 
     fun start(transport: AttachmentDownloadTransport) {
-        if (!sink.begin()) {
+        if (!isActiveAndCurrent()) return
+        if (!runCatching { sink.begin() }.getOrDefault(false)) {
             finishFailure("storage_failed", "Unable to create download staging file")
             return
+        }
+        if (!sinkState.compareAndSet(expect = SinkNotStarted, update = SinkActive)) {
+            runCatching { sink.abort() }
+            return
+        }
+        synchronized(operationLock) {
+            if (!isActiveAndCurrent()) {
+                abortSinkLocked()
+                return
+            }
         }
         val call =
             runCatching {
@@ -294,17 +409,18 @@ private class AttachmentDownloadAttempt(
                 return
             }
         callRef.value = call
-        if (terminal.value) {
+        if (state.value != StateActive || !isCurrent(this)) {
             runCatching { call.cancel() }
+            synchronized(operationLock) { abortSinkLocked() }
         }
     }
 
     fun pause() {
-        if (!terminal.value) paused.value = true
+        if (state.value == StateActive) paused.value = true
     }
 
     fun resume() {
-        synchronized(callbackLock) {
+        synchronized(operationLock) {
             previousSampleAtMillis = nowMillis()
             previousSampleBytes = downloadedBytes
             lastEmittedAtMillis = null
@@ -312,138 +428,303 @@ private class AttachmentDownloadAttempt(
         }
     }
 
-    fun cancel(reason: String) {
-        synchronized(callbackLock) {
-            if (!terminal.compareAndSet(expect = false, update = true)) return
-            paused.value = false
-            runCatching { callRef.value?.cancel() }
-            runCatching { sink.abort() }
-            onTerminal(this)
-            observer.safeComplete(
-                result(status = "cancelled", errorKind = reason, message = "Download cancelled")
-            )
+    fun cancel(reason: String, synchronousCleanup: Boolean = false): Boolean {
+        val wonTerminal =
+            synchronized(operationLock) {
+                when (val current = state.value) {
+                    StateActive, StateFinishing -> {
+                        if (!state.compareAndSet(expect = current, update = StateTerminal)) return@synchronized false
+                        paused.value = false
+                        true
+                    }
+                    else -> false
+                }
+            }
+        if (!wonTerminal) return false
+        runCatching { callRef.value?.cancel() }
+        onTerminal(this)
+        queueTerminal(result(status = "cancelled", errorKind = reason, message = "Download cancelled"))
+        val cleanup = { synchronized(operationLock) { abortSinkLocked() } }
+        if (synchronousCleanup) cleanup() else dispatchCleanup(cleanup)
+        return true
+    }
+
+    fun checkTimeout(nowMillis: Long) {
+        if (state.value != StateActive) return
+        val wholeDeadline = request.wholeTransferTimeoutMillis
+        val wholeElapsed = nowMillis - startedAtMillis
+        if (wholeDeadline > 0L && wholeElapsed >= wholeDeadline) {
+            finishFailure("whole_timeout", "Download exceeded whole-transfer deadline")
+            return
+        }
+        val responseAt = responseStartedAtMillis.value
+        if (responseAt == null) {
+            val responseBudget = saturatingAdd(request.connectTimeoutMillis, request.responseHeadersTimeoutMillis)
+            if (responseBudget > 0L && wholeElapsed >= responseBudget) {
+                finishFailure("response_headers_timeout", "Download response headers timed out")
+            }
+            return
+        }
+        val idleBudget = request.interChunkIdleTimeoutMillis
+        if (idleBudget > 0L && nowMillis - lastActivityAtMillis.value >= idleBudget) {
+            finishFailure("idle_timeout", "Download inter-chunk idle deadline exceeded")
         }
     }
 
     private fun onResponseStart(statusCode: Int?, contentLength: Long?, headers: Map<String, List<String>>) {
-        synchronized(callbackLock) {
-            if (!canAcceptCallback()) return
-            totalBytes = contentLength?.takeIf { it > 0L }
-            contentType = headers.contentTypeHeader()
-            previousSampleAtMillis = nowMillis()
-            emitProgress(phase = "response_wait", percent = null, bytesPerSecond = null)
-        }
+        val progress =
+            synchronized(operationLock) {
+                if (!isActiveAndCurrent()) return
+                responseStarted = true
+                totalBytes = contentLength?.takeIf { it >= 0L }
+                contentType = headers.contentTypeHeader()
+                publishedTotalBytes.value = totalBytes
+                publishedContentType.value = contentType
+                responseStartedAtMillis.value = nowMillis()
+                lastActivityAtMillis.value = responseStartedAtMillis.value ?: startedAtMillis
+                previousSampleAtMillis = nowMillis()
+                progressLocked(phase = "response_wait", percent = null, bytesPerSecond = null)
+            }
+        deliverProgress(progress)
     }
 
     private fun onChunk(bytes: ByteArray) {
-        while (paused.value && !terminal.value) {
+        while (paused.value && state.value == StateActive && isCurrent(this)) {
             attachmentDownloadPauseMillis(25L)
         }
-        synchronized(callbackLock) {
-            if (!canAcceptCallback()) return
-            if (!runCatching { sink.write(bytes) }.getOrDefault(false)) {
-                finishFailureLocked("storage_write", "Unable to write download staging file")
-                return
-            }
-            downloadedBytes += bytes.size.toLong()
-            val now = nowMillis()
-            val percent = attachmentDownloadPercent(downloadedBytes, totalBytes)
-            val lastAt = lastEmittedAtMillis
-            val shouldEmit =
-                lastAt == null || downloadedBytes == bytes.size.toLong() || now - lastAt >= 250L ||
-                    (percent != null && percent >= 99)
-            if (shouldEmit) {
-                val previousAt = previousSampleAtMillis
-                val deltaMillis = previousAt?.let { now - it } ?: 0L
-                val deltaBytes = downloadedBytes - previousSampleBytes
-                val bytesPerSecond =
-                    if (previousSampleBytes > 0L && deltaMillis > 0L && deltaBytes > 0L) {
-                        max(1L, deltaBytes * 1_000L / deltaMillis)
+        var failure: Pair<String, String>? = null
+        val progress =
+            synchronized(operationLock) {
+                if (!isActiveAndCurrent()) return
+                if (!runCatching { sink.write(bytes) }.getOrDefault(false)) {
+                    failure = "storage_write" to "Unable to write download staging file"
+                    null
+                } else {
+                    downloadedBytes = saturatingAdd(downloadedBytes, bytes.size.toLong())
+                    publishedDownloadedBytes.value = downloadedBytes
+                    lastActivityAtMillis.value = nowMillis()
+                    val now = nowMillis()
+                    val percent = attachmentDownloadPercent(downloadedBytes, totalBytes)
+                    val lastAt = lastEmittedAtMillis
+                    val shouldEmit =
+                        lastAt == null || downloadedBytes == bytes.size.toLong() || now - lastAt >= 250L ||
+                            (percent != null && percent >= 99)
+                    if (shouldEmit) {
+                        val previousAt = previousSampleAtMillis
+                        val deltaMillis = previousAt?.let { now - it } ?: 0L
+                        val deltaBytes = downloadedBytes - previousSampleBytes
+                        val bytesPerSecond =
+                            if (previousSampleBytes > 0L && deltaMillis > 0L && deltaBytes > 0L) {
+                                max(1L, saturatingMultiply(deltaBytes, 1_000L) / deltaMillis)
+                            } else {
+                                null
+                            }
+                        previousSampleAtMillis = now
+                        previousSampleBytes = downloadedBytes
+                        lastEmittedAtMillis = now
+                        progressLocked("receiving", percent, bytesPerSecond)
                     } else {
                         null
                     }
-                previousSampleAtMillis = now
-                previousSampleBytes = downloadedBytes
-                lastEmittedAtMillis = now
-                emitProgress("receiving", percent, bytesPerSecond)
+                }
             }
+        failure?.let { (kind, message) ->
+            finishFailure(kind, message)
+            return
         }
+        progress?.let(::deliverProgress)
     }
 
     private fun onComplete(response: NetworkResponse) {
-        synchronized(callbackLock) {
-            if (!canAcceptCallback()) return
-            val statusCode = response.statusCode
-            val error = response.error
-            if (error != null || statusCode == null || statusCode !in 200..299) {
-                val kind = error?.kind?.name?.lowercase() ?: "http_${statusCode ?: 0}"
-                val message = error?.message ?: "Download failed: HTTP ${statusCode ?: 0}"
-                finishFailureLocked(kind, message)
-                return
-            }
-            contentType = contentType ?: response.headers.contentTypeHeader()
-            if (!isCurrent(this)) {
-                finishFailureLocked("replaced", "Download attempt was replaced")
-                return
-            }
-            if (!runCatching { sink.commit() }.getOrDefault(false)) {
-                finishFailureLocked("storage_commit", "Unable to publish downloaded file")
-                return
-            }
-            if (!terminal.compareAndSet(expect = false, update = true)) return
-            emitProgress(
-                phase = "complete",
-                percent = attachmentDownloadPercent(downloadedBytes, totalBytes)?.let { 100 },
-                bytesPerSecond = null
-            )
-            onTerminal(this)
-            observer.safeComplete(result(status = "complete", errorKind = null, message = null))
+        if (!isActiveAndCurrent()) return
+        val statusCode = response.statusCode
+        val error = response.error
+        if (error != null || statusCode == null || statusCode !in 200..299) {
+            val kind = error?.kind?.name?.lowercase() ?: "http_${statusCode ?: 0}"
+            val message = error?.message ?: "Download failed: HTTP ${statusCode ?: 0}"
+            finishFailure(kind, message)
+            return
         }
+        val sizeFailure =
+            synchronized(operationLock) {
+                when {
+                    !responseStarted -> "missing_response_start" to "Download completed without response start"
+                    totalBytes != null && downloadedBytes != totalBytes ->
+                        "content_length_mismatch" to
+                            "Expected ${totalBytes ?: 0L} bytes but received $downloadedBytes"
+                    else -> null
+                }
+            }
+        if (sizeFailure != null) {
+            finishFailure(sizeFailure.first, sizeFailure.second)
+            return
+        }
+        val finalProgress =
+            synchronized(operationLock) {
+                if (!isActiveAndCurrent()) return
+                contentType = contentType ?: response.headers.contentTypeHeader()
+                publishedContentType.value = contentType
+                if (!state.compareAndSet(expect = StateActive, update = StateFinishing)) return
+                progressLocked(
+                    phase = "complete",
+                    percent = totalBytes?.let { 100 },
+                    bytesPerSecond = null
+                )
+            }
+        enqueueObserverEvent { finishSuccessAfterFinalProgress(finalProgress) }
+    }
+
+    private fun finishSuccessAfterFinalProgress(finalProgress: AttachmentDownloadProgress) {
+        if (state.value != StateFinishing) return
+        val finalProgressFailure = runCatching { observer.onProgress(finalProgress) }.exceptionOrNull()
+        if (finalProgressFailure != null) {
+            finishReservedFailure("progress_callback", finalProgressFailure.message ?: "Progress callback failed")
+            return
+        }
+        val committed =
+            synchronized(operationLock) {
+                if (state.value != StateFinishing) {
+                    false
+                } else if (!isCurrent(this)) {
+                    abortSinkLocked()
+                    false
+                } else if (commitIfCurrent(this) { runCatching { sink.commit() }.getOrDefault(false) }) {
+                    sinkState.value = SinkEnded
+                    state.compareAndSet(expect = StateFinishing, update = StateTerminal)
+                    true
+                } else {
+                    abortSinkLocked()
+                    false
+                }
+            }
+        if (!committed) {
+            if (state.value != StateFinishing) return
+            finishReservedFailure("storage_commit", "Unable to publish downloaded file")
+            return
+        }
+        onTerminal(this)
+        queueTerminal(result(status = "complete", errorKind = null, message = null))
     }
 
     private fun finishFailure(errorKind: String, message: String) {
-        synchronized(callbackLock) { finishFailureLocked(errorKind, message) }
-    }
-
-    private fun finishFailureLocked(errorKind: String, message: String) {
-        if (!terminal.compareAndSet(expect = false, update = true)) return
+        if (!state.compareAndSet(expect = StateActive, update = StateTerminal)) return
         paused.value = false
         runCatching { callRef.value?.cancel() }
-        runCatching { sink.abort() }
         onTerminal(this)
-        observer.safeComplete(result(status = "failed", errorKind = errorKind, message = message))
+        queueTerminal(result(status = "failed", errorKind = errorKind, message = message))
+        val cleanup = { synchronized(operationLock) { abortSinkLocked() } }
+        dispatchCleanup(cleanup)
     }
 
-    private fun canAcceptCallback(): Boolean = !terminal.value && isCurrent(this)
-
-    private fun emitProgress(phase: String, percent: Int?, bytesPerSecond: Long?) {
-        if (!canAcceptCallback() && phase != "complete") return
-        val progress =
-            AttachmentDownloadProgress(
-                downloadId = request.downloadId,
-                attemptToken = attemptToken,
-                sequence = ++sequence,
-                phase = phase,
-                downloadedBytes = downloadedBytes,
-                totalBytes = totalBytes,
-                percent = percent,
-                bytesPerSecond = bytesPerSecond
-            )
-        runCatching { observer.onProgress(progress) }
-            .onFailure { error -> finishFailureLocked("progress_callback", error.message ?: "Progress callback failed") }
+    private fun finishReservedFailure(errorKind: String, message: String) {
+        if (!state.compareAndSet(expect = StateFinishing, update = StateTerminal)) return
+        paused.value = false
+        onTerminal(this)
+        queueTerminal(result(status = "failed", errorKind = errorKind, message = message))
+        dispatchCleanup { synchronized(operationLock) { abortSinkLocked() } }
     }
+
+    private fun deliverProgress(progress: AttachmentDownloadProgress) {
+        enqueueObserverEvent {
+            if (state.value != StateActive || !isCurrent(this)) return@enqueueObserverEvent
+            runCatching { observer.onProgress(progress) }
+                .onFailure { error -> finishFailure("progress_callback", error.message ?: "Progress callback failed") }
+        }
+    }
+
+    private fun queueTerminal(result: AttachmentDownloadResult) {
+        val shouldDrain =
+            synchronized(observerGateLock) {
+                if (terminalObserverQueued) {
+                    false
+                } else {
+                    terminalObserverQueued = true
+                    observerEventQueue += { observer.safeComplete(result) }
+                    if (observerQueueDraining) {
+                        false
+                    } else {
+                        observerQueueDraining = true
+                        true
+                    }
+                }
+            }
+        if (shouldDrain) dispatchObserver(::drainObserverQueue)
+    }
+
+    private fun enqueueObserverEvent(event: () -> Unit) {
+        val shouldDrain =
+            synchronized(observerGateLock) {
+                if (terminalObserverQueued) {
+                    false
+                } else {
+                    observerEventQueue += event
+                    if (observerQueueDraining) {
+                        false
+                    } else {
+                        observerQueueDraining = true
+                        true
+                    }
+                }
+            }
+        if (!shouldDrain) return
+        dispatchObserver(::drainObserverQueue)
+    }
+
+    private fun drainObserverQueue() {
+        while (true) {
+            val next =
+                synchronized(observerGateLock) {
+                    if (observerEventQueue.isEmpty()) {
+                        observerQueueDraining = false
+                        null
+                    } else {
+                        observerEventQueue.removeAt(0)
+                    }
+                } ?: return
+            runCatching(next)
+        }
+    }
+
+    private fun progressLocked(phase: String, percent: Int?, bytesPerSecond: Long?): AttachmentDownloadProgress =
+        AttachmentDownloadProgress(
+            downloadId = request.downloadId,
+            attemptToken = attemptToken,
+            sequence = ++sequence,
+            phase = phase,
+            downloadedBytes = downloadedBytes,
+            totalBytes = totalBytes,
+            percent = percent,
+            bytesPerSecond = bytesPerSecond
+        )
+
+    private fun abortSinkLocked() {
+        if (sinkState.getAndSet(SinkEnded) == SinkActive) {
+            runCatching { sink.abort() }
+        }
+    }
+
+    private fun isActiveAndCurrent(): Boolean = state.value == StateActive && isCurrent(this)
 
     private fun result(status: String, errorKind: String?, message: String?): AttachmentDownloadResult =
         AttachmentDownloadResult(
             downloadId = request.downloadId,
             attemptToken = attemptToken,
             status = status,
-            downloadedBytes = downloadedBytes,
-            totalBytes = totalBytes,
-            contentType = contentType,
+            downloadedBytes = publishedDownloadedBytes.value,
+            totalBytes = publishedTotalBytes.value,
+            contentType = publishedContentType.value,
             errorKind = errorKind,
             message = message
         )
+
+    private companion object {
+        const val StateActive = 0
+        const val StateFinishing = 1
+        const val StateTerminal = 2
+        const val SinkNotStarted = 0
+        const val SinkActive = 1
+        const val SinkEnded = 2
+    }
 }
 
 private fun AttachmentDownloadObserver.safeComplete(result: AttachmentDownloadResult) {
@@ -458,9 +739,25 @@ private fun Map<String, List<String>>.contentTypeHeader(): String? =
         ?.trim()
         ?.takeIf { it.isNotBlank() }
 
-private fun attachmentDownloadPercent(downloadedBytes: Long, totalBytes: Long?): Int? {
+internal fun attachmentDownloadPercent(downloadedBytes: Long, totalBytes: Long?): Int? {
     val total = totalBytes?.takeIf { it > 0L } ?: return null
     if (downloadedBytes <= 0L) return null
     if (downloadedBytes >= total) return 100
-    return ((downloadedBytes * 100L) / total).toInt().coerceIn(1, 99)
+    return ((downloadedBytes.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(1, 99)
+}
+
+internal fun saturatingAdd(left: Long, right: Long): Long =
+    when {
+        right > 0L && left > Long.MAX_VALUE - right -> Long.MAX_VALUE
+        right < 0L && left < Long.MIN_VALUE - right -> Long.MIN_VALUE
+        else -> left + right
+    }
+
+internal fun saturatingMultiply(left: Long, right: Long): Long {
+    if (left == 0L || right == 0L) return 0L
+    if (left > 0L && right > 0L && left > Long.MAX_VALUE / right) return Long.MAX_VALUE
+    if (left < 0L && right < 0L && left < Long.MAX_VALUE / right) return Long.MAX_VALUE
+    if (left > 0L && right < 0L && right < Long.MIN_VALUE / left) return Long.MIN_VALUE
+    if (left < 0L && right > 0L && left < Long.MIN_VALUE / right) return Long.MIN_VALUE
+    return left * right
 }

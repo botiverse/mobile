@@ -4386,6 +4386,7 @@ internal class SlockKuiklyBridgeModule(
     private fun deleteAttachmentCache(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
         val targetFile = attachmentCacheFile(request)
+        AttachmentDownloadCoordinator.cancelTargetAndAwaitCleanup(targetFile.absolutePath)
         val partFiles = attachmentDownloadPartFiles(targetFile)
         val existed = targetFile.exists() || partFiles.any { it.exists() }
         val deleted =
@@ -4404,7 +4405,8 @@ internal class SlockKuiklyBridgeModule(
         val downloadId = request.optString("downloadId").takeIf { it.isNotBlank() }
                 ?: return mapOf("status" to "failed", "message" to "Missing download id")
         val action = request.optString("action").lowercase(Locale.US)
-        val status = AttachmentDownloadCoordinator.control(downloadId, action)
+        val expectedAttemptToken = request.optString("attemptToken").takeIf { it.isNotBlank() }
+        val status = AttachmentDownloadCoordinator.control(downloadId, expectedAttemptToken, action)
         return if (status == "failed") {
             mapOf("status" to "failed", "message" to "Unknown download action")
         } else if (status == "missing") {
@@ -4664,7 +4666,7 @@ internal class SlockKuiklyBridgeModule(
             completed.await()
         } catch (interrupted: InterruptedException) {
             Thread.currentThread().interrupt()
-            AttachmentDownloadCoordinator.control(downloadId, "cancel")
+            AttachmentDownloadCoordinator.control(downloadId, action = "cancel")
             throw AttachmentDownloadStoppedException()
         }
         val result = resultRef.get() ?: throw IllegalStateException("Attachment download ended without a result")
@@ -4677,7 +4679,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun cleanupAttachmentCache(cacheDir: File) {
         cacheDir.listFiles()
-                ?.filter { it.isFile }
+                ?.filter { it.isFile && !it.name.contains(".part") }
                 ?.sortedByDescending { it.lastModified() }
                 ?.drop(ATTACHMENT_CACHE_MAX_FILES)
                 ?.forEach { runCatching { it.delete() } }
