@@ -4386,17 +4386,24 @@ internal class SlockKuiklyBridgeModule(
     private fun deleteAttachmentCache(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
         val targetFile = attachmentCacheFile(request)
-        AttachmentDownloadCoordinator.cancelTargetAndAwaitCleanup(targetFile.absolutePath)
-        val partFiles = attachmentDownloadPartFiles(targetFile)
-        val existed = targetFile.exists() || partFiles.any { it.exists() }
-        val deleted =
-                (listOf(targetFile) + partFiles)
-                        .map { file -> if (file.exists()) runCatching { file.delete() }.getOrDefault(false) else true }
-                        .all { it }
-        return if (deleted) {
-            mapOf("status" to "ok", "cached" to false, "deleted" to existed)
-        } else {
-            mapOf("status" to "failed", "message" to "Unable to clear cached copy")
+        if (AttachmentDownloadCoordinator.cancelTargetAndAwaitCleanup(targetFile.absolutePath) == "timeout") {
+            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath)
+            return mapOf("status" to "failed", "message" to "Download publication is still active")
+        }
+        try {
+            val partFiles = attachmentDownloadPartFiles(targetFile)
+            val existed = targetFile.exists() || partFiles.any { it.exists() }
+            val deleted =
+                    (listOf(targetFile) + partFiles)
+                            .map { file -> if (file.exists()) runCatching { file.delete() }.getOrDefault(false) else true }
+                            .all { it }
+            return if (deleted) {
+                mapOf("status" to "ok", "cached" to false, "deleted" to existed)
+            } else {
+                mapOf("status" to "failed", "message" to "Unable to clear cached copy")
+            }
+        } finally {
+            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath)
         }
     }
 

@@ -22,6 +22,7 @@ internal class AttachmentDownloadAtomicFileSink(
 ) : AttachmentDownloadAtomicSink {
     internal val stagingPath = "$targetPath.part-${attemptToken.safeAttachmentPathToken()}"
     private var handle: Any? = null
+    private var prepared = false
     private var published = false
 
     override fun begin(): Boolean {
@@ -44,12 +45,18 @@ internal class AttachmentDownloadAtomicFileSink(
         return true
     }
 
-    override fun commit(): Boolean {
+    override fun prepare(): Boolean {
         val activeHandle = handle ?: return false
         if (!runCatching { ops.fsync(activeHandle) }.getOrDefault(false)) return false
         // A close attempt owns this descriptor exactly once even if the platform reports failure.
         handle = null
         if (!runCatching { ops.close(activeHandle) }.getOrDefault(false)) return false
+        prepared = true
+        return true
+    }
+
+    override fun publish(): Boolean {
+        if (!prepared || published) return false
         if (!runCatching { ops.rename(stagingPath, targetPath) }.getOrDefault(false)) return false
         // rename success is the publication linearization point. No post-check may reverse it.
         published = true

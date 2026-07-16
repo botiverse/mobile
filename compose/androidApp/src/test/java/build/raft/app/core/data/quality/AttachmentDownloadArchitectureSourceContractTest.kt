@@ -35,6 +35,7 @@ class AttachmentDownloadArchitectureSourceContractTest {
         assertTrue(common.contains("object AttachmentDownloadCoordinator"))
         assertTrue(android.contains("AttachmentDownloadCoordinator.start("))
         assertTrue(android.contains("AttachmentDownloadCoordinator.cancelTargetAndAwaitCleanup"))
+        assertTrue(android.contains("AttachmentDownloadCoordinator.finishTargetCleanup"))
         assertTrue(android.contains("!it.name.contains(\".part\")"))
         assertTrue(ios.contains("SharedAttachmentDownloadCoordinator.shared"))
         assertTrue(ohos.contains("slockOhosAttachmentDownloadSink.download("))

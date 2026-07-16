@@ -8,7 +8,9 @@ internal actual fun createAttachmentDownloadAtomicSink(
 
     override fun write(bytes: ByteArray): Boolean = false
 
-    override fun commit(): Boolean = false
+    override fun prepare(): Boolean = false
+
+    override fun publish(): Boolean = false
 
     override fun abort() = Unit
 }

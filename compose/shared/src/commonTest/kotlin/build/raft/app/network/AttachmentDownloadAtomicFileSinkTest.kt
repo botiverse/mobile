@@ -14,7 +14,8 @@ class AttachmentDownloadAtomicFileSinkTest {
 
         assertTrue(sink.begin())
         assertTrue(sink.write(byteArrayOf(1, 2, 3, 4, 5)))
-        assertTrue(sink.commit())
+        assertTrue(sink.prepare())
+        assertTrue(sink.publish())
 
         assertContentEquals(byteArrayOf(1, 2, 3, 4, 5), ops.publishedBytes)
         assertEquals(3, ops.writeCalls)
@@ -45,7 +46,12 @@ class AttachmentDownloadAtomicFileSinkTest {
             val sink = AttachmentDownloadAtomicFileSink("/cache/final.bin", "attempt-$failure", ops)
             assertTrue(sink.begin())
             assertTrue(sink.write(byteArrayOf(1, 2)))
-            assertFalse(sink.commit(), failure)
+            if (failure == "rename") {
+                assertTrue(sink.prepare(), failure)
+                assertFalse(sink.publish(), failure)
+            } else {
+                assertFalse(sink.prepare(), failure)
+            }
             sink.abort()
             assertFalse(ops.published)
             assertEquals(1, ops.closeCalls, "$failure must own close exactly once")
@@ -60,7 +66,8 @@ class AttachmentDownloadAtomicFileSinkTest {
 
         assertTrue(sink.begin())
         assertTrue(sink.write(byteArrayOf(4, 5, 6)))
-        assertTrue(sink.commit())
+        assertTrue(sink.prepare())
+        assertTrue(sink.publish())
         sink.abort()
 
         assertTrue(ops.published)

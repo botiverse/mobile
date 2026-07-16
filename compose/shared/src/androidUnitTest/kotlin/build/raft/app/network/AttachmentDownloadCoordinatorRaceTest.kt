@@ -19,7 +19,7 @@ class AttachmentDownloadCoordinatorRaceTest {
         val sink = RaceSink(beginEntered = beginEntered, releaseBegin = releaseBegin)
         val transport = RaceTransport()
         val observer = RaceObserver()
-        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }) { 0L }
+        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }, nowMillis = { 0L })
 
         val starter = thread { engine.start(request(), observer) }
         assertTrue(beginEntered.await(1, TimeUnit.SECONDS))
@@ -38,7 +38,7 @@ class AttachmentDownloadCoordinatorRaceTest {
         val sink = RaceSink()
         val transport = RaceTransport()
         val observer = RaceObserver()
-        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }) { 0L }
+        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }, nowMillis = { 0L })
         val token = engine.start(request(), observer)
         transport.call.start(200, 1L)
         assertEquals("paused", engine.control("download-race", token, "pause"))
@@ -57,13 +57,77 @@ class AttachmentDownloadCoordinatorRaceTest {
     }
 
     @Test
+    fun pauseReturningBeforeWriteAdmissionFencesTheChunkUntilResume() {
+        val admissionEntered = CountDownLatch(1)
+        val releaseAdmission = CountDownLatch(1)
+        val sink = RaceSink()
+        val transport = RaceTransport()
+        val observer = RaceObserver()
+        val engine =
+            AttachmentDownloadCoordinatorEngine(
+                transport = transport,
+                sinkFactory = AttachmentDownloadSinkFactory { _, _ -> sink },
+                beforeChunkAdmission = {
+                    admissionEntered.countDown()
+                    releaseAdmission.await(1, TimeUnit.SECONDS)
+                },
+                nowMillis = { 0L }
+            )
+        val token = engine.start(request(), observer)
+        transport.call.start(200, 1L)
+        val chunkThread = thread { transport.call.chunk(byteArrayOf(1)) }
+        assertTrue(admissionEntered.await(1, TimeUnit.SECONDS))
+
+        assertEquals("paused", engine.control("download-race", token, "pause"))
+        releaseAdmission.countDown()
+        Thread.sleep(100L)
+        assertEquals(0, sink.writeCount)
+        assertEquals("resumed", engine.control("download-race", token, "resume"))
+        chunkThread.join(1_000L)
+
+        assertFalse(chunkThread.isAlive)
+        assertEquals(1, sink.writeCount)
+    }
+
+    @Test
+    fun missingCancelAdmissionCapturesAConcurrentlyPublishedAttemptWithoutLeavingReceipt() {
+        val cancelAdmissionEntered = CountDownLatch(1)
+        val releaseCancelAdmission = CountDownLatch(1)
+        val transport = RaceTransport()
+        val sinks = mutableListOf<RaceSink>()
+        val engine =
+            AttachmentDownloadCoordinatorEngine(
+                transport = transport,
+                sinkFactory = AttachmentDownloadSinkFactory { _, _ -> RaceSink().also(sinks::add) },
+                beforeMissingControlAdmission = {
+                    cancelAdmissionEntered.countDown()
+                    releaseCancelAdmission.await(1, TimeUnit.SECONDS)
+                },
+                nowMillis = { 0L }
+            )
+        var cancelStatus = ""
+        val cancelThread = thread { cancelStatus = engine.control("download-race", null, "cancel") }
+        assertTrue(cancelAdmissionEntered.await(1, TimeUnit.SECONDS))
+        engine.start(request(), RaceObserver())
+        releaseCancelAdmission.countDown()
+        cancelThread.join(1_000L)
+
+        assertEquals("cancelled", cancelStatus)
+        assertEquals(1, sinks.first().abortCount)
+        val nextObserver = RaceObserver()
+        engine.start(request(), nextObserver)
+        assertEquals(2, sinks.size)
+        assertTrue(nextObserver.results.isEmpty())
+    }
+
+    @Test
     fun slowProgressDoesNotBlockCancelAndTerminalWaitsForAdmittedCallback() {
         val progressEntered = CountDownLatch(1)
         val releaseProgress = CountDownLatch(1)
         val observer = RaceObserver(progressEntered, releaseProgress)
         val transport = RaceTransport()
         val sink = RaceSink()
-        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }) { 0L }
+        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }, nowMillis = { 0L })
         val token = engine.start(request(), observer)
         transport.call.start(200, 1L)
         val chunkThread = thread { transport.call.chunk(byteArrayOf(1)) }
@@ -106,38 +170,65 @@ class AttachmentDownloadCoordinatorRaceTest {
         releaseFinalProgress.countDown()
         completionThread.join(1_000L)
 
-        assertEquals(0, oldSink.commitCount)
+        assertEquals(0, oldSink.publishCount)
         assertEquals(1, oldSink.abortCount)
         assertEquals(listOf("cancelled"), oldObserver.results.map { it.status })
         assertFalse(oldObserver.results.any { it.status == "complete" })
     }
 
     @Test
-    fun atomicRenameWinningBeforeCancelIsTheSuccessLinearizationPoint() {
-        val commitEntered = CountDownLatch(1)
-        val releaseCommit = CountDownLatch(1)
-        val sink = RaceSink(commitEntered = commitEntered, releaseCommit = releaseCommit)
+    fun cancelAfterPrepareBeforePublishingPreventsRenameAndSuccess() {
+        val admissionEntered = CountDownLatch(1)
+        val releaseAdmission = CountDownLatch(1)
+        val sink = RaceSink()
         val transport = RaceTransport()
         val observer = RaceObserver()
-        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }) { 0L }
+        val engine =
+            AttachmentDownloadCoordinatorEngine(
+                transport = transport,
+                sinkFactory = AttachmentDownloadSinkFactory { _, _ -> sink },
+                beforePublishAdmission = {
+                    admissionEntered.countDown()
+                    releaseAdmission.await(1, TimeUnit.SECONDS)
+                },
+                nowMillis = { 0L }
+            )
         val token = engine.start(request(), observer)
         transport.call.start(200, 1L)
         transport.call.chunk(byteArrayOf(1))
         val completionThread = thread { transport.call.complete(successResponse()) }
-        assertTrue(commitEntered.await(1, TimeUnit.SECONDS))
+        assertTrue(admissionEntered.await(1, TimeUnit.SECONDS))
 
-        var cancelStatus = ""
-        val cancelThread = thread { cancelStatus = engine.control("download-race", token, "cancel") }
-        Thread.sleep(50L)
-        assertTrue(cancelThread.isAlive, "cancel must serialize with the publication operation")
-        releaseCommit.countDown()
+        assertEquals("cancelled", engine.control("download-race", token, "cancel"))
+        releaseAdmission.countDown()
         completionThread.join(1_000L)
-        cancelThread.join(1_000L)
 
         assertFalse(completionThread.isAlive)
-        assertFalse(cancelThread.isAlive)
-        assertTrue(cancelStatus == "finishing" || cancelStatus == "missing", cancelStatus)
-        assertEquals(1, sink.commitCount)
+        assertEquals(0, sink.publishCount)
+        assertEquals(1, sink.abortCount)
+        assertEquals(listOf("cancelled"), observer.results.map { it.status })
+    }
+
+    @Test
+    fun publishingAdmissionWinningMakesCancelLoseAndRenameSuccessComplete() {
+        val publishEntered = CountDownLatch(1)
+        val releasePublish = CountDownLatch(1)
+        val sink = RaceSink(publishEntered = publishEntered, releasePublish = releasePublish)
+        val transport = RaceTransport()
+        val observer = RaceObserver()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }, nowMillis = { 0L })
+        val token = engine.start(request(), observer)
+        transport.call.start(200, 1L)
+        transport.call.chunk(byteArrayOf(1))
+        val completionThread = thread { transport.call.complete(successResponse()) }
+        assertTrue(publishEntered.await(1, TimeUnit.SECONDS))
+
+        assertEquals("finishing", engine.control("download-race", token, "cancel"))
+        releasePublish.countDown()
+        completionThread.join(1_000L)
+
+        assertFalse(completionThread.isAlive)
+        assertEquals(1, sink.publishCount)
         assertEquals(0, sink.abortCount)
         assertEquals(listOf("complete"), observer.results.map { it.status })
     }
@@ -184,11 +275,11 @@ private class RaceCall(private val callbacks: AttachmentDownloadTransportCallbac
 private class RaceSink(
     private val beginEntered: CountDownLatch? = null,
     private val releaseBegin: CountDownLatch? = null,
-    private val commitEntered: CountDownLatch? = null,
-    private val releaseCommit: CountDownLatch? = null
+    private val publishEntered: CountDownLatch? = null,
+    private val releasePublish: CountDownLatch? = null
 ) : AttachmentDownloadAtomicSink {
     var writeCount = 0
-    var commitCount = 0
+    var publishCount = 0
     var abortCount = 0
 
     override fun begin(): Boolean {
@@ -202,10 +293,12 @@ private class RaceSink(
         return true
     }
 
-    override fun commit(): Boolean {
-        commitCount += 1
-        commitEntered?.countDown()
-        releaseCommit?.await(1, TimeUnit.SECONDS)
+    override fun prepare(): Boolean = true
+
+    override fun publish(): Boolean {
+        publishCount += 1
+        publishEntered?.countDown()
+        releasePublish?.await(1, TimeUnit.SECONDS)
         return true
     }
 

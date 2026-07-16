@@ -88,6 +88,8 @@ object AttachmentDownloadCoordinator {
         engine.control(downloadId, expectedAttemptToken, action)
 
     fun cancelTargetAndAwaitCleanup(targetKey: String): String = engine.cancelTargetAndAwaitCleanup(targetKey)
+
+    fun finishTargetCleanup(targetKey: String) = engine.finishTargetCleanup(targetKey)
 }
 
 internal data class AttachmentDownloadRequest(
@@ -106,7 +108,11 @@ internal interface AttachmentDownloadAtomicSink {
 
     fun write(bytes: ByteArray): Boolean
 
-    fun commit(): Boolean
+    /** Flushes and closes staging bytes without making them visible at the target path. */
+    fun prepare(): Boolean
+
+    /** Performs the same-directory atomic replacement after coordinator PUBLISHING admission. */
+    fun publish(): Boolean
 
     fun abort()
 }
@@ -140,12 +146,17 @@ internal class AttachmentDownloadCoordinatorEngine(
     private val transport: AttachmentDownloadTransport = NetworkKmmAttachmentDownloadTransport,
     private val sinkFactory: AttachmentDownloadSinkFactory =
         AttachmentDownloadSinkFactory(::createAttachmentDownloadAtomicSink),
-    private val nowMillis: () -> Long = { AttachmentDownloadMonotonicOrigin.elapsedNow().inWholeMilliseconds },
-    private val watchdogScope: CoroutineScope? = null
+    private val watchdogScope: CoroutineScope? = null,
+    private val beforePublishAdmission: (String) -> Unit = {},
+    private val beforeMissingControlAdmission: (String) -> Unit = {},
+    private val beforeChunkAdmission: (String) -> Unit = {},
+    private val observerDispatcher: ((() -> Unit) -> Unit)? = null,
+    private val nowMillis: () -> Long = { AttachmentDownloadMonotonicOrigin.elapsedNow().inWholeMilliseconds }
 ) {
     private val lock = SynchronizedObject()
     private val activeByDownloadId = mutableMapOf<String, AttachmentDownloadAttempt>()
     private val activeByTargetKey = mutableMapOf<String, AttachmentDownloadAttempt>()
+    private val deletingTargetKeys = mutableSetOf<String>()
     private val pendingPreStartCancels = linkedMapOf<String, Long>()
     private val nextAttempt = atomic(0L)
 
@@ -184,29 +195,37 @@ internal class AttachmentDownloadCoordinatorEngine(
                 observer = observer,
                 nowMillis = nowMillis,
                 isCurrent = { candidate -> isCurrent(candidate) },
-                commitIfCurrent = { candidate, commit -> commitIfCurrent(candidate, commit) },
+                admitPublishIfCurrent = { candidate -> admitPublishIfCurrent(candidate) },
+                beforePublishAdmission = beforePublishAdmission,
+                beforeChunkAdmission = beforeChunkAdmission,
                 dispatchCleanup = { cleanup ->
                     if (watchdogScope == null) cleanup() else watchdogScope.launch { cleanup() }
                 },
                 dispatchObserver = { drain ->
-                    if (watchdogScope == null) drain() else watchdogScope.launch { drain() }
+                    when {
+                        observerDispatcher != null -> observerDispatcher.invoke(drain)
+                        watchdogScope == null -> drain()
+                        else -> watchdogScope.launch { drain() }
+                    }
                 },
                 onTerminal = { candidate -> removeIfCurrent(candidate) }
             )
         val replaced = mutableSetOf<AttachmentDownloadAttempt>()
-        val cancelledBeforeStart =
+        val cancelledBeforeStartReason =
             synchronized(lock) {
                 prunePendingPreStartCancelsLocked(nowMillis())
-                if (pendingPreStartCancels.remove(request.downloadId) != null) {
-                    true
+                if (request.targetKey in deletingTargetKeys) {
+                    "target_deleted"
+                } else if (pendingPreStartCancels.remove(request.downloadId) != null) {
+                    "cancelled_before_start"
                 } else {
                     activeByDownloadId.put(request.downloadId, attempt)?.let(replaced::add)
                     activeByTargetKey.put(request.targetKey, attempt)?.let(replaced::add)
-                    false
+                    null
                 }
             }
-        if (cancelledBeforeStart) {
-            attempt.cancel("cancelled_before_start")
+        if (cancelledBeforeStartReason != null) {
+            attempt.cancel(cancelledBeforeStartReason)
             return attemptToken
         }
         replaced.forEach { previous -> previous.cancel("replaced") }
@@ -215,13 +234,15 @@ internal class AttachmentDownloadCoordinatorEngine(
     }
 
     fun control(downloadId: String, expectedAttemptToken: String?, action: String): String {
-        val attempt = synchronized(lock) { activeByDownloadId[downloadId] }
-        if (attempt == null) {
-            if ((action.equals("stop", ignoreCase = true) || action.equals("cancel", ignoreCase = true)) &&
-                expectedAttemptToken.isNullOrBlank()
-            ) {
-                if (downloadId.isBlank()) return "missing"
-                synchronized(lock) {
+        if (downloadId.isBlank()) return "missing"
+        beforeMissingControlAdmission(downloadId)
+        val attemptOrReceipt =
+            synchronized(lock) {
+                val active = activeByDownloadId[downloadId]
+                if (active != null) return@synchronized ControlAdmission.Active(active)
+                if ((action.equals("stop", ignoreCase = true) || action.equals("cancel", ignoreCase = true)) &&
+                    expectedAttemptToken.isNullOrBlank()
+                ) {
                     val now = nowMillis()
                     prunePendingPreStartCancelsLocked(now)
                     pendingPreStartCancels.remove(downloadId)
@@ -229,31 +250,35 @@ internal class AttachmentDownloadCoordinatorEngine(
                     while (pendingPreStartCancels.size > MaxPendingPreStartCancels) {
                         pendingPreStartCancels.remove(pendingPreStartCancels.keys.first())
                     }
+                    ControlAdmission.Receipt
+                } else {
+                    ControlAdmission.Missing
                 }
-                return "cancelled"
             }
-            return "missing"
-        }
+        if (attemptOrReceipt === ControlAdmission.Receipt) return "cancelled"
+        if (attemptOrReceipt === ControlAdmission.Missing) return "missing"
+        val attempt = (attemptOrReceipt as ControlAdmission.Active).attempt
         if (!expectedAttemptToken.isNullOrBlank() && attempt.attemptToken != expectedAttemptToken) return "stale"
         return when (action.lowercase()) {
-            "pause" -> {
-                attempt.pause()
-                "paused"
-            }
-            "resume" -> {
-                attempt.resume()
-                "resumed"
-            }
-            "stop", "cancel" -> {
-                if (attempt.cancel("cancelled")) "cancelled" else "finishing"
-            }
+            "pause" -> if (attempt.pause()) "paused" else "finishing"
+            "resume" -> if (attempt.resume()) "resumed" else "finishing"
+            "stop", "cancel" -> if (attempt.cancel("cancelled")) "cancelled" else "finishing"
             else -> "failed"
         }
     }
 
     fun cancelTargetAndAwaitCleanup(targetKey: String): String {
-        val attempt = synchronized(lock) { activeByTargetKey[targetKey] } ?: return "missing"
-        return if (attempt.cancel("target_deleted", synchronousCleanup = true)) "cancelled" else "finishing"
+        val attempt =
+            synchronized(lock) {
+                deletingTargetKeys += targetKey
+                activeByTargetKey[targetKey]
+            } ?: return "missing"
+        if (attempt.cancel("target_deleted", synchronousCleanup = true)) return "cancelled"
+        return if (attempt.awaitTerminalCleanup()) "complete" else "timeout"
+    }
+
+    fun finishTargetCleanup(targetKey: String) {
+        synchronized(lock) { deletingTargetKeys.remove(targetKey) }
     }
 
     private fun isCurrent(attempt: AttachmentDownloadAttempt): Boolean =
@@ -273,14 +298,14 @@ internal class AttachmentDownloadCoordinatorEngine(
         }
     }
 
-    private fun commitIfCurrent(attempt: AttachmentDownloadAttempt, commit: () -> Boolean): Boolean =
+    private fun admitPublishIfCurrent(attempt: AttachmentDownloadAttempt): Boolean =
         synchronized(lock) {
             if (activeByDownloadId[attempt.request.downloadId] !== attempt ||
                 activeByTargetKey[attempt.request.targetKey] !== attempt
             ) {
                 false
             } else {
-                commit()
+                attempt.tryAdmitPublishing()
             }
         }
 
@@ -298,6 +323,12 @@ internal class AttachmentDownloadCoordinatorEngine(
     private companion object {
         const val MaxPendingPreStartCancels = 256
         const val PendingPreStartCancelTtlMillis = 60_000L
+    }
+
+    private sealed interface ControlAdmission {
+        data class Active(val attempt: AttachmentDownloadAttempt) : ControlAdmission
+        data object Receipt : ControlAdmission
+        data object Missing : ControlAdmission
     }
 }
 
@@ -349,12 +380,15 @@ private class AttachmentDownloadAttempt(
     private val observer: AttachmentDownloadObserver,
     private val nowMillis: () -> Long,
     private val isCurrent: (AttachmentDownloadAttempt) -> Boolean,
-    private val commitIfCurrent: (AttachmentDownloadAttempt, () -> Boolean) -> Boolean,
+    private val admitPublishIfCurrent: (AttachmentDownloadAttempt) -> Boolean,
+    private val beforePublishAdmission: (String) -> Unit,
+    private val beforeChunkAdmission: (String) -> Unit,
     private val dispatchCleanup: ((() -> Unit) -> Unit),
     private val dispatchObserver: ((() -> Unit) -> Unit),
     private val onTerminal: (AttachmentDownloadAttempt) -> Unit
 ) {
     private val operationLock = SynchronizedObject()
+    private val sinkLock = SynchronizedObject()
     private val observerGateLock = SynchronizedObject()
     private val state = atomic(StateActive)
     private val paused = atomic(false)
@@ -380,19 +414,24 @@ private class AttachmentDownloadAttempt(
 
     fun start(transport: AttachmentDownloadTransport) {
         if (!isActiveAndCurrent()) return
-        if (!runCatching { sink.begin() }.getOrDefault(false)) {
+        val began =
+            synchronized(sinkLock) {
+                if (!isActiveAndCurrent()) return@synchronized false
+                if (!runCatching { sink.begin() }.getOrDefault(false)) return@synchronized false
+                if (!sinkState.compareAndSet(expect = SinkNotStarted, update = SinkActive)) {
+                    runCatching { sink.abort() }
+                    return@synchronized false
+                }
+                true
+            }
+        if (!began) {
+            if (state.value != StateActive) return
             finishFailure("storage_failed", "Unable to create download staging file")
             return
         }
-        if (!sinkState.compareAndSet(expect = SinkNotStarted, update = SinkActive)) {
-            runCatching { sink.abort() }
+        if (!isActiveAndCurrent()) {
+            abortSinkSerialized()
             return
-        }
-        synchronized(operationLock) {
-            if (!isActiveAndCurrent()) {
-                abortSinkLocked()
-                return
-            }
         }
         val call =
             runCatching {
@@ -411,40 +450,44 @@ private class AttachmentDownloadAttempt(
         callRef.value = call
         if (state.value != StateActive || !isCurrent(this)) {
             runCatching { call.cancel() }
-            synchronized(operationLock) { abortSinkLocked() }
+            abortSinkSerialized()
         }
     }
 
-    fun pause() {
-        if (state.value == StateActive) paused.value = true
-    }
+    fun pause(): Boolean =
+        synchronized(sinkLock) {
+            if (state.value != StateActive) return@synchronized false
+            paused.value = true
+            true
+        }
 
-    fun resume() {
-        synchronized(operationLock) {
-            previousSampleAtMillis = nowMillis()
-            previousSampleBytes = downloadedBytes
-            lastEmittedAtMillis = null
+    fun resume(): Boolean {
+        synchronized(sinkLock) {
+            if (state.value != StateActive) return false
+            val now = nowMillis()
+            synchronized(operationLock) {
+                previousSampleAtMillis = now
+                previousSampleBytes = downloadedBytes
+                lastEmittedAtMillis = null
+                lastActivityAtMillis.value = now
+            }
             paused.value = false
         }
+        return true
     }
 
     fun cancel(reason: String, synchronousCleanup: Boolean = false): Boolean {
-        val wonTerminal =
-            synchronized(operationLock) {
-                when (val current = state.value) {
-                    StateActive, StateFinishing -> {
-                        if (!state.compareAndSet(expect = current, update = StateTerminal)) return@synchronized false
-                        paused.value = false
-                        true
-                    }
-                    else -> false
-                }
-            }
-        if (!wonTerminal) return false
+        var wonTerminal = false
+        while (!wonTerminal) {
+            val current = state.value
+            if (current != StateActive && current != StateFinishing) return false
+            wonTerminal = state.compareAndSet(expect = current, update = StateTerminal)
+        }
+        paused.value = false
         runCatching { callRef.value?.cancel() }
         onTerminal(this)
         queueTerminal(result(status = "cancelled", errorKind = reason, message = "Download cancelled"))
-        val cleanup = { synchronized(operationLock) { abortSinkLocked() } }
+        val cleanup = ::abortSinkSerialized
         if (synchronousCleanup) cleanup() else dispatchCleanup(cleanup)
         return true
     }
@@ -466,9 +509,20 @@ private class AttachmentDownloadAttempt(
             return
         }
         val idleBudget = request.interChunkIdleTimeoutMillis
+        // User pause freezes the inter-chunk idle clock; whole-transfer deadline still includes pause.
+        if (paused.value) return
         if (idleBudget > 0L && nowMillis - lastActivityAtMillis.value >= idleBudget) {
             finishFailure("idle_timeout", "Download inter-chunk idle deadline exceeded")
         }
+    }
+
+    fun awaitTerminalCleanup(timeoutMillis: Long = 30_000L): Boolean {
+        val started = nowMillis()
+        while (state.value != StateTerminal || sinkState.value != SinkEnded) {
+            if (nowMillis() - started >= timeoutMillis) return false
+            attachmentDownloadPauseMillis(10L)
+        }
+        return true
     }
 
     private fun onResponseStart(statusCode: Int?, contentLength: Long?, headers: Map<String, List<String>>) {
@@ -489,15 +543,33 @@ private class AttachmentDownloadAttempt(
     }
 
     private fun onChunk(bytes: ByteArray) {
-        while (paused.value && state.value == StateActive && isCurrent(this)) {
-            attachmentDownloadPauseMillis(25L)
-        }
         var failure: Pair<String, String>? = null
+        var wrote = false
+        while (!wrote) {
+            beforeChunkAdmission(attemptToken)
+            val admission =
+                synchronized(sinkLock) {
+                    when {
+                        !isActiveAndCurrent() || sinkState.value != SinkActive -> ChunkAdmission.Terminal
+                        paused.value -> ChunkAdmission.Paused
+                        runCatching { sink.write(bytes) }.getOrDefault(false) -> ChunkAdmission.Written
+                        else -> ChunkAdmission.Failed
+                    }
+                }
+            when (admission) {
+                ChunkAdmission.Terminal -> return
+                ChunkAdmission.Paused -> attachmentDownloadPauseMillis(25L)
+                ChunkAdmission.Written -> wrote = true
+                ChunkAdmission.Failed -> {
+                    failure = "storage_write" to "Unable to write download staging file"
+                    break
+                }
+            }
+        }
         val progress =
             synchronized(operationLock) {
                 if (!isActiveAndCurrent()) return
-                if (!runCatching { sink.write(bytes) }.getOrDefault(false)) {
-                    failure = "storage_write" to "Unable to write download staging file"
+                if (failure != null) {
                     null
                 } else {
                     downloadedBytes = saturatingAdd(downloadedBytes, bytes.size.toLong())
@@ -581,30 +653,40 @@ private class AttachmentDownloadAttempt(
             finishReservedFailure("progress_callback", finalProgressFailure.message ?: "Progress callback failed")
             return
         }
-        val committed =
-            synchronized(operationLock) {
-                if (state.value != StateFinishing) {
-                    false
-                } else if (!isCurrent(this)) {
-                    abortSinkLocked()
-                    false
-                } else if (commitIfCurrent(this) { runCatching { sink.commit() }.getOrDefault(false) }) {
-                    sinkState.value = SinkEnded
-                    state.compareAndSet(expect = StateFinishing, update = StateTerminal)
-                    true
-                } else {
-                    abortSinkLocked()
-                    false
-                }
+        val prepared =
+            synchronized(sinkLock) {
+                if (state.value != StateFinishing || sinkState.value != SinkActive) return@synchronized false
+                runCatching { sink.prepare() }.getOrDefault(false)
             }
-        if (!committed) {
+        if (!prepared) {
             if (state.value != StateFinishing) return
-            finishReservedFailure("storage_commit", "Unable to publish downloaded file")
+            finishReservedFailure("storage_prepare", "Unable to prepare downloaded file")
             return
         }
+        beforePublishAdmission(attemptToken)
+        if (!admitPublishIfCurrent(this)) {
+            if (state.value == StateFinishing) {
+                finishReservedFailure("stale_attempt", "Download was replaced before publication")
+            }
+            return
+        }
+        val published =
+            synchronized(sinkLock) {
+                if (state.value != StatePublishing || sinkState.value != SinkActive) return@synchronized false
+                runCatching { sink.publish() }.getOrDefault(false)
+            }
+        if (!published) {
+            finishPublishingFailure("storage_publish", "Unable to publish downloaded file")
+            return
+        }
+        sinkState.value = SinkEnded
+        if (!state.compareAndSet(expect = StatePublishing, update = StateTerminal)) return
         onTerminal(this)
         queueTerminal(result(status = "complete", errorKind = null, message = null))
     }
+
+    fun tryAdmitPublishing(): Boolean =
+        state.compareAndSet(expect = StateFinishing, update = StatePublishing)
 
     private fun finishFailure(errorKind: String, message: String) {
         if (!state.compareAndSet(expect = StateActive, update = StateTerminal)) return
@@ -612,7 +694,7 @@ private class AttachmentDownloadAttempt(
         runCatching { callRef.value?.cancel() }
         onTerminal(this)
         queueTerminal(result(status = "failed", errorKind = errorKind, message = message))
-        val cleanup = { synchronized(operationLock) { abortSinkLocked() } }
+        val cleanup = ::abortSinkSerialized
         dispatchCleanup(cleanup)
     }
 
@@ -621,15 +703,36 @@ private class AttachmentDownloadAttempt(
         paused.value = false
         onTerminal(this)
         queueTerminal(result(status = "failed", errorKind = errorKind, message = message))
-        dispatchCleanup { synchronized(operationLock) { abortSinkLocked() } }
+        dispatchCleanup(::abortSinkSerialized)
+    }
+
+    private fun finishPublishingFailure(errorKind: String, message: String) {
+        if (!state.compareAndSet(expect = StatePublishing, update = StateTerminal)) return
+        paused.value = false
+        onTerminal(this)
+        queueTerminal(result(status = "failed", errorKind = errorKind, message = message))
+        dispatchCleanup(::abortSinkSerialized)
     }
 
     private fun deliverProgress(progress: AttachmentDownloadProgress) {
         enqueueObserverEvent {
-            if (state.value != StateActive || !isCurrent(this)) return@enqueueObserverEvent
             runCatching { observer.onProgress(progress) }
-                .onFailure { error -> finishFailure("progress_callback", error.message ?: "Progress callback failed") }
+                .onFailure { error -> finishObserverFailure("progress_callback", error.message ?: "Progress callback failed") }
         }
+    }
+
+    private fun finishObserverFailure(errorKind: String, message: String) {
+        var wonTerminal = false
+        while (!wonTerminal) {
+            val current = state.value
+            if (current != StateActive && current != StateFinishing) return
+            wonTerminal = state.compareAndSet(expect = current, update = StateTerminal)
+        }
+        paused.value = false
+        runCatching { callRef.value?.cancel() }
+        onTerminal(this)
+        queueTerminal(result(status = "failed", errorKind = errorKind, message = message))
+        dispatchCleanup(::abortSinkSerialized)
     }
 
     private fun queueTerminal(result: AttachmentDownloadResult) {
@@ -697,9 +800,11 @@ private class AttachmentDownloadAttempt(
             bytesPerSecond = bytesPerSecond
         )
 
-    private fun abortSinkLocked() {
-        if (sinkState.getAndSet(SinkEnded) == SinkActive) {
-            runCatching { sink.abort() }
+    private fun abortSinkSerialized() {
+        synchronized(sinkLock) {
+            if (sinkState.getAndSet(SinkEnded) == SinkActive) {
+                runCatching { sink.abort() }
+            }
         }
     }
 
@@ -720,10 +825,18 @@ private class AttachmentDownloadAttempt(
     private companion object {
         const val StateActive = 0
         const val StateFinishing = 1
-        const val StateTerminal = 2
+        const val StatePublishing = 2
+        const val StateTerminal = 3
         const val SinkNotStarted = 0
         const val SinkActive = 1
         const val SinkEnded = 2
+    }
+
+    private enum class ChunkAdmission {
+        Terminal,
+        Paused,
+        Written,
+        Failed
     }
 }
 
