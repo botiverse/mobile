@@ -1,23 +1,54 @@
-# QA acceptance — case library
+# QA Acceptance Case Library
 
-Structured acceptance cases for the Raft app, executed by the agent-in-CI
-acceptance executor (`scripts/qa/acceptance_agent.mjs`, workflow
-`qa-acceptance.yml` — see #proj-quality tasks #1–#4).
+> Structured acceptance test cases for Raft Android. Each case is a YAML
+> file describing steps, assertions, and expected outcomes that an M3
+> executor agent runs on a real device or emulator.
 
-- **Schema**: [`../qa-acceptance-case-schema.md`](../qa-acceptance-case-schema.md)
-  (v0.1, owned by QA). Steps are goal + hints — the agent locates elements
-  itself (text + bounds; Kuikly exposes no resource ids). Assertions stay
-  machine-checkable; hard assertions run before any model-judged check.
-- **Operation playbook**: [`../qa-acceptance-operations.md`](../qa-acceptance-operations.md)
-  — how to drive the app accurately. After every failed round, the root cause
-  is distilled back into the playbook or a case's known-pitfalls notes.
-- **Credentials** are never inline: `credentials_ref` resolves in the executor
-  from CI secrets (`QA_TEST_EMAIL` / `QA_TEST_PASSWORD`).
+## Case Index
 
-| # | Case | Covers |
-|---|------|--------|
-| 01 | login-email-password | cold start → login → home |
-| 02 | send-message-in-channel | channel → compose → send → verify |
-| 03 | channel-switch-navigation | home → channel A → back → channel B |
-| 04 | task-flow-create-and-claim | message long-press → create task |
-| 05 | settings-open-and-navigate | settings subpages load |
+| # | ID | Title | Tier | Tags | Source |
+|---|-----|-------|------|------|--------|
+| 01 | `login-email-password` | 登录-邮箱密码登录 | L1 | auth, critical | Core path |
+| 02 | `send-message-in-channel` | 发送消息-频道内发送文本消息 | L1 | messaging, critical | Core path |
+| 03 | `channel-switch-navigation` | 频道切换-在频道间导航 | L1 | navigation | Core path |
+| 04 | `task-flow-create-and-claim` | 任务流-创建任务 | L1 | tasks, workflow | Core path |
+| 05 | `settings-open-and-navigate` | 设置页-打开设置并浏览子页面 | L1 | settings, navigation | Core path |
+| 06 | `settings-feedback-submit` | 反馈上传-设置页提交反馈 | L1 | feedback, hands-integration | artin request |
+| 07 | `thread-reply-and-reactions` | 消息回复-在thread中回复消息 | L1 | messaging, thread | Core path |
+| 08 | `member-profile-open` | 成员资料-点击成员头像打开Profile | L1 | members, profile, regression | Hands feedback 3c1d6a34 |
+| 09 | `image-preview-in-thread` | 图片预览-对话流中查看图片 | L1 | messaging, image, P0 | Hands feedback 0ec255d7 |
+| 10 | `dm-open-and-send` | 私信-打开DM并发送消息 | L1 | messaging, dm, regression | Hands #1068, f96c5708 |
+
+## Schema
+
+See `case-schema.md` for the full case schema specification (v0.2).
+
+Key design principles:
+- **Steps are goal-oriented**: agent autonomously locates elements via
+  uiautomator XML text matching + bounds calculation. Case provides
+  natural-language hints, not hard selectors.
+- **Assertions are typed**: hard assertions (text_present, text_absent,
+  no_crash, logcat_clean) are machine-judged at zero model cost. Soft
+  assertions (visual_check) are M3-judged.
+- **Asymmetric judgment**: fail if any M3 panelist is suspicious;
+  pass requires 3/3 consensus + no hard-fail.
+
+## Evidence Annotation
+
+See `annotation-spec.md` for the sharp-based red-box highlight spec.
+After screenshots, the executor draws colored boxes around assertion
+regions so reviewers can instantly see what was verified.
+
+## Executor Playbook
+
+See `qa-acceptance-operations.md` (XiShi) for the executor experience
+rules: keyboard handling, element location, navigation shortcuts, and
+known failure modes learned from real runs.
+
+## Adding New Cases
+
+1. Copy an existing case as template
+2. Fill in steps (goal-oriented), assertions (typed), and expected outcome
+3. Tag with appropriate category (critical, regression, P0, etc.)
+4. If from a Hands feedback ticket, reference the ticket ID in description
+5. Test the case by running it through the executor workflow

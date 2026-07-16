@@ -1,54 +1,21 @@
-# QA Acceptance Case Library
+# QA acceptance system
 
-> Structured acceptance test cases for Raft Android. Each case is a YAML
-> file describing steps, assertions, and expected outcomes that an M3
-> executor agent runs on a real device or emulator.
+Agent-in-CI acceptance testing for the Raft app: an owner-written case goes
+in, an M3 agent drives the real APK on a device, evidence (per-step
+screenshots + steps.jsonl + verdict.json) comes out, a human makes the final
+call. Origin: #proj-quality tasks #1–#4.
 
-## Case Index
+| Doc | What |
+|-----|------|
+| [`design.md`](design.md) | System design v1 (reviewed): data model, executor contract, state machine, asymmetric judging, hands release-gate integration, phasing |
+| [`case-schema.md`](case-schema.md) | Case format v0.1: steps = goal + hints, assertions stay machine-checkable |
+| [`cases/`](cases/) | The case library — 13 cases, indexed in [`cases/README.md`](cases/README.md) |
+| [`annotation-spec.md`](annotation-spec.md) | Evidence annotation spec — sharp red-box overlay of assertion regions on screenshots |
+| [`../qa-acceptance-operations.md`](../qa-acceptance-operations.md) | Operation playbook — how to drive the app accurately; injected into executor context (moves into this folder once PR #1077 lands; the runner's default path points there) |
 
-| # | ID | Title | Tier | Tags | Source |
-|---|-----|-------|------|------|--------|
-| 01 | `login-email-password` | 登录-邮箱密码登录 | L1 | auth, critical | Core path |
-| 02 | `send-message-in-channel` | 发送消息-频道内发送文本消息 | L1 | messaging, critical | Core path |
-| 03 | `channel-switch-navigation` | 频道切换-在频道间导航 | L1 | navigation | Core path |
-| 04 | `task-flow-create-and-claim` | 任务流-创建任务 | L1 | tasks, workflow | Core path |
-| 05 | `settings-open-and-navigate` | 设置页-打开设置并浏览子页面 | L1 | settings, navigation | Core path |
-| 06 | `settings-feedback-submit` | 反馈上传-设置页提交反馈 | L1 | feedback, hands-integration | artin request |
-| 07 | `thread-reply-and-reactions` | 消息回复-在thread中回复消息 | L1 | messaging, thread | Core path |
-| 08 | `member-profile-open` | 成员资料-点击成员头像打开Profile | L1 | members, profile, regression | Hands feedback 3c1d6a34 |
-| 09 | `image-preview-in-thread` | 图片预览-对话流中查看图片 | L1 | messaging, image, P0 | Hands feedback 0ec255d7 |
-| 10 | `dm-open-and-send` | 私信-打开DM并发送消息 | L1 | messaging, dm, regression | Hands #1068, f96c5708 |
+Executor: `scripts/qa/acceptance_agent.mjs` + `.github/workflows/qa-acceptance.yml` (PR #1077).
 
-## Schema
-
-See `case-schema.md` for the full case schema specification (v0.2).
-
-Key design principles:
-- **Steps are goal-oriented**: agent autonomously locates elements via
-  uiautomator XML text matching + bounds calculation. Case provides
-  natural-language hints, not hard selectors.
-- **Assertions are typed**: hard assertions (text_present, text_absent,
-  no_crash, logcat_clean) are machine-judged at zero model cost. Soft
-  assertions (visual_check) are M3-judged.
-- **Asymmetric judgment**: fail if any M3 panelist is suspicious;
-  pass requires 3/3 consensus + no hard-fail.
-
-## Evidence Annotation
-
-See `annotation-spec.md` for the sharp-based red-box highlight spec.
-After screenshots, the executor draws colored boxes around assertion
-regions so reviewers can instantly see what was verified.
-
-## Executor Playbook
-
-See `qa-acceptance-operations.md` (XiShi) for the executor experience
-rules: keyboard handling, element location, navigation shortcuts, and
-known failure modes learned from real runs.
-
-## Adding New Cases
-
-1. Copy an existing case as template
-2. Fill in steps (goal-oriented), assertions (typed), and expected outcome
-3. Tag with appropriate category (critical, regression, P0, etc.)
-4. If from a Hands feedback ticket, reference the ticket ID in description
-5. Test the case by running it through the executor workflow
+**The loop that keeps this honest**: every failed round's root cause is
+distilled back into the playbook or a case's known-pitfalls notes; agent
+passes are only ever *likely-pass* — the final verdict belongs to the
+requesting human.
