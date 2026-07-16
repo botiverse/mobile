@@ -120,7 +120,8 @@ function preamble(size) {
     '  {"action":"dump_ui"}                           get uiautomator XML (text/desc/bounds of every node)',
     '  {"action":"wait","seconds":<1-10>}             wait for loading',
     '  {"action":"launch"}                            (re)launch the app main activity',
-    '  {"action":"finish","verdict":"pass|fail","reason":"<what you verified / what failed>"}',
+    '  {"action":"finish","verdict":"pass|fail","reason":"<what you verified / what failed>",',
+    '   "annotations":[{"step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"<short>"}]}',
     "",
     "Rules:",
     "- Before tapping anything non-obvious, use dump_ui and compute the tap point from node bounds",
@@ -135,6 +136,10 @@ function preamble(size) {
     "- finish with verdict pass ONLY if you visually confirmed every requirement of the goal;",
     "  if blocked, loading forever, or the UI contradicts the goal, finish with verdict fail",
     "  and a concrete reason. You have a limited turn budget — no exploration detours.",
+    "- In finish, include ONE annotations entry per goal requirement: step = the turn whose",
+    "  screenshot shows the verified (or missing) region, bounds = that region's uiautomator",
+    '  bounds "[x1,y1][x2,y2]" from your dump_ui, label = 3-6 words naming the requirement.',
+    "  Reviewers see these as boxes drawn on the evidence — accuracy matters more than count.",
     ...playbookSection(),
   ].join("\n");
 }
@@ -191,6 +196,71 @@ function pruneImages(messages) {
   }
 }
 
+// Evidence annotation (docs/qa-acceptance/annotation-spec.md, artin's ask):
+// draw what the agent verified/touched onto copies of the step screenshots so
+// reviewers see it at a glance — green box = requirement verified, red box =
+// requirement failed, yellow crosshair = tap point (on the frame the agent was
+// looking at when it decided the tap). Output: step-NN.annotated.png next to
+// the originals; originals stay untouched (evidence integrity). sharp is an
+// optional dependency — when absent (ad-hoc checkout), annotation is skipped
+// and noted, never fatal.
+const BOUNDS_RE = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/;
+function escapeXml(s) {
+  return String(s).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]));
+}
+
+async function annotateEvidence(size, taps, assertions) {
+  const byStep = new Map();
+  const add = (step, svg) => {
+    const n = Number(step);
+    if (!Number.isInteger(n) || n < 0) return;
+    byStep.set(n, (byStep.get(n) || "") + svg);
+  };
+  for (const t of taps) {
+    const s = 22;
+    add(t.step,
+      `<line x1="${t.x - s}" y1="${t.y - s}" x2="${t.x + s}" y2="${t.y + s}" stroke="#ffd400" stroke-width="5"/>` +
+      `<line x1="${t.x - s}" y1="${t.y + s}" x2="${t.x + s}" y2="${t.y - s}" stroke="#ffd400" stroke-width="5"/>` +
+      `<circle cx="${t.x}" cy="${t.y}" r="${s + 8}" fill="none" stroke="#ffd400" stroke-width="3"/>`);
+  }
+  for (const a of assertions) {
+    const m = BOUNDS_RE.exec(String(a.bounds ?? ""));
+    if (!m) continue;
+    const [x1, y1, x2, y2] = m.slice(1).map(Number);
+    if (x2 <= x1 || y2 <= y1) continue;
+    const color = a.result === "fail" ? "#ff2d2d" : "#00c853";
+    const label = escapeXml(redact(String(a.label ?? "")).slice(0, 60));
+    const labelY = y1 >= 34 ? y1 - 10 : y2 + 26;
+    add(a.step,
+      `<rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="${color}" stroke-width="5" rx="4"/>` +
+      (label
+        ? `<text x="${x1}" y="${labelY}" font-family="sans-serif" font-size="26" font-weight="bold" fill="${color}" stroke="#000000" stroke-width="0.6">${label}</text>`
+        : ""));
+  }
+  if (!byStep.size) return [];
+  let sharp;
+  try {
+    sharp = (await import("sharp")).default;
+  } catch {
+    console.error("sharp not installed — evidence annotation skipped");
+    return [];
+  }
+  const written = [];
+  for (const [step, overlay] of byStep) {
+    const src = path.join(opts.out, `step-${String(step).padStart(2, "0")}.png`);
+    if (!fs.existsSync(src)) continue;
+    const dst = src.replace(/\.png$/, ".annotated.png");
+    try {
+      const svg = Buffer.from(`<svg width="${size.w}" height="${size.h}" xmlns="http://www.w3.org/2000/svg">${overlay}</svg>`);
+      await sharp(src).composite([{ input: svg, top: 0, left: 0 }]).png().toFile(dst);
+      written.push(path.basename(dst));
+    } catch (e) {
+      console.error(`annotation failed for ${src}: ${String(e?.message || e).slice(0, 120)}`);
+    }
+  }
+  return written;
+}
+
 async function main() {
   if (!opts.goal) { console.error("no --goal / QA_GOAL"); process.exit(2); }
   if (!piKey()) { console.error("no PI_API_KEY/MINIMAX_API_KEY"); process.exit(2); }
@@ -218,6 +288,8 @@ async function main() {
   logStep({ turn: 0, event: "start", goal: opts.goal, screen: size });
 
   let verdict = null, reason = "", turns = 0, malformedStreak = 0;
+  const tapAnnotations = [];
+  const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
     turns++;
     pruneImages(messages);
@@ -263,6 +335,7 @@ async function main() {
     if (action.action === "finish") {
       verdict = action.verdict === "pass" ? "pass" : "fail";
       reason = String(action.reason || "");
+      if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
       logStep({ turn: turns, action });
       break;
     }
@@ -270,7 +343,12 @@ async function main() {
     let feedback = "ok";
     try {
       switch (action.action) {
-        case "tap": adb(["shell", "input", "tap", String(Math.round(action.x)), String(Math.round(action.y))]); break;
+        case "tap":
+          adb(["shell", "input", "tap", String(Math.round(action.x)), String(Math.round(action.y))]);
+          // The agent decided this tap while looking at the PREVIOUS turn's
+          // screenshot — that's the frame the crosshair belongs on.
+          tapAnnotations.push({ step: turns - 1, x: Math.round(action.x), y: Math.round(action.y) });
+          break;
         case "swipe": {
           const { w, h } = size;
           const c = { up: [w / 2, h * 0.7, w / 2, h * 0.3], down: [w / 2, h * 0.3, w / 2, h * 0.7], left: [w * 0.8, h / 2, w * 0.2, h / 2], right: [w * 0.2, h / 2, w * 0.8, h / 2] }[action.direction] || [w / 2, h * 0.7, w / 2, h * 0.3];
@@ -313,9 +391,16 @@ async function main() {
     reason = turns >= opts.maxTurns ? `no verdict within ${opts.maxTurns} turns` : `wall-clock cap ${opts.maxMinutes}min hit`;
   }
 
+  const annotated = await annotateEvidence(size, tapAnnotations, assertionAnnotations);
+
   const result = {
     goal: redact(opts.goal), verdict, reason: redact(reason), turns,
     durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
+    annotations: {
+      assertion: assertionAnnotations.map((a) => ({ ...a, label: redact(String(a.label ?? "")) })),
+      taps: tapAnnotations.length,
+      annotatedFiles: annotated,
+    },
   };
   fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
