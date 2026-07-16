@@ -219,6 +219,16 @@ const cases = [
     expect: "paired with a visible=true observed",
   },
   {
+    name: "obsolete-drop-wrong-operation",
+    mutate: (L) => L.map((l) => l.includes("completion_drop") && l.includes("adm-old") ? l.replace("operation=channel_members", "operation=member_suggestions") : l),
+    expect: "not fenced by completion_drop",
+  },
+  {
+    name: "obsolete-drop-rogue-admission",
+    mutate: (L) => L.map((l) => l.includes("completion_drop") && l.includes("adm-old") ? l.replace("stageAdmissionId=adm-old", "stageAdmissionId=rogue-admission") : l),
+    expect: "not fenced by completion_drop",
+  },
+  {
     name: "noncanonical-base64url",
     mutate: (L) => { const i = L.findIndex((l) => l.includes("scope=card")); L[i] = L[i].replace(/lazyItemKey=\S+/, "lazyItemKey=abc=="); return L; },
     expect: "lazyItemKey(canonical-base64url)",

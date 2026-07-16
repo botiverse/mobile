@@ -300,9 +300,18 @@ const isCommitToken = (e) => commitTokenK !== null && tokenKey(e.token) === comm
 for (const e of [...stageEv, ...opEv, ...workEv]) {
   if (commitTokenK === null || isCommitToken(e) || !tokenComplete(e.token)) continue;
   if (e.kind === "completionDrop") continue;
+  // fence must match the FULL frozen machine key — same token, stage,
+  // stageAdmissionId, operation and requestId, with a legal phase/reason —
+  // so a drop for a different operation or a rogue admission cannot stand in
   const fenced = workEv.some((d) => d.kind === "completionDrop" &&
+    tokenKey(d.token) === tokenKey(e.token) &&
     field(d.line, "stage") === field(e.line, "stage") &&
-    field(d.line, "requestId") === field(e.line, "requestId") && d.i >= e.i);
+    field(d.line, "stageAdmissionId") === field(e.line, "stageAdmissionId") &&
+    field(d.line, "operation") === field(e.line, "operation") &&
+    field(d.line, "requestId") === field(e.line, "requestId") &&
+    ["request", "parse", "emit"].includes(field(d.line, "phase") ?? "") &&
+    FENCE_REASONS.has(field(d.line, "reason") ?? "") &&
+    d.i >= e.i);
   if (!fenced) flag("B", `${e.kind} event with non-committed token not fenced by completion_drop`, { line: e.i });
 }
 
