@@ -278,6 +278,16 @@ class SharedServerMembersStore internal constructor(
     // A→B switches subscribed to A). Test default mirrors the sync resolver.
     private val presenceOwnerFlow: (ServerId) -> Flow<ProcessServerMembersOwner?> = { serverId ->
         flowOf(presenceOwner(serverId))
+    },
+    // Write binding: owner + registry write generation frozen from ONE
+    // immutable auth-context snapshot (post-merge audit on PR #1054 — owner
+    // and generation must never be torn apart by a concurrent auth clear;
+    // the registry re-checks the generation inside its CAS). Test default
+    // mirrors the sync resolver against the live registry generation.
+    private val presenceWrite: (ServerId) -> ProcessPresenceWrite? = { serverId ->
+        presenceOwner(serverId)?.let { owner ->
+            ProcessPresenceWrite(owner, presenceRegistry.writeGeneration)
+        }
     }
 ) {
     private val mutex = Mutex()
@@ -715,8 +725,11 @@ class SharedServerMembersStore internal constructor(
     fun applyPresence(serverId: ServerId, event: MemberPresenceUpdated) {
         // task #136: presence facts go ONLY to the process registry (the SSOT)
         // under this server's owner partition; readers combine the registry.
-        val owner = presenceOwner(serverId) ?: return
-        presenceRegistry.apply(owner, event)
+        // Owner + generation come from ONE frozen write binding — the
+        // registry rejects the write if the generation was retired by a
+        // concurrent auth clear.
+        val write = presenceWrite(serverId) ?: return
+        presenceRegistry.apply(write.owner, event, write.writeGeneration)
     }
 
     fun applyAgentActivitySnapshot(
@@ -743,9 +756,9 @@ class SharedServerMembersStore internal constructor(
     ) {
         val memberId = agentId.value.trim()
         if (memberId.isBlank()) return
-        val owner = presenceOwner(serverId) ?: return
+        val write = presenceWrite(serverId) ?: return
         // Gap-fill path: never displaces a seq-carrying realtime fact.
-        presenceRegistry.applyProjection(owner, projection.toMemberPresenceUpdated(agentId))
+        presenceRegistry.applyProjection(write.owner, projection.toMemberPresenceUpdated(agentId), write.writeGeneration)
     }
 
     suspend fun refreshMembers(

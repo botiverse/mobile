@@ -583,7 +583,7 @@ class SharedServerMembersStoreTest {
         awaitEmissions(1) // ① mounted pre-auth: initial null
 
         ownerFlow.value = ownerA
-        registry.apply(ownerA, agentFact(AgentStatus.Online, Presence.Active))
+        registry.apply(ownerA, agentFact(AgentStatus.Online, Presence.Active), registry.writeGeneration)
         awaitEmissions(2) // ① same mounted flow received A's fact after login
 
         // ② relogin as B (partitions cleared as production does): same flow
@@ -591,14 +591,14 @@ class SharedServerMembersStoreTest {
         registry.clearAll(reason = "authenticated")
         awaitEmissions(3)
         ownerFlow.value = ownerB
-        registry.apply(ownerB, agentFact(AgentStatus.Working, Presence.Active))
+        registry.apply(ownerB, agentFact(AgentStatus.Working, Presence.Active), registry.writeGeneration)
         awaitEmissions(4)
 
         assertEquals(listOf(null, AgentStatus.Online, null, AgentStatus.Working), emissions)
 
         // ②(never back to A) + ③: a late write to A's partition is invisible
         // to the mounted-B flow.
-        registry.apply(ownerA, agentFact(AgentStatus.Offline, Presence.Offline))
+        registry.apply(ownerA, agentFact(AgentStatus.Offline, Presence.Offline), registry.writeGeneration)
         repeat(50) { yield() }
         assertEquals(listOf(null, AgentStatus.Online, null, AgentStatus.Working), emissions)
         assertEquals(
@@ -639,7 +639,7 @@ class SharedServerMembersStoreTest {
                 serverSeq = 5L
             )
         )
-        val factsBefore = registry.factsByOwner.value
+        val factsBefore = registry.factsByOwner
 
         // A stale roster publication lands on storeA AFTER the fact.
         storeA.seed(
@@ -659,7 +659,7 @@ class SharedServerMembersStoreTest {
             storeA.currentServerMembers(ServerId("server-1")).single().agentStatus
         )
         // …and the registry did not need a second emission to survive it.
-        assertEquals(factsBefore, registry.factsByOwner.value)
+        assertEquals(factsBefore, registry.factsByOwner)
     }
 
     @Test
