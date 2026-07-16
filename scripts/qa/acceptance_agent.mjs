@@ -115,21 +115,36 @@ function dumpUi() {
 // and tap the center. Dialogs shift layout as selections/keyboards change, so
 // coordinates computed from an earlier dump go stale — the edit-name 80-turn
 // run burned 20+ turns blind-tapping a Create Channel button that had moved
-// ~100px (Argus's checkpoint-timeline diagnosis). Exact label match first,
-// unique-substring fallback; prefer clickable nodes when several match.
+// ~100px (Argus's checkpoint-timeline diagnosis).
+//
+// Match ladder tuned for Kuikly reality (edit-name round 4: dialog title
+// "CREATE CHANNEL" and button "Create Channel" both matched, and the old
+// clickable-preferred tiebreak was a no-op because Kuikly nodes don't expose
+// clickable — the same gap behind the [BTN] marker caveat):
+//   1. case-SENSITIVE exact  — "Create Channel" picks the button, not the
+//      shouting title, with zero ambiguity;
+//   2. case-insensitive exact;
+//   3. case-insensitive substring.
+// Ties break by clickable first (real on stock Android widgets), then by
+// SMALLEST bounds area — a button is always smaller than the title/row/dialog
+// containers that share its label.
 function tapTextResolve(wanted) {
   const nodes = uiNodes().filter((n) => n.bounds);
   const norm = (s) => String(s).trim().toLowerCase();
   const w = norm(wanted);
-  let matches = nodes.filter((n) => norm(n.text) === w || norm(n.desc) === w);
+  const exact = String(wanted).trim();
+  let matches = nodes.filter((n) => n.text.trim() === exact || n.desc.trim() === exact);
+  if (!matches.length) matches = nodes.filter((n) => norm(n.text) === w || norm(n.desc) === w);
   if (!matches.length) matches = nodes.filter((n) => (n.text && norm(n.text).includes(w)) || (n.desc && norm(n.desc).includes(w)));
   if (!matches.length) return { feedback: `tap_text: no on-screen node matches "${wanted}" — use dump_ui to see what is visible` };
   const clickables = matches.filter((n) => n.clickable);
-  const pick = (clickables.length ? clickables : matches)[0];
+  const pool = clickables.length ? clickables : matches;
+  const area = (n) => Math.max(1, n.bounds[2] - n.bounds[0]) * Math.max(1, n.bounds[3] - n.bounds[1]);
+  const pick = pool.reduce((a, b) => (area(b) < area(a) ? b : a));
   const [x1, y1, x2, y2] = pick.bounds;
   const x = Math.round((x1 + x2) / 2), y = Math.round((y1 + y2) / 2);
   const label = pick.text || pick.desc;
-  const note = matches.length > 1 ? ` (${matches.length} matches; picked the ${clickables.length ? "clickable" : "first"} one)` : "";
+  const note = matches.length > 1 ? ` (${matches.length} matches; picked the smallest${clickables.length ? " clickable" : ""})` : "";
   return { x, y, feedback: `tapped "${label}" at [${x},${y}]${note}` };
 }
 
