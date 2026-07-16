@@ -2240,7 +2240,7 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun notificationPushBannerNormalizesPeerJointReplyIdsToLocalProjection() {
+    fun notificationPushBannerRejectsPeerJointReplyIdsInsteadOfRebuildingLocalProjection() {
         val directory =
             slockConversationDirectoryStateFromProjections(
                 listOf(
@@ -2267,6 +2267,7 @@ class SlockAppShellTest {
                 )
             )
 
+        val suppressed = mutableListOf<String>()
         val banner =
             slockNotificationPushBannerOrNull(
                 event =
@@ -2274,13 +2275,199 @@ class SlockAppShellTest {
                         serverId = ServerId("server-local"),
                         kind = ConversationKind.Thread,
                         channelId = ChannelId("parent-peer"),
-                        threadId = ChannelId("thread-peer"),
+                        threadId = ChannelId("thread-local"),
                         parentChannelId = ChannelId("parent-peer"),
                         parentMessageId = MessageId("parent-message"),
                         messageId = MessageId("reply-peer"),
                         title = "Direct message · Raft",
                         body = "Cindy: hello",
                         tag = "message:reply-peer"
+                    ),
+                currentServerId = "server-local",
+                visibleConversationKey = null,
+                conversationDirectory = directory,
+                onSuppressed = suppressed::add
+            )
+
+        assertNull(banner)
+        assertEquals(listOf("identity_incomplete"), suppressed)
+    }
+
+    @Test
+    fun resolveOpenRequestRejectsNotificationThreadAliasAcrossJointProjection() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "parent-local",
+                        aliases = setOf("parent-local"),
+                        conversationKind = ConversationKind.Joint,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "joint",
+                        title = "raft-mobile-reconcile"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "thread-local",
+                        aliases = setOf("thread-local", "thread-peer"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "raft-mobile-reconcile",
+                        parentChannelId = "parent-local",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+        val logs = mutableListOf<String>()
+
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-local",
+                sourceMessageIdentity =
+                    AppShellNotificationThreadLaunchRequest(
+                        threadId = "thread-peer",
+                        messageId = "reply-peer",
+                        parentChannelId = "parent-local",
+                        parentMessageId = "parent-message",
+                        conversationKind = ConversationKind.Thread
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory,
+                diagnosticsLogger = logs::add
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("thread_projection_mismatch", pending.reason)
+        val log = assertNotNull(logs.firstOrNull())
+        assertTrue(log.contains("notificationThreadProjectionMismatch=true"), log)
+        assertTrue(log.contains("pending:thread_projection_mismatch"), log)
+    }
+
+    @Test
+    fun resolveOpenRequestRejectsLocalThreadWithDifferentLocalParent() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "parent-local-a",
+                        aliases = setOf("parent-local-a"),
+                        conversationKind = ConversationKind.Joint,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "joint",
+                        title = "joint-a"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "thread-local-b",
+                        aliases = setOf("thread-local-b"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "joint-b",
+                        parentChannelId = "parent-local-b",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-local",
+                sourceMessageIdentity =
+                    AppShellNotificationThreadLaunchRequest(
+                        threadId = "thread-local-b",
+                        messageId = "reply-local",
+                        parentChannelId = "parent-local-a",
+                        parentMessageId = "parent-message",
+                        conversationKind = ConversationKind.Thread
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("thread_projection_mismatch", pending.reason)
+    }
+
+    @Test
+    fun resolveOpenRequestRejectsLocalThreadWithDifferentParentMessage() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "thread-local",
+                        aliases = setOf("thread-local"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "joint-local",
+                        parentChannelId = "parent-local",
+                        parentMessageId = "parent-message-local"
+                    )
+                )
+            )
+
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-local",
+                sourceMessageIdentity =
+                    AppShellNotificationThreadLaunchRequest(
+                        threadId = "thread-local",
+                        messageId = "reply-local",
+                        parentChannelId = "parent-local",
+                        parentMessageId = "parent-message-peer",
+                        conversationKind = ConversationKind.Thread
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("thread_projection_mismatch", pending.reason)
+    }
+
+    @Test
+    fun notificationPushBannerAcceptsCompleteLocalJointReplyTupleAndServerTitle() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "parent-local",
+                        aliases = setOf("parent-local"),
+                        conversationKind = ConversationKind.Joint,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "joint",
+                        title = "raft-mobile-reconcile"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "thread-local",
+                        aliases = setOf("thread-local"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "raft-mobile-reconcile",
+                        parentChannelId = "parent-local",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-local"),
+                        kind = ConversationKind.Thread,
+                        threadId = ChannelId("thread-local"),
+                        parentChannelId = ChannelId("parent-local"),
+                        parentMessageId = MessageId("parent-message"),
+                        messageId = MessageId("reply-local"),
+                        title = "Thread in #raft-mobile-reconcile · Raft",
+                        body = "Cindy: hello",
+                        tag = "message:reply-local"
                     ),
                 currentServerId = "server-local",
                 visibleConversationKey = null,
@@ -2291,13 +2478,32 @@ class SlockAppShellTest {
         assertEquals("thread-local", resolved.conversation.thread?.streamChannelId?.value)
         assertEquals("parent-local", resolved.conversation.thread?.parentChannelId?.value)
         assertEquals("parent-message", resolved.conversation.thread?.parentMessageId?.value)
-        assertEquals(
-            ConversationKind.Joint,
-            resolved.conversation.resolveThreadRouteIdentity().parentConversationKind
-        )
-        assertEquals("#raft-mobile-reconcile - thread", resolved.context)
-        assertEquals("Thread reply", resolved.title)
-        assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
+        assertEquals("Thread in #raft-mobile-reconcile · Raft", resolved.title)
+    }
+
+    @Test
+    fun resolveOpenRequestKeepsColdTypedForegroundThreadRawOpenWithEmptyDirectory() {
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-local",
+                sourceMessageIdentity =
+                    ConversationOpenSourceMessageIdentity(
+                        source = ConversationOpenSource.ForegroundBanner,
+                        messageId = "reply-local",
+                        channelId = "thread-local",
+                        threadChannelId = "thread-local",
+                        parentChannelId = "parent-local",
+                        parentMessageId = "parent-message",
+                        conversationKind = ConversationKind.Thread,
+                        parentConversationKind = ConversationKind.Joint
+                    )
+            )
+
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals("thread-local", request.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals("parent-local", request.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", request.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals(ConversationKind.Joint, request.conversationIdentity.resolveThreadRouteIdentity().parentConversationKind)
     }
 
     @Test
