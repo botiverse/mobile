@@ -49,6 +49,7 @@ import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.isGenericInlineCommitAction
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.ThreadCandidateProofGate
 import build.raft.app.data.ThreadIdentityProof
@@ -1404,6 +1405,8 @@ internal class SharedThreadDataSource(
                 commitChannelAddMembersActionCard(payload, messageId, card)
             card.type.equals("integration:approve_agent_login", ignoreCase = true) ->
                 executeInlineThreadActionCard(messageId, card)
+            card.isGenericInlineCommitAction() ->
+                executeInlineThreadActionCard(messageId, card)
             else ->
                 DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
         }
@@ -1420,13 +1423,21 @@ internal class SharedThreadDataSource(
             is DataResult.Content ->
                 DataResult.Content(
                     result.data.actionCard
-                        ?: card.copy(
-                            state = "executed",
-                            resultKind = "agent-integration-login",
-                            resultId = card.agentId,
-                            resultName = card.clientName,
-                            executedByUserName = card.executedByUserName
-                        )
+                        ?: if (card.type.equals("integration:approve_agent_login", ignoreCase = true)) {
+                            card.copy(
+                                state = "executed",
+                                resultKind = "agent-integration-login",
+                                resultId = card.agentId,
+                                resultName = card.clientName,
+                                executedByUserName = card.executedByUserName
+                            )
+                        } else {
+                            // The canonical execute response normally carries
+                            // the updated card. Keep a truthful terminal state
+                            // if an older compatible server only returns the
+                            // message id; never invent a type-specific result.
+                            card.copy(state = "executed")
+                        }
                 )
             is DataResult.Empty ->
                 DataResult.Error(ScreenError(code = "action_card_execute_empty", retryable = true))

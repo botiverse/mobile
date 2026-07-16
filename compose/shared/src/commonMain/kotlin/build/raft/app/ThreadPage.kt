@@ -56,6 +56,7 @@ import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardMetadataItem
 import build.raft.app.data.isSlockHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
@@ -9457,6 +9458,43 @@ private fun threadActionCardCatalogMessages(): List<KuiklyThreadMessageItem> =
                     resultKind = "channel",
                     resultName = "visual-release"
                 )
+        ),
+        threadActionCardVisualMessage(
+            id = "msg-action-card-register-app",
+            body = "Prepared a Connected App registration card.",
+            card =
+                ThreadActionCard(
+                    type = "integration:register_app",
+                    name = "Build Monitor",
+                    draftHint = "Create this app for the release agent.",
+                    metadataItems =
+                        listOf(
+                            ThreadActionCardMetadataItem("name", "Build Monitor"),
+                            ThreadActionCardMetadataItem(
+                                "returnUrl",
+                                "https://build.example/oauth/callback"
+                            ),
+                            ThreadActionCardMetadataItem("scopes", "identity, profile")
+                        ),
+                    presentationWarning =
+                        "The requesting agent becomes the initial app owner. No client secret is stored in this card.",
+                    genericApprovalAllowed = true
+                )
+        ),
+        threadActionCardVisualMessage(
+            id = "msg-action-card-future-display-only",
+            body = "Prepared a future action card.",
+            card =
+                ThreadActionCard(
+                    type = "integration:future_capability",
+                    presentationTitle = "Review future capability",
+                    metadataItems =
+                        listOf(
+                            ThreadActionCardMetadataItem("target", "@release-agent"),
+                            ThreadActionCardMetadataItem("riskLevel", "medium")
+                        ),
+                    genericApprovalAllowed = false
+                )
         )
     )
 
@@ -15113,6 +15151,8 @@ private fun ThreadActionCardView(
         val details = renderCopy.details
         if (card.isIntegrationApproveLoginAction()) {
             ThreadIntegrationLoginActionCardBody(card)
+        } else if (card.usesGenericActionCardPresentation()) {
+            ThreadGenericActionCardBody(card)
         } else if (details.isNotBlank()) {
             Text(
                 text = details,
@@ -15144,6 +15184,46 @@ private fun ThreadActionCardView(
                 shadowOffset = 2.dp,
                 textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
             )
+        }
+    }
+}
+
+@Composable
+private fun ThreadGenericActionCardBody(card: ThreadActionCard) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        val items = card.metadataItems
+        if (items.isEmpty()) {
+            ThreadActionCardMetaLine(
+                label = stringResource(MR.strings.thread_action_card_label_type),
+                value = card.type,
+                labelWidth = 92.dp
+            )
+        } else {
+            items.forEach { item ->
+                ThreadActionCardMetaLine(
+                    label = humanizeActionCardMetadataKey(item.key),
+                    value =
+                        if (item.redacted) {
+                            stringResource(MR.strings.thread_action_card_hidden_value)
+                        } else {
+                            item.value
+                        },
+                    labelWidth = 92.dp
+                )
+            }
+        }
+        if (card.type.equals("integration:update_app_registration", ignoreCase = true)) {
+            ThreadActionCardHintBox(
+                text = stringResource(MR.strings.thread_action_card_legacy_unavailable_hint),
+                italic = false
+            )
+        } else {
+            card.presentationWarning?.takeIf { it.isNotBlank() }?.let { warning ->
+                ThreadActionCardHintBox(text = warning, italic = false)
+            }
         }
     }
 }
@@ -15210,7 +15290,7 @@ private fun ThreadActionCardHintBox(text: String, italic: Boolean) {
 }
 
 @Composable
-private fun ThreadActionCardMetaLine(label: String, value: String) {
+private fun ThreadActionCardMetaLine(label: String, value: String, labelWidth: Dp = 58.dp) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
@@ -15219,7 +15299,7 @@ private fun ThreadActionCardMetaLine(label: String, value: String) {
             text = "$label:",
             style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
-            modifier = Modifier.width(58.dp)
+            modifier = Modifier.width(labelWidth)
         )
         Text(
             text = value,
@@ -15289,7 +15369,10 @@ private fun ThreadActionCard.actionCardVerb(): String =
         "agent:create" -> "Create Agent"
         "channel:add_member" -> "Add Members"
         "integration:approve_agent_login" -> "Approve Login"
-        else -> "Action"
+        "integration:register_app" -> "Register App"
+        "integration:recover_app_owner" -> "Recover Owner"
+        "integration:update_app_registration" -> "Unavailable"
+        else -> "Approve Action"
     }
 
 @Composable
@@ -15299,7 +15382,12 @@ private fun ThreadActionCard.localizedActionCardVerb(): String =
         "agent:create" -> stringResource(MR.strings.thread_action_card_create_agent)
         "channel:add_member" -> stringResource(MR.strings.thread_action_card_add_members)
         "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approve_login)
-        else -> stringResource(MR.strings.thread_action_card_action)
+        "integration:register_app" -> stringResource(MR.strings.thread_action_card_register_app)
+        "integration:recover_app_owner" -> stringResource(MR.strings.thread_action_card_recover_owner)
+        "integration:update_app_registration" -> stringResource(MR.strings.thread_action_card_unavailable)
+        else ->
+            presentationConfirmLabel?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_approve_action)
     }
 
 @Composable
@@ -15307,6 +15395,8 @@ private fun ThreadActionCard.localizedActionCardPendingLabel(): String =
     when (type) {
         "channel:add_member" -> stringResource(MR.strings.thread_action_card_adding)
         "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approving)
+        "integration:register_app",
+        "integration:recover_app_owner" -> stringResource(MR.strings.thread_action_card_approving)
         else -> stringResource(MR.strings.thread_action_card_creating)
     }
 
@@ -15349,7 +15439,20 @@ private fun ThreadActionCard.localizedActionCardTitle(): String =
                 agent.removePrefix("@")
             )
         }
-        else -> localizedActionCardVerb()
+        "integration:register_app" -> {
+            val appName = name.takeIf { it.isNotBlank() }
+                ?: clientName?.takeIf { it.isNotBlank() }
+                ?: clientKey?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_app)
+            stringResource(MR.strings.thread_action_card_title_register_app, appName)
+        }
+        "integration:recover_app_owner" ->
+            stringResource(MR.strings.thread_action_card_title_recover_owner)
+        "integration:update_app_registration" ->
+            stringResource(MR.strings.thread_action_card_unavailable)
+        else ->
+            presentationTitle?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_title_generic, humanizeActionCardType(type))
     }
 
 @Composable
@@ -15399,6 +15502,8 @@ private fun ThreadActionCard.actionCardPendingLabel(): String =
     when (type) {
         "channel:add_member" -> "Adding..."
         "integration:approve_agent_login" -> "Approving..."
+        "integration:register_app",
+        "integration:recover_app_owner" -> "Approving..."
         else -> "Creating..."
     }
 
@@ -15408,6 +15513,8 @@ private fun ThreadActionCard.actionCardSuccessToast(): String =
         "agent:create" -> "Agent created"
         "channel:add_member" -> "Members added"
         "integration:approve_agent_login" -> "Login approved"
+        "integration:register_app" -> "Connected App created"
+        "integration:recover_app_owner" -> "Connected App owner recovered"
         else -> "Action completed"
     }
 
@@ -15417,6 +15524,8 @@ private fun ThreadActionCard.actionCardFailureToast(): String =
         "agent:create" -> "Unable to create agent"
         "channel:add_member" -> "Unable to add members"
         "integration:approve_agent_login" -> "Unable to approve login"
+        "integration:register_app" -> "Unable to create Connected App"
+        "integration:recover_app_owner" -> "Unable to recover Connected App owner"
         else -> "Unable to complete action"
     }
 
@@ -15433,7 +15542,10 @@ private fun ThreadActionCard.actionCardTitle(): String =
             val agent = agentName?.takeIf { it.isNotBlank() } ?: name.takeIf { it.isNotBlank() } ?: "agent"
             "Approve $service for @${agent.removePrefix("@")}"
         }
-        else -> actionCardVerb()
+        "integration:register_app" -> "Register Connected App ${name.ifBlank { clientName ?: clientKey ?: "app" }}"
+        "integration:recover_app_owner" -> "Recover Connected App owner"
+        "integration:update_app_registration" -> "Unavailable"
+        else -> "Approve ${humanizeActionCardType(type)}"
     }
 
 private fun ThreadActionCard.actionCardDetails(): String =
@@ -15465,6 +15577,53 @@ internal fun ThreadActionCard.actionCardDraftHint(): String? =
 
 private fun ThreadActionCard.isIntegrationApproveLoginAction(): Boolean =
     type.equals("integration:approve_agent_login", ignoreCase = true)
+
+private fun ThreadActionCard.usesGenericActionCardPresentation(): Boolean =
+    !type.equals("channel:create", ignoreCase = true) &&
+        !type.equals("agent:create", ignoreCase = true) &&
+        !type.equals("channel:add_member", ignoreCase = true) &&
+        !isIntegrationApproveLoginAction()
+
+internal fun humanizeActionCardMetadataKey(raw: String): String {
+    val clean = raw.trim()
+    val words =
+        buildString {
+            clean.forEachIndexed { index, char ->
+                when {
+                    char == '_' || char == '-' || char == '.' -> append(' ')
+                    char.isUpperCase() && index > 0 && clean[index - 1].isLowerCase() -> {
+                        append(' ')
+                        append(char)
+                    }
+                    else -> append(char)
+                }
+            }
+        }.trim().replace(Regex("\\s+"), " ")
+    return words
+        .split(' ')
+        .filter { it.isNotBlank() }
+        .mapIndexed { index, word ->
+            when (word.lowercase()) {
+                "url" -> "URL"
+                "id" -> "ID"
+                "uuid" -> "UUID"
+                "api" -> "API"
+                "oauth" -> "OAuth"
+                else -> {
+                    val normalized = word.lowercase()
+                    if (index == 0) {
+                        normalized.replaceFirstChar { first -> first.titlecase() }
+                    } else {
+                        normalized
+                    }
+                }
+            }
+        }
+        .joinToString(" ")
+}
+
+internal fun humanizeActionCardType(raw: String): String =
+    humanizeActionCardMetadataKey(raw.substringAfter(':', raw))
 
 private fun integrationScopeDescription(scope: String): String =
     when (scope.trim().lowercase()) {
@@ -15506,6 +15665,12 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
                     else -> "Login approved"
                 }
             }
+            "integration-app-registration" ->
+                resultName?.takeIf { it.isNotBlank() }
+                    ?: name.takeIf { it.isNotBlank() }
+                    ?: clientName?.takeIf { it.isNotBlank() }
+            "integration-app-owner-recovery" ->
+                resultName?.takeIf { it.isNotBlank() }
             else -> null
         }
         if (!result.isNullOrBlank()) {
@@ -15544,6 +15709,12 @@ private fun ThreadActionCard.localizedActionCardCommittedLabel(): String {
                     else -> stringResource(MR.strings.thread_action_card_login_approved)
                 }
             }
+            "integration-app-registration" ->
+                resultName?.takeIf { it.isNotBlank() }
+                    ?: name.takeIf { it.isNotBlank() }
+                    ?: clientName?.takeIf { it.isNotBlank() }
+            "integration-app-owner-recovery" ->
+                resultName?.takeIf { it.isNotBlank() }
             else -> null
         }
     return when {

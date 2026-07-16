@@ -72,6 +72,7 @@ import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardMetadataItem
 import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadReplySummariesSnapshot
@@ -4872,6 +4873,96 @@ class SharedThreadStoreTest {
             listOf("""POST actions/m-card/execute body={"expectedState":"prepared"}"""),
             actionCardsApi.calls
         )
+    }
+
+    @Test
+    fun genericRegisterAppActionCardExecutesThroughServerAuthority() = runBlocking {
+        val actionCardsApi =
+            RecordingActionCardsApi(
+                executeResponse =
+                    HomeNetworkResponse(
+                        code = 200,
+                        bodyText =
+                            """
+                            {
+                              "messageId":"m-register",
+                              "metadata":{
+                                "kind":"action-card",
+                                "state":"executed",
+                                "executedByUserName":"artin",
+                                "action":{
+                                  "type":"integration:register_app",
+                                  "name":"Build Monitor",
+                                  "returnUrl":"https://build.example/oauth/callback",
+                                  "scopes":["identity","profile"]
+                                },
+                                "result":{
+                                  "kind":"integration-app-registration",
+                                  "mode":"register",
+                                  "clientId":"client-1",
+                                  "clientKey":"build-monitor",
+                                  "clientName":"Build Monitor",
+                                  "returnUrl":"https://build.example/oauth/callback",
+                                  "scopes":["identity","profile"]
+                                }
+                              }
+                            }
+                            """.trimIndent()
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card =
+            ThreadActionCard(
+                type = "integration:register_app",
+                name = "Build Monitor",
+                metadataItems =
+                    listOf(
+                        ThreadActionCardMetadataItem(
+                            key = "returnUrl",
+                            value = "https://build.example/oauth/callback"
+                        )
+                    )
+            )
+
+        val result = dataSource.commitThreadActionCard(basePayload(), "m-register", card)
+        val executedCard = (result as DataResult.Content).data
+
+        assertEquals("executed", executedCard.state)
+        assertEquals("integration-app-registration", executedCard.resultKind)
+        assertEquals("client-1", executedCard.resultId)
+        assertEquals("Build Monitor", executedCard.resultName)
+        assertEquals("artin", executedCard.executedByUserName)
+        assertEquals(
+            listOf("""POST actions/m-register/execute body={"expectedState":"prepared"}"""),
+            actionCardsApi.calls
+        )
+    }
+
+    @Test
+    fun retiredUpdateRegistrationCardDoesNotCallGenericExecute() = runBlocking {
+        val actionCardsApi = RecordingActionCardsApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+
+        val result =
+            dataSource.commitThreadActionCard(
+                basePayload(),
+                "m-update",
+                ThreadActionCard(type = "integration:update_app_registration")
+            )
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("action_card_unsupported", result.error.code)
+        assertTrue(actionCardsApi.calls.isEmpty())
     }
 
     @Test
