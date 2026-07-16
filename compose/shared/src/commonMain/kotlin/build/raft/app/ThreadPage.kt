@@ -9479,7 +9479,11 @@ private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): Str
 internal fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
     when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> false
-        KuiklyThreadSurfaceKind.ReplyThread -> false
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            typedReplyParentConversationKindOrNull(
+                parentSurfaceKind,
+                parentChannelKind
+            ) == ConversationKind.Joint
         else -> memberScopedMentions
     }
 
