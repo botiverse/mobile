@@ -1,6 +1,6 @@
 # Canonical message V2 implementation tracker
 
-Status: **freeze v0.2 — canonical exact review pending; no GREEN or activation authorized**
+Status: **freeze v0.3 — canonical exact review pending; no GREEN or activation authorized**
 Mobile owner: HanXin (`#native` task #301)  
 Canonical review owner: Zhao (canonical task #49)  
 Audited mobile baseline: `3fb1b5c5076cc0812303b9b531c6f9b7527c6964`
@@ -99,6 +99,7 @@ data class CanonicalMessageEnvelopeV2(
     val kind: String = "normalized-message-v2",
     val fact: CanonicalMessageNodeV2,
     val context: CanonicalConversationContextV2,
+    val childReplyScope: ReplyScopeRefV2? = null,
     val replyMembership: ReplyMembershipV2? = null,
 )
 
@@ -112,18 +113,22 @@ data class ReplyScopeRefV2(
     val scopeId: String,
 )
 
+sealed interface TopLevelScopeRefV2 {
+    data class Channel(val serverId: String, val scopeId: String) : TopLevelScopeRefV2
+    data class Private(val serverId: String, val scopeId: String) : TopLevelScopeRefV2
+    data class DirectMessage(val serverId: String, val scopeId: String) : TopLevelScopeRefV2
+    data class Joint(val serverId: String, val scopeId: String) : TopLevelScopeRefV2
+}
+
 sealed interface CanonicalConversationContextV2 {
-    data class Channel(val serverId: String, val channelId: String) : CanonicalConversationContextV2
-    data class DirectMessage(val serverId: String, val channelId: String) : CanonicalConversationContextV2
-    data class Joint(val serverId: String, val channelId: String, val peerServerId: String) : CanonicalConversationContextV2
-    data class ThreadParent(
-        val serverId: String,
-        val channelId: String,
-        val replyScope: ReplyScopeRefV2,
+    data class TopLevel(
+        val scope: TopLevelScopeRefV2,
     ) : CanonicalConversationContextV2
-    data class ThreadReply(
-        val serverId: String,
+
+    data class Thread(
         val replyScope: ReplyScopeRefV2,
+        val parentTopLevelScope: TopLevelScopeRefV2,
+        val rootMessageRef: MessageRefV2,
     ) : CanonicalConversationContextV2
 }
 ```
@@ -137,9 +142,15 @@ Shared-fact rules:
 - `reactedByMe`, viewer reaction emojis, read/follow/done and viewer-filtered comment counts are forbidden;
 - raw `commentRef`, raw `threadId` and raw `conversationContext` are forbidden;
 - reply parenthood is typed, never inferred from a relation string or loaded child page;
-- a thread-parent node carries an explicit `ReplyScopeRefV2`; this preserves the current wire semantic where
-  the parent may carry the child-thread anchor while the thread reply itself has `threadId=null`;
-- channel, DM, joint and thread contexts use a closed typed context shape;
+- `TopLevelScopeRefV2` losslessly covers the producer's `channel|private|dm|joint` union; it contains no
+  `peerServerId` because the current producer supplies no such field;
+- `CanonicalConversationContextV2.Thread` preserves the current thread triple: reply scope, parent top-level
+  scope (`parentChannelId + parentChannelType`) and root message (`parentMessageId`);
+- a top-level message may independently carry `childReplyScope`; this preserves the current wire semantic
+  where a parent message has a child-thread anchor while its conversation kind remains channel/private/dm/joint;
+- a thread reply carries `ConversationContextV2.Thread` and a `ReplyMembershipV2`. Their reply scope and root
+  message facts must be exact-equal; mismatch is a named normalization rejection;
+- channel, private, DM, joint and thread contexts use this closed typed shape;
 - embedded refs carry `serverId`, which must match the durable partition;
 - task fields keep their existing separate owner;
 - read/follow/done keep their existing receiver-state owners and are not duplicated into a message overlay.
@@ -172,7 +183,7 @@ V2 authoritative bytes do not contain raw `JsonElement`, opaque canonical JSON, 
 Mechanical closure:
 
 ```text
-normalized node/context DTO == manifest shared-node paths
+normalized node/context/child-scope DTO == manifest shared-node paths
 reply membership DTO == registered Message×Replies paths
 viewer overlay DTO == receiver-private paths
 V1 raw debt ∩ V2 shared paths == empty
@@ -200,7 +211,8 @@ Shared Web/KMP fixtures pin:
 2. minimal full V2 envelope;
 3. versioned reaction viewer overlay;
 4. typed reply membership;
-5. typed thread-parent reply-scope context.
+5. typed top-level context with orthogonal child-reply scope;
+6. typed thread context preserving parent top-level scope + root message.
 
 Set-like collections use a declared canonical sort; semantically ordered collections preserve producer
 order. Unknown, missing or extra authoritative keys fail closed.
@@ -315,7 +327,7 @@ two owners have different authority and restore lifecycles.
 ### A — seam/schema/migration
 
 - parallel V2 DTO/ref/membership/overlay types;
-- manifest-v6 resource skeleton and constants while retaining the v5 reaction tripwire;
+- complete exact manifest-v6 field ledger + stable constants while retaining the v5 reaction tripwire;
 - overlay store interface/table/queries;
 - `2.sqm`, `3.db`, and JDBC/Android/iOS/OHOS compatibility proofs;
 - no production callsite; no V1 byte change.
@@ -374,8 +386,12 @@ Not authorized until A/B shape is frozen by the canonical owner.
 | R35 | fresh/migrated v3 schemas exactly equal | upgrade/install divergence |
 | R36 | eligibility and production binding unchanged | contract phase activates route |
 | R37 | no T4 key/canary route added | rollout smuggled into V2 work |
+| R38 | channel/private/dm/joint/thread producer contexts normalize losslessly | a producer union arm is collapsed or dropped |
+| R39 | thread context preserves reply scope, parent channel id/type, and root message | thread parent triple is truncated |
+| R40 | top-level context and child reply-scope anchor coexist | parent container kind is replaced by `Thread` |
+| R41 | thread context and reply membership must exact-match | duplicate root/scope facts diverge silently |
 
-## Canonical-owner rulings incorporated in v0.2
+## Canonical-owner rulings incorporated in v0.3
 
 The canonical owner ruled:
 
@@ -385,9 +401,12 @@ The canonical owner ruled:
 3. use closed typed action metadata; reject unknown kinds; do not persist forwarded provenance yet;
 4. only reaction overlay has server monotonic `viewerVersion` and may enter the durable overlay;
 5. AttachmentComments is receiver-private typed ReadCache, not shared membership;
-6. full envelope uses schema v6; schema v5 remains the partial reaction tripwire.
+6. full envelope uses schema v6; schema v5 remains the partial reaction tripwire;
+7. conversation context is a lossless two-level model: top-level channel/private/dm/joint scope, or thread
+   with reply scope + parent top-level scope + root message; child reply scope is orthogonal on parent nodes;
+8. Commit A lands the complete exact manifest-v6 ledger, not a skeleton.
 
-Once the canonical owner confirms this exact v0.2 wording, Commit A and Commit B may proceed autonomously to
+Once the canonical owner confirms this exact v0.3 wording, Commit A and Commit B may proceed autonomously to
 one stable exact for terminal review. GREEN remains a separate authorization.
 
 ## Evidence ledger
@@ -396,4 +415,5 @@ one stable exact for terminal review. GREEN remains a separate authorization.
 |---|---|---|
 | 2026-07-16 | RFC staging `9a743b8518472e32135949f9d6f28a8782faa4d7` | route/status audit merged; activation HOLD |
 | 2026-07-16 | mobile baseline `3fb1b5c5076cc0812303b9b531c6f9b7527c6964` | freeze candidate audited; no production change |
-| 2026-07-16 | freeze v0.2 | Zhao rulings incorporated; exact docs review pending |
+| 2026-07-16 | freeze v0.2 | Zhao core rulings incorporated; two wording/model blockers found |
+| 2026-07-16 | freeze v0.3 | lossless context model + complete-manifest topology wording fixed; exact review pending |
