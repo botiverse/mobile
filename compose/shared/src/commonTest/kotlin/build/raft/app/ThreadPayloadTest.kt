@@ -58,6 +58,7 @@ import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.WireActionCardAction
 import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.toWireJsonObject
 import build.raft.app.data.WireAttachment
 import build.raft.app.data.WireMessage
 import build.raft.app.data.WireReaction
