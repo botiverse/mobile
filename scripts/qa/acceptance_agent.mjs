@@ -164,6 +164,8 @@ function preamble(size) {
     "                                                 (focused field marked [FOCUSED])",
     '  {"action":"wait","seconds":<1-10>}             wait for loading',
     '  {"action":"launch"}                            (re)launch the app main activity',
+    '  {"action":"note","milestone":"<3-6 words>","note":"<one-sentence conclusion>"}   record a',
+    "                                                 progress checkpoint reviewers watch live",
     '  {"action":"finish","verdict":"pass|fail","reason":"<what you verified / what failed>",',
     '   "annotations":[{"step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"<short>"}]}',
     "",
@@ -186,6 +188,9 @@ function preamble(size) {
     "  instead of burning the budget; a lost verdict is worse than leftover test data.",
     "- Menu items like Select/multi-select/edit are ENTRANCES, not leaves — open them one",
     "  level before concluding a feature is missing.",
+    "- Use note at each MEANINGFUL milestone (logged in, target page reached, a requirement",
+    "  verified or contradicted) with your conclusion so far — reviewers follow the run live",
+    "  through these. Milestones, not commentary: never two notes in a row, never for taps.",
     "- In finish, include ONE annotations entry per goal requirement: step = the turn whose",
     "  screenshot shows the verified (or missing) region, bounds = that region's uiautomator",
     '  bounds "[x1,y1][x2,y2]" from your dump_ui, label = 3-6 words naming the requirement.',
@@ -250,6 +255,35 @@ function parseAction(text) {
   const m = /\{[\s\S]*\}/.exec(text);
   if (!m) throw new Error("no JSON action in model reply");
   return JSON.parse(m[0]);
+}
+
+// Live checkpoints (artin's ask: the agent records key points + conclusions
+// DURING the run, visible on the Stamp run page as a progress timeline).
+// Reuses the existing evidence channel — kind=checkpoint, seq = turn number
+// (Argus's interface, #proj-quality). The model only ever emits a `note`
+// action; this helper is the sole place that touches STAMP_TOKEN, so the
+// credential never enters model context or evidence. Fire-and-forget: a slow
+// or missing Stamp must never stall or fail the acceptance run.
+const stampPending = [];
+function stampCheckpoint(turn, milestone, note) {
+  const url = process.env.STAMP_URL, token = process.env.STAMP_TOKEN, rc = process.env.STAMP_RUN_CASE_ID;
+  const body = { milestone: redact(String(milestone)).slice(0, 120), note: redact(String(note ?? "")).slice(0, 500), turn, screenshot: `step-${String(Math.max(0, turn)).padStart(2, "0")}.png` };
+  recordSession("checkpoint", body);
+  if (!url || !token || !rc) return "noted (local only — Stamp not configured)";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  stampPending.push(
+    fetch(`${url}/api/agent/run-cases/${rc}/evidence?kind=checkpoint&seq=${turn}&step=${turn}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    }).then(
+      (r) => console.error(`stamp checkpoint turn=${turn} ${r.ok ? "ok" : `http ${r.status}`}`),
+      (e) => console.error(`stamp checkpoint turn=${turn} failed: ${String(e?.message || e).slice(0, 120)}`),
+    ).finally(() => clearTimeout(timer)),
+  );
+  return "noted";
 }
 
 // Bound context growth: only the newest screenshots stay as image blocks;
@@ -373,6 +407,9 @@ async function main() {
     timestamp: Date.now(),
   }];
   logStep({ turn: 0, event: "start", goal: opts.goal, screen: size });
+  // Runner-side automatic milestones bracket the model's self-reported ones
+  // (auto:* prefix distinguishes source on the Stamp timeline).
+  stampCheckpoint(0, "auto:start", opts.goal);
 
   let verdict = null, reason = "", turns = 0;
   const tapAnnotations = [];
@@ -465,6 +502,14 @@ async function main() {
         case "dump_ui": feedback = dumpUi(); break;
         case "wait": await new Promise((r) => setTimeout(r, Math.min(10, Math.max(1, Number(action.seconds) || 2)) * 1000)); break;
         case "launch": adb(["shell", "am", "start", "-n", `${opts.appPackage}/.MainActivity`]); break;
+        case "note": {
+          const milestone = String(action.milestone ?? "").trim();
+          if (!milestone) { feedback = "note needs a non-empty milestone"; break; }
+          // The screenshot the model was looking at when it drew this
+          // conclusion is the previous turn's — same frame logic as taps.
+          feedback = stampCheckpoint(turns - 1, milestone, action.note);
+          break;
+        }
         default: feedback = `unknown action "${action.action}" — use one of the documented actions`;
       }
     } catch (e) {
@@ -532,6 +577,8 @@ async function main() {
   };
   fs.writeFileSync(path.join(opts.out, "usage.json"), JSON.stringify({ ...modelUsage, totalTokens: modelUsage.input + modelUsage.output, model: "MiniMax-M3", perCall: usageDetail }, null, 2));
   fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify(result, null, 2));
+  stampCheckpoint(turns, "auto:verdict", `${verdict}: ${reason}`);
+  await Promise.allSettled(stampPending);
   console.log(JSON.stringify(result, null, 2));
   process.exit(verdict === "pass" ? 0 : verdict === "fail" ? 1 : 2);
 }
