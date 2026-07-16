@@ -599,6 +599,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
           script: |
+            bash -euo pipefail <<'BASH'
             set -euo pipefail
             PACKAGE=build.raft.app.connectedtest
             TEST_PACKAGE=build.raft.app.connectedtest.test
@@ -719,6 +720,7 @@ jobs:
             chain = "|".join(entry[1] for entry in phases)
             assert hashlib.sha256(chain.encode()).hexdigest() == terminal["chainSha256"]
             PY
+            BASH
 
       - name: Upload canonical-final actual-host evidence
         if: always()
