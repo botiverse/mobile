@@ -43,6 +43,7 @@ for f in "$EV"/step-*.png; do
   [ -f "${f%.png}.annotated.png" ] && continue
   [ -f "$f" ] && upload "$f" screenshot
 done
+[ -f "$EV/build-info.json" ] && upload "$EV/build-info.json" build_info
 [ -f "$EV/steps.jsonl" ] && upload "$EV/steps.jsonl" steps_log
 [ -f "$EV/usage.json" ] && upload "$EV/usage.json" usage
 [ -f "$EV/session.jsonl" ] && upload "$EV/session.jsonl" session_log

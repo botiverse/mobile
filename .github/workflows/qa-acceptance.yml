@@ -89,11 +89,40 @@ jobs:
         working-directory: ./compose
         run: ./gradlew --no-daemon --console=plain :androidApp:assembleDebug
 
+      # Every run binds to the exact bits it tested (artin: 每次 run 必须记录
+      # 版本) — commit, branch, APK hash, versionName/Code, auto-extracted here
+      # and shipped through evidence + Stamp (kind=build_info).
+      - name: Write build info
+        run: |
+          apk=$(find compose/androidApp/build/outputs/apk/debug -name '*.apk' | head -1)
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          badging=$("$bt/aapt" dump badging "$apk" 2>/dev/null || true)
+          vn=$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+          vc=$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+          APK="$apk" VN="$vn" VC="$vc" python3 - <<'EOF'
+          import hashlib, json, os
+          apk = os.environ["APK"]
+          info = {
+              "platform": "android",
+              "source_commit": os.environ.get("GITHUB_SHA", ""),
+              "branch": os.environ.get("GITHUB_REF_NAME", ""),
+              "build_run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "apk_sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+              "app_version": os.environ.get("VN", ""),
+              "version_code": os.environ.get("VC", ""),
+          }
+          out = os.path.join(os.path.dirname(apk), "build-info.json")
+          json.dump(info, open(out, "w"), indent=1)
+          print(json.dumps(info))
+          EOF
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: qa-acceptance-apk
-          path: compose/androidApp/build/outputs/apk/debug/*.apk
+          path: |
+            compose/androidApp/build/outputs/apk/debug/*.apk
+            compose/androidApp/build/outputs/apk/debug/build-info.json
           if-no-files-found: error
 
   acceptance:
@@ -170,6 +199,7 @@ jobs:
             adb shell am start -n build.raft.app/.MainActivity
             sleep 8
             mkdir -p qa-evidence
+            cp apks/build-info.json qa-evidence/build-info.json 2>/dev/null || true
             bash scripts/qa/stamp_report.sh claim
             adb logcat -c
             adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
