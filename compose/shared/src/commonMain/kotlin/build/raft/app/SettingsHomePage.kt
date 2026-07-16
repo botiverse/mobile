@@ -155,6 +155,7 @@ import build.raft.app.data.SharedHomeShellStore
 import build.raft.app.data.RealtimeGuardedDomainEventSinks
 import build.raft.app.data.RealtimeShellCallbackGate
 import build.raft.app.data.RealtimeConnectionWitness
+import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
 import build.raft.app.data.RealtimeGrantRecord
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
@@ -2185,7 +2186,7 @@ private fun SlockAppShellChildTabHost(
 }
 
 @Composable
-private fun SlockAppShellContent(
+internal fun SlockAppShellContent(
     pageVisibleTick: Int = 0,
     initialAuthRestoreTick: Int = 0,
     adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState()
@@ -2250,6 +2251,10 @@ private fun SlockAppShellContent(
         remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val appShellRealtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
+    val canonicalFinalLifecycleEffects =
+        remember(sharedStores) {
+            sharedStores.realtimeAuthorityProvider.canonicalFinalLifecycleEffectsOrNull()
+        }
     val realtimeAuthorityFlow =
         remember(sharedStores, storeScope) { sharedStores.realtimeAuthority(storeScope) }
     val realtimeAuthority by realtimeAuthorityFlow.collectAsState()
@@ -2263,6 +2268,76 @@ private fun SlockAppShellContent(
     val appShellAgentDetailStore =
         remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
+    val canonicalFinalSelectedServerId =
+        selectedServerId?.takeIf { it.isNotBlank() }
+            ?: storeScope.initialServerId?.takeIf { it.isNotBlank() }
+    val canonicalFinalDomainGrant =
+        remember(realtimeAuthority, canonicalFinalSelectedServerId) {
+            val serverId = canonicalFinalSelectedServerId
+            if (serverId == null) null else realtimeAuthority?.grant(serverId)
+        }
+    val canonicalFinalUnreadGrants =
+        remember(realtimeAuthority, canonicalFinalSelectedServerId) {
+            realtimeAuthority?.grantsByServer?.values
+                ?.filter { grant -> grant.serverId != canonicalFinalSelectedServerId }
+                ?.sortedBy(RealtimeGrantRecord::serverId)
+                .orEmpty()
+        }
+    val canonicalFinalDomainSlot =
+        remember(canonicalFinalDomainGrant) {
+            canonicalFinalDomainGrant?.let { grant -> grant.scopeLeaseId to grant.serverId }
+        }
+    val canonicalFinalUnreadSlots =
+        remember(canonicalFinalUnreadGrants) {
+            canonicalFinalUnreadGrants.map { grant -> grant.scopeLeaseId to grant.serverId }
+        }
+    var activeAppShellCanonicalFinalSinks by
+        remember { mutableStateOf<RealtimeGuardedDomainEventSinks?>(null) }
+    DisposableEffect(
+        appShellRealtimeDomainEventOwner,
+        canonicalFinalLifecycleEffects,
+        canonicalFinalDomainSlot,
+        canonicalFinalUnreadSlots,
+        canonicalFinalSelectedServerId,
+        selectedServerId,
+    ) {
+        val canonicalFinalDomainHandle =
+            canonicalFinalDomainSlot?.let { (scopeLeaseId, serverId) ->
+                canonicalFinalLifecycleEffects?.mount(
+                    scopeLeaseId = scopeLeaseId,
+                    serverId = serverId,
+                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.AppShellDomain,
+                ) { event ->
+                    val sinksSnapshot = activeAppShellCanonicalFinalSinks ?: throw IllegalStateException()
+                    appShellRealtimeDomainEventOwner.deliverGuardedAppShellDomainFinal(
+                        sinks = sinksSnapshot,
+                        serverId = serverId,
+                        event = event,
+                    )
+                }
+            }
+        val canonicalFinalUnreadHandles =
+            canonicalFinalUnreadSlots.mapNotNull { (scopeLeaseId, serverId) ->
+                canonicalFinalLifecycleEffects?.mount(
+                    scopeLeaseId = scopeLeaseId,
+                    serverId = serverId,
+                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.AppShellHomeUnread,
+                ) { event ->
+                    val sinksSnapshot = activeAppShellCanonicalFinalSinks ?: throw IllegalStateException()
+                    appShellRealtimeDomainEventOwner.deliverGuardedAppShellHomeUnreadFinal(
+                        sinks = sinksSnapshot,
+                        serverId = serverId,
+                        event = event,
+                    )
+                }
+            }
+        onDispose {
+            canonicalFinalUnreadHandles.forEach { handle ->
+                canonicalFinalLifecycleEffects?.dispose(handle)
+            }
+            canonicalFinalLifecycleEffects?.dispose(canonicalFinalDomainHandle)
+        }
+    }
     val navigationStoreScope = remember(storeScope.shellInstanceId, selectedServerId) {
         SlockShellStoreScope.create(
             shellInstanceId = storeScope.shellInstanceId,
@@ -3805,7 +3880,7 @@ private fun SlockAppShellContent(
         appShellRealtimeDomainEventOwner,
         homeShellStore,
         settingsViewModel,
-        bridge
+        bridge,
     ) {
         val sinks =
             RealtimeGuardedDomainEventSinks(
@@ -3858,8 +3933,14 @@ private fun SlockAppShellContent(
                 },
                 log = slockLogger("SlockRealtimeDomain")
             )
+        activeAppShellCanonicalFinalSinks = sinks
         appShellRealtimeDomainEventOwner.registerGuardedSinks(sinks)
-        onDispose { appShellRealtimeDomainEventOwner.unregisterGuardedSinks(sinks) }
+        onDispose {
+            if (activeAppShellCanonicalFinalSinks === sinks) {
+                activeAppShellCanonicalFinalSinks = null
+            }
+            appShellRealtimeDomainEventOwner.unregisterGuardedSinks(sinks)
+        }
     }
 
     DisposableEffect(hostNetworkEvents) {

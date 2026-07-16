@@ -309,6 +309,79 @@ internal sealed interface CurrentGrantMessageShadowCommitOutcome {
     data object LegacyDedupCollision : CurrentGrantMessageShadowCommitOutcome
 }
 
+/** Rich prepared-only disposition. The old [CurrentGrantMessageShadowCommitOutcome] API remains unchanged. */
+internal sealed interface PreparedCurrentGrantMessageCommitDisposition {
+    data object FinalizableCommitted : PreparedCurrentGrantMessageCommitDisposition
+    data object FinalizableDurableNoChange : PreparedCurrentGrantMessageCommitDisposition
+
+    sealed interface LegacyFallback : PreparedCurrentGrantMessageCommitDisposition {
+        data object MissingUpdatedBase : LegacyFallback
+        data object LegacyDedupCollision : LegacyFallback
+        data class DefinitelyPrewrite(val reason: String) : LegacyFallback
+    }
+
+    sealed interface Indeterminate : PreparedCurrentGrantMessageCommitDisposition {
+        data class CommitOutcomeUnknown(val reason: String) : Indeterminate
+        data class PostCommitReadbackFailed(val reason: String) : Indeterminate
+        data class PostCommitReadbackCorrupt(val reason: String) : Indeterminate
+        data class PostCommitPublishFailed(val reason: String) : Indeterminate
+    }
+}
+
+private sealed interface CurrentGrantMessageShadowCommitResult {
+    data object Committed : CurrentGrantMessageShadowCommitResult
+    data object DurableNoChange : CurrentGrantMessageShadowCommitResult
+    data object IgnoredMissingUpdatedBase : CurrentGrantMessageShadowCommitResult
+    data object LegacyDedupCollision : CurrentGrantMessageShadowCommitResult
+    data class PrewriteFailed(val reason: String) : CurrentGrantMessageShadowCommitResult
+    data class CommitOutcomeUnknown(val reason: String) : CurrentGrantMessageShadowCommitResult
+    data class PostCommitReadbackFailed(val reason: String) : CurrentGrantMessageShadowCommitResult
+    data class PostCommitReadbackCorrupt(val reason: String) : CurrentGrantMessageShadowCommitResult
+    data class PostCommitPublishFailed(val reason: String) : CurrentGrantMessageShadowCommitResult
+}
+
+private fun CurrentGrantMessageShadowCommitResult.toLegacyOutcome(): CurrentGrantMessageShadowCommitOutcome =
+    when (this) {
+        CurrentGrantMessageShadowCommitResult.Committed -> CurrentGrantMessageShadowCommitOutcome.Committed
+        CurrentGrantMessageShadowCommitResult.DurableNoChange -> CurrentGrantMessageShadowCommitOutcome.DurableNoChange
+        CurrentGrantMessageShadowCommitResult.IgnoredMissingUpdatedBase ->
+            CurrentGrantMessageShadowCommitOutcome.IgnoredMissingUpdatedBase
+        CurrentGrantMessageShadowCommitResult.LegacyDedupCollision ->
+            CurrentGrantMessageShadowCommitOutcome.LegacyDedupCollision
+        is CurrentGrantMessageShadowCommitResult.PrewriteFailed -> CurrentGrantMessageShadowCommitOutcome.FailedOpen(reason)
+        is CurrentGrantMessageShadowCommitResult.CommitOutcomeUnknown ->
+            CurrentGrantMessageShadowCommitOutcome.FailedOpen(reason)
+        is CurrentGrantMessageShadowCommitResult.PostCommitReadbackFailed ->
+            CurrentGrantMessageShadowCommitOutcome.FailedOpen(reason)
+        is CurrentGrantMessageShadowCommitResult.PostCommitReadbackCorrupt ->
+            CurrentGrantMessageShadowCommitOutcome.FailedOpen(reason)
+        is CurrentGrantMessageShadowCommitResult.PostCommitPublishFailed ->
+            CurrentGrantMessageShadowCommitOutcome.FailedOpen(reason)
+    }
+
+private fun CurrentGrantMessageShadowCommitResult.toPreparedDisposition():
+    PreparedCurrentGrantMessageCommitDisposition =
+    when (this) {
+        CurrentGrantMessageShadowCommitResult.Committed ->
+            PreparedCurrentGrantMessageCommitDisposition.FinalizableCommitted
+        CurrentGrantMessageShadowCommitResult.DurableNoChange ->
+            PreparedCurrentGrantMessageCommitDisposition.FinalizableDurableNoChange
+        CurrentGrantMessageShadowCommitResult.IgnoredMissingUpdatedBase ->
+            PreparedCurrentGrantMessageCommitDisposition.LegacyFallback.MissingUpdatedBase
+        CurrentGrantMessageShadowCommitResult.LegacyDedupCollision ->
+            PreparedCurrentGrantMessageCommitDisposition.LegacyFallback.LegacyDedupCollision
+        is CurrentGrantMessageShadowCommitResult.PrewriteFailed ->
+            PreparedCurrentGrantMessageCommitDisposition.LegacyFallback.DefinitelyPrewrite(reason)
+        is CurrentGrantMessageShadowCommitResult.CommitOutcomeUnknown ->
+            PreparedCurrentGrantMessageCommitDisposition.Indeterminate.CommitOutcomeUnknown(reason)
+        is CurrentGrantMessageShadowCommitResult.PostCommitReadbackFailed ->
+            PreparedCurrentGrantMessageCommitDisposition.Indeterminate.PostCommitReadbackFailed(reason)
+        is CurrentGrantMessageShadowCommitResult.PostCommitReadbackCorrupt ->
+            PreparedCurrentGrantMessageCommitDisposition.Indeterminate.PostCommitReadbackCorrupt(reason)
+        is CurrentGrantMessageShadowCommitResult.PostCommitPublishFailed ->
+            PreparedCurrentGrantMessageCommitDisposition.Indeterminate.PostCommitPublishFailed(reason)
+    }
+
 /**
  * Provider-central current-grant shadow commit lane. A caller already holds the realtime authority registry
  * mutex; this lane adds one process-wide mutex before the SQLDelight transaction, so every owner sharing the
@@ -346,7 +419,27 @@ internal class CurrentGrantMessageShadowCommitLane(
         )
         val fingerprint = CanonicalMessageFoldFingerprint.from(foldInput)
         return mutex.withLock {
-            commitLocked(scope, legacyKey, foldInput, fingerprint)
+            commitLocked(scope, legacyKey, foldInput, fingerprint).toLegacyOutcome()
+        }
+    }
+
+    /**
+     * Prepared T4 entry. Authority and the captured two-flag decision are proven by the provider token before
+     * this method is called, so this API never re-evaluates rollout and cannot return Disabled.
+     */
+    suspend fun commitPrepared(
+        partition: DurablePartitionKey,
+        legacyKey: LegacyRealtimeDedupKey,
+        foldInput: CanonicalMessageFoldInput,
+    ): PreparedCurrentGrantMessageCommitDisposition {
+        val scope = SyncScopeKey(
+            partition = partition,
+            scopeId = foldInput.row.channelId,
+            scopeKind = "channel",
+        )
+        val fingerprint = CanonicalMessageFoldFingerprint.from(foldInput)
+        return mutex.withLock {
+            commitLocked(scope, legacyKey, foldInput, fingerprint).toPreparedDisposition()
         }
     }
 
@@ -355,11 +448,11 @@ internal class CurrentGrantMessageShadowCommitLane(
         legacyKey: LegacyRealtimeDedupKey,
         foldInput: CanonicalMessageFoldInput,
         fingerprint: CanonicalMessageFoldFingerprint,
-    ): CurrentGrantMessageShadowCommitOutcome {
+    ): CurrentGrantMessageShadowCommitResult {
         val initialCell = workingByScope[scope] ?: MessageShadowWorkingCell()
         val observed = initialCell.observedLegacyInputs.firstOrNull { entry -> entry.key == legacyKey }
         if (observed != null && observed.fingerprint.structuralInput != fingerprint.structuralInput) {
-            return CurrentGrantMessageShadowCommitOutcome.LegacyDedupCollision
+            return CurrentGrantMessageShadowCommitResult.LegacyDedupCollision
         }
         var cell = initialCell.copy(
             observedLegacyInputs = touchObserved(initialCell.observedLegacyInputs, legacyKey, fingerprint),
@@ -370,7 +463,7 @@ internal class CurrentGrantMessageShadowCommitLane(
             .orEmpty()
             .firstOrNull { entry -> entry.key == legacyKey }
         if (committed != null && committed.fingerprint.structuralInput != fingerprint.structuralInput) {
-            return CurrentGrantMessageShadowCommitOutcome.LegacyDedupCollision
+            return CurrentGrantMessageShadowCommitResult.LegacyDedupCollision
         }
         if (committed != null && cell.state is MessageShadowWorkingState.Ready) {
             val current = published.value()
@@ -384,13 +477,13 @@ internal class CurrentGrantMessageShadowCommitLane(
                         )),
                 ),
             )
-            return CurrentGrantMessageShadowCommitOutcome.DurableNoChange
+            return CurrentGrantMessageShadowCommitResult.DurableNoChange
         }
 
         val base = when (val state = cell.state) {
             is MessageShadowWorkingState.Ready -> state.snapshot
             is MessageShadowWorkingState.Poisoned ->
-                return CurrentGrantMessageShadowCommitOutcome.FailedOpen("restore_poisoned")
+                return CurrentGrantMessageShadowCommitResult.PrewriteFailed("restore_poisoned")
             MessageShadowWorkingState.Cold,
             is MessageShadowWorkingState.NeedsRestore -> {
                 val restored = try {
@@ -403,7 +496,7 @@ internal class CurrentGrantMessageShadowCommitLane(
                         state = MessageShadowWorkingState.NeedsRestore("restore_failed"),
                         inFlight = null,
                     )
-                    return CurrentGrantMessageShadowCommitOutcome.FailedOpen(
+                    return CurrentGrantMessageShadowCommitResult.PrewriteFailed(
                         throwable::class.simpleName ?: "restore_failed",
                     )
                 }
@@ -413,7 +506,7 @@ internal class CurrentGrantMessageShadowCommitLane(
                             state = MessageShadowWorkingState.Poisoned(restored.corruption),
                             inFlight = null,
                         )
-                        return CurrentGrantMessageShadowCommitOutcome.FailedOpen(
+                        return CurrentGrantMessageShadowCommitResult.PrewriteFailed(
                             "restore_corrupt_${restored.corruption.kind.name}",
                         )
                     }
@@ -438,7 +531,7 @@ internal class CurrentGrantMessageShadowCommitLane(
                 state = MessageShadowWorkingState.Ready(base),
                 inFlight = null,
             )
-            return CurrentGrantMessageShadowCommitOutcome.IgnoredMissingUpdatedBase
+            return CurrentGrantMessageShadowCommitResult.IgnoredMissingUpdatedBase
         }
 
         val currentState = MessageDomainState(channelMessages = mapOf(scope.scopeId to base.facts))
@@ -457,7 +550,7 @@ internal class CurrentGrantMessageShadowCommitLane(
             )
             workingByScope[scope] = ready
             publishCommitted(scope, base, legacyKey, fingerprint)
-            return CurrentGrantMessageShadowCommitOutcome.DurableNoChange
+            return CurrentGrantMessageShadowCommitResult.DurableNoChange
         }
 
         cell = cell.copy(
@@ -473,7 +566,7 @@ internal class CurrentGrantMessageShadowCommitLane(
         val adapter = persistence
         if (adapter == null) {
             workingByScope[scope] = cell.copy(inFlight = null)
-            return CurrentGrantMessageShadowCommitOutcome.FailedOpen("persistence_unavailable")
+            return CurrentGrantMessageShadowCommitResult.PrewriteFailed("persistence_unavailable")
         }
 
         try {
@@ -495,7 +588,7 @@ internal class CurrentGrantMessageShadowCommitLane(
                 state = MessageShadowWorkingState.NeedsRestore("commit_outcome_unknown"),
                 inFlight = null,
             )
-            return CurrentGrantMessageShadowCommitOutcome.FailedOpen(
+            return CurrentGrantMessageShadowCommitResult.CommitOutcomeUnknown(
                 throwable::class.simpleName ?: "commit_failed",
             )
         }
@@ -507,14 +600,14 @@ internal class CurrentGrantMessageShadowCommitLane(
             throw cancellation
         } catch (throwable: Throwable) {
             markNeedsRestore(scope, cell, "post_commit_readback_failed")
-            return CurrentGrantMessageShadowCommitOutcome.FailedOpen(
+            return CurrentGrantMessageShadowCommitResult.PostCommitReadbackFailed(
                 throwable::class.simpleName ?: "readback_failed",
             )
         }
         val committedSnapshot = when (readback) {
             is StrictMessageRestoreResult.Corrupt -> {
                 markNeedsRestore(scope, cell, "post_commit_readback_corrupt")
-                return CurrentGrantMessageShadowCommitOutcome.FailedOpen(
+                return CurrentGrantMessageShadowCommitResult.PostCommitReadbackCorrupt(
                     "readback_corrupt_${readback.corruption.kind.name}",
                 )
             }
@@ -539,7 +632,7 @@ internal class CurrentGrantMessageShadowCommitLane(
             throw cancellation
         } catch (throwable: Throwable) {
             markNeedsRestore(scope, cell, "post_commit_publish_failed")
-            return CurrentGrantMessageShadowCommitOutcome.FailedOpen(
+            return CurrentGrantMessageShadowCommitResult.PostCommitPublishFailed(
                 throwable::class.simpleName ?: "publish_failed",
             )
         }
@@ -547,7 +640,7 @@ internal class CurrentGrantMessageShadowCommitLane(
             state = MessageShadowWorkingState.Ready(committedSnapshot),
             inFlight = null,
         )
-        return CurrentGrantMessageShadowCommitOutcome.Committed
+        return CurrentGrantMessageShadowCommitResult.Committed
     }
 
     private fun publishRestoredSnapshot(

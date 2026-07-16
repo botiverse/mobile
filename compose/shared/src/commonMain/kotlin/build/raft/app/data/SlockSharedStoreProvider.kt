@@ -46,6 +46,8 @@ import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
 import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
+import build.raft.app.network.sync.LegacyRealtimeDedupKey
+import build.raft.app.network.sync.PreparedCurrentGrantMessageCommitDisposition
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
@@ -75,6 +77,7 @@ private const val SHARED_AUTH_LOG_TAG = "SlockSharedAuth"
 // per-client jitter keeps a web deploy from triggering a synchronized spike.
 private const val PixelAvatarRefreshDelayMinMs = 10_000L
 private const val PixelAvatarRefreshDelayMaxMs = 60_000L
+private const val SharedCanonicalFinalSinkCapacity = 64
 
 private fun BridgeModule.logSharedAuthDiagnostic(
     prefix: String,
@@ -108,6 +111,153 @@ private fun sharedErrorLogger(tag: String, prefix: String = ""): (String) -> Uni
         slockLogError(tag, if (prefix.isBlank()) message else "$prefix $message")
     }
 
+private fun logNetworkKmmRemoteConfig(message: String) {
+    if (message.contains("persisted=false")) {
+        sharedErrorLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
+    } else {
+        sharedInfoLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
+    }
+}
+
+internal fun createSharedRealtimeAuthorityProvider(
+    registry: RealtimeAuthorityRegistry,
+    authStore: SlockAuthSessionStore,
+    authEvents: SlockAuthSessionEventSource,
+    diagnosticsLogger: (String) -> Unit = {},
+    canonicalFinalIntegration: RealtimeCanonicalFinalSinkIntegrationSeam? = null,
+): RealtimeAuthorityProvider =
+    RealtimeAuthorityProvider(
+        registry = registry,
+        authStore = authStore,
+        authEvents = authEvents,
+        diagnosticsLogger = diagnosticsLogger,
+        canonicalFinalIntegration = canonicalFinalIntegration,
+    )
+
+internal fun createSharedRealtimeDomainEventOwner(
+    tasksDataStore: SharedTasksDataStore?,
+    cursorStore: RealtimeAppliedSeqCursorStore?,
+    authorityProvider: RealtimeAuthorityProvider,
+    currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane,
+): SharedRealtimeDomainEventOwner =
+    SharedRealtimeDomainEventOwner(
+        tasksDataStore = tasksDataStore,
+        cursorStore = cursorStore,
+        runIfCurrentGrant = authorityProvider::runIfCurrentGrant,
+        runWithCurrentMessageGrant = authorityProvider::runWithCurrentMessageGrant,
+        canonicalFinalOwnerGateway = authorityProvider.canonicalFinalOwnerGatewayOrNull(),
+    ).also { owner ->
+        owner.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
+    }
+
+internal fun interface SlockSharedCanonicalFinalIntegrationFactory {
+    fun create(
+        scope: SlockSharedCanonicalFinalIntegrationFactoryScope,
+    ): RealtimeCanonicalFinalSinkIntegrationSeam
+}
+
+/**
+ * Production-owned dependencies for an optional canonical-final integration. The normal provider factory passes
+ * no integration factory, so none of these dormant objects exist in production today. A bound host factory can
+ * only ask this scope to compose the seam from the exact registry/auth/flags/directory/router graph created by the
+ * one full [SlockSharedStoreProvider.create] call; it cannot replace the authority provider or any of its owners.
+ */
+internal class SlockSharedCanonicalFinalIntegrationFactoryScope internal constructor(
+    val registry: RealtimeAuthorityRegistry,
+    val authStore: KeyValueAuthSessionStore,
+    val authEvents: SlockAuthSessionEventSource,
+    val crossProcessAuthEvents: KuiklyAuthSessionEvents,
+    val serverFeatureFlags: SharedServerFeatureFlags,
+    val diagnosticsLogger: (String) -> Unit,
+    val registrationDirectory: RealtimeCanonicalFinalSinkRegistrationDirectory,
+    private val createLazyRouter: () -> RealtimeCanonicalFinalSinkLazyRouter,
+) {
+    fun createIntegration(t4FlagKey: String): RealtimeCanonicalFinalSinkIntegrationSeam =
+        RealtimeCanonicalFinalSinkIntegrationSeam(
+            snapshotForServer = { serverId -> serverFeatureFlags.snapshotFor(ServerId(serverId)) },
+            registrationDirectory = registrationDirectory,
+            t4FlagKey = t4FlagKey,
+            lazyRouterFactory = createLazyRouter,
+        )
+}
+
+internal data class SlockSharedStoreProviderRequest(
+    val eventBus: SlockEventBus,
+    val source: String,
+    val bridge: BridgeModule,
+)
+
+internal fun interface SlockSharedStoreProviderFactory {
+    fun create(request: SlockSharedStoreProviderRequest): SlockSharedStoreProvider
+}
+
+internal class SlockSharedStoreFactoryBindingHandle internal constructor(
+    internal val ownerToken: Any,
+    internal val bindingToken: Any,
+)
+
+internal class SlockSharedStoreRegistryState<T : Any, A>(
+    private val defaultFactory: (A) -> T,
+    private val updateExisting: (T, A) -> Unit,
+) {
+    private data class BoundFactory<A, T : Any>(
+        val token: Any,
+        val factory: (A) -> T,
+    )
+
+    private val lock = SynchronizedObject()
+    private val ownerToken = Any()
+    private var boundFactory: BoundFactory<A, T>? = null
+    private var instance: T? = null
+
+    fun currentOrNull(): T? = synchronized(lock) { instance }
+
+    fun bindFactoryBeforeFirstGet(factory: (A) -> T): SlockSharedStoreFactoryBindingHandle =
+        synchronized(lock) {
+            check(instance == null) { "shared store factory binding is sealed after first get" }
+            val token = Any()
+            boundFactory = BoundFactory(token = token, factory = factory)
+            SlockSharedStoreFactoryBindingHandle(ownerToken = ownerToken, bindingToken = token)
+        }
+
+    fun unbindFactoryBeforeFirstGet(handle: SlockSharedStoreFactoryBindingHandle): Boolean =
+        synchronized(lock) {
+            if (instance != null || handle.ownerToken !== ownerToken) return@synchronized false
+            val current = boundFactory ?: return@synchronized false
+            if (current.token !== handle.bindingToken) return@synchronized false
+            boundFactory = null
+            true
+        }
+
+    fun get(arguments: A): T =
+        synchronized(lock) {
+            instance?.let { current ->
+                updateExisting(current, arguments)
+                return@synchronized current
+            }
+            val created = (boundFactory?.factory ?: defaultFactory)(arguments)
+            instance = created
+            created
+        }
+}
+
+internal class SlockSharedStoreRegistryAccess<T : Any, A>(
+    defaultFactory: (A) -> T,
+    updateExisting: (T, A) -> Unit,
+) {
+    private val state = SlockSharedStoreRegistryState(defaultFactory, updateExisting)
+
+    fun currentOrNull(): T? = state.currentOrNull()
+
+    fun bindFactoryBeforeFirstGet(factory: (A) -> T): SlockSharedStoreFactoryBindingHandle =
+        state.bindFactoryBeforeFirstGet(factory)
+
+    fun unbindFactoryBeforeFirstGet(handle: SlockSharedStoreFactoryBindingHandle): Boolean =
+        state.unbindFactoryBeforeFirstGet(handle)
+
+    fun get(arguments: A): T = state.get(arguments)
+}
+
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
     private val authKeyValueStore: SlockKeyValueStore,
@@ -120,6 +270,8 @@ internal class SlockSharedStoreProvider private constructor(
     val networkClient: SlockNetworkClient,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
+    val serverFeatureFlags: SharedServerFeatureFlags,
+    private val currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -161,14 +313,6 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
 
-    private fun logNetworkKmmRemoteConfig(message: String) {
-        if (message.contains("persisted=false")) {
-            sharedErrorLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
-        } else {
-            sharedInfoLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
-        }
-    }
-
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()
         val environmentId =
@@ -193,25 +337,6 @@ internal class SlockSharedStoreProvider private constructor(
      * server changes (see [selectedServerStore]) — this is what makes `sync_core_messages_v0` traffic
      * appear at `feature-flags/evaluate`. Reads default OFF until resolved, so gated features stay dark.
      */
-    val serverFeatureFlags: SharedServerFeatureFlags =
-        SharedServerFeatureFlags(
-            api = SlockFeatureFlagsNetworkApi(networkClient),
-            diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
-            onEvaluation = { serverId, key, enabled, reason, environmentId, evaluationGeneration ->
-                if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
-                    SlockNetworkKmmRecoveryRemoteFlagBridge
-                        .apply(
-                            environmentId = environmentId,
-                            evaluationGeneration = evaluationGeneration,
-                            serverId = serverId.value,
-                            enabled = enabled,
-                            reason = reason
-                        )
-                        ?.let(::logNetworkKmmRemoteConfig)
-                }
-            },
-        )
-
     /**
      * Flag-gated canonical projection gateway injected into [RealtimeEventMapper]. Off by default
      * (`sync_core_messages_v0`), so it is a single flag lookup on the hot path until the rollout enables it;
@@ -230,29 +355,12 @@ internal class SlockSharedStoreProvider private constructor(
      * The server flag defaults OFF; when enabled, guarded canonical frames synchronously fold, commit, strict
      * read back, and atomically publish before the unchanged legacy continuation runs.
      */
-    private val currentGrantMessageShadowCommitLane =
-        CurrentGrantMessageShadowCommitLane(
-            strictReader = SqlDelightStrictMessageScopeSnapshotReader(sqlDatabase),
-            persistence =
-                DefaultFoldPersistenceAdapter(
-                    runner = SqlDelightFoldPersistTransactionRunner(sqlDatabase),
-                    store = SqlDelightFoldPersistStore(sqlDatabase, now = ::defaultNowMillis),
-                ),
-            isEnabledForServer = { serverId ->
-                serverFeatureFlags.isEnabled(
-                    ServerId(serverId),
-                    SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                )
-            },
-        )
-
     init {
         updateNetworkKmmRecoveryEnvironment()
         // Attach the flag-gated `sync_core_messages_v0` shadow fold+persist lane to the legacy-scope owner.
         // (The owner is constructed in create() before this instance exists, so serverFeatureFlags can only
         // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
-        realtimeDomainEventOwner.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         realtimeAuthorityProvider.start(threadSendScope)
         threadSendScope.launch {
@@ -413,14 +521,13 @@ internal class SlockSharedStoreProvider private constructor(
             realtimeDomainEventOwner
         } else {
             shellRealtimeDomainEventOwners.getOrPut(scope) {
-                SharedRealtimeDomainEventOwner(
+                createSharedRealtimeDomainEventOwner(
                     tasksDataStore = tasksDataStore,
                     cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
-                    runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
-                    runWithCurrentMessageGrant = realtimeAuthorityProvider::runWithCurrentMessageGrant,
+                    authorityProvider = realtimeAuthorityProvider,
+                    currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
-                    it.installCurrentGrantMessageShadowCommitLane(currentGrantMessageShadowCommitLane)
                     it.installReactionShadowLane(buildReactionShadowLane())
                 }
             }
@@ -785,7 +892,12 @@ internal class SlockSharedStoreProvider private constructor(
     }
 
     companion object {
-        fun create(eventBus: SlockEventBus, source: String, bridge: BridgeModule): SlockSharedStoreProvider {
+        fun create(
+            eventBus: SlockEventBus,
+            source: String,
+            bridge: BridgeModule,
+            canonicalFinalIntegrationFactory: SlockSharedCanonicalFinalIntegrationFactory? = null,
+        ): SlockSharedStoreProvider {
             val eventBusRelay = SlockEventBusRelay(eventBus)
             val database = createSlockSqlDatabase(bridge)
             val relationalStore = SqlDelightRelationalStore(database)
@@ -945,20 +1057,85 @@ internal class SlockSharedStoreProvider private constructor(
                     }
                 }
             }
+            val serverFeatureFlags =
+                SharedServerFeatureFlags(
+                    api = SlockFeatureFlagsNetworkApi(networkClient),
+                    diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+                    onEvaluation = { serverId, key, enabled, reason, environmentId, evaluationGeneration ->
+                        if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
+                            SlockNetworkKmmRecoveryRemoteFlagBridge
+                                .apply(
+                                    environmentId = environmentId,
+                                    evaluationGeneration = evaluationGeneration,
+                                    serverId = serverId.value,
+                                    enabled = enabled,
+                                    reason = reason,
+                                )
+                                ?.let(::logNetworkKmmRemoteConfig)
+                        }
+                    },
+                )
+            val currentGrantMessageShadowCommitLane =
+                CurrentGrantMessageShadowCommitLane(
+                    strictReader = SqlDelightStrictMessageScopeSnapshotReader(database),
+                    persistence =
+                        DefaultFoldPersistenceAdapter(
+                            runner = SqlDelightFoldPersistTransactionRunner(database),
+                            store = SqlDelightFoldPersistStore(database, now = ::defaultNowMillis),
+                        ),
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                )
             val threadSendScope = CoroutineScope(SupervisorJob())
+            val realtimeAuthorityDiagnosticsLogger =
+                sharedInfoLogger("RealtimeAuthority", "realtime_authority")
             val realtimeAuthorityRegistry =
                 RealtimeAuthorityRegistry(
                     authRevisionStore = KeyValueRealtimeAuthRevisionStore(authKeyValueStore),
                     processInstanceId =
                         "mobile-${defaultNowMillis()}-${Random.nextLong()}",
-                    diagnosticsLogger = sharedInfoLogger("RealtimeAuthority", "realtime_authority"),
+                    diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
                 )
+            val canonicalFinalIntegration =
+                canonicalFinalIntegrationFactory?.let { factory ->
+                    val registrationDirectory = RealtimeCanonicalFinalSinkRegistrationDirectory()
+                    val canonicalFinalScope = CoroutineScope(SupervisorJob())
+                    factory.create(
+                        SlockSharedCanonicalFinalIntegrationFactoryScope(
+                            registry = realtimeAuthorityRegistry,
+                            authStore = authStore,
+                            authEvents = authStore,
+                            crossProcessAuthEvents = authSessionEvents,
+                            serverFeatureFlags = serverFeatureFlags,
+                            diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
+                            registrationDirectory = registrationDirectory,
+                            createLazyRouter = {
+                                RealtimeCanonicalFinalSinkLazyRouter(
+                                    runIfCurrentGrant = realtimeAuthorityRegistry::runIfCurrentGrant,
+                                    sidecarFactory = {
+                                        RealtimeCanonicalFinalSinkSidecar(
+                                            scope = canonicalFinalScope,
+                                            capacity = SharedCanonicalFinalSinkCapacity,
+                                            runIfCurrentGrant = realtimeAuthorityRegistry::runIfCurrentGrant,
+                                            registrationDirectory = registrationDirectory,
+                                        )
+                                    },
+                                )
+                            },
+                        ),
+                    )
+                }
             val realtimeAuthorityProvider =
-                RealtimeAuthorityProvider(
+                createSharedRealtimeAuthorityProvider(
                     registry = realtimeAuthorityRegistry,
                     authStore = authStore,
                     authEvents = authStore,
-                    diagnosticsLogger = sharedInfoLogger("RealtimeAuthority", "realtime_authority"),
+                    diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
+                    canonicalFinalIntegration = canonicalFinalIntegration,
                 )
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
             // synchronously (before first render), then fire-and-forget a refresh from the
@@ -1030,6 +1207,8 @@ internal class SlockSharedStoreProvider private constructor(
                 networkClient = networkClient,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
+                serverFeatureFlags = serverFeatureFlags,
+                currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
@@ -1066,11 +1245,11 @@ internal class SlockSharedStoreProvider private constructor(
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,
                 realtimeDomainEventOwner =
-                    SharedRealtimeDomainEventOwner(
+                    createSharedRealtimeDomainEventOwner(
                         tasksDataStore = tasksDataStore,
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
-                        runIfCurrentGrant = realtimeAuthorityProvider::runIfCurrentGrant,
-                        runWithCurrentMessageGrant = realtimeAuthorityProvider::runWithCurrentMessageGrant,
+                        authorityProvider = realtimeAuthorityProvider,
+                        currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                     ),
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -1203,6 +1382,7 @@ internal class SharedRealtimeDomainEventOwner(
     private val runIfCurrentGrant: suspend (RealtimeGrantRecord, suspend () -> Unit) -> Boolean = { _, _ -> false },
     private val runWithCurrentMessageGrant:
         (suspend (RealtimeGrantRecord, suspend (CurrentMessageCommitContext) -> Unit) -> Boolean)? = null,
+    private val canonicalFinalOwnerGateway: RealtimeCanonicalFinalOwnerGateway? = null,
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
     private var guardedSinks: RealtimeGuardedDomainEventSinks? = null
@@ -1279,7 +1459,12 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "unknown",
     ): Boolean =
-        runGuardedCanonicalShadowFirst(grant, event, source) { serverId, acceptedEvent, acceptedSource ->
+        runGuardedCanonicalShadowFirst(
+            RealtimeCanonicalFinalOwnerEntry.Selected,
+            grant,
+            event,
+            source,
+        ) { serverId, acceptedEvent, acceptedSource ->
             acceptGuarded(serverId, acceptedEvent, acceptedSource)
         }
 
@@ -1288,7 +1473,12 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "unknown",
     ): Boolean =
-        runGuardedCanonicalShadowFirst(grant, event, source) { serverId, acceptedEvent, acceptedSource ->
+        runGuardedCanonicalShadowFirst(
+            RealtimeCanonicalFinalOwnerEntry.BackgroundUnread,
+            grant,
+            event,
+            source,
+        ) { serverId, acceptedEvent, acceptedSource ->
             acceptGuardedHomeUnreadProjection(serverId, acceptedEvent, acceptedSource)
         }
 
@@ -1298,6 +1488,7 @@ internal class SharedRealtimeDomainEventOwner(
      * run the central canonical shadow lane first, then continue through the unchanged legacy path.
      */
     private suspend fun runGuardedCanonicalShadowFirst(
+        entry: RealtimeCanonicalFinalOwnerEntry,
         grant: RealtimeGrantRecord,
         event: RealtimeEvent,
         source: String,
@@ -1313,36 +1504,85 @@ internal class SharedRealtimeDomainEventOwner(
                 legacyContinuation(grant.serverId, event, source)
             }
         }
+        val legacyKey = event.realtimeDomainKey(grant.serverId)?.let(::LegacyRealtimeDedupKey)
+        val gateway = canonicalFinalOwnerGateway
+        if (gateway != null && legacyKey != null) {
+            return gateway.accept(
+                entry = entry,
+                grant = grant,
+                event = event,
+                source = source,
+                legacyKey = legacyKey,
+                foldInput = foldInput,
+                legacyWithoutT3 = { context ->
+                    legacyContinuation(context.partition.serverId, event, source)
+                },
+                legacyWithCurrentT3 = { context ->
+                    runCurrentGrantMessageShadowThenLegacy(
+                        context = context,
+                        event = event,
+                        source = source,
+                        foldInput = foldInput,
+                        legacyKey = legacyKey,
+                        legacyContinuation = legacyContinuation,
+                    )
+                },
+                commitPrepared = { context ->
+                    currentGrantMessageShadowCommitLane?.commitPrepared(
+                        partition = context.partition,
+                        legacyKey = legacyKey,
+                        foldInput = foldInput,
+                    ) ?: PreparedCurrentGrantMessageCommitDisposition.LegacyFallback.DefinitelyPrewrite(
+                        "lane_unavailable",
+                    )
+                },
+            )
+        }
         return currentMessageRunner(grant) { context ->
-            val lane = currentGrantMessageShadowCommitLane
-            if (lane != null) {
-                val legacyKey = event.realtimeDomainKey(context.partition.serverId)
-                if (legacyKey != null) {
-                    try {
-                        lane.commit(
-                            partition = context.partition,
-                            legacyKey = build.raft.app.network.sync.LegacyRealtimeDedupKey(legacyKey),
-                            foldInput = foldInput,
-                        )
-                    } catch (cancellation: CancellationException) {
-                        throw cancellation
-                    } catch (throwable: Throwable) {
-                        try {
-                            guardedSinks?.log?.invoke(
-                                "current_grant_message_shadow_failed source=$source " +
-                                    "serverId=${context.partition.serverId} " +
-                                    "error=${throwable::class.simpleName ?: "unknown"}"
-                            )
-                        } catch (cancellation: CancellationException) {
-                            throw cancellation
-                        } catch (_: Throwable) {
-                            // Diagnostics are best-effort; a logger failure must not block legacy fail-open.
-                        }
-                    }
+            runCurrentGrantMessageShadowThenLegacy(
+                context = context,
+                event = event,
+                source = source,
+                foldInput = foldInput,
+                legacyKey = legacyKey,
+                legacyContinuation = legacyContinuation,
+            )
+        }
+    }
+
+    private suspend fun runCurrentGrantMessageShadowThenLegacy(
+        context: CurrentMessageCommitContext,
+        event: RealtimeEvent,
+        source: String,
+        foldInput: CanonicalMessageFoldInput,
+        legacyKey: LegacyRealtimeDedupKey?,
+        legacyContinuation: suspend (String, RealtimeEvent, String) -> Unit,
+    ) {
+        val lane = currentGrantMessageShadowCommitLane
+        if (lane != null && legacyKey != null) {
+            try {
+                lane.commit(
+                    partition = context.partition,
+                    legacyKey = legacyKey,
+                    foldInput = foldInput,
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                try {
+                    guardedSinks?.log?.invoke(
+                        "current_grant_message_shadow_failed source=$source " +
+                            "serverId=${context.partition.serverId} " +
+                            "error=${throwable::class.simpleName ?: "unknown"}"
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Diagnostics are best-effort; a logger failure must not block legacy fail-open.
                 }
             }
-            legacyContinuation(context.partition.serverId, event, source)
         }
+        legacyContinuation(context.partition.serverId, event, source)
     }
 
     override fun accept(serverId: String, event: RealtimeEvent, source: String) {
@@ -1464,31 +1704,7 @@ internal class SharedRealtimeDomainEventOwner(
                 )
                 return@forEach
             }
-            acceptedEvent.patchSharedTaskProjection(resolvedServerId)
-            activeSinks?.applyHomeShell?.invoke(resolvedServerId, acceptedEvent)
-            activeSinks?.applySettings?.invoke(resolvedServerId, acceptedEvent)
-            if (acceptedEvent is DirectMessageCreated) {
-                activeSinks?.joinChannel?.invoke(acceptedEvent.channelId.value)
-            }
-            if (acceptedEvent is ServerPlanUpdated) {
-                activeSinks?.log?.invoke(
-                    "shared_realtime_server_plan_updated serverId=${acceptedEvent.serverId.value} plan=${acceptedEvent.plan}"
-                )
-            }
-            if (acceptedEvent is MemberPresenceUpdated && acceptedEvent.kind == build.raft.app.model.MemberKind.Agent) {
-                activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
-            } else if (acceptedEvent.refreshesMemberDetail()) {
-                if (acceptedEvent is RealtimeRefreshRequired) {
-                    activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, acceptedEvent)
-                }
-                activeSinks?.requestMemberDetailRefresh?.invoke()
-            }
-            activeSinks?.emitRouteMarker?.invoke(acceptedEvent)
-            if (acceptedEvent !is MemberPresenceUpdated) {
-                activeSinks?.log?.invoke(
-                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
-                )
-            }
+            deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks)
         }
     }
 
@@ -1507,12 +1723,74 @@ internal class SharedRealtimeDomainEventOwner(
         if (acceptedEvents.isEmpty()) return
         acceptedEvents.forEach { acceptedEvent ->
             if (acceptedEvent !is Heartbeat) {
-                guardedSinks?.applyHomeUnreadProjection?.invoke(resolvedServerId, acceptedEvent)
-                guardedSinks?.log?.invoke(
-                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
-                )
+                guardedSinks?.let { activeSinks ->
+                    deliverGuardedAppShellHomeUnreadFinal(
+                        sinks = activeSinks,
+                        serverId = resolvedServerId,
+                        event = acceptedEvent,
+                        source = source,
+                    )
+                }
             }
         }
+    }
+
+    suspend fun deliverGuardedAppShellDomainFinal(
+        sinks: RealtimeGuardedDomainEventSinks,
+        serverId: String,
+        event: RealtimeEvent,
+        source: String = "canonical_final",
+    ) {
+        deliverGuardedAppShellDomainFinal(serverId, event, source, sinks)
+    }
+
+    private suspend fun deliverGuardedAppShellDomainFinal(
+        serverId: String,
+        event: RealtimeEvent,
+        source: String,
+        activeSinks: RealtimeGuardedDomainEventSinks?,
+    ) {
+        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
+        if (event is Heartbeat) return
+        event.patchSharedTaskProjection(resolvedServerId)
+        activeSinks?.applyHomeShell?.invoke(resolvedServerId, event)
+        activeSinks?.applySettings?.invoke(resolvedServerId, event)
+        if (event is DirectMessageCreated) {
+            activeSinks?.joinChannel?.invoke(event.channelId.value)
+        }
+        if (event is ServerPlanUpdated) {
+            activeSinks?.log?.invoke(
+                "shared_realtime_server_plan_updated serverId=${event.serverId.value} plan=${event.plan}"
+            )
+        }
+        if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
+            activeSinks?.applyAgentActivity?.invoke(event)
+        } else if (event.refreshesMemberDetail()) {
+            if (event is RealtimeRefreshRequired) {
+                activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, event)
+            }
+            activeSinks?.requestMemberDetailRefresh?.invoke()
+        }
+        activeSinks?.emitRouteMarker?.invoke(event)
+        if (event !is MemberPresenceUpdated) {
+            activeSinks?.log?.invoke(
+                "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
+            )
+        }
+    }
+
+    suspend fun deliverGuardedAppShellHomeUnreadFinal(
+        sinks: RealtimeGuardedDomainEventSinks,
+        serverId: String,
+        event: RealtimeEvent,
+        source: String = "canonical_final",
+    ) {
+        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
+        if (event is Heartbeat) return
+        sinks.applyHomeUnreadProjection.invoke(resolvedServerId, event)
+        sinks.log.invoke(
+            "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
+        )
     }
 
     /** Normalized reaction SHADOW observation. No persistence, cache mutation, cursor, or sink output. */
@@ -1696,22 +1974,43 @@ private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<
     }
 
 internal object SlockSharedStoreRegistry {
-    private var provider: SlockSharedStoreProvider? = null
+    private val productionFactory =
+        SlockSharedStoreProviderFactory { request ->
+            SlockSharedStoreProvider.create(
+                eventBus = request.eventBus,
+                source = request.source,
+                bridge = request.bridge,
+            )
+        }
+    private val access =
+        SlockSharedStoreRegistryAccess<SlockSharedStoreProvider, SlockSharedStoreProviderRequest>(
+            defaultFactory = productionFactory::create,
+            updateExisting = { provider, request ->
+                provider.updateEventBus(request.eventBus, request.source)
+            },
+        )
 
-    fun currentOrNull(): SlockSharedStoreProvider? = provider
+    fun currentOrNull(): SlockSharedStoreProvider? = access.currentOrNull()
+
+    fun bindFactoryBeforeFirstGet(
+        factory: SlockSharedStoreProviderFactory,
+    ): SlockSharedStoreFactoryBindingHandle =
+        access.bindFactoryBeforeFirstGet(factory::create)
+
+    fun unbindFactoryBeforeFirstGet(handle: SlockSharedStoreFactoryBindingHandle): Boolean =
+        access.unbindFactoryBeforeFirstGet(handle)
 
     fun get(bridge: BridgeModule): SlockSharedStoreProvider {
         val eventBus = SlockEventBuses.appScope()
         return get(eventBus, "shared-store-provider", bridge)
     }
 
-    fun get(eventBus: SlockEventBus, source: String, bridge: BridgeModule): SlockSharedStoreProvider {
-        provider?.let {
-            it.updateEventBus(eventBus, source)
-            return it
-        }
-        return SlockSharedStoreProvider.create(eventBus, source, bridge).also {
-            provider = it
-        }
-    }
+    fun get(eventBus: SlockEventBus, source: String, bridge: BridgeModule): SlockSharedStoreProvider =
+        access.get(
+            SlockSharedStoreProviderRequest(
+                eventBus = eventBus,
+                source = source,
+                bridge = bridge,
+            ),
+        )
 }
