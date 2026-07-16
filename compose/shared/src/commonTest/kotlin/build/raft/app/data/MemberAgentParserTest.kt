@@ -8,6 +8,7 @@ import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class MemberAgentParserTest {
     @Test
@@ -162,7 +163,12 @@ class MemberAgentParserTest {
     }
 
     @Test
-    fun agentsListFallsBackActiveLifecycleStatusToWorkingLikeWeb() {
+    fun agentsListNeverDerivesLivenessFromActiveLifecycleStatus() {
+        // task #135 regression lock: "active" is the ACCOUNT lifecycle (not
+        // archived/stopped) and stays "active" while the agent's machine is
+        // offline. Without a runtime activity fact liveness is UNKNOWN — the
+        // old fallback ("active" → Working, mirrored from web) rendered every
+        // agent green on the Members page when the machine was down.
         val members = parseSharedSettingsAgentsAsMembers(
             """
             [
@@ -177,8 +183,8 @@ class MemberAgentParserTest {
         )
 
         val profile = assertNotNull(members).single()
-        assertEquals(AgentStatus.Working, profile.agentStatus)
-        assertEquals(Presence.Active, profile.presence)
+        assertNull(profile.agentStatus)
+        assertEquals(Presence.Offline, profile.presence)
     }
 
     @Test
