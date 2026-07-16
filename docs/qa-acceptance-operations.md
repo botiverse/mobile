@@ -73,6 +73,18 @@ consumers keep this in sync:
 
 ## Verdict discipline
 
+- **Verdict before cleanup.** channel-create's rerun verified every
+  requirement, then burned its whole remaining budget hunting for a delete
+  entry and timed out with no verdict (run 29510717612) — the same pattern
+  killed the first edit/archive rounds. Finish the moment the requirements
+  are proven; do cleanup best-effort afterwards and report failures in the
+  reason rather than swallowing the verdict.
+- **Menus are entrances, not leaves.** The whole team mislabeled Forward as
+  platform-pending because the agent enumerated the long-press menu without
+  opening "Select Message" — the Forward entry lives inside the multi-select
+  mode. Descend one level into Select/multi-select/edit items before
+  concluding a feature is missing.
+
 - `pass` only after **every** requirement in the goal is visually confirmed —
   round-2's pass named each: credentials accepted, channel list rows seen,
   channel opened, message list rendered.
