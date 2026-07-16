@@ -1,0 +1,35 @@
+name: Thread-open contract checker selftest
+
+# task #304 frozen-contract requirement: the checker's GREEN/RED fixtures run
+# hosted on every change to the checker or its runner, asserting exit codes,
+# violation substrings, and the §7 JSON shape — reviewers verify the mutation
+# teeth from the run log instead of trusting local claims.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/perf/check_thread_open_contract.mjs"
+      - "scripts/perf/test_thread_open_contract.mjs"
+      - ".github/workflows/checker-selftest.yml"
+  workflow_dispatch: {}
+
+jobs:
+  selftest:
+    name: Fixture assertions (GREEN + RED mutations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run fixture suite
+        run: |
+          mkdir -p checker-fixtures
+          node scripts/perf/test_thread_open_contract.mjs --keep checker-fixtures | tee checker-selftest.txt
+      - name: Upload fixtures and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checker-selftest
+          path: |
+            checker-selftest.txt
+            checker-fixtures
+          if-no-files-found: error
