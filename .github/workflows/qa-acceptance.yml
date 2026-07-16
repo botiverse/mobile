@@ -18,9 +18,6 @@ on:
         description: "Agent turn budget"
         required: false
         default: "30"
-  push:
-    branches: [xishi/qa-acceptance-poc]
-
 env:
   # Login smoke: the default goal for pushes / empty dispatch inputs.
   DEFAULT_GOAL: >-
