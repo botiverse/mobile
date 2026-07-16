@@ -221,14 +221,20 @@ internal class AttachmentDownloadCoordinatorEngine(
         val cancelledBeforeStartReason =
             synchronized(lock) {
                 prunePendingPreStartCancelsLocked(nowMillis())
-                if (deletingTargetOwners[request.targetKey].orEmpty().isNotEmpty()) {
-                    "target_deleted"
-                } else if (pendingPreStartCancels.remove(request.downloadId) != null) {
-                    "cancelled_before_start"
-                } else {
-                    activeByDownloadId.put(request.downloadId, attempt)?.let(replaced::add)
-                    activeByTargetKey.put(request.targetKey, attempt)?.let(replaced::add)
-                    null
+                when {
+                    deletingTargetOwners[request.targetKey].orEmpty().isNotEmpty() ->
+                        "target_deleted"
+                    pendingPreStartCancels.remove(request.downloadId) != null ->
+                        "cancelled_before_start"
+                    activeByTargetKey[request.targetKey]?.isPublishing() == true ->
+                        "target_publishing"
+                    activeByDownloadId[request.downloadId]?.isPublishing() == true ->
+                        "download_publishing"
+                    else -> {
+                        activeByDownloadId.put(request.downloadId, attempt)?.let(replaced::add)
+                        activeByTargetKey.put(request.targetKey, attempt)?.let(replaced::add)
+                        null
+                    }
                 }
             }
         if (cancelledBeforeStartReason != null) {
@@ -707,6 +713,8 @@ private class AttachmentDownloadAttempt(
 
     fun tryAdmitPublishing(): Boolean =
         state.compareAndSet(expect = StateFinishing, update = StatePublishing)
+
+    fun isPublishing(): Boolean = state.value == StatePublishing
 
     private fun finishFailure(errorKind: String, message: String) {
         if (!state.compareAndSet(expect = StateActive, update = StateTerminal)) return

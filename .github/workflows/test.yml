@@ -495,6 +495,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload shared atomic-sink test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-shared-atomic-sink-test-apk
+          path: compose/shared/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload unit test reports
         if: failure()
         uses: actions/upload-artifact@v4
@@ -527,6 +535,18 @@ jobs:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
+      - name: Download shared atomic-sink test APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-shared-atomic-sink-test-apk
+          path: android-shared-atomic-sink-test-apk
+
+      - name: List downloaded APK members
+        run: |
+          find android-connected-test-apks -type f -name '*.apk' -print
+          find android-shared-atomic-sink-test-apk -type f -name '*.apk' -print
+          test "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | wc -l)" -eq 1
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -552,11 +572,10 @@ jobs:
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
             cat first-character-baseline-instrumentation.txt
             grep -Fq 'OK (1 test)' first-character-baseline-instrumentation.txt
-            shared_test_apk="$(find android-connected-test-apks -type f -path '*shared/build/outputs/apk/androidTest/debug/*-androidTest.apk' | head -n 1)"
-            test -n "$shared_test_apk"
-            adb install -r "$shared_test_apk"
-            adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner > attachment-atomic-sink-instrumentation.txt
-            cat attachment-atomic-sink-instrumentation.txt
+            adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
+            adb shell pm list instrumentation | tee attachment-atomic-sink-instrumentation.txt
+            grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-instrumentation.txt
+            adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee -a attachment-atomic-sink-instrumentation.txt
             grep -Fq 'OK (2 tests)' attachment-atomic-sink-instrumentation.txt
 
       - name: Upload instrumentation output

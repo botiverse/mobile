@@ -233,9 +233,54 @@ class AttachmentDownloadCoordinatorRaceTest {
         assertEquals(listOf("complete"), observer.results.map { it.status })
     }
 
-    private fun request() =
+    @Test
+    fun publishingAttemptKeepsTargetOwnershipUntilRenameReturns() {
+        val publishEntered = CountDownLatch(1)
+        val releasePublish = CountDownLatch(1)
+        val oldSink = RaceSink(publishEntered = publishEntered, releasePublish = releasePublish)
+        val rejectedSink = RaceSink()
+        val nextSink = RaceSink()
+        val sinks = mutableListOf(oldSink, rejectedSink, nextSink)
+        val transport = RaceTransport()
+        val oldObserver = RaceObserver()
+        val rejectedObserver = RaceObserver()
+        val nextObserver = RaceObserver()
+        val engine =
+            AttachmentDownloadCoordinatorEngine(
+                transport = transport,
+                sinkFactory = AttachmentDownloadSinkFactory { _, _ -> sinks.removeAt(0) },
+                nowMillis = { 0L }
+            )
+        engine.start(request(), oldObserver)
+        val oldCall = transport.calls.single()
+        oldCall.start(200, 1L)
+        oldCall.chunk(byteArrayOf(1))
+        val completionThread = thread { oldCall.complete(successResponse()) }
+        assertTrue(publishEntered.await(1, TimeUnit.SECONDS))
+
+        engine.start(request(downloadId = "replacement-race"), rejectedObserver)
+
+        assertEquals(1, transport.startCount, "replacement must be rejected before transport while target publishes")
+        assertEquals(0, rejectedSink.writeCount)
+        assertEquals(0, rejectedSink.publishCount)
+        assertEquals(listOf("cancelled"), rejectedObserver.results.map { it.status })
+        assertEquals(listOf("target_publishing"), rejectedObserver.results.map { it.errorKind })
+
+        releasePublish.countDown()
+        completionThread.join(1_000L)
+        assertFalse(completionThread.isAlive)
+        assertEquals(1, oldSink.publishCount)
+        assertEquals(listOf("complete"), oldObserver.results.map { it.status })
+
+        engine.start(request(downloadId = "next-race"), nextObserver)
+        assertEquals(2, transport.startCount, "next generation may start after publishing owner terminals")
+        assertEquals(0, nextSink.publishCount)
+        assertTrue(nextObserver.results.isEmpty())
+    }
+
+    private fun request(downloadId: String = "download-race") =
         AttachmentDownloadRequest(
-            downloadId = "download-race",
+            downloadId = downloadId,
             targetKey = "/cache/final.bin",
             url = "https://example.test/file.bin",
             targetPath = "/cache/final.bin"
