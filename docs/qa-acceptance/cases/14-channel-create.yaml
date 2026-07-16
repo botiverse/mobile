@@ -43,7 +43,7 @@ steps:
   - id: open-create-channel
     goal: "Open the create channel dialog"
     action_category: interact
-    hint: "Look for a '+' button or 'Create Channel' option near the channel list header"
+    hint: "Tap the '+' button at the right end of the CHANNELS section header row, next to the sort arrow icon"
     capture: [screenshot, dump_layout]
 
   - id: enter-channel-name
