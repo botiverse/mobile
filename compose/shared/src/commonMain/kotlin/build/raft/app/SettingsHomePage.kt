@@ -4439,6 +4439,7 @@ internal fun SlockAppShellContent(
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(
                             bridge = bridge,
+                            storeScope = navigationStoreScope,
                             session = readySession,
                             memberRepository = memberRepository,
                             settingsRepository = settingsRepository,
@@ -13444,6 +13445,7 @@ private fun AppShellEmailVerificationGateContent(
 @Composable
 private fun SharedMembersScreen(
     bridge: build.raft.app.base.BridgeModule,
+    storeScope: SlockShellStoreScope,
     session: StoredAuthSession?,
     memberRepository: MemberRepository,
     settingsRepository: SettingsRepository,
@@ -13776,6 +13778,7 @@ private fun SharedMembersScreen(
                             pager.openSlockPage(
                                 pageName = MEMBER_DETAIL_PAGE,
                                 pageData = pageData,
+                                storeScopeOverride = storeScope,
                                 onMissingScope = {
                                     bridge.toast("Unable to open profile")
                                     bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
