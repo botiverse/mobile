@@ -123,6 +123,70 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun composerImageUndoUsesChronologicalHistoryAcrossTextAndPen() {
+        val text = SlockComposerImageTextAnnotation(id = 1, text = "note", position = Offset(20f, 20f))
+        val stroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
+        val afterText =
+            SlockComposerImageEditorHistory().apply(
+                SlockComposerImageEditorContent(textAnnotations = listOf(text))
+            )
+        val afterStroke =
+            afterText.apply(
+                afterText.content.copy(strokes = listOf(stroke))
+            )
+
+        val undone = afterStroke.undo()
+
+        assertEquals(emptyList(), undone.content.strokes)
+        assertEquals(listOf(text), undone.content.textAnnotations)
+        assertTrue(undone.canUndo)
+    }
+
+    @Test
+    fun composerImageUndoRestoresObjectsRemovedByEraserTransaction() {
+        val stroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
+        val text = SlockComposerImageTextAnnotation(id = 1, text = "note", position = Offset(20f, 20f))
+        val original = SlockComposerImageEditorContent(strokes = listOf(stroke), textAnnotations = listOf(text))
+        val beforeErase = SlockComposerImageEditorHistory(content = original)
+        val duringErase = beforeErase.replaceWithoutHistory(SlockComposerImageEditorContent())
+        val afterErase = duringErase.commitTransaction(original)
+
+        val undone = afterErase.undo()
+
+        assertEquals(original, undone.content)
+        assertFalse(undone.canUndo)
+    }
+
+    @Test
+    fun composerImageUndoRestoresContentClearedInOneAction() {
+        val original =
+            SlockComposerImageEditorContent(
+                strokes = listOf(listOf(Offset(10f, 10f), Offset(80f, 10f))),
+                textAnnotations =
+                    listOf(
+                        SlockComposerImageTextAnnotation(
+                            id = 1,
+                            text = "note",
+                            position = Offset(20f, 20f)
+                        )
+                    )
+            )
+        val cleared = SlockComposerImageEditorHistory(content = original).apply(SlockComposerImageEditorContent())
+
+        assertEquals(original, cleared.undo().content)
+    }
+
+    @Test
+    fun composerImageNoOpDoesNotCreateUndoHistory() {
+        val history = SlockComposerImageEditorHistory()
+
+        val unchanged = history.apply(history.content).commitTransaction(history.content)
+
+        assertFalse(unchanged.canUndo)
+        assertEquals(history, unchanged)
+    }
+
+    @Test
     fun imageEditorBottomPaddingUsesSafeAreaWhenKeyboardIsHidden() {
         assertEquals(
             30.dp,

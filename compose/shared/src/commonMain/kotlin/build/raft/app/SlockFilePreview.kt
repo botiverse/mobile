@@ -1242,11 +1242,42 @@ private fun SlockFilePreviewImageEditorSaveButton(
     )
 }
 
-private data class SlockComposerImageTextAnnotation(
+internal data class SlockComposerImageTextAnnotation(
     val id: Int,
     val text: String,
     val position: Offset
 )
+
+internal data class SlockComposerImageEditorContent(
+    val strokes: List<List<Offset>> = emptyList(),
+    val textAnnotations: List<SlockComposerImageTextAnnotation> = emptyList(),
+)
+
+internal data class SlockComposerImageEditorHistory(
+    val content: SlockComposerImageEditorContent = SlockComposerImageEditorContent(),
+    val undoStack: List<SlockComposerImageEditorContent> = emptyList(),
+) {
+    val canUndo: Boolean
+        get() = undoStack.isNotEmpty()
+
+    fun apply(nextContent: SlockComposerImageEditorContent): SlockComposerImageEditorHistory =
+        if (nextContent == content) {
+            this
+        } else {
+            copy(content = nextContent, undoStack = undoStack + content)
+        }
+
+    fun replaceWithoutHistory(nextContent: SlockComposerImageEditorContent): SlockComposerImageEditorHistory =
+        if (nextContent == content) this else copy(content = nextContent)
+
+    fun commitTransaction(origin: SlockComposerImageEditorContent): SlockComposerImageEditorHistory =
+        if (origin == content) this else copy(undoStack = undoStack + origin)
+
+    fun undo(): SlockComposerImageEditorHistory {
+        val previous = undoStack.lastOrNull() ?: return this
+        return copy(content = previous, undoStack = undoStack.dropLast(1))
+    }
+}
 
 @Composable
 private fun SlockFilePreviewComposerImageEditor(
@@ -1256,9 +1287,9 @@ private fun SlockFilePreviewComposerImageEditor(
     initialTool: SlockComposerImageEditorTool = SlockComposerImageEditorTool.Pen,
     modifier: Modifier = Modifier
 ) {
-    var strokes by remember(payload.imageUrl) { mutableStateOf<List<List<Offset>>>(emptyList()) }
+    var editorHistory by remember(payload.imageUrl) { mutableStateOf(SlockComposerImageEditorHistory()) }
     var activeStroke by remember(payload.imageUrl) { mutableStateOf<List<Offset>>(emptyList()) }
-    var textAnnotations by remember(payload.imageUrl) { mutableStateOf<List<SlockComposerImageTextAnnotation>>(emptyList()) }
+    var eraseGestureOrigin by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
     var textDraft by remember(payload.imageUrl) { mutableStateOf("") }
     var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
     var nextTextAnnotationId by remember(payload.imageUrl) { mutableStateOf(0) }
@@ -1274,30 +1305,40 @@ private fun SlockFilePreviewComposerImageEditor(
         }
         tool = nextTool
     }
-    fun eraseAt(point: Offset) {
-        val nextStrokes = slockComposerImageEraseStrokes(strokes, point)
+    fun erasedContentAt(point: Offset): SlockComposerImageEditorContent {
+        val content = editorHistory.content
+        val nextStrokes = slockComposerImageEraseStrokes(content.strokes, point)
         val shouldClearActiveStroke = slockComposerImageStrokeHit(activeStroke, point)
-        val nextTexts = textAnnotations.filterNot { annotation -> annotation.hitTest(point) }
-        if (nextStrokes.size != strokes.size) {
-            strokes = nextStrokes
-        }
+        val nextTexts = content.textAnnotations.filterNot { annotation -> annotation.hitTest(point) }
         if (shouldClearActiveStroke) {
             activeStroke = emptyList()
         }
-        if (nextTexts.size != textAnnotations.size) {
-            textAnnotations = nextTexts
-        }
+        return content.copy(strokes = nextStrokes, textAnnotations = nextTexts)
+    }
+    fun eraseAt(point: Offset, recordHistory: Boolean) {
+        val nextContent = erasedContentAt(point)
+        editorHistory =
+            if (recordHistory) {
+                editorHistory.apply(nextContent)
+            } else {
+                editorHistory.replaceWithoutHistory(nextContent)
+            }
     }
     fun addTextAnnotation() {
         val nextText = textDraft.trim()
         if (nextText.isBlank()) return
-        textAnnotations =
-            textAnnotations +
-                SlockComposerImageTextAnnotation(
-                    id = nextTextAnnotationId,
-                    text = nextText,
-                    position = textPosition
+        editorHistory =
+            editorHistory.apply(
+                editorHistory.content.copy(
+                    textAnnotations =
+                        editorHistory.content.textAnnotations +
+                            SlockComposerImageTextAnnotation(
+                                id = nextTextAnnotationId,
+                                text = nextText,
+                                position = textPosition
+                            )
                 )
+            )
         nextTextAnnotationId += 1
         textDraft = ""
     }
@@ -1318,7 +1359,7 @@ private fun SlockFilePreviewComposerImageEditor(
                             when (tool) {
                                 SlockComposerImageEditorTool.Pen -> Unit
                                 SlockComposerImageEditorTool.Text -> textPosition = position
-                                SlockComposerImageEditorTool.Eraser -> eraseAt(position)
+                                SlockComposerImageEditorTool.Eraser -> eraseAt(position, recordHistory = true)
                             }
                         }
                     }
@@ -1328,21 +1369,40 @@ private fun SlockFilePreviewComposerImageEditor(
                                 when (tool) {
                                     SlockComposerImageEditorTool.Pen -> activeStroke = listOf(start)
                                     SlockComposerImageEditorTool.Text -> textPosition = start
-                                    SlockComposerImageEditorTool.Eraser -> eraseAt(start)
+                                    SlockComposerImageEditorTool.Eraser -> {
+                                        eraseGestureOrigin = editorHistory.content
+                                        eraseAt(start, recordHistory = false)
+                                    }
                                 }
                             },
                             onDragEnd = {
                                 if (tool == SlockComposerImageEditorTool.Pen && activeStroke.size > 1) {
-                                    strokes = strokes + listOf(activeStroke)
+                                    editorHistory =
+                                        editorHistory.apply(
+                                            editorHistory.content.copy(
+                                                strokes = editorHistory.content.strokes + listOf(activeStroke)
+                                            )
+                                        )
+                                } else if (tool == SlockComposerImageEditorTool.Eraser) {
+                                    eraseGestureOrigin?.let { origin ->
+                                        editorHistory = editorHistory.commitTransaction(origin)
+                                    }
                                 }
+                                eraseGestureOrigin = null
                                 activeStroke = emptyList()
                             },
-                            onDragCancel = { activeStroke = emptyList() }
+                            onDragCancel = {
+                                eraseGestureOrigin?.let { origin ->
+                                    editorHistory = editorHistory.replaceWithoutHistory(origin)
+                                }
+                                eraseGestureOrigin = null
+                                activeStroke = emptyList()
+                            }
                         ) { change, _ ->
                             when (tool) {
                                 SlockComposerImageEditorTool.Pen -> activeStroke = activeStroke + change.position
                                 SlockComposerImageEditorTool.Text -> textPosition = change.position
-                                SlockComposerImageEditorTool.Eraser -> eraseAt(change.position)
+                                SlockComposerImageEditorTool.Eraser -> eraseAt(change.position, recordHistory = false)
                             }
                         }
                     },
@@ -1360,7 +1420,7 @@ private fun SlockFilePreviewComposerImageEditor(
                 )
             }
             Canvas(modifier = Modifier.fillMaxSize()) {
-                (strokes + listOf(activeStroke).filter { it.size > 1 }).forEach { stroke ->
+                (editorHistory.content.strokes + listOf(activeStroke).filter { it.size > 1 }).forEach { stroke ->
                     stroke.windowed(2).forEach { segment ->
                         drawLine(
                             color = Color(0xFFFF3B30),
@@ -1372,7 +1432,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     }
                 }
             }
-            textAnnotations.forEach { annotation ->
+            editorHistory.content.textAnnotations.forEach { annotation ->
                 Box(
                     modifier =
                         Modifier
@@ -1454,13 +1514,8 @@ private fun SlockFilePreviewComposerImageEditor(
                     label = stringResource(MR.strings.common_undo),
                     icon = SlockLucideIconName.RotateCcw,
                     selected = false,
-                    enabled = !saving && (strokes.isNotEmpty() || textAnnotations.isNotEmpty()),
-                    onClick = {
-                        when {
-                            textAnnotations.isNotEmpty() -> textAnnotations = textAnnotations.dropLast(1)
-                            strokes.isNotEmpty() -> strokes = strokes.dropLast(1)
-                        }
-                    }
+                    enabled = !saving && editorHistory.canUndo,
+                    onClick = { editorHistory = editorHistory.undo() }
                 )
                 SlockFilePreviewEditorToolButton(
                     label = stringResource(MR.strings.file_preview_toolbar_pen),
@@ -1488,11 +1543,14 @@ private fun SlockFilePreviewComposerImageEditor(
                     icon = SlockLucideIconName.Trash2,
                     selected = false,
                     destructive = true,
-                    enabled = !saving && (strokes.isNotEmpty() || activeStroke.isNotEmpty() || textAnnotations.isNotEmpty()),
+                    enabled =
+                        !saving &&
+                            (editorHistory.content.strokes.isNotEmpty() ||
+                                activeStroke.isNotEmpty() ||
+                                editorHistory.content.textAnnotations.isNotEmpty()),
                     onClick = {
-                        strokes = emptyList()
+                        editorHistory = editorHistory.apply(SlockComposerImageEditorContent())
                         activeStroke = emptyList()
-                        textAnnotations = emptyList()
                         textDraft = ""
                     }
                 )
