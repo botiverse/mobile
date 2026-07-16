@@ -1,6 +1,6 @@
 # Canonical message V2 implementation tracker
 
-Status: **contract freeze in review; no GREEN or activation authorized**  
+Status: **freeze v0.2 — canonical exact review pending; no GREEN or activation authorized**
 Mobile owner: HanXin (`#native` task #301)  
 Canonical review owner: Zhao (canonical task #49)  
 Audited mobile baseline: `3fb1b5c5076cc0812303b9b531c6f9b7527c6964`
@@ -45,7 +45,7 @@ canary work are explicitly excluded.
 
 ## Frozen scope of the next two commits
 
-Subject to canonical-owner review, the next delivery may add only:
+After canonical exact review of this v0.2 tracker, the next delivery may add only:
 
 1. parallel V2 pure-data seams and the exact manifest/golden declarations;
 2. typed discussion identity and membership seams;
@@ -64,9 +64,9 @@ It must not:
 - delete/rewrite the existing V1 durable partition;
 - implement GREEN normalization/apply behavior before the canonical owner freezes this tracker.
 
-## Proposed durable generation boundary
+## Durable generation boundary — frozen
 
-### Recommended: new V2 consumer
+### New V2 consumer
 
 Use:
 
@@ -86,37 +86,45 @@ A realtime incremental frame arriving before that baseline is held and produces 
 `v2_baseline_required` outcome plus one single-flight rebaseline request. It cannot seed an authoritative
 scope and cannot become a canonical commit.
 
-Reusing the V1 consumer would require scope schema-generation metadata, cursor-table rebuilds and mixed-row
-poisoning rules. That alternative remains rejected unless the canonical owner identifies a product need.
+Reusing the V1 consumer is rejected. It would require scope schema-generation metadata, cursor-table rebuilds
+and mixed-row poisoning rules while defeating the already-landed consumer partition.
 
-## Proposed V2 envelope seam
+## Full V2 envelope seam — schema v6
 
 V1 types remain untouched. V2 is parallel:
 
 ```kotlin
 data class CanonicalMessageEnvelopeV2(
-    val schemaVersion: Int = 5,
+    val schemaVersion: Int = 6,
     val kind: String = "normalized-message-v2",
-    val fact: CanonicalDiscussionNodeV2,
-    val membership: CanonicalDiscussionMembershipV2? = null,
+    val fact: CanonicalMessageNodeV2,
+    val context: CanonicalConversationContextV2,
+    val replyMembership: ReplyMembershipV2? = null,
 )
 
-sealed interface CanonicalDiscussionNodeV2 {
-    data class Message(val value: CanonicalMessageNodeV2) : CanonicalDiscussionNodeV2
-    data class Comment(val value: CanonicalCommentNodeV2) : CanonicalDiscussionNodeV2
-}
+data class ReplyMembershipV2(
+    val root: MessageRefV2,
+    val parentScope: ReplyScopeRefV2,
+)
 
-sealed interface CanonicalDiscussionMembershipV2 {
-    data class Reply(
-        val root: MessageRefV2,
-        val parentScope: ParentSyncScopeRefV2,
-    ) : CanonicalDiscussionMembershipV2
+data class ReplyScopeRefV2(
+    val serverId: String,
+    val scopeId: String,
+)
 
-    data class AttachmentComment(
-        val root: AttachmentRefV2,
-        val parentScope: ParentSyncScopeRefV2,
-        val anchor: CommentAnchorV2?,
-    ) : CanonicalDiscussionMembershipV2
+sealed interface CanonicalConversationContextV2 {
+    data class Channel(val serverId: String, val channelId: String) : CanonicalConversationContextV2
+    data class DirectMessage(val serverId: String, val channelId: String) : CanonicalConversationContextV2
+    data class Joint(val serverId: String, val channelId: String, val peerServerId: String) : CanonicalConversationContextV2
+    data class ThreadParent(
+        val serverId: String,
+        val channelId: String,
+        val replyScope: ReplyScopeRefV2,
+    ) : CanonicalConversationContextV2
+    data class ThreadReply(
+        val serverId: String,
+        val replyScope: ReplyScopeRefV2,
+    ) : CanonicalConversationContextV2
 }
 ```
 
@@ -127,15 +135,30 @@ Shared-fact rules:
 
 - full reaction rosters are forbidden; shared reactions are bounded `{emoji,count,previewK}`;
 - `reactedByMe`, viewer reaction emojis, read/follow/done and viewer-filtered comment counts are forbidden;
-- raw `commentRef` is forbidden; surviving semantics become typed node/membership/root/anchor data;
-- reply/comment parenthood is typed, never inferred from a relation string;
+- raw `commentRef`, raw `threadId` and raw `conversationContext` are forbidden;
+- reply parenthood is typed, never inferred from a relation string or loaded child page;
+- a thread-parent node carries an explicit `ReplyScopeRefV2`; this preserves the current wire semantic where
+  the parent may carry the child-thread anchor while the thread reply itself has `threadId=null`;
+- channel, DM, joint and thread contexts use a closed typed context shape;
 - embedded refs carry `serverId`, which must match the durable partition;
 - task fields keep their existing separate owner;
 - read/follow/done keep their existing receiver-state owners and are not duplicated into a message overlay.
 
+### Typed action metadata
+
+V2 authoritative bytes do not contain raw `JsonElement`, opaque canonical JSON, or `Unknown(rawJson)`.
+`actionMetadata` is a closed typed sealed family:
+
+- known `action-card` fields use one exact shared shape;
+- a forwarded bundle is split into a privacy-safe typed shared snapshot and receiver-private provenance;
+- unknown kinds fail normalization with `unsupported_action_metadata_kind` and follow the RFC 043
+  pre-accept/post-accept boundary;
+- forwarded provenance is not durable in either shared facts or viewer overlay in this phase because current
+  producer pointers are viewer-scrubbed/room-stripped and have no monotonic version.
+
 ## Manifest and golden gates
 
-`canonicalMessageManifest.v5.json` becomes the V2 field ledger. Every field/nested shape records:
+`canonicalMessageManifest.v6.json` becomes the full V2 field ledger. Every field/nested shape records:
 
 - exact serialized path and key set;
 - Kotlin/TS type and nullability;
@@ -149,14 +172,27 @@ Shared-fact rules:
 Mechanical closure:
 
 ```text
-normalized node DTO == manifest shared-node paths
-membership DTO == registered (rootKind, relation) paths
+normalized node/context DTO == manifest shared-node paths
+reply membership DTO == registered Message×Replies paths
 viewer overlay DTO == receiver-private paths
 V1 raw debt ∩ V2 shared paths == empty
 ```
 
-Keep schema version `5` and kind `normalized-message-v2`, replacing the partial reaction tripwire only when
-the complete DTO exists.
+The full envelope is `schemaVersion=6`, `kind=normalized-message-v2`. The existing schema-v5 exact tripwire
+continues to describe only `{fact:{reactions}}` during Commit A/B. The v6 decoder explicitly rejects v5;
+the same `(kind,version)` never names two mutually exclusive schemas.
+
+Required manifest ownership entries include:
+
+| Surface | Classification/backing |
+|---|---|
+| typed action-card fields | shared node fact |
+| privacy-safe forwarded snapshot | shared node fact |
+| forwarded provenance/pointers | excluded until a versioned receiver-private producer exists |
+| reaction `{emoji,count,previewK}` | shared node fact |
+| reaction viewer state + `viewerVersion` | ViewerOverlay |
+| ReactionActors | typed ReadCache |
+| AttachmentComments/ref/count | receiver-private typed ReadCache; no shared membership/overlay payload in this phase |
 
 Shared Web/KMP fixtures pin:
 
@@ -164,7 +200,7 @@ Shared Web/KMP fixtures pin:
 2. minimal full V2 envelope;
 3. versioned reaction viewer overlay;
 4. typed reply membership;
-5. typed attachment-comment membership.
+5. typed thread-parent reply-scope context.
 
 Set-like collections use a declared canonical sort; semantically ordered collections preserve producer
 order. Unknown, missing or extra authoritative keys fail closed.
@@ -174,12 +210,14 @@ order. Unknown, missing or extra authoritative keys fail closed.
 | Root × relation | Backing | Durable representation | Invalidation | Commands |
 |---|---|---|---|---|
 | `Message × Replies` | SyncScope | child node carries typed reply membership | own reply-scope epoch | Reply |
-| `Attachment × AttachmentComments` | ReadCache | comment node carries typed attachment membership | parent message-scope epoch | Reply |
+| `Attachment × AttachmentComments` | ReadCache | receiver-private typed read key/page only; no shared membership fact | parent message-scope epoch | Reply |
 | `Message × ReactionActors(emoji)` | ReadCache | typed read key; no roster in node | parent message-scope epoch | Interaction |
 
 Illegal combinations and cross-server membership are unconstructable or fail exact decode. Child pages never
 recompute parent aggregates. `replyCount` and reaction `count/previewK` remain server-authored shared facts;
-viewer-filtered counts remain overlay-only.
+viewer-filtered counts remain outside shared authority. For AttachmentComments, cache miss or a room-stripped
+null is `Unknown` and never clears an independently loaded receiver-private edge/page. Parent-scope epoch
+performs targeted invalidation only.
 
 ## Versioned receiver-private overlay
 
@@ -201,7 +239,6 @@ data class VersionedViewerOverlayV1(
 
 sealed interface ViewerOverlayPayloadV1 {
     data class Reactions(val reactedEmojis: List<String>) : ViewerOverlayPayloadV1
-    data class AttachmentCommentCount(val count: Int) : ViewerOverlayPayloadV1
 }
 ```
 
@@ -214,7 +251,15 @@ Rules:
 - absence/eviction is `Unknown`, not authoritative empty;
 - only receiver-private hydrate, own-mutation ACK or user-room events may author it;
 - channel-room frames always produce zero overlay writes;
-- version is server-authored; clients may not synthesize it from message seq, time or arrival order.
+- reaction `viewerVersion` is server-authored per `(messageId,userId)` and arrives from hydrate, mutation ACK,
+  or user-room `reaction_viewer:updated`; all three sources enter the same version gate;
+- idempotent no-change does not bump `viewerVersion`;
+- clients may not synthesize a version from message seq, time or arrival order;
+- version comparison is scoped to the complete key including principal, consumer and overlay kind;
+- SQLite INTEGER/Long overflow and boundary behavior is fail-closed and RED-pinned.
+
+No attachment-comment count/ref or forwarded provenance payload is allowed in the durable overlay in this
+phase. Those producers have no monotonic version/revision and require separate server prerequisites.
 
 Shared and overlay restore are independent. A valid shared fact may render with an `Unknown` overlay; it does
 not fabricate `false`/zero and does not block shared content.
@@ -258,7 +303,7 @@ two owners have different authority and restore lifecycles.
 3. A server snapshot commits V2 facts/membership/cursor in one existing
    `FoldPersistFrame(rebaseline=true)` transaction.
 4. Pre-baseline realtime holds and requests rebaseline.
-5. Unknown/malformed/non-v5 bytes in the V2 partition poison scope restore and trigger rebaseline; they are
+5. Unknown/malformed/non-v6 bytes in the V2 partition poison scope restore and trigger rebaseline; they are
    never projected through V1.
 6. Crash-before restores the complete prior V2 state; crash-after restores the complete new state.
 7. V1 partitions and durable migration remain untouched.
@@ -270,7 +315,7 @@ two owners have different authority and restore lifecycles.
 ### A — seam/schema/migration
 
 - parallel V2 DTO/ref/membership/overlay types;
-- manifest-v5 resource skeleton and constants;
+- manifest-v6 resource skeleton and constants while retaining the v5 reaction tripwire;
 - overlay store interface/table/queries;
 - `2.sqm`, `3.db`, and JDBC/Android/iOS/OHOS compatibility proofs;
 - no production callsite; no V1 byte change.
@@ -292,7 +337,7 @@ Not authorized until A/B shape is frozen by the canonical owner.
 
 | ID | Required assertion | Anti-implementation killed |
 |---|---|---|
-| R1 | full V2 rejects V1 and partial reaction envelope | partial subtree mislabeled full V2 |
+| R1 | schema-v6 full V2 rejects V1 and schema-v5 partial reaction envelope | partial subtree mislabeled full V2 |
 | R2 | exact keys reject unknown/missing shape | lenient schema drift |
 | R3 | manifest closes every shared DTO path both directions | silent field loss/addition |
 | R4 | each field is shared/overlay/read-cache exactly once | double ownership |
@@ -300,40 +345,50 @@ Not authorized until A/B shape is frozen by the canonical owner.
 | R6 | shared envelope has no roster keys | unbounded V1 debt survives |
 | R7 | reaction bound is 30 and preview bound is 3 | unbounded write amplification |
 | R8 | shared room cannot author viewer overlay | private bit leaks from room frame |
-| R9 | shared envelope has no viewer fields | read/follow/count privacy leak |
-| R10 | raw comment/reply parent fields absent | stringly graph survives |
-| R11 | reply membership survives restore | reply edge lost |
-| R12 | attachment-comment membership survives restore | comment flattened to message |
+| R9 | shared envelope has no viewer fields or forwarded provenance | privacy data leaks into shared authority |
+| R10 | raw `commentRef`/`threadId`/`conversationContext` absent | stringly graph/context survives |
+| R11 | reply membership and thread-parent reply-scope anchor survive restore | reply edge/child-thread anchor lost |
+| R12 | AttachmentComments room-null/cache-miss stays Unknown | receiver-private edge/page is cleared |
 | R13 | illegal root/relation cannot decode | wrong backing/capability accepted |
 | R14 | cross-server membership fails before persistence | server aliasing |
 | R15 | parent rebaseline invalidates read cache | stale child cache survives epoch |
 | R16 | child page cannot recompute parent aggregate | second parent truth |
-| R17 | greater overlay version replaces | arrival order controls state |
-| R18 | lower overlay version is named no-op | viewer rollback |
-| R19 | equal-version/different-payload fail-stops | producer conflict hidden |
-| R20 | missing overlay is Unknown | cache miss clears viewer state |
-| R21 | overlay is principal+consumer partitioned | cross-account restore leak |
-| R22 | overlay compare+write is one transaction | version/payload tear |
-| R23 | V2 consumer never reads V1 facts/cursor | reverse projection/mixed decode |
-| R24 | first V2 incremental frame requires baseline | incomplete history becomes authority |
-| R25 | snapshot commits facts/membership/cursor once | generation tear |
-| R26 | restore rejects malformed/mixed envelope | poison row silently dropped |
-| R27 | rebaseline crash-before/after is complete | half-cleared scope |
-| R28 | DB v2→v3 preserves rows/definitions | migration erases durable data |
-| R29 | every DDL failure rolls back; retry succeeds | non-atomic migration |
-| R30 | fresh/migrated v3 schemas exactly equal | upgrade/install divergence |
-| R31 | eligibility and production binding unchanged | contract phase activates route |
-| R32 | no T4 key/canary route added | rollout smuggled into V2 work |
+| R17 | reaction hydrate/ACK/user-room sources use one version gate | source-specific last-write behavior |
+| R18 | greater overlay version replaces | arrival order controls state |
+| R19 | lower overlay version is named no-op | viewer rollback |
+| R20 | equal-version/different-payload fail-stops | producer conflict hidden |
+| R21 | missing overlay is Unknown | cache miss clears viewer state |
+| R22 | overlay key includes principal/consumer/overlayKind | cross-account/family restore leak |
+| R23 | overlay compare+write is one transaction | version/payload tear |
+| R24 | SQLite Long boundary rejects overflow/wrap | version order wraps or truncates |
+| R25 | room reaction frame produces zero overlay writes | room broadcast authors private state |
+| R26 | unsupported action kind is named rejection | raw/unknown JSON becomes authority |
+| R27 | forwarded provenance enters neither shared nor overlay bytes | unversioned private provenance persists |
+| R28 | V2 consumer never reads V1 facts/cursor | reverse projection/mixed decode |
+| R29 | first V2 incremental frame requires baseline | incomplete history becomes authority |
+| R30 | snapshot commits facts/reply membership/context/cursor once | generation tear |
+| R31 | restore rejects malformed/mixed/non-v6 envelope | poison row silently dropped |
+| R32 | rebaseline crash-before/after is complete | half-cleared scope |
+| R33 | DB v2→v3 preserves rows/definitions | migration erases durable data |
+| R34 | every DDL failure rolls back; retry succeeds | non-atomic migration |
+| R35 | fresh/migrated v3 schemas exactly equal | upgrade/install divergence |
+| R36 | eligibility and production binding unchanged | contract phase activates route |
+| R37 | no T4 key/canary route added | rollout smuggled into V2 work |
 
-## Pending canonical-owner rulings
+## Canonical-owner rulings incorporated in v0.2
 
-No GREEN starts until these are resolved:
+The canonical owner ruled:
 
-1. new `sync-core.messages.v2` consumer versus same-consumer schema tagging;
-2. whether `threadId`/`conversationContext` fully move to typed membership/context;
-3. whether `actionMetadata` becomes typed sealed data or explicitly opaque canonical JSON;
-4. whether the server supplies monotonic receiver-private overlay versions;
-5. whether attachment-comment membership is shared or receiver-private visibility data.
+1. use new `sync-core.messages.v2`;
+2. remove raw `threadId`/`conversationContext`; use closed typed context/relation and preserve the parent
+   child-thread anchor with `ReplyScopeRefV2`;
+3. use closed typed action metadata; reject unknown kinds; do not persist forwarded provenance yet;
+4. only reaction overlay has server monotonic `viewerVersion` and may enter the durable overlay;
+5. AttachmentComments is receiver-private typed ReadCache, not shared membership;
+6. full envelope uses schema v6; schema v5 remains the partial reaction tripwire.
+
+Once the canonical owner confirms this exact v0.2 wording, Commit A and Commit B may proceed autonomously to
+one stable exact for terminal review. GREEN remains a separate authorization.
 
 ## Evidence ledger
 
@@ -341,4 +396,4 @@ No GREEN starts until these are resolved:
 |---|---|---|
 | 2026-07-16 | RFC staging `9a743b8518472e32135949f9d6f28a8782faa4d7` | route/status audit merged; activation HOLD |
 | 2026-07-16 | mobile baseline `3fb1b5c5076cc0812303b9b531c6f9b7527c6964` | freeze candidate audited; no production change |
-
+| 2026-07-16 | freeze v0.2 | Zhao rulings incorporated; exact docs review pending |
