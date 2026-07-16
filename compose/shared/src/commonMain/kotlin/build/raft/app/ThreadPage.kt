@@ -8400,6 +8400,7 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
@@ -9152,6 +9153,52 @@ internal fun threadVisualFixture(
                                     "| Submit indicator | PASS | \"Submitted ff504382\" |\n" +
                                     "| No error message | PASS | zero error or retry |\n\n" +
                                     "Trailing paragraph closes the specimen."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES ->
+            // task #1048 / patrol renderer-coverage: escaped backticks and
+            // unpaired tildes were silently dropped by the annotator. The
+            // specimen pins all three shapes so before/after captures show
+            // exactly which characters survive.
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Escaped-backtick / tilde specimen (patrol #1048)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_escapes_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/16 15:05",
+                            messageType = "Chat",
+                            body =
+                                "Type \\` to start a code span.\n\n" +
+                                    "The build takes ~5 minutes on a warm cache.\n\n" +
+                                    "Keep ~~struck words~~ struck, tildes intact."
                         )
                     ),
                 members = emptyList(),
