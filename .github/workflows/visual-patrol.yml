@@ -32,7 +32,11 @@ on:
         default: true
   schedule:
     # A bit after the nightly capture+analysis lands on gh-pages.
+    # Twice daily (artin, #wg-nightly-visual-fix 2026-07-16): the code lenses
+    # (token/glyph/renderer/font) scan source that moves all day; the visual
+    # lens reuses the once-nightly analysis, so its second pass just dedupes.
     - cron: "0 8 * * *"
+    - cron: "0 20 * * *"
 
 permissions:
   contents: read
