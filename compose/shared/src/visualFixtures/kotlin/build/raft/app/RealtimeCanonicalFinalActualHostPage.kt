@@ -7,6 +7,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
@@ -299,6 +300,19 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                 run.registrationSurfaces(provider, standaloneThreadScope.shellInstanceId) ==
                     standaloneThreadSurfaces(run.nonce)
             }
+            val standaloneRouteKey = "actual-host-thread-${run.nonce}"
+            val standaloneOldCoreHandle =
+                run.currentRegistrationHandle(
+                    provider,
+                    standaloneThreadScope,
+                    RealtimeCanonicalFinalSinkSurfaceKey.ThreadCore(standaloneRouteKey),
+                ) ?: error("missing old standalone Thread Core exact handle")
+            val standaloneOldFeatureHandle =
+                run.currentRegistrationHandle(
+                    provider,
+                    standaloneThreadScope,
+                    RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature(standaloneRouteKey),
+                ) ?: error("missing old standalone Thread Feature exact handle")
             val standaloneFirstRegistrations = run.registrationTrace(provider, standaloneThreadScope.shellInstanceId)
             run.emitPhase(
                 codec,
@@ -335,7 +349,6 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                 run.registrationSurfaces(provider, standaloneThreadScope.shellInstanceId) == standaloneThreadSurfaces(run.nonce) &&
                     run.registrationTrace(provider, standaloneThreadScope.shellInstanceId) != standaloneFirstRegistrations
             }
-            val standaloneReplacement = run.registrationTrace(provider, standaloneThreadScope.shellInstanceId)
             check(
                 provider.realtimeAuthorityProvider.authorityFlow(standaloneThreadScope.shellInstanceId).value?.lease?.id ==
                     standaloneFirstAuthority.lease.id,
@@ -347,11 +360,56 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                 phase = "replacement-mounted",
                 scopeKey = standaloneThreadScope.shellInstanceId,
             )
-            standaloneThreadA = false
-            delay(350)
-            check(run.registrationTrace(provider, standaloneThreadScope.shellInstanceId) == standaloneReplacement) {
-                "old standalone Thread dispose must not delete successor surfaces"
+            val staleCoreReplay =
+                provider.realtimeAuthorityProvider.unregisterCanonicalFinalSink(standaloneOldCoreHandle)
+            val staleFeatureReplay =
+                provider.realtimeAuthorityProvider.unregisterCanonicalFinalSink(standaloneOldFeatureHandle)
+            check(!staleCoreReplay && !staleFeatureReplay) {
+                "old standalone Thread exact-handle replay must be rejected after successor mount"
             }
+            standaloneThreadA = false
+            withFrameNanos { }
+            withFrameNanos { }
+            waitUntil("old standalone Thread dispose retains successor surfaces") {
+                val currentCore =
+                    run.currentRegistrationHandle(
+                        provider,
+                        standaloneThreadScope,
+                        RealtimeCanonicalFinalSinkSurfaceKey.ThreadCore(standaloneRouteKey),
+                    )
+                val currentFeature =
+                    run.currentRegistrationHandle(
+                        provider,
+                        standaloneThreadScope,
+                        RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature(standaloneRouteKey),
+                    )
+                run.registrationSurfaces(provider, standaloneThreadScope.shellInstanceId) ==
+                    standaloneThreadSurfaces(run.nonce) &&
+                    currentCore != null &&
+                    currentFeature != null &&
+                    currentCore != standaloneOldCoreHandle &&
+                    currentFeature != standaloneOldFeatureHandle
+            }
+            val standaloneCurrentCoreHandle =
+                run.currentRegistrationHandle(
+                    provider,
+                    standaloneThreadScope,
+                    RealtimeCanonicalFinalSinkSurfaceKey.ThreadCore(standaloneRouteKey),
+                ) ?: error("missing successor standalone Thread Core exact handle after old dispose")
+            val standaloneCurrentFeatureHandle =
+                run.currentRegistrationHandle(
+                    provider,
+                    standaloneThreadScope,
+                    RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature(standaloneRouteKey),
+                ) ?: error("missing successor standalone Thread Feature exact handle after old dispose")
+            run.recordStandaloneDisposeWitness(
+                oldCoreRegistrationId = standaloneOldCoreHandle.registrationId,
+                oldFeatureRegistrationId = standaloneOldFeatureHandle.registrationId,
+                staleCoreReplay = staleCoreReplay,
+                staleFeatureReplay = staleFeatureReplay,
+                currentCoreRegistrationId = standaloneCurrentCoreHandle.registrationId,
+                currentFeatureRegistrationId = standaloneCurrentFeatureHandle.registrationId,
+            )
             run.emitPhase(
                 codec,
                 provider,
@@ -359,6 +417,7 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                 phase = "old-disposed",
                 scopeKey = standaloneThreadScope.shellInstanceId,
             )
+            run.clearStandaloneDisposeWitness()
             standaloneThreadB = false
             waitUntil("standalone Thread component surface disposal") {
                 run.registrationSurfaces(provider, standaloneThreadScope.shellInstanceId).isEmpty()
@@ -1034,6 +1093,7 @@ private class ActualHostRun(
     private var threadParameters = ""
     private val probeViolations = mutableListOf<String>()
     private var latestProbe = ""
+    private var standaloneDisposeWitness = ""
     private var lastDispatchDomainHandle = ""
     private var lastDispatchUnreadHandle = ""
     private var canonicalRouter: RealtimeCanonicalFinalSinkLazyRouter? = null
@@ -1057,6 +1117,24 @@ private class ActualHostRun(
     fun integrationFactoryCount(): Int = synchronized(lock) { integrationFactoryCalls }
     fun recordThreadDataRequest() = synchronized(lock) { threadDataRequests += 1 }
     fun recordThreadUiCallback() = synchronized(lock) { threadUiCallbacks += 1 }
+
+    fun recordStandaloneDisposeWitness(
+        oldCoreRegistrationId: String,
+        oldFeatureRegistrationId: String,
+        staleCoreReplay: Boolean,
+        staleFeatureReplay: Boolean,
+        currentCoreRegistrationId: String,
+        currentFeatureRegistrationId: String,
+    ) = synchronized(lock) {
+        standaloneDisposeWitness =
+            "oc=$oldCoreRegistrationId,of=$oldFeatureRegistrationId," +
+                "rc=$staleCoreReplay,rf=$staleFeatureReplay," +
+                "cc=$currentCoreRegistrationId,cf=$currentFeatureRegistrationId"
+    }
+
+    fun clearStandaloneDisposeWitness() = synchronized(lock) {
+        standaloneDisposeWitness = ""
+    }
 
     fun recordEnvironment(api: String, socket: String, web: String) = synchronized(lock) {
         environment = Triple(api, socket, web)
@@ -1285,6 +1363,9 @@ private class ActualHostRun(
             put("threadDataRequests", threadDataRequests)
             put("threadUiCallbacks", threadUiCallbacks)
             put("probe", latestProbe)
+            if (standaloneDisposeWitness.isNotBlank()) {
+                put("standaloneDisposeWitness", standaloneDisposeWitness)
+            }
             put("apiUrl", env.first)
             put("socketUrl", env.second)
             put("webUrl", env.third)
