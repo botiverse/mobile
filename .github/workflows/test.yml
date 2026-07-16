@@ -582,6 +582,14 @@ jobs:
             grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-instrumentation.txt
             adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee -a attachment-atomic-sink-instrumentation.txt
             grep -Fq 'OK (2 tests)' attachment-atomic-sink-instrumentation.txt
+            adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadCoordinatorRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee attachment-download-runtime-instrumentation.txt
+            grep -Fq 'OK (6 tests)' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=slow_complete' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=cancel_paths' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=pause_resume' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=whole_timeout' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=publishing_replacement' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=generation_safety' attachment-download-runtime-instrumentation.txt
 
       - name: Upload instrumentation output
         if: always()
@@ -591,6 +599,7 @@ jobs:
           path: |
             first-character-baseline-instrumentation.txt
             attachment-atomic-sink-instrumentation.txt
+            attachment-download-runtime-instrumentation.txt
           if-no-files-found: warn
           retention-days: 7
 
