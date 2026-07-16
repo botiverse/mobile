@@ -75,10 +75,18 @@ if (!events.length) {
   process.exit(2);
 }
 
-// Contract A — final recompose count per scope+key (the marker logs
-// monotonically increasing n, so the max seen is the count), plus row
-// re-emissions. Budgets apply to card and body scopes alike.
+// Contract A — per scope+key, two ways a row exceeds budget:
+//   recompositions — max n seen (the counter survives, scope re-executed)
+//   RECREATIONS    — the same key logging n=1 more than once: the subtree was
+//                    DISPOSED and rebuilt (fresh remember counter), a full
+//                    rebuild the max-n metric alone cannot see. Observed live
+//                    on exact dacfc9b3 (采证 run 29492243342): bottom rows
+//                    re-logged n=1 when the mention context flipped 0->6
+//                    before the frame commit.
+// Budgets apply to card and body scopes alike; row-marker re-emissions are a
+// secondary signal with the same budgets.
 const recomposeMax = new Map(); // "scope\x00key" -> max n
+const instanceCount = new Map(); // "scope\x00key" -> count of n=1 lines
 const scopesSeen = new Set();
 const rowLogs = new Map();
 for (const e of events) {
@@ -86,6 +94,7 @@ for (const e of events) {
     scopesSeen.add(e.scope);
     const k = `${e.scope}\x00${e.key}`;
     recomposeMax.set(k, Math.max(recomposeMax.get(k) || 0, e.n));
+    if (e.n === 1) instanceCount.set(k, (instanceCount.get(k) || 0) + 1);
   }
   if (e.kind === "row") rowLogs.set(e.id, (rowLogs.get(e.id) || 0) + 1);
 }
@@ -94,6 +103,8 @@ for (const [sk, n] of recomposeMax) {
   const [scope, key] = sk.split("\x00");
   const budget = tagged.has(key) ? maxTaggedRecompose : maxRecompose;
   if (n > budget) overBudget.push({ scope, key, recompositions: n, budget, signal: "recompose" });
+  const instances = instanceCount.get(sk) || 0;
+  if (instances > budget) overBudget.push({ scope, key, instances, budget, signal: "recreation" });
 }
 for (const [id, n] of rowLogs) {
   const budget = tagged.has(id) ? maxTaggedRecompose : maxRecompose;
