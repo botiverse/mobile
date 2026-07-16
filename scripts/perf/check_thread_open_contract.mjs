@@ -241,9 +241,22 @@ if (rows.length) {
   if (!windowDecls.length) {
     flag("A", "no thread_render_window_declared marker — window membership cannot be verified");
   } else {
-    // membership is judged against the last declaration (refresh declarations
-    // are legal; the final window is what the settled screen shows)
-    const decl = windowDecls[windowDecls.length - 1];
+    // Frozen ②: equivalent refresh declarations are NO-OP — the SAME full
+    // token allows exactly one declaration marker; a duplicate (even with
+    // identical bounds/digest) is RED because it exposes control-plane
+    // re-emission. A real window change must arrive as a NEW windowGeneration
+    // (new token) with its own single declaration.
+    const declsByToken = new Map();
+    for (const d of windowDecls) {
+      const k = tokenKey(d.token);
+      declsByToken.set(k, (declsByToken.get(k) || []).concat(d));
+    }
+    for (const [, ds] of declsByToken) {
+      if (ds.length > 1) flag("A", `duplicate window declaration for the same token (${ds.length}) — equivalent refresh must be no-op`, { lines: ds.map((d) => d.i) });
+    }
+    // membership judged against the committed token's declaration when a
+    // commit exists; otherwise the sole/latest token's declaration
+    const decl = (commitTokenK && declsByToken.get(commitTokenK)?.[0]) || windowDecls[windowDecls.length - 1];
     const declaredDigest = (field(decl.line, "windowKeysDigest") ?? "").toLowerCase();
     const declaredCount = Number(field(decl.line, "windowKeyCount") ?? -1);
     const cardKeys = distinctKeys("card");
