@@ -17,7 +17,7 @@
 - Moved member-roster reads to a process-shared data owner so windows and pages reuse one roster instead of repeatedly refreshing it
 - Reduced main-thread pressure by serializing background Markdown and JSON parsing and optimizing suggestion ranking and page prewarming
 - Made realtime messages, unread state, read receipts, and task status more consistent across Home, Activity, Thread, Tasks, and notifications
-- Expanded Chinese and English localization across Settings, Tasks, Search, channel creation, feedback, and shared dialogs
+- Added and expanded Simplified Chinese translations across more core screens, actions, and status messages
 - Double-tapping the current bottom tab now returns its list to the top; pagination, pull-to-refresh, and server-switch viewport retention are more stable
 
 🐛 **Fixed**
