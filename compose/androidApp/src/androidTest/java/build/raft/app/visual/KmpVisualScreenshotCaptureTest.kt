@@ -2030,32 +2030,55 @@ class KmpVisualScreenshotCaptureTest {
             val blue = android.graphics.Color.blue(color)
             return red <= 72 && green <= 72 && blue <= 72
         }
-        val cornerBorderHits =
+        fun borderBlackHitsNear(x: Int, y: Int): Int {
+            var hits = 0
+            for (dy in -4..4) {
+                for (dx in -4..4) {
+                    val px = (x + dx).coerceIn(0, width - 1)
+                    val py = (y + dy).coerceIn(0, height - 1)
+                    if (isBorderBlack(bitmap.getPixel(px, py))) hits += 1
+                }
+            }
+            return hits
+        }
+        val userCornerBorderHits =
             listOf(
                 bounds[0] to bounds[1],
                 bounds[2] to bounds[1],
                 bounds[0] to bounds[3],
                 bounds[2] to bounds[3]
             ).map { (x, y) ->
-                var hits = 0
                 // The yellow background itself still fills the rectangular
                 // layer bounds when a stale rounded border is retained. The
                 // regression is therefore visible in the black outline: a
                 // square row has border pixels at each geometric corner,
                 // while a rounded outline leaves this tight corner patch
                 // yellow/white and places its arc farther inward.
-                for (dy in -4..4) {
-                    for (dx in -4..4) {
-                        val px = (x + dx).coerceIn(0, width - 1)
-                        val py = (y + dy).coerceIn(0, height - 1)
-                        if (isBorderBlack(bitmap.getPixel(px, py))) hits += 1
-                    }
-                }
-                hits
+                borderBlackHitsNear(x, y)
             }
-        require(cornerBorderHits.all { it >= 4 }) {
+        require(userCornerBorderHits.all { it >= 4 }) {
             "User feedback row retained rounded corners: bounds=${bounds.joinToString()} " +
-                "cornerBorderBlackHits=${cornerBorderHits.joinToString()} area=$bestArea"
+                "cornerBorderBlackHits=${userCornerBorderHits.joinToString()} area=$bestArea"
+        }
+
+        // Depending on retained-view assignment, the stale attachment radius
+        // can land on either the inserted User row or the following Quiver
+        // success row. Find the latter's top outline at the shared center x
+        // and require both top corners to be square as well.
+        val centerX = (bounds[0] + bounds[2]) / 2
+        val quiverTop =
+            requireNotNull(
+                ((bounds[3] + 6).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
+                    isBorderBlack(bitmap.getPixel(centerX, y))
+                }
+            ) { "No Quiver success row top border found below User row" }
+        val quiverTopCornerHits =
+            listOf(bounds[0] to quiverTop, bounds[2] to quiverTop).map { (x, y) ->
+                borderBlackHitsNear(x, y)
+            }
+        require(quiverTopCornerHits.all { it >= 4 }) {
+            "Quiver success row retained rounded corners: userBounds=${bounds.joinToString()} " +
+                "quiverTop=$quiverTop topCornerBorderBlackHits=${quiverTopCornerHits.joinToString()}"
         }
     }
 
