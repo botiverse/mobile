@@ -257,6 +257,14 @@ internal class ComposeHomeActivityVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_activity_hit_target_visual", supportInLocal = true)
+internal class ComposeHomeActivityHitTargetVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityHitTargetVisualContent() }
+    }
+}
+
 @Page("compose_home_create_channel_dialog_visual", supportInLocal = true)
 internal class ComposeHomeCreateChannelDialogVisualPage : BasePager() {
     override fun willInit() {
