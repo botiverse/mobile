@@ -1,0 +1,105 @@
+id: channel-create
+title: "频道管理-创建新频道"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that creating a new channel works end-to-end. User can open the
+  create channel dialog, enter a channel name, and the channel appears
+  in the channel list. Must run in test server only.
+tags: [channels, create, regression]
+timeout_seconds: 120
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+  - type: in_test_server
+    params:
+      note: "Must be in OranixSlockTest server, NOT production"
+
+cleanup:
+  - action: delete_channel
+    params:
+      channel_prefix: "qa-test-create"
+
+steps:
+  - id: open-home
+    goal: "Open the app home screen in the test server"
+    action_category: navigate
+    hint: "Use deeplink: compose_slock_app_shell"
+    capture: [screenshot]
+
+  - id: open-create-channel
+    goal: "Open the create channel dialog"
+    action_category: interact
+    hint: "Look for a '+' button or 'Create Channel' option near the channel list header"
+    capture: [screenshot, dump_layout]
+
+  - id: enter-channel-name
+    goal: "Type a unique channel name with qa-test- prefix"
+    action_category: input
+    hint: "The channel name input field"
+    params:
+      text: "qa-test-create-<timestamp>"
+    capture: [screenshot]
+
+  - id: confirm-create
+    goal: "Confirm channel creation"
+    action_category: interact
+    hint: "Tap 'Create' or 'Submit' button"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-create
+    goal: "Wait for channel to be created"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-channel-list
+    goal: "Verify the new channel appears in the channel list"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: channel-in-list
+    goal: "The newly created channel (qa-test-create-*) appears in the channel list"
+    type: text_present
+    params:
+      text_match_regex: "qa-test-create-"
+    after_step: verify-channel-list
+    severity: critical
+    highlight:
+      description: "The new channel in the channel list"
+      search_text: "qa-test-create-"
+
+  - id: no-create-error
+    goal: "No error messages during channel creation"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(error|failed|invalid|already exists|permission)"
+    after_step: verify-channel-list
+    severity: major
+
+  - id: no-crash-create
+    goal: "App must not crash during channel creation"
+    type: no_crash
+    after_step: verify-channel-list
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Channel lifecycle - create. Channel name uses qa-test- prefix for
+    easy identification and cleanup. Must be in test server only.

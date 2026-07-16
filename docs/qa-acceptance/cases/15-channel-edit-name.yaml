@@ -1,0 +1,122 @@
+id: channel-edit-name
+title: "频道管理-修改频道名称"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that editing a channel name works. User can open channel
+  settings, change the name, and the new name is reflected in the
+  channel list and header. Must run in test server only.
+tags: [channels, edit, regression]
+timeout_seconds: 120
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+  - type: in_test_server
+  - type: channel_exists
+    params:
+      channel_prefix: "qa-test-edit"
+      note: "Create qa-test-edit channel first if not exists"
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open a qa-test- channel"
+    action_category: navigate
+    hint: "Navigate to a channel with qa-test- prefix in the test server"
+    capture: [screenshot]
+
+  - id: open-channel-settings
+    goal: "Open channel settings/info"
+    action_category: interact
+    hint: "Tap the channel name header at the top to open channel info"
+    capture: [screenshot, dump_layout]
+
+  - id: find-edit-name
+    goal: "Find and tap the edit channel name option"
+    action_category: interact
+    hint: "Look for 'Edit Channel', 'Rename', or a pencil icon next to the channel name"
+    capture: [screenshot]
+
+  - id: clear-name
+    goal: "Clear the current channel name"
+    action_category: interact
+    hint: "Select all text in the name field and delete it"
+
+  - id: enter-new-name
+    goal: "Type the new channel name"
+    action_category: input
+    hint: "The channel name edit field"
+    params:
+      text: "qa-test-edit-renamed"
+    capture: [screenshot]
+
+  - id: confirm-rename
+    goal: "Confirm the name change"
+    action_category: interact
+    hint: "Tap 'Save', 'Done', or 'Confirm'"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-rename
+    goal: "Wait for rename to propagate"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-rename
+    goal: "Capture state showing the renamed channel"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: new-name-visible
+    goal: "The channel shows the new name 'qa-test-edit-renamed'"
+    type: text_present
+    params:
+      text: "qa-test-edit-renamed"
+    after_step: verify-rename
+    severity: critical
+    highlight:
+      description: "Channel header or list showing the new name"
+      search_text: "qa-test-edit-renamed"
+
+  - id: old-name-gone
+    goal: "The old channel name is no longer displayed"
+    type: text_absent
+    params:
+      text_match_regex: "qa-test-edit(?!-renamed)"
+    after_step: verify-rename
+    severity: major
+
+  - id: no-rename-error
+    goal: "No error during rename"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(error|failed|permission denied)"
+    after_step: verify-rename
+    severity: major
+
+  - id: no-crash-rename
+    goal: "App must not crash during rename"
+    type: no_crash
+    after_step: verify-rename
+    severity: critical
+
+expected:
+  result: pass
+  notes: "Channel lifecycle - edit name. Must be in test server only."
