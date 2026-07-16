@@ -1,8 +1,9 @@
 package build.raft.app
 
-import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.InboxItem
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
@@ -83,11 +84,21 @@ internal fun resolveOpenRequest(
     // outer channel stream). Rejecting the hit routes the source to the trusted typed
     // rebuild below (Activity rows carry parentChannelKind), or an honest Pending — never
     // a guessed parent surface, regardless of source.
-    val projection =
+    val directProjection =
         projectionHit?.takeIf { hit ->
             !sourceMessageIdentity.isThreadShaped() ||
                 hit.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
         }
+    val localReplyResolution =
+        if (directProjection == null) {
+            conversationDirectory.resolveLocalReplyProjection(
+                serverId = serverId,
+                sourceMessageIdentity = sourceMessageIdentity
+            )
+        } else {
+            LocalReplyProjectionResolution()
+        }
+    val projection = directProjection ?: localReplyResolution.projection
     // Two-tier drop (t5/#419): a projection that resolved but whose reply-thread parent shape
     // is untrustworthy (builder returned null) may only be reconstructed from a trusted typed
     // parentConversationKind on the source; otherwise it stays unresolved and must NOT fall
@@ -101,7 +112,11 @@ internal fun resolveOpenRequest(
                 ?.conversationKind
     val conversation =
         projection?.toThreadLaunchConversationIdentity(conversationDirectory)
-            ?: sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
+            ?: if (localReplyResolution.conflict) {
+                null
+            } else {
+                sourceMessageIdentity.toThreadLaunchConversationIdentity(authoritativeParentKind)
+            }
     val resolution =
         if (conversation == null) {
             ConversationOpenResolution.Pending(
@@ -109,6 +124,7 @@ internal fun resolveOpenRequest(
                 reason =
                     when {
                         projection != null -> "thread_parent_unresolved"
+                        localReplyResolution.conflict -> "thread_projection_conflict"
                         projectionHit != null -> "thread_identity_projection_ineligible"
                         else -> "conversation_hydrating"
                     }
@@ -129,7 +145,9 @@ internal fun resolveOpenRequest(
             "kind=${sourceMessageIdentity.conversationKind?.name ?: "_"} " +
             "hitVia=${hitLookupId ?: "_"} " +
             "hitSurface=${projectionHit?.surfaceKind ?: "_"} " +
-            "hitEligible=${projectionHit != null && projection != null} " +
+            "hitEligible=${directProjection != null} " +
+            "localReply=${localReplyResolution.projection?.canonicalChannelId ?: "_"} " +
+            "localReplyConflict=${localReplyResolution.conflict} " +
             "result=" +
             when (resolution) {
                 is ConversationOpenResolution.Resolved ->
@@ -138,6 +156,66 @@ internal fun resolveOpenRequest(
             }
     )
     return resolution
+}
+
+/**
+ * Joint-channel notification payloads can carry the peer/source server's channel ids while
+ * still being qualified with the active local server id. Resolve that wire identity onto the
+ * active server only when the directory proves the complete reply relation: one local reply
+ * projection owns the same parent message and its local parent is the projection addressed by
+ * the source parent id. This is deliberately narrower than adding parent ids back to lookupIds:
+ * a parent row can qualify a reply projection, but can never become the opened conversation.
+ */
+private data class LocalReplyProjectionResolution(
+    val projection: SharedConversationDirectoryProjection? = null,
+    val conflict: Boolean = false
+)
+
+private fun SharedConversationDirectoryState.resolveLocalReplyProjection(
+    serverId: String,
+    sourceMessageIdentity: ConversationOpenSourceMessageIdentity
+): LocalReplyProjectionResolution {
+    if (!sourceMessageIdentity.isThreadShaped()) return LocalReplyProjectionResolution()
+    val parentMessageId =
+        sourceMessageIdentity.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: return LocalReplyProjectionResolution()
+    val localReply =
+        resolve(parentMessageId)
+            ?.takeIf { projection ->
+                projection.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                    projection.parentMessageId == parentMessageId &&
+                    (serverId.isBlank() || projection.serverId == serverId || projection.serverId.isBlank())
+            }
+            ?: return LocalReplyProjectionResolution()
+    val sourceParentId =
+        sourceMessageIdentity.parentChannelId?.takeIf { it.isNotBlank() }
+            ?: return LocalReplyProjectionResolution()
+    val localParentId =
+        localReply.parentChannelId?.takeIf { it.isNotBlank() }
+            ?: return LocalReplyProjectionResolution()
+    val sourceParent =
+        resolve(sourceParentId)
+            ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+            ?: return LocalReplyProjectionResolution()
+    val localParent =
+        resolve(localParentId)
+            ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+            ?: return LocalReplyProjectionResolution()
+    if (sourceParent.canonicalChannelId != localParent.canonicalChannelId) {
+        return LocalReplyProjectionResolution(conflict = true)
+    }
+    if (
+        sourceParent.serverId.isNotBlank() &&
+        serverId.isNotBlank() &&
+        sourceParent.serverId != serverId
+    ) {
+        return LocalReplyProjectionResolution(conflict = true)
+    }
+    val typedParentKind = sourceMessageIdentity.parentConversationKind
+    if (typedParentKind != null && typedParentKind != localParent.conversationKind) {
+        return LocalReplyProjectionResolution(conflict = true)
+    }
+    return LocalReplyProjectionResolution(projection = localReply)
 }
 
 internal fun InboxItem.toConversationOpenSourceMessageIdentity(): ConversationOpenSourceMessageIdentity =

@@ -2155,6 +2155,129 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun notificationPushBannerNormalizesPeerJointReplyIdsToLocalProjection() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "parent-local",
+                        aliases = setOf("parent-local", "parent-peer"),
+                        conversationKind = ConversationKind.Joint,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "joint",
+                        title = "raft-mobile-reconcile"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "thread-local",
+                        aliases = setOf("thread-local"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "raft-mobile-reconcile",
+                        parentChannelId = "parent-local",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-local"),
+                        kind = ConversationKind.Thread,
+                        channelId = ChannelId("parent-peer"),
+                        threadId = ChannelId("thread-peer"),
+                        parentChannelId = ChannelId("parent-peer"),
+                        parentMessageId = MessageId("parent-message"),
+                        messageId = MessageId("reply-peer"),
+                        title = "Direct message · Raft",
+                        body = "Cindy: hello",
+                        tag = "message:reply-peer"
+                    ),
+                currentServerId = "server-local",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("thread-local", resolved.conversation.thread?.streamChannelId?.value)
+        assertEquals("parent-local", resolved.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.conversation.thread?.parentMessageId?.value)
+        assertEquals(
+            ConversationKind.Joint,
+            resolved.conversation.resolveThreadRouteIdentity().parentConversationKind
+        )
+        assertEquals("#raft-mobile-reconcile - thread", resolved.context)
+        assertEquals("Thread reply", resolved.title)
+        assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
+    }
+
+    @Test
+    fun notificationPushBannerDoesNotNormalizeReplyAcrossMismatchedParent() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "parent-local-a",
+                        aliases = setOf("parent-local-a", "parent-peer"),
+                        conversationKind = ConversationKind.Joint,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "joint",
+                        title = "joint-a"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "parent-local-b",
+                        aliases = setOf("parent-local-b"),
+                        conversationKind = ConversationKind.Joint,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "joint",
+                        title = "joint-b"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-local",
+                        canonicalChannelId = "thread-local",
+                        aliases = setOf("thread-local"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "joint-b",
+                        parentChannelId = "parent-local-b",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+        val suppressed = mutableListOf<String>()
+
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-local"),
+                        kind = ConversationKind.Thread,
+                        threadId = ChannelId("thread-peer"),
+                        parentChannelId = ChannelId("parent-peer"),
+                        parentMessageId = MessageId("parent-message"),
+                        messageId = MessageId("reply-peer"),
+                        title = "Thread",
+                        body = "hello",
+                        tag = "message:reply-peer"
+                    ),
+                currentServerId = "server-local",
+                visibleConversationKey = null,
+                conversationDirectory = directory,
+                onSuppressed = suppressed::add
+            )
+
+        assertNull(banner)
+        assertEquals(listOf("identity_incomplete"), suppressed)
+    }
+
+    @Test
     fun notificationPushBannerSuppressedForOtherServerAndVisibleConversation() {
         val suppressed = mutableListOf<String>()
         val crossServer =
