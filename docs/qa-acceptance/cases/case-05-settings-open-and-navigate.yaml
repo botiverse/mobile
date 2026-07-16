@@ -1,0 +1,118 @@
+id: settings-open-and-navigate
+title: "设置页-打开设置并浏览子页面"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that the settings page opens correctly and key sub-pages are
+  accessible. Covers: settings navigation, account info rendering, storage
+  page, and back navigation. Settings is a common regression target because
+  it touches many stores and repositories.
+tags: [settings, navigation, regression]
+timeout_seconds: 90
+max_retries: 2
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-settings
+    action: open_page
+    params:
+      page_name: compose_settings_home
+    description: "Open settings via Kuikly deeplink"
+    capture: [screenshot, dump_layout]
+
+  - id: verify-settings-list
+    action: screenshot
+    description: "Capture settings root page"
+    capture: [screenshot]
+
+  - id: tap-account
+    action: tap
+    params:
+      text: "Account"
+    description: "Navigate to Account settings"
+    capture: [screenshot, dump_layout]
+
+  - id: wait-account
+    action: wait
+    params:
+      duration_ms: 1500
+
+  - id: capture-account
+    action: screenshot
+    description: "Capture account settings page"
+    capture: [screenshot]
+
+  - id: go-back-to-settings
+    action: key
+    params:
+      key_name: BACK
+    description: "Navigate back to settings root"
+
+  - id: tap-storage
+    action: tap
+    params:
+      text: "Storage"
+    description: "Navigate to Storage settings"
+    capture: [screenshot, dump_layout]
+
+  - id: wait-storage
+    action: wait
+    params:
+      duration_ms: 1500
+
+  - id: capture-storage
+    action: screenshot
+    description: "Capture storage settings page"
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: settings-list-visible
+    type: element_visible
+    params:
+      text: "Account"
+    after_step: verify-settings-list
+    severity: major
+    description: "Settings root must show navigation items like 'Account'"
+
+  - id: account-page-loaded
+    type: element_visible
+    params:
+      text_match_regex: "(?i)(email|profile|account|sign.?out)"
+    after_step: capture-account
+    severity: major
+    description: "Account page must show account-related content"
+
+  - id: storage-page-loaded
+    type: element_visible
+    params:
+      text_match_regex: "(?i)(storage|cache|data|clear)"
+    after_step: capture-storage
+    severity: major
+    description: "Storage page must show storage management options"
+
+  - id: no-crash-settings
+    type: no_crash
+    after_step: capture-storage
+    severity: critical
+    description: "No crashes during settings navigation"
+
+expected:
+  result: pass
+  notes: "Settings touches many stores/repositories. Good for catching integration regressions."
