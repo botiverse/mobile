@@ -23,8 +23,22 @@ consumers keep this in sync:
   position hint ("send button at the right end of the composer row"); the agent
   combines the hint with the screenshot and neighboring text nodes' bounds.
 
+## Message actions & links
+
+- **Message-level actions (reply, forward, save, create/claim task) live
+  behind `long_press` on the message row** — a plain tap opens/permalinks
+  instead. The first 13-case batch round failed three cases waiting for a
+  long-press the toolkit didn't have; it does now.
+- **`open_link` dispatches a real Android VIEW intent** — use it for share
+  links and deeplinks instead of typing a URL somewhere. It needs a full
+  `scheme://...` URL.
+
 ## Text fields
 
+- **Every `text` action's Result reports where the text landed** ("typed;
+  focused field now contains ... at [x1,y1][x2,y2]") — read it. If the bounds
+  belong to the WRONG field (batch-round recurrence: password text in the
+  email field), tap the right field, `clear`, and redo before proceeding.
 - Sequence: tap the field → **verify focus** (cursor visible in the next
   screenshot) → type → **verify the text landed in the intended field**.
   Round-1's core failure: a tap that didn't move focus, so the password was

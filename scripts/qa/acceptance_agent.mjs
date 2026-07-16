@@ -96,6 +96,23 @@ function clearField() {
   adb(["shell", "input", "keyevent", ...Array(60).fill("67")]);
 }
 
+// After a text action, tell the model where the text actually landed: the
+// focused node's text/bounds from a fresh uiautomator dump. Passwords render
+// masked by the field itself; the runner additionally redacts secrets.
+function focusedFieldReport() {
+  try {
+    adb(["shell", "uiautomator", "dump", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
+    const xml = adb(["exec-out", "cat", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
+    const node = /<node[^>]*focused="true"[^>]*>/.exec(xml)?.[0];
+    if (!node) return "typed; no focused field found in dump — verify via screenshot";
+    const text = /text="([^"]*)"/.exec(node)?.[1] ?? "";
+    const bounds = /bounds="(\[[^"]*\])"/.exec(node)?.[1] ?? "?";
+    return `typed; focused field now contains "${text.slice(0, 80)}" at ${bounds}`;
+  } catch {
+    return "typed; focus check failed — verify via screenshot";
+  }
+}
+
 function screenSize() {
   const out = adb(["shell", "wm", "size"], { encoding: "utf8" });
   const m = /(\d+)x(\d+)/.exec(out.split("\n").filter((l) => l.includes("size")).pop() || out);
@@ -113,6 +130,9 @@ function preamble(size) {
     "",
     "Respond with EXACTLY ONE action as strict JSON (no prose, no markdown):",
     '  {"action":"tap","x":<px>,"y":<px>}            tap a point',
+    '  {"action":"long_press","x":<px>,"y":<px>}      long-press a point (message actions like',
+    "                                                 reply/forward/task live behind long-press)",
+    '  {"action":"open_link","url":"<https or app link>"}   open a link/deeplink via Android intent',
     '  {"action":"swipe","direction":"up|down|left|right"}   scroll the screen',
     '  {"action":"text","value":"<text>"}             type into the focused field (tap it first)',
     '  {"action":"key","name":"back|home|enter|tab|del|esc"}  press a key (esc hides the keyboard)',
@@ -355,10 +375,28 @@ async function main() {
           adb(["shell", "input", "swipe", ...c.map((n) => String(Math.round(n))), "300"]);
           break;
         }
+        case "long_press":
+          // Same-point swipe with a long duration is the adb long-press idiom.
+          adb(["shell", "input", "swipe",
+            String(Math.round(action.x)), String(Math.round(action.y)),
+            String(Math.round(action.x)), String(Math.round(action.y)), "800"]);
+          tapAnnotations.push({ step: turns - 1, x: Math.round(action.x), y: Math.round(action.y) });
+          break;
+        case "open_link": {
+          const url = String(action.url ?? "");
+          if (!/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(url)) { feedback = "open_link needs a scheme://... url"; break; }
+          adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url]);
+          break;
+        }
         case "text": {
           let v = String(action.value ?? "");
           for (const [ph, real] of Object.entries(SECRETS)) v = v.split(ph).join(real);
           inputText(v);
+          // The recurring login failure mode is text landing in the wrong
+          // field because a tap didn't move focus. Report the focused node's
+          // content back mechanically so the model sees the landing spot
+          // without spending a turn on dump_ui (batch round finding ③).
+          feedback = redact(focusedFieldReport());
           break;
         }
         case "key": adb(["shell", "input", "keyevent", KEYCODES[action.name] || String(action.name)]); break;
