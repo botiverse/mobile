@@ -1942,13 +1942,18 @@ class KmpVisualScreenshotCaptureTest {
                     captureStableVisualBitmap(context, caseId, effectiveCrop, requireReactionAtlas)
                 }
             val outputDir = visualOutputDir(context)
-            assertBitmap?.invoke(normalized)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
             val imageFile = File(outputDir, "$caseId.png")
             imageFile.outputStream().use { out ->
                 normalized.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
+            // Preserve the exact bitmap that the oracle evaluated even when
+            // a case-specific assertion fails. The exception path writes its
+            // failure.json separately, while this mirrored PNG remains
+            // available for direct visual review of the RED artifact.
+            mirrorFileForAdbPull(context, imageFile)
+            assertBitmap?.invoke(normalized)
             val metadataFile = File(outputDir, "$caseId.metadata.json")
             metadataFile.writeText(
                 visualMetadata(
@@ -1960,7 +1965,6 @@ class KmpVisualScreenshotCaptureTest {
                     captureMethod = effectiveCrop.captureMethod
                 )
             )
-            mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
         } finally {
