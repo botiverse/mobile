@@ -217,15 +217,34 @@ async function main() {
   }];
   logStep({ turn: 0, event: "start", goal: opts.goal, screen: size });
 
-  let verdict = null, reason = "", turns = 0;
+  let verdict = null, reason = "", turns = 0, malformedStreak = 0;
   while (turns < opts.maxTurns && Date.now() < deadline) {
     turns++;
     pruneImages(messages);
     let action;
     try {
       const reply = await callModel(models, model, messages);
-      action = parseAction(reply);
       messages.push({ role: "assistant", content: [{ type: "text", text: reply }], timestamp: Date.now() });
+      try {
+        action = parseAction(reply);
+        malformedStreak = 0;
+      } catch {
+        // A malformed reply is a reprompt, not a run-killer (the case-02 drill
+        // round-1 died on a single bad turn). Correct in place; only a streak
+        // is an infrastructure error. Costs a turn so it can't loop free.
+        malformedStreak++;
+        logStep({ turn: turns, event: "malformed_reply", streak: malformedStreak, preview: redact(reply.slice(0, 200)) });
+        if (malformedStreak >= 3) {
+          verdict = "error"; reason = "model returned 3 consecutive replies with no JSON action";
+          break;
+        }
+        messages.push({
+          role: "user",
+          content: [{ type: "text", text: "Your reply contained no JSON action. Respond with EXACTLY ONE action as a strict JSON object from the documented list — no prose, no markdown fences." }],
+          timestamp: Date.now(),
+        });
+        continue;
+      }
     } catch (e) {
       logStep({ turn: turns, event: "model_error", error: String(e?.message || e).slice(0, 300) });
       verdict = "error"; reason = `model call failed: ${String(e?.message || e).slice(0, 200)}`;
