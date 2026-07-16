@@ -6,19 +6,24 @@ import kotlin.test.assertTrue
 
 class ChannelNameValidationTest {
     @Test
-    fun acceptsServerCompatibleChannelNames() {
-        assertTrue("general".isValidChannelName())
-        assertTrue("AI-research_2".isValidChannelName())
-        assertTrue("  release_2026  ".isValidChannelName())
+    fun allowsServerToOwnUnicodeCategoryValidation() {
+        assertTrue("general".isSubmittableChannelName())
+        assertTrue("markdown专修".isSubmittableChannelName())
+        assertTrue("𐐀room".isSubmittableChannelName())
+        assertTrue("A²".isSubmittableChannelName())
+        assertTrue("AⅧ".isSubmittableChannelName())
+        assertTrue("Á".isSubmittableChannelName())
+        assertTrue("🚀release".isSubmittableChannelName())
+        assertTrue("release notes".isSubmittableChannelName())
     }
 
     @Test
-    fun rejectsNamesThatTheServerRejects() {
-        assertFalse("".isValidChannelName())
-        assertFalse("123-start".isValidChannelName())
-        assertFalse("-release".isValidChannelName())
-        assertFalse("中文频道".isValidChannelName())
-        assertFalse("release notes".isValidChannelName())
-        assertFalse("release.topic".isValidChannelName())
+    fun enforcesOnlyPortableLocalSubmissionBounds() {
+        assertFalse("".isSubmittableChannelName())
+        assertFalse("   ".isSubmittableChannelName())
+        assertTrue("a".repeat(ChannelNameMaxLength).isSubmittableChannelName())
+        assertFalse("a".repeat(ChannelNameMaxLength + 1).isSubmittableChannelName())
+        assertTrue(("𐐀" + "a".repeat(ChannelNameMaxLength - 2)).isSubmittableChannelName())
+        assertFalse(("𐐀" + "a".repeat(ChannelNameMaxLength - 1)).isSubmittableChannelName())
     }
 }

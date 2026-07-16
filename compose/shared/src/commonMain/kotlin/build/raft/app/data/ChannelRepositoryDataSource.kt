@@ -134,7 +134,7 @@ class RealChannelRepository(
         currentContext() ?: return authRequired()
         val name = request.name.trim()
         if (name.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        if (!name.isValidChannelName()) {
+        if (!name.isSubmittableChannelName()) {
             return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
         }
         return executeChannel(
@@ -226,7 +226,7 @@ class RealChannelRepository(
         val channelId = request.channelId
         val name = request.name.trim()
         if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        if (!name.isValidChannelName()) {
+        if (!name.isSubmittableChannelName()) {
             return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
         }
         val canonicalRequest = request.copy(name = name, description = request.description.trim())

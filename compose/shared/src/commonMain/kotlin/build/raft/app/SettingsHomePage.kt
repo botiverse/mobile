@@ -192,7 +192,7 @@ import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
-import build.raft.app.data.isValidChannelName
+import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
@@ -3763,7 +3763,7 @@ internal fun SlockAppShellContent(
         userMemberIds: List<String>
     ) {
         val trimmedName = name.trim()
-        if (!trimmedName.isValidChannelName() || createChannelSubmitting) {
+        if (!trimmedName.isSubmittableChannelName() || createChannelSubmitting) {
             return
         }
         createChannelSubmitting = true
@@ -14717,12 +14717,12 @@ private fun SharedCreateChannelDialog(
     }
     val trimmedName = name.trim()
     val nameError =
-        if (trimmedName.isNotEmpty() && !trimmedName.isValidChannelName()) {
+        if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
             stringResource(MR.strings.channel_create_error_name_format)
         } else {
             null
         }
-    val canSubmit = trimmedName.isValidChannelName() && !submitting
+    val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
     val filteredMembers =
         filterPeopleSuggestions(

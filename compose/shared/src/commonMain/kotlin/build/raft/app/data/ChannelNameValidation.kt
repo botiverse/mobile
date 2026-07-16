@@ -1,7 +1,10 @@
 package build.raft.app.data
 
-private val ChannelNamePattern = Regex("^[A-Za-z][A-Za-z0-9_-]*$")
+internal const val ChannelNameMaxLength: Int = 32
 
-internal fun String.isValidChannelName(): Boolean =
-    ChannelNamePattern.matches(trim())
-
+// Unicode category validation remains server-owned so every client follows the
+// server runtime's Unicode version without embedding a drifting category table.
+internal fun String.isSubmittableChannelName(): Boolean {
+    val normalized = trim()
+    return normalized.length in 1..ChannelNameMaxLength
+}
