@@ -1653,6 +1653,35 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsFeedbackTwoAttachments() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.feedback.two-attachments",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "quiver-feedback")
+                    .put("fixtureKey", "feedback-two-attachments"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
+    fun captureSettingsFeedbackSubmittedSquareCorners() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.feedback.submitted-square-corners",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "quiver-feedback")
+                    .put("fixtureKey", "feedback-submit-success"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 3_000,
+            assertBitmap = ::assertLargestFeedbackYellowRegionHasSquareCorners
+        )
+    }
+
+    @Test
     fun captureAuthLoginInputsEmpty() {
         captureKmpComponentCase(
             caseId = "auth.login.inputs.empty",
@@ -1880,6 +1909,7 @@ class KmpVisualScreenshotCaptureTest {
         beforeScreenshot: (() -> Unit)? = null,
         suppressSoftKeyboard: Boolean = true,
         captureSystemSurface: Boolean = false,
+        assertBitmap: ((Bitmap) -> Unit)? = null,
         // Full-height cases (#388) only know the crop height after the page
         // reports its content bottom; invoked post-settle to replace [crop].
         cropOverride: (() -> VisualCrop)? = null
@@ -1912,6 +1942,7 @@ class KmpVisualScreenshotCaptureTest {
                     captureStableVisualBitmap(context, caseId, effectiveCrop, requireReactionAtlas)
                 }
             val outputDir = visualOutputDir(context)
+            assertBitmap?.invoke(normalized)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
             val imageFile = File(outputDir, "$caseId.png")
@@ -1935,6 +1966,98 @@ class KmpVisualScreenshotCaptureTest {
         } finally {
             closeScenarioBounded(scenario)
         }
+    }
+
+    private fun assertLargestFeedbackYellowRegionHasSquareCorners(bitmap: Bitmap) {
+        val width = bitmap.width
+        val height = bitmap.height
+        val minY = height / 6
+        val maxY = height * 4 / 5
+        val yellow = BooleanArray(width * height)
+        fun isBrandYellow(color: Int): Boolean {
+            val red = android.graphics.Color.red(color)
+            val green = android.graphics.Color.green(color)
+            val blue = android.graphics.Color.blue(color)
+            return red >= 248 && green in 202..222 && blue in 48..82
+        }
+        for (y in minY until maxY) {
+            for (x in 0 until width) {
+                yellow[y * width + x] = isBrandYellow(bitmap.getPixel(x, y))
+            }
+        }
+        val visited = BooleanArray(width * height)
+        val queue = IntArray(width * (maxY - minY))
+        var bestArea = 0
+        var bestBounds: IntArray? = null
+        for (y in minY until maxY) {
+            for (x in 0 until width) {
+                val seed = y * width + x
+                if (!yellow[seed] || visited[seed]) continue
+                var head = 0
+                var tail = 0
+                queue[tail++] = seed
+                visited[seed] = true
+                var area = 0
+                var left = x
+                var right = x
+                var top = y
+                var bottom = y
+                while (head < tail) {
+                    val index = queue[head++]
+                    val px = index % width
+                    val py = index / width
+                    area += 1
+                    left = minOf(left, px)
+                    right = maxOf(right, px)
+                    top = minOf(top, py)
+                    bottom = maxOf(bottom, py)
+                    if (px > 0) enqueueYellow(index - 1, yellow, visited, queue, tail).also { tail = it }
+                    if (px + 1 < width) enqueueYellow(index + 1, yellow, visited, queue, tail).also { tail = it }
+                    if (py > minY) enqueueYellow(index - width, yellow, visited, queue, tail).also { tail = it }
+                    if (py + 1 < maxY) enqueueYellow(index + width, yellow, visited, queue, tail).also { tail = it }
+                }
+                if (area > bestArea) {
+                    bestArea = area
+                    bestBounds = intArrayOf(left, top, right, bottom)
+                }
+            }
+        }
+        val bounds = requireNotNull(bestBounds) { "No BrandYellow feedback region found" }
+        require(bestArea > 8_000) { "BrandYellow region too small for User row: area=$bestArea" }
+        val cornerHits =
+            listOf(
+                bounds[0] to bounds[1],
+                bounds[2] to bounds[1],
+                bounds[0] to bounds[3],
+                bounds[2] to bounds[3]
+            ).map { (x, y) ->
+                var hits = 0
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        val px = (x + dx).coerceIn(0, width - 1)
+                        val py = (y + dy).coerceIn(0, height - 1)
+                        if (isBrandYellow(bitmap.getPixel(px, py))) hits += 1
+                    }
+                }
+                hits
+            }
+        require(cornerHits.all { it >= 2 }) {
+            "User feedback row retained rounded corners: bounds=${bounds.joinToString()} " +
+                "cornerYellowHits=${cornerHits.joinToString()} area=$bestArea"
+        }
+    }
+
+    private fun enqueueYellow(
+        index: Int,
+        yellow: BooleanArray,
+        visited: BooleanArray,
+        queue: IntArray,
+        tail: Int
+    ): Int {
+        if (!yellow[index] || visited[index]) return tail
+        visited[index] = true
+        queue[tail] = index
+        return tail + 1
     }
 
     private fun tapDisplayDp(x: Float, y: Float) {
