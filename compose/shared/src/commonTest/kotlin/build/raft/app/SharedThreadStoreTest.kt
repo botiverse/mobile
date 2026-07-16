@@ -108,6 +108,7 @@ import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,6 +116,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -2067,6 +2069,14 @@ class SharedThreadStoreTest {
                 channelRepository = channelRepository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val accessHistory = mutableListOf<ThreadAccessResolution>()
+        val accessCollector =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                store.state
+                    .map { it.accessResolution }
+                    .distinctUntilChanged()
+                    .collect(accessHistory::add)
+            }
 
         store.dispatch(SharedThreadIntent.Start(directMessagePayload()))
         homeRequested.await()
@@ -2091,6 +2101,79 @@ class SharedThreadStoreTest {
             }
         }
         assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+        yield()
+        assertTrue(accessHistory.isNotEmpty())
+        assertEquals(ThreadAccessResolution.Loading, accessHistory.first())
+        assertEquals(ThreadAccessResolution.Resolved, accessHistory.last())
+        assertFalse(accessHistory.contains(ThreadAccessResolution.Error))
+        assertFalse(accessHistory.contains(ThreadAccessResolution.NoPermission))
+        accessCollector.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun freshDirectMessageEmptyStaysLoadingWhenHomeCompletesFirstWithoutCandidate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val conversationRepository =
+            FakeConversationRepository(
+                threadResult = DataResult.Empty(EmptyReason.NoMessages)
+            ).apply {
+                getThreadStarted = CompletableDeferred()
+                releaseGetThread = CompletableDeferred()
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = conversationRepository,
+                channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val accessHistory = mutableListOf<ThreadAccessResolution>()
+        val accessCollector =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                store.state
+                    .map { it.accessResolution }
+                    .distinctUntilChanged()
+                    .collect(accessHistory::add)
+            }
+
+        store.dispatch(SharedThreadIntent.Start(directMessagePayload()))
+        conversationRepository.getThreadStarted?.await()
+        withTimeout(1_000) {
+            while (!store.state.value.initialHomeAccessLookupComplete) {
+                delay(10)
+            }
+        }
+
+        val homeFirst = store.state.value
+        assertTrue(homeFirst.initialHomeAccessLookupComplete)
+        assertEquals(null, homeFirst.initialHomeAccessCandidate)
+        assertFalse(homeFirst.canonicalAccessResolved)
+        assertEquals(ThreadAccessResolution.Loading, homeFirst.accessResolution)
+        yield()
+        assertTrue(accessHistory.isNotEmpty())
+        assertTrue(accessHistory.all { it == ThreadAccessResolution.Loading })
+
+        conversationRepository.releaseGetThread?.complete(Unit)
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolved = store.state.value
+        assertEquals("empty", resolved.payload.status)
+        assertTrue(resolved.canonicalAccessResolved)
+        assertTrue(resolved.initialHomeAccessLookupComplete)
+        assertEquals(null, resolved.initialHomeAccessCandidate)
+        assertEquals(ThreadAccessResolution.Resolved, resolved.accessResolution)
+        yield()
+        assertEquals(ThreadAccessResolution.Loading, accessHistory.first())
+        assertEquals(ThreadAccessResolution.Resolved, accessHistory.last())
+        assertFalse(accessHistory.contains(ThreadAccessResolution.Error))
+        assertFalse(accessHistory.contains(ThreadAccessResolution.NoPermission))
+        accessCollector.cancel()
         scope.cancel()
     }
 
