@@ -29,7 +29,8 @@ class SettingsQuiverFeedbackSubmission(
 
 internal class BridgeSettingsPlatformCapabilities(
     private val bridge: BridgeModule,
-    private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext
+    private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext,
+    private val feedbackVisualSubmission: SettingsQuiverFeedbackSubmission? = null
 ) : SharedSettingsPlatformCapabilities {
     fun bridgeCopyToClipboard(content: String) {
         bridge.copyToPasteboard(content)
@@ -338,6 +339,13 @@ internal class BridgeSettingsPlatformCapabilities(
             "settings_quiver_feedback_submit_start messageLength=${message.length} " +
                 "attachmentCount=${attachments.size}"
         )
+        feedbackVisualSubmission?.let { submission ->
+            bridge.log(
+                "settings_quiver_feedback_visual_submit_success attachmentCount=${attachments.size} " +
+                    "ticket=${submission.ticketId.take(8)}"
+            )
+            return DataResult.Content(submission)
+        }
         bridge.log("settings_quiver_feedback_bridge_request_prepared")
         flushSlockPlatformLogs()
         if (!flushSlockPlatformDiagnosticsDownstream()) {

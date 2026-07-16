@@ -426,7 +426,7 @@ jobs:
             # marker (task #441 — Kotlin println lands on the System.out tag on
             # Android; iOS routes it to the launch console) is captured for
             # scripts/collect_richtext_caps.py to merge per case.
-            adb logcat -d -v time -s VisualCapture:V TestRunner:V System.out:I > visual-testing-results/logcat-shard-${{ matrix.shard }}.txt || echo "logcat dump failed"
+            adb logcat -d -v time -s VisualCapture:V TestRunner:V System.out:I Task139Reuse:I > visual-testing-results/logcat-shard-${{ matrix.shard }}.txt || echo "logcat dump failed"
             # Tail-drop guard: a case that hangs past the per-case Timeout kills
             # this shard's AndroidJUnitRunner, so every case MethodSorter orders
             # after it never emits CASE_START and its results are silently lost
