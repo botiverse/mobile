@@ -3868,9 +3868,9 @@ internal fun SharedThreadRouteContent(
                         )
                     )
                 }
-                if (event is MemberPresenceUpdated) {
-                    serverMembersStore?.applyPresence(event)
-                }
+                // task #136: MemberPresenceUpdated now reaches the members store
+                // via the provider-installed presence sink on this owner (store
+                // lifetime, SSOT) — no page-level tee needed.
             }
         }
     )
