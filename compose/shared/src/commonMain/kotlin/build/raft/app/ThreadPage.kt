@@ -97,6 +97,8 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
+import build.raft.app.data.RealtimeCanonicalFinalSinkSurfaceKey
+import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
@@ -401,7 +403,7 @@ internal fun threadFeatureOwnerMountPlan(
     showComposer: Boolean,
     suggestionDemand: ThreadComposerSuggestionDemand
 ): ThreadFeatureOwnerMountPlan {
-    if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
+    if (ThreadRouteMountPlan.LoadingShell == routeMountPlan) {
         return ThreadFeatureOwnerMountPlan(
             mountChatTimeline = false,
             mountComposer = false,
@@ -3530,6 +3532,24 @@ internal fun SharedThreadRouteContent(
     val translationStore = remember(sharedStores) { sharedStores.messageTranslationStore }
     val realtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
+    val canonicalFinalLifecycleEffects =
+        remember(sharedStores) {
+            sharedStores.realtimeAuthorityProvider.canonicalFinalLifecycleEffectsOrNull()
+        }
+    val emptyCanonicalFinalAuthorityFlow =
+        remember { MutableStateFlow<RealtimeScopeAuthority?>(null) }
+    val canonicalFinalAuthorityFlow =
+        remember(
+            canonicalFinalLifecycleEffects,
+            emptyCanonicalFinalAuthorityFlow,
+            sharedStores,
+            storeScope,
+        ) {
+            canonicalFinalLifecycleEffects?.let {
+                sharedStores.realtimeAuthority(storeScope)
+            } ?: emptyCanonicalFinalAuthorityFlow
+        }
+    val canonicalFinalAuthority by canonicalFinalAuthorityFlow.collectAsState()
     val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
@@ -3569,6 +3589,10 @@ internal fun SharedThreadRouteContent(
     val replyMetadataByParentId = renderSlice.replyMetadataByParentId
     val highlightedMentions = renderSlice.highlightedMentions
     val initialThreadInstanceKey = initialRouteIdentity.instanceKey
+    val canonicalFinalThreadSurfaceRouteKey =
+        remember(initialPayload.instanceId, initialThreadInstanceKey) {
+            initialPayload.instanceId.takeIf { it.isNotBlank() } ?: initialThreadInstanceKey
+        }
     val payloadRouteIdentity = remember(payload) {
         payload.resolveThreadRouteIdentity()
     }
@@ -3843,6 +3867,20 @@ internal fun SharedThreadRouteContent(
             }
         }
     )
+    val canonicalFinalThreadSlot =
+        remember(
+            canonicalFinalAuthority,
+            currentSession?.currentServerId,
+            storeScope.initialServerId,
+        ) {
+            val serverId =
+                currentSession?.currentServerId
+                    ?.takeIf { it.isNotBlank() }
+                    ?: storeScope.initialServerId?.takeIf { it.isNotBlank() }
+            canonicalFinalAuthority
+                ?.grant(serverId ?: return@remember null)
+                ?.let { grant -> grant.scopeLeaseId to grant.serverId }
+        }
     // Pager lifecycle notifications remain mounted with the route core. A
     // loading -> resolved transition must not reset foreground reconciliation.
     DisposableEffect(realtimeEvents, active) {
@@ -3903,6 +3941,32 @@ internal fun SharedThreadRouteContent(
             }
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
+    }
+    DisposableEffect(
+        canonicalFinalLifecycleEffects,
+        canonicalFinalThreadSlot,
+        canonicalFinalThreadSurfaceRouteKey,
+        authStore,
+    ) {
+        val threadInstanceKey = canonicalFinalThreadSurfaceRouteKey
+        val handle =
+            canonicalFinalThreadSlot?.let { (scopeLeaseId, serverId) ->
+                canonicalFinalLifecycleEffects?.mount(
+                    scopeLeaseId = scopeLeaseId,
+                    serverId = serverId,
+                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.ThreadCore(threadInstanceKey),
+                ) { event ->
+                    val currentSessionServerId =
+                        authStore.readSession()
+                            ?.currentServerId
+                            ?.takeIf { it.isNotBlank() }
+                            ?: return@mount
+                    if (currentSessionServerId != serverId) return@mount
+                    if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@mount
+                    latestCoreThreadRealtimeEventHandler(event)
+                }
+            }
+        onDispose { canonicalFinalLifecycleEffects?.dispose(handle) }
     }
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
         ThreadDeferredLoadingRouteContent(
@@ -4521,6 +4585,45 @@ internal fun SharedThreadRouteContent(
             }
         }
     )
+    suspend fun deliverThreadFeatureRealtimeEvent(serverId: String, event: RealtimeEvent) {
+        latestThreadFeatureRealtimeEventHandler(event)
+        if (event is MessageNew) {
+            val session = latestCurrentSession
+            foregroundMessageBanner =
+                if (foregroundMessageBannersEnabled()) {
+                    slockForegroundMessageBannerProjection(
+                        serverId = serverId,
+                        currentServerId = session?.currentServerId ?: currentServerId,
+                        message = event.message,
+                        currentMemberId = session?.user?.id,
+                        visibleConversationKey = null,
+                        visibleRouteIdentity = latestPayloadRouteIdentity,
+                        conversationDirectory = latestForegroundConversationDirectory,
+                    ) ?: foregroundMessageBanner
+                } else {
+                    null
+                }
+        }
+    }
+    DisposableEffect(
+        canonicalFinalLifecycleEffects,
+        canonicalFinalThreadSlot,
+        canonicalFinalThreadSurfaceRouteKey,
+    ) {
+        val threadInstanceKey = canonicalFinalThreadSurfaceRouteKey
+        val handle =
+            canonicalFinalThreadSlot?.let { (scopeLeaseId, serverId) ->
+                canonicalFinalLifecycleEffects?.mount(
+                    scopeLeaseId = scopeLeaseId,
+                    serverId = serverId,
+                    surfaceKey = RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature(threadInstanceKey),
+                ) { event ->
+                    if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@mount
+                    deliverThreadFeatureRealtimeEvent(serverId, event)
+                }
+            }
+        onDispose { canonicalFinalLifecycleEffects?.dispose(handle) }
+    }
     // Feature-only reactions can mount with resolved content. The core sink
     // above already owns canonical Thread apply and gap recovery.
     DisposableEffect(realtimeDomainEventOwner, coroutineScope, currentServerId) {
@@ -4528,24 +4631,7 @@ internal fun SharedThreadRouteContent(
             RealtimeGuardedActiveThreadSink { serverId, event ->
                 if (currentServerId != serverId) return@RealtimeGuardedActiveThreadSink
                 if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@RealtimeGuardedActiveThreadSink
-                latestThreadFeatureRealtimeEventHandler(event)
-                if (event is MessageNew) {
-                    val session = latestCurrentSession
-                    foregroundMessageBanner =
-                        if (foregroundMessageBannersEnabled()) {
-                            slockForegroundMessageBannerProjection(
-                                    serverId = serverId,
-                                    currentServerId = session?.currentServerId ?: currentServerId,
-                                    message = event.message,
-                                    currentMemberId = session?.user?.id,
-                                    visibleConversationKey = null,
-                                    visibleRouteIdentity = latestPayloadRouteIdentity,
-                                    conversationDirectory = latestForegroundConversationDirectory
-                            ) ?: foregroundMessageBanner
-                        } else {
-                            null
-                        }
-                }
+                deliverThreadFeatureRealtimeEvent(serverId, event)
             }
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
