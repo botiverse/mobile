@@ -48,7 +48,7 @@ class CanonicalMessageV2GreenStoreTest {
             decodeCanonicalMessageV2(minimalBytes, "server-a"),
         ).envelope
         val scope = v2Scope()
-        val store = SqlDelightCanonicalMessageV2Store(database) { 123L }
+        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 123L })
         val cursor = PersistedCursor(1, 1, 1, hasLoadedOldest = true, epoch = "epoch-v2")
 
         runBlocking {
@@ -91,7 +91,7 @@ class CanonicalMessageV2GreenStoreTest {
         val scope = v2Scope()
         val oldCursor = PersistedCursor(1, 1, 1, epoch = "old")
         val newCursor = PersistedCursor(2, 2, 2, epoch = "new")
-        val normal = SqlDelightCanonicalMessageV2Store(database) { 1L }
+        val normal = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
 
         runBlocking {
             normal.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(oldEnvelope), oldCursor))

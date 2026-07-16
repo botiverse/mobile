@@ -281,7 +281,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
     private fun poisonedRestore(input: JsonObject): CanonicalV2RedResult {
         val rows = input.getValue("rows").jsonArray.map { it.jsonPrimitive.content }
         val hasPoison = rows.any { marker ->
-            marker != "v6" || decodeCanonicalMessageV2(if (marker == "v6") minimalEnvelope() else marker) !is CanonicalMessageV2DecodeResult.Accepted
+            marker != "v6" || decodeCanonicalMessageV2(minimalEnvelope()) !is CanonicalMessageV2DecodeResult.Accepted
         }
         return if (hasPoison) CanonicalV2RedResult.Rejected(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
         else CanonicalV2RedResult.State("restored")
