@@ -114,6 +114,13 @@ fun validateCanonicalMessageV2(
         !reactions.map(ReactionFact::emoji).isStrictlyIncreasing()
     ) return CANONICAL_MESSAGE_V2_REACTION_BOUND_EXCEEDED
 
+    if (durablePartitionServerId != null) {
+        if (durablePartitionServerId.isBlank()) return CANONICAL_MESSAGE_V2_CROSS_SERVER_REF
+        if (envelope.embeddedServerIds().any { it != durablePartitionServerId }) {
+            return CANONICAL_MESSAGE_V2_CROSS_SERVER_REF
+        }
+    }
+
     when (val context = envelope.context) {
         is CanonicalConversationContextV2.TopLevel -> {
             if (envelope.replyMembership != null) return CANONICAL_MESSAGE_V2_ILLEGAL_DISCUSSION_RELATION
@@ -129,12 +136,6 @@ fun validateCanonicalMessageV2(
         }
     }
 
-    if (durablePartitionServerId != null) {
-        if (durablePartitionServerId.isBlank()) return CANONICAL_MESSAGE_V2_CROSS_SERVER_REF
-        if (envelope.embeddedServerIds().any { it != durablePartitionServerId }) {
-            return CANONICAL_MESSAGE_V2_CROSS_SERVER_REF
-        }
-    }
     return null
 }
 
