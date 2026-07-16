@@ -3690,6 +3690,13 @@ internal fun SharedThreadRouteContent(
                 scopeInitialServerId = storeScope.initialServerId
             )?.let(::ServerId)
         }
+    val memberAvatarResolver =
+        remember(serverMembersStore, headerProjectionServerId) {
+            slockMemberAvatarResolver(
+                serverMembersStore = serverMembersStore,
+                serverId = headerProjectionServerId?.value
+            )
+        }
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -3972,6 +3979,7 @@ internal fun SharedThreadRouteContent(
         ThreadDeferredLoadingRouteContent(
             payload = payload,
             displayModel = headerDisplayModel,
+            memberAvatarResolver = memberAvatarResolver,
             onBack = onBack
         )
         return
@@ -4699,10 +4707,6 @@ internal fun SharedThreadRouteContent(
     val agentStatusResolver =
         remember(serverMembersStore, currentSession?.currentServerId) {
             slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)
-        }
-    val memberAvatarResolver =
-        remember(serverMembersStore, currentSession?.currentServerId) {
-            slockMemberAvatarResolver(serverMembersStore, currentSession?.currentServerId)
         }
     val renderedThread = renderedPayload
     val messagePermalinkLabelResolver =
@@ -9772,6 +9776,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
 private fun ThreadDeferredLoadingRouteContent(
     payload: KuiklyThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
+    memberAvatarResolver: SlockMemberAvatarResolver,
     onBack: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -9780,7 +9785,7 @@ private fun ThreadDeferredLoadingRouteContent(
                 payload = payload,
                 headerDisplay = displayModel,
                 activityMuteState = null,
-                memberAvatarResolver = EmptySlockMemberAvatarResolver,
+                memberAvatarResolver = memberAvatarResolver,
                 showActions = false,
                 onBack = onBack,
                 onOpenInChannel = {},
