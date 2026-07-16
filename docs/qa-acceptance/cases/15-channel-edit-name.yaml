@@ -9,6 +9,7 @@ description: |
   channel list and header. Must run in test server only.
 tags: [channels, edit, regression]
 timeout_seconds: 120
+verdict_before_cleanup: true
 max_retries: 1
 
 device:
