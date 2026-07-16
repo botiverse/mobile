@@ -1735,10 +1735,18 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
     override val asyncLogEnable: Boolean = true
 
     override fun i(tag: String, msg: String) {
+        if (tag == "SlockKuiklyScroll") {
+            SlockAppLog.record(tag, msg)
+            return
+        }
         Log.i(tag, msg)
     }
 
     override fun d(tag: String, msg: String) {
+        if (tag == "SlockKuiklyScroll") {
+            SlockAppLog.record(tag, msg)
+            return
+        }
         Log.d(tag, msg)
     }
 

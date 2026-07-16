@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
@@ -120,6 +121,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
@@ -1127,6 +1129,46 @@ internal fun SlockStructuralHomeShell(
         }
     val captureRowAnchors = !listState.isScrollInProgress
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
+    val latestDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
+    LaunchedEffect(
+        currentServerId,
+        displayedPinned,
+        displayedJointChannels,
+        displayedChannels,
+        displayedDirectMessages,
+        pinnedLazyKeys,
+        jointChannelLazyKeys,
+        channelLazyKeys,
+        directMessageLazyKeys
+    ) {
+        val visible =
+            listState.layoutInfo.visibleItemsInfo.take(6).joinToString(",") { info ->
+                "${info.index}:${info.key}:${info.offset}:${info.size}"
+            }
+        latestDiagnosticsLogger(
+            "home_scroll event=topology owner=${listState.hashCode()} serverId=$currentServerId " +
+                "scrolling=${listState.isScrollInProgress} first=${listState.firstVisibleItemIndex}:${listState.firstVisibleItemScrollOffset} " +
+                "visible=[$visible] pinned=${pinnedLazyKeys.joinToString(",")} " +
+                "joint=${jointChannelLazyKeys.take(12).joinToString(",")} " +
+                "channels=${channelLazyKeys.take(16).joinToString(",")} " +
+                "dms=${directMessageLazyKeys.take(16).joinToString(",")}"
+        )
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val visible =
+                listState.layoutInfo.visibleItemsInfo.take(4).joinToString(",") { info ->
+                    "${info.index}:${info.key}:${info.offset}:${info.size}"
+                }
+            "scrolling=${listState.isScrollInProgress} " +
+                "first=${listState.firstVisibleItemIndex}:${listState.firstVisibleItemScrollOffset} " +
+                "total=${listState.layoutInfo.totalItemsCount} visible=[$visible]"
+        }
+            .distinctUntilChanged()
+            .collect { state ->
+                latestDiagnosticsLogger("home_scroll event=viewport owner=${listState.hashCode()} $state")
+            }
+    }
     DisposableEffect(listState, currentServerId) {
         val snapshotServerId = currentServerId
         onDispose {
@@ -1277,6 +1319,11 @@ internal fun SlockStructuralHomeShell(
                                     isScrollInProgress = listState.isScrollInProgress
                                 )
                             ) {
+                                latestDiagnosticsLogger(
+                                    "home_scroll event=programmatic_scroll owner=${listState.hashCode()} " +
+                                        "reason=server_restore target=${initialListPosition.firstVisibleItemIndex}:" +
+                                        initialListPosition.firstVisibleItemScrollOffset
+                                )
                                 listState.scrollToItem(
                                     initialListPosition.firstVisibleItemIndex,
                                     initialListPosition.firstVisibleItemScrollOffset

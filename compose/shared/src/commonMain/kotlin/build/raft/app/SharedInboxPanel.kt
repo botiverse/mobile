@@ -264,6 +264,7 @@ internal fun SharedHomeActivityScreen(
         timeContext = timeContext,
         listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+        diagnosticsLogger = { message -> bridge.log("shared_activity_scroll $message") },
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         modifier = modifier
@@ -299,6 +300,7 @@ internal fun SharedHomeActivityScreen(
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
+    diagnosticsLogger: (String) -> Unit = {},
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -313,6 +315,7 @@ internal fun SharedHomeActivityScreen(
         timeContext = timeContext,
         listState = listState,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+        diagnosticsLogger = diagnosticsLogger,
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         modifier = modifier
@@ -331,6 +334,7 @@ internal fun SharedHomeActivityPanel(
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
+    diagnosticsLogger: (String) -> Unit = {},
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -350,6 +354,7 @@ internal fun SharedHomeActivityPanel(
             timeContext = timeContext,
             listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+            diagnosticsLogger = diagnosticsLogger,
             draftProjection = draftProjection,
             onTitleClick = onTitleClick,
             modifier = modifier
@@ -368,6 +373,7 @@ private fun SharedActivityPanelContent(
     timeContext: SlockTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
+    diagnosticsLogger: (String) -> Unit,
     draftProjection: SharedThreadComposerDraftProjection,
     onTitleClick: (() -> Unit)?,
     modifier: Modifier = Modifier
@@ -399,6 +405,7 @@ private fun SharedActivityPanelContent(
             timeContext = timeContext,
             listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+            diagnosticsLogger = diagnosticsLogger,
             draftProjection = draftProjection,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
@@ -414,6 +421,7 @@ private fun SharedActivityBodyContent(
     timeContext: SlockTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
+    diagnosticsLogger: (String) -> Unit,
     draftProjection: SharedThreadComposerDraftProjection,
     modifier: Modifier = Modifier
 ) {
@@ -479,7 +487,8 @@ private fun SharedActivityBodyContent(
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
                     listState = listState,
-                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                    diagnosticsLogger = diagnosticsLogger
                 )
         }
     }
@@ -601,7 +610,8 @@ private fun SharedActivityList(
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
     listState: LazyListState = rememberLazyListState(),
-    activityTaskStatusBadgesEnabled: Boolean
+    activityTaskStatusBadgesEnabled: Boolean,
+    diagnosticsLogger: (String) -> Unit
 ) {
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -610,6 +620,7 @@ private fun SharedActivityList(
     var pendingUpdateCount by remember { mutableStateOf(0) }
     val scrollScope = rememberCoroutineScope()
     val latestOnIntent by rememberUpdatedState(onIntent)
+    val latestDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
     LaunchedEffect(snapshot.items) {
@@ -617,14 +628,23 @@ private fun SharedActivityList(
             listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
                 itemInfo.key as? String
             }
-        if (
+        val shouldRecover =
             activityListShouldRecoverVisibleContent(
                 firstVisibleItemIndex = listState.firstVisibleItemIndex,
                 visibleItemKeys = visibleItemKeys,
                 currentItemKeys = snapshot.items.map(InboxItem::key)
             )
-        ) {
+        latestDiagnosticsLogger(
+            "event=data_change owner=${listState.hashCode()} count=${snapshot.items.size} " +
+                "first=${listState.firstVisibleItemIndex}:${listState.firstVisibleItemScrollOffset} " +
+                "scrolling=${listState.isScrollInProgress} visible=${visibleItemKeys.joinToString(",")} " +
+                "head=${snapshot.items.take(8).joinToString(",", transform = InboxItem::key)} recover=$shouldRecover"
+        )
+        if (shouldRecover) {
             pendingUpdateCount = 0
+            latestDiagnosticsLogger(
+                "event=programmatic_scroll owner=${listState.hashCode()} reason=recover_removed_visible target=0:0"
+            )
             listState.scrollToItem(0)
         }
     }
@@ -651,9 +671,27 @@ private fun SharedActivityList(
         }
         if (update.shouldAutoAnchorTop) {
             pendingUpdateCount = 0
+            latestDiagnosticsLogger(
+                "event=programmatic_scroll owner=${listState.hashCode()} reason=genuine_top_update target=0:0"
+            )
             listState.scrollToItem(0)
         }
         previousItems = snapshot.items.take(ActivityUpdateTrackingWindow)
+    }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val visible =
+                listState.layoutInfo.visibleItemsInfo.take(4).joinToString(",") { info ->
+                    "${info.index}:${info.key}:${info.offset}:${info.size}"
+                }
+            "scrolling=${listState.isScrollInProgress} " +
+                "first=${listState.firstVisibleItemIndex}:${listState.firstVisibleItemScrollOffset} " +
+                "total=${listState.layoutInfo.totalItemsCount} visible=[$visible]"
+        }
+            .distinctUntilChanged()
+            .collect { state ->
+                latestDiagnosticsLogger("event=viewport owner=${listState.hashCode()} $state")
+            }
     }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isActivityNearTop() }
@@ -767,6 +805,9 @@ private fun SharedActivityList(
                 ),
                 onClick = {
                     scrollScope.launch {
+                        latestDiagnosticsLogger(
+                            "event=programmatic_scroll owner=${listState.hashCode()} reason=new_updates_button target=0:0"
+                        )
                         listState.animateScrollToTopExpressive()
                         pendingUpdateCount = 0
                     }
