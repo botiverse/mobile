@@ -1,0 +1,186 @@
+name: QA Acceptance (agent-in-CI)
+
+# PoC of the acceptance executor (#proj-quality task #2): one acceptance run =
+# one CI job. A goal goes in; an M3 agent drives the REAL debug APK on the
+# emulator (observe -> act -> verify via adb), records evidence, writes
+# verdict.json and exits. The job's conclusion mirrors the agent's verdict;
+# evidence uploads either way. A human reviews the evidence on the Raft task —
+# the agent's pass is an initial judgment, never the final acceptance.
+
+on:
+  workflow_dispatch:
+    inputs:
+      goal:
+        description: "Acceptance goal for the agent (natural language, concrete verifiable requirements)"
+        required: false
+        default: ""
+      max_turns:
+        description: "Agent turn budget"
+        required: false
+        default: "30"
+  push:
+    branches: [xishi/qa-acceptance-poc]
+
+env:
+  # Login smoke: the default goal for pushes / empty dispatch inputs.
+  DEFAULT_GOAL: >-
+    Log into the app with the provided test account: if a login/welcome screen shows,
+    enter the email and password and submit. Then verify BOTH: (1) the home screen loads
+    showing a channel list (rows with # channel names), and (2) tapping one channel opens
+    it and a message list renders. Declare pass only after both are visually confirmed.
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v5
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /opt/ghc \
+            /usr/local/share/boost /usr/local/lib/node_modules
+          df -h /
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write github-packages.properties
+        run: |
+          {
+            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
+            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
+          } > compose/github-packages.properties
+
+      # Same pinned-fork mavenLocal chain (and cache key) as visual-testing.yml
+      # / test.yml, so this workflow usually hits their warm cache.
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
+
+      - name: Build kuikly fork into mavenLocal
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          bash scripts/build_kuikly_fork.sh --android-only
+
+      - name: Build debug APK
+        working-directory: ./compose
+        run: ./gradlew --no-daemon --console=plain :androidApp:assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-acceptance-apk
+          path: compose/androidApp/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  acceptance:
+    name: Acceptance run (M3 agent on emulator)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    needs: build
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v5
+
+      - name: Free runner disk space for emulator
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: qa-acceptance-apk
+          path: apks
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install M3 SDK (pi-ai)
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p m3 && cd m3
+          # @earendil-works/pi-ai is on the PUBLIC npm registry — no scope override or auth.
+          npm i @earendil-works/pi-ai@0.80.3 --no-audit --no-fund
+
+      - name: Run acceptance agent
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+          QA_GOAL: ${{ inputs.goal || '' }}
+          QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          ram-size: 4096M
+          cores: 2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
+          disable-animations: true
+          # Each script line is a separate command (no shared shell vars); the
+          # agent's exit code is persisted to a file instead of failing the
+          # line, so evidence still uploads and the verdict step decides.
+          script: |
+            adb wait-for-device
+            adb install -r "$(find apks -name '*.apk' | head -1)"
+            adb shell am start -n build.raft.app/.MainActivity
+            sleep 8
+            mkdir -p qa-evidence
+            export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-acceptance-evidence
+          path: qa-evidence
+          if-no-files-found: warn
+
+      - name: Report verdict
+        if: always()
+        run: |
+          set -o pipefail
+          rc="$(cat qa-evidence/agent-rc.txt 2>/dev/null || echo 2)"
+          echo "## QA Acceptance verdict" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f qa-evidence/verdict.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat qa-evidence/verdict.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "no verdict.json produced (agent rc=$rc)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Evidence: qa-acceptance-evidence artifact (per-step screenshots + steps.jsonl)." >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
