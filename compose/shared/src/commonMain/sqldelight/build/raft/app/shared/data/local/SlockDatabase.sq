@@ -118,6 +118,27 @@ CREATE TABLE messageEntity (
 CREATE INDEX messageEntity_partitionChannelSeqId
 ON messageEntity(serverId, principalId, consumerId, scopeKind, channelId, seq, id);
 
+-- Receiver-private authoritative overlay. It has a separate owner and restore lifecycle from messageEntity:
+-- shared room frames cannot write this table, and overlay compare+write runs in its own transaction.
+CREATE TABLE messageViewerOverlayEntity (
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  scopeId TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  subjectId TEXT NOT NULL,
+  overlayKind TEXT NOT NULL,
+  overlayVersion INTEGER NOT NULL,
+  completeness TEXT NOT NULL,
+  payloadJson TEXT NOT NULL,
+  PRIMARY KEY (
+    serverId, principalId, consumerId,
+    scopeKind, scopeId,
+    subjectKind, subjectId, overlayKind
+  )
+);
+
 -- attachmentEntity / messageReactionEntity / savedMessageEntity were removed with the canonical-native
 -- rebuild: all three had zero live consumers, and the canonical fact (attachments, reactions) is stored
 -- losslessly in messageEntity.canonicalFactJson. Maintaining them would be a second materialized projection
@@ -435,6 +456,54 @@ WHERE id = ?
   AND consumerId = ?
   AND scopeKind = ?
   AND channelId = ?;
+
+selectMessageViewerOverlay:
+SELECT *
+FROM messageViewerOverlayEntity
+WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND overlayKind = ?;
+
+insertMessageViewerOverlay:
+INSERT INTO messageViewerOverlayEntity(
+  serverId,
+  principalId,
+  consumerId,
+  scopeKind,
+  scopeId,
+  subjectKind,
+  subjectId,
+  overlayKind,
+  overlayVersion,
+  completeness,
+  payloadJson
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateMessageViewerOverlayAtVersion:
+UPDATE messageViewerOverlayEntity
+SET overlayVersion = ?, completeness = ?, payloadJson = ?
+WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?
+  AND subjectKind = ?
+  AND subjectId = ?
+  AND overlayKind = ?
+  AND overlayVersion = ?;
+
+deleteMessageViewerOverlaysForScope:
+DELETE FROM messageViewerOverlayEntity
+WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND scopeKind = ?
+  AND scopeId = ?;
 
 -- Clear a scope's canonical server facts (snapshot rebaseline). No exclusions: savedMessageEntity was
 -- removed (zero live consumers), so there is no cross-domain CASCADE to work around, and pending never

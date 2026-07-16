@@ -1,0 +1,18 @@
+CREATE TABLE messageViewerOverlayEntity (
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  scopeKind TEXT NOT NULL,
+  scopeId TEXT NOT NULL,
+  subjectKind TEXT NOT NULL,
+  subjectId TEXT NOT NULL,
+  overlayKind TEXT NOT NULL,
+  overlayVersion INTEGER NOT NULL,
+  completeness TEXT NOT NULL,
+  payloadJson TEXT NOT NULL,
+  PRIMARY KEY (
+    serverId, principalId, consumerId,
+    scopeKind, scopeId,
+    subjectKind, subjectId, overlayKind
+  )
+);
