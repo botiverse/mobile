@@ -36,6 +36,7 @@ const opts = {
   maxMinutes: Number(arg("--max-minutes", "20")),
   device: arg("--device", ""),
   appPackage: arg("--package", "build.raft.app"),
+  playbook: arg("--playbook", process.env.QA_PLAYBOOK || "docs/qa-acceptance-operations.md"),
 };
 
 const SECRETS = {
@@ -134,7 +135,21 @@ function preamble(size) {
     "- finish with verdict pass ONLY if you visually confirmed every requirement of the goal;",
     "  if blocked, loading forever, or the UI contradicts the goal, finish with verdict fail",
     "  and a concrete reason. You have a limited turn budget — no exploration detours.",
+    ...playbookSection(),
   ].join("\n");
+}
+
+// The operation playbook (docs/qa-acceptance-operations.md) is the versioned
+// record of what past runs taught — every fail-round root cause becomes a rule
+// there, and injecting it here is what makes the next agent tap better (artin's
+// ask). A missing file degrades silently so ad-hoc checkouts still run.
+function playbookSection() {
+  try {
+    const text = fs.readFileSync(opts.playbook, "utf8");
+    return ["", "Operation playbook (lessons from previous runs — follow these):", text];
+  } catch {
+    return [];
+  }
 }
 
 async function callModel(models, model, messages) {
