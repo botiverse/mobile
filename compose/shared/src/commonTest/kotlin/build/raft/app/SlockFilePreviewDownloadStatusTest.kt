@@ -172,8 +172,41 @@ class SlockFilePreviewDownloadStatusTest {
                     )
             )
         val cleared = SlockComposerImageEditorHistory(content = original).apply(SlockComposerImageEditorContent())
+        val restored = cleared.undo()
 
-        assertEquals(original, cleared.undo().content)
+        assertEquals(original, restored.content)
+        assertEquals(SlockComposerImageEditorContent(), restored.redo().content)
+    }
+
+    @Test
+    fun composerImageRedoRestoresTheUndoneEdit() {
+        val stroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
+        val edited =
+            SlockComposerImageEditorHistory().apply(
+                SlockComposerImageEditorContent(strokes = listOf(stroke))
+            )
+
+        val undone = edited.undo()
+        val redone = undone.redo()
+
+        assertEquals(edited.content, redone.content)
+        assertTrue(redone.canUndo)
+        assertFalse(redone.canRedo)
+    }
+
+    @Test
+    fun composerImageNewEditClearsTheRedoBranch() {
+        val firstStroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
+        val replacementStroke = listOf(Offset(20f, 20f), Offset(90f, 20f))
+        val undone =
+            SlockComposerImageEditorHistory()
+                .apply(SlockComposerImageEditorContent(strokes = listOf(firstStroke)))
+                .undo()
+
+        val branched = undone.apply(SlockComposerImageEditorContent(strokes = listOf(replacementStroke)))
+
+        assertFalse(branched.canRedo)
+        assertEquals(listOf(replacementStroke), branched.content.strokes)
     }
 
     @Test

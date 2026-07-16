@@ -1256,26 +1256,35 @@ internal data class SlockComposerImageEditorContent(
 internal data class SlockComposerImageEditorHistory(
     val content: SlockComposerImageEditorContent = SlockComposerImageEditorContent(),
     val undoStack: List<SlockComposerImageEditorContent> = emptyList(),
+    val redoStack: List<SlockComposerImageEditorContent> = emptyList(),
 ) {
     val canUndo: Boolean
         get() = undoStack.isNotEmpty()
+
+    val canRedo: Boolean
+        get() = redoStack.isNotEmpty()
 
     fun apply(nextContent: SlockComposerImageEditorContent): SlockComposerImageEditorHistory =
         if (nextContent == content) {
             this
         } else {
-            copy(content = nextContent, undoStack = undoStack + content)
+            copy(content = nextContent, undoStack = undoStack + content, redoStack = emptyList())
         }
 
     fun replaceWithoutHistory(nextContent: SlockComposerImageEditorContent): SlockComposerImageEditorHistory =
         if (nextContent == content) this else copy(content = nextContent)
 
     fun commitTransaction(origin: SlockComposerImageEditorContent): SlockComposerImageEditorHistory =
-        if (origin == content) this else copy(undoStack = undoStack + origin)
+        if (origin == content) this else copy(undoStack = undoStack + origin, redoStack = emptyList())
 
     fun undo(): SlockComposerImageEditorHistory {
         val previous = undoStack.lastOrNull() ?: return this
-        return copy(content = previous, undoStack = undoStack.dropLast(1))
+        return copy(content = previous, undoStack = undoStack.dropLast(1), redoStack = redoStack + content)
+    }
+
+    fun redo(): SlockComposerImageEditorHistory {
+        val next = redoStack.lastOrNull() ?: return this
+        return copy(content = next, undoStack = undoStack + content, redoStack = redoStack.dropLast(1))
     }
 }
 
@@ -1516,6 +1525,13 @@ private fun SlockFilePreviewComposerImageEditor(
                     selected = false,
                     enabled = !saving && editorHistory.canUndo,
                     onClick = { editorHistory = editorHistory.undo() }
+                )
+                SlockFilePreviewEditorToolButton(
+                    label = stringResource(MR.strings.common_redo),
+                    icon = SlockLucideIconName.RotateCw,
+                    selected = false,
+                    enabled = !saving && editorHistory.canRedo,
+                    onClick = { editorHistory = editorHistory.redo() }
                 )
                 SlockFilePreviewEditorToolButton(
                     label = stringResource(MR.strings.file_preview_toolbar_pen),
