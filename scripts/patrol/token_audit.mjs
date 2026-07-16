@@ -52,11 +52,20 @@ function* kotlinFiles(dir) {
   }
 }
 
+// The documented close-out for a deliberate tint is a triage comment on the
+// line above (or inline): once a human has judged it a react-parity wash, the
+// lens must not re-file it. Only comments count — code content cannot exempt
+// itself.
+const TRIAGED = /\/\/.*(deliberate|token-audit|react-parity|react mirror|react:)/i;
+const isTriaged = (lines, i) =>
+  TRIAGED.test(lines[i]) || (i > 0 && TRIAGED.test(lines[i - 1]));
+
 const byFile = new Map();
 for (const file of kotlinFiles(ROOT)) {
   const lines = fs.readFileSync(file, "utf8").split("\n");
   lines.forEach((line, i) => {
     for (const pattern of PATTERNS) {
+      if (isTriaged(lines, i)) continue;
       if (pattern.re.test(line)) {
         const rel = file;
         if (!byFile.has(rel)) byFile.set(rel, []);

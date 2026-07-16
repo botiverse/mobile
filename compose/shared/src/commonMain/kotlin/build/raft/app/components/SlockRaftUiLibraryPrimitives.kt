@@ -45,9 +45,13 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal enum class SlockRaftUiBannerStatus(val background: Color) {
+    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
     Info(SlockColor.BrandYellow.copy(alpha = 0.30f)),
+    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
     Warning(SlockColor.AccentOrange.copy(alpha = 0.20f)),
+    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
     Destructive(SlockColor.AccentRed.copy(alpha = 0.20f)),
+    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
     Success(SlockColor.AccentLime.copy(alpha = 0.20f))
 }
 
@@ -360,6 +364,7 @@ internal fun SlockRaftUiInlineCode(text: String, modifier: Modifier = Modifier) 
     Box(
         modifier =
             modifier
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
                 .background(SlockColor.BrandYellow.copy(alpha = 0.40f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .padding(horizontal = 4.dp)
@@ -475,6 +480,7 @@ private fun SlockRaftUiInputGroupAddon(text: String, alignStart: Boolean) {
         modifier =
             Modifier
                 .fillMaxHeight()
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
                 .background(SlockColor.BrandYellow.copy(alpha = 0.30f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .padding(horizontal = 10.dp),
@@ -687,6 +693,7 @@ internal fun SlockRaftUiMenuRow(
             modifier
                 .fillMaxWidth()
                 .height(36.dp)
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1042
                 .background(if (highlighted) SlockColor.BrandYellow.copy(alpha = 0.30f) else SlockColor.SurfaceWhite)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.10f))
                 .padding(horizontal = 12.dp),

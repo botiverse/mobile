@@ -8559,6 +8559,7 @@ private fun SettingsServerDeleteWarningBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
+                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
                 .background(SlockColor.AccentRed.copy(alpha = 0.14f))
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(12.dp),
@@ -10383,6 +10384,7 @@ private fun SettingsQuiverFeedbackConversationRow(
                         when (entry.kind) {
                             SettingsQuiverFeedbackEntryKind.User -> SlockColor.BrandYellow
                             SettingsQuiverFeedbackEntryKind.Quiver -> SlockColor.SurfaceWhite
+                            // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
                             SettingsQuiverFeedbackEntryKind.Error -> SlockColor.AccentRed.copy(alpha = 0.18f)
                         }
                     )
@@ -15012,6 +15014,7 @@ private fun SharedCreateChannelMemberRow(
         member.roleDescription
             ?.takeIf { it.isNotBlank() }
             ?: "${member.kind.name.lowercase()} · @${member.handle}"
+    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
     val background = if (selected) SlockColor.AccentPink.copy(alpha = 0.2f) else SlockColor.SurfaceWhite
     Row(
         modifier =
@@ -16542,6 +16545,7 @@ private fun SharedHomeThreadResultGroup(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
                     .background(SlockColor.AccentPink.copy(alpha = 0.08f))
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp)
