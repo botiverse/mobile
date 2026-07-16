@@ -5889,7 +5889,7 @@ internal fun SharedThreadRouteContent(
                         )
                     }
                 },
-            forwardServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+            forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
             onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
@@ -10014,6 +10014,7 @@ private fun ThreadPageContent(
     var forwardTargetStatus by remember(threadInstanceKey) { mutableStateOf(SharedMembersLoadStatus.Idle) }
     var forwardTargetErrorCode by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
+    var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
     var forwardSelectedTarget by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTarget?>(null) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -10043,15 +10044,15 @@ private fun ThreadPageContent(
         }
     val forwardSourceChannelId = remember(payload) { payload.threadForwardSourceChannelId() }
     val forwardTargetItems =
-        remember(forwardTargets, forwardSourceChannelId) {
+        remember(forwardTargets, forwardSourceServerId, forwardSourceChannelId) {
             forwardTargets
-                .threadForwardPickerTargets(forwardSourceChannelId)
+                .threadForwardPickerTargets(forwardSourceServerId, forwardSourceChannelId)
                 .map { it.toThreadForwardTargetItem() }
         }
-    LaunchedEffect(activeModal, forwardTargetQuery, forwardServerId, forwardTargetRepository, selectedShareMessageIds) {
+    LaunchedEffect(activeModal, forwardTargetQuery, forwardSourceServerId, forwardTargetRepository, selectedShareMessageIds) {
         if (activeModal != "forwardTargets") return@LaunchedEffect
         val repository = forwardTargetRepository
-        val serverId = forwardServerId
+        val serverId = forwardSourceServerId
         if (repository == null || serverId == null) {
             forwardTargets = emptyList()
             forwardTargetStatus = SharedMembersLoadStatus.Error
@@ -10494,6 +10495,7 @@ private fun ThreadPageContent(
                                 )
                             } else {
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
+                                forwardSourceServerId = forwardServerId
                                 forwardTargetQuery = ""
                                 forwardSelectedTarget = null
                                 forwardNote = ""
@@ -10635,6 +10637,7 @@ private fun ThreadPageContent(
                     onDismiss = { activeModal = "forwardTargets" },
                     onSend = {
                         val repository = forwardTargetRepository
+                        val sourceServerId = forwardSourceServerId
                         val sourceChannelId = forwardSourceChannelId
                         val selectedTarget = forwardSelectedTarget
                         when {
@@ -10642,6 +10645,8 @@ private fun ThreadPageContent(
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
                             sourceChannelId == null ->
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
+                            sourceServerId == null ->
+                                onThreadEvent("forwardMessagesFailed", "Source server unavailable", null, null)
                             selectedTarget == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
                             !forwardSending -> {
@@ -10651,6 +10656,7 @@ private fun ThreadPageContent(
                                         val outcome =
                                             executeThreadForward(
                                                 repository = repository,
+                                                sourceServerId = sourceServerId,
                                                 sourceChannelId = sourceChannelId,
                                                 target = selectedTarget,
                                                 messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
@@ -13472,6 +13478,10 @@ internal const val ThreadUnsupportedSourceMessage =
     "System messages and action messages can't be forwarded. Select an ordinary message instead."
 internal const val ThreadForwardSourceTargetForbiddenMessage =
     "Choose a different destination from the conversation you are forwarding."
+internal const val ThreadForwardCrossServerUnavailableMessage =
+    "This destination is not available from the source server. Choose its joint-channel projection or another destination."
+internal const val ThreadForwardServerUnauthorizedMessage =
+    "You no longer have access to the source or destination server. Refresh and choose another destination."
 
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<KuiklyThreadMessageItem>,
@@ -13510,6 +13520,11 @@ internal fun String.threadForwardErrorMessage(): String =
         "forwarded_source_not_supported" -> ThreadNestedForwardUnsupportedMessage
         "unsupported_source_message" -> ThreadUnsupportedSourceMessage
         "forward_source_target_forbidden" -> ThreadForwardSourceTargetForbiddenMessage
+        "forward_cross_server_target_unsupported",
+        "forward_joint_projection_unavailable" -> ThreadForwardCrossServerUnavailableMessage
+        "forward_source_server_unauthorized",
+        "forward_target_server_unauthorized",
+        "forward_target_server_not_selected" -> ThreadForwardServerUnauthorizedMessage
         else -> this
     }
 
@@ -18893,25 +18908,30 @@ internal data class ThreadForwardOutcome(
     val failureCode: String? = null
 )
 
-internal fun ForwardMessageTarget.threadForwardSelectionKey(): String = "${kind.name}:$id"
+internal fun ForwardMessageTarget.threadForwardSelectionKey(): String = "${serverId.value}:${kind.name}:$id"
 
 internal fun List<ForwardMessageTarget>.threadForwardPickerTargets(
+    sourceServerId: ServerId?,
     sourceChannelId: ChannelId?
 ): List<ForwardMessageTarget> =
     filterNot { target ->
-        sourceChannelId != null && target.channelId == sourceChannelId
+        sourceServerId != null &&
+            sourceChannelId != null &&
+            target.serverId == sourceServerId &&
+            target.channelId == sourceChannelId
     }
 
 internal suspend fun executeThreadForward(
     repository: ForwardMessageTargetRepository,
+    sourceServerId: ServerId,
     sourceChannelId: ChannelId,
     target: ForwardMessageTarget,
     messageIds: List<String>,
     mode: ForwardMessageSendMode,
     note: String
 ): ThreadForwardOutcome {
-    val resolved = repository.resolveTargetChannel(target)
-    val targetChannelId =
+    val resolved = repository.resolveTargetChannel(sourceServerId, target)
+    val destination =
         when (resolved) {
             is DataResult.Content -> resolved.data
             else ->
@@ -18919,14 +18939,15 @@ internal suspend fun executeThreadForward(
                     failureCode = resolved.threadForwardFailureCode("forward_target_unavailable")
                 )
         }
-    if (targetChannelId == sourceChannelId) {
+    if (destination.serverId == sourceServerId && destination.channelId == sourceChannelId) {
         return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
     }
     val forwarded =
         repository.forwardMessages(
             ForwardMessageExecuteRequest(
+                sourceServerId = sourceServerId,
                 sourceChannelId = sourceChannelId,
-                targetChannelId = targetChannelId,
+                destination = destination,
                 messageIds = messageIds,
                 mode = mode,
                 note = note
@@ -19103,6 +19124,7 @@ internal fun ThreadForwardNoteVisualScreen() {
     val target =
         remember {
             ForwardMessageTarget(
+                serverId = ServerId("server-visual"),
                 kind = ForwardMessageTargetKind.RecentChannel,
                 id = "channel-design",
                 title = "#design",
