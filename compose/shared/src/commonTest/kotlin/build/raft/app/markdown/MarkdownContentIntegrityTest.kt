@@ -52,6 +52,33 @@ class MarkdownContentIntegrityTest {
         )
     }
 
+    @Test
+    fun escapedBacktickSurvivesAsLiteralBacktick() {
+        val rendered = renderTopParagraphs("Type \\` to start a code span.")
+        assertTrue(
+            rendered.any { it.contains("Type ` to start") },
+            "escaped backtick must render as a literal backtick; got: $rendered"
+        )
+    }
+
+    @Test
+    fun unpairedTildeSurvivesInPlainText() {
+        val rendered = renderTopParagraphs("Takes ~5 minutes to finish.")
+        assertTrue(
+            rendered.any { it.contains("~5 minutes") },
+            "unpaired tilde must survive rendering; got: $rendered"
+        )
+    }
+
+    @Test
+    fun strikethroughDelimitersDoNotLeakTildes() {
+        val rendered = renderTopParagraphs("Keep ~~struck words~~ clean.")
+        assertTrue(
+            rendered.any { it.contains("struck words") && !it.contains("~") },
+            "strikethrough delimiter tildes must not leak into text; got: $rendered"
+        )
+    }
+
     private fun renderTopParagraphs(content: String): List<String> {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.

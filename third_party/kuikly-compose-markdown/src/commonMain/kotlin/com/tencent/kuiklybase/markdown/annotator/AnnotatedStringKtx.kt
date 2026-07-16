@@ -449,6 +449,20 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                             }
                         }
 
+                    // A backslash-escaped backtick run ("\`") lexes as its own token.
+                    // Without a branch it fell through the when and was silently
+                    // DROPPED (patrol renderer-coverage, same class as EMAIL_AUTOLINK
+                    // above); unescaping renders the literal backtick(s).
+                    MarkdownTokenTypes.ESCAPED_BACKTICKS -> append(child.getUnescapedTextInNode(content))
+
+                    // GFM lexes every "~" as TILDE. Paired runs become a
+                    // STRIKETHROUGH element whose children still include the
+                    // delimiter TILDE tokens (the element branch recurses), so only
+                    // an unpaired tilde in plain text should render — mirroring the
+                    // EMPH delimiter guard below. Without this branch "~5 min"
+                    // rendered as "5 min".
+                    GFMTokenTypes.TILDE -> if (parentType != GFMElementTypes.STRIKETHROUGH) append('~')
+
                     MarkdownTokenTypes.SINGLE_QUOTE -> append('\'')
                     MarkdownTokenTypes.DOUBLE_QUOTE -> append('\"')
                     MarkdownTokenTypes.LPAREN -> append('(')
