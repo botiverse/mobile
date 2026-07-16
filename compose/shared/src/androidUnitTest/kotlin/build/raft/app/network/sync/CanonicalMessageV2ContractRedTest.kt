@@ -23,16 +23,25 @@ class CanonicalMessageV2ContractRedTest {
     private val json = Json { explicitNulls = true }
 
     @Test
-    fun r1_fullV6RejectsV1AndSchemaV5Partial() {
+    fun r1_fullV6PinsExactVersionKindPairAndRejectsV1V5Future() {
         val v5 = CanonicalMessageV2RedOracle.mutatedEnvelope(javaClass) {
             it["schemaVersion"] = JsonPrimitive(CANONICAL_MESSAGE_V2_SCHEMA_VERSION)
             it["fact"] = buildJsonObject { put("reactions", JsonArray(emptyList())) }
         }
-        assertRed("R1-v5", v5, CanonicalV2RedResult.Rejected("unsupported_canonical_message_schema"))
-        assertRed(
-            "R1-v1",
-            Json.parseToJsonElement("{\"version\":1,\"id\":\"legacy\"}"),
-            CanonicalV2RedResult.Rejected("unsupported_canonical_message_schema"),
+        val wrongKindV6 = CanonicalMessageV2RedOracle.mutatedEnvelope(javaClass) {
+            it["kind"] = JsonPrimitive("normalized-message-v2-wrong")
+        }
+        val futureVersionCorrectKind = CanonicalMessageV2RedOracle.mutatedEnvelope(javaClass) {
+            it["schemaVersion"] = JsonPrimitive(CANONICAL_MESSAGE_FULL_V2_SCHEMA_VERSION + 1)
+        }
+        assertRedTable(
+            cases = mapOf(
+                "R1-v5-partial" to v5,
+                "R1-v1" to Json.parseToJsonElement("{\"version\":1,\"id\":\"legacy\"}"),
+                "R1-v6-wrong-kind" to wrongKindV6,
+                "R1-correct-kind-future-version" to futureVersionCorrectKind,
+            ),
+            expected = CanonicalV2RedResult.Rejected("unsupported_canonical_message_schema"),
         )
     }
 
@@ -110,12 +119,22 @@ class CanonicalMessageV2ContractRedTest {
         )
 
     @Test
-    fun r14_crossServerMembershipFailsBeforePersistence() =
-        assertRed(
-            "R14",
-            buildJsonObject { put("nodeServerId", "server-a"); put("rootServerId", "server-b") },
-            CanonicalV2RedResult.Rejected("cross_server_reply_membership"),
+    fun r14_everyEmbeddedServerRefMustMatchDurablePartitionBeforePersistence() {
+        val mismatchPaths = listOf(
+            "topLevelScope",
+            "childReplyScope",
+            "thread.replyScope",
+            "thread.parentTopLevelScope",
+            "thread.rootMessageRef",
+            "replyMembership.root",
+            "replyMembership.parentScope",
+            "threadAndMembershipExactEqualButForeign",
         )
+        assertRedTable(
+            cases = mismatchPaths.associate { path -> "R14-$path" to embeddedServerMismatch(path) },
+            expected = CanonicalV2RedResult.Rejected("cross_server_embedded_ref"),
+        )
+    }
 
     @Test
     fun r15_parentRebaselineInvalidatesOnlyItsReadCache() =
@@ -333,6 +352,87 @@ class CanonicalMessageV2ContractRedTest {
         put("storedVersion", stored)
         put("incomingVersion", incoming)
         put("payload", payload)
+    }
+
+    private fun embeddedServerMismatch(path: String): JsonObject {
+        val envelope = when (path) {
+            "topLevelScope", "childReplyScope" -> fixtureElement("canonical-message-v2.maximal.json").jsonObject
+            else -> fullThreadEnvelope()
+        }.toMutableMap()
+
+        fun foreign(ref: JsonObject): JsonObject = JsonObject(ref.toMutableMap().apply {
+            this["serverId"] = JsonPrimitive("server-b")
+        })
+
+        when (path) {
+            "topLevelScope" -> {
+                val context = envelope.getValue("context").jsonObject.toMutableMap()
+                context["scope"] = foreign(context.getValue("scope").jsonObject)
+                envelope["context"] = JsonObject(context)
+            }
+            "childReplyScope" -> envelope["childReplyScope"] = foreign(envelope.getValue("childReplyScope").jsonObject)
+            "thread.replyScope" -> {
+                val context = envelope.getValue("context").jsonObject.toMutableMap()
+                context["replyScope"] = foreign(context.getValue("replyScope").jsonObject)
+                envelope["context"] = JsonObject(context)
+            }
+            "thread.parentTopLevelScope" -> {
+                val context = envelope.getValue("context").jsonObject.toMutableMap()
+                context["parentTopLevelScope"] = foreign(context.getValue("parentTopLevelScope").jsonObject)
+                envelope["context"] = JsonObject(context)
+            }
+            "thread.rootMessageRef" -> {
+                val context = envelope.getValue("context").jsonObject.toMutableMap()
+                context["rootMessageRef"] = foreign(context.getValue("rootMessageRef").jsonObject)
+                envelope["context"] = JsonObject(context)
+            }
+            "replyMembership.root" -> {
+                val membership = envelope.getValue("replyMembership").jsonObject.toMutableMap()
+                membership["root"] = foreign(membership.getValue("root").jsonObject)
+                envelope["replyMembership"] = JsonObject(membership)
+            }
+            "replyMembership.parentScope" -> {
+                val membership = envelope.getValue("replyMembership").jsonObject.toMutableMap()
+                membership["parentScope"] = foreign(membership.getValue("parentScope").jsonObject)
+                envelope["replyMembership"] = JsonObject(membership)
+            }
+            "threadAndMembershipExactEqualButForeign" -> {
+                val context = envelope.getValue("context").jsonObject.toMutableMap()
+                context["replyScope"] = foreign(context.getValue("replyScope").jsonObject)
+                context["parentTopLevelScope"] = foreign(context.getValue("parentTopLevelScope").jsonObject)
+                context["rootMessageRef"] = foreign(context.getValue("rootMessageRef").jsonObject)
+                envelope["context"] = JsonObject(context)
+
+                val membership = envelope.getValue("replyMembership").jsonObject.toMutableMap()
+                membership["root"] = foreign(membership.getValue("root").jsonObject)
+                membership["parentScope"] = foreign(membership.getValue("parentScope").jsonObject)
+                envelope["replyMembership"] = JsonObject(membership)
+            }
+            else -> error("unknown mismatch path $path")
+        }
+        return buildJsonObject {
+            put("partitionServerId", "server-a")
+            put("envelope", JsonObject(envelope))
+        }
+    }
+
+    private fun fullThreadEnvelope(): JsonObject {
+        val envelope = fixtureElement("canonical-message-v2.minimal.json").jsonObject.toMutableMap()
+        val thread = fixtureElement("canonical-message-v2.thread-context.json").jsonObject
+        envelope["context"] = thread.getValue("context")
+        envelope["replyMembership"] = thread.getValue("replyMembership")
+        return JsonObject(envelope)
+    }
+
+    private fun assertRedTable(
+        cases: Map<String, kotlinx.serialization.json.JsonElement>,
+        expected: CanonicalV2RedResult,
+    ) {
+        val expectedByCase = cases.keys.associateWith { expected }
+        val actualByCase = cases.mapValues { (id, input) ->
+            subject.evaluate(CanonicalMessageV2RedOracle.invocation(id, input))
+        }
+        assertEquals(expectedByCase, actualByCase)
     }
 
     private fun assertRed(id: String, input: kotlinx.serialization.json.JsonElement, expected: CanonicalV2RedResult) {
