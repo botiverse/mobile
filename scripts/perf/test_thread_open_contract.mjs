@@ -25,16 +25,21 @@ const KEYS = Array.from({ length: 5 }, (_, j) => ({ idx: 20 + j, keyB64: b64u(`t
 const DIGEST = crypto.createHash("sha256").update(KEYS.map((k) => `index=${k.idx};key=${k.keyB64}`).join("\n"), "utf8").digest("hex");
 const P = "07-16 15:30:00.000  1  1 I SlockKuikly: ";
 
+const CURR = "currentSurfaceOwner=s1 currentPageInstance=p1 currentIntent=i1 currentRouteGeneration=1 currentResolvedRouteKey=channel:abc currentRenderRevision=1 currentWindowGeneration=1";
+const OLDTOK = TOK.replace("windowGeneration=1", "windowGeneration=0");
 function greenLines() {
   const L = [];
+  // draw-before-declaration: observed -> window_not_declared drop -> declaration
+  L.push(`thread_first_content_draw_observed ${TOK} visible=true drawSeq=1`);
+  L.push(`thread_first_content_frame_commit_drop reason=window_not_declared drawSeq=1 ${TOK} ${CURR}`);
   L.push(`thread_render_window_declared ${TOK} totalCount=25 windowStart=20 windowEnd=24 anchor=bottom reason=initial windowKeyCount=5 windowKeysDigest=${DIGEST}`);
   for (const { idx, keyB64 } of KEYS) {
     L.push(`thread_row_recompose scope=card index=${idx} lazyItemKey=${keyB64} n=1 bodyLen=40 ${TOK} presentation=pr1`);
     L.push(`thread_row_recompose scope=body index=${idx} lazyItemKey=${keyB64} n=1 bodyLen=40 ${TOK} presentation=pr1`);
   }
-  L.push(`thread_first_content_draw_observed ${TOK} visible=false drawSeq=1`);
-  L.push(`thread_first_content_frame_commit_drop reason=surface_not_visible drawSeq=1 ${TOK} currentSurfaceOwner=s1 currentPageInstance=p1 currentIntent=i1 currentRouteGeneration=1 currentResolvedRouteKey=channel:abc currentRenderRevision=1 currentWindowGeneration=1`);
-  L.push(`thread_first_content_draw_observed ${TOK} visible=true drawSeq=2`);
+  L.push(`thread_first_content_draw_observed ${TOK} visible=false drawSeq=2`);
+  L.push(`thread_first_content_frame_commit_drop reason=surface_not_visible drawSeq=2 ${TOK} ${CURR}`);
+  L.push(`thread_first_content_draw_observed ${TOK} visible=true drawSeq=3`);
   L.push(`thread_first_content_frame_committed threadId=t1 ${TOK}`);
   L.push(`thread_first_content_budget phase=render layoutMs=20 drawMs=40 layoutBudgetMs=100 drawBudgetMs=100 pass=true`);
   const stagePlan = {
@@ -61,6 +66,9 @@ function greenLines() {
     }
     L.push(`thread_auxiliary_hydration stage=${stage} stageAdmissionId=${aid} applicable=true result=terminal terminal=success reason=resolved_snapshot ${TOK}`);
   }
+  // a legally fenced old-token late completion must NOT pollute current counts
+  L.push(`thread_auxiliary_request stage=members operation=channel_members stageAdmissionId=adm-old requestId=r-old phase=terminal result=success reason=stale_token ${OLDTOK}`);
+  L.push(`thread_auxiliary_completion_drop stage=members operation=channel_members stageAdmissionId=adm-old requestId=r-old phase=request reason=stale_token ${OLDTOK}`);
   return L;
 }
 
@@ -76,13 +84,13 @@ const cases = [
   },
   { name: "commit-without-visible-observed", mutate: (L) => L.filter((l) => !l.includes("visible=true")), expect: "without a preceding same-token visible=true" },
   { name: "missing-frame-marker", mutate: (L) => L.filter((l) => !l.includes("frame_committed")), expect: "MISSING_FRAME_MARKER" },
-  { name: "unpaired-offscreen-observed", mutate: (L) => L.filter((l) => !l.includes("commit_drop")), expect: "without paired surface_not_visible drop" },
+  { name: "unpaired-offscreen-observed", mutate: (L) => L.filter((l) => !l.includes("reason=surface_not_visible")), expect: "without paired surface_not_visible drop" },
   {
     name: "orphan-surface-not-visible-drop",
-    mutate: (L) => { const i = L.findIndex((l) => l.includes("commit_drop")); L[i] = L[i].replace("drawSeq=1", "drawSeq=9"); return L; },
+    mutate: (L) => { const i = L.findIndex((l) => l.includes("reason=surface_not_visible")); L[i] = L[i].replace("drawSeq=2", "drawSeq=9"); return L; },
     expect: "surface_not_visible drop without matching observed",
   },
-  { name: "observed-missing-drawseq", mutate: (L) => L.map((l) => l.includes("visible=true") ? l.replace(" drawSeq=2", "") : l), expect: "observed marker invalid/missing fields" },
+  { name: "observed-missing-drawseq", mutate: (L) => L.map((l) => l.includes("drawSeq=3") && l.includes("draw_observed") ? l.replace(" drawSeq=3", "") : l), expect: "observed marker invalid/missing fields" },
   { name: "row-missing-token", mutate: (L) => L.map((l) => l.includes("scope=card") ? l.replace(" surfaceOwner=s1", "") : l), expect: "rowRecompose marker missing token fields" },
   {
     name: "unknown-operation",
@@ -130,10 +138,7 @@ const cases = [
   },
   {
     name: "obsolete-terminal-without-drop",
-    mutate: (L) => {
-      L.push(`thread_auxiliary_request stage=members operation=channel_members stageAdmissionId=adm-old requestId=r-old phase=terminal result=success reason=resolved_snapshot ${TOK.replace("windowGeneration=1", "windowGeneration=0")}`);
-      return L;
-    },
+    mutate: (L) => L.filter((l) => !l.includes("completion_drop")),
     expect: "not fenced by completion_drop",
   },
   {
@@ -146,7 +151,7 @@ const cases = [
     mutate: (L) => L.map((l) => l.includes("dispatcher=caller") ? l.replace("dispatcher=caller", "dispatcher=mystery") : l),
     expect: "unknown/missing dispatcher",
   },
-  { name: "duplicate-declaration", mutate: (L) => { L.splice(1, 0, L[0].replace("reason=initial", "reason=equivalent_refresh")); return L; }, expect: "duplicate window declaration" },
+  { name: "duplicate-declaration", mutate: (L) => { const i = L.findIndex((l) => l.includes("thread_render_window_declared")); L.splice(i + 1, 0, L[i].replace("reason=initial", "reason=equivalent_refresh")); return L; }, expect: "duplicate window declaration" },
   {
     name: "digest-mismatch",
     mutate: (L) => L.map((l) => l.includes("windowKeysDigest") ? l.replace(DIGEST, "0".repeat(64)) : l),
@@ -171,6 +176,47 @@ const cases = [
     name: "stale-token-row",
     mutate: (L) => { L.splice(1, 0, `thread_row_recompose scope=card index=20 lazyItemKey=${KEYS[0].keyB64} n=1 bodyLen=40 ${TOK.replace("windowGeneration=1", "windowGeneration=0")} presentation=pr1`); return L; },
     expect: "stale window composition",
+  },
+  {
+    name: "wrong-admission-operation",
+    mutate: (L) => L.map((l) => l.includes("thread_auxiliary_operation") && l.includes("operation=channel_members") ? l.replace("stageAdmissionId=adm-members", "stageAdmissionId=rogue-admission") : l),
+    expect: 'carries stageAdmissionId',
+  },
+  {
+    name: "wrong-admission-work",
+    mutate: (L) => L.map((l) => (l.includes("thread_auxiliary_request ") || l.includes("thread_auxiliary_parse") || l.includes("thread_auxiliary_emit")) && l.includes("operation=channel_members") && !l.includes("adm-old") ? l.replace("stageAdmissionId=adm-members", "stageAdmissionId=rogue-admission") : l),
+    expect: 'carries stageAdmissionId',
+  },
+  {
+    name: "missing-secondary-stage",
+    mutate: (L) => L.filter((l) => !(l.includes("stage=secondary"))),
+    expect: "stage secondary: no lifecycle markers",
+  },
+  {
+    name: "work-enum-banana",
+    mutate: (L) => L.map((l) => l.includes("thread_auxiliary_request ") && l.includes("operation=channel_members") && l.includes("phase=started") ? l.replace("result=none reason=resolved_snapshot", "result=banana reason=projection_unchanged") : l),
+    expect: "marker invalid/missing fields",
+  },
+  {
+    name: "precommit-admitted",
+    mutate: (L) => {
+      const a = L.findIndex((l) => l.includes("stage=members") && l.includes("result=admitted") && l.includes("thread_auxiliary_hydration"));
+      const c = L.findIndex((l) => l.includes("frame_committed"));
+      const [adm] = L.splice(a, 1);
+      L.splice(c, 0, adm);
+      return L;
+    },
+    expect: "admitted before frame commit",
+  },
+  {
+    name: "wnd-double-drop",
+    mutate: (L) => { const i = L.findIndex((l) => l.includes("reason=window_not_declared")); L.splice(i + 1, 0, L[i]); return L; },
+    expect: "duplicate window_not_declared drops",
+  },
+  {
+    name: "sv-drop-on-visible-observed",
+    mutate: (L) => L.map((l) => l.includes("visible=false") ? l.replace("visible=false", "visible=true") : l),
+    expect: "paired with a visible=true observed",
   },
   {
     name: "noncanonical-base64url",

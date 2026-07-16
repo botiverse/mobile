@@ -44,10 +44,10 @@ const OP_REASONS = new Set([
   "surface_not_supported", "reply_thread_followed_not_applicable", "tab_not_chat", "composer_not_mounted",
   "operation_not_demanded", "cache_sufficient",
 ]);
-const WORK_REASONS = new Set([
-  "resolved_snapshot", "request_failed", "parse_failed", "cancelled", "route_switched",
-  "disposed", "cleared", "stale_token", "late_completion", "projection_unchanged", "coalesced",
-]);
+const REQUEST_REASONS = new Set(["resolved_snapshot", "request_failed", "cancelled", "route_switched", "disposed", "cleared", "stale_token"]);
+const PARSE_REASONS = new Set(["resolved_snapshot", "parse_failed", "cancelled", "route_switched", "disposed", "cleared", "stale_token"]);
+const EMIT_ACCEPT_REASONS = new Set(["resolved_snapshot", "projection_unchanged"]);
+const FENCE_REASONS = new Set(["late_completion", "route_switched", "disposed", "cleared", "stale_token"]);
 const TERMINAL_RESULTS = new Set(["success", "failure", "cancelled"]);
 const ANCHORS = new Set(["bottom", "focused", "cached", "empty", "non_chat"]);
 const DECL_REASONS = new Set(["initial", "equivalent_refresh", "changed_refresh", "realtime", "route_refined"]);
@@ -173,6 +173,26 @@ const REQUIRED = {
     else if (!(OPERATIONS[st] ?? []).includes(field(e.line, "operation") ?? "")) errs.push("operation");
     if (!field(e.line, "stageAdmissionId")) errs.push("stageAdmissionId");
     if (!field(e.line, "requestId")) errs.push("requestId");
+    const phase = field(e.line, "phase");
+    const result = field(e.line, "result");
+    const reason = field(e.line, "reason");
+    if (e.kind === "workRequest" || e.kind === "workParse") {
+      if (!["started", "terminal"].includes(phase ?? "")) errs.push("phase");
+      else if (phase === "started" && result !== "none") errs.push("result(started=none)");
+      else if (phase === "terminal" && !TERMINAL_RESULTS.has(result ?? "")) errs.push("result(terminal-enum)");
+      const allowed = e.kind === "workParse" ? PARSE_REASONS : REQUEST_REASONS;
+      if (!allowed.has(reason ?? "")) errs.push("reason");
+    } else if (e.kind === "workEmit") {
+      if (!["accepted", "dropped"].includes(result ?? "")) errs.push("result");
+      if (!["true", "false"].includes(field(e.line, "emitted") ?? "")) errs.push("emitted");
+      const allowed = result === "accepted" ? EMIT_ACCEPT_REASONS : FENCE_REASONS;
+      if (!allowed.has(reason ?? "")) errs.push("reason");
+    } else if (e.kind === "requestJoin") {
+      if (reason !== "coalesced") errs.push("reason(coalesced)");
+    } else if (e.kind === "completionDrop") {
+      if (!["request", "parse", "emit"].includes(phase ?? "")) errs.push("phase");
+      if (!FENCE_REASONS.has(reason ?? "")) errs.push("reason");
+    }
     return errs;
   },
   rowRecompose: (e) => {
@@ -250,15 +270,22 @@ for (const o of falseVisible) {
 // window_not_declared: paired with an observed and recovery proven by a later
 // same-token visible observed followed by the accepted commit
 let drawBeforeDeclarationRecovered = null;
+const wndBySeq = new Map();
 for (const d of wndDrops) {
   const k = `${tokenKey(d.token)}\x1f${field(d.line, "drawSeq")}`;
-  if (!obsBySeq.has(k)) flag("B", `window_not_declared drop without matching observed`, { line: d.i });
+  wndBySeq.set(k, (wndBySeq.get(k) || []).concat(d));
+  const o = obsBySeq.get(k);
+  if (!o) flag("B", `window_not_declared drop without matching observed`, { line: d.i });
+  else if (d.i < o.i) flag("B", "window_not_declared drop precedes its observed", { line: d.i });
 }
+for (const [, ds] of wndBySeq) if (ds.length > 1) flag("B", `duplicate window_not_declared drops for one observation (${ds.length})`, { lines: ds.map((d) => d.i) });
 if (wndDrops.length) {
   drawBeforeDeclarationRecovered =
     commit !== null &&
-    wndDrops.every((d) => observed.some((o) => tokenKey(o.token) === tokenKey(d.token) && o.i > d.i && field(o.line, "visible") === "true"));
-  if (!drawBeforeDeclarationRecovered) flag("B", "draw-before-declaration never recovered into a same-token visible commit");
+    wndDrops.every((d) =>
+      tokenKey(d.token) === commitTokenK &&
+      observed.some((o) => tokenKey(o.token) === tokenKey(d.token) && o.i > d.i && field(o.line, "visible") === "true" && o.i < commit.i));
+  if (!drawBeforeDeclarationRecovered) flag("B", "draw-before-declaration never recovered into the same-token visible accepted commit");
 }
 const unreasonedDrops = drops.filter((d) => { const r = field(d.line, "reason"); return !r || !COMMIT_DROP_REASONS.has(r); }).length;
 
@@ -290,7 +317,10 @@ for (const s of stageEv.filter((e) => commitTokenK === null || isCommitToken(e))
   const app = field(s.line, "applicable");
   if (app !== undefined) rec.applicable = app === "true";
   const res = field(s.line, "result");
-  if (res === "admitted") { rec.admitted++; rec.admittedIdx = s.i; }
+  if (res === "admitted") {
+    rec.admitted++; rec.admittedIdx = s.i;
+    if (firstCommitIdx === null || s.i < firstCommitIdx) rec.admittedPreCommit = (rec.admittedPreCommit || 0) + 1;
+  }
   else if (res === "launched") {
     rec.launched++; rec.launchedIdx = s.i;
     if (firstCommitIdx === null || s.i < firstCommitIdx) rec.launchedPreCommit++;
@@ -298,9 +328,14 @@ for (const s of stageEv.filter((e) => commitTokenK === null || isCommitToken(e))
   else if (res === "skipped") { rec.skipped++; rec.skipReason = field(s.line, "reason"); }
   stages.set(st, rec);
 }
-if (commit && !stages.size) flag("B", "no auxiliary stage lifecycle markers for the committed token — queued-forever or instrumentation missing");
+if (commit) {
+  for (const st of STAGES) {
+    if (!stages.has(st)) flag("B", `stage ${st}: no lifecycle markers for the committed token — every frozen stage must declare applicable or skip`);
+  }
+}
 for (const [st, r] of stages) {
   if (r.admissionIds.size > 1) flag("B", `stage ${st}: multiple stageAdmissionIds for one committed token (${r.admissionIds.size})`);
+  if (r.admittedPreCommit) flag("B", `stage ${st}: admitted before frame commit (${r.admittedPreCommit})`);
   if (r.launchedPreCommit) flag("B", `stage ${st}: launched before frame commit (${r.launchedPreCommit})`);
   if (r.applicable === null) { flag("B", `stage ${st}: applicability never declared explicitly`); continue; }
   if (r.applicable) {
@@ -314,6 +349,21 @@ for (const [st, r] of stages) {
     if (r.admitted || r.launched || r.terminal) flag("B", `stage ${st}: non-applicable stage did work`);
   }
 }
+// admission correlation: every operation/work marker must carry its stage's
+// single committed-token stageAdmissionId — a rogue admission id means an old
+// generation is leaking into the current lifecycle
+const stageAdmission = new Map();
+for (const [st, r] of stages) if (r.admissionIds.size === 1) stageAdmission.set(st, [...r.admissionIds][0]);
+for (const e of [...opEv, ...workEv]) {
+  if (commitTokenK !== null && tokenComplete(e.token) && tokenKey(e.token) !== commitTokenK) continue; // fenced separately
+  const st = field(e.line, "stage");
+  const aid = field(e.line, "stageAdmissionId");
+  const expected = stageAdmission.get(st);
+  if (expected !== undefined && aid !== undefined && aid !== expected) {
+    flag("B", `${st}: ${e.kind} carries stageAdmissionId "${aid}" != stage admission "${expected}"`, { line: e.i });
+  }
+}
+
 // operation declarations under the committed token
 const opsDeclared = new Map();
 for (const o of opEv.filter((e) => commitTokenK === null || isCommitToken(e))) {
@@ -325,7 +375,10 @@ for (const o of opEv.filter((e) => commitTokenK === null || isCommitToken(e))) {
   if (app !== undefined) rec.applicable = app === "true";
   rec.reason = field(o.line, "reason") ?? rec.reason;
   const res = field(o.line, "result");
-  if (res === "admitted") rec.admitted++;
+  if (res === "admitted") {
+    rec.admitted++;
+    if (firstCommitIdx === null || o.i < firstCommitIdx) flag("B", `${k}: operation admitted before frame commit`, { line: o.i });
+  }
   else if (res === "skipped") rec.skipped++;
   opsDeclared.set(k, rec);
 }
@@ -345,6 +398,9 @@ for (const w of workEv) {
   const st = field(w.line, "stage") ?? "?";
   const op = field(w.line, "operation") ?? "?";
   if (!STAGES.includes(st) || !(OPERATIONS[st] ?? []).includes(op)) { flag("B", `work marker with unknown stage/operation ${st}/${op}`, { line: w.i }); continue; }
+  // legitimate old-token completions are fence-verified above; they must not
+  // pollute the current lifecycle's exactly-once accounting
+  if (commitTokenK !== null && tokenComplete(w.token) && tokenKey(w.token) !== commitTokenK) continue;
   const k = `${st}/${op}`;
   const r = wrec(k);
   const phase = field(w.line, "phase");
@@ -360,10 +416,6 @@ for (const w of workEv) {
     } else if (phase === "terminal") {
       r.reqTerminal++; rr.reqTermIdx = w.i;
       if (rr.startIdx === null) flag("B", `${k}: request terminal without started (requestId ${rid})`, { line: w.i });
-      if (commitTokenK && tokenComplete(w.token) && tokenKey(w.token) !== commitTokenK) {
-        const hasDrop = workEv.some((d) => d.kind === "completionDrop" && field(d.line, "requestId") === rid && d.i >= w.i);
-        if (!hasDrop) { r.lateDropViolations++; flag("B", `${k}: obsolete-token request terminal without completion_drop`, { line: w.i }); }
-      }
     }
     r.lastPhaseIdx = Math.max(r.lastPhaseIdx, w.i);
   } else if (w.kind === "requestJoin") {
@@ -396,14 +448,10 @@ for (const w of workEv) {
       if (rr.parseStartIdx !== null && rr.parseTermIdx === null) flag("B", `${k}: emit accepted before parse terminal (requestId ${rid})`, { line: w.i });
       if (rr.startIdx === null) flag("B", `${k}: emit accepted without request (requestId ${rid})`, { line: w.i });
       if (pre) bumpPre(st, op, "emit");
-    } else if (res === "dropped" && !WORK_REASONS.has(field(w.line, "reason") ?? "")) {
-      flag("B", `${k}: dropped emit without frozen reason`, { line: w.i });
     }
     r.lastPhaseIdx = Math.max(r.lastPhaseIdx, w.i);
   } else if (w.kind === "completionDrop") {
     r.completionDrops++;
-    if (!["request", "parse", "emit"].includes(field(w.line, "phase") ?? "")) flag("B", `${k}: completion_drop with invalid phase`, { line: w.i });
-    if (!WORK_REASONS.has(field(w.line, "reason") ?? "")) flag("B", `${k}: completion_drop with unknown reason`, { line: w.i });
   }
 }
 // per-operation exactly-once under applicable committed-token stages;
@@ -614,15 +662,14 @@ for (const [st, ops] of Object.entries(OPERATIONS)) {
   preCommitOut[st].launch = stages.get(st)?.launchedPreCommit ?? 0;
 }
 const budgetLine = budgets[budgets.length - 1]?.line;
-const emptyExercised = [...stages.values()].some((r) => r.applicable === false);
 const applicabilityMatrix = {
   verdict: nonChatUnexpectedOperations === 0 ? "PASS" : "FAIL",
-  emptyChannelMemberSuggestionsExecutable: emptyExercised ? true : { value: null, reason: "seeded content scenario does not exercise the empty-composer path" },
+  emptyChannelMemberSuggestionsExecutable: { value: null, reason: "seeded content scenario does not exercise the empty-composer path" },
   emptyDmMemberSuggestionsExecutable: { value: null, reason: "seeded content scenario does not exercise the empty-DM path" },
   emptyChannelSuggestionsExecutable: { value: null, reason: "seeded content scenario does not exercise the empty-composer path" },
   nonChatUnexpectedOperations,
 };
-if (!emptyExercised) notProven.push({ tooth: "applicabilityMatrix.empty*Executable", reason: "unexercised in seeded scenario; deterministic fixture authority" });
+notProven.push({ tooth: "applicabilityMatrix.empty*Executable", reason: "unexercised in seeded scenario; deterministic fixture authority" });
 
 const report = {
   verdict: violations.length ? "FAIL" : "PASS",

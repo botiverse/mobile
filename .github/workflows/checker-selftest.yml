@@ -19,7 +19,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # exact-bound: check out the PR HEAD (not the synthetic merge ref) and
+      # record the SHA so reviewers can bind this run to the frozen exact.
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert head exact
+        run: |
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual="$(git rev-parse HEAD)"
+          echo "expected=$expected" | tee head-manifest.txt
+          echo "actual=$actual" | tee -a head-manifest.txt
+          test "$expected" = "$actual"
       - name: Run fixture suite
         run: |
           mkdir -p checker-fixtures
@@ -31,5 +42,6 @@ jobs:
           name: checker-selftest
           path: |
             checker-selftest.txt
+            head-manifest.txt
             checker-fixtures
           if-no-files-found: error
