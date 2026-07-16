@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -41,6 +42,7 @@ enum class ForwardMessageSendMode(val wireValue: String) {
 }
 
 data class ForwardMessageTarget(
+    val serverId: ServerId,
     val kind: ForwardMessageTargetKind,
     val id: String,
     val title: String,
@@ -48,6 +50,8 @@ data class ForwardMessageTarget(
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.take(1).uppercase(),
     val channelId: ChannelId? = null,
+    val channelKind: ConversationKind = ConversationKind.Channel,
+    val jointChannelId: String? = null,
     val memberId: MemberId? = null,
     val joined: Boolean? = null,
     val dmExists: Boolean? = null,
@@ -55,18 +59,33 @@ data class ForwardMessageTarget(
     val requiredAction: ForwardMessageTargetRequiredAction = ForwardMessageTargetRequiredAction.None
 )
 
+data class ForwardMessageDestination(
+    val serverId: ServerId,
+    val channelId: ChannelId,
+    val channelKind: ConversationKind,
+    val jointChannelId: String? = null
+)
+
 data class ForwardMessageExecuteRequest(
+    val sourceServerId: ServerId,
     val sourceChannelId: ChannelId,
-    val targetChannelId: ChannelId,
+    val destination: ForwardMessageDestination,
     val messageIds: List<String>,
     val mode: ForwardMessageSendMode,
     val note: String = ""
-)
+) {
+    val targetChannelId: ChannelId
+        get() = destination.channelId
+}
 
 interface ForwardMessageTargetRepository {
     suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>>
     suspend fun searchTargets(serverId: ServerId, query: String, limit: Int): DataResult<List<ForwardMessageTarget>>
-    suspend fun resolveTargetChannel(target: ForwardMessageTarget, allowJoin: Boolean = false): DataResult<ChannelId>
+    suspend fun resolveTargetChannel(
+        sourceServerId: ServerId,
+        target: ForwardMessageTarget,
+        allowJoin: Boolean = false
+    ): DataResult<ForwardMessageDestination>
     suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit>
 }
 
@@ -82,9 +101,9 @@ class RealForwardMessageTargetRepository(
         val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
         val channels = channelRepository.getChannels(serverId).contentOrEmpty { it.channels }
         val items =
-            (directMessages.mapNotNull { it.toRecentForwardTarget() } +
-                channels.mapNotNull { it.toRecentForwardTarget() })
-                .distinctBy { it.kind.name + ":" + it.id }
+            (directMessages.mapNotNull { it.toRecentForwardTarget(serverId) } +
+                channels.mapNotNull { it.toRecentForwardTarget(serverId) })
+                .distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
                 .take(limit.coerceAtLeast(1))
         return DataResult.Content(items)
     }
@@ -96,24 +115,53 @@ class RealForwardMessageTargetRepository(
         return localSearchResult(serverId, cleanQuery, limit)
     }
 
-    override suspend fun resolveTargetChannel(target: ForwardMessageTarget, allowJoin: Boolean): DataResult<ChannelId> {
+    override suspend fun resolveTargetChannel(
+        sourceServerId: ServerId,
+        target: ForwardMessageTarget,
+        allowJoin: Boolean
+    ): DataResult<ForwardMessageDestination> {
+        val session = currentSession() ?: return forwardAuthRequired()
+        if (!session.canAccessForwardServer(sourceServerId)) {
+            return DataResult.Error(ScreenError(code = "forward_source_server_unauthorized", retryable = false))
+        }
+        if (!session.canAccessForwardServer(target.serverId)) {
+            return DataResult.Error(ScreenError(code = "forward_target_server_unauthorized", retryable = false))
+        }
         val directChannelId = target.channelId
         if (directChannelId != null && target.requiredAction != ForwardMessageTargetRequiredAction.JoinChannel) {
-            return DataResult.Content(directChannelId)
+            return resolveForwardDestination(
+                sourceServerId = sourceServerId,
+                target = target,
+                destination = target.toForwardDestination(directChannelId)
+            )
         }
         return when (target.requiredAction) {
             ForwardMessageTargetRequiredAction.None ->
-                directChannelId?.let { DataResult.Content(it) }
+                directChannelId?.let {
+                    resolveForwardDestination(
+                        sourceServerId = sourceServerId,
+                        target = target,
+                        destination = target.toForwardDestination(it)
+                    )
+                }
                     ?: DataResult.Error(ScreenError(code = "forward_target_missing_channel", retryable = false))
             ForwardMessageTargetRequiredAction.JoinChannel -> {
                 if (!allowJoin) {
                     return DataResult.Error(ScreenError(code = "forward_join_confirmation_required", retryable = false))
                 }
+                if (target.serverId != sourceServerId || session.currentServerId != target.serverId.value) {
+                    return DataResult.Error(ScreenError(code = "forward_target_server_not_selected", retryable = false))
+                }
                 val channelId = directChannelId
                     ?: return DataResult.Error(ScreenError(code = "forward_target_missing_channel", retryable = false))
-                channelRepository.joinChannel(channelId).mapContent { it.channelId }
+                channelRepository.joinChannel(channelId).mapContent {
+                    target.toForwardDestination(it.channelId)
+                }
             }
             ForwardMessageTargetRequiredAction.CreateDirectMessage -> {
+                if (target.serverId != sourceServerId || session.currentServerId != target.serverId.value) {
+                    return DataResult.Error(ScreenError(code = "forward_target_server_not_selected", retryable = false))
+                }
                 val memberId = target.memberId
                     ?: return DataResult.Error(ScreenError(code = "forward_target_missing_member", retryable = false))
                 val result =
@@ -125,7 +173,13 @@ class RealForwardMessageTargetRepository(
                         else ->
                             DataResult.Error(ScreenError(code = "forward_target_cannot_create_dm", retryable = false))
                     }
-                result.mapContent { it.conversation.toConversationSummary().messageStreamChannelId() }
+                result.mapContent {
+                    ForwardMessageDestination(
+                        serverId = target.serverId,
+                        channelId = it.conversation.toConversationSummary().messageStreamChannelId(),
+                        channelKind = ConversationKind.DirectMessage
+                    )
+                }
             }
         }
     }
@@ -142,6 +196,7 @@ class RealForwardMessageTargetRepository(
                     priority = DataRequestPriority.Foreground,
                     path = "messages/forward",
                     method = "POST",
+                    serverIdOverride = request.destination.serverId,
                     bodyText = forwardTargetJson.encodeToString(request.toWireBody())
                 )
             },
@@ -170,12 +225,69 @@ class RealForwardMessageTargetRepository(
         val members = memberRepository.getMembers(DataRequestPriority.Foreground, serverId).contentOrEmpty { it.members }
 
         return fallbackForwardMessageTargets(
+            serverId = serverId,
             directMessages = directMessages,
             channels = channels,
             members = members,
             query = query,
             limit = max
         )
+    }
+
+    private suspend fun resolveForwardDestination(
+        sourceServerId: ServerId,
+        target: ForwardMessageTarget,
+        destination: ForwardMessageDestination
+    ): DataResult<ForwardMessageDestination> {
+        if (destination.serverId == sourceServerId) {
+            return DataResult.Content(destination)
+        }
+        val jointId = target.jointChannelId?.trim()?.takeIf { it.isNotBlank() }
+        if (target.channelKind != ConversationKind.Joint || jointId == null) {
+            warningLogger(
+                "forward_target_rejected reason=cross_server_non_joint " +
+                    "sourceServerId=${sourceServerId.value} targetServerId=${target.serverId.value} " +
+                    "targetKind=${target.channelKind.name}"
+            )
+            return DataResult.Error(
+                ScreenError(code = "forward_cross_server_target_unsupported", retryable = false)
+            )
+        }
+        val sourceProjection =
+            when (val result = channelRepository.getChannels(sourceServerId)) {
+                is DataResult.Content ->
+                    result.data.channels.firstOrNull { row ->
+                        row.joined &&
+                            !row.archived &&
+                            row.kind == ConversationKind.Joint &&
+                            row.jointChannelId?.trim() == jointId
+                    }
+                is DataResult.Empty -> null
+                is DataResult.Error -> return DataResult.Error(result.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+            }
+        if (sourceProjection == null) {
+            warningLogger(
+                "forward_target_rejected reason=joint_projection_unavailable " +
+                    "sourceServerId=${sourceServerId.value} targetServerId=${target.serverId.value}"
+            )
+            return DataResult.Error(
+                ScreenError(code = "forward_joint_projection_unavailable", retryable = false)
+            )
+        }
+        val resolved =
+            ForwardMessageDestination(
+                serverId = sourceServerId,
+                channelId = sourceProjection.toConversationSummary().messageStreamChannelId(),
+                channelKind = ConversationKind.Joint,
+                jointChannelId = jointId
+            )
+        warningLogger(
+            "forward_target_projection_resolved sourceServerId=${sourceServerId.value} " +
+                "selectedTargetServerId=${target.serverId.value} executionServerId=${resolved.serverId.value} " +
+                "targetKind=${resolved.channelKind.name}"
+        )
+        return DataResult.Content(resolved)
     }
 
     private suspend fun <T> executeForwardTargets(
@@ -216,55 +328,64 @@ private inline fun <T, R> DataResult<T>.mapContent(mapper: (T) -> R): DataResult
         is DataResult.NoPermission -> DataResult.NoPermission(blocker)
     }
 
-private fun HomeDirectMessageRow.toRecentForwardTarget(): ForwardMessageTarget? {
+private fun HomeDirectMessageRow.toRecentForwardTarget(serverId: ServerId): ForwardMessageTarget? {
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
+        serverId = serverId,
         kind = ForwardMessageTargetKind.RecentDirectMessage,
         id = channelId.value,
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Recent DM",
         avatarLabel = title.take(1).uppercase(),
         channelId = channelId,
+        channelKind = ConversationKind.DirectMessage,
         memberId = presenceMemberId,
         dmExists = true,
         canForwardNow = true
     )
 }
 
-private fun HomeChannelRow.toRecentForwardTarget(): ForwardMessageTarget? {
+private fun HomeChannelRow.toRecentForwardTarget(serverId: ServerId): ForwardMessageTarget? {
     if (!joined || archived) return null
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
+        serverId = serverId,
         kind = ForwardMessageTargetKind.RecentChannel,
         id = channelId.value,
         title = "#$title",
         subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Joined channel",
         avatarLabel = "#",
         channelId = channelId,
+        channelKind = kind,
+        jointChannelId = jointChannelId,
         joined = true,
         canForwardNow = true
     )
 }
 
-private fun HomeChannelRow.toSearchForwardTarget(): ForwardMessageTarget? {
+private fun HomeChannelRow.toSearchForwardTarget(serverId: ServerId): ForwardMessageTarget? {
     if (!joined || archived) return null
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
+        serverId = serverId,
         kind = ForwardMessageTargetKind.RecentChannel,
         id = channelId.value,
         title = "#$title",
         subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Joined channel",
         avatarLabel = "#",
         channelId = channelId,
+        channelKind = kind,
+        jointChannelId = jointChannelId,
         joined = true,
         canForwardNow = true
     )
 }
 
 internal fun fallbackForwardMessageTargets(
+    serverId: ServerId,
     directMessages: List<HomeDirectMessageRow>,
     channels: List<HomeChannelRow>,
     members: List<MemberProfile> = emptyList(),
@@ -273,18 +394,18 @@ internal fun fallbackForwardMessageTargets(
 ): List<ForwardMessageTarget> {
     val existingDmMemberIds = directMessages.mapNotNull { it.presenceMemberId }.toSet()
     return (
-        directMessages.mapNotNull { it.toRecentForwardTarget() } +
-            channels.mapNotNull { it.toSearchForwardTarget() } +
+        directMessages.mapNotNull { it.toRecentForwardTarget(serverId) } +
+            channels.mapNotNull { it.toSearchForwardTarget(serverId) } +
             members
                 .filterNot { it.id in existingDmMemberIds }
-                .mapNotNull { it.toForwardMemberCandidate() }
+                .mapNotNull { it.toForwardMemberCandidate(serverId) }
         )
         .filter { it.matchesForwardQuery(query) }
         .dedupeForwardTargets()
         .take(limit.coerceAtLeast(1))
 }
 
-private fun MemberProfile.toForwardMemberCandidate(): ForwardMessageTarget? {
+private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardMessageTarget? {
     val targetKind =
         when (kind) {
             MemberKind.Human -> ForwardMessageTargetKind.HumanDirectMessageCandidate
@@ -293,12 +414,14 @@ private fun MemberProfile.toForwardMemberCandidate(): ForwardMessageTarget? {
         }
     val title = displayName.trim().takeIf { it.isNotBlank() } ?: handle.trim().takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
+        serverId = serverId,
         kind = targetKind,
         id = id.value,
         title = title,
         subtitle = handle.trim().takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
         avatarWireValue = avatar?.wireValue ?: avatarUrl,
         avatarLabel = avatarLabel.ifBlank { title.take(1).uppercase() },
+        channelKind = ConversationKind.DirectMessage,
         memberId = id,
         dmExists = false,
         canForwardNow = false,
@@ -321,11 +444,14 @@ private fun ForwardMessageTarget.matchesForwardQuery(query: String): Boolean {
 }
 
 private fun List<ForwardMessageTarget>.dedupeForwardTargets(): List<ForwardMessageTarget> =
-    distinctBy { it.kind.name + ":" + it.id }
+    distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
 
-internal fun parseForwardMessageTargetSearchResults(bodyText: String): List<ForwardMessageTarget> =
+internal fun parseForwardMessageTargetSearchResults(
+    bodyText: String,
+    fallbackServerId: ServerId
+): List<ForwardMessageTarget> =
     parseForwardTargetSearchItems(bodyText)
-        .mapNotNull { it.toForwardMessageTarget() }
+        .mapNotNull { it.toForwardMessageTarget(fallbackServerId) }
         .dedupeForwardTargets()
 
 @Serializable
@@ -341,7 +467,10 @@ internal data class ForwardTargetSearchItemDto(
     val subtitle: String? = null,
     val avatarUrl: String? = null,
     val avatarLabel: String? = null,
+    val serverId: String? = null,
     val channelId: String? = null,
+    val channelKind: String? = null,
+    val jointChannelId: String? = null,
     val joined: Boolean? = null,
     val dmExists: Boolean? = null,
     val canForwardNow: Boolean = false,
@@ -368,10 +497,11 @@ internal fun parseForwardTargetSearchItems(bodyText: String): List<ForwardTarget
     }
 }
 
-private fun ForwardTargetSearchItemDto.toForwardMessageTarget(): ForwardMessageTarget? {
+private fun ForwardTargetSearchItemDto.toForwardMessageTarget(fallbackServerId: ServerId): ForwardMessageTarget? {
     val cleanId = id.trim().takeIf { it.isNotBlank() } ?: return null
     val cleanTitle = title.trim().takeIf { it.isNotBlank() } ?: return null
     val cleanType = type.trim().lowercase()
+    val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: fallbackServerId
     val cleanChannelId = channelId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val wireAction = requiredAction.toForwardRequiredAction()
     val action =
@@ -396,6 +526,7 @@ private fun ForwardTargetSearchItemDto.toForwardMessageTarget(): ForwardMessageT
             else -> return null
         }
     return ForwardMessageTarget(
+        serverId = cleanServerId,
         kind = kind,
         id = cleanId,
         title = cleanTitle,
@@ -403,6 +534,18 @@ private fun ForwardTargetSearchItemDto.toForwardMessageTarget(): ForwardMessageT
         avatarWireValue = avatarUrl?.trim()?.takeIf { it.isNotBlank() },
         avatarLabel = avatarLabel?.trim()?.takeIf { it.isNotBlank() } ?: cleanTitle.take(1).uppercase(),
         channelId = cleanChannelId,
+        channelKind =
+            when (channelKind?.trim()?.lowercase()) {
+                "joint" -> ConversationKind.Joint
+                "thread" -> ConversationKind.Thread
+                "dm", "direct_message" -> ConversationKind.DirectMessage
+                else -> if (kind == ForwardMessageTargetKind.RecentDirectMessage) {
+                    ConversationKind.DirectMessage
+                } else {
+                    ConversationKind.Channel
+                }
+            },
+        jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotBlank() },
         memberId =
             when (kind) {
                 ForwardMessageTargetKind.HumanDirectMessageCandidate,
@@ -437,6 +580,17 @@ private fun ForwardMessageExecuteRequest.toWireBody(): ForwardMessagesRequestBod
         sourceMessageIds = messageIds,
         note = note.trim()
     )
+
+private fun ForwardMessageTarget.toForwardDestination(channelId: ChannelId): ForwardMessageDestination =
+    ForwardMessageDestination(
+        serverId = serverId,
+        channelId = channelId,
+        channelKind = channelKind,
+        jointChannelId = jointChannelId?.trim()?.takeIf { it.isNotBlank() }
+    )
+
+private fun StoredAuthSession.canAccessForwardServer(serverId: ServerId): Boolean =
+    servers.any { it.id == serverId.value }
 
 private fun <T> HomeNetworkResponse.toForwardTargetDataError(): DataResult<T> =
     when (code) {
