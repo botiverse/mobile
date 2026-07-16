@@ -39,6 +39,10 @@ internal class ProcessMemberPresenceRegistry {
         update { facts ->
             val previous = facts[memberId]
             if (!event.shouldReplaceRegisteredPresenceFact(previous)) return@update facts
+            // Same visible presence → keep the stored fact (and its seq): the
+            // store always skipped these to avoid emission churn, and every
+            // scope store now inherits that thrift from the registry.
+            if (previous != null && event.hasSameVisibleRegisteredPresenceAs(previous)) return@update facts
             facts + (memberId to event)
         }
     }
