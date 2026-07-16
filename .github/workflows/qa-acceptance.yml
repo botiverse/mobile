@@ -18,6 +18,10 @@ on:
         description: "Agent turn budget"
         required: false
         default: "30"
+      stamp_run_case_id:
+        description: "Stamp run_case id — when set, evidence + verdict report back to Stamp"
+        required: false
+        default: ""
 env:
   # Login smoke: the default goal for pushes / empty dispatch inputs.
   DEFAULT_GOAL: >-
@@ -144,6 +148,9 @@ jobs:
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
           QA_GOAL: ${{ inputs.goal || '' }}
           QA_MAX_TURNS: ${{ inputs.max_turns || '30' }}
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
         with:
           api-level: 34
           arch: x86_64
@@ -163,7 +170,16 @@ jobs:
             adb shell am start -n build.raft.app/.MainActivity
             sleep 8
             mkdir -p qa-evidence
+            bash scripts/qa/stamp_report.sh claim
+            adb logcat -c
+            adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
             export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            adb logcat -d > qa-evidence/logcat.txt 2>&1 || true
+            adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true
+            adb shell pkill -INT screenrecord 2>/dev/null || true
+            sleep 3
+            adb shell ls /sdcard/qa-rec-*.mp4 2>/dev/null | tr -d '\r' | while read f; do adb pull "$f" qa-evidence/ || true; done
+            bash scripts/qa/stamp_report.sh report qa-evidence
 
       - name: Upload evidence
         if: always()
