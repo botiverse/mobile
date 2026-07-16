@@ -35,6 +35,8 @@ for f in "$EV"/step-*.png; do
   [ -f "$f" ] && upload "$f" screenshot
 done
 [ -f "$EV/steps.jsonl" ] && upload "$EV/steps.jsonl" steps_log
+[ -f "$EV/usage.json" ] && upload "$EV/usage.json" usage
+[ -f "$EV/session.jsonl" ] && upload "$EV/session.jsonl" session_log
 [ -f "$EV/logcat.txt" ] && upload "$EV/logcat.txt" logcat
 for f in "$EV"/qa-rec-*.mp4; do [ -f "$f" ] && upload "$f" recording; done
 
