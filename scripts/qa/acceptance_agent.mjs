@@ -207,6 +207,20 @@ function playbookSection() {
   }
 }
 
+// Per-run model accounting (artin's ask): every call's token usage plus the
+// full (redacted) reply stream land in the evidence as session.jsonl, and the
+// aggregate goes into verdict.json. Session records reference screenshots by
+// step number instead of embedding image bytes.
+const modelUsage = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+const usageDetail = [];
+let sessionSeq = 0;
+function recordSession(kind, payload) {
+  sessionSeq++;
+  try {
+    fs.appendFileSync(path.join(opts.out, "session.jsonl"), redact(JSON.stringify({ seq: sessionSeq, kind, ...payload })) + "\n");
+  } catch {}
+}
+
 async function callModel(models, model, messages) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const controller = new AbortController();
@@ -215,7 +229,16 @@ async function callModel(models, model, messages) {
       const msg = await models.complete(model, { messages },
         { apiKey: piKey(), maxTokens: 1500, signal: controller.signal, timeoutMs: 120000 });
       if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage || msg.stopReason);
-      return msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+      const text = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+      const u = msg.usage ?? {};
+      modelUsage.calls++;
+      modelUsage.input += u.input ?? 0;
+      modelUsage.output += u.output ?? 0;
+      modelUsage.cacheRead += u.cacheRead ?? 0;
+      modelUsage.cacheWrite += u.cacheWrite ?? 0;
+      usageDetail.push({ call: modelUsage.calls, input: u.input ?? 0, output: u.output ?? 0, cacheRead: u.cacheRead ?? 0, cacheWrite: u.cacheWrite ?? 0 });
+      recordSession("model_reply", { usage: { input: u.input ?? 0, output: u.output ?? 0, cacheRead: u.cacheRead ?? 0 }, reply: text });
+      return text;
     } catch (e) {
       if (attempt === 3) throw e;
       await new Promise((r) => setTimeout(r, 3000 * attempt));
@@ -452,6 +475,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, 1500));
 
     logStep({ turn: turns, action: { ...action, value: action.action === "text" ? redact(String(action.value ?? "")) : action.value }, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars` });
+    recordSession("user_turn", { turn: turns, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars`, screenshot: `step-${String(turns).padStart(2, "0")}.png` });
     messages.push({
       role: "user",
       content: [
@@ -499,12 +523,14 @@ async function main() {
   const result = {
     goal: redact(opts.goal), verdict, reason: redact(reason), turns,
     durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
+    usage: { ...modelUsage, totalTokens: modelUsage.input + modelUsage.output },
     annotations: {
       assertion: assertionAnnotations.map((a) => ({ ...a, label: redact(String(a.label ?? "")) })),
       taps: tapAnnotations.length,
       annotatedFiles: annotated,
     },
   };
+  fs.writeFileSync(path.join(opts.out, "usage.json"), JSON.stringify({ ...modelUsage, totalTokens: modelUsage.input + modelUsage.output, model: "MiniMax-M3", perCall: usageDetail }, null, 2));
   fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
   process.exit(verdict === "pass" ? 0 : verdict === "fail" ? 1 : 2);
