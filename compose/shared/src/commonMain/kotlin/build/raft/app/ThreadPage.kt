@@ -3920,9 +3920,9 @@ internal fun SharedThreadRouteContent(
                         )
                     )
                 }
-                if (event is MemberPresenceUpdated) {
-                    serverMembersStore?.applyPresence(event)
-                }
+                // task #136: MemberPresenceUpdated now reaches the members store
+                // via the provider-installed presence sink on this owner (store
+                // lifetime, SSOT) — no page-level tee needed.
             }
         }
     )
@@ -16122,10 +16122,13 @@ internal data class ThreadAgentStatusLookup(
     companion object {
         fun from(
             serverMembersState: SharedServerMembersState,
-            serverId: String?
+            serverId: String?,
+            // task #136: presence facts come from the process registry (the
+            // SSOT) — the members state no longer carries a presence slice.
+            presenceFacts: Map<String, MemberPresenceUpdated> = emptyMap()
         ): ThreadAgentStatusLookup {
             val statusByMemberId = linkedMapOf<String, AgentStatus>()
-            serverMembersState.recordThreadAgentStatuses(serverId, statusByMemberId)
+            serverMembersState.recordThreadAgentStatuses(serverId, statusByMemberId, presenceFacts)
             return ThreadAgentStatusLookup(
                 statusByMemberId = statusByMemberId.toMap()
             )
@@ -16144,9 +16147,10 @@ internal fun KuiklyThreadMessageItem.threadAuthorAgentStatusIndicatorState(): Sl
 
 private fun SharedServerMembersState.recordThreadAgentStatuses(
     serverId: String?,
-    statusByMemberId: MutableMap<String, AgentStatus>
+    statusByMemberId: MutableMap<String, AgentStatus>,
+    presenceFacts: Map<String, MemberPresenceUpdated>
 ) {
-    presenceByMemberId.forEach { (memberId, event) ->
+    presenceFacts.forEach { (memberId, event) ->
         val status = event.agentStatus ?: return@forEach
         memberId.threadProjectionMemberId()?.let { statusByMemberId[it] = status }
     }
@@ -16160,7 +16164,7 @@ private fun SharedServerMembersState.recordThreadAgentStatuses(
     entries
         .flatMap { entry -> entry.members }
         .forEach { member ->
-            val status = presenceFor(member.id.value)?.agentStatus ?: member.agentStatus ?: return@forEach
+            val status = presenceFacts[member.id.value.trim()]?.agentStatus ?: member.agentStatus ?: return@forEach
             if (member.kind != MemberKind.Agent) return@forEach
             member.id.value.threadProjectionMemberId()?.let { memberId ->
                 if (memberId !in statusByMemberId) {

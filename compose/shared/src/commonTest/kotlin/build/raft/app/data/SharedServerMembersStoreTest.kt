@@ -4,6 +4,7 @@ import build.raft.app.model.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -323,6 +324,7 @@ class SharedServerMembersStoreTest {
         )
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = AgentStatus.Thinking.presence,
@@ -331,43 +333,72 @@ class SharedServerMembersStoreTest {
             )
         )
 
+        // task #136: raw state keeps wire truth (zero mirrors) …
         val members = store.state.value.entryFor(ServerId("server-1"))?.members.orEmpty()
         assertEquals(AgentStatus.Online, members.single { it.id.value == "agent-1" }.agentStatus)
         assertEquals(Presence.Offline, members.single { it.id.value == "agent-1" }.presence)
+        // … while the registry-backed read edge shows the live fact.
         assertEquals(
             SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
-            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+            runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
         assertEquals(MemberKind.Human, members.single { it.id.value == "u1" }.kind)
     }
 
     @Test
-    fun applyPresenceIgnoresSameVisibleStatusWithNewerSeq() {
+    fun applyPresenceAdvancesWatermarkWithoutVisibleChurn() = runBlocking {
+        // QA blocker contract (task #136): same-visible + higher seq advances
+        // the canonical watermark (no more out-of-order rollback), and the
+        // read edge emits NO extra visible state for the advance or the
+        // rejected rollback. Stage-synchronized so StateFlow conflation can
+        // neither hide a churn emission nor hang the collector.
         val repository = FakeMemberRepository()
-        val store = SharedServerMembersStore(repository)
+        val registry = ProcessMemberPresenceRegistry()
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
+        val owner = ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1")
 
-        store.applyPresence(
+        val emissions = mutableListOf<AgentStatus?>()
+        val collectJob = launch {
+            store.memberStatusFlow(ServerId("server-1"), "agent-1")
+                .collect { emissions += it?.status }
+        }
+        suspend fun awaitEmissions(count: Int) {
+            var spins = 0
+            while (emissions.size < count && spins < 10_000) {
+                yield()
+                spins += 1
+            }
+            assertEquals(count, emissions.size)
+        }
+        fun fact(seq: Long, status: AgentStatus, presence: Presence) =
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
-                presence = Presence.Active,
+                presence = presence,
                 kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Working,
-                statusLabel = "working",
-                serverSeq = 1L
+                agentStatus = status,
+                serverSeq = seq
             )
-        )
-        store.applyPresence(
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-1"),
-                presence = Presence.Active,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Working,
-                statusLabel = "working",
-                serverSeq = 2L
-            )
-        )
 
-        assertEquals(1L, store.state.value.presenceFor("agent-1")?.serverSeq)
+        awaitEmissions(1) // initial null
+
+        store.applyPresence(ServerId("server-1"), fact(1L, AgentStatus.Working, Presence.Active))
+        awaitEmissions(2) // Working became visible
+
+        // Same-visible advance + rejected rollback: watermark moves, status
+        // holds, and the settled read edge shows NO additional emission.
+        store.applyPresence(ServerId("server-1"), fact(3L, AgentStatus.Working, Presence.Active))
+        repeat(100) { yield() }
+        store.applyPresence(ServerId("server-1"), fact(2L, AgentStatus.Offline, Presence.Offline))
+        repeat(100) { yield() }
+        assertEquals(3L, registry.factFor(owner, "agent-1")?.serverSeq)
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(listOf<AgentStatus?>(null, AgentStatus.Working), emissions)
+
+        // A real change still comes through afterwards.
+        store.applyPresence(ServerId("server-1"), fact(4L, AgentStatus.Offline, Presence.Offline))
+        awaitEmissions(3)
+        assertEquals(listOf<AgentStatus?>(null, AgentStatus.Working, AgentStatus.Offline), emissions)
+        collectJob.cancelAndJoin()
     }
 
     @Test
@@ -388,6 +419,7 @@ class SharedServerMembersStoreTest {
         )
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = Presence.Offline,
@@ -396,10 +428,9 @@ class SharedServerMembersStoreTest {
             )
         )
 
-        assertEquals(Presence.Offline, store.state.value.presenceFor("agent-1")?.presence)
         assertEquals(
             SharedServerMemberStatus(status = AgentStatus.Online, presence = Presence.Offline),
-            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+            runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
     }
 
@@ -409,6 +440,7 @@ class SharedServerMembersStoreTest {
         val store = SharedServerMembersStore(repository)
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = AgentStatus.Working.presence,
@@ -417,7 +449,6 @@ class SharedServerMembersStoreTest {
             )
         )
 
-        assertEquals(AgentStatus.Working, store.state.value.presenceFor("agent-1")?.agentStatus)
         repository.membersByServer["server-1"] =
             listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent, agentStatus = AgentStatus.Online))
 
@@ -447,6 +478,7 @@ class SharedServerMembersStoreTest {
         )
 
         store.applyAgentActivitySnapshot(
+            ServerId("server-1"),
             MemberId("agent-1"),
             listOf(
                 AgentActivityEntry(
@@ -465,7 +497,7 @@ class SharedServerMembersStoreTest {
                 presence = Presence.Active,
                 statusLabel = "Building"
             ),
-            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+            runBlocking { store.memberStatusFlow(ServerId("server-1"), "agent-1").first() }
         )
         assertEquals(AgentStatus.Offline, store.state.value.entryFor(ServerId("server-1"))?.members?.single()?.agentStatus)
     }
@@ -473,9 +505,11 @@ class SharedServerMembersStoreTest {
     @Test
     fun applyAgentActivitySnapshotDoesNotOverwriteSequencedRealtimeFact() {
         val repository = FakeMemberRepository()
-        val store = SharedServerMembersStore(repository)
+        val registry = ProcessMemberPresenceRegistry()
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = Presence.Active,
@@ -486,6 +520,7 @@ class SharedServerMembersStoreTest {
             )
         )
         store.applyAgentActivitySnapshot(
+            ServerId("server-1"),
             MemberId("agent-1"),
             listOf(
                 AgentActivityEntry(
@@ -498,9 +533,133 @@ class SharedServerMembersStoreTest {
             )
         )
 
-        assertEquals(AgentStatus.Working, store.state.value.presenceFor("agent-1")?.agentStatus)
-        assertEquals("Running command...", store.state.value.presenceFor("agent-1")?.statusLabel)
-        assertEquals(10L, store.state.value.presenceFor("agent-1")?.serverSeq)
+        val fact = registry.factFor(ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1"), "agent-1")
+        assertEquals(AgentStatus.Working, fact?.agentStatus)
+        assertEquals("Running command...", fact?.statusLabel)
+        assertEquals(10L, fact?.serverSeq)
+    }
+
+    @Test
+    fun mountedStatusFlowBindsAfterLaterLoginAndRebindsAcrossAccounts() = runBlocking {
+        // Review blockers ①/②/③: a flow mounted BEFORE auth must bind once
+        // login happens; after switching A→B the SAME mounted flow must serve
+        // B's partition and never A's again; clearing rebinds without
+        // recreating the flow. Stage-synchronized (await each expected
+        // emission) so StateFlow conflation cannot skip a stage.
+        val repository = FakeMemberRepository()
+        val registry = ProcessMemberPresenceRegistry()
+        val ownerFlow = kotlinx.coroutines.flow.MutableStateFlow<ProcessServerMembersOwner?>(null)
+        val store =
+            SharedServerMembersStore(
+                repository,
+                presenceRegistry = registry,
+                presenceOwner = { ownerFlow.value },
+                presenceOwnerFlow = { ownerFlow }
+            )
+        val ownerA = ProcessServerMembersOwner("env-1", "acct-A", "server-1")
+        val ownerB = ProcessServerMembersOwner("env-1", "acct-B", "server-1")
+
+        val emissions = mutableListOf<AgentStatus?>()
+        val collectJob = launch {
+            store.memberStatusFlow(ServerId("server-1"), "agent-1")
+                .collect { emissions += it?.status }
+        }
+        suspend fun awaitEmissions(count: Int) {
+            var spins = 0
+            while (emissions.size < count && spins < 10_000) {
+                yield()
+                spins += 1
+            }
+            assertEquals(count, emissions.size)
+        }
+        fun agentFact(status: AgentStatus, presence: Presence) =
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = presence,
+                kind = MemberKind.Agent,
+                agentStatus = status
+            )
+
+        awaitEmissions(1) // ① mounted pre-auth: initial null
+
+        ownerFlow.value = ownerA
+        registry.apply(ownerA, agentFact(AgentStatus.Online, Presence.Active))
+        awaitEmissions(2) // ① same mounted flow received A's fact after login
+
+        // ② relogin as B (partitions cleared as production does): same flow
+        // rebinds — first the cleared null, then B's fact.
+        registry.clearAll(reason = "authenticated")
+        awaitEmissions(3)
+        ownerFlow.value = ownerB
+        registry.apply(ownerB, agentFact(AgentStatus.Working, Presence.Active))
+        awaitEmissions(4)
+
+        assertEquals(listOf(null, AgentStatus.Online, null, AgentStatus.Working), emissions)
+
+        // ②(never back to A) + ③: a late write to A's partition is invisible
+        // to the mounted-B flow.
+        registry.apply(ownerA, agentFact(AgentStatus.Offline, Presence.Offline))
+        repeat(50) { yield() }
+        assertEquals(listOf(null, AgentStatus.Online, null, AgentStatus.Working), emissions)
+        assertEquals(
+            AgentStatus.Working,
+            store.memberStatusFlow(ServerId("server-1"), "agent-1").first()?.status
+        )
+        collectJob.cancelAndJoin()
+    }
+
+    @Test
+    fun stalePublicationBarrierCannotLoseAPresenceFact() = runBlocking {
+        // task #136 gate (Cindy): under the mirror design, a roster publication
+        // captured before a presence write could clobber the copied slice and
+        // the registry would never re-emit — permanent loss. With the registry
+        // as the ONLY storage and read-edge combining, the scenario is
+        // structurally impossible: publish rosters before AND after the fact,
+        // the read edge always shows the registry's latest, with no second
+        // registry emission required.
+        val repository = FakeMemberRepository()
+        val registry = ProcessMemberPresenceRegistry()
+        val storeA = SharedServerMembersStore(repository, presenceRegistry = registry)
+        val storeB = SharedServerMembersStore(repository, presenceRegistry = registry)
+        storeA.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent, agentStatus = AgentStatus.Online))
+            )
+        )
+
+        // Another scope's path writes the fact (registry = shared truth).
+        storeB.applyPresence(
+            ServerId("server-1"),
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Offline,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Offline,
+                serverSeq = 5L
+            )
+        )
+        val factsBefore = registry.factsByOwner.value
+
+        // A stale roster publication lands on storeA AFTER the fact.
+        storeA.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent, agentStatus = AgentStatus.Online))
+            )
+        )
+
+        // Both stores' read edges still expose the latest fact…
+        assertEquals(
+            AgentStatus.Offline,
+            storeA.memberStatusFlow(ServerId("server-1"), "agent-1").first()?.status
+        )
+        assertEquals(
+            AgentStatus.Offline,
+            storeA.currentServerMembers(ServerId("server-1")).single().agentStatus
+        )
+        // …and the registry did not need a second emission to survive it.
+        assertEquals(factsBefore, registry.factsByOwner.value)
     }
 
     @Test
@@ -531,7 +690,7 @@ class SharedServerMembersStoreTest {
         )
         assertEquals(
             SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
-            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+            store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
         assertEquals(
             "pixel:build",
@@ -554,6 +713,7 @@ class SharedServerMembersStoreTest {
         store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = AgentStatus.Thinking.presence,
@@ -571,7 +731,7 @@ class SharedServerMembersStoreTest {
         assertEquals(Presence.Active, member.presence)
         assertEquals(
             SharedServerMemberStatus(status = AgentStatus.Thinking, presence = AgentStatus.Thinking.presence),
-            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+            store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
     }
 
@@ -598,7 +758,8 @@ class SharedServerMembersStoreTest {
                     presence = Presence.Active
                 )
             )
-        val store = SharedServerMembersStore(repository)
+        val registry = ProcessMemberPresenceRegistry()
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
         store.refreshMembers(ServerId("server-1"))
         store.loadChannelMembers(ServerId("server-1"), ChannelId("channel-1"))
         store.ensureMemberSuggestionsForServer(
@@ -606,6 +767,7 @@ class SharedServerMembersStoreTest {
             mentionChannelId = "channel-1"
         )
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = Presence.Active,
@@ -630,7 +792,14 @@ class SharedServerMembersStoreTest {
                 mentionChannelId = "channel-1"
             ).suggestions
         assertEquals(listOf("u1"), suggestions.map { it.memberId })
-        assertNull(store.state.value.presenceFor("agent-1"))
+        // task #136: presence lives in the registry; deletion evicted this
+        // server's owner partition.
+        assertNull(
+            registry.factFor(
+                ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1"),
+                "agent-1"
+            )
+        )
         assertNull(store.state.value.memberStatus(ServerId("server-1"), "agent-1"))
         assertNull(store.state.value.memberProfile(ServerId("server-1"), "agent-1"))
     }
@@ -838,6 +1007,7 @@ class SharedServerMembersStoreTest {
         firstEmission.await()
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-2"),
                 presence = Presence.Active,
@@ -849,6 +1019,7 @@ class SharedServerMembersStoreTest {
         assertEquals(1, emissions.size)
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = Presence.Active,
@@ -867,7 +1038,7 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun seedProfilesCannotOverrideRealtimePresenceFactStatus() {
+    fun seedProfilesCannotOverrideRealtimePresenceFactStatus() = runBlocking {
         val repository = FakeMemberRepository()
         val store = SharedServerMembersStore(repository)
         store.seed(
@@ -883,6 +1054,7 @@ class SharedServerMembersStoreTest {
             )
         )
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = Presence.Active,
@@ -906,11 +1078,11 @@ class SharedServerMembersStoreTest {
 
         assertEquals(
             SharedServerMemberStatus(status = AgentStatus.Working, presence = Presence.Active),
-            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+            store.memberStatusFlow(ServerId("server-1"), "agent-1").first()
         )
         assertEquals(
             AgentStatus.Working,
-            store.state.value.entryFor(ServerId("server-1"))?.members?.single()?.agentStatus
+            store.currentServerMembers(ServerId("server-1")).single().agentStatus
         )
     }
 
@@ -1009,6 +1181,7 @@ class SharedServerMembersStoreTest {
         statusFirstEmission.await()
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-2"),
                 presence = Presence.Active,
@@ -1022,6 +1195,7 @@ class SharedServerMembersStoreTest {
         assertEquals(1, statusEmissions.size)
 
         store.applyPresence(
+            ServerId("server-1"),
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
                 presence = Presence.Active,
@@ -1083,6 +1257,7 @@ class SharedServerMembersStoreTest {
 
         repeat(69) { index ->
             store.applyPresence(
+                ServerId("server-1"),
                 MemberPresenceUpdated(
                     memberId = MemberId("burst-agent-$index"),
                     kind = MemberKind.Agent,

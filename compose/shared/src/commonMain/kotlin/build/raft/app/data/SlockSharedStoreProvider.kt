@@ -56,6 +56,10 @@ import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.PartitionDenialReason
 import kotlin.random.Random
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -278,6 +282,9 @@ internal class SlockSharedStoreProvider private constructor(
     val tasksDataStore: SharedTasksDataStore,
     val serverMembersStore: SharedServerMembersStore,
     private val processServerMembersCore: ProcessServerMembersCore,
+    private val processMemberPresenceRegistry: ProcessMemberPresenceRegistry,
+    private val presenceOwnerResolver: (String) -> ProcessServerMembersOwner?,
+    private val presenceOwnerFlowResolver: (String) -> Flow<ProcessServerMembersOwner?>,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -499,6 +506,9 @@ internal class SlockSharedStoreProvider private constructor(
                         ),
                     logger = sharedInfoLogger("SlockServerMembers"),
                     processCore = processServerMembersCore,
+                    presenceRegistry = processMemberPresenceRegistry,
+                    presenceOwner = { serverId -> presenceOwnerResolver(serverId.value) },
+                    presenceOwnerFlow = { serverId -> presenceOwnerFlowResolver(serverId.value) },
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) }
                 )
             }
@@ -529,6 +539,13 @@ internal class SlockSharedStoreProvider private constructor(
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
                     it.installReactionShadowLane(buildReactionShadowLane())
+                    // task #136: same owner-lifetime presence intake as the
+                    // legacy owner — straight into the process registry's
+                    // owner partition.
+                    it.installMemberPresenceSink { serverId, event ->
+                        presenceOwnerResolver(serverId)
+                            ?.let { owner -> processMemberPresenceRegistry.apply(owner, event) }
+                    }
                 }
             }
         }
@@ -1045,13 +1062,54 @@ internal class SlockSharedStoreProvider private constructor(
                     fetchMembers = processServerMembersRepository::getMembers,
                     logger = sharedInfoLogger("SlockServerMembers", "process_server_members")
                 )
+            // task #136 locked SSOT: ONE process registry, owner-scoped keys,
+            // zero per-shell mirrors. The auth binding is an OBSERVABLE ATOMIC
+            // process state (review blocker: a plain cached var froze read
+            // flows at construction — pre-auth mounts stayed empty forever and
+            // A→B account switches left mounted surfaces on A — and let late
+            // old-auth events be attributed to the current account):
+            //  - READ edges flatMapLatest over [presenceOwnerFlow], so every
+            //    mounted flow rebinds automatically on login / account switch /
+            //    environment change;
+            //  - the WRITE edge freezes one atomic context snapshot per event
+            //    delivery: between Cleared and the next Authenticated the
+            //    context is null and late events are DROPPED, never re-read
+            //    against the new account.
+            val processMemberPresenceRegistry = ProcessMemberPresenceRegistry()
+            val presenceAuthContext = MutableStateFlow<ProcessPresenceAuthContext?>(null)
+            val resolvePresenceOwner: (String) -> ProcessServerMembersOwner? = { rawServerId ->
+                presenceAuthContext.value?.ownerFor(rawServerId)
+            }
+            val resolvePresenceOwnerFlow: (String) -> Flow<ProcessServerMembersOwner?> = { rawServerId ->
+                presenceAuthContext
+                    .map { context -> context?.ownerFor(rawServerId) }
+                    .distinctUntilChanged()
+            }
+            fun currentPresenceAuthContextFromSession(accountId: String?): ProcessPresenceAuthContext? {
+                val cleanAccount = accountId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                if (environmentId.isBlank()) return null
+                return ProcessPresenceAuthContext(environmentId = environmentId, accountId = cleanAccount)
+            }
             CoroutineScope(SupervisorJob()).launch {
+                presenceAuthContext.value =
+                    currentPresenceAuthContextFromSession(authStore.readSession()?.user?.id)
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
-                        is AuthSessionEvent.Authenticated ->
+                        is AuthSessionEvent.Authenticated -> {
+                            // Order matters: clear old partitions FIRST, then
+                            // publish the new context — no window where old
+                            // facts are readable under the new binding.
+                            processMemberPresenceRegistry.clearAll(reason = "authenticated")
                             processServerMembersCore.invalidateAll(reason = "authenticated")
-                        is AuthSessionEvent.Cleared ->
+                            presenceAuthContext.value =
+                                currentPresenceAuthContextFromSession(authStore.readSession()?.user?.id)
+                        }
+                        is AuthSessionEvent.Cleared -> {
+                            presenceAuthContext.value = null
+                            processMemberPresenceRegistry.clearAll(reason = "cleared")
                             processServerMembersCore.invalidateAll(reason = "cleared")
+                        }
                         is AuthSessionEvent.BindingMetadataChanged,
                         is AuthSessionEvent.TokensRotated -> Unit
                     }
@@ -1161,6 +1219,9 @@ internal class SlockSharedStoreProvider private constructor(
                     memberRepository = processServerMembersRepository,
                     logger = sharedInfoLogger("SlockServerMembers"),
                     processCore = processServerMembersCore,
+                    presenceRegistry = processMemberPresenceRegistry,
+                    presenceOwner = { serverId -> resolvePresenceOwner(serverId.value) },
+                    presenceOwnerFlow = { serverId -> resolvePresenceOwnerFlow(serverId.value) },
                     processOwner = { serverId ->
                         authStore.readSession()?.let { session ->
                             val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
@@ -1217,6 +1278,9 @@ internal class SlockSharedStoreProvider private constructor(
                 tasksDataStore = tasksDataStore,
                 serverMembersStore = serverMembersStore,
                 processServerMembersCore = processServerMembersCore,
+                processMemberPresenceRegistry = processMemberPresenceRegistry,
+                presenceOwnerResolver = resolvePresenceOwner,
+                presenceOwnerFlowResolver = resolvePresenceOwnerFlow,
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
@@ -1250,7 +1314,16 @@ internal class SlockSharedStoreProvider private constructor(
                         cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
                         authorityProvider = realtimeAuthorityProvider,
                         currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
-                    ),
+                    ).also { owner ->
+                        // task #136: agent presence flows straight into the
+                        // process registry's owner partition for the realtime
+                        // owner's whole lifetime — never only while a page has
+                        // sinks; stores read the registry, zero mirrors.
+                        owner.installMemberPresenceSink { serverId, event ->
+                            resolvePresenceOwner(serverId)
+                                ?.let { presenceOwner -> processMemberPresenceRegistry.apply(presenceOwner, event) }
+                        }
+                    },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
                     SharedMessageTranslationStore(
@@ -1412,6 +1485,19 @@ internal class SharedRealtimeDomainEventOwner(
 
     fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {
         reactionShadowLane = lane
+    }
+
+    // task #136 (agent-status SSOT): agent presence facts must reach the
+    // process presence registry for the OWNER's whole lifetime, not only while
+    // a page composition happens to have sinks registered — the page-scoped
+    // sink windows were exactly how machine-offline transitions got lost on
+    // the Members surface. The provider installs a sink that resolves the
+    // registry's owner partition from (serverId + its auth cache); delivered
+    // on both the plain and guarded accept paths BEFORE the page sinks fan-out.
+    private var memberPresenceSink: ((String, MemberPresenceUpdated) -> Unit)? = null
+
+    fun installMemberPresenceSink(sink: (String, MemberPresenceUpdated) -> Unit) {
+        memberPresenceSink = sink
     }
 
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
@@ -1647,6 +1733,7 @@ internal class SharedRealtimeDomainEventOwner(
                 )
             }
             if (acceptedEvent is MemberPresenceUpdated && acceptedEvent.kind == build.raft.app.model.MemberKind.Agent) {
+                memberPresenceSink?.invoke(resolvedServerId, acceptedEvent)
                 activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
             } else if (acceptedEvent.refreshesMemberDetail()) {
                 if (acceptedEvent is RealtimeRefreshRequired) {
@@ -1764,6 +1851,7 @@ internal class SharedRealtimeDomainEventOwner(
             )
         }
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
+            memberPresenceSink?.invoke(resolvedServerId, event)
             activeSinks?.applyAgentActivity?.invoke(event)
         } else if (event.refreshesMemberDetail()) {
             if (event is RealtimeRefreshRequired) {
@@ -1944,8 +2032,14 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
             // suppress each other's presence updates in the app-shell fanout.
             serverSeq?.let { "member:presence:$serverId:${memberId.value}:$it" }
                 ?: "member:presence:$serverId:${memberId.value}:${presence.name}:${agentStatus?.name.orEmpty()}:${statusLabel.orEmpty()}"
-        is RealtimeRefreshRequired ->
-            "refresh:$serverId:${scope.name}:$reason:${channelId?.value.orEmpty()}:${memberId?.value.orEmpty()}:${subjectId.orEmpty()}"
+        // task #136: refresh hints are idempotent TRIGGERS, not facts, and the
+        // event carries no seq — a stable key made the accepted-key ledger
+        // swallow every later identical hint (artin's device logs:
+        // accept_skip reason=duplicate key=refresh:…:Agents:agent:session:…),
+        // so a second state change for the same agent never re-fetched. No key
+        // → every hint processed; the downstream refetch already dedupes
+        // in-flight loads, so bursts stay cheap.
+        is RealtimeRefreshRequired -> null
         is ServerPlanUpdated ->
             "server:plan:$serverId:${this.serverId.value}:$plan"
         is AgentCreated ->

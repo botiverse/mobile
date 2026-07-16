@@ -70,18 +70,11 @@ data class SharedServerChannelMembersSlice(
 
 data class SharedServerMembersState(
     val entriesByServerId: Map<String, SharedServerMembersEntry> = emptyMap(),
-    val presenceByMemberId: Map<String, MemberPresenceUpdated> = emptyMap(),
     val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap(),
     val channelMemberSlices: Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice> = emptyMap()
 ) {
     fun entryFor(serverId: ServerId): SharedServerMembersEntry? =
         entriesByServerId[serverId.value.trim()]
-
-    fun presenceFor(memberId: String?): MemberPresenceUpdated? =
-        memberId
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?.let { presenceByMemberId[it] }
 
     fun memberSuggestionSlice(
         serverId: ServerId,
@@ -132,7 +125,10 @@ data class SharedServerMembersState(
                     .filter { cleanServerId == null || it.serverId?.trim() == cleanServerId }
                     .flatMap { it.members.asSequence() }
                     .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
-        return member.toSharedServerMemberStatus(presenceByMemberId[cleanMemberId])
+        // task #136: presence facts live ONLY in the process registry — the
+        // state carries rosters; status reads go through the store's
+        // registry-backed APIs (memberStatusFlow / memberStatus).
+        return member.toSharedServerMemberStatus(null)
     }
 
     fun memberProfile(
@@ -262,7 +258,27 @@ class SharedServerMembersStore internal constructor(
             serverId = serverId.value
         )
     },
-    private val beforeProcessPublication: suspend () -> Unit = {}
+    private val beforeProcessPublication: suspend () -> Unit = {},
+    // task #136 locked SSOT: ONE process registry, owner-scoped keys, ZERO
+    // per-shell mirrors. Presence is never copied into this store's state;
+    // read edges cold-combine the registry partition for the owner tuple.
+    // presenceOwner resolves the partition synchronously (provider supplies a
+    // lambda backed by its auth-event cache; tests get a fixed local owner).
+    private val presenceRegistry: ProcessMemberPresenceRegistry = ProcessMemberPresenceRegistry(),
+    private val presenceOwner: (ServerId) -> ProcessServerMembersOwner? = { serverId ->
+        ProcessServerMembersOwner(
+            environmentId = "local",
+            accountId = "local",
+            serverId = serverId.value
+        )
+    },
+    // Read edges flatMapLatest over this flow so mounted surfaces rebind on
+    // login / account switch / environment change (review blocker: resolving
+    // once at flow construction froze pre-auth mounts empty forever and left
+    // A→B switches subscribed to A). Test default mirrors the sync resolver.
+    private val presenceOwnerFlow: (ServerId) -> Flow<ProcessServerMembersOwner?> = { serverId ->
+        flowOf(presenceOwner(serverId))
+    }
 ) {
     private val mutex = Mutex()
     private val publishedProcessVersionsByOwner = mutableMapOf<ProcessServerMembersOwner, Long>()
@@ -270,16 +286,34 @@ class SharedServerMembersStore internal constructor(
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
 
-    fun serverMembersEntryFlow(serverId: ServerId): Flow<SharedServerMembersEntry> =
-        state
-            .map { current ->
-                current.entryFor(serverId)
-                    ?: SharedServerMembersEntry(serverId = serverId.value.trim())
+    // task #136 read edges: state carries wire-truth rosters ONLY; presence
+    // is baked in AT READ TIME from the process registry's owner partition —
+    // flows combine the partition flow, sync reads bake the current snapshot.
+    // No presence copy ever sits in state, so no roster write can clobber it.
+    private fun presenceFactsNow(serverId: ServerId): Map<String, MemberPresenceUpdated> =
+        presenceOwner(serverId)?.let(presenceRegistry::current).orEmpty()
+
+    fun serverMembersEntryFlow(serverId: ServerId): Flow<SharedServerMembersEntry> {
+        val entryFlow =
+            state
+                .map { current ->
+                    current.entryFor(serverId)
+                        ?: SharedServerMembersEntry(serverId = serverId.value.trim())
+                }
+                .distinctUntilChanged()
+        val factsFlow =
+            presenceOwnerFlow(serverId).flatMapLatest { owner ->
+                owner?.let { presenceRegistry.factsFlow(it) } ?: flowOf(emptyMap())
             }
-            .distinctUntilChanged()
+        return combine(entryFlow, factsFlow) { entry, facts ->
+            if (facts.isEmpty()) entry
+            else entry.copy(members = entry.members.withServerMemberPresenceFacts(facts))
+        }.distinctUntilChanged()
+    }
 
     fun currentServerMembers(serverId: ServerId): List<MemberProfile> =
         _state.value.entryFor(serverId)?.members.orEmpty()
+            .withServerMemberPresenceFacts(presenceFactsNow(serverId))
 
     fun currentServerMemberCount(serverId: ServerId): Int =
         _state.value.entryFor(serverId)?.members.orEmpty().size
@@ -294,6 +328,7 @@ class SharedServerMembersStore internal constructor(
         channelId: ChannelId
     ): List<MemberProfile> =
         _state.value.channelMemberSlice(serverId, channelId).members
+            .withServerMemberPresenceFacts(presenceFactsNow(serverId))
 
     fun currentCanonicalMentionHandle(
         serverId: ServerId,
@@ -312,7 +347,10 @@ class SharedServerMembersStore internal constructor(
     ): MemberSnapshot? {
         val entry = _state.value.entryFor(serverId)
         val server = entry?.server ?: fallbackServer ?: return null
-        return MemberSnapshot(server = server, members = entry?.members.orEmpty())
+        return MemberSnapshot(
+            server = server,
+            members = entry?.members.orEmpty().withServerMemberPresenceFacts(presenceFactsNow(serverId))
+        )
     }
 
     fun memberSuggestionSliceFlow(
@@ -355,11 +393,20 @@ class SharedServerMembersStore internal constructor(
                 .distinctUntilChanged()
         }
         val scopedServerId = ServerId(cleanServerId)
+        // task #136: presence comes straight from the process registry's owner
+        // partition — the SSOT read edge. flatMapLatest over the owner flow so
+        // this mounted flow rebinds automatically on login / account switch /
+        // environment change; no copy of presence ever sits in store state.
+        val presenceFactFlow: Flow<MemberPresenceUpdated?> =
+            presenceOwnerFlow(scopedServerId)
+                .flatMapLatest { owner ->
+                    owner?.let { presenceRegistry.factsFlow(it) } ?: flowOf(emptyMap())
+                }
+                .map { facts -> facts[cleanMemberId] }
+                .distinctUntilChanged()
         return combine(
             scopedMemberProfileFlow(scopedServerId, cleanMemberId),
-            state
-                .map { current -> current.presenceFor(cleanMemberId) }
-                .distinctUntilChanged()
+            presenceFactFlow
         ) { member, presenceFact ->
             member.toSharedServerMemberStatus(presenceFact)
         }.distinctUntilChanged()
@@ -411,7 +458,6 @@ class SharedServerMembersStore internal constructor(
     fun seed(snapshot: MemberSnapshot) {
         val key = snapshot.server.id.value.trim()
         if (key.isBlank()) return
-        val presenceFacts = _state.value.presenceByMemberId
         putEntry(
             key,
             SharedServerMembersEntry(
@@ -419,8 +465,7 @@ class SharedServerMembersStore internal constructor(
                 server = snapshot.server,
                 members =
                     snapshot.members
-                        .filterDeletedAgents(key)
-                        .withServerMemberPresenceFacts(presenceFacts),
+                        .filterDeletedAgents(key),
                 status = SharedServerMembersLoadStatus.Loaded,
                 errorCode = null
             )
@@ -451,7 +496,7 @@ class SharedServerMembersStore internal constructor(
             key,
             (previous ?: SharedServerMembersEntry(serverId = key)).copy(
                 server = previous?.server ?: server,
-                members = merged.values.toList().withServerMemberPresenceFacts(current.presenceByMemberId)
+                members = merged.values.toList()
             )
         )
     }
@@ -514,18 +559,13 @@ class SharedServerMembersStore internal constructor(
                     }
                 }
             }
-        val nextPresenceFacts =
-            if (current.presenceByMemberId.containsKey(memberKey)) {
-                changed = true
-                current.presenceByMemberId - memberKey
-            } else {
-                current.presenceByMemberId
-            }
+        // task #136: presence lives only in the registry — evict the deleted
+        // member's fact from THIS server's owner partition (never cross-server).
+        presenceOwner(serverId)?.let { owner -> presenceRegistry.evict(owner, memberKey) }
         if (!changed) return false
         _state.value =
             current.copy(
                 entriesByServerId = nextEntries,
-                presenceByMemberId = nextPresenceFacts,
                 memberSuggestionSlices = nextSuggestionSlices,
                 channelMemberSlices = nextChannelSlices
             )
@@ -672,50 +712,40 @@ class SharedServerMembersStore internal constructor(
         return result
     }
 
-    fun applyPresence(event: MemberPresenceUpdated) {
-        val memberId = event.memberId.value.trim()
-        if (memberId.isBlank()) return
-        val current = _state.value
-        val previousFact = current.presenceByMemberId[memberId]
-        if (!event.shouldReplacePresenceFact(previousFact)) return
-        if (previousFact != null && event.hasSameVisiblePresenceAs(previousFact)) return
-        val nextPresenceFacts =
-            current.presenceByMemberId + (memberId to event)
-        _state.value =
-            current.copy(
-                presenceByMemberId = nextPresenceFacts
-            )
+    fun applyPresence(serverId: ServerId, event: MemberPresenceUpdated) {
+        // task #136: presence facts go ONLY to the process registry (the SSOT)
+        // under this server's owner partition; readers combine the registry.
+        val owner = presenceOwner(serverId) ?: return
+        presenceRegistry.apply(owner, event)
     }
 
-    fun applyAgentActivitySnapshot(agentId: MemberId, activity: List<AgentActivityEntry>) {
+    fun applyAgentActivitySnapshot(
+        serverId: ServerId,
+        agentId: MemberId,
+        activity: List<AgentActivityEntry>
+    ) {
         val projection = activity.latestAgentActivityStatusProjection() ?: return
-        applyAgentActivityProjection(agentId, projection)
+        applyAgentActivityProjection(serverId, agentId, projection)
     }
 
-    fun applyAgentDetailSnapshot(detail: AgentDetailSnapshot) {
+    fun applyAgentDetailSnapshot(serverId: ServerId, detail: AgentDetailSnapshot) {
         val projection =
             detail.activity.latestAgentActivityStatusProjection()
                 ?: detail.summary.agentActivityStatusFallbackProjection()
                 ?: return
-        applyAgentActivityProjection(detail.agentId, projection)
+        applyAgentActivityProjection(serverId, detail.agentId, projection)
     }
 
     private fun applyAgentActivityProjection(
+        serverId: ServerId,
         agentId: MemberId,
         projection: AgentActivityStatusProjection
     ) {
         val memberId = agentId.value.trim()
         if (memberId.isBlank()) return
-        val current = _state.value
-        val previousFact = current.presenceByMemberId[memberId]
-        if (previousFact?.serverSeq != null) return
-        val event = projection.toMemberPresenceUpdated(agentId)
-        if (!event.shouldReplacePresenceFact(previousFact)) return
-        if (previousFact != null && event.hasSameVisiblePresenceAs(previousFact)) return
-        _state.value =
-            current.copy(
-                presenceByMemberId = current.presenceByMemberId + (memberId to event)
-            )
+        val owner = presenceOwner(serverId) ?: return
+        // Gap-fill path: never displaces a seq-carrying realtime fact.
+        presenceRegistry.applyProjection(owner, projection.toMemberPresenceUpdated(agentId))
     }
 
     suspend fun refreshMembers(
@@ -824,7 +854,7 @@ class SharedServerMembersStore internal constructor(
                                     members =
                                         result.data.members
                                             .filterDeletedAgents(normalizedKey)
-                                            .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
+
                                 )
                             putEntry(
                                 normalizedKey,
@@ -932,7 +962,6 @@ class SharedServerMembersStore internal constructor(
                         result.data.members
                             .distinctBy { "${it.kind.name}:${it.id.value.trim()}" }
                             .filterDeletedAgents(serverKey)
-                            .withServerMemberPresenceFacts(_state.value.presenceByMemberId)
                     putChannelSlice(
                         normalizedScope,
                         SharedServerChannelMembersSlice(
@@ -1552,7 +1581,7 @@ class SharedServerMembersStore internal constructor(
         val current = _state.value.channelMemberSlices[scope] ?: return
         val nextMembers =
             if (inMentionChannel) {
-                current.members.upsertServerMember(member.withServerMemberPresenceFacts(_state.value.presenceByMemberId))
+                current.members.upsertServerMember(member)
             } else {
                 current.members.removeServerMember(memberKey, member.kind)
             }
@@ -1596,27 +1625,16 @@ class SharedServerMembersStore internal constructor(
         kind == MemberKind.Agent && id.value.trim() in deletedAgentIdsByServerId[serverKey].orEmpty()
 }
 
-private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPresenceUpdated?): Boolean =
-    when {
-        previous == null -> true
-        serverSeq != null && previous.serverSeq != null -> serverSeq >= previous.serverSeq
-        serverSeq != null && previous.serverSeq == null -> true
-        else -> true
-    }
-
-private fun MemberPresenceUpdated.hasSameVisiblePresenceAs(previous: MemberPresenceUpdated): Boolean =
-    presence == previous.presence &&
-        agentStatus == previous.agentStatus &&
-        statusLabel == previous.statusLabel &&
-        kind == previous.kind
-
-private fun String?.normalizedServerMembersId(): String? =
-    this?.trim()?.takeIf { it.isNotBlank() }
+// task #136: presence replacement rules moved to ProcessMemberPresenceRegistry
+// (shouldReplaceRegisteredPresenceFact / hasSameVisibleRegisteredPresenceAs) —
+// the process-wide SSOT applies them once for every scope store. The bakes
+// below run at READ edges only (never into state).
 
 private fun List<MemberProfile>.withServerMemberPresenceFacts(
     presenceFacts: Map<String, MemberPresenceUpdated>
 ): List<MemberProfile> =
-    map { member ->
+    if (presenceFacts.isEmpty()) this
+    else map { member ->
         val event = presenceFacts[member.id.value.trim()]
             ?.takeIf { member.kind == MemberKind.Agent }
             ?: return@map member
@@ -1626,15 +1644,8 @@ private fun List<MemberProfile>.withServerMemberPresenceFacts(
         )
     }
 
-private fun MemberProfile.withServerMemberPresenceFacts(
-    presenceFacts: Map<String, MemberPresenceUpdated>
-): MemberProfile {
-    val event = presenceFacts[id.value.trim()]?.takeIf { kind == MemberKind.Agent } ?: return this
-    return copy(
-        presence = event.presence,
-        agentStatus = event.agentStatus ?: agentStatus
-    )
-}
+private fun String?.normalizedServerMembersId(): String? =
+    this?.trim()?.takeIf { it.isNotBlank() }
 
 private fun List<MemberProfile>.upsertServerMember(member: MemberProfile): List<MemberProfile> {
     val key = member.id.value.trim()

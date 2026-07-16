@@ -219,6 +219,76 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
+    fun installedPresenceSinkReceivesAgentPresenceWithoutAnyPageSinks() {
+        // task #136 SSOT lock: the members store's presence intake is installed
+        // for the owner's lifetime — agent presence must arrive even when NO
+        // page has sinks registered (the page-scoped windows were how
+        // machine-offline transitions got lost on the Members surface).
+        val owner = SharedRealtimeDomainEventOwner()
+        val delivered = mutableListOf<Pair<String, MemberPresenceUpdated>>()
+        owner.installMemberPresenceSink { serverId, event -> delivered += serverId to event }
+        val event =
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Offline,
+                kind = MemberKind.Agent
+            )
+
+        owner.accept("server-1", event, source = "app_shell")
+
+        assertEquals(listOf("server-1" to event), delivered)
+    }
+
+    @Test
+    fun installedPresenceSinkDeliversAlongsidePageSinks() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val storeEvents = mutableListOf<MemberPresenceUpdated>()
+        val pageEvents = mutableListOf<MemberPresenceUpdated>()
+        owner.installMemberPresenceSink { _, event -> storeEvents += event }
+        owner.registerSinks(
+            RealtimeDomainEventSinks(applyAgentActivity = pageEvents::add)
+        )
+        val event =
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent
+            )
+
+        owner.accept("server-1", event, source = "app_shell")
+
+        assertEquals(listOf(event), storeEvents)
+        assertEquals(listOf(event), pageEvents)
+    }
+
+    @Test
+    fun repeatedAgentRefreshHintsAreNotSwallowedAsDuplicates() {
+        // task #136 lock: refresh hints are idempotent triggers with no seq —
+        // remembering them in the accepted-key ledger made the SECOND state
+        // change for the same agent silently skip its refetch (observed on
+        // device: accept_skip reason=duplicate key=refresh:…:Agents:agent:session:…).
+        val owner = SharedRealtimeDomainEventOwner()
+        val refreshes = mutableListOf<RealtimeRefreshRequired>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyServerMembersRefresh = { _, event -> refreshes += event }
+            )
+        )
+        val hint =
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.Agents,
+                reason = "agent:session",
+                serverId = ServerId("server-1"),
+                subjectId = "agent-1"
+            )
+
+        owner.accept("server-1", hint, source = "app_shell")
+        owner.accept("server-1", hint, source = "app_shell")
+
+        assertEquals(2, refreshes.size)
+    }
+
+    @Test
     fun taskRealtimeEventsPatchSharedTaskProjectionStore() = runBlocking {
         val tasksDataStore = SharedTasksDataStore()
         val owner = SharedRealtimeDomainEventOwner(tasksDataStore)

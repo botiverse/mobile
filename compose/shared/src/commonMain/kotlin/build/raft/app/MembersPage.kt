@@ -1674,7 +1674,7 @@ private class MemberDetailRouteProvider(
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
-                serverMembersStore.applyAgentDetailSnapshot(detailResult.data)
+                serverMembersStore.applyAgentDetailSnapshot(server.id, detailResult.data)
                 MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
@@ -1755,7 +1755,7 @@ private class MemberDetailRouteProvider(
             }
         }
 
-    suspend fun refreshAgentActivity(agentId: MemberId) {
+    suspend fun refreshAgentActivity(serverId: build.raft.app.model.ServerId?, agentId: MemberId) {
         when (val activityResult = memberRepository.getAgentActivity(DataRequestPriority.Visible, agentId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(
@@ -1764,7 +1764,9 @@ private class MemberDetailRouteProvider(
                         activity = activityResult.data.activity
                     )
                 )
-                serverMembersStore.applyAgentActivitySnapshot(agentId, activityResult.data.activity)
+                if (serverId != null) {
+                    serverMembersStore.applyAgentActivitySnapshot(serverId, agentId, activityResult.data.activity)
+                }
             }
             is DataResult.Empty -> Unit
             is DataResult.Error ->
@@ -2191,7 +2193,10 @@ private fun MemberDetailPageContent() {
         routeState = cached ?: MemberDetailRouteState.Loading
         if (cached != null && cached.accessMode.allowsPrivateAgentSurfaces && selectedMemberId != null) {
             launch {
-                provider.refreshAgentActivity(selectedMemberId)
+                provider.refreshAgentActivity(
+                    statusLookupServerId?.trim()?.takeIf { it.isNotBlank() }?.let { build.raft.app.model.ServerId(it) },
+                    selectedMemberId
+                )
             }
         }
         routeState = provider.loadMember(memberIdentity)
