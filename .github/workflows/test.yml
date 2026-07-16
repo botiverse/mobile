@@ -546,6 +546,12 @@ jobs:
           find android-connected-test-apks -type f -name '*.apk' -print
           find android-shared-atomic-sink-test-apk -type f -name '*.apk' -print
           test "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | wc -l)" -eq 1
+          shared_test_apk="$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$aapt_bin"
+          "$aapt_bin" dump badging "$shared_test_apk" | tee shared-atomic-sink-test-apk-badging.txt
+          grep -Fq "package: name='build.raft.app.shared.test'" shared-atomic-sink-test-apk-badging.txt
+          grep -Fq "targetSdkVersion:'34'" shared-atomic-sink-test-apk-badging.txt
 
       - name: Enable KVM
         run: |
