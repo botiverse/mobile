@@ -23,6 +23,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.TimeSource
@@ -262,13 +266,32 @@ class SharedServerMembersStore internal constructor(
             serverId = serverId.value
         )
     },
-    private val beforeProcessPublication: suspend () -> Unit = {}
+    private val beforeProcessPublication: suspend () -> Unit = {},
+    // task #136: presence facts live in the PROCESS-wide registry — the single
+    // source of truth shared by every scope store and realtime owner. This
+    // store mirrors the registry into its state so every existing read path
+    // (state helpers, load-time bakes, memberStatusFlow) stays unchanged while
+    // all shells converge on the same liveness truth. Tests get an isolated
+    // default instance; the provider passes the shared one.
+    private val presenceRegistry: ProcessMemberPresenceRegistry = ProcessMemberPresenceRegistry(),
+    private val presenceMirrorScope: CoroutineScope = CoroutineScope(SupervisorJob())
 ) {
     private val mutex = Mutex()
     private val publishedProcessVersionsByOwner = mutableMapOf<ProcessServerMembersOwner, Long>()
     private val deletedAgentIdsByServerId = mutableMapOf<String, Set<String>>()
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
+
+    init {
+        presenceMirrorScope.launch {
+            presenceRegistry.facts.collect { facts ->
+                _state.update { current ->
+                    if (current.presenceByMemberId == facts) current
+                    else current.copy(presenceByMemberId = facts)
+                }
+            }
+        }
+    }
 
     fun serverMembersEntryFlow(serverId: ServerId): Flow<SharedServerMembersEntry> =
         state
@@ -521,6 +544,9 @@ class SharedServerMembersStore internal constructor(
             } else {
                 current.presenceByMemberId
             }
+        // task #136: evict from the process registry too, so the deleted
+        // member's fact disappears in every scope store, not just this one.
+        presenceRegistry.evict(memberKey)
         if (!changed) return false
         _state.value =
             current.copy(
@@ -673,18 +699,20 @@ class SharedServerMembersStore internal constructor(
     }
 
     fun applyPresence(event: MemberPresenceUpdated) {
-        val memberId = event.memberId.value.trim()
-        if (memberId.isBlank()) return
-        val current = _state.value
-        val previousFact = current.presenceByMemberId[memberId]
-        if (!event.shouldReplacePresenceFact(previousFact)) return
-        if (previousFact != null && event.hasSameVisiblePresenceAs(previousFact)) return
-        val nextPresenceFacts =
-            current.presenceByMemberId + (memberId to event)
-        _state.value =
-            current.copy(
-                presenceByMemberId = nextPresenceFacts
-            )
+        // task #136: write to the process registry (the SSOT), then sync this
+        // store's mirror synchronously so same-store readers see the fact
+        // immediately; the async collector propagates to every OTHER scope
+        // store sharing the registry.
+        presenceRegistry.apply(event)
+        syncPresenceFromRegistry()
+    }
+
+    private fun syncPresenceFromRegistry() {
+        val facts = presenceRegistry.current()
+        _state.update { current ->
+            if (current.presenceByMemberId == facts) current
+            else current.copy(presenceByMemberId = facts)
+        }
     }
 
     fun applyAgentActivitySnapshot(agentId: MemberId, activity: List<AgentActivityEntry>) {
@@ -706,16 +734,11 @@ class SharedServerMembersStore internal constructor(
     ) {
         val memberId = agentId.value.trim()
         if (memberId.isBlank()) return
-        val current = _state.value
-        val previousFact = current.presenceByMemberId[memberId]
-        if (previousFact?.serverSeq != null) return
-        val event = projection.toMemberPresenceUpdated(agentId)
-        if (!event.shouldReplacePresenceFact(previousFact)) return
-        if (previousFact != null && event.hasSameVisiblePresenceAs(previousFact)) return
-        _state.value =
-            current.copy(
-                presenceByMemberId = current.presenceByMemberId + (memberId to event)
-            )
+        // task #136: projection fallbacks go through the registry's gap-fill
+        // path (never displace a seq-carrying realtime fact) — same rules the
+        // store enforced locally before, now against the process-wide truth.
+        presenceRegistry.applyProjection(projection.toMemberPresenceUpdated(agentId))
+        syncPresenceFromRegistry()
     }
 
     suspend fun refreshMembers(
@@ -1596,19 +1619,9 @@ class SharedServerMembersStore internal constructor(
         kind == MemberKind.Agent && id.value.trim() in deletedAgentIdsByServerId[serverKey].orEmpty()
 }
 
-private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPresenceUpdated?): Boolean =
-    when {
-        previous == null -> true
-        serverSeq != null && previous.serverSeq != null -> serverSeq >= previous.serverSeq
-        serverSeq != null && previous.serverSeq == null -> true
-        else -> true
-    }
-
-private fun MemberPresenceUpdated.hasSameVisiblePresenceAs(previous: MemberPresenceUpdated): Boolean =
-    presence == previous.presence &&
-        agentStatus == previous.agentStatus &&
-        statusLabel == previous.statusLabel &&
-        kind == previous.kind
+// task #136: presence replacement rules moved to ProcessMemberPresenceRegistry
+// (shouldReplaceRegisteredPresenceFact / hasSameVisibleRegisteredPresenceAs) —
+// the process-wide SSOT applies them once for every scope store.
 
 private fun String?.normalizedServerMembersId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }

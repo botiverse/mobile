@@ -278,6 +278,7 @@ internal class SlockSharedStoreProvider private constructor(
     val tasksDataStore: SharedTasksDataStore,
     val serverMembersStore: SharedServerMembersStore,
     private val processServerMembersCore: ProcessServerMembersCore,
+    private val processMemberPresenceRegistry: ProcessMemberPresenceRegistry,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -499,6 +500,7 @@ internal class SlockSharedStoreProvider private constructor(
                         ),
                     logger = sharedInfoLogger("SlockServerMembers"),
                     processCore = processServerMembersCore,
+                    presenceRegistry = processMemberPresenceRegistry,
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) }
                 )
             }
@@ -529,9 +531,9 @@ internal class SlockSharedStoreProvider private constructor(
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
                     it.installReactionShadowLane(buildReactionShadowLane())
-                    // task #136: same store-lifetime presence intake as the legacy
-                    // owner, bound to this scope's members store (same scope key).
-                    it.installMemberPresenceSink(serverMembersStore(scope)::applyPresence)
+                    // task #136: same owner-lifetime presence intake as the
+                    // legacy owner — straight into the process-wide registry.
+                    it.installMemberPresenceSink(processMemberPresenceRegistry::apply)
                 }
             }
         }
@@ -1048,6 +1050,9 @@ internal class SlockSharedStoreProvider private constructor(
                     fetchMembers = processServerMembersRepository::getMembers,
                     logger = sharedInfoLogger("SlockServerMembers", "process_server_members")
                 )
+            // task #136: process-wide presence SSOT — one registry shared by
+            // every scope store and every realtime owner.
+            val processMemberPresenceRegistry = ProcessMemberPresenceRegistry()
             CoroutineScope(SupervisorJob()).launch {
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
@@ -1164,6 +1169,7 @@ internal class SlockSharedStoreProvider private constructor(
                     memberRepository = processServerMembersRepository,
                     logger = sharedInfoLogger("SlockServerMembers"),
                     processCore = processServerMembersCore,
+                    presenceRegistry = processMemberPresenceRegistry,
                     processOwner = { serverId ->
                         authStore.readSession()?.let { session ->
                             val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
@@ -1220,6 +1226,7 @@ internal class SlockSharedStoreProvider private constructor(
                 tasksDataStore = tasksDataStore,
                 serverMembersStore = serverMembersStore,
                 processServerMembersCore = processServerMembersCore,
+                processMemberPresenceRegistry = processMemberPresenceRegistry,
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
@@ -1254,9 +1261,11 @@ internal class SlockSharedStoreProvider private constructor(
                         authorityProvider = realtimeAuthorityProvider,
                         currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
                     ).also { owner ->
-                        // task #136: agent presence flows to the members store for
-                        // the owner's lifetime — never only while a page has sinks.
-                        owner.installMemberPresenceSink(serverMembersStore::applyPresence)
+                        // task #136: agent presence flows straight into the
+                        // process-wide registry (the SSOT) for the owner's whole
+                        // lifetime — never only while a page has sinks; every
+                        // scope store mirrors the registry.
+                        owner.installMemberPresenceSink(processMemberPresenceRegistry::apply)
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
