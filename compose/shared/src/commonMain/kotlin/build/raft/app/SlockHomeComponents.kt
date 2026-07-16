@@ -3409,10 +3409,10 @@ private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
             presentation.fallbackLabel,
             style =
                 SlockType.Button.copy(
-                    fontFamily = SlockMonoFamily,
+                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
                     fontSize = 17.sp,
                     lineHeight = 20.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Normal
                 ),
             color = SlockColor.BrandYellow,
             maxLines = 1,

@@ -1475,7 +1475,6 @@ private fun slockMessagePermalinkChipLinkStyles(): TextLinkStyles {
     val base =
         slockMarkdownTagBaseSpanStyle().copy(
             color = SlockColor.TextBlack,
-            fontWeight = FontWeight.Bold,
             textDecoration = null,
             background = Color.Unspecified,
             inlineBoxStyle =

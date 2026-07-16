@@ -273,7 +273,7 @@ private fun SlockKuiklyChildPageHostSmokeScreen() {
 @Composable
 private fun ChildPageStatusRow(label: String, status: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Text(label, style = SlockType.Caption.copy(fontWeight = FontWeight.Bold), color = SlockColor.TextBlack)
+        Text(label, style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold), color = SlockColor.TextBlack)
         Text(status, style = SlockType.Caption, color = SlockColor.TextMutedGray)
     }
 }

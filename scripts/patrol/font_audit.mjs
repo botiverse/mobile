@@ -31,6 +31,19 @@ const CAP = Number(arg("--cap", "5"));
 const ROOT = "compose/shared/src/commonMain/kotlin/build/raft/app";
 const EXCLUDE_FILE = [/Test\.kt$/, /visualFixtures\//, /SlockDesignTokens\.kt$/];
 const FAMILY_DISPATCH = /withSlockFontWeight|slockFontFamilyForWeight|slockMonoFamilyForWeight|slockSpanStyleForWeight|fontFamily\s*=/;
+// Multi-line style expressions put the dispatch on its own line — commonly the
+// house idiom `fontFamily = slockMonoFamilyForWeight(X), fontWeight = Normal`
+// (family carries the weight; Normal suppresses synthetic bolding). Only the
+// dispatch HELPERS count here: a plain `fontFamily = SlockMonoFamily` nearby
+// does NOT fix the weight and must stay flagged (the #1051 class).
+const DISPATCH_HELPERS = /withSlockFontWeight|slockFontFamilyForWeight|slockMonoFamilyForWeight|slockSpanStyleForWeight/;
+const WINDOW_BEFORE = 10, WINDOW_AFTER = 3;
+const dispatchNearby = (lines, i) => {
+  for (let j = Math.max(0, i - WINDOW_BEFORE); j <= Math.min(lines.length - 1, i + WINDOW_AFTER); j++) {
+    if (j !== i && DISPATCH_HELPERS.test(lines[j])) return true;
+  }
+  return false;
+};
 
 function* walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -50,7 +63,7 @@ for (const file of walk(ROOT)) {
   const lines = fs.readFileSync(file, "utf8").split("\n");
   lines.forEach((line, i) => {
     if (/^\s*\/\//.test(line)) return;
-    if (/fontWeight\s*=\s*FontWeight\./.test(line) && !FAMILY_DISPATCH.test(line)) {
+    if (/fontWeight\s*=\s*FontWeight\./.test(line) && !FAMILY_DISPATCH.test(line) && !dispatchNearby(lines, i)) {
       record(file, i, line, "naked-font-weight");
     }
     if (/\bFontFamily\(/.test(line)) {
