@@ -50,8 +50,14 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
         assertArrayEquals(bytes, target.readBytes())
         assertEquals(bytes.sha256(), target.readBytes().sha256())
         assertFalse(directory.hasPartFiles())
-        assertEquals(observer.progress.map { it.sequence }.sorted(), observer.progress.map { it.sequence })
-        assertEquals(1, observer.progress.count { it.phase == "complete" })
+        assertStrictlyIncreasing(observer.progress.map { it.sequence })
+        assertEquals(
+            listOf("response_wait", "receiving", "receiving", "receiving", "receiving", "complete"),
+            observer.progress.map { it.phase }
+        )
+        assertEquals(listOf(0L, 2L, 4L, 6L, 8L, 8L), observer.progress.map { it.downloadedBytes })
+        assertEquals(listOf(null, 25, 50, 75, 100, 100), observer.progress.map { it.percent })
+        assertEquals(listOf(null, null, 6L, 6L, 6L, null), observer.progress.map { it.bytesPerSecond })
         assertEquals(listOf(1, 4, 1, 1, 0), sinkStats.snapshot())
         runtimeEvidence("slow_complete", target, observer, transport, sinkStats)
     }
@@ -160,7 +166,7 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
 
         assertArrayEquals(byteArrayOf(1, 2, 3, 4), target.readBytes())
         assertEquals(listOf("complete"), observer.results.map { it.status })
-        assertEquals(observer.progress.map { it.sequence }.sorted(), observer.progress.map { it.sequence })
+        assertStrictlyIncreasing(observer.progress.map { it.sequence })
         assertFalse(directory.hasPartFiles())
         assertEquals(listOf(1, 2, 1, 1, 0), sinkStats.snapshot())
         runtimeEvidence("pause_resume", target, observer, transport, sinkStats)
@@ -195,6 +201,7 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
         assertEquals(listOf("failed"), observer.results.map { it.status })
         assertEquals("whole_timeout", observer.results.single().errorKind)
         assertFalse(observer.results.any { it.status == "complete" })
+        assertFalse(observer.progress.any { it.phase == "complete" })
         assertFalse(directory.hasPartFiles())
         assertEquals(listOf(1, 1, 0, 0, 1), sinkStats.snapshot())
         runtimeEvidence("whole_timeout", target, observer, transport, sinkStats)
@@ -268,8 +275,9 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
         assertEquals(listOf("cancelled"), prestartObserver.results.map { it.status })
         assertEquals(0, transport.calls.size)
 
-        val activeObserver = RuntimeObserver()
-        engine.start(runtimeRequest(target, "active", "cleanup-target"), activeObserver)
+        val generationObserver = GenerationFencedObserver()
+        val activeToken = engine.start(runtimeRequest(target, "active", "cleanup-target"), generationObserver)
+        generationObserver.expectedAttemptToken = activeToken
         transport.calls.single().apply {
             response(2L)
             chunk(byteArrayOf(4, 5))
@@ -278,28 +286,32 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
         assertEquals("cancelled", reservation.status)
         target.delete()
         assertFalse(directory.hasPartFiles())
+        val oldGenerationDrain = pendingDrains.removeAt(0)
 
         val rejectedObserver = RuntimeObserver()
-        engine.start(runtimeRequest(target, "rejected", "cleanup-target"), rejectedObserver)
+        engine.start(runtimeRequest(target, "active", "cleanup-target"), rejectedObserver)
         pendingDrains.toList().also { pendingDrains.clear() }.forEach { it() }
         assertEquals("target_deleted", rejectedObserver.results.single().errorKind)
         assertEquals(1, transport.calls.size)
 
         engine.finishTargetCleanup("cleanup-target", reservation.token)
-        val nextObserver = RuntimeObserver()
-        engine.start(runtimeRequest(target, "next", "cleanup-target"), nextObserver)
+        val nextToken = engine.start(runtimeRequest(target, "active", "cleanup-target"), generationObserver)
+        generationObserver.expectedAttemptToken = nextToken
         transport.calls.last().apply {
             response(2L)
             chunk(byteArrayOf(6, 7))
             complete()
         }
         pendingDrains.toList().also { pendingDrains.clear() }.forEach { it() }
+        oldGenerationDrain()
         assertArrayEquals(byteArrayOf(6, 7), target.readBytes())
-        assertEquals(listOf("response_wait", "receiving", "complete"), nextObserver.progress.map { it.phase })
-        assertEquals(listOf("complete"), nextObserver.results.map { it.status })
+        assertEquals(listOf("response_wait", "receiving", "complete"), generationObserver.progress.map { it.phase })
+        assertEquals(listOf("complete"), generationObserver.results.map { it.status })
+        assertEquals(nextToken, generationObserver.results.single().attemptToken)
+        assertTrue(generationObserver.staleCallbackCount.get() >= 3)
         assertFalse(directory.hasPartFiles())
         assertEquals(listOf(2, 2, 1, 1, 1), sinkStats.snapshot())
-        runtimeEvidence("generation_safety", target, nextObserver, transport, sinkStats)
+        runtimeEvidence("generation_safety", target, generationObserver, transport, sinkStats)
     }
 
     private fun runtimeEngine(
@@ -332,7 +344,7 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
     private fun runtimeEvidence(
         scenario: String,
         target: File,
-        observer: RuntimeObserver,
+        observer: RuntimeEvidenceObserver,
         transport: RuntimeTransport,
         sinkStats: RuntimeSinkStats
     ) {
@@ -343,6 +355,11 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
                 "begin=${sinkStats.begin.get()} write=${sinkStats.write.get()} prepare=${sinkStats.prepare.get()} " +
                 "publish=${sinkStats.publish.get()} abort=${sinkStats.abort.get()}"
         )
+    }
+
+    private fun assertStrictlyIncreasing(values: List<Long>) {
+        assertTrue(values.size > 1)
+        assertTrue(values.zipWithNext().all { (previous, next) -> previous < next })
     }
 
     private fun withRuntimeDirectory(name: String, block: (File) -> Unit) {
@@ -434,9 +451,14 @@ private class RuntimeCall(
         )
 }
 
-private class RuntimeObserver : AttachmentDownloadObserver {
-    val progress = Collections.synchronizedList(mutableListOf<AttachmentDownloadProgress>())
-    val results = Collections.synchronizedList(mutableListOf<AttachmentDownloadResult>())
+private interface RuntimeEvidenceObserver : AttachmentDownloadObserver {
+    val progress: MutableList<AttachmentDownloadProgress>
+    val results: MutableList<AttachmentDownloadResult>
+}
+
+private class RuntimeObserver : RuntimeEvidenceObserver {
+    override val progress = Collections.synchronizedList(mutableListOf<AttachmentDownloadProgress>())
+    override val results = Collections.synchronizedList(mutableListOf<AttachmentDownloadResult>())
     private val terminal = CountDownLatch(1)
 
     override fun onProgress(progress: AttachmentDownloadProgress) {
@@ -449,6 +471,30 @@ private class RuntimeObserver : AttachmentDownloadObserver {
     }
 
     fun awaitTerminal(): Boolean = terminal.await(2, TimeUnit.SECONDS)
+}
+
+private class GenerationFencedObserver : RuntimeEvidenceObserver {
+    @Volatile
+    var expectedAttemptToken: String = ""
+    override val progress = Collections.synchronizedList(mutableListOf<AttachmentDownloadProgress>())
+    override val results = Collections.synchronizedList(mutableListOf<AttachmentDownloadResult>())
+    val staleCallbackCount = AtomicInteger(0)
+
+    override fun onProgress(progress: AttachmentDownloadProgress) {
+        if (progress.attemptToken != expectedAttemptToken) {
+            staleCallbackCount.incrementAndGet()
+            return
+        }
+        this.progress += progress
+    }
+
+    override fun onComplete(result: AttachmentDownloadResult) {
+        if (result.attemptToken != expectedAttemptToken) {
+            staleCallbackCount.incrementAndGet()
+            return
+        }
+        results += result
+    }
 }
 
 private class BlockingWriteSink(
