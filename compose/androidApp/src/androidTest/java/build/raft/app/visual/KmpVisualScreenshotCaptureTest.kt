@@ -2068,7 +2068,7 @@ class KmpVisualScreenshotCaptureTest {
         val centerX = (bounds[0] + bounds[2]) / 2
         val quiverTop =
             requireNotNull(
-                ((bounds[3] + 6).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
+                ((bounds[3] + 8).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
                     isBorderBlack(bitmap.getPixel(centerX, y))
                 }
             ) { "No Quiver success row top border found below User row" }
