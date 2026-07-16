@@ -3058,6 +3058,7 @@ internal fun MembersRouteContent(
     inviteHumanLoadJoinLink: () -> Unit = {},
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onRefresh: () -> Unit = {}
@@ -3088,6 +3089,7 @@ internal fun MembersRouteContent(
         inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
         inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
         bottomContentPadding = bottomContentPadding,
+        scrollToTopRequest = scrollToTopRequest,
         initialListState = initialListState,
         onListStateSnapshot = onListStateSnapshot
     )
@@ -3120,6 +3122,7 @@ internal fun MembersListContent(
     inviteHumanLoadJoinLink: () -> Unit = {},
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
     onRefresh: () -> Unit = {}
@@ -3169,6 +3172,12 @@ internal fun MembersListContent(
             initialFirstVisibleItemIndex = initialListState.listPosition.firstVisibleItemIndex,
             initialFirstVisibleItemScrollOffset = initialListState.listPosition.firstVisibleItemScrollOffset
         )
+    val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequestFence.consume(scrollToTopRequest)) {
+            listState.animateScrollToTopExpressive()
+        }
+    }
     val latestAgentsExpanded by rememberUpdatedState(agentsExpanded)
     val latestHumansExpanded by rememberUpdatedState(humansExpanded)
     val latestOnListStateSnapshot by rememberUpdatedState(onListStateSnapshot)
