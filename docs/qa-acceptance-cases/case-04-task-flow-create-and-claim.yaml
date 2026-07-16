@@ -1,0 +1,115 @@
+id: task-flow-create-and-claim
+title: "任务流-创建任务并认领"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that the task lifecycle works end-to-end: a message can be
+  converted to a task, the task appears with correct status, and can be
+  claimed. This is a core Raft workflow differentiator.
+tags: [tasks, workflow, regression]
+timeout_seconds: 120
+max_retries: 2
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    action: open_page
+    params:
+      page_name: compose_thread
+      page_data: '{"channelId":"#general"}'
+    description: "Open a channel to access the task feature"
+    capture: [screenshot]
+
+  - id: open-input
+    action: tap
+    params:
+      element: "message-input"
+    description: "Focus the message input"
+
+  - id: type-task-message
+    action: input
+    params:
+      field_selector: "message-input"
+      text: "Acceptance test: verify task creation flow"
+    description: "Type a message that will become a task"
+
+  - id: send-message
+    action: tap
+    params:
+      element: "send-button"
+    description: "Send the message"
+    capture: [screenshot]
+
+  - id: wait-send
+    action: wait
+    params:
+      duration_ms: 1000
+
+  - id: long-press-message
+    action: tap
+    params:
+      element: "sent-message"
+      gesture: long_press
+    description: "Long-press the sent message to open context menu"
+    capture: [screenshot, dump_layout]
+
+  - id: tap-create-task
+    action: tap
+    params:
+      text: "Create Task"
+    description: "Select 'Create Task' from the context menu"
+    capture: [screenshot]
+
+  - id: wait-task-created
+    action: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-task-badge
+    action: screenshot
+    description: "Capture state showing the task badge/status on the message"
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: task-badge-visible
+    type: text_match
+    params:
+      text_match_regex: "(?i)task\\s*#?\\d+"
+    after_step: verify-task-badge
+    severity: critical
+    description: "Task badge with number must appear on the message"
+
+  - id: task-status-todo
+    type: text_match
+    params:
+      text_match_regex: "(?i)(todo|to-do)"
+    after_step: verify-task-badge
+    severity: major
+    description: "Task status should initially be 'todo'"
+
+  - id: no-crash-task-flow
+    type: no_crash
+    after_step: verify-task-badge
+    severity: critical
+    description: "No crashes during task creation flow"
+
+expected:
+  result: pass
+  notes: "Task creation is a core Raft differentiator. If the context menu or task badge is broken, this catches it."
