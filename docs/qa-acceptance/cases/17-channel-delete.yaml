@@ -44,13 +44,13 @@ steps:
   - id: open-channel-settings
     goal: "Open channel settings/info"
     action_category: interact
-    hint: "Open the qa-test-delete channel, then tap the channel name header at the top to enter channel thread info/settings where delete option is located"
+    hint: "Open the qa-test-delete channel, then tap the gear/settings icon at the top-right of the channel header"
     capture: [screenshot, dump_layout]
 
   - id: find-delete-option
     goal: "Find and tap the Delete option"
     action_category: interact
-    hint: "Look for 'Delete Channel' in the channel thread info/settings page, may need to scroll to bottom. Usually red/danger color"
+    hint: "Look for 'Delete Channel' inside the channel settings page (accessed via top-right gear icon). Usually red/danger color"
     capture: [screenshot]
 
   - id: confirm-delete
