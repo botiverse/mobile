@@ -1674,7 +1674,8 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("destination", "quiver-feedback")
-                    .put("fixtureKey", "feedback-submit-success"),
+                    .put("fixtureKey", "feedback-submit-success")
+                    .put("task139ReuseTrace", true),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 3_000,
             assertBitmap = ::assertLargestFeedbackYellowRegionHasSquareCorners
