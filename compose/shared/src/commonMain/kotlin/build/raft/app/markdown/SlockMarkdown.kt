@@ -1734,6 +1734,11 @@ fun SlockMarkdownBody(
     LaunchedEffect(Unit) {
         println(slockRichTextCapsLine())
     }
+    SlockMarkdownBodyRecomposeMarker(
+        performanceKey = performanceKey,
+        bodyLength = body.length,
+        performanceLogger = performanceLogger
+    )
     val content = remember(body, performanceKey) {
         val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
         val (prepared, cacheHit) =
