@@ -85,7 +85,15 @@ function inputText(value) {
   adb(["shell", "input", "text", value.replace(/ /g, "%s")]);
 }
 
-const KEYCODES = { back: "4", home: "3", enter: "66", tab: "61", del: "67", app_switch: "187" };
+const KEYCODES = { back: "4", home: "3", enter: "66", tab: "61", del: "67", esc: "111", app_switch: "187" };
+
+// Clear the focused text field: jump to end, then a single adb call with a
+// burst of DEL keycodes (input keyevent accepts many codes per invocation —
+// one process spawn instead of N, and no per-key model turns).
+function clearField() {
+  adb(["shell", "input", "keyevent", "123"]); // MOVE_END
+  adb(["shell", "input", "keyevent", ...Array(60).fill("67")]);
+}
 
 function screenSize() {
   const out = adb(["shell", "wm", "size"], { encoding: "utf8" });
@@ -106,7 +114,8 @@ function preamble(size) {
     '  {"action":"tap","x":<px>,"y":<px>}            tap a point',
     '  {"action":"swipe","direction":"up|down|left|right"}   scroll the screen',
     '  {"action":"text","value":"<text>"}             type into the focused field (tap it first)',
-    '  {"action":"key","name":"back|home|enter|tab|del"}     press a key',
+    '  {"action":"key","name":"back|home|enter|tab|del|esc"}  press a key (esc hides the keyboard)',
+    '  {"action":"clear"}                             clear the FOCUSED text field completely',
     '  {"action":"dump_ui"}                           get uiautomator XML (text/desc/bounds of every node)',
     '  {"action":"wait","seconds":<1-10>}             wait for loading',
     '  {"action":"launch"}                            (re)launch the app main activity',
@@ -117,7 +126,11 @@ function preamble(size) {
     '  ("[x1,y1][x2,y2]" -> center). Screenshots alone are not reliable for coordinates.',
     "- The test account is email {{QA_EMAIL}} password {{QA_PASSWORD}} — type them as these",
     "  EXACT placeholder strings in a text action; the runner substitutes real values.",
-    "- After typing into a field, verify via screenshot that the text landed before proceeding.",
+    "- Typing goes to the FOCUSED field. When the on-screen keyboard opens, the layout may",
+    "  shift — dump_ui AGAIN before tapping the next field, and verify focus moved (tap the",
+    "  field, then check the screenshot for a cursor) before typing into it.",
+    "- After typing into a field, verify via the screenshot that the text landed in the",
+    "  INTENDED field. If text went to the wrong field, tap that field, use clear, and redo.",
     "- finish with verdict pass ONLY if you visually confirmed every requirement of the goal;",
     "  if blocked, loading forever, or the UI contradicts the goal, finish with verdict fail",
     "  and a concrete reason. You have a limited turn budget — no exploration detours.",
@@ -228,6 +241,7 @@ async function main() {
           break;
         }
         case "key": adb(["shell", "input", "keyevent", KEYCODES[action.name] || String(action.name)]); break;
+        case "clear": clearField(); break;
         case "dump_ui": feedback = dumpUi(); break;
         case "wait": await new Promise((r) => setTimeout(r, Math.min(10, Math.max(1, Number(action.seconds) || 2)) * 1000)); break;
         case "launch": adb(["shell", "am", "start", "-n", `${opts.appPackage}/.MainActivity`]); break;
