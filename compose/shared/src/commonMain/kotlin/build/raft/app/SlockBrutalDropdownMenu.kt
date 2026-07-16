@@ -1,11 +1,16 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -196,8 +201,14 @@ private fun SlockBrutalDropdownMenuRow(
     rowHeight: Dp,
     onClick: () -> Unit
 ) {
+    // Press feedback mirrors web MenuItem `hover:bg-soft-signal/30` (artin,
+    // #proj-uiux task #7): the row washes brand yellow while the finger is
+    // down. Destructive rows keep their red wash.
+    var pressed by remember { mutableStateOf(false) }
     val rowBackground = if (item.destructive) {
         SlockColor.AccentRed.copy(alpha = 0.08f)
+    } else if (pressed && item.enabled) {
+        SlockColor.SoftSignal.copy(alpha = 0.30f)
     } else {
         SlockColor.SurfaceWhite
     }
@@ -213,7 +224,21 @@ private fun SlockBrutalDropdownMenuRow(
             .fillMaxWidth()
             .height(rowHeight)
             .background(rowBackground)
-            .clickable(enabled = item.enabled, onClick = onClick)
+            .pointerInput(item.enabled) {
+                detectTapGestures(
+                    onPress = {
+                        if (item.enabled) {
+                            pressed = true
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                pressed = false
+                            }
+                        }
+                    },
+                    onTap = { if (item.enabled) onClick() }
+                )
+            }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
