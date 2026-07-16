@@ -1848,7 +1848,8 @@ private object SlockMarkdownDimens : MarkdownDimens {
     override val tableCellPadding: Dp = 12.dp
     override val tableCornerSize: Dp = 8.dp
 }
-private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
+// web MarkdownContent pre: bg-[#07111f] (artin: 对齐, task #67 thread).
+private val SlockMarkdownCodeBlockBackground = Color(0xFF07111F)
 private val SlockMarkdownMinimumInlineLineHeight = 22.sp
 private val SlockMarkdownDividerColor = SlockColor.BorderBlack.copy(alpha = 0.22f)
 private val SlockMarkdownDividerThickness = 2.dp
