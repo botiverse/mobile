@@ -2024,7 +2024,13 @@ class KmpVisualScreenshotCaptureTest {
         }
         val bounds = requireNotNull(bestBounds) { "No BrandYellow feedback region found" }
         require(bestArea > 8_000) { "BrandYellow region too small for User row: area=$bestArea" }
-        val cornerHits =
+        fun isBorderBlack(color: Int): Boolean {
+            val red = android.graphics.Color.red(color)
+            val green = android.graphics.Color.green(color)
+            val blue = android.graphics.Color.blue(color)
+            return red <= 72 && green <= 72 && blue <= 72
+        }
+        val cornerBorderHits =
             listOf(
                 bounds[0] to bounds[1],
                 bounds[2] to bounds[1],
@@ -2032,18 +2038,24 @@ class KmpVisualScreenshotCaptureTest {
                 bounds[2] to bounds[3]
             ).map { (x, y) ->
                 var hits = 0
-                for (dy in -1..1) {
-                    for (dx in -1..1) {
+                // The yellow background itself still fills the rectangular
+                // layer bounds when a stale rounded border is retained. The
+                // regression is therefore visible in the black outline: a
+                // square row has border pixels at each geometric corner,
+                // while a rounded outline leaves this tight corner patch
+                // yellow/white and places its arc farther inward.
+                for (dy in -4..4) {
+                    for (dx in -4..4) {
                         val px = (x + dx).coerceIn(0, width - 1)
                         val py = (y + dy).coerceIn(0, height - 1)
-                        if (isBrandYellow(bitmap.getPixel(px, py))) hits += 1
+                        if (isBorderBlack(bitmap.getPixel(px, py))) hits += 1
                     }
                 }
                 hits
             }
-        require(cornerHits.all { it >= 2 }) {
+        require(cornerBorderHits.all { it >= 4 }) {
             "User feedback row retained rounded corners: bounds=${bounds.joinToString()} " +
-                "cornerYellowHits=${cornerHits.joinToString()} area=$bestArea"
+                "cornerBorderBlackHits=${cornerBorderHits.joinToString()} area=$bestArea"
         }
     }
 
