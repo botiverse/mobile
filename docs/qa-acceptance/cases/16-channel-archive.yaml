@@ -34,9 +34,9 @@ cleanup:
 
 steps:
   - id: open-channel
-    goal: "Open a qa-test-archive channel"
+    goal: "Create a fresh channel named qa-test-archive-<random 4 digits> and open it"
     action_category: navigate
-    hint: "Navigate to the qa-test-archive channel in the test server"
+    hint: "Self-contained: create the channel this case will archive (archive consumes it, so a fixture would fail on the second run), then open it"
     capture: [screenshot]
 
   - id: open-channel-settings

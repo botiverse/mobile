@@ -35,9 +35,9 @@ cleanup:
 
 steps:
   - id: open-channel
-    goal: "Open a qa-test- channel"
+    goal: "Create a fresh channel named qa-test-edit-<random 4 digits> and open it"
     action_category: navigate
-    hint: "Navigate to a channel with qa-test- prefix in the test server"
+    hint: "Self-contained: create the channel this case will rename (do NOT assume a fixture channel exists), then open it"
     capture: [screenshot]
 
   - id: open-channel-settings
