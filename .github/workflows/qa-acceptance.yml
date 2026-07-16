@@ -128,6 +128,13 @@ jobs:
           # @earendil-works/pi-ai is on the PUBLIC npm registry — no scope override or auth.
           npm i @earendil-works/pi-ai@0.80.3 --no-audit --no-fund
 
+      # Evidence annotation (docs/qa-acceptance/annotation-spec.md): sharp draws
+      # assertion boxes / tap crosshairs onto copies of the step screenshots.
+      # Installed at the workspace root so the runner's `import("sharp")`
+      # resolves; the runner degrades gracefully if this step is ever skipped.
+      - name: Install sharp (evidence annotation)
+        run: npm i --no-save sharp@0.33.5 --no-audit --no-fund
+
       - name: Run acceptance agent
         uses: reactivecircus/android-emulator-runner@v2
         env:
