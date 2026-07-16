@@ -44,9 +44,12 @@ const lines = fs.readFileSync(logPath, "utf8").split("\n");
 // Markers survive arbitrary logcat prefixes (timestamps, pid, KLog tags) —
 // match on the payload text only.
 const RE = {
-  recompose: /thread_markdown_body_recompose key=(\S+) n=(\d+) bodyLen=(\d+)/,
+  // v2 scoped marker; the v1 body-only name is still parsed (as scope=body)
+  // so pre-v2 采证 logs keep reading.
+  recompose: /thread_row_recompose scope=(\w+) key=(\S+) n=(\d+) bodyLen=(\d+)/,
+  recomposeV1: /thread_markdown_body_recompose key=(\S+) n=(\d+) bodyLen=(\d+)/,
   row: /thread_markdown_row key=(\S*) message=(\S+) bodyLen=(\d+)/,
-  frameCommitted: /thread_first_content_frame_committed threadId=(\S*)/,
+  frameCommitted: /thread_first_content_frame_committed threadId=(\S*)(?: routeKey=(\S*))?/,
   firstContentReadyLegacy: /thread_first_content_ready threadId=(\S*)/,
   secondary: /thread_(secondary_refresh_result|secondary_followed_result)/,
   auxLaunched: /thread_auxiliary_hydration result=launch/,
@@ -57,9 +60,10 @@ const events = [];
 for (let i = 0; i < lines.length; i++) {
   const l = lines[i];
   let m;
-  if ((m = RE.recompose.exec(l))) events.push({ i, kind: "recompose", key: m[1], n: Number(m[2]) });
+  if ((m = RE.recompose.exec(l))) events.push({ i, kind: "recompose", scope: m[1], key: m[2], n: Number(m[3]) });
+  else if ((m = RE.recomposeV1.exec(l))) events.push({ i, kind: "recompose", scope: "body", key: m[1], n: Number(m[2]) });
   else if ((m = RE.row.exec(l))) events.push({ i, kind: "row", id: m[2] });
-  else if ((m = RE.frameCommitted.exec(l))) events.push({ i, kind: "frame_committed", threadId: m[1] });
+  else if ((m = RE.frameCommitted.exec(l))) events.push({ i, kind: "frame_committed", threadId: m[1], routeKey: m[2] || "" });
   else if ((m = RE.firstContentReadyLegacy.exec(l))) events.push({ i, kind: "legacy_ready", threadId: m[1] });
   else if (RE.secondary.test(l)) events.push({ i, kind: "aux", what: "secondary_result" });
   else if (RE.auxLaunched.test(l)) events.push({ i, kind: "aux", what: "aux_launched" });
@@ -71,22 +75,29 @@ if (!events.length) {
   process.exit(2);
 }
 
-// Contract A — final recompose count per key (the marker logs monotonically
-// increasing n, so the max seen per key is the count), plus row re-emissions.
-const recomposeMax = new Map();
+// Contract A — final recompose count per scope+key (the marker logs
+// monotonically increasing n, so the max seen is the count), plus row
+// re-emissions. Budgets apply to card and body scopes alike.
+const recomposeMax = new Map(); // "scope\x00key" -> max n
+const scopesSeen = new Set();
 const rowLogs = new Map();
 for (const e of events) {
-  if (e.kind === "recompose") recomposeMax.set(e.key, Math.max(recomposeMax.get(e.key) || 0, e.n));
+  if (e.kind === "recompose") {
+    scopesSeen.add(e.scope);
+    const k = `${e.scope}\x00${e.key}`;
+    recomposeMax.set(k, Math.max(recomposeMax.get(k) || 0, e.n));
+  }
   if (e.kind === "row") rowLogs.set(e.id, (rowLogs.get(e.id) || 0) + 1);
 }
 const overBudget = [];
-for (const [key, n] of recomposeMax) {
+for (const [sk, n] of recomposeMax) {
+  const [scope, key] = sk.split("\x00");
   const budget = tagged.has(key) ? maxTaggedRecompose : maxRecompose;
-  if (n > budget) overBudget.push({ key, recompositions: n, budget, signal: "recompose" });
+  if (n > budget) overBudget.push({ scope, key, recompositions: n, budget, signal: "recompose" });
 }
 for (const [id, n] of rowLogs) {
   const budget = tagged.has(id) ? maxTaggedRecompose : maxRecompose;
-  if (n > budget) overBudget.push({ key: id, logs: n, budget, signal: "row_reemit" });
+  if (n > budget) overBudget.push({ scope: "row_marker", key: id, logs: n, budget, signal: "row_reemit" });
 }
 
 // Contract B — hard-anchored on the committed-frame marker.
@@ -99,6 +110,22 @@ const auxBeforeFrame = frameIdx.length
 const violations = [];
 if (overBudget.length) {
   violations.push({ contract: "A_rebuild", detail: `${overBudget.length} row(s) exceeded their recomposition budget`, rows: overBudget.slice(0, 60) });
+}
+// Outer row/Card recompositions can escape a body-only hook (#1076 review
+// finding ②) — a run whose log carries no scope=card markers has not measured
+// the layer that failed on device, so it cannot pass.
+if (recomposeMax.size && !scopesSeen.has("card")) {
+  violations.push({
+    contract: "A_rebuild",
+    detail: "MISSING_CARD_SCOPE: no scope=card recompose markers — the ThreadMessageCard-level hook is not wired; body-only coverage cannot green the gate",
+  });
+}
+const frameMissingRoute = events.filter((e) => e.kind === "frame_committed" && !e.routeKey).length;
+if (frameIdx.length && frameMissingRoute) {
+  violations.push({
+    contract: "B_hydration_order",
+    detail: `frame_committed marker(s) without routeKey (${frameMissingRoute}) — the anchor must carry the originating route identity, not derive it from current payload`,
+  });
 }
 if (!frameIdx.length) {
   violations.push({
