@@ -100,4 +100,28 @@ class BridgeAttachmentDownloadProgressTest {
         assertSame(current, reduceAttachmentDownloadProgress(current, invalidNewChunk, "download-1"))
         assertEquals(validNewStart, reduceAttachmentDownloadProgress(current, validNewStart, "download-1"))
     }
+
+    @Test
+    fun reducerAcceptsExportInsertAsTheNextSameIdLifecycle() {
+        val completedTransfer =
+            BridgeAttachmentDownloadProgress(
+                downloadId = "download-1",
+                attemptToken = "network-attempt",
+                sequence = 6,
+                phase = "complete",
+                percent = 100,
+                downloadedBytes = 1_000,
+                totalBytes = 1_000
+            )
+        val exportStart =
+            completedTransfer.copy(
+                attemptToken = "export-attempt",
+                sequence = 1,
+                phase = "export_insert",
+                percent = null,
+                downloadedBytes = 0
+            )
+
+        assertEquals(exportStart, reduceAttachmentDownloadProgress(completedTransfer, exportStart, "download-1"))
+    }
 }

@@ -383,6 +383,7 @@ internal class BridgeModule : Module() {
                     expectedAttemptToken = activeAttemptToken,
                     action = "cancel"
                 )
+                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
                 callbackRef?.let { removeCallback(it) }
             }
         }
@@ -435,6 +436,7 @@ internal class BridgeModule : Module() {
                     expectedAttemptToken = activeAttemptToken,
                     action = "cancel"
                 )
+                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
                 callbackRef?.let { removeCallback(it) }
             }
         }
@@ -443,13 +445,47 @@ internal class BridgeModule : Module() {
         downloadId: String,
         expectedAttemptToken: String? = null,
         action: String
-    ): JSONObject =
-        JSONObject().apply {
-            put(
-                "status",
-                AttachmentDownloadCoordinator.control(downloadId, expectedAttemptToken, action)
+    ): JSONObject {
+        val commonStatus =
+            AttachmentDownloadCoordinator.control(
+                downloadId = downloadId,
+                expectedAttemptToken = expectedAttemptToken,
+                action = action
             )
+        val isStop = action == "cancel" || action == "stop"
+        if (commonStatus != "missing" && !isStop) {
+            return JSONObject().apply { put("status", commonStatus) }
         }
+        return suspendCoroutine { continuation ->
+            requestAttachmentDownloadControl(downloadId, expectedAttemptToken, action) { payload ->
+                val nativeStatus = payload?.optString("status").orEmpty()
+                continuation.resume(
+                    when {
+                        nativeStatus.isNotBlank() && nativeStatus != "missing" -> payload!!
+                        commonStatus != "missing" -> JSONObject().apply { put("status", commonStatus) }
+                        else -> payload ?: JSONObject().apply {
+                            put("status", "failed")
+                            put("message", "Download control did not return a result")
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun requestAttachmentDownloadControl(
+        downloadId: String,
+        expectedAttemptToken: String?,
+        action: String,
+        callback: ((JSONObject?) -> Unit)? = null
+    ) {
+        val methodArgs = JSONObject()
+        methodArgs.put("downloadId", downloadId)
+        methodArgs.put("commonHandled", true)
+        expectedAttemptToken?.takeIf { it.isNotBlank() }?.let { methodArgs.put("attemptToken", it) }
+        methodArgs.put("action", action)
+        callNativeMethod(ATTACHMENT_DOWNLOAD_CONTROL, methodArgs, callback)
+    }
 
     private fun attachmentDownloadId(explicit: String?, attachmentId: String, fileName: String): String =
         explicit?.trim()?.takeIf { it.isNotBlank() }
@@ -989,7 +1025,14 @@ internal fun reduceAttachmentDownloadProgress(
     if (current.attemptToken.isNotBlank() && incoming.attemptToken.isNotBlank() &&
         current.attemptToken != incoming.attemptToken
     ) {
-        return if (incoming.sequence == 1L && incoming.phase == "response_wait") incoming else current
+        return if (
+            incoming.sequence == 1L &&
+                (incoming.phase == "response_wait" || incoming.phase == "export_insert")
+        ) {
+            incoming
+        } else {
+            current
+        }
     }
     if (incoming.sequence > 0L && current.sequence > 0L && incoming.sequence <= current.sequence) return current
     if (incoming.downloadedBytes < current.downloadedBytes) return current

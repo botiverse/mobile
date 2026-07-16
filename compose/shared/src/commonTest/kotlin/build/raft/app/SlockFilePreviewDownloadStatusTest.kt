@@ -246,6 +246,36 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun mediaStoreExportUsesSavingLabel() {
+        val label =
+            slockFilePreviewDownloadStatusLabel(
+                BridgeAttachmentDownloadProgress(
+                    phase = "export_copy",
+                    percent = 42,
+                    downloadedBytes = 420L,
+                    totalBytes = 1_000L
+                )
+            )
+
+        assertEquals("Saving 42%", label)
+    }
+
+    @Test
+    fun mediaStoreExportAllowsStopButRejectsFakePauseResume() {
+        val progress =
+            BridgeAttachmentDownloadProgress(
+                phase = "export_copy",
+                percent = 42,
+                downloadedBytes = 420L,
+                totalBytes = 1_000L
+            )
+
+        assertFalse(slockAttachmentDownloadControlAllowed(progress, "pause"))
+        assertFalse(slockAttachmentDownloadControlAllowed(progress, "resume"))
+        assertTrue(slockAttachmentDownloadControlAllowed(progress, "stop"))
+    }
+
+    @Test
     fun activeDownloadStatusStaysIndeterminateBeforeNativeProgress() {
         val label = slockFilePreviewActiveDownloadStatusLabel(progress = null, status = "downloading")
 

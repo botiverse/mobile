@@ -4345,9 +4345,16 @@ internal class SlockKuiklyBridgeModule(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         callback?.invoke(
                                 publishAttachmentToDownloads(
+                                        downloadId = preparation.downloadId,
                                         source = preparation.targetFile,
                                         displayName = displayName,
-                                        mimeType = preparation.mimeType
+                                        mimeType = preparation.mimeType,
+                                        progressCallback =
+                                                if (trackProgress) {
+                                                    { progress -> callback?.invoke(progress) }
+                                                } else {
+                                                    null
+                                                }
                                 )
                         )
                     } else {
@@ -4414,7 +4421,15 @@ internal class SlockKuiklyBridgeModule(
                 ?: return mapOf("status" to "failed", "message" to "Missing download id")
         val action = request.optString("action").lowercase(Locale.US)
         val expectedAttemptToken = request.optString("attemptToken").takeIf { it.isNotBlank() }
-        val status = AttachmentDownloadCoordinator.control(downloadId, expectedAttemptToken, action)
+        val commonHandled = request.optBoolean("commonHandled", false)
+        val downloadStatus =
+                if (commonHandled) {
+                    "missing"
+                } else {
+                    AttachmentDownloadCoordinator.control(downloadId, expectedAttemptToken, action)
+                }
+        val exportStatus = attachmentDownloadsExportCoordinator.control(downloadId, expectedAttemptToken, action)
+        val status = if (exportStatus != "missing") exportStatus else downloadStatus
         return if (status == "failed") {
             mapOf("status" to "failed", "message" to "Unknown download action")
         } else if (status == "missing") {
@@ -4463,6 +4478,7 @@ internal class SlockKuiklyBridgeModule(
                     null
                 }
         return AttachmentPreparationResult.Ready(
+                downloadId = downloadId,
                 attachmentId = attachmentId,
                 requestedFileName = requestedFileName,
                 targetFile = targetFile,
@@ -4562,56 +4578,111 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun publishAttachmentToDownloads(
+            downloadId: String,
             source: File,
             displayName: String,
-            mimeType: String
+            mimeType: String,
+            progressCallback: ((Map<String, Any>) -> Unit)?
     ): Map<String, Any> {
         val resolver = appContext.contentResolver
-        val values =
-                ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Raft")
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-        val uri =
-                resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                        ?: return mapOf(
-                                "status" to "storage_failed",
-                                "message" to "Unable to create Downloads file"
-                        )
-        val copied =
-                runCatching {
-                            resolver.openOutputStream(uri, "w")?.use { output ->
-                                FileInputStream(source).use { input -> input.copyTo(output) }
-                            } != null
+        val result =
+                attachmentDownloadsExportCoordinator.export(
+                        request =
+                                AttachmentDownloadsExportRequest(
+                                        downloadId = downloadId,
+                                        source = source,
+                                        displayName = displayName,
+                                        mimeType = mimeType
+                                ),
+                        backend =
+                                object : AttachmentDownloadsExportBackend {
+                                    override fun insert(displayName: String, mimeType: String): String? {
+                                        val values =
+                                                ContentValues().apply {
+                                                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                                                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                                                    put(
+                                                            MediaStore.MediaColumns.RELATIVE_PATH,
+                                                            "${Environment.DIRECTORY_DOWNLOADS}/Raft"
+                                                    )
+                                                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                                                }
+                                        return resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)?.toString()
+                                    }
+
+                                    override fun openOutput(uri: String) = resolver.openOutputStream(Uri.parse(uri), "w")
+
+                                    override fun publish(uri: String): Boolean {
+                                        val values =
+                                                ContentValues().apply {
+                                                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                                                }
+                                        return resolver.update(Uri.parse(uri), values, null, null) > 0
+                                    }
+
+                                    override fun deletePending(uri: String): Boolean =
+                                            resolver.delete(
+                                                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                                    "${MediaStore.MediaColumns._ID} = ? AND " +
+                                                            "${MediaStore.MediaColumns.IS_PENDING} = ?",
+                                                    arrayOf(
+                                                            android.content.ContentUris.parseId(Uri.parse(uri)).toString(),
+                                                            "1"
+                                                    )
+                                            ) > 0
+
+                                    override fun rowState(uri: String): AttachmentDownloadsRowState =
+                                            runCatching {
+                                                        val cursor = resolver.query(
+                                                                Uri.parse(uri),
+                                                                arrayOf(MediaStore.MediaColumns.IS_PENDING),
+                                                                null,
+                                                                null,
+                                                                null
+                                                        ) ?: return@runCatching AttachmentDownloadsRowState.Unknown
+                                                        cursor.use {
+                                                            if (!cursor.moveToFirst()) {
+                                                                AttachmentDownloadsRowState.Missing
+                                                            } else {
+                                                                val pendingIndex =
+                                                                        cursor.getColumnIndex(
+                                                                                MediaStore.MediaColumns.IS_PENDING
+                                                                        )
+                                                                if (pendingIndex < 0) {
+                                                                    AttachmentDownloadsRowState.Unknown
+                                                                } else if (cursor.getInt(pendingIndex) == 1) {
+                                                                    AttachmentDownloadsRowState.Pending
+                                                                } else {
+                                                                    AttachmentDownloadsRowState.Published
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    .getOrDefault(AttachmentDownloadsRowState.Unknown)
+                                },
+                        observer = { progress ->
+                            SlockAppLog.record(
+                                    "SlockAttachmentExport",
+                                    "phase=${progress.phase} keyHash=${downloadId.hashCode().toString(16)} " +
+                                            "downloadedBytes=${progress.downloadedBytes} totalBytes=${progress.totalBytes}"
+                            )
+                            progressCallback?.invoke(progress.toAndroidBridgePayload())
                         }
-                        .getOrDefault(false)
-        if (!copied) {
-            runCatching { resolver.delete(uri, null, null) }
-            return mapOf(
-                    "status" to "storage_failed",
-                    "message" to "Unable to save attachment to Downloads"
-            )
-        }
-        values.clear()
-        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-        val published = runCatching { resolver.update(uri, values, null, null) }.getOrDefault(0) > 0
-        if (!published) {
-            runCatching { resolver.delete(uri, null, null) }
-            return mapOf(
-                    "status" to "storage_failed",
-                    "message" to "Unable to publish attachment in Downloads"
-            )
-        }
-        return mapOf(
-                "status" to "saved",
-                "message" to "Saved to Downloads/Raft",
-                "uri" to uri.toString(),
-                "fileName" to displayName,
-                "cached" to true,
-                "sizeBytes" to source.length()
+                )
+        SlockAppLog.record(
+                "SlockAttachmentExport",
+                "phase=terminal keyHash=${downloadId.hashCode().toString(16)} status=${result.status} " +
+                        "failurePhase=${result.failurePhase.orEmpty()} sizeBytes=${result.sizeBytes}"
         )
+        return buildMap {
+            put("status", result.status)
+            put("message", result.message)
+            put("cached", true)
+            put("sizeBytes", result.sizeBytes)
+            result.uri?.let { put("uri", it) }
+            result.fileName?.let { put("fileName", it) }
+            result.failurePhase?.let { put("phase", it) }
+        }
     }
 
     private fun attachmentCacheDir(): File = File(appContext.cacheDir, ATTACHMENT_CACHE_DIR_NAME)
@@ -5025,6 +5096,7 @@ internal fun attachmentDownloadPartFiles(targetFile: File): List<File> {
 
 private sealed interface AttachmentPreparationResult {
     data class Ready(
+            val downloadId: String,
             val attachmentId: String,
             val requestedFileName: String,
             val targetFile: File,
@@ -5036,6 +5108,20 @@ private sealed interface AttachmentPreparationResult {
             val payload: Map<String, Any>
     ) : AttachmentPreparationResult
 }
+
+private val attachmentDownloadsExportCoordinator = AttachmentDownloadsExportCoordinator()
+
+private fun AttachmentDownloadsExportProgress.toAndroidBridgePayload(): Map<String, Any> =
+        buildMap {
+            put("downloadId", downloadId)
+            put("attemptToken", attemptToken)
+            put("sequence", sequence)
+            put("phase", phase)
+            put("status", "progress")
+            put("downloadedBytes", downloadedBytes)
+            put("totalBytes", totalBytes)
+            percent?.let { put("percent", it.coerceIn(0, 100)) }
+        }
 
 internal fun publicDownloadDisplayName(requestedFileName: String, fallbackExtension: String?): String {
     val baseName =

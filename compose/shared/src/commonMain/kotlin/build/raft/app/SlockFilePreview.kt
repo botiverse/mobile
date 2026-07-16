@@ -768,7 +768,9 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun requestExternalSave() {
         if (!canOpenWith || downloadStatus == "downloading" || downloadStatus == "paused") return
-        val trackProgress = !attachmentCacheState
+        // Saving a cached file still performs a potentially slow MediaStore export. Keep the
+        // request observable so cache hits show Saving progress and remain cancellable/bounded.
+        val trackProgress = true
         downloadMessage = ""
         if (trackProgress) {
             nextDownloadGeneration += 1L
@@ -836,6 +838,11 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun requestDownloadControl(action: String) {
         val downloadId = activeDownloadId ?: return
+        if (!slockAttachmentDownloadControlAllowed(downloadProgress, action)) {
+            // MediaStore export is cancellable but not resumable. Do not optimistically show a
+            // fake Paused state while the native copy continues.
+            return
+        }
         when (action) {
             "pause" -> downloadStatus = "paused"
             "resume" -> downloadStatus = "downloading"
@@ -3377,7 +3384,12 @@ internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownl
     val percent = progress?.percent
     val speedLabel = progress?.bytesPerSecond.slockFilePreviewSpeedLabel()
     val downloadedLabel = progress?.downloadedBytes?.takeIf { it > 0L }.slockFilePreviewSizeLabel()
-    val verb = if (progress?.status == "paused") "Paused" else "Downloading"
+    val verb =
+        when {
+            progress?.status == "paused" -> "Paused"
+            progress?.phase?.startsWith("export_") == true -> "Saving"
+            else -> "Downloading"
+        }
     val primary =
         when {
             percent != null -> "$verb $percent%"
@@ -3386,6 +3398,12 @@ internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownl
         }
     return listOfNotNull(primary, speedLabel).joinToString(" · ")
 }
+
+internal fun slockAttachmentDownloadControlAllowed(
+    progress: BridgeAttachmentDownloadProgress?,
+    action: String
+): Boolean =
+    progress?.phase?.startsWith("export_") != true || (action != "pause" && action != "resume")
 
 internal fun slockFilePreviewActiveDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,
