@@ -1,0 +1,232 @@
+name: QA Acceptance iOS (agent-in-CI)
+
+# iOS leg of the acceptance executor (#proj-quality): same goal-in/verdict-out
+# contract as qa-acceptance.yml, driven through the QaAcceptanceLoopTests
+# XCUITest harness (ONE test invocation keeps the app alive for the whole run;
+# actions flow over a cmd/res file protocol) plus `simctl io screenshot`.
+# Build/boot recipe is the proven visual-testing ios-capture one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      goal:
+        description: "Acceptance goal for the agent (natural language, concrete verifiable requirements)"
+        required: false
+        default: ""
+      max_turns:
+        description: "Agent turn budget"
+        required: false
+        default: "40"
+      stamp_run_case_id:
+        description: "Stamp run_case id — when set, evidence + verdict report back to Stamp"
+        required: false
+        default: ""
+  push:
+    branches: [xishi/qa-ios-executor]
+
+env:
+  # login smoke (iOS first-run PoC): mirrors the Android case-01 path.
+  DEFAULT_GOAL: >-
+    Log into the app with the provided test account: if a login/welcome screen shows,
+    enter the email and password and submit. If a server picker appears choose 'Raft Android'.
+    Declare pass once the home channel list is visible with at least one channel row,
+    fail otherwise. Do not open any channel.
+
+jobs:
+  acceptance:
+    name: iOS acceptance run (M3 agent on simulator)
+    runs-on: blacksmith-6vcpu-macos-15
+    timeout-minutes: 75
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
+      SIM_DEVICE: iPhone 14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        shell: bash
+        run: |
+          sha="$(git rev-parse HEAD:third_party/kuikly-ui)"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # Same key as visual-testing/test.yml so this job rides their warm cache.
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
+
+      - name: Publish Kuikly fork artifacts
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --android-only
+
+      - name: Ensure kuikly fork submodule for local pod
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain
+
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+
+      - name: Boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices']; print(next((dev['udid'] for devs in d.values() for dev in devs if dev['name']==os.environ['SIM_DEVICE']), ''))")
+          if [ -z "$udid" ]; then
+            runtime=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform']=='iOS']; print(sorted(rs, key=lambda r: r['version'])[-1]['identifier'])")
+            devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")
+            udid=$(xcrun simctl create "qa-${SIM_DEVICE// /-}" "$devtype" "$runtime")
+          fi
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+
+      # One build produces BOTH the app and the UITest runner (the test target
+      # depends on the app), pinned to the booted udid.
+      - name: Build for testing (app + loop harness)
+        working-directory: compose/iosApp
+        run: |
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          set +e
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosAppUITests \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${UDID}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build-for-testing > "$log" 2>&1
+          status=$?
+          tail -100 "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
+            grep -nE "e: |: error:|error: |Unresolved|unresolved reference|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" | tail -100 || true
+          fi
+          exit "$status"
+
+      - name: Install app
+        run: |
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
+          test -n "$app"
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          echo "app=$app bundle_id=$bundle_id"
+          echo "BUNDLE_ID=$bundle_id" >> "$GITHUB_ENV"
+          xcrun simctl install "$UDID" "$app"
+
+      - name: Install M3 SDK (pi-ai)
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p m3 && cd m3
+          npm i @earendil-works/pi-ai@0.80.3 --no-audit --no-fund
+
+      - name: Start loop harness (background)
+        working-directory: compose/iosApp
+        run: |
+          mkdir -p "$RUNNER_TEMP/qa-loop"
+          echo "QA_LOOP_IO_DIR=$RUNNER_TEMP/qa-loop" >> "$GITHUB_ENV"
+          # TEST_RUNNER_* env vars are forwarded into the XCUITest runner.
+          TEST_RUNNER_QA_LOOP_IO_DIR="$RUNNER_TEMP/qa-loop" \
+          TEST_RUNNER_QA_LOOP_BUNDLE="$BUNDLE_ID" \
+          TEST_RUNNER_QA_LOOP_IDLE_TIMEOUT="300" \
+            xcodebuild \
+              -workspace iosApp.xcworkspace \
+              -scheme iosAppUITests \
+              -configuration Debug \
+              -destination "platform=iOS Simulator,id=${UDID}" \
+              -derivedDataPath build/DerivedData \
+              -only-testing:iosAppUITests/QaAcceptanceLoopTests \
+              CODE_SIGNING_ALLOWED=NO \
+              test-without-building > "$GITHUB_WORKSPACE/xcodebuild-loop.log" 2>&1 &
+          echo "loop harness started (pid $!)"
+
+      - name: Run acceptance agent
+        env:
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+          QA_GOAL: ${{ inputs.goal || '' }}
+          QA_MAX_TURNS: ${{ inputs.max_turns || '40' }}
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: |
+          bash scripts/qa/stamp_report.sh claim
+          mkdir -p qa-evidence
+          export MINIMAX_API_KEY="$PI_API_KEY"
+          set +e
+          node scripts/qa/acceptance_agent.mjs \
+            --platform ios --ios-udid "$UDID" --package "$BUNDLE_ID" \
+            --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --out qa-evidence
+          echo "$?" > qa-evidence/agent-rc.txt
+          echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+
+      - name: Collect harness log
+        if: always()
+        run: |
+          cp xcodebuild-loop.log qa-evidence/xcodebuild-loop.log 2>/dev/null || true
+          tail -50 xcodebuild-loop.log 2>/dev/null || true
+
+      - name: Report to Stamp
+        if: always()
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: bash scripts/qa/stamp_report.sh report qa-evidence
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-acceptance-ios-evidence
+          path: qa-evidence
+          if-no-files-found: warn
+
+      - name: Report verdict
+        if: always()
+        run: |
+          rc="$(cat qa-evidence/agent-rc.txt 2>/dev/null || echo 2)"
+          echo "## QA Acceptance verdict (iOS)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f qa-evidence/verdict.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat qa-evidence/verdict.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "no verdict.json produced (agent rc=$rc)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Evidence: qa-acceptance-ios-evidence artifact (per-step screenshots + steps.jsonl + xcodebuild-loop.log)." >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

@@ -16,6 +16,7 @@
 		3FDCFB96518F86B53D4E5ADD /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28A2BBF98AD622240C0C6069 /* Pods_iosApp.framework */; };
 		7555FF83242A565900829871 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7555FF82242A565900829871 /* ContentView.swift */; };
 		B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C465599FD991429AC545C211 /* IosUseInteractionTests.swift */; };
+		B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */; };
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
 		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
 		D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */; };
@@ -63,6 +64,7 @@
 		7555FF8C242A565B00829871 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B8FDA997E9DD2D474C82E853 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		C465599FD991429AC545C211 /* IosUseInteractionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosUseInteractionTests.swift; sourceTree = "<group>"; };
+		C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QaAcceptanceLoopTests.swift; sourceTree = "<group>"; };
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
 		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
 		D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAppScopeMMKV.swift; sourceTree = "<group>"; };
@@ -201,6 +203,7 @@
 			isa = PBXGroup;
 			children = (
 				C465599FD991429AC545C211 /* IosUseInteractionTests.swift */,
+				C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */,
 			);
 			name = iosAppUITests;
 			sourceTree = "<group>";
@@ -524,6 +527,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */,
+				B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
