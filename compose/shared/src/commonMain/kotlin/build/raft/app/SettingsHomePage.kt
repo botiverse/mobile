@@ -270,6 +270,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.SettingsQuiverFeedbackSubmission
+import build.raft.app.data.SettingsQuiverFeedbackDraftSnapshot
 import build.raft.app.data.SettingsQuiverFeedbackDraftStore
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
@@ -4713,6 +4714,7 @@ private fun SettingsAppShellContent(
     session: StoredAuthSession?,
     authDataSource: SharedAuthDataSource,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    quiverFeedbackVisualFixture: SettingsQuiverFeedbackVisualFixture? = null,
     settingsState: SharedSettingsState,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     onToggleNotificationPreference: () -> Unit,
@@ -5571,6 +5573,7 @@ private fun SettingsAppShellContent(
                 SharedQuiverFeedbackContent(
                     settingsCapabilities = settingsCapabilities,
                     accountId = session?.user?.id.orEmpty(),
+                    visualFixture = quiverFeedbackVisualFixture,
                     bottomContentPadding = bottomContentPadding
                 )
             else ->
@@ -9733,6 +9736,7 @@ internal fun SharedSettingsDiagnosticsContent(
 private fun SharedQuiverFeedbackContent(
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     accountId: String,
+    visualFixture: SettingsQuiverFeedbackVisualFixture? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     val copy = settingsQuiverFeedbackCopy()
@@ -9747,8 +9751,8 @@ private fun SharedQuiverFeedbackContent(
             SettingsQuiverFeedbackDraftStore(slockSharedPreferenceStore())
         }
     val restoredDraft =
-        remember(feedbackDraftStore, accountId) {
-            feedbackDraftStore.read(accountId)
+        remember(feedbackDraftStore, accountId, visualFixture) {
+            visualFixture?.draft ?: feedbackDraftStore.read(accountId)
         }
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     var messageFieldValue by remember(accountId) {
@@ -9769,6 +9773,7 @@ private fun SharedQuiverFeedbackContent(
     var pendingRetryRequest by remember { mutableStateOf<SettingsQuiverFeedbackRetryRequest?>(null) }
     var composerSyncNonce by remember { mutableStateOf(0) }
     var nextEntryId by remember { mutableStateOf(1) }
+    var visualAutoSubmitted by remember(accountId, visualFixture) { mutableStateOf(false) }
     var entries by remember {
         mutableStateOf(
             listOf(
@@ -9998,6 +10003,22 @@ private fun SharedQuiverFeedbackContent(
         }
     }
 
+    LaunchedEffect(visualFixture?.autoSubmit, accountId) {
+        if (visualFixture?.autoSubmit == true && !visualAutoSubmitted) {
+            visualAutoSubmitted = true
+            settingsCapabilities.log(
+                "settings_quiver_feedback_visual_initial attachmentCount=${attachments.size} " +
+                    "messageLength=${message.length}"
+            )
+            // Let the real composer render both attachment rows before the
+            // immediate fake-success transition removes them and inserts the
+            // yellow User row. This is the retained-view reuse window from
+            // task #139, not a preview-only approximation.
+            delay(750L)
+            submitFeedback()
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
@@ -10163,6 +10184,11 @@ private data class SettingsQuiverFeedbackEntry(
     val ticketId: String? = null,
     val shareText: String? = null,
     val retryRequest: SettingsQuiverFeedbackRetryRequest? = null
+)
+
+internal data class SettingsQuiverFeedbackVisualFixture(
+    val draft: SettingsQuiverFeedbackDraftSnapshot,
+    val autoSubmit: Boolean
 )
 
 internal data class SettingsQuiverFeedbackCopy(
@@ -19776,9 +19802,21 @@ private fun SettingsRouteVisualScreen() {
         remember(route.destination, route.itemId, route.fixtureKey) {
             settingsRouteVisualState(route)
         }
+    val quiverFeedbackVisualFixture =
+        remember(route.fixtureKey) {
+            settingsQuiverFeedbackVisualFixture(route.fixtureKey)
+        }
     val settingsCapabilities =
-        remember(bridge) {
-            BridgeSettingsPlatformCapabilities(bridge)
+        remember(bridge, quiverFeedbackVisualFixture) {
+            BridgeSettingsPlatformCapabilities(
+                bridge = bridge,
+                feedbackVisualSubmission = quiverFeedbackVisualFixture?.let {
+                    SettingsQuiverFeedbackSubmission(
+                        ticketId = "visual-feedback-ticket-139",
+                        shareText = "Hands feedback visual-139"
+                    )
+                }
+            )
         }
     val sessionStore = remember(session) { InMemorySlockAuthSessionStore(session) }
     val authDataSource =
@@ -19800,6 +19838,7 @@ private fun SettingsRouteVisualScreen() {
         session = session,
         authDataSource = authDataSource,
         settingsCapabilities = settingsCapabilities,
+        quiverFeedbackVisualFixture = quiverFeedbackVisualFixture,
         settingsState = state,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         onToggleNotificationPreference = {},
@@ -19827,6 +19866,36 @@ private fun SettingsRouteVisualScreen() {
         bottomContentPadding = SlockSpacing.Lg,
         timeContext = null,
         onLogout = {}
+    )
+}
+
+private fun settingsQuiverFeedbackVisualFixture(fixtureKey: String): SettingsQuiverFeedbackVisualFixture? {
+    if (fixtureKey != "feedback-two-attachments" && fixtureKey != "feedback-submit-success") return null
+    return SettingsQuiverFeedbackVisualFixture(
+        draft =
+            SettingsQuiverFeedbackDraftSnapshot(
+                text = "The attachment row should be replaced by a square-corner User feedback row.",
+                attachments =
+                    listOf(
+                        PlatformFile(
+                            id = "visual-feedback-attachment-1",
+                            fileName = "reuse-before.png",
+                            mimeType = "image/png",
+                            sizeBytes = 12_340,
+                            fileRef = "visual://feedback/reuse-before.png",
+                            source = "visual_fixture"
+                        ),
+                        PlatformFile(
+                            id = "visual-feedback-attachment-2",
+                            fileName = "reuse-after.log",
+                            mimeType = "text/plain",
+                            sizeBytes = 4_096,
+                            fileRef = "visual://feedback/reuse-after.log",
+                            source = "visual_fixture"
+                        )
+                    )
+            ),
+        autoSubmit = fixtureKey == "feedback-submit-success"
     )
 }
 
@@ -19936,7 +20005,7 @@ private fun parseSettingsRouteVisualPayload(params: com.tencent.kuikly.core.nvi.
     val destination =
         params.optString(SettingsRouteVisualDestinationKey)
             .trim()
-            .takeIf { it.toSharedSettingsDestination() != null }
+            .takeIf { it.toSharedSettingsDestination() != null || it == SettingsDestinationQuiverFeedback }
             ?: SettingsDestinationAdministration
     val itemId =
         params.optString(SettingsRouteVisualItemIdKey)

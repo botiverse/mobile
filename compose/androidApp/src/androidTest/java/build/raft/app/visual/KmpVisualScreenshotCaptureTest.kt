@@ -1836,6 +1836,36 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsFeedbackTwoAttachments() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.feedback.two-attachments",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "quiver-feedback")
+                    .put("fixtureKey", "feedback-two-attachments"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
+    fun captureSettingsFeedbackSubmittedSquareCorners() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.feedback.submitted-square-corners",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "quiver-feedback")
+                    .put("fixtureKey", "feedback-submit-success")
+                    .put("task139ReuseTrace", true),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 3_000,
+            assertBitmap = ::assertLargestFeedbackYellowRegionHasSquareCorners
+        )
+    }
+
+    @Test
     fun captureAuthLoginInputsEmpty() {
         captureKmpComponentCase(
             caseId = "auth.login.inputs.empty",
@@ -2063,6 +2093,7 @@ class KmpVisualScreenshotCaptureTest {
         beforeScreenshot: (() -> Unit)? = null,
         suppressSoftKeyboard: Boolean = true,
         captureSystemSurface: Boolean = false,
+        assertBitmap: ((Bitmap) -> Unit)? = null,
         // Full-height cases (#388) only know the crop height after the page
         // reports its content bottom; invoked post-settle to replace [crop].
         cropOverride: (() -> VisualCrop)? = null
@@ -2101,6 +2132,12 @@ class KmpVisualScreenshotCaptureTest {
             imageFile.outputStream().use { out ->
                 normalized.compress(Bitmap.CompressFormat.PNG, 100, out)
             }
+            // Preserve the exact bitmap that the oracle evaluated even when
+            // a case-specific assertion fails. The exception path writes its
+            // failure.json separately, while this mirrored PNG remains
+            // available for direct visual review of the RED artifact.
+            mirrorFileForAdbPull(context, imageFile)
+            assertBitmap?.invoke(normalized)
             val metadataFile = File(outputDir, "$caseId.metadata.json")
             metadataFile.writeText(
                 visualMetadata(
@@ -2112,12 +2149,138 @@ class KmpVisualScreenshotCaptureTest {
                     captureMethod = effectiveCrop.captureMethod
                 )
             )
-            mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
         } finally {
             closeScenarioBounded(scenario)
         }
+    }
+
+    private fun assertLargestFeedbackYellowRegionHasSquareCorners(bitmap: Bitmap) {
+        val width = bitmap.width
+        val height = bitmap.height
+        val minY = height / 6
+        val maxY = height * 4 / 5
+        val yellow = BooleanArray(width * height)
+        fun isBrandYellow(color: Int): Boolean {
+            val red = android.graphics.Color.red(color)
+            val green = android.graphics.Color.green(color)
+            val blue = android.graphics.Color.blue(color)
+            return red >= 248 && green in 202..222 && blue in 48..82
+        }
+        for (y in minY until maxY) {
+            for (x in 0 until width) {
+                yellow[y * width + x] = isBrandYellow(bitmap.getPixel(x, y))
+            }
+        }
+        val visited = BooleanArray(width * height)
+        val queue = IntArray(width * (maxY - minY))
+        var bestArea = 0
+        var bestBounds: IntArray? = null
+        for (y in minY until maxY) {
+            for (x in 0 until width) {
+                val seed = y * width + x
+                if (!yellow[seed] || visited[seed]) continue
+                var head = 0
+                var tail = 0
+                queue[tail++] = seed
+                visited[seed] = true
+                var area = 0
+                var left = x
+                var right = x
+                var top = y
+                var bottom = y
+                while (head < tail) {
+                    val index = queue[head++]
+                    val px = index % width
+                    val py = index / width
+                    area += 1
+                    left = minOf(left, px)
+                    right = maxOf(right, px)
+                    top = minOf(top, py)
+                    bottom = maxOf(bottom, py)
+                    if (px > 0) enqueueYellow(index - 1, yellow, visited, queue, tail).also { tail = it }
+                    if (px + 1 < width) enqueueYellow(index + 1, yellow, visited, queue, tail).also { tail = it }
+                    if (py > minY) enqueueYellow(index - width, yellow, visited, queue, tail).also { tail = it }
+                    if (py + 1 < maxY) enqueueYellow(index + width, yellow, visited, queue, tail).also { tail = it }
+                }
+                if (area > bestArea) {
+                    bestArea = area
+                    bestBounds = intArrayOf(left, top, right, bottom)
+                }
+            }
+        }
+        val bounds = requireNotNull(bestBounds) { "No BrandYellow feedback region found" }
+        require(bestArea > 8_000) { "BrandYellow region too small for User row: area=$bestArea" }
+        fun isBorderBlack(color: Int): Boolean {
+            val red = android.graphics.Color.red(color)
+            val green = android.graphics.Color.green(color)
+            val blue = android.graphics.Color.blue(color)
+            return red <= 72 && green <= 72 && blue <= 72
+        }
+        fun borderBlackHitsNear(x: Int, y: Int): Int {
+            var hits = 0
+            for (dy in -4..4) {
+                for (dx in -4..4) {
+                    val px = (x + dx).coerceIn(0, width - 1)
+                    val py = (y + dy).coerceIn(0, height - 1)
+                    if (isBorderBlack(bitmap.getPixel(px, py))) hits += 1
+                }
+            }
+            return hits
+        }
+        val userCornerBorderHits =
+            listOf(
+                bounds[0] to bounds[1],
+                bounds[2] to bounds[1],
+                bounds[0] to bounds[3],
+                bounds[2] to bounds[3]
+            ).map { (x, y) ->
+                // The yellow background itself still fills the rectangular
+                // layer bounds when a stale rounded border is retained. The
+                // regression is therefore visible in the black outline: a
+                // square row has border pixels at each geometric corner,
+                // while a rounded outline leaves this tight corner patch
+                // yellow/white and places its arc farther inward.
+                borderBlackHitsNear(x, y)
+            }
+        require(userCornerBorderHits.all { it >= 4 }) {
+            "User feedback row retained rounded corners: bounds=${bounds.joinToString()} " +
+                "cornerBorderBlackHits=${userCornerBorderHits.joinToString()} area=$bestArea"
+        }
+
+        // Depending on retained-view assignment, the stale attachment radius
+        // can land on either the inserted User row or the following Quiver
+        // success row. Find the latter's top outline at the shared center x
+        // and require both top corners to be square as well.
+        val centerX = (bounds[0] + bounds[2]) / 2
+        val quiverTop =
+            requireNotNull(
+                ((bounds[3] + 8).coerceAtMost(maxY - 1) until maxY).firstOrNull { y ->
+                    isBorderBlack(bitmap.getPixel(centerX, y))
+                }
+            ) { "No Quiver success row top border found below User row" }
+        val quiverTopCornerHits =
+            listOf(bounds[0] to quiverTop, bounds[2] to quiverTop).map { (x, y) ->
+                borderBlackHitsNear(x, y)
+            }
+        require(quiverTopCornerHits.all { it >= 4 }) {
+            "Quiver success row retained rounded corners: userBounds=${bounds.joinToString()} " +
+                "quiverTop=$quiverTop topCornerBorderBlackHits=${quiverTopCornerHits.joinToString()}"
+        }
+    }
+
+    private fun enqueueYellow(
+        index: Int,
+        yellow: BooleanArray,
+        visited: BooleanArray,
+        queue: IntArray,
+        tail: Int
+    ): Int {
+        if (!yellow[index] || visited[index]) return tail
+        visited[index] = true
+        queue[tail] = index
+        return tail + 1
     }
 
     private fun tapDisplayDp(x: Float, y: Float) {
