@@ -129,6 +129,11 @@ internal fun createSharedRealtimeAuthorityProvider(
     authEvents: SlockAuthSessionEventSource,
     diagnosticsLogger: (String) -> Unit = {},
     canonicalFinalIntegration: RealtimeCanonicalFinalSinkIntegrationSeam? = null,
+    // REQUIRED at the production creation seam: a provider that can publish
+    // presence-capable grants must carry the binding-readiness hook —
+    // test-only constructions use the RealtimeAuthorityProvider constructor
+    // default directly.
+    onAuthRevisionAdvanced: (RealtimeAuthRevision) -> Unit,
 ): RealtimeAuthorityProvider =
     RealtimeAuthorityProvider(
         registry = registry,
@@ -136,6 +141,7 @@ internal fun createSharedRealtimeAuthorityProvider(
         authEvents = authEvents,
         diagnosticsLogger = diagnosticsLogger,
         canonicalFinalIntegration = canonicalFinalIntegration,
+        onAuthRevisionAdvanced = onAuthRevisionAdvanced,
     )
 
 internal fun createSharedRealtimeDomainEventOwner(
@@ -285,6 +291,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val processMemberPresenceRegistry: ProcessMemberPresenceRegistry,
     private val presenceOwnerResolver: (String) -> ProcessServerMembersOwner?,
     private val presenceOwnerFlowResolver: (String) -> Flow<ProcessServerMembersOwner?>,
+    private val presenceWriteResolver: (String) -> ProcessPresenceWrite?,
+    private val memberPresenceRealtimeSink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -509,6 +517,7 @@ internal class SlockSharedStoreProvider private constructor(
                     presenceRegistry = processMemberPresenceRegistry,
                     presenceOwner = { serverId -> presenceOwnerResolver(serverId.value) },
                     presenceOwnerFlow = { serverId -> presenceOwnerFlowResolver(serverId.value) },
+                    presenceWrite = { serverId -> presenceWriteResolver(serverId.value) },
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) }
                 )
             }
@@ -542,10 +551,7 @@ internal class SlockSharedStoreProvider private constructor(
                     // task #136: same owner-lifetime presence intake as the
                     // legacy owner — straight into the process registry's
                     // owner partition.
-                    it.installMemberPresenceSink { serverId, event ->
-                        presenceOwnerResolver(serverId)
-                            ?.let { owner -> processMemberPresenceRegistry.apply(owner, event) }
-                    }
+                    it.installMemberPresenceSink(memberPresenceRealtimeSink)
                 }
             }
         }
@@ -1085,31 +1091,35 @@ internal class SlockSharedStoreProvider private constructor(
                     .map { context -> context?.ownerFor(rawServerId) }
                     .distinctUntilChanged()
             }
-            fun currentPresenceAuthContextFromSession(accountId: String?): ProcessPresenceAuthContext? {
-                val cleanAccount = accountId?.trim()?.takeIf { it.isNotBlank() } ?: return null
-                val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
-                if (environmentId.isBlank()) return null
-                return ProcessPresenceAuthContext(environmentId = environmentId, accountId = cleanAccount)
+            // Owner + generation frozen from ONE immutable context snapshot —
+            // snapshot-driven store writes stamp the generation so a write
+            // racing an auth clear is rejected inside the registry CAS.
+            val resolvePresenceWrite: (String) -> ProcessPresenceWrite? = { rawServerId ->
+                presenceAuthContext.value?.writeFor(rawServerId)
             }
+            // ONE sink instance shared by the legacy and every scoped realtime
+            // owner — the single production presence write edge.
+            val memberPresenceRealtimeSink =
+                processMemberPresenceRealtimeSink(
+                    currentPresenceAuthContext = { presenceAuthContext.value },
+                    registry = processMemberPresenceRegistry,
+                    diagnosticsLogger = sharedInfoLogger("SlockPresence", "presence_write_edge"),
+                )
+            // Roster invalidation stays on typed auth events. Presence
+            // context/clear does NOT live here: it is published exclusively
+            // from the authority registry's authRevision stream (see the
+            // collector installed right after the registry below), so the
+            // context's authorityGeneration and its retired-then-published
+            // registry writeGeneration always come from ONE coordinated
+            // transition — a second writer here could interleave and publish
+            // a torn (authority generation, registry generation) pair.
             CoroutineScope(SupervisorJob()).launch {
-                presenceAuthContext.value =
-                    currentPresenceAuthContextFromSession(authStore.readSession()?.user?.id)
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
-                        is AuthSessionEvent.Authenticated -> {
-                            // Order matters: clear old partitions FIRST, then
-                            // publish the new context — no window where old
-                            // facts are readable under the new binding.
-                            processMemberPresenceRegistry.clearAll(reason = "authenticated")
+                        is AuthSessionEvent.Authenticated ->
                             processServerMembersCore.invalidateAll(reason = "authenticated")
-                            presenceAuthContext.value =
-                                currentPresenceAuthContextFromSession(authStore.readSession()?.user?.id)
-                        }
-                        is AuthSessionEvent.Cleared -> {
-                            presenceAuthContext.value = null
-                            processMemberPresenceRegistry.clearAll(reason = "cleared")
+                        is AuthSessionEvent.Cleared ->
                             processServerMembersCore.invalidateAll(reason = "cleared")
-                        }
                         is AuthSessionEvent.BindingMetadataChanged,
                         is AuthSessionEvent.TokensRotated -> Unit
                     }
@@ -1194,6 +1204,18 @@ internal class SlockSharedStoreProvider private constructor(
                     authEvents = authStore,
                     diagnosticsLogger = realtimeAuthorityDiagnosticsLogger,
                     canonicalFinalIntegration = canonicalFinalIntegration,
+                    // Presence binding readiness (task #136): the ONE writer of
+                    // presenceAuthContext/clearAll, synchronous with every auth
+                    // revision advance and ordered before grant publication —
+                    // see processPresenceBindingTransition.
+                    onAuthRevisionAdvanced =
+                        processPresenceBindingTransition(
+                            presenceAuthContext = presenceAuthContext,
+                            registry = processMemberPresenceRegistry,
+                            currentEnvironmentId = {
+                                apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                            },
+                        ),
                 )
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
             // synchronously (before first render), then fire-and-forget a refresh from the
@@ -1222,6 +1244,7 @@ internal class SlockSharedStoreProvider private constructor(
                     presenceRegistry = processMemberPresenceRegistry,
                     presenceOwner = { serverId -> resolvePresenceOwner(serverId.value) },
                     presenceOwnerFlow = { serverId -> resolvePresenceOwnerFlow(serverId.value) },
+                    presenceWrite = { serverId -> resolvePresenceWrite(serverId.value) },
                     processOwner = { serverId ->
                         authStore.readSession()?.let { session ->
                             val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
@@ -1281,6 +1304,8 @@ internal class SlockSharedStoreProvider private constructor(
                 processMemberPresenceRegistry = processMemberPresenceRegistry,
                 presenceOwnerResolver = resolvePresenceOwner,
                 presenceOwnerFlowResolver = resolvePresenceOwnerFlow,
+                presenceWriteResolver = resolvePresenceWrite,
+                memberPresenceRealtimeSink = memberPresenceRealtimeSink,
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
@@ -1318,11 +1343,10 @@ internal class SlockSharedStoreProvider private constructor(
                         // task #136: agent presence flows straight into the
                         // process registry's owner partition for the realtime
                         // owner's whole lifetime — never only while a page has
-                        // sinks; stores read the registry, zero mirrors.
-                        owner.installMemberPresenceSink { serverId, event ->
-                            resolvePresenceOwner(serverId)
-                                ?.let { presenceOwner -> processMemberPresenceRegistry.apply(presenceOwner, event) }
-                        }
+                        // sinks; stores read the registry, zero mirrors. The
+                        // ONE production write edge, admission-frozen (see
+                        // processMemberPresenceRealtimeSink).
+                        owner.installMemberPresenceSink(memberPresenceRealtimeSink)
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -1491,12 +1515,14 @@ internal class SharedRealtimeDomainEventOwner(
     // process presence registry for the OWNER's whole lifetime, not only while
     // a page composition happens to have sinks registered — the page-scoped
     // sink windows were exactly how machine-offline transitions got lost on
-    // the Members surface. The provider installs a sink that resolves the
-    // registry's owner partition from (serverId + its auth cache); delivered
-    // on both the plain and guarded accept paths BEFORE the page sinks fan-out.
-    private var memberPresenceSink: ((String, MemberPresenceUpdated) -> Unit)? = null
+    // the Members surface. The sink receives the IMMUTABLE admission identity
+    // derived from the grant the event was accepted under (post-merge audit
+    // on PR #1054: resolving the owner from live auth state at delivery let a
+    // late old-account callback be attributed to the new account). Entry
+    // points without a grant have no principal and must NOT write presence.
+    private var memberPresenceSink: ((RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit)? = null
 
-    fun installMemberPresenceSink(sink: (String, MemberPresenceUpdated) -> Unit) {
+    fun installMemberPresenceSink(sink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit) {
         memberPresenceSink = sink
     }
 
@@ -1551,7 +1577,9 @@ internal class SharedRealtimeDomainEventOwner(
             event,
             source,
         ) { serverId, acceptedEvent, acceptedSource ->
-            acceptGuarded(serverId, acceptedEvent, acceptedSource)
+            // The admission identity is frozen from the grant this event was
+            // accepted under — the only entry allowed to write presence.
+            acceptGuarded(serverId, acceptedEvent, acceptedSource, grant.presenceAdmission())
         }
 
     suspend fun acceptHomeUnreadProjection(
@@ -1733,7 +1761,14 @@ internal class SharedRealtimeDomainEventOwner(
                 )
             }
             if (acceptedEvent is MemberPresenceUpdated && acceptedEvent.kind == build.raft.app.model.MemberKind.Agent) {
-                memberPresenceSink?.invoke(resolvedServerId, acceptedEvent)
+                // This legacy overload has no principal (see the shadow-lane
+                // note above): without a grant there is no admission identity,
+                // so it must never write the presence registry — a held
+                // old-account callback released here after an account switch
+                // would otherwise be attributed to whoever is signed in now.
+                activeSinks?.log?.invoke(
+                    "presence_write_dropped source=$source serverId=$resolvedServerId reason=no_admission"
+                )
                 activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
             } else if (acceptedEvent.refreshesMemberDetail()) {
                 if (acceptedEvent is RealtimeRefreshRequired) {
@@ -1773,6 +1808,7 @@ internal class SharedRealtimeDomainEventOwner(
         serverId: String,
         event: RealtimeEvent,
         source: String,
+        admission: RealtimePresenceAdmission?,
     ) {
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
         val key = event.realtimeDomainKey(resolvedServerId)
@@ -1791,7 +1827,7 @@ internal class SharedRealtimeDomainEventOwner(
                 )
                 return@forEach
             }
-            deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks)
+            deliverGuardedAppShellDomainFinal(resolvedServerId, acceptedEvent, source, activeSinks, admission)
         }
     }
 
@@ -1828,7 +1864,10 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String = "canonical_final",
     ) {
-        deliverGuardedAppShellDomainFinal(serverId, event, source, sinks)
+        // Canonical-final surface delivery: gateway-admitted message frames
+        // only — no grant reaches this entry, so it carries no presence
+        // admission and can never write the presence registry.
+        deliverGuardedAppShellDomainFinal(serverId, event, source, sinks, admission = null)
     }
 
     private suspend fun deliverGuardedAppShellDomainFinal(
@@ -1836,6 +1875,7 @@ internal class SharedRealtimeDomainEventOwner(
         event: RealtimeEvent,
         source: String,
         activeSinks: RealtimeGuardedDomainEventSinks?,
+        admission: RealtimePresenceAdmission?,
     ) {
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
         if (event is Heartbeat) return
@@ -1851,7 +1891,13 @@ internal class SharedRealtimeDomainEventOwner(
             )
         }
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
-            memberPresenceSink?.invoke(resolvedServerId, event)
+            if (admission != null) {
+                memberPresenceSink?.invoke(admission, event)
+            } else {
+                activeSinks?.log?.invoke(
+                    "presence_write_dropped source=$source serverId=$resolvedServerId reason=no_admission"
+                )
+            }
             activeSinks?.applyAgentActivity?.invoke(event)
         } else if (event.refreshesMemberDetail()) {
             if (event is RealtimeRefreshRequired) {
