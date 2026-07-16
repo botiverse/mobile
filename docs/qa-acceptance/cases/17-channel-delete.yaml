@@ -10,6 +10,7 @@ description: |
   qa-test- prefixed channels.
 tags: [channels, delete, regression, destructive]
 timeout_seconds: 120
+verdict_before_cleanup: true
 max_retries: 1
 
 device:
@@ -43,13 +44,13 @@ steps:
   - id: open-channel-settings
     goal: "Open channel settings/info"
     action_category: interact
-    hint: "Tap the channel name header at the top"
+    hint: "Open the qa-test-delete channel, then tap the channel name header at the top to enter channel thread info/settings where delete option is located"
     capture: [screenshot, dump_layout]
 
   - id: find-delete-option
     goal: "Find and tap the Delete option"
     action_category: interact
-    hint: "Look for 'Delete Channel' in settings, may need to scroll to bottom. Usually red/danger color"
+    hint: "Look for 'Delete Channel' in the channel thread info/settings page, may need to scroll to bottom. Usually red/danger color"
     capture: [screenshot]
 
   - id: confirm-delete
