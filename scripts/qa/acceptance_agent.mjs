@@ -72,9 +72,32 @@ function screenshotPng() {
 function dumpUi() {
   adb(["shell", "uiautomator", "dump", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
   const xml = adb(["exec-out", "cat", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
-  // uiautomator XML for a busy screen can be huge; the useful part (visible
-  // nodes with text/desc/bounds) survives a hard cap fine for M3.
-  return xml.length > 60000 ? xml.slice(0, 60000) + "\n<!-- truncated -->" : xml;
+  // Raw uiautomator XML for a busy screen is ~60KB of mostly-useless
+  // attributes, and long dumps in context measurably degrade M3's output
+  // format (the forward-message batch run drowned in malformed replies right
+  // after dump-heavy turns). The agent only ever uses text + bounds (+focus),
+  // so compress to exactly that — lossless for its purposes, ~10x smaller.
+  const nodes = [];
+  for (const m of xml.matchAll(/<node[^>]*>/g)) {
+    const tag = m[0];
+    const text = /text="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const desc = /content-desc="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const cls = /class="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const focused = /focused="true"/.test(tag);
+    const clickable = /clickable="true"/.test(tag);
+    // v2 keep-set (first compression dropped empty EditTexts — the login
+    // fields — and the agent went blind, batch rerun 29505605156): editable
+    // nodes ALWAYS survive even when empty, clickable nodes survive so
+    // icon-only buttons finally have dump bounds, and content-desc counts
+    // as a label.
+    const editable = /EditText|TextField|AutoComplete/i.test(cls);
+    if (!text && !desc && !focused && !editable && !clickable) continue;
+    const bounds = /bounds="(\[[^"]*\])"/.exec(tag)?.[1] ?? "";
+    const flags = `${editable ? "[INPUT] " : ""}${focused ? "[FOCUSED] " : ""}${!editable && clickable && !text ? "[BTN] " : ""}`;
+    nodes.push(`${flags}"${text || desc}" ${bounds}`);
+  }
+  const compact = nodes.join("\n") || "(no labelled nodes on screen)";
+  return compact.length > 20000 ? compact.slice(0, 20000) + "\n[truncated]" : compact;
 }
 
 // `adb shell input text` word-splits on the device shell; %s is its space
@@ -137,7 +160,8 @@ function preamble(size) {
     '  {"action":"text","value":"<text>"}             type into the focused field (tap it first)',
     '  {"action":"key","name":"back|home|enter|tab|del|esc"}  press a key (esc hides the keyboard)',
     '  {"action":"clear"}                             clear the FOCUSED text field completely',
-    '  {"action":"dump_ui"}                           get uiautomator XML (text/desc/bounds of every node)',
+    '  {"action":"dump_ui"}                           list on-screen nodes as `"text" [x1,y1][x2,y2]` lines',
+    "                                                 (focused field marked [FOCUSED])",
     '  {"action":"wait","seconds":<1-10>}             wait for loading',
     '  {"action":"launch"}                            (re)launch the app main activity',
     '  {"action":"finish","verdict":"pass|fail","reason":"<what you verified / what failed>",',
@@ -212,6 +236,20 @@ function pruneImages(messages) {
         seen++;
         if (seen > KEEP_IMAGES) content[j] = { type: "text", text: "[earlier screenshot omitted]" };
       }
+    }
+  }
+  // Old dump results are the other context hog (and stale bounds are a trap
+  // anyway once the screen changed): keep the last 2 long text blocks intact,
+  // trim older ones to a stub. The preamble (first message) is never trimmed.
+  let longSeen = 0;
+  for (let i = messages.length - 1; i >= 1; i--) {
+    const content = messages[i].content;
+    if (!Array.isArray(content)) continue;
+    for (let j = content.length - 1; j >= 0; j--) {
+      const block = content[j];
+      if (block.type !== "text" || block.text.length <= 3000) continue;
+      longSeen++;
+      if (longSeen > 2) content[j] = { type: "text", text: block.text.slice(0, 300) + "\n[older dump trimmed — bounds are stale; dump_ui again if needed]" };
     }
   }
 }
@@ -307,7 +345,7 @@ async function main() {
   }];
   logStep({ turn: 0, event: "start", goal: opts.goal, screen: size });
 
-  let verdict = null, reason = "", turns = 0, malformedStreak = 0;
+  let verdict = null, reason = "", turns = 0;
   const tapAnnotations = [];
   const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
@@ -315,37 +353,31 @@ async function main() {
     pruneImages(messages);
     let action;
     try {
-      const reply = await callModel(models, model, messages);
-      try {
-        action = parseAction(reply);
-        malformedStreak = 0;
-        messages.push({ role: "assistant", content: [{ type: "text", text: reply }], timestamp: Date.now() });
-      } catch {
-        // A malformed reply is a reprompt, not a run-killer — but its TEXT
-        // must never enter the history: case-03 round-2 (run 29492906221)
-        // showed the model imitating its own bad format on alternating turns
-        // once one malformed reply was kept, burning 21/46 turns. Keep the
-        // assistant/user alternation with a placeholder, discard the bad
-        // text, and correct in place; only a streak is an infrastructure
-        // error. Still costs a turn so it can't loop free.
-        malformedStreak++;
-        logStep({ turn: turns, event: "malformed_reply", streak: malformedStreak, preview: redact(reply.slice(0, 200)) });
-        if (malformedStreak >= 3) {
-          verdict = "error"; reason = "model returned 3 consecutive replies with no JSON action";
+      // Malformed replies must leave ZERO trace in history. The #1081
+      // placeholder approach fixed self-mimicry of the bad format but created
+      // a new mimicry surface: the forward-message batch run (29504132395)
+      // showed the model parroting the placeholder text itself for 9 straight
+      // reprompts. v3: retry with a TRANSIENT corrective message that exists
+      // only for the retry call — on success the history reads user(screen) ->
+      // assistant(good action), pristine. Retries live inside the turn (the
+      // wall clock still bounds them); 3 strikes is an infrastructure error.
+      const corrective = {
+        role: "user",
+        content: [{ type: "text", text: "Your previous reply contained no JSON action and was discarded. Respond with EXACTLY ONE action as a strict JSON object from the documented list — no prose, no markdown fences, no explanations." }],
+        timestamp: Date.now(),
+      };
+      let reply;
+      for (let attempt = 1; ; attempt++) {
+        reply = await callModel(models, model, attempt === 1 ? messages : [...messages, corrective]);
+        try {
+          action = parseAction(reply);
           break;
+        } catch {
+          logStep({ turn: turns, event: "malformed_reply", attempt, preview: redact(reply.slice(0, 200)) });
+          if (attempt >= 3) throw new Error("model returned 3 consecutive replies with no JSON action");
         }
-        messages.push({
-          role: "assistant",
-          content: [{ type: "text", text: "[reply discarded: it contained no JSON action]" }],
-          timestamp: Date.now(),
-        });
-        messages.push({
-          role: "user",
-          content: [{ type: "text", text: "That reply was discarded. Respond with EXACTLY ONE action as a strict JSON object from the documented list — no prose, no markdown fences, no explanations." }],
-          timestamp: Date.now(),
-        });
-        continue;
       }
+      messages.push({ role: "assistant", content: [{ type: "text", text: reply }], timestamp: Date.now() });
     } catch (e) {
       logStep({ turn: turns, event: "model_error", error: String(e?.message || e).slice(0, 300) });
       verdict = "error"; reason = `model call failed: ${String(e?.message || e).slice(0, 200)}`;
