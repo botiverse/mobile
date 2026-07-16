@@ -777,10 +777,18 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
     )
 }
 
-private fun normalizedAgentActivityStatus(activity: String?, status: String?): AgentStatus =
+// task #135: liveness may only come from a runtime `activity` fact. The wire
+// `status` field is the ACCOUNT lifecycle ("active" = not archived/stopped) —
+// it stays "active" while the agent's machine is offline, so mapping it to a
+// live AgentStatus painted every agent green ("机器都离线了，所有 agent 还都活着").
+// Without an activity fact the liveness is unknown (null → no live indicator);
+// only an explicit non-active lifecycle ("stopped"/"inactive") is a positive
+// offline fact. Web has the same fallback (agentStore.ts normalizeActivity) —
+// flagged to the web lane in the task #135 thread.
+private fun normalizedAgentActivityStatus(activity: String?, status: String?): AgentStatus? =
     AgentStatus.fromAgentActivityWireValue(activity)
         ?: if (status?.trim()?.equals("active", ignoreCase = true) == true) {
-            AgentStatus.Working
+            null
         } else {
             AgentStatus.Offline
         }
