@@ -4139,7 +4139,8 @@ internal class SharedThreadStore(
                         }
                         .withInitialHomeConversationAccessFallback(currentState.initialHomeAccessCandidate)
                 val canonicalAccessResolved =
-                    currentState.canonicalAccessResolved || (resolvingInitialAccess && result is DataResult.Content)
+                    currentState.canonicalAccessResolved ||
+                        (resolvingInitialAccess && result.resolvesCanonicalConversationAccess())
                 val projectedAccessResolution =
                     currentState.accessResolution.afterRefreshResult(
                         result = result,
@@ -7449,6 +7450,18 @@ private fun ThreadAccessResolution.afterRefreshResult(
         is DataResult.Empty ->
             when {
                 this == ThreadAccessResolution.Resolved -> ThreadAccessResolution.Resolved
+                result.reason == EmptyReason.NoMessages &&
+                    canonicalAccessResolved &&
+                    !requiresParentAccessCandidate ->
+                    ThreadAccessResolution.Resolved
+                result.reason == EmptyReason.NoMessages &&
+                    canonicalAccessResolved &&
+                    !homeLookupComplete ->
+                    ThreadAccessResolution.Loading
+                result.reason == EmptyReason.NoMessages &&
+                    canonicalAccessResolved &&
+                    homeAccessCandidate == null ->
+                    ThreadAccessResolution.Error
                 homeAccessCandidate != null -> ThreadAccessResolution.Resolved
                 homeLookupComplete -> ThreadAccessResolution.Error
                 else -> ThreadAccessResolution.Loading
@@ -7456,6 +7469,9 @@ private fun ThreadAccessResolution.afterRefreshResult(
         is DataResult.NoPermission -> ThreadAccessResolution.NoPermission
         is DataResult.Error -> if (this == ThreadAccessResolution.Resolved) this else ThreadAccessResolution.Error
     }
+
+private fun DataResult<*>.resolvesCanonicalConversationAccess(): Boolean =
+    this is DataResult.Content || (this is DataResult.Empty && reason == EmptyReason.NoMessages)
 
 internal fun KuiklyThreadScreenPayload.withTaskSliceFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(tasks = patch.tasks)

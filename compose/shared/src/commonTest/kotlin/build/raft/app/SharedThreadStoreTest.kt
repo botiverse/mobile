@@ -52,6 +52,7 @@ import build.raft.app.data.InMemoryComposeLocalDataStore
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.InboxItem
 import build.raft.app.data.OpenDirectMessageResult
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.MemberRepository
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.data.MessageMutationSummary
@@ -2038,8 +2039,165 @@ class SharedThreadStoreTest {
         assertEquals("dm-1", payload.sourceThreadId)
         assertEquals("dm-1", payload.streamChannelId)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+        assertTrue(store.state.value.canonicalAccessResolved)
         assertEquals(1, api.channelMessageCalls)
         scope.cancel()
+    }
+
+    @Test
+    fun freshDirectMessageEmptyResolvesBeforeDelayedHomeProjection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val homeRequested = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository {
+                homeRequested.complete(Unit)
+                releaseHome.await()
+                DataResult.Content(emptyHomeSnapshot())
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Empty(EmptyReason.NoMessages)
+                    ),
+                channelRepository = channelRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(directMessagePayload()))
+        homeRequested.await()
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolvedBeforeHome = store.state.value
+        assertEquals("empty", resolvedBeforeHome.payload.status)
+        assertEquals(null, resolvedBeforeHome.payload.errorCode)
+        assertEquals(ThreadAccessResolution.Resolved, resolvedBeforeHome.accessResolution)
+        assertTrue(resolvedBeforeHome.canonicalAccessResolved)
+        assertFalse(resolvedBeforeHome.initialHomeAccessLookupComplete)
+        assertEquals(null, resolvedBeforeHome.initialHomeAccessCandidate)
+
+        releaseHome.complete(Unit)
+        withTimeout(1_000) {
+            while (!store.state.value.initialHomeAccessLookupComplete) {
+                delay(10)
+            }
+        }
+        assertEquals(ThreadAccessResolution.Resolved, store.state.value.accessResolution)
+        scope.cancel()
+    }
+
+    @Test
+    fun existingChannelEmptyResolvesWithCanonicalEmptyAndHomeCandidate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Empty(EmptyReason.NoMessages)
+                    ),
+                channelRepository = FakeChannelRepository { DataResult.Content(joinedHomeSnapshot()) }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
+                delay(10)
+            }
+        }
+
+        val resolved = store.state.value
+        assertEquals("empty", resolved.payload.status)
+        assertEquals(ThreadAccessResolution.Resolved, resolved.accessResolution)
+        assertTrue(resolved.canonicalAccessResolved)
+        assertTrue(resolved.initialHomeAccessLookupComplete)
+        assertTrue(resolved.initialHomeAccessCandidate?.ids.orEmpty().contains("channel-1"))
+        scope.cancel()
+    }
+
+    @Test
+    fun emptyReplyThreadStillFailsClosedWithoutParentAccessCandidate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val route =
+            activityReplyPayload(
+                parentKind = ConversationKind.Channel,
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                threadId = "thread-m1"
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Empty(EmptyReason.NoMessages),
+                        createThreadResult = DataResult.Error(ScreenError("missing_thread_identity"))
+                    ),
+                channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+        withTimeout(1_000) {
+            while (store.state.value.accessResolution != ThreadAccessResolution.Error) {
+                delay(10)
+            }
+        }
+
+        val failed = store.state.value
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, failed.payload.surfaceKind)
+        assertEquals("empty", failed.payload.status)
+        assertTrue(failed.canonicalAccessResolved)
+        assertTrue(failed.initialHomeAccessLookupComplete)
+        assertEquals(null, failed.initialHomeAccessCandidate)
+        scope.cancel()
+    }
+
+    @Test
+    fun noPermissionAndErrorRemainFailClosedForDirectMessageAccess() = runBlocking {
+        suspend fun resolve(result: DataResult<ThreadSnapshot>): SharedThreadState {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val dataSource =
+                SharedThreadDataSource(
+                    networkApi = FakeThreadApi(failChannelMessages = true),
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    conversationRepository = FakeConversationRepository(threadResult = result),
+                    channelRepository = FakeChannelRepository { DataResult.Content(emptyHomeSnapshot()) }
+                )
+            val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+            store.dispatch(SharedThreadIntent.Start(directMessagePayload()))
+            withTimeout(1_000) {
+                while (
+                    store.state.value.accessResolution != ThreadAccessResolution.NoPermission &&
+                    store.state.value.accessResolution != ThreadAccessResolution.Error
+                ) {
+                    delay(10)
+                }
+            }
+            return store.state.value.also { scope.cancel() }
+        }
+
+        val noPermission =
+            resolve(DataResult.NoPermission(PermissionBlocker(code = "thread_forbidden")))
+        assertEquals(ThreadAccessResolution.NoPermission, noPermission.accessResolution)
+        assertFalse(noPermission.canonicalAccessResolved)
+        assertEquals("no_permission", noPermission.payload.status)
+
+        val error = resolve(DataResult.Error(ScreenError(code = "offline", retryable = true)))
+        assertEquals(ThreadAccessResolution.Error, error.accessResolution)
+        assertFalse(error.canonicalAccessResolved)
+        assertEquals("error", error.payload.status)
     }
 
     @Test
