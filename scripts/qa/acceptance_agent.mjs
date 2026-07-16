@@ -463,6 +463,33 @@ async function main() {
   }
 
   if (!verdict) {
+    // Budget exhausted with no verdict: one forced-verdict call turns a
+    // zero-information exit 2 into an honest conclusion (lifecycle round 2:
+    // two 8-minute runs uploaded evidence but died verdict-less). The prompt
+    // forbids upgrading unverified requirements to pass; exit 2 stays
+    // reserved for real infrastructure (emulator dead, model unreachable).
+    const budgetCause = turns >= opts.maxTurns ? `turn budget (${opts.maxTurns})` : `wall clock (${opts.maxMinutes}min)`;
+    logStep({ turn: turns, event: "forced_verdict", cause: budgetCause });
+    try {
+      pruneImages(messages);
+      messages.push({
+        role: "user",
+        content: [{ type: "text", text: `BUDGET EXHAUSTED (${budgetCause}). Produce your final verdict NOW as a single finish action. Judge ONLY from what you actually verified: any requirement you did not visually confirm makes the verdict fail, and the reason must name each unverified requirement. Include annotations for whatever you DID verify.` }],
+        timestamp: Date.now(),
+      });
+      const reply = await callModel(models, model, messages);
+      const action = parseAction(reply);
+      if (action.action === "finish") {
+        verdict = action.verdict === "pass" ? "pass" : "fail";
+        reason = `[forced at ${budgetCause}] ${String(action.reason || "")}`;
+        if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
+        logStep({ turn: turns, action });
+      }
+    } catch (e) {
+      logStep({ turn: turns, event: "forced_verdict_failed", error: String(e?.message || e).slice(0, 200) });
+    }
+  }
+  if (!verdict) {
     verdict = "error";
     reason = turns >= opts.maxTurns ? `no verdict within ${opts.maxTurns} turns` : `wall-clock cap ${opts.maxMinutes}min hit`;
   }
