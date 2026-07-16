@@ -15,8 +15,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 
 /**
- * Commit B: independent pure RED contract. The fixture/oracle is test-owned; the subject remains
- * [missingCanonicalMessageV2GreenPort], so every behavioral requirement is deliberately RED until C.
+ * Frozen A/B contract driven through the GREEN observation port. The oracle remains test-owned and never
+ * calls production serializers to construct expected bytes.
  */
 class CanonicalMessageV2ContractRedTest {
     private val subject = missingCanonicalMessageV2GreenPort

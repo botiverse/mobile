@@ -8,7 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
-/** Test-only invocation contract. Commit B supplies no production adapter by design. */
+/** Test-only invocation contract used to observe the production GREEN components without host binding. */
 internal data class CanonicalV2RedInvocation(
     val requirementId: String,
     val input: JsonElement,
@@ -29,13 +29,12 @@ internal sealed interface CanonicalV2RedResult {
     data object GreenPending : CanonicalV2RedResult
 }
 
-/** GREEN must implement this exact observation surface; the RED commit intentionally binds Pending. */
+/** GREEN implements this observation surface without introducing a production route/binding. */
 internal fun interface CanonicalMessageV2GreenPort {
     fun evaluate(invocation: CanonicalV2RedInvocation): CanonicalV2RedResult
 }
 
-internal val missingCanonicalMessageV2GreenPort: CanonicalMessageV2GreenPort =
-    CanonicalMessageV2GreenPort { CanonicalV2RedResult.GreenPending }
+internal val missingCanonicalMessageV2GreenPort: CanonicalMessageV2GreenPort = CanonicalMessageV2GreenTestPort
 
 /** Independent fixture/oracle support: it never calls the production DTO serializer or decoder. */
 internal object CanonicalMessageV2RedOracle {

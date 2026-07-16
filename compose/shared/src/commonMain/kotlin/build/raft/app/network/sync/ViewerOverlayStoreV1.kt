@@ -17,7 +17,15 @@ data class ViewerOverlayKey(
     val subjectKind: String,
     val subjectId: String,
     val overlayKind: String,
-)
+) {
+    init {
+        requireOpaqueDurableIdentity("scopeKind", scopeKind)
+        requireOpaqueDurableIdentity("scopeId", scopeId)
+        requireOpaqueDurableIdentity("subjectKind", subjectKind)
+        requireOpaqueDurableIdentity("subjectId", subjectId)
+        requireOpaqueDurableIdentity("overlayKind", overlayKind)
+    }
+}
 
 /** Only complete server-authored snapshots are durable in this phase; absence represents Unknown. */
 @Serializable
@@ -34,7 +42,12 @@ sealed interface ViewerOverlayPayloadV1 {
     @SerialName("reactions")
     data class Reactions(
         val reactedEmojis: List<String>,
-    ) : ViewerOverlayPayloadV1
+    ) : ViewerOverlayPayloadV1 {
+        init {
+            require(reactedEmojis.all { it.isNotBlank() && it == it.trim() })
+            require(reactedEmojis == reactedEmojis.distinct().sorted())
+        }
+    }
 }
 
 @Serializable
@@ -42,7 +55,11 @@ data class VersionedViewerOverlayV1(
     val version: Long,
     val completeness: OverlayCompleteness,
     val payload: ViewerOverlayPayloadV1,
-)
+) {
+    init {
+        require(version >= 0L) { "viewer overlay version must be a non-negative SQLite Long" }
+    }
+}
 
 /** Named apply outcomes; an equal-version/different-payload conflict throws instead of returning success. */
 sealed interface ViewerOverlayWriteResult {
