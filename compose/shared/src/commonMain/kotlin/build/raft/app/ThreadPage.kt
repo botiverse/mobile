@@ -1944,6 +1944,38 @@ private fun KuiklyThreadScreenPayload.isRenderableEmptyReplyThread(): Boolean =
 private fun KuiklyThreadScreenPayload.isReadyForThreadPerformanceGate(): Boolean =
     status == "content" || isRenderableEmptyReplyThread()
 
+internal const val ThreadPayloadReadyBudgetMs = 1_500L
+internal const val ThreadFirstLayoutBudgetMs = 100L
+internal const val ThreadFirstDrawBudgetMs = 100L
+
+internal data class ThreadFirstContentPerformanceBudgetResult(
+    val payloadReadyWithinBudget: Boolean?,
+    val layoutWithinBudget: Boolean?,
+    val drawWithinBudget: Boolean?
+) {
+    val passed: Boolean
+        get() {
+            val measurements =
+                listOfNotNull(
+                    payloadReadyWithinBudget,
+                    layoutWithinBudget,
+                    drawWithinBudget
+                )
+            return measurements.isNotEmpty() && measurements.all { it }
+        }
+}
+
+internal fun evaluateThreadFirstContentPerformanceBudget(
+    payloadReadyMs: Long? = null,
+    layoutMs: Long? = null,
+    drawMs: Long? = null
+): ThreadFirstContentPerformanceBudgetResult =
+    ThreadFirstContentPerformanceBudgetResult(
+        payloadReadyWithinBudget = payloadReadyMs?.let { it <= ThreadPayloadReadyBudgetMs },
+        layoutWithinBudget = layoutMs?.let { it <= ThreadFirstLayoutBudgetMs },
+        drawWithinBudget = drawMs?.let { it <= ThreadFirstDrawBudgetMs }
+    )
+
 private fun requestKuiklyThreadPerformanceSnapshot(
     bridge: build.raft.app.base.BridgeModule,
     threadId: String,
@@ -1954,6 +1986,13 @@ private fun requestKuiklyThreadPerformanceSnapshot(
         PagerManager.getCurrentPager()
             .acquireModule<PerformanceModule>(PerformanceModule.MODULE_NAME)
             .getPerformanceData { data ->
+                val layoutMs = data?.pageLoadTime?.pageLayoutCost?.toLong()
+                val drawMs = data?.pageLoadTime?.renderCost?.toLong()
+                val budget =
+                    evaluateThreadFirstContentPerformanceBudget(
+                        layoutMs = layoutMs,
+                        drawMs = drawMs
+                    )
                 val summary = bridge.reportKuiklyPerformanceSnapshot(
                     routeName = "kuikly_thread",
                     reason = reason,
@@ -1969,10 +2008,19 @@ private fun requestKuiklyThreadPerformanceSnapshot(
                     metadata =
                         mapOf(
                             "reason" to reason,
-                            "status" to status
+                            "status" to status,
+                            "layoutBudgetMs" to ThreadFirstLayoutBudgetMs.toString(),
+                            "drawBudgetMs" to ThreadFirstDrawBudgetMs.toString(),
+                            "layoutWithinBudget" to budget.layoutWithinBudget.toString(),
+                            "drawWithinBudget" to budget.drawWithinBudget.toString()
                         )
                 )
                 bridge.log("kuikly_perf_snapshot $summary")
+                bridge.log(
+                    "thread_first_content_budget phase=render layoutMs=${layoutMs ?: -1} " +
+                        "drawMs=${drawMs ?: -1} layoutBudgetMs=$ThreadFirstLayoutBudgetMs " +
+                        "drawBudgetMs=$ThreadFirstDrawBudgetMs pass=${budget.passed}"
+                )
             }
     }.onFailure { error ->
         val summary = bridge.reportKuiklyPerformanceSnapshot(
@@ -3610,6 +3658,9 @@ internal fun SharedThreadRouteContent(
     var startedRouteIdentity by remember(initialThreadInstanceKey) {
         mutableStateOf<ThreadRouteIdentity?>(null)
     }
+    var threadOpenStartedAt by remember(initialThreadInstanceKey) {
+        mutableStateOf<TimeMark?>(null)
+    }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(authStore, initialThreadInstanceKey) {
         val session = authStore.readSession()
@@ -3628,6 +3679,7 @@ internal fun SharedThreadRouteContent(
             return@LaunchedEffect
         }
         startedRouteIdentity = incomingRouteIdentity
+        threadOpenStartedAt = TimeSource.Monotonic.markNow()
         bridge.performanceMarker(
             phase = "thread_open_start",
             routeName = "kuikly_thread",
@@ -4258,22 +4310,30 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
             firstContentLoggedThreadId = threadInstanceKey
+            val payloadReadyMs = threadOpenStartedAt?.elapsedNow()?.inWholeMilliseconds
+            val payloadReadyBudget =
+                evaluateThreadFirstContentPerformanceBudget(payloadReadyMs = payloadReadyMs)
             bridge.performanceMarker(
                 phase = "thread_payload_ready",
                 routeName = "kuikly_thread",
                 event = "instant",
                 threadId = threadTimelineKey ?: threadInstanceKey,
+                durationMs = payloadReadyMs,
                 metadata =
                     mapOf(
                         "status" to timelineSlice.status.ifBlank { "unknown" },
                         "source" to payload.threadRenderDiagnosticsSource(timelineSlice),
-                        "messages" to timelineSlice.messages.size.toString()
+                        "messages" to timelineSlice.messages.size.toString(),
+                        "budgetMs" to ThreadPayloadReadyBudgetMs.toString(),
+                        "withinBudget" to payloadReadyBudget.payloadReadyWithinBudget.toString()
                     )
             )
             bridge.log(
                 "thread_payload_ready_gate threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
                     "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
-                    "source=${payload.threadRenderDiagnosticsSource(timelineSlice)}"
+                    "source=${payload.threadRenderDiagnosticsSource(timelineSlice)} " +
+                    "durationMs=${payloadReadyMs ?: -1} budgetMs=$ThreadPayloadReadyBudgetMs " +
+                    "pass=${payloadReadyBudget.passed}"
             )
             if (performanceSnapshotLoggedThreadId != threadInstanceKey) {
                 performanceSnapshotLoggedThreadId = threadInstanceKey
@@ -5879,6 +5939,9 @@ internal fun SharedThreadRouteContent(
             },
             onSaveShareImage = { path ->
                 bridge.saveThreadShareImage(path)
+            },
+            onFirstContentReady = {
+                threadViewModel.dispatch(SharedThreadIntent.FirstContentReady)
             },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
@@ -9858,6 +9921,7 @@ private fun ThreadPageContent(
     mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
+    onFirstContentReady: () -> Unit = {},
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -9873,6 +9937,15 @@ private fun ThreadPageContent(
     val accessErrorLabels = threadUserFacingErrorLabels()
     val shareExportScope = rememberCoroutineScope()
     val markdownTagFeedbackScope = rememberCoroutineScope()
+    LaunchedEffect(threadInstanceKey, selectedTab, timelineSlice.status, timelineSlice.messages.size) {
+        if (
+            selectedTab != KuiklyThreadTab.Chat &&
+            payload.isReadyForThreadPerformanceGate()
+        ) {
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            onFirstContentReady()
+        }
+    }
     LaunchedEffect(
         threadInstanceKey,
         timelineSlice.status,
@@ -10308,7 +10381,7 @@ private fun ThreadPageContent(
                             threadScreenPagerForForwardBundle.openThreadForwardBundlePage(bundle)
                         },
                         translationStore = translationStore,
-                        onThreadContentReady = {}
+                        onThreadContentReady = onFirstContentReady
                     )
                 KuiklyThreadTab.Tasks ->
                     ThreadTasksTab(
@@ -14860,7 +14933,7 @@ private fun ThreadMessageCard(
                                                 message.copy(body = bodyForRender).threadMarkdownRenderSignature()
                                             }
                                         }
-                                    LaunchedEffect(markdownRenderSignature, markdownTagContextSignature) {
+                                    LaunchedEffect(markdownRenderSignature) {
                                         diagnosticsLogger(
                                             "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
                                                 "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
@@ -14870,7 +14943,7 @@ private fun ThreadMessageCard(
                                                 "context=$markdownTagContextSignature"
                                         )
                                     }
-                                    key(markdownRenderSignature, markdownTagContextSignature, activeMarkdownTagKey) {
+                                    key(markdownRenderSignature) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
                                             textStyle = ThreadMessageBodyTextStyle,

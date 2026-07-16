@@ -97,6 +97,29 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class ThreadPayloadTest {
+    @Test
+    fun firstContentPerformanceBudgetLocksPayloadLayoutAndDrawThresholds() {
+        assertFalse(evaluateThreadFirstContentPerformanceBudget().passed)
+        assertTrue(
+            evaluateThreadFirstContentPerformanceBudget(
+                payloadReadyMs = ThreadPayloadReadyBudgetMs,
+                layoutMs = ThreadFirstLayoutBudgetMs,
+                drawMs = ThreadFirstDrawBudgetMs
+            ).passed
+        )
+
+        val overBudget =
+            evaluateThreadFirstContentPerformanceBudget(
+                payloadReadyMs = ThreadPayloadReadyBudgetMs + 1,
+                layoutMs = ThreadFirstLayoutBudgetMs + 1,
+                drawMs = ThreadFirstDrawBudgetMs + 1
+            )
+        assertFalse(overBudget.passed)
+        assertFalse(overBudget.payloadReadyWithinBudget ?: true)
+        assertFalse(overBudget.layoutWithinBudget ?: true)
+        assertFalse(overBudget.drawWithinBudget ?: true)
+    }
+
     private val launchJson = Json { ignoreUnknownKeys = true }
 
     @Test
