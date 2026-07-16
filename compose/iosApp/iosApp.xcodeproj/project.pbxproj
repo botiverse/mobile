@@ -205,7 +205,7 @@
 				C465599FD991429AC545C211 /* IosUseInteractionTests.swift */,
 				C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */,
 			);
-			name = iosAppUITests;
+			path = iosAppUITests;
 			sourceTree = "<group>";
 		};
 		D43B80132E0E500100C0DE01 /* Components */ = {
