@@ -81,12 +81,22 @@ function dumpUi() {
   for (const m of xml.matchAll(/<node[^>]*>/g)) {
     const tag = m[0];
     const text = /text="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const desc = /content-desc="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const cls = /class="([^"]*)"/.exec(tag)?.[1] ?? "";
     const focused = /focused="true"/.test(tag);
-    if (!text && !focused) continue;
+    const clickable = /clickable="true"/.test(tag);
+    // v2 keep-set (first compression dropped empty EditTexts — the login
+    // fields — and the agent went blind, batch rerun 29505605156): editable
+    // nodes ALWAYS survive even when empty, clickable nodes survive so
+    // icon-only buttons finally have dump bounds, and content-desc counts
+    // as a label.
+    const editable = /EditText|TextField|AutoComplete/i.test(cls);
+    if (!text && !desc && !focused && !editable && !clickable) continue;
     const bounds = /bounds="(\[[^"]*\])"/.exec(tag)?.[1] ?? "";
-    nodes.push(`${focused ? "[FOCUSED] " : ""}"${text}" ${bounds}`);
+    const flags = `${editable ? "[INPUT] " : ""}${focused ? "[FOCUSED] " : ""}${!editable && clickable && !text ? "[BTN] " : ""}`;
+    nodes.push(`${flags}"${text || desc}" ${bounds}`);
   }
-  const compact = nodes.join("\n") || "(no text nodes on screen)";
+  const compact = nodes.join("\n") || "(no labelled nodes on screen)";
   return compact.length > 20000 ? compact.slice(0, 20000) + "\n[truncated]" : compact;
 }
 
