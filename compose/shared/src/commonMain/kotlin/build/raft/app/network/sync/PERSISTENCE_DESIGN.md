@@ -4,6 +4,9 @@
 (botiverse/slock PR #4445, staging `6c6229fcf`) · **§9.9 gate criteria:** 王润基 ·
 **Android binding review + compile hard-gate:** Android-Developer-2 (task #494)
 
+> Current V2 status is tracked in `docs/canonical-message-v2-implementation-tracker.md`.
+> RFC 043 remains normative; this historical persistence note does not authorize envelope V2 or rollout.
+
 **Rev 3** — folds two review rounds. Rev 1's parallel `sync_fact`/`sync_timeline`
 tables are withdrawn (double-truth). Rev 3 reuses the existing SQLDelight
 `SlockDatabase` and pins the constraints that table-reuse exposed (composite key,
