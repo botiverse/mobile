@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class ChannelRepositoryDataSourceTest {
     @Test
@@ -31,6 +32,59 @@ class ChannelRepositoryDataSourceTest {
             network.requests
         )
         assertEquals("user-1", network.bodies.single().asJsonObject()["userId"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun openUserDirectMessageRejectsForeignPeerResponse() = runBlocking {
+        val warnings = mutableListOf<String>()
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"dm-foreign","name":"Wrong DM","type":"dm","peerType":"user","peerId":"user-2","peerName":"Other"}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network, warnings::add)
+
+        val result = repository.openUserDirectMessage(MemberId("user-1"))
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("network_parse_failed", error.error.code)
+        assertTrue(warnings.any { it.contains("dm_open_identity_mismatch") && it.contains("requestedPeerId=user-1") })
+    }
+
+    @Test
+    fun openDirectMessageRejectsWrongPeerKindEvenWhenIdMatches() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"dm-wrong-kind","name":"Wrong kind","type":"dm","peerType":"agent","peerId":"user-1","peerName":"Artin"}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result = repository.openUserDirectMessage(MemberId("user-1"))
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("network_parse_failed", error.error.code)
+    }
+
+    @Test
+    fun warmSuccessfulOpenDoesNotFallbackWhenNextResponseTargetsAnotherPeer() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"dm-self","name":"Self DM","type":"dm","peerType":"user","peerId":"user-1","peerName":"Artin"}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        assertIs<DataResult.Content<OpenDirectMessageResult>>(
+            repository.openUserDirectMessage(MemberId("user-1"))
+        )
+        network.responseBody =
+            """{"id":"dm-other","name":"Other DM","type":"dm","peerType":"user","peerId":"user-2","peerName":"Other"}"""
+
+        val second = repository.openUserDirectMessage(MemberId("user-1"))
+
+        assertIs<DataResult.Error>(second)
+        assertEquals(2, network.requests.size)
     }
 
     @Test

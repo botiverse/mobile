@@ -94,7 +94,14 @@ class MembersDirectMessageLaunchTest {
 
         val payload =
             buildMembersDirectMessageThreadLaunchPayload(
-                memberId = MemberId("agent-product-ux"),
+                member =
+                    MemberProfile(
+                        id = MemberId("agent-product-ux"),
+                        displayName = "Product UX Designer",
+                        handle = "product-ux",
+                        kind = MemberKind.Agent,
+                        serverId = ServerId("server-1")
+                    ),
                 conversation = HomeDirectMessageRow(
                     threadId = ThreadId("dm-agent-product-ux-artin"),
                     channelId = ChannelId("dm-agent-product-ux-artin"),
@@ -110,6 +117,9 @@ class MembersDirectMessageLaunchTest {
         assertEquals("dm-agent-product-ux-artin", payload.threadId)
         assertEquals("dm-agent-product-ux-artin", payload.sourceThreadId)
         assertEquals("dm-agent-product-ux-artin", payload.streamChannelId)
+        assertEquals(MemberId("agent-product-ux"), payload.dmPeerIdentity?.memberId)
+        assertEquals(MemberKind.Agent, payload.dmPeerIdentity?.kind)
+        assertEquals(ServerId("server-1"), payload.dmPeerIdentity?.sourceServerId)
         assertNull(payload.parentChannelId)
         assertNull(payload.parentMessageId)
         assertEquals(480, payload.localOffsetMinutes)
@@ -128,7 +138,14 @@ class MembersDirectMessageLaunchTest {
     fun agentDetailMessageActionFallsBackToChannelIdWhenThreadIdMissing() {
         val payload =
             buildMembersDirectMessageThreadLaunchPayload(
-                memberId = MemberId("human-artin"),
+                member =
+                    MemberProfile(
+                        id = MemberId("human-artin"),
+                        displayName = "artin",
+                        handle = "artin",
+                        kind = MemberKind.Human,
+                        serverId = ServerId("server-1")
+                    ),
                 conversation = HomeDirectMessageRow(
                     threadId = ThreadId(""),
                     channelId = ChannelId("dm-human-artin"),
