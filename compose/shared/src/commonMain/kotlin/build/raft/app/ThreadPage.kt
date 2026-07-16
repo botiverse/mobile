@@ -8397,6 +8397,8 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 = "md_wrap_st
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_BLOCKQUOTE = "md_blockquote"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_EMAIL = "md_code_email"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
@@ -9047,6 +9049,107 @@ internal fun threadVisualFixture(
                                     "    return \"Hello, ${'$'}name!\"\n" +
                                     "}\n" +
                                     "```\n\n" +
+                                    "Trailing paragraph closes the specimen."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE ->
+            // task #497: GFM tables reportedly don't render on Android. The
+            // specimen mirrors the failing real message shape (header row,
+            // separator, body rows with bold/checkmark cells) plus paragraphs
+            // around it, so the capture shows exactly what a table body
+            // becomes — a rendered grid, raw pipe text, or nothing.
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "GFM table specimen (task #497)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_table_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/16 11:58",
+                            messageType = "Chat",
+                            body =
+                                "Hard assertions:\n\n" +
+                                    "| Assertion | Result | Evidence |\n" +
+                                    "|-----------|--------|----------|\n" +
+                                    "| Submit indicator | PASS | \"Submitted ff504382\" |\n" +
+                                    "| No error message | PASS | zero error or retry |\n" +
+                                    "| **No crash** | PASS | 28 turns stable |\n\n" +
+                                    "Trailing paragraph closes the specimen."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT ->
+            // task #497 hypothesis specimen: the failing real message has the
+            // table DIRECTLY after a text line (no blank line). Spec-GFM
+            // tables cannot interrupt a paragraph, so the jetbrains parser
+            // may lazy-continue the paragraph and render raw pipes — while
+            // web's renderer shows a table. This body mirrors that shape.
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "GFM table tight-follow specimen (task #497)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_table_tight_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/16 12:15",
+                            messageType = "Chat",
+                            body =
+                                "**Hard assertions**：\n" +
+                                    "| Assertion | Result | Evidence |\n" +
+                                    "|-----------|--------|----------|\n" +
+                                    "| Submit indicator | PASS | \"Submitted ff504382\" |\n" +
+                                    "| No error message | PASS | zero error or retry |\n\n" +
                                     "Trailing paragraph closes the specimen."
                         )
                     ),

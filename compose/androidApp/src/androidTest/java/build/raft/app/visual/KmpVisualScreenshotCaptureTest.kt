@@ -944,6 +944,32 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdTable() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-table",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-table")
+                    .put("visualFixture", "md_table"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdTableTight() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-table-tight",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-table-tight")
+                    .put("visualFixture", "md_table_tight"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdBlockquote() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-blockquote",
