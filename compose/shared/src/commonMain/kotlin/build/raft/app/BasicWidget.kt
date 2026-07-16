@@ -615,7 +615,11 @@ internal fun Button(
                     Modifier
                 }
             )
-            .pointerInput(enabled, pressFeedback, clickIdentity) {
+            // `enabled` is read through rememberUpdatedState below. Keeping it
+            // out of the pointerInput keys prevents Kuikly from tearing down
+            // the tap handler when a dynamically-enabled button (for example
+            // Undo/Clear after the first edit) transitions from false to true.
+            .pointerInput(pressFeedback, clickIdentity) {
                 detectTapGestures(
                     onPress = {
                         if (enabledUpdate.value && pressFeedback) {
