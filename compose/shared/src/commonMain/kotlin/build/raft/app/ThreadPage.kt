@@ -18936,34 +18936,48 @@ internal class ComposeThreadForwardModalVisualPage : build.raft.app.base.BasePag
 
 @Composable
 internal fun ThreadForwardModalVisualScreen() {
-    val targets =
-        remember {
-            listOf(
-                ThreadForwardTargetItem(
-                    id = "channel-design",
-                    title = "design",
-                    subtitle = "Product and UI decisions",
-                    kind = ThreadForwardTargetKind.Channel
-                ),
-                ThreadForwardTargetItem(
-                    id = "dm-artin",
-                    title = "artin",
-                    subtitle = "Direct message",
-                    kind = ThreadForwardTargetKind.DirectMessage
-                ),
-                ThreadForwardTargetItem(
-                    id = "channel-android",
-                    title = "android-artifacts",
-                    subtitle = "Public channel",
-                    kind = ThreadForwardTargetKind.PublicChannelUnjoined
-                ),
-                ThreadForwardTargetItem(
-                    id = "member-cindy",
-                    title = "Cindy",
-                    subtitle = "Keeps visual testing release notes aligned",
-                    kind = ThreadForwardTargetKind.Member
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    val scrollProbe = params.optString("fixture") == ThreadForwardScrollProbeFixture
+    var selectedProbeTargetId by remember(scrollProbe) { mutableStateOf<String?>(null) }
+    val fixtureTargets =
+        remember(scrollProbe) {
+            if (scrollProbe) {
+                List(ThreadForwardScrollProbeTargetCount) { index ->
+                    ThreadForwardTargetItem(
+                        id = "forward-scroll-probe-$index",
+                        title = "Forward target ${index + 1}",
+                        subtitle = "Recent DM",
+                        kind = ThreadForwardTargetKind.DirectMessage
+                    )
+                }
+            } else {
+                listOf(
+                    ThreadForwardTargetItem(
+                        id = "channel-design",
+                        title = "design",
+                        subtitle = "Product and UI decisions",
+                        kind = ThreadForwardTargetKind.Channel
+                    ),
+                    ThreadForwardTargetItem(
+                        id = "dm-artin",
+                        title = "artin",
+                        subtitle = "Direct message",
+                        kind = ThreadForwardTargetKind.DirectMessage
+                    ),
+                    ThreadForwardTargetItem(
+                        id = "channel-android",
+                        title = "android-artifacts",
+                        subtitle = "Public channel",
+                        kind = ThreadForwardTargetKind.PublicChannelUnjoined
+                    ),
+                    ThreadForwardTargetItem(
+                        id = "member-cindy",
+                        title = "Cindy",
+                        subtitle = "Keeps visual testing release notes aligned",
+                        kind = ThreadForwardTargetKind.Member
+                    )
                 )
-            )
+            }
         }
     ThreadForwardTargetPickerPage(
         messageCount = 2,
@@ -18971,13 +18985,18 @@ internal fun ThreadForwardModalVisualScreen() {
         nestedForwardCount = 0,
         query = "",
         loading = false,
-        targets = targets,
+        targets = if (selectedProbeTargetId == null) fixtureTargets else emptyList(),
         errorCode = null,
         onQueryChange = {},
         onDismiss = {},
-        onSelectTarget = {}
+        onSelectTarget = { target ->
+            if (scrollProbe) selectedProbeTargetId = target.id
+        }
     )
 }
+
+private const val ThreadForwardScrollProbeFixture = "scroll_probe"
+private const val ThreadForwardScrollProbeTargetCount = 24
 
 @Page("compose_thread_forward_note_visual", supportInLocal = true)
 internal class ComposeThreadForwardNoteVisualPage : build.raft.app.base.BasePager() {

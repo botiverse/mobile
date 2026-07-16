@@ -26,6 +26,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertTrue
 import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
@@ -776,6 +777,7 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadForwardModal() {
+        assertThreadForwardRecipientListScrollsAndRowsRemainTappable()
         captureKmpComponentCase(
             caseId = "components.thread.forward-modal",
             pageName = "compose_thread_forward_modal_visual",
@@ -785,6 +787,178 @@ class KmpVisualScreenshotCaptureTest {
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_000
         )
+    }
+
+    private fun assertThreadForwardRecipientListScrollsAndRowsRemainTappable() {
+        val caseId = "components.thread.forward-modal-scroll-probe"
+        currentCaseId = caseId
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", "compose_thread_forward_modal_visual")
+                .putExtra(
+                    "pageData",
+                    withVisualCaptureParams(
+                        JSONObject()
+                            .put("instanceId", "visual-thread-forward-modal-scroll-probe")
+                            .put("fixture", "scroll_probe")
+                    ).toString()
+                )
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        var before: Bitmap? = null
+        var afterSwipe: Bitmap? = null
+        var afterTap: Bitmap? = null
+        try {
+            onActivityNoIdle { applyVisualFullscreen(it) }
+            waitForIdleBounded()
+            Thread.sleep(1_500)
+
+            val beforeBitmap = captureActivityScreenshot(caseId)
+            before = beforeBitmap
+            val yellowBefore = beforeBitmap.countForwardProbeYellowSamples()
+            assertTrue(
+                "Forward scroll probe must render enough recipient rows before the gesture; yellowSamples=$yellowBefore",
+                yellowBefore >= FORWARD_PROBE_MIN_YELLOW_SAMPLES
+            )
+
+            swipeDisplayFraction(startYFraction = 0.82f, endYFraction = 0.43f)
+            waitForIdleBounded()
+            Thread.sleep(800)
+            val afterSwipeBitmap = captureActivityScreenshot(caseId)
+            afterSwipe = afterSwipeBitmap
+            val changedRatio = beforeBitmap.changedPixelRatio(afterSwipeBitmap)
+            val yellowAfterSwipe = afterSwipeBitmap.countForwardProbeYellowSamples()
+            assertTrue(
+                "Forward recipient LazyColumn did not move after a real vertical swipe; changedRatio=$changedRatio",
+                changedRatio >= FORWARD_PROBE_MIN_SCROLL_CHANGED_RATIO
+            )
+            assertTrue(
+                "A scroll gesture must not activate a recipient row; yellowSamples=$yellowAfterSwipe",
+                yellowAfterSwipe >= FORWARD_PROBE_MIN_YELLOW_SAMPLES
+            )
+
+            tapDisplayFraction(xFraction = 0.50f, yFraction = 0.68f)
+            waitForIdleBounded()
+            Thread.sleep(500)
+            val afterTapBitmap = captureActivityScreenshot(caseId)
+            afterTap = afterTapBitmap
+            val yellowAfterTap = afterTapBitmap.countForwardProbeYellowSamples()
+            assertTrue(
+                "A visible recipient row must remain tappable after scrolling; beforeTap=$yellowAfterSwipe afterTap=$yellowAfterTap",
+                yellowAfterTap <= yellowAfterSwipe / 3
+            )
+        } finally {
+            before?.recycle()
+            afterSwipe?.recycle()
+            afterTap?.recycle()
+            closeScenarioBounded(scenario)
+        }
+    }
+
+    private fun swipeDisplayFraction(startYFraction: Float, endYFraction: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val metrics = instrumentation.targetContext.resources.displayMetrics
+        val x = metrics.widthPixels * 0.5f
+        val startY = metrics.heightPixels * startYFraction
+        val endY = metrics.heightPixels * endYFraction
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0),
+            true
+        )
+        repeat(FORWARD_PROBE_SWIPE_STEPS) { step ->
+            val fraction = (step + 1f) / FORWARD_PROBE_SWIPE_STEPS
+            instrumentation.uiAutomation.injectInputEvent(
+                MotionEvent.obtain(
+                    downTime,
+                    downTime + (FORWARD_PROBE_SWIPE_DURATION_MS * fraction).toLong(),
+                    MotionEvent.ACTION_MOVE,
+                    x,
+                    startY + (endY - startY) * fraction,
+                    0
+                ),
+                true
+            )
+        }
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(
+                downTime,
+                downTime + FORWARD_PROBE_SWIPE_DURATION_MS,
+                MotionEvent.ACTION_UP,
+                x,
+                endY,
+                0
+            ),
+            true
+        )
+    }
+
+    private fun tapDisplayFraction(xFraction: Float, yFraction: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val metrics = instrumentation.targetContext.resources.displayMetrics
+        val x = metrics.widthPixels * xFraction
+        val y = metrics.heightPixels * yFraction
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0),
+            true
+        )
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0),
+            true
+        )
+    }
+
+    private fun Bitmap.changedPixelRatio(other: Bitmap): Float {
+        require(width == other.width && height == other.height) {
+            "Forward scroll probe bitmap size changed: ${width}x$height vs ${other.width}x${other.height}"
+        }
+        val startY = (height * FORWARD_PROBE_COMPARE_TOP_FRACTION).toInt()
+        val endY = (height * FORWARD_PROBE_COMPARE_BOTTOM_FRACTION).toInt()
+        var sampled = 0
+        var changed = 0
+        var y = startY
+        while (y < endY) {
+            var x = 0
+            while (x < width) {
+                val before = getPixel(x, y)
+                val after = other.getPixel(x, y)
+                val distance =
+                    kotlin.math.abs(Color.red(before) - Color.red(after)) +
+                        kotlin.math.abs(Color.green(before) - Color.green(after)) +
+                        kotlin.math.abs(Color.blue(before) - Color.blue(after))
+                if (distance >= FORWARD_PROBE_MIN_COLOR_DISTANCE) changed++
+                sampled++
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return if (sampled == 0) 0f else changed.toFloat() / sampled.toFloat()
+    }
+
+    private fun Bitmap.countForwardProbeYellowSamples(): Int {
+        val startY = (height * FORWARD_PROBE_COMPARE_TOP_FRACTION).toInt()
+        val endY = (height * FORWARD_PROBE_COMPARE_BOTTOM_FRACTION).toInt()
+        var samples = 0
+        var y = startY
+        while (y < endY) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                if (
+                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
+                        kotlin.math.abs(Color.green(pixel) - 0xD4) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
+                        kotlin.math.abs(Color.blue(pixel) - 0x40) <= FORWARD_PROBE_YELLOW_TOLERANCE
+                ) {
+                    samples++
+                }
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return samples
     }
 
     @Test
@@ -3475,6 +3649,16 @@ class KmpVisualScreenshotCaptureTest {
         // Logcat tag for per-case timing (CASE_START/CASE_END) and idle-wait
         // warnings — grep this out of the uploaded logcat artifact (task #362).
         private const val VISUAL_LOG_TAG = "VisualCapture"
+
+        private const val FORWARD_PROBE_COMPARE_TOP_FRACTION = 0.30f
+        private const val FORWARD_PROBE_COMPARE_BOTTOM_FRACTION = 0.96f
+        private const val FORWARD_PROBE_MIN_SCROLL_CHANGED_RATIO = 0.04f
+        private const val FORWARD_PROBE_MIN_COLOR_DISTANCE = 36
+        private const val FORWARD_PROBE_YELLOW_TOLERANCE = 20
+        private const val FORWARD_PROBE_PIXEL_STRIDE = 4
+        private const val FORWARD_PROBE_MIN_YELLOW_SAMPLES = 1_500
+        private const val FORWARD_PROBE_SWIPE_STEPS = 12
+        private const val FORWARD_PROBE_SWIPE_DURATION_MS = 360L
 
         // Shard-scoped per-case timing log carried in the results artifact.
         private const val CAPTURE_TIMING_FILE = "_capture-timing.log"
