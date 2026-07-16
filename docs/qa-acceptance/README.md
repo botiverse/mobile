@@ -9,7 +9,8 @@ call. Origin: #proj-quality tasks #1–#4.
 |-----|------|
 | [`design.md`](design.md) | System design v1 (reviewed): data model, executor contract, state machine, asymmetric judging, hands release-gate integration, phasing |
 | [`case-schema.md`](case-schema.md) | Case format v0.1: steps = goal + hints, assertions stay machine-checkable |
-| [`cases/`](cases/) | The case library (one YAML per case) |
+| [`cases/`](cases/) | The case library — 13 cases, indexed in [`cases/README.md`](cases/README.md) |
+| [`annotation-spec.md`](annotation-spec.md) | Evidence annotation spec — sharp red-box overlay of assertion regions on screenshots |
 | [`../qa-acceptance-operations.md`](../qa-acceptance-operations.md) | Operation playbook — how to drive the app accurately; injected into executor context (moves into this folder once PR #1077 lands; the runner's default path points there) |
 
 Executor: `scripts/qa/acceptance_agent.mjs` + `.github/workflows/qa-acceptance.yml` (PR #1077).

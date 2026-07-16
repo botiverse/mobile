@@ -1,0 +1,97 @@
+id: channel-share-link
+title: "频道分享-打开频道分享链接"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Regression case from Hands feedback: channel share link does not open
+  (ticket aa1ec18c). Verify that a channel share link can be opened
+  correctly via deeplink/intent.
+tags: [navigation, share, deeplink, regression]
+timeout_seconds: 90
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open a channel to access share functionality"
+    action_category: navigate
+    hint: "Use deeplink: compose_thread with channelId #all"
+    capture: [screenshot]
+
+  - id: open-channel-info
+    goal: "Open channel info/settings to find the share link"
+    action_category: interact
+    hint: "Tap the channel name header or info icon at the top"
+    capture: [screenshot, dump_layout]
+
+  - id: find-share-link
+    goal: "Find and copy or tap the channel share link"
+    action_category: interact
+    hint: "Look for 'Share' or 'Invite' or a link/copy button"
+    capture: [screenshot]
+
+  - id: open-share-link
+    goal: "Open the share link via adb intent (simulate tapping a shared link)"
+    action_category: navigate
+    hint: "Use: android-use start-intent with the raft:// deeplink for the channel"
+    params:
+      action: "build.raft.app.OPEN_CHANNEL"
+      extra_key: "channel_id"
+      extra_value: "#all"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-link-open
+    goal: "Wait for the channel to open from the link"
+    action_category: wait
+    params:
+      duration_ms: 3000
+
+  - id: verify-link-opened
+    goal: "Capture the state after opening share link"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: channel-opened-from-link
+    goal: "The correct channel opened from the share link"
+    type: visual_check
+    after_step: verify-link-opened
+    severity: critical
+
+  - id: no-link-error
+    goal: "No error when opening share link"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(error|invalid|not found|unable|cannot open)"
+    after_step: verify-link-opened
+    severity: major
+
+  - id: no-crash-link
+    goal: "App must not crash when opening share link"
+    type: no_crash
+    after_step: verify-link-opened
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Regression from Hands feedback aa1ec18c (channel share link won't open).
+    Tests the deeplink/intent routing path.

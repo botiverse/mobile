@@ -1,0 +1,104 @@
+id: member-profile-open
+title: "成员资料-点击成员头像打开 Profile"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Regression case from Hands feedback: human DM avatar returned HTTP 404
+  (ticket 3c1d6a34, fixed in #members专修 task #122/#123). Verify that
+  tapping a member's avatar opens their profile page without errors.
+  Also covers the members list → detail navigation path.
+tags: [members, profile, regression, avatar]
+timeout_seconds: 90
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-app-shell
+    goal: "Open the app to the home screen"
+    action_category: navigate
+    hint: "Use deeplink: compose_slock_app_shell"
+    capture: [screenshot]
+
+  - id: navigate-to-members
+    goal: "Navigate to the Members list"
+    action_category: navigate
+    hint: "Tap the members tab or icon in the navigation"
+    capture: [screenshot, dump_layout]
+
+  - id: wait-members-load
+    goal: "Wait for member list to load"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: tap-member-avatar
+    goal: "Tap on a member's avatar/name to open their profile"
+    action_category: interact
+    hint: "Tap any member row in the list"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-profile
+    goal: "Wait for profile page to load"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-profile
+    goal: "Capture the member profile page state"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: profile-page-opened
+    goal: "Member profile page is displayed with user info (name, avatar, status)"
+    type: visual_check
+    after_step: verify-profile
+    severity: critical
+    highlight:
+      description: "Profile page content - name, avatar, role/status"
+
+  - id: avatar-loaded
+    goal: "Member avatar image is visible and loaded (no broken image / HTTP 404)"
+    type: visual_check
+    after_step: verify-profile
+    severity: major
+    highlight:
+      description: "Avatar image in the profile header"
+
+  - id: no-404-error
+    goal: "No HTTP 404 or network error visible"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(404|not found|failed to load|network error)"
+    after_step: verify-profile
+    severity: major
+
+  - id: no-crash-profile
+    goal: "App must not crash when opening profile"
+    type: no_crash
+    after_step: verify-profile
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Regression from Hands feedback 3c1d6a34: human DM avatar HTTP 404.
+    Fixed in #members专修 task #122/#123. This case ensures the fix holds.

@@ -1,0 +1,107 @@
+id: forward-message
+title: "转发消息-跨频道转发"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Regression case from Hands feedback: forward message issues
+  (bb86951c: joint channel reports cross-server error, forwarding
+  task reports error). Also covers the fixed "unsupport" error
+  (f96c5708, fixed in PR #588). Verify that forwarding a message
+  to another channel works.
+tags: [messaging, forward, regression]
+timeout_seconds: 120
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open a channel with existing messages"
+    action_category: navigate
+    hint: "Use deeplink: compose_thread with channelId #all"
+    capture: [screenshot]
+
+  - id: wait-messages
+    goal: "Wait for messages to load"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: long-press-message
+    goal: "Long-press a message to open context menu"
+    action_category: interact
+    hint: "Long-press any message"
+    capture: [screenshot, dump_layout]
+
+  - id: select-forward
+    goal: "Tap 'Forward' from the context menu"
+    action_category: interact
+    hint: "Text says 'Forward' or a forward arrow icon"
+    capture: [screenshot]
+
+  - id: select-target-channel
+    goal: "Select a target channel to forward to"
+    action_category: interact
+    hint: "Choose a different channel from the forward target list"
+    capture: [screenshot, dump_layout]
+
+  - id: confirm-forward
+    goal: "Confirm the forward action"
+    action_category: interact
+    hint: "Tap send/confirm button"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-forward
+    goal: "Wait for forward to complete"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-forward
+    goal: "Capture the state after forwarding"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: no-forward-error
+    goal: "No error messages during forward (no 'unsupport', no cross-server error)"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(unsupport|error|failed|cross.?server|cannot forward)"
+    after_step: verify-forward
+    severity: critical
+
+  - id: forward-success-indicator
+    goal: "Forward completed successfully (success toast, or redirected to target channel)"
+    type: visual_check
+    after_step: verify-forward
+    severity: major
+
+  - id: no-crash-forward
+    goal: "App must not crash during forward"
+    type: no_crash
+    after_step: verify-forward
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Regression from Hands feedback bb86951c (cross-server forward error)
+    and f96c5708 (forward "unsupport", fixed in PR #588).

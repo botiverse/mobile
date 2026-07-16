@@ -1,0 +1,107 @@
+id: dm-open-and-send
+title: "私信-打开DM并发送消息"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Regression case from Hands feedback: new empty Human DM first-open
+  access bug (#1068, fixed in 8bf0c4801). Verify that opening a DM
+  and sending a message works correctly, including the empty DM
+  first-open scenario.
+tags: [messaging, dm, regression]
+timeout_seconds: 120
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-home
+    goal: "Open the app home screen"
+    action_category: navigate
+    hint: "Use deeplink: compose_slock_app_shell"
+    capture: [screenshot]
+
+  - id: find-dm
+    goal: "Find and tap a DM conversation in the DM list"
+    action_category: interact
+    hint: "Look for the DM section (usually below channels) and tap any existing DM"
+    capture: [screenshot, dump_layout]
+
+  - id: wait-dm-load
+    goal: "Wait for DM conversation to load"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: type-dm-message
+    goal: "Type a message in the DM input"
+    action_category: input
+    hint: "The message input at the bottom"
+    params:
+      text: "QA test DM - automated acceptance check"
+    capture: [screenshot]
+
+  - id: send-dm
+    goal: "Send the DM message"
+    action_category: interact
+    hint: "Send button at bottom-right"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-dm-delivery
+    goal: "Wait for message delivery"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-dm
+    goal: "Capture the DM conversation state"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: dm-message-appears
+    goal: "Sent DM message appears in the conversation"
+    type: text_present
+    params:
+      text: "QA test DM - automated acceptance check"
+    after_step: verify-dm
+    severity: critical
+    highlight:
+      description: "The sent message in the DM conversation"
+      search_text: "QA test DM"
+
+  - id: no-dm-error
+    goal: "No errors after sending DM"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(failed|error|unsupport|unable)"
+    after_step: verify-dm
+    severity: major
+
+  - id: no-crash-dm
+    goal: "App must not crash during DM flow"
+    type: no_crash
+    after_step: verify-dm
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Regression from #1068 (empty Human DM first-open access bug).
+    Also covers forward "unsupport" regression (f96c5708, fixed in #588).

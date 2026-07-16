@@ -1,0 +1,100 @@
+id: settings-feedback-submit
+title: "反馈上传-设置页提交反馈"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that the in-app feedback submission works end-to-end: user can
+  navigate to Settings → Send feedback, write a message, and submit it
+  successfully (ticket created). This covers the Hands feedback SDK
+  integration, network upload, and success confirmation UI.
+tags: [feedback, settings, hands-integration, critical, regression]
+timeout_seconds: 120
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-settings
+    goal: "Open the Settings page"
+    action_category: navigate
+    hint: "Use deeplink: compose_settings_home"
+    capture: [screenshot]
+
+  - id: find-feedback
+    goal: "Find and tap 'Send feedback' in the settings list"
+    action_category: interact
+    hint: "Text says 'Send feedback', scroll down if needed"
+    capture: [screenshot, dump_layout]
+
+  - id: write-message
+    goal: "Type a test feedback message in the feedback composer"
+    action_category: input
+    hint: "The large text input area. Type: 'QA automated feedback test - please ignore'"
+    params:
+      text: "QA automated feedback test - please ignore"
+    capture: [screenshot]
+
+  - id: submit-feedback
+    goal: "Tap the submit/send button to submit the feedback"
+    action_category: interact
+    hint: "Submit button, usually at the bottom or top-right. May show 'Send' or a paper-plane icon"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-submission
+    goal: "Wait for feedback submission to complete"
+    action_category: wait
+    params:
+      duration_ms: 5000
+
+  - id: verify-success
+    goal: "Capture the result state after feedback submission"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: submission-success-indicator
+    goal: "Feedback submission shows a success indicator — success message, ticket number, or 'thank you' confirmation"
+    type: visual_check
+    after_step: verify-success
+    severity: critical
+    hint: "Look for success toast/banner, 'Feedback sent', ticket number, or return to settings list"
+
+  - id: no-error-on-submit
+    goal: "No error messages visible after submission"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(failed|error|try again|unable to)"
+    after_step: verify-success
+    severity: critical
+
+  - id: no-crash-feedback
+    goal: "App must not crash during feedback flow"
+    type: no_crash
+    after_step: verify-success
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Covers the Hands feedback SDK integration. If this fails, user bug reports
+    and crash reports can't reach the team — critical for production.
+    Known pitfall: feedback submission requires network; ensure staging
+    server is reachable. The submission may show a loading state before
+    success — wait for it to settle.

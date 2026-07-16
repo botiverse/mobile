@@ -1,0 +1,110 @@
+id: thread-reply-and-reactions
+title: "消息回复-在 thread 中回复消息"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that replying to a message in a thread works: user can long-press
+  a message, select reply, type a reply, and see it appear as a threaded
+  reply with the original message quoted.
+tags: [messaging, thread, reply, regression]
+timeout_seconds: 120
+max_retries: 1
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open #all channel to see existing messages"
+    action_category: navigate
+    hint: "Use deeplink: compose_thread with channelId #all"
+    capture: [screenshot]
+
+  - id: wait-messages
+    goal: "Wait for messages to load"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: long-press-message
+    goal: "Long-press on an existing message to open the context menu"
+    action_category: interact
+    hint: "Long-press on any message in the conversation"
+    capture: [screenshot, dump_layout]
+
+  - id: select-reply
+    goal: "Tap 'Reply' from the context menu"
+    action_category: interact
+    hint: "Text says 'Reply' or a reply arrow icon"
+    capture: [screenshot]
+
+  - id: type-reply
+    goal: "Type a reply message in the thread reply input"
+    action_category: input
+    hint: "The input field at the bottom, may show quoted original message above it"
+    params:
+      text: "QA test reply - automated acceptance check"
+    capture: [screenshot]
+
+  - id: send-reply
+    goal: "Send the reply"
+    action_category: interact
+    hint: "Send button at bottom-right of input field"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-reply-delivery
+    goal: "Wait for reply to be sent and rendered"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-reply
+    goal: "Capture the conversation state showing the reply"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: reply-appears
+    goal: "The reply text appears in the conversation or thread"
+    type: text_present
+    params:
+      text: "QA test reply - automated acceptance check"
+    after_step: verify-reply
+    severity: critical
+    highlight:
+      description: "The reply message in the conversation"
+      search_text: "QA test reply"
+
+  - id: no-reply-error
+    goal: "No error indicators after sending reply"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(failed|error|retry)"
+    after_step: verify-reply
+    severity: major
+
+  - id: no-crash-reply
+    goal: "App must not crash during reply flow"
+    type: no_crash
+    after_step: verify-reply
+    severity: critical
+
+expected:
+  result: pass
+  notes: "Thread reply is a core messaging feature. Tests context menu, reply composer, and message rendering."
