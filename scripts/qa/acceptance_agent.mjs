@@ -224,14 +224,18 @@ async function main() {
     let action;
     try {
       const reply = await callModel(models, model, messages);
-      messages.push({ role: "assistant", content: [{ type: "text", text: reply }], timestamp: Date.now() });
       try {
         action = parseAction(reply);
         malformedStreak = 0;
+        messages.push({ role: "assistant", content: [{ type: "text", text: reply }], timestamp: Date.now() });
       } catch {
-        // A malformed reply is a reprompt, not a run-killer (the case-02 drill
-        // round-1 died on a single bad turn). Correct in place; only a streak
-        // is an infrastructure error. Costs a turn so it can't loop free.
+        // A malformed reply is a reprompt, not a run-killer — but its TEXT
+        // must never enter the history: case-03 round-2 (run 29492906221)
+        // showed the model imitating its own bad format on alternating turns
+        // once one malformed reply was kept, burning 21/46 turns. Keep the
+        // assistant/user alternation with a placeholder, discard the bad
+        // text, and correct in place; only a streak is an infrastructure
+        // error. Still costs a turn so it can't loop free.
         malformedStreak++;
         logStep({ turn: turns, event: "malformed_reply", streak: malformedStreak, preview: redact(reply.slice(0, 200)) });
         if (malformedStreak >= 3) {
@@ -239,8 +243,13 @@ async function main() {
           break;
         }
         messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "[reply discarded: it contained no JSON action]" }],
+          timestamp: Date.now(),
+        });
+        messages.push({
           role: "user",
-          content: [{ type: "text", text: "Your reply contained no JSON action. Respond with EXACTLY ONE action as a strict JSON object from the documented list — no prose, no markdown fences." }],
+          content: [{ type: "text", text: "That reply was discarded. Respond with EXACTLY ONE action as a strict JSON object from the documented list — no prose, no markdown fences, no explanations." }],
           timestamp: Date.now(),
         });
         continue;
