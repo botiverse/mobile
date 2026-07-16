@@ -1200,10 +1200,10 @@ class KmpVisualScreenshotCaptureTest {
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500,
             beforeScreenshot = {
-                // The first row's bordered surface ends at y=294dp in this
-                // fixed 342x620 fixture. y=289dp is intentionally inside the
+                // The first row's bordered surface ends at y=257dp in this
+                // fixed 342x620 fixture. y=251dp is intentionally inside the
                 // bottom 12dp white padding and outside the text/footer tree.
-                tapDp(xDp = 170f, yDp = 289f)
+                tapDp(xDp = 170f, yDp = 251f)
                 val root =
                     requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow) {
                         "Activity fixture accessibility root is unavailable"
