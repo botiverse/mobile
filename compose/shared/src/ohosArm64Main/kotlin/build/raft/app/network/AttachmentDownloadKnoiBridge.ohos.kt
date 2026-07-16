@@ -7,7 +7,7 @@ import com.tencent.tmm.knoi.service.KNOI
 private const val SlockOhosAttachmentDownloadObserverService = "slockOhosAttachmentDownloadObserver"
 
 @ServiceConsumer(name = SlockOhosAttachmentDownloadObserverService)
-private interface SlockOhosAttachmentDownloadObserverSink {
+interface SlockOhosAttachmentDownloadObserverSink {
     fun onProgress(payload: Map<String, Any?>)
 
     fun onComplete(payload: Map<String, Any?>)

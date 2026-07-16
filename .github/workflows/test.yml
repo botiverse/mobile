@@ -478,6 +478,7 @@ jobs:
         run: |
           ./gradlew \
             -PslockVisualFixtures=true \
+            :shared:assembleDebugAndroidTest \
             :androidApp:assembleConnectedTest \
             :androidApp:assembleConnectedTestAndroidTest \
             --no-daemon \
@@ -490,6 +491,7 @@ jobs:
           path: |
             compose/androidApp/build/outputs/apk/connectedTest/*.apk
             compose/androidApp/build/outputs/apk/androidTest/connectedTest/*.apk
+            compose/shared/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -550,13 +552,21 @@ jobs:
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
             cat first-character-baseline-instrumentation.txt
             grep -Fq 'OK (1 test)' first-character-baseline-instrumentation.txt
+            shared_test_apk="$(find android-connected-test-apks -type f -path '*shared/build/outputs/apk/androidTest/debug/*-androidTest.apk' | head -n 1)"
+            test -n "$shared_test_apk"
+            adb install -r "$shared_test_apk"
+            adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner > attachment-atomic-sink-instrumentation.txt
+            cat attachment-atomic-sink-instrumentation.txt
+            grep -Fq 'OK (2 tests)' attachment-atomic-sink-instrumentation.txt
 
       - name: Upload instrumentation output
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: first-character-baseline-instrumentation
-          path: first-character-baseline-instrumentation.txt
+          path: |
+            first-character-baseline-instrumentation.txt
+            attachment-atomic-sink-instrumentation.txt
           if-no-files-found: warn
           retention-days: 7
 

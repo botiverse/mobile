@@ -46,6 +46,11 @@ data class AttachmentDownloadResult(
     val message: String?
 )
 
+data class AttachmentDownloadCleanupReservation(
+    val token: String,
+    val status: String
+)
+
 /**
  * Host callback for the common coordinator. Implementations must return quickly; callback failures
  * are contained and converted into a failed attempt instead of escaping into NetworkKMM.
@@ -87,9 +92,10 @@ object AttachmentDownloadCoordinator {
     fun control(downloadId: String, expectedAttemptToken: String? = null, action: String): String =
         engine.control(downloadId, expectedAttemptToken, action)
 
-    fun cancelTargetAndAwaitCleanup(targetKey: String): String = engine.cancelTargetAndAwaitCleanup(targetKey)
+    fun beginTargetCleanup(targetKey: String): AttachmentDownloadCleanupReservation =
+        engine.beginTargetCleanup(targetKey)
 
-    fun finishTargetCleanup(targetKey: String) = engine.finishTargetCleanup(targetKey)
+    fun finishTargetCleanup(targetKey: String, token: String) = engine.finishTargetCleanup(targetKey, token)
 }
 
 internal data class AttachmentDownloadRequest(
@@ -156,9 +162,10 @@ internal class AttachmentDownloadCoordinatorEngine(
     private val lock = SynchronizedObject()
     private val activeByDownloadId = mutableMapOf<String, AttachmentDownloadAttempt>()
     private val activeByTargetKey = mutableMapOf<String, AttachmentDownloadAttempt>()
-    private val deletingTargetKeys = mutableSetOf<String>()
+    private val deletingTargetOwners = mutableMapOf<String, MutableSet<String>>()
     private val pendingPreStartCancels = linkedMapOf<String, Long>()
     private val nextAttempt = atomic(0L)
+    private val nextCleanupReservation = atomic(0L)
 
     init {
         watchdogScope?.launch {
@@ -214,7 +221,7 @@ internal class AttachmentDownloadCoordinatorEngine(
         val cancelledBeforeStartReason =
             synchronized(lock) {
                 prunePendingPreStartCancelsLocked(nowMillis())
-                if (request.targetKey in deletingTargetKeys) {
+                if (deletingTargetOwners[request.targetKey].orEmpty().isNotEmpty()) {
                     "target_deleted"
                 } else if (pendingPreStartCancels.remove(request.downloadId) != null) {
                     "cancelled_before_start"
@@ -267,18 +274,29 @@ internal class AttachmentDownloadCoordinatorEngine(
         }
     }
 
-    fun cancelTargetAndAwaitCleanup(targetKey: String): String {
+    fun beginTargetCleanup(targetKey: String): AttachmentDownloadCleanupReservation {
+        val reservationToken = "cleanup-${nextCleanupReservation.incrementAndGet()}"
         val attempt =
             synchronized(lock) {
-                deletingTargetKeys += targetKey
+                deletingTargetOwners.getOrPut(targetKey) { mutableSetOf() } += reservationToken
                 activeByTargetKey[targetKey]
-            } ?: return "missing"
-        if (attempt.cancel("target_deleted", synchronousCleanup = true)) return "cancelled"
-        return if (attempt.awaitTerminalCleanup()) "complete" else "timeout"
+            }
+        val status =
+            when {
+                attempt == null -> "missing"
+                attempt.cancel("target_deleted", synchronousCleanup = true) -> "cancelled"
+                attempt.awaitTerminalCleanup() -> "complete"
+                else -> "timeout"
+            }
+        return AttachmentDownloadCleanupReservation(reservationToken, status)
     }
 
-    fun finishTargetCleanup(targetKey: String) {
-        synchronized(lock) { deletingTargetKeys.remove(targetKey) }
+    fun finishTargetCleanup(targetKey: String, token: String) {
+        synchronized(lock) {
+            val owners = deletingTargetOwners[targetKey] ?: return@synchronized
+            owners.remove(token)
+            if (owners.isEmpty()) deletingTargetOwners.remove(targetKey)
+        }
     }
 
     private fun isCurrent(attempt: AttachmentDownloadAttempt): Boolean =
@@ -493,13 +511,15 @@ private class AttachmentDownloadAttempt(
     }
 
     fun checkTimeout(nowMillis: Long) {
-        if (state.value != StateActive) return
+        val currentState = state.value
+        if (currentState != StateActive && currentState != StateFinishing) return
         val wholeDeadline = request.wholeTransferTimeoutMillis
         val wholeElapsed = nowMillis - startedAtMillis
         if (wholeDeadline > 0L && wholeElapsed >= wholeDeadline) {
-            finishFailure("whole_timeout", "Download exceeded whole-transfer deadline")
+            finishPrePublishFailure("whole_timeout", "Download exceeded whole-transfer deadline")
             return
         }
+        if (currentState != StateActive) return
         val responseAt = responseStartedAtMillis.value
         if (responseAt == null) {
             val responseBudget = saturatingAdd(request.connectTimeoutMillis, request.responseHeadersTimeoutMillis)
@@ -717,11 +737,11 @@ private class AttachmentDownloadAttempt(
     private fun deliverProgress(progress: AttachmentDownloadProgress) {
         enqueueObserverEvent {
             runCatching { observer.onProgress(progress) }
-                .onFailure { error -> finishObserverFailure("progress_callback", error.message ?: "Progress callback failed") }
+                .onFailure { error -> finishPrePublishFailure("progress_callback", error.message ?: "Progress callback failed") }
         }
     }
 
-    private fun finishObserverFailure(errorKind: String, message: String) {
+    private fun finishPrePublishFailure(errorKind: String, message: String) {
         var wonTerminal = false
         while (!wonTerminal) {
             val current = state.value

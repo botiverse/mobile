@@ -24,9 +24,10 @@ internal class AttachmentDownloadAtomicFileSink(
     private var handle: Any? = null
     private var prepared = false
     private var published = false
+    private var ended = false
 
     override fun begin(): Boolean {
-        if (handle != null || published) return false
+        if (handle != null || prepared || published || ended) return false
         runCatching { ops.unlink(stagingPath) }
         handle = runCatching { ops.open(stagingPath) }.getOrNull()
         return handle != null
@@ -60,10 +61,13 @@ internal class AttachmentDownloadAtomicFileSink(
         if (!runCatching { ops.rename(stagingPath, targetPath) }.getOrDefault(false)) return false
         // rename success is the publication linearization point. No post-check may reverse it.
         published = true
+        ended = true
         return true
     }
 
     override fun abort() {
+        if (ended) return
+        ended = true
         val activeHandle = handle
         handle = null
         if (activeHandle != null) runCatching { ops.close(activeHandle) }

@@ -402,14 +402,15 @@ class AttachmentDownloadCoordinatorTest {
         val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
         engine.start(request(), RecordingObserver())
 
-        assertEquals("cancelled", engine.cancelTargetAndAwaitCleanup("attachment-1"))
+        val cleanup = engine.beginTargetCleanup("attachment-1")
+        assertEquals("cancelled", cleanup.status)
         val rejectedObserver = RecordingObserver()
         engine.start(request().copy(downloadId = "download-2"), rejectedObserver)
         assertEquals("cancelled", rejectedObserver.results.single().status)
         assertEquals("target_deleted", rejectedObserver.results.single().errorKind)
         assertEquals(1, sinks.created.count { it.beginCount > 0 })
 
-        engine.finishTargetCleanup("attachment-1")
+        engine.finishTargetCleanup("attachment-1", cleanup.token)
         val acceptedObserver = RecordingObserver()
         engine.start(request().copy(downloadId = "download-3"), acceptedObserver)
         assertEquals(2, sinks.created.count { it.beginCount > 0 })
@@ -422,17 +423,39 @@ class AttachmentDownloadCoordinatorTest {
         val sinks = FakeSinkFactory()
         val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
 
-        assertEquals("missing", engine.cancelTargetAndAwaitCleanup("attachment-1"))
+        val cleanup = engine.beginTargetCleanup("attachment-1")
+        assertEquals("missing", cleanup.status)
         val rejectedObserver = RecordingObserver()
         engine.start(request(), rejectedObserver)
         assertEquals("cancelled", rejectedObserver.results.single().status)
         assertEquals(0, sinks.created.count { it.beginCount > 0 })
 
-        engine.finishTargetCleanup("attachment-1")
+        engine.finishTargetCleanup("attachment-1", cleanup.token)
         val acceptedObserver = RecordingObserver()
         engine.start(request().copy(downloadId = "download-2"), acceptedObserver)
         assertEquals(1, sinks.created.count { it.beginCount > 0 })
         assertTrue(acceptedObserver.results.isEmpty())
+    }
+
+    @Test
+    fun overlappingTargetCleanupOwnersCannotReleaseEachOther() {
+        val transport = FakeTransport()
+        val sinks = FakeSinkFactory()
+        val engine = AttachmentDownloadCoordinatorEngine(transport, sinks, nowMillis = { 1_000L })
+
+        val first = engine.beginTargetCleanup("attachment-1")
+        val second = engine.beginTargetCleanup("attachment-1")
+        engine.finishTargetCleanup("attachment-1", second.token)
+        engine.finishTargetCleanup("attachment-1", "stale-token")
+        val stillRejected = RecordingObserver()
+        engine.start(request(), stillRejected)
+        assertEquals("cancelled", stillRejected.results.single().status)
+
+        engine.finishTargetCleanup("attachment-1", first.token)
+        val accepted = RecordingObserver()
+        engine.start(request().copy(downloadId = "download-2"), accepted)
+        assertTrue(accepted.results.isEmpty())
+        assertEquals(1, sinks.created.count { it.beginCount > 0 })
     }
 
     @Test
@@ -536,6 +559,33 @@ class AttachmentDownloadCoordinatorTest {
 
         assertEquals(listOf("failed"), observer.results.map { it.status })
         assertEquals("progress_callback", observer.results.single().errorKind)
+    }
+
+    @Test
+    fun wholeDeadlineCanStillWinWhileFinalProgressIsQueuedBeforePublishing() {
+        val pendingDrains = mutableListOf<() -> Unit>()
+        val transport = FakeTransport()
+        val observer = RecordingObserver()
+        var clock = 0L
+        val engine =
+            AttachmentDownloadCoordinatorEngine(
+                transport = transport,
+                sinkFactory = FakeSinkFactory(),
+                observerDispatcher = { pendingDrains += it },
+                nowMillis = { clock }
+            )
+        engine.start(request().copy(wholeTransferTimeoutMillis = 100L), observer)
+        transport.calls.single().apply {
+            start(200, 1L)
+            chunk(byteArrayOf(1))
+            complete(successResponse())
+        }
+        clock = 100L
+        engine.checkTimeouts(clock)
+        pendingDrains.single().invoke()
+
+        assertEquals(listOf("failed"), observer.results.map { it.status })
+        assertEquals("whole_timeout", observer.results.single().errorKind)
     }
 
     @Test

@@ -4386,8 +4386,9 @@ internal class SlockKuiklyBridgeModule(
     private fun deleteAttachmentCache(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
         val targetFile = attachmentCacheFile(request)
-        if (AttachmentDownloadCoordinator.cancelTargetAndAwaitCleanup(targetFile.absolutePath) == "timeout") {
-            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath)
+        val cleanupReservation = AttachmentDownloadCoordinator.beginTargetCleanup(targetFile.absolutePath)
+        if (cleanupReservation.status == "timeout") {
+            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath, cleanupReservation.token)
             return mapOf("status" to "failed", "message" to "Download publication is still active")
         }
         try {
@@ -4403,7 +4404,7 @@ internal class SlockKuiklyBridgeModule(
                 mapOf("status" to "failed", "message" to "Unable to clear cached copy")
             }
         } finally {
-            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath)
+            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath, cleanupReservation.token)
         }
     }
 
