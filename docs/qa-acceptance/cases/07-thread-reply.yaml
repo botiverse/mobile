@@ -4,9 +4,11 @@ app: raft-android
 tier: L1
 version: "0.1"
 description: |
-  Verify that replying to a message in a thread works: user can long-press
-  a message, select reply, type a reply, and see it appear as a threaded
-  reply with the original message quoted.
+  Verify that replying to a message in a thread works: user taps a message
+  to open its thread, types a reply in the thread composer, sends it, and
+  sees the reply appear in the thread.
+  NOTE: Raft's reply UX is 'tap message → open thread → reply in composer',
+  NOT 'long-press → context menu → reply'. Do not use long-press for reply.
 tags: [messaging, thread, reply, regression]
 timeout_seconds: 120
 max_retries: 1
@@ -41,17 +43,17 @@ steps:
     params:
       duration_ms: 2000
 
-  - id: long-press-message
-    goal: "Long-press on an existing message to open the context menu"
+  - id: tap-message
+    goal: "Tap on an existing message to open its thread"
     action_category: interact
-    hint: "Long-press on any message in the conversation"
+    hint: "Tap any message that shows a reply chip (e.g. '1 reply') or just tap a message to open its thread"
     capture: [screenshot, dump_layout]
 
-  - id: select-reply
-    goal: "Tap 'Reply' from the context menu"
-    action_category: interact
-    hint: "Text says 'Reply' or a reply arrow icon"
-    capture: [screenshot]
+  - id: wait-thread
+    goal: "Wait for thread view to open"
+    action_category: wait
+    params:
+      duration_ms: 1500
 
   - id: type-reply
     goal: "Type a reply message in the thread reply input"
@@ -107,4 +109,7 @@ assertions:
 
 expected:
   result: pass
-  notes: "Thread reply is a core messaging feature. Tests context menu, reply composer, and message rendering."
+  notes: |
+    Thread reply is a core messaging feature. Raft's reply UX is tap message →
+    open thread → reply in thread composer (not long-press context menu).
+    Tests thread navigation, reply composer, and message rendering.

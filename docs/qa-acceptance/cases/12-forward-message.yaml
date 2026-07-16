@@ -2,7 +2,7 @@ id: forward-message
 title: "转发消息-跨频道转发"
 app: raft-android
 tier: L1
-version: "0.1"
+version: "0.2"
 description: |
   Regression case from Hands feedback: forward message issues
   (bb86951c: joint channel reports cross-server error, forwarding
@@ -105,3 +105,8 @@ expected:
   notes: |
     Regression from Hands feedback bb86951c (cross-server forward error)
     and f96c5708 (forward "unsupport", fixed in PR #588).
+    STATUS: platform-pending — Android does not yet have a Forward entry
+    point in the long-press menu (send-side flow is being redesigned in
+    #对话流专修). This case will become active once the forward send-side
+    flow lands on Android. The display side (forward bundle cards) is
+    already implemented (PR #650/#683).
