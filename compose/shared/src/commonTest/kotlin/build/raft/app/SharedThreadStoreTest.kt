@@ -4754,7 +4754,7 @@ class SharedThreadStoreTest {
         assertTrue(memberRepository.channelMemberRequests.isEmpty())
         assertTrue(store.state.value.payload.members.isEmpty())
 
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(SharedThreadIntent.FirstContentFrameCommitted)
         assertEquals(2, store.state.value.payload.membersCount)
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         assertEquals(listOf("u1", "agent-1"), store.state.value.payload.members.map { it.id })
@@ -4800,10 +4800,10 @@ class SharedThreadStoreTest {
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(0, flakyMemberRepository.channelMemberCalls, "members must wait for first content readiness")
+        assertEquals(0, flakyMemberRepository.channelMemberCalls, "members must wait for a committed content frame")
 
-        store.accept(SharedThreadIntent.FirstContentReady)
-        assertEquals(1, flakyMemberRepository.channelMemberCalls, "first content readiness starts background members")
+        store.accept(SharedThreadIntent.FirstContentFrameCommitted)
+        assertEquals(1, flakyMemberRepository.channelMemberCalls, "committed content frame starts background members")
 
         store.accept(SharedThreadIntent.LoadMembers)
         val callsAfterFirstLoad = flakyMemberRepository.channelMemberCalls
@@ -5185,7 +5185,7 @@ class SharedThreadStoreTest {
 
         assertEquals("content", store.state.value.payload.status)
         assertTrue(memberRepository.channelMemberRequests.isEmpty())
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(SharedThreadIntent.FirstContentFrameCommitted)
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
         assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
@@ -5956,6 +5956,60 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun committedFramePreSignalLaunchesSeparatedAuxiliaryWorkOnlyAfterInitialPayloadQueuesIt() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "initial body")),
+                threadReplySummariesResult =
+                    DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+            ).also {
+                it.getThreadStarted = CompletableDeferred()
+                it.releaseGetThread = CompletableDeferred()
+            }
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin")),
+                channelMembers = listOf(member("u1", "Artin"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                memberRepository = memberRepository
+            )
+        val logs = ConcurrentTestLogBuffer()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        val start = async { store.accept(SharedThreadIntent.Start(basePayload())) }
+        repository.getThreadStarted?.await()
+
+        store.accept(SharedThreadIntent.FirstContentFrameCommitted)
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        assertEquals(0, memberRepository.channelMemberCalls)
+
+        repository.releaseGetThread?.complete(Unit)
+        start.await()
+        withTimeout(1_000L) {
+            while (
+                repository.getThreadReplySummariesRequests.isEmpty() ||
+                memberRepository.channelMemberCalls == 0
+            ) {
+                delay(10L)
+            }
+        }
+
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
+        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        assertTrue(logs.any { it.contains("result=launched stage=members") })
+        assertTrue(logs.any { it.contains("result=launched stage=secondary") })
+        scope.cancel()
+    }
+
+    @Test
     fun secondaryRefreshBackfillsFollowedSummariesWithoutBlockingInitialFetch() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
@@ -6010,7 +6064,7 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(SharedThreadIntent.FirstContentFrameCommitted)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -6061,7 +6115,7 @@ class SharedThreadStoreTest {
         val firstStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
         firstStore.accept(SharedThreadIntent.Start(basePayload()))
-        firstStore.accept(SharedThreadIntent.FirstContentReady)
+        firstStore.accept(SharedThreadIntent.FirstContentFrameCommitted)
         delay(1L)
         assertEquals(7, firstStore.state.value.payload.messages.single().replyCount)
 
@@ -6072,7 +6126,7 @@ class SharedThreadStoreTest {
         val secondStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
         secondStore.accept(SharedThreadIntent.Start(basePayload()))
-        secondStore.accept(SharedThreadIntent.FirstContentReady)
+        secondStore.accept(SharedThreadIntent.FirstContentFrameCommitted)
         repository.threadReplySummariesStarted?.await()
 
         assertEquals(7, secondStore.state.value.payload.messages.single().replyCount)
@@ -6104,9 +6158,9 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(
             repository.getThreadReplySummariesRequests.isEmpty(),
-            "thread summaries must not race the first content frame or bottom anchor"
+            "thread summaries must not race the first committed content frame"
         )
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(SharedThreadIntent.FirstContentFrameCommitted)
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -6209,7 +6263,7 @@ class SharedThreadStoreTest {
         releaseReplyFetch.complete(Unit)
         assertTrue(prewarm.await() is DataResult.Content)
         visibleStart.await()
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(SharedThreadIntent.FirstContentFrameCommitted)
         withTimeout(1_000L) {
             while (!logs.any { it.startsWith("thread_secondary_refresh_result") }) {
                 delay(10L)

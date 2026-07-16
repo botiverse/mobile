@@ -1534,12 +1534,26 @@ class SlockMarkdownTest {
                         tokenPlan = hydratedPlans[0]
                     )
             )
+        val precomputedPlanAnnotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = bodies[0],
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = bodies[0],
+                        onOpenTag = { tag -> currentHandler(tag) },
+                        tokenPlan = hydratedPlans[0]
+                    )
+            )
 
         assertTrue(initialAnnotated.text.endsWith(" @member0"))
         assertTrue(hydratedAnnotated.text.endsWith(" @Display Name"))
+        assertTrue(
+            precomputedPlanAnnotated.text.endsWith(" @Display Name"),
+            "the production precomputed-plan path must render the plan's resolved label without a global resolver"
+        )
         currentHandler = { openedBy = "new:${it.label}" }
         val mentionLink =
-            hydratedAnnotated.getLinkAnnotations(0, hydratedAnnotated.length)
+            precomputedPlanAnnotated.getLinkAnnotations(0, precomputedPlanAnnotated.length)
                 .map { it.item }
                 .filterIsInstance<LinkAnnotation.Clickable>()
                 .single()

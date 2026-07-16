@@ -132,6 +132,7 @@ import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
 import build.raft.app.markdown.preparedSlockMarkdownFullRendererContentOrNull
+import build.raft.app.markdown.rememberSlockMarkdownBodyTokenPlan
 import build.raft.app.markdown.threadMarkdownTagActivationKey
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
@@ -171,6 +172,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
@@ -1947,6 +1949,11 @@ private fun KuiklyThreadScreenPayload.isReadyForThreadPerformanceGate(): Boolean
 internal const val ThreadPayloadReadyBudgetMs = 1_500L
 internal const val ThreadFirstLayoutBudgetMs = 100L
 internal const val ThreadFirstDrawBudgetMs = 100L
+private const val ThreadFirstContentCommitDelayFrames = 2
+
+private suspend fun awaitThreadFirstContentFrameCommit() {
+    repeat(ThreadFirstContentCommitDelayFrames) { withFrameNanos { } }
+}
 
 internal data class ThreadFirstContentPerformanceBudgetResult(
     val payloadReadyWithinBudget: Boolean?,
@@ -3507,15 +3514,29 @@ private fun ThreadMessageVisualCard(
                         )
                     }
                     if (message.body.isNotBlank()) {
+                        val markdownTokenPlan =
+                            rememberSlockMarkdownBodyTokenPlan(
+                                body = message.body,
+                                highlightedMentions = highlightedMentions,
+                                isTagValid = isMarkdownTagValid,
+                                resolveTagLabel = resolveMarkdownTagLabel,
+                                inlineContentScope = message.id
+                            )
+                        val bodyActiveMarkdownTagKey =
+                            remember(markdownTokenPlan, activeMarkdownTagKey) {
+                                activeMarkdownTagKey?.takeIf { targetKey ->
+                                    markdownTokenPlan.tagTokens().any { token ->
+                                        token.tag?.let(::threadMarkdownTagActivationKey) == targetKey
+                                    }
+                                }
+                            }
                         Box(modifier = Modifier.threadMessageContentWidth(1f)) {
                             SlockMarkdownBody(
                                 body = message.body,
                                 textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                                highlightedMentions = highlightedMentions,
-                                isTagValid = isMarkdownTagValid,
-                                resolveTagLabel = resolveMarkdownTagLabel,
                                 inlineContentScope = message.id,
-                                activeTagKey = activeMarkdownTagKey,
+                                activeTagKey = bodyActiveMarkdownTagKey,
+                                precomputedTokenPlan = markdownTokenPlan,
                                 onOpenTag = onOpenMarkdownTag,
                                 onOpenUrl = onOpenMarkdownUrl
                             )
@@ -5940,8 +5961,8 @@ internal fun SharedThreadRouteContent(
             onSaveShareImage = { path ->
                 bridge.saveThreadShareImage(path)
             },
-            onFirstContentReady = {
-                threadViewModel.dispatch(SharedThreadIntent.FirstContentReady)
+            onFirstContentFrameCommitted = {
+                threadViewModel.dispatch(SharedThreadIntent.FirstContentFrameCommitted)
             },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
@@ -9921,7 +9942,7 @@ private fun ThreadPageContent(
     mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
-    onFirstContentReady: () -> Unit = {},
+    onFirstContentFrameCommitted: () -> Unit = {},
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -9942,8 +9963,8 @@ private fun ThreadPageContent(
             selectedTab != KuiklyThreadTab.Chat &&
             payload.isReadyForThreadPerformanceGate()
         ) {
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            onFirstContentReady()
+            awaitThreadFirstContentFrameCommit()
+            onFirstContentFrameCommitted()
         }
     }
     LaunchedEffect(
@@ -10382,7 +10403,7 @@ private fun ThreadPageContent(
                             threadScreenPagerForForwardBundle.openThreadForwardBundlePage(bundle)
                         },
                         translationStore = translationStore,
-                        onThreadContentReady = onFirstContentReady
+                        onThreadContentFrameCommitted = onFirstContentFrameCommitted
                     )
                 KuiklyThreadTab.Tasks ->
                     ThreadTasksTab(
@@ -11313,7 +11334,7 @@ private fun ThreadChatTab(
     onToggleShareSelection: (String) -> Unit = {},
     onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
-    onThreadContentReady: () -> Unit = {}
+    onThreadContentFrameCommitted: () -> Unit = {}
 ) {
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
@@ -11386,7 +11407,7 @@ private fun ThreadChatTab(
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
+                    onThreadContentFrameCommitted = onThreadContentFrameCommitted
                 )
             } else {
                 ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
@@ -11446,11 +11467,12 @@ private fun ThreadChatTab(
                     onToggleShareSelection = onToggleShareSelection,
                     onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
-                    onThreadContentReady = onThreadContentReady
+                    onThreadContentFrameCommitted = onThreadContentFrameCommitted
                 )
             } else {
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
-                    onThreadContentReady()
+                    awaitThreadFirstContentFrameCommit()
+                    onThreadContentFrameCommitted()
                 }
                 ThreadStateMessage(
                     localizedThreadStateTitle(timelineSlice.emptyTitle),
@@ -11496,7 +11518,7 @@ private fun ThreadChatTab(
                 onToggleShareSelection = onToggleShareSelection,
                 onOpenForwardBundle = onOpenForwardBundle,
                 translationStore = translationStore,
-                onThreadContentReady = onThreadContentReady
+                onThreadContentFrameCommitted = onThreadContentFrameCommitted
             )
     }
 }
@@ -11789,11 +11811,14 @@ private fun ThreadMessagesList(
     onToggleShareSelection: (String) -> Unit = {},
     onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
-    onThreadContentReady: () -> Unit = {}
+    onThreadContentFrameCommitted: () -> Unit = {}
 ) {
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
-            onThreadContentReady()
+            if (timelineSlice.status != "loading") {
+                awaitThreadFirstContentFrameCommit()
+                onThreadContentFrameCommitted()
+            }
         }
         if (timelineSlice.status == "loading") {
             ThreadStateMessage("Loading...", null)
@@ -12170,7 +12195,8 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady, revealLatestLocalSendBeforeInitialAnchor) {
         if (initialBottomAnchorReady || latestItemIndex < 0 || revealLatestLocalSendBeforeInitialAnchor) {
-            onThreadContentReady()
+            awaitThreadFirstContentFrameCommit()
+            onThreadContentFrameCommitted()
         }
     }
     val currentPayloadState = rememberUpdatedState(renderPayload)
@@ -14961,6 +14987,22 @@ private fun ThreadMessageCard(
                                                 message.copy(body = bodyForRender).threadMarkdownRenderSignature()
                                             }
                                         }
+                                    val markdownTokenPlan =
+                                        rememberSlockMarkdownBodyTokenPlan(
+                                            body = bodyForRender,
+                                            highlightedMentions = highlightedMentions,
+                                            isTagValid = isMarkdownTagValid,
+                                            resolveTagLabel = resolveMarkdownTagLabel,
+                                            inlineContentScope = markdownRenderSignature.inlineContentScope
+                                        )
+                                    val bodyActiveMarkdownTagKey =
+                                        remember(markdownTokenPlan, activeMarkdownTagKey) {
+                                            activeMarkdownTagKey?.takeIf { targetKey ->
+                                                markdownTokenPlan.tagTokens().any { token ->
+                                                    token.tag?.let(::threadMarkdownTagActivationKey) == targetKey
+                                                }
+                                            }
+                                        }
                                     LaunchedEffect(markdownRenderSignature) {
                                         diagnosticsLogger(
                                             "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
@@ -14975,11 +15017,9 @@ private fun ThreadMessageCard(
                                         SlockMarkdownBody(
                                             body = bodyForRender,
                                             textStyle = ThreadMessageBodyTextStyle,
-                                            highlightedMentions = highlightedMentions,
-                                            isTagValid = isMarkdownTagValid,
-                                            resolveTagLabel = resolveMarkdownTagLabel,
                                             inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                            activeTagKey = activeMarkdownTagKey,
+                                            activeTagKey = bodyActiveMarkdownTagKey,
+                                            precomputedTokenPlan = markdownTokenPlan,
                                             onOpenTag = onOpenMarkdownTag,
                                             onOpenUrl = onOpenMarkdownUrl,
                                             performanceKey = messagePerformanceKey,
