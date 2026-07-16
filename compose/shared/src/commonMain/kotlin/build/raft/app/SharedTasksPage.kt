@@ -488,7 +488,10 @@ private fun SharedTasksLoadedBodyContent(
         )
     val listScrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
     LaunchedEffect(scrollToTopRequest) {
-        if (listScrollToTopRequestFence.consume(scrollToTopRequest)) {
+        if (
+            listScrollToTopRequestFence.consume(scrollToTopRequest) &&
+                presentationState.selectedMode == TasksViewMode.List
+        ) {
             listModeListState.animateScrollToTopExpressive()
         }
     }
@@ -993,7 +996,7 @@ private fun SharedTasksBoardColumn(
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
     LaunchedEffect(scrollToTopRequest) {
-        if (scrollToTopRequestFence.consume(scrollToTopRequest)) {
+        if (scrollToTopRequestFence.consume(scrollToTopRequest) && !collapsed) {
             columnListState.animateScrollToTopExpressive()
         }
     }
