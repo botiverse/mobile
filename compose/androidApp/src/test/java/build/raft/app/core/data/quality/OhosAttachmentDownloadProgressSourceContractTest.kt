@@ -7,26 +7,29 @@ import org.junit.Test
 
 class OhosAttachmentDownloadProgressSourceContractTest {
     @Test
-    fun producerCarriesAttemptIdentityAndDoesNotRestoreLegacyFakeZeroGate() {
-        val source =
+    fun arkTsIsAtomicSinkOnlyAndCannotRestoreAPlatformHttpTransport() {
+        val moduleSource =
             File(
                 findRepoRoot(),
                 "compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets"
             ).readText()
+        val sinkSource =
+            File(
+                findRepoRoot(),
+                "compose/ohosApp/entry/src/main/ets/kuikly/SlockOhosAttachmentDownloadSink.ets"
+            ).readText()
 
-        assertTrue(source.contains("const downloadId = (records[\"downloadId\"] as string | undefined)"))
-        assertTrue(source.contains("downloadId: string,"))
-        assertTrue(source.contains("\"downloadId\": downloadId"))
-        assertTrue(source.contains("\"sequence\": sequence"))
-        assertTrue(source.contains("\"phase\": phase"))
-        assertTrue(source.contains("\"receiving\""))
-        assertTrue(source.contains("\"complete\""))
-        assertTrue(source.contains("firstPositiveBytes || now - lastProgressAt >= 250"))
-        assertTrue(source.contains("const tempPath = `${'$'}{path}.part-${'$'}{attemptToken}`;"))
-        assertFalse(source.contains("emitAttachmentDownloadProgressIfNeeded"))
-        assertFalse(source.contains("percent - lastPercent >= 2"))
-        assertFalse(source.contains("now - lastProgressAt >= 750"))
-        assertFalse(source.contains("emitAttachmentDownloadProgress(progressCallback, 0"))
+        assertTrue(moduleSource.contains("slockOhosAttachmentDownloadSink.download("))
+        assertFalse(moduleSource.contains("requestInStream"))
+        assertFalse(moduleSource.contains("createHttp"))
+        assertFalse(moduleSource.contains("@kit.NetworkKit"))
+        assertTrue(sinkSource.contains("slockAttachmentDownloadStart"))
+        assertTrue(sinkSource.contains("fs.writeSync"))
+        assertTrue(sinkSource.contains("fs.fsyncSync"))
+        assertTrue(sinkSource.contains("fs.renameSync"))
+        assertTrue(sinkSource.contains(".part-${'$'}{this.safeToken(attemptToken)}"))
+        assertFalse(sinkSource.contains("requestInStream"))
+        assertFalse(sinkSource.contains("createHttp"))
     }
 
     private fun findRepoRoot(): File {

@@ -11,11 +11,12 @@ class BridgeAttachmentDownloadProgressTest {
     fun knownLengthResponseStartDoesNotInventZeroPercent() {
         val progress =
             JSONObject(
-                """{"downloadId":"attempt-1","sequence":1,"phase":"response_wait","downloadedBytes":0,"totalBytes":10000}"""
+                """{"downloadId":"download-1","attemptToken":"attempt-1","sequence":1,"phase":"response_wait","downloadedBytes":0,"totalBytes":10000}"""
             ).toBridgeAttachmentDownloadProgress()
 
         assertNull(progress.percent)
         assertEquals("response_wait", progress.phase)
+        assertEquals("attempt-1", progress.attemptToken)
     }
 
     @Test
@@ -66,5 +67,37 @@ class BridgeAttachmentDownloadProgressTest {
 
         assertSame(current, reduceAttachmentDownloadProgress(current, previousAttempt, "attempt-2"))
         assertEquals(next, reduceAttachmentDownloadProgress(current, next, "attempt-2"))
+    }
+
+    @Test
+    fun reducerAcceptsOnlyTheResponseStartOfANewSameIdAttempt() {
+        val current =
+            BridgeAttachmentDownloadProgress(
+                downloadId = "download-1",
+                attemptToken = "attempt-old",
+                sequence = 4,
+                phase = "receiving",
+                percent = 40,
+                downloadedBytes = 400,
+                totalBytes = 1_000
+            )
+        val invalidNewChunk =
+            current.copy(
+                attemptToken = "attempt-new",
+                sequence = 2,
+                downloadedBytes = 100,
+                percent = 10
+            )
+        val validNewStart =
+            current.copy(
+                attemptToken = "attempt-new",
+                sequence = 1,
+                phase = "response_wait",
+                downloadedBytes = 0,
+                percent = null
+            )
+
+        assertSame(current, reduceAttachmentDownloadProgress(current, invalidNewChunk, "download-1"))
+        assertEquals(validNewStart, reduceAttachmentDownloadProgress(current, validNewStart, "download-1"))
     }
 }

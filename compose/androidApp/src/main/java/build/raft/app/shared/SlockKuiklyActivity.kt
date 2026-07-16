@@ -101,6 +101,10 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.data.SlockAndroidSqlDatabaseContext
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.network.AttachmentDownloadObserver
+import build.raft.app.network.AttachmentDownloadProgress
+import build.raft.app.network.AttachmentDownloadResult
+import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.network.binaryDownloadUrlDiagnostics
 import build.raft.app.network.updateSlockNetworkKmmRecoveryEnvironment
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
@@ -136,12 +140,13 @@ import java.io.IOException
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
@@ -2402,8 +2407,6 @@ private class SlockKuiklyImageAdapter(
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
-    private val attachmentDownloadControls = ConcurrentHashMap<String, AttachmentDownloadControl>()
-    private val attachmentDownloadAttemptFence = AttachmentDownloadAttemptFence()
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -4400,22 +4403,14 @@ internal class SlockKuiklyBridgeModule(
         val request = JSONObject(params ?: "{}")
         val downloadId = request.optString("downloadId").takeIf { it.isNotBlank() }
                 ?: return mapOf("status" to "failed", "message" to "Missing download id")
-        val control = attachmentDownloadControls[downloadId]
-                ?: return mapOf("status" to "missing", "message" to "Download is no longer active")
-        return when (request.optString("action").lowercase(Locale.US)) {
-            "pause" -> {
-                control.pause()
-                mapOf("status" to "paused")
-            }
-            "resume" -> {
-                control.resume()
-                mapOf("status" to "resumed")
-            }
-            "stop", "cancel" -> {
-                control.stop()
-                mapOf("status" to "cancelled")
-            }
-            else -> mapOf("status" to "failed", "message" to "Unknown download action")
+        val action = request.optString("action").lowercase(Locale.US)
+        val status = AttachmentDownloadCoordinator.control(downloadId, action)
+        return if (status == "failed") {
+            mapOf("status" to "failed", "message" to "Unknown download action")
+        } else if (status == "missing") {
+            mapOf("status" to "missing", "message" to "Download is no longer active")
+        } else {
+            mapOf("status" to status)
         }
     }
 
@@ -4443,11 +4438,8 @@ internal class SlockKuiklyBridgeModule(
         val wasCached = targetFile.isUsableAttachmentCacheFile()
         val responseMimeType =
                 if (!wasCached) {
-                    val control = AttachmentDownloadControl(downloadId)
-                    attachmentDownloadControls[downloadId] = control
-                    attachmentDownloadAttemptFence.begin(targetFile, downloadId)
                     try {
-                        downloadAttachmentToFile(urlText, targetFile, downloadId, control, progressCallback)
+                        downloadAttachmentToFile(urlText, targetFile, downloadId, progressCallback)
                     } catch (ignored: AttachmentDownloadStoppedException) {
                         return AttachmentPreparationResult.Terminal(
                                 mapOf(
@@ -4456,9 +4448,6 @@ internal class SlockKuiklyBridgeModule(
                                         "cached" to false
                                 )
                         )
-                    } finally {
-                        attachmentDownloadControls.remove(downloadId, control)
-                        attachmentDownloadAttemptFence.end(targetFile, downloadId)
                     }
                 } else {
                     null
@@ -4640,156 +4629,50 @@ internal class SlockKuiklyBridgeModule(
             urlText: String,
             targetFile: File,
             downloadId: String,
-            control: AttachmentDownloadControl,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): String? {
-        val tempFile = attachmentDownloadTempFile(targetFile, downloadId)
-        runCatching { tempFile.delete() }
-        try {
-            val requestStartedAt = SystemClock.elapsedRealtime()
-            val downloadKeyHash = downloadId.hashCode().toString(16)
-            var lastDownloadedBytes = 0L
-            var lastTotalBytes: Long? = null
-            var firstByteLogged = false
-            var nextProgressSequence = 0L
-            val progressSampler = AttachmentDownloadProgressSampler()
-            val responseContentType =
-                    runBlocking {
-                        tempFile.outputStream().use { output ->
-                            SharedBinaryDownloader.download(
-                                url = urlText,
-                                onStart = { totalBytes ->
-                                    lastTotalBytes = totalBytes
-                                    progressSampler.onResponseStart(SystemClock.elapsedRealtime())
-                                    control.totalBytes = totalBytes
-                                    SlockAppLog.record(
-                                            "SlockAttachmentDownload",
-                                            "phase=response_start keyHash=$downloadKeyHash expectedBytes=${totalBytes ?: -1L} " +
-                                                "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
-                                    )
-                                    emitAttachmentDownloadProgress(
-                                            progressCallback,
-                                            attachmentDownloadProgress(
-                                                    downloadId = downloadId,
-                                                    sequence = ++nextProgressSequence,
-                                                    phase = "response_wait",
-                                                    downloadedBytes = 0L,
-                                                    totalBytes = totalBytes,
-                                                    percent = null,
-                                                    bytesPerSecond = null
-                                            )
-                                    )
-                                },
-                                beforeRead = {
-                                    control.waitIfPausedOrStopped()
-                                },
-                                onChunk = { bytes, downloadedBytes, totalBytes ->
-                                    output.write(bytes)
-                                    lastDownloadedBytes = downloadedBytes
-                                    lastTotalBytes = totalBytes
-                                    if (!firstByteLogged && downloadedBytes > 0L) {
-                                        firstByteLogged = true
-                                        SlockAppLog.record(
-                                            "SlockAttachmentDownload",
-                                            "phase=first_byte keyHash=$downloadKeyHash downloadedBytes=$downloadedBytes " +
-                                                "expectedBytes=${totalBytes ?: -1L} " +
-                                                "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
-                                        )
-                                    }
-                                    val sample =
-                                            progressSampler.sample(
-                                                    downloadedBytes = downloadedBytes,
-                                                    totalBytes = totalBytes,
-                                                    nowMs = SystemClock.elapsedRealtime()
-                                            )
-                                    val percent = attachmentDownloadPercent(downloadedBytes, totalBytes)
-                                    control.updateProgress(downloadedBytes, totalBytes, percent)
-                                    if (sample != null) {
-                                        emitAttachmentDownloadProgress(
-                                                progressCallback,
-                                                attachmentDownloadProgress(
-                                                        downloadId = downloadId,
-                                                        sequence = ++nextProgressSequence,
-                                                        phase = "receiving",
-                                                        downloadedBytes = downloadedBytes,
-                                                        totalBytes = totalBytes,
-                                                        percent = sample.percent,
-                                                        bytesPerSecond = sample.bytesPerSecond
-                                                )
-                                        )
-                                    }
-                                }
-                            )
-                        }
+        val requestStartedAt = SystemClock.elapsedRealtime()
+        val downloadKeyHash = downloadId.hashCode().toString(16)
+        val resultRef = AtomicReference<AttachmentDownloadResult?>()
+        val completed = CountDownLatch(1)
+        val observer =
+                object : AttachmentDownloadObserver {
+                    override fun onProgress(progress: AttachmentDownloadProgress) {
+                        SlockAppLog.record(
+                                "SlockAttachmentDownload",
+                                "phase=${progress.phase} keyHash=$downloadKeyHash " +
+                                        "downloadedBytes=${progress.downloadedBytes} " +
+                                        "expectedBytes=${progress.totalBytes ?: -1L} " +
+                                        "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
+                        )
+                        progressCallback?.invoke(progress.toAndroidBridgePayload())
                     }
-            control.waitIfPausedOrStopped()
-            if (!attachmentDownloadAttemptFence.isCurrent(targetFile, downloadId)) {
-                throw AttachmentDownloadStoppedException()
-            }
-            val finalSample =
-                    progressSampler.sample(
-                            downloadedBytes = lastDownloadedBytes,
-                            totalBytes = lastTotalBytes,
-                            nowMs = SystemClock.elapsedRealtime(),
-                            complete = true
-                    )
-            emitAttachmentDownloadProgress(
-                    progressCallback,
-                    attachmentDownloadProgress(
-                            downloadId = downloadId,
-                            sequence = ++nextProgressSequence,
-                            phase = "complete",
-                            downloadedBytes = lastDownloadedBytes,
-                            totalBytes = lastTotalBytes,
-                            percent = finalSample?.percent,
-                            bytesPerSecond = finalSample?.bytesPerSecond
-                    )
-            )
-            SlockAppLog.record(
-                    "SlockAttachmentDownload",
-                    "phase=complete keyHash=$downloadKeyHash downloadedBytes=$lastDownloadedBytes " +
-                            "expectedBytes=${lastTotalBytes ?: -1L} " +
-                            "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
-            )
-            if (targetFile.exists()) {
-                targetFile.delete()
-            }
-            if (!tempFile.renameTo(targetFile)) {
-                tempFile.copyTo(targetFile, overwrite = true)
-                tempFile.delete()
-            }
-            return responseContentType
-        } finally {
-            runCatching { if (tempFile.exists()) tempFile.delete() }
+
+                    override fun onComplete(result: AttachmentDownloadResult) {
+                        resultRef.set(result)
+                        completed.countDown()
+                    }
+                }
+        AttachmentDownloadCoordinator.start(
+                downloadId = downloadId,
+                targetKey = targetFile.absolutePath,
+                url = urlText,
+                targetPath = targetFile.absolutePath,
+                observer = observer
+        )
+        try {
+            completed.await()
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            AttachmentDownloadCoordinator.control(downloadId, "cancel")
+            throw AttachmentDownloadStoppedException()
         }
-    }
-
-    private fun attachmentDownloadProgress(
-            downloadId: String,
-            sequence: Long,
-            phase: String,
-            status: String = "progress",
-            downloadedBytes: Long,
-            totalBytes: Long?,
-            percent: Int?,
-            bytesPerSecond: Long?
-    ): Map<String, Any> =
-            buildMap {
-                put("downloadId", downloadId)
-                put("sequence", sequence)
-                put("phase", phase)
-                put("status", status)
-                put("downloadedBytes", downloadedBytes)
-                totalBytes?.let { put("totalBytes", it) }
-                percent?.let { put("percent", it.coerceIn(0, 100)) }
-                bytesPerSecond?.takeIf { it > 0L }?.let { put("bytesPerSecond", it) }
-            }
-
-    private fun emitAttachmentDownloadProgress(
-            progressCallback: ((Map<String, Any>) -> Unit)?,
-            progress: Map<String, Any>
-    ) {
-        progressCallback?.invoke(progress)
+        val result = resultRef.get() ?: throw IllegalStateException("Attachment download ended without a result")
+        return when (result.status) {
+            "complete" -> result.contentType
+            "cancelled" -> throw AttachmentDownloadStoppedException()
+            else -> throw IllegalStateException(result.message ?: "Attachment download failed")
+        }
     }
 
     private fun cleanupAttachmentCache(cacheDir: File) {
@@ -5106,90 +4989,20 @@ internal class SlockKuiklyBridgeModule(
     }
 }
 
-private class AttachmentDownloadControl(
-        val downloadId: String
-) {
-    private val lock = java.lang.Object()
-
-    @Volatile
-    private var paused: Boolean = false
-
-    @Volatile
-    private var stopped: Boolean = false
-
-    @Volatile
-    var downloadedBytes: Long = 0L
-        private set
-
-    @Volatile
-    var totalBytes: Long? = null
-
-    @Volatile
-    var percent: Int? = null
-        private set
-
-    fun updateProgress(downloadedBytes: Long, totalBytes: Long?, percent: Int?) {
-        this.downloadedBytes = downloadedBytes
-        this.totalBytes = totalBytes
-        this.percent = percent
-    }
-
-    fun pause() {
-        paused = true
-    }
-
-    fun resume() {
-        synchronized(lock) {
-            paused = false
-            lock.notifyAll()
-        }
-    }
-
-    fun stop() {
-        synchronized(lock) {
-            stopped = true
-            paused = false
-            lock.notifyAll()
-        }
-    }
-
-    fun waitIfPausedOrStopped() {
-        synchronized(lock) {
-            while (paused && !stopped) {
-                lock.wait(250L)
-            }
-            if (stopped) {
-                throw AttachmentDownloadStoppedException()
-            }
-        }
-    }
-}
-
 private class AttachmentDownloadStoppedException : RuntimeException()
 
-internal class AttachmentDownloadAttemptFence {
-    private val currentAttemptByTarget = ConcurrentHashMap<String, String>()
-
-    fun begin(targetFile: File, downloadId: String) {
-        currentAttemptByTarget[targetFile.absolutePath] = downloadId
-    }
-
-    fun isCurrent(targetFile: File, downloadId: String): Boolean =
-            currentAttemptByTarget[targetFile.absolutePath] == downloadId
-
-    fun end(targetFile: File, downloadId: String) {
-        currentAttemptByTarget.remove(targetFile.absolutePath, downloadId)
-    }
-}
-
-internal fun attachmentDownloadTempFile(targetFile: File, downloadId: String): File {
-    val digest =
-            MessageDigest.getInstance("SHA-256")
-                    .digest(downloadId.toByteArray(StandardCharsets.UTF_8))
-                    .take(12)
-                    .joinToString("") { byte -> "%02x".format(Locale.US, byte.toInt() and 0xff) }
-    return File(targetFile.parentFile, "${targetFile.name}.part-$digest")
-}
+private fun AttachmentDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =
+        buildMap {
+            put("downloadId", downloadId)
+            put("attemptToken", attemptToken)
+            put("sequence", sequence)
+            put("phase", phase)
+            put("status", "progress")
+            put("downloadedBytes", downloadedBytes)
+            totalBytes?.let { put("totalBytes", it) }
+            percent?.let { put("percent", it.coerceIn(0, 100)) }
+            bytesPerSecond?.takeIf { it > 0L }?.let { put("bytesPerSecond", it) }
+        }
 
 internal fun attachmentDownloadPartFiles(targetFile: File): List<File> {
     val legacyName = "${targetFile.name}.part"

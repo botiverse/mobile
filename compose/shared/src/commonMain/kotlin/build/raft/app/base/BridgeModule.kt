@@ -917,6 +917,7 @@ internal class BridgeModule : Module() {
 
 internal data class BridgeAttachmentDownloadProgress(
     val downloadId: String = "",
+    val attemptToken: String = "",
     val sequence: Long = 0L,
     val phase: String = "receiving",
     val status: String = "progress",
@@ -944,6 +945,7 @@ internal fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDo
         }
     return BridgeAttachmentDownloadProgress(
         downloadId = optString("downloadId"),
+        attemptToken = optString("attemptToken"),
         sequence = optString("sequence").toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
         phase = optString("phase").ifBlank { if (downloadedBytes > 0L) "receiving" else "response_wait" },
         status = optString("status").ifBlank { "progress" },
@@ -967,6 +969,11 @@ internal fun reduceAttachmentDownloadProgress(
 ): BridgeAttachmentDownloadProgress? {
     if (incoming.downloadId.isBlank() || incoming.downloadId != expectedDownloadId) return current
     if (current == null || current.downloadId != incoming.downloadId) return incoming
+    if (current.attemptToken.isNotBlank() && incoming.attemptToken.isNotBlank() &&
+        current.attemptToken != incoming.attemptToken
+    ) {
+        return if (incoming.sequence == 1L && incoming.phase == "response_wait") incoming else current
+    }
     if (incoming.sequence > 0L && current.sequence > 0L && incoming.sequence <= current.sequence) return current
     if (incoming.downloadedBytes < current.downloadedBytes) return current
     val currentPercent = current.percent
