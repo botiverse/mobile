@@ -111,7 +111,7 @@ import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.isSupportedCommitAction
-import build.raft.app.data.isValidChannelName
+import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -20442,7 +20442,7 @@ private fun ThreadSettingsModal(
     val trimmedName = name.trim()
     val trimmedDescription = description.trim()
     val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
-    val profileValid = trimmedName.isValidChannelName() && trimmedDescription.length <= 500
+    val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
     SlockUnifiedDialog(
         title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
@@ -20467,7 +20467,7 @@ private fun ThreadSettingsModal(
                     fieldMinHeight = 66.dp,
                     maxLines = 2
                 )
-                if (trimmedName.isNotEmpty() && !trimmedName.isValidChannelName()) {
+                if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
                     Text(
                         text = stringResource(MR.strings.channel_create_error_name_format),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),

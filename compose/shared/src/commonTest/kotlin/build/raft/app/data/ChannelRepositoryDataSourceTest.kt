@@ -171,15 +171,41 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun createChannelRejectsInvalidNameBeforeNetwork() = runBlocking {
+    fun createChannelPreservesUnicodeName() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody = """{"id":"channel-1","name":"markdown专修","type":"channel","joined":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result = repository.createChannel(CreateChannelRequest(name = " markdown专修 "))
+
+        val created = assertIs<DataResult.Content<CreateChannelResult>>(result).data
+        assertEquals("markdown专修", created.channel.name)
+        assertEquals("markdown专修", network.bodies.single().asJsonObject()["name"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun createChannelRejectsOverlengthNameBeforeNetwork() = runBlocking {
         val network = FakeChannelNetworkClient()
         val repository = RealChannelRepository(sampleStore(), network)
 
-        val result = repository.createChannel(CreateChannelRequest(name = "中文频道"))
+        val result = repository.createChannel(CreateChannelRequest(name = "a".repeat(ChannelNameMaxLength + 1)))
 
         val error = assertIs<DataResult.Error>(result).error
         assertEquals("channel_name_invalid", error.code)
         assertEquals(false, error.retryable)
+        assertEquals(emptyList(), network.requests)
+    }
+
+    @Test
+    fun createChannelRejectsBlankNameBeforeNetwork() = runBlocking {
+        val network = FakeChannelNetworkClient()
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result = repository.createChannel(CreateChannelRequest(name = "   "))
+
+        assertIs<DataResult.Empty>(result)
         assertEquals(emptyList(), network.requests)
     }
 
@@ -193,7 +219,7 @@ class ChannelRepositoryDataSourceTest {
             )
         val repository = RealChannelRepository(sampleStore(), network)
 
-        val result = repository.createChannel(CreateChannelRequest(name = "valid-name"))
+        val result = repository.createChannel(CreateChannelRequest(name = "123-start"))
 
         val error = assertIs<DataResult.Error>(result).error
         assertEquals("channel_name_invalid", error.code)
@@ -248,17 +274,76 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun updateChannelProfileRejectsInvalidNameBeforeNetwork() = runBlocking {
+    fun updateChannelProfilePreservesUnicodeName() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody =
+                    """{"id":"channel-1","name":"markdown专修","description":"中文描述","type":"channel","joined":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result =
+            repository.updateChannelProfile(
+                ChannelProfileUpdateRequest(ChannelId("channel-1"), " markdown专修 ", " 中文描述 ")
+            )
+
+        val updated = assertIs<DataResult.Content<ChannelProfileUpdateResult>>(result).data
+        assertEquals("markdown专修", updated.name)
+        assertEquals("markdown专修", network.bodies.single().asJsonObject()["name"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun updateChannelProfileRejectsOverlengthNameBeforeNetwork() = runBlocking {
         val network = FakeChannelNetworkClient()
         val repository = RealChannelRepository(sampleStore(), network)
 
         val result =
             repository.updateChannelProfile(
-                ChannelProfileUpdateRequest(ChannelId("channel-1"), "not valid", "description")
+                ChannelProfileUpdateRequest(
+                    ChannelId("channel-1"),
+                    "a".repeat(ChannelNameMaxLength + 1),
+                    "description"
+                )
             )
 
         assertEquals("channel_name_invalid", assertIs<DataResult.Error>(result).error.code)
         assertEquals(emptyList(), network.requests)
+    }
+
+    @Test
+    fun updateChannelProfileRejectsBlankNameBeforeNetwork() = runBlocking {
+        val network = FakeChannelNetworkClient()
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result =
+            repository.updateChannelProfile(
+                ChannelProfileUpdateRequest(ChannelId("channel-1"), "   ", "description")
+            )
+
+        assertEquals("channel_name_invalid", assertIs<DataResult.Error>(result).error.code)
+        assertEquals(emptyList(), network.requests)
+    }
+
+    @Test
+    fun updateChannelProfileMapsServerNameValidationMessageToTypedCode() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseCode = 400,
+                responseBody =
+                    """{"error":"Channel name must start with a letter and can only contain letters, numbers, hyphens, and underscores"}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result =
+            repository.updateChannelProfile(
+                ChannelProfileUpdateRequest(ChannelId("channel-1"), "bad.name", "description")
+            )
+
+        assertEquals("channel_name_invalid", assertIs<DataResult.Error>(result).error.code)
+        assertEquals(
+            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1")),
+            network.requests
+        )
     }
 
     @Test
