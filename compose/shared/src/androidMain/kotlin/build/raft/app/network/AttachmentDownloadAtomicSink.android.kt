@@ -2,6 +2,7 @@ package build.raft.app.network
 
 import android.system.Os
 import android.system.OsConstants
+import java.io.File
 import java.io.FileDescriptor
 
 internal actual fun createAttachmentDownloadAtomicSink(
@@ -29,6 +30,6 @@ private object AndroidAttachmentDownloadFileOps : AttachmentDownloadFileOps {
         runCatching { Os.rename(sourcePath, targetPath) }.isSuccess
 
     override fun unlink(path: String) {
-        runCatching { Os.unlink(path) }
+        runCatching { File(path).delete() }
     }
 }

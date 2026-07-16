@@ -32,15 +32,22 @@ private object OhosAttachmentDownloadFileOps : AttachmentDownloadFileOps {
     override fun open(path: String): Any? =
         posixOpen(path, O_CREAT or O_TRUNC or O_WRONLY, (S_IRUSR or S_IWUSR).convert())
             .takeIf { it >= 0 }
+            ?.let(::OhosAttachmentDownloadFileHandle)
 
     override fun write(handle: Any, bytes: ByteArray, offset: Int, length: Int): Int =
         bytes.usePinned { pinned ->
-            posixWrite((handle as Int), pinned.addressOf(offset), length.convert()).toInt()
+            posixWrite(
+                (handle as OhosAttachmentDownloadFileHandle).descriptor,
+                pinned.addressOf(offset),
+                length.convert()
+            ).toInt()
         }
 
-    override fun fsync(handle: Any): Boolean = posixFsync(handle as Int) == 0
+    override fun fsync(handle: Any): Boolean =
+        posixFsync((handle as OhosAttachmentDownloadFileHandle).descriptor) == 0
 
-    override fun close(handle: Any): Boolean = posixClose(handle as Int) == 0
+    override fun close(handle: Any): Boolean =
+        posixClose((handle as OhosAttachmentDownloadFileHandle).descriptor) == 0
 
     override fun rename(sourcePath: String, targetPath: String): Boolean = posixRename(sourcePath, targetPath) == 0
 
@@ -48,3 +55,5 @@ private object OhosAttachmentDownloadFileOps : AttachmentDownloadFileOps {
         posixUnlink(path)
     }
 }
+
+private class OhosAttachmentDownloadFileHandle(val descriptor: Int)
