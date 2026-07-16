@@ -2,11 +2,23 @@ package build.raft.app.markdown
 
 import build.raft.app.SlockColor
 import build.raft.app.SlockType
+import build.raft.app.KuiklyThreadMessageItem
+import build.raft.app.ThreadMarkdownPresentationContext
+import build.raft.app.ThreadMarkdownPresentationHandle
 import build.raft.app.slockFontFamilyForWeight
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
 import build.raft.app.slockInlineCodeUsesEdgePaddingBridge
 import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withSlockFontWeight
+import build.raft.app.threadMarkdownPresentationIdentity
+import build.raft.app.threadMarkdownPresentationState
+import androidx.compose.runtime.AbstractApplier
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Composition
+import androidx.compose.runtime.ExperimentalComposeApi
+import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
@@ -31,6 +43,7 @@ import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
@@ -1534,12 +1547,26 @@ class SlockMarkdownTest {
                         tokenPlan = hydratedPlans[0]
                     )
             )
+        val precomputedPlanAnnotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = bodies[0],
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = bodies[0],
+                        onOpenTag = { tag -> currentHandler(tag) },
+                        tokenPlan = hydratedPlans[0]
+                    )
+            )
 
         assertTrue(initialAnnotated.text.endsWith(" @member0"))
         assertTrue(hydratedAnnotated.text.endsWith(" @Display Name"))
+        assertTrue(
+            precomputedPlanAnnotated.text.endsWith(" @Display Name"),
+            "the production precomputed-plan path must render the plan's resolved label without a global resolver"
+        )
         currentHandler = { openedBy = "new:${it.label}" }
         val mentionLink =
-            hydratedAnnotated.getLinkAnnotations(0, hydratedAnnotated.length)
+            precomputedPlanAnnotated.getLinkAnnotations(0, precomputedPlanAnnotated.length)
                 .map { it.item }
                 .filterIsInstance<LinkAnnotation.Clickable>()
                 .single()
@@ -1557,6 +1584,144 @@ class SlockMarkdownTest {
             }
         assertEquals(51, planner.planBuildCount)
         hydratedPlans.indices.forEach { index -> assertSame(hydratedPlans[index], candidatePlans[index]) }
+    }
+
+    @Test
+    fun bodyLocalPresentationKeepsFortyNineNoTagCardInputsAsExactSameInstances() {
+        val bodies =
+            List(50) { index ->
+                buildString {
+                    append("Card-boundary joint message $index ")
+                    append("stable body ".repeat(40))
+                    if (index == 0) append("@member0")
+                }
+            }
+        val noMembers = validThreadMarkdownTags()
+        val hydratedMembers = validThreadMarkdownTags(knownMentions = setOf("member0"))
+        val initial =
+            bodies.mapIndexed { index, body ->
+                slockMarkdownBodyPresentation(
+                    body = body,
+                    isTagValid = noMembers,
+                    inlineContentScope = "card-$index"
+                )
+            }
+        val hydrated =
+            bodies.mapIndexed { index, body ->
+                slockMarkdownBodyPresentation(
+                    body = body,
+                    isTagValid = hydratedMembers,
+                    resolveTagLabel = { tag ->
+                        if (tag.label == "@member0") "@Display Name" else threadMarkdownTagDisplayLabel(tag.label)
+                    },
+                    inlineContentScope = "card-$index"
+                )
+            }
+
+        assertNotSame(initial[0], hydrated[0])
+        assertEquals("@Display Name", hydrated[0].tokenPlan.tagTokens().single().resolvedLabel)
+        (1 until 50).forEach { index ->
+            assertSame(
+                initial[index],
+                hydrated[index],
+                "no-tag Card input $index must retain exact presentation identity"
+            )
+        }
+    }
+
+    @Test
+    fun taggedPresentationHydrationUpdatesStableBodyHandleWithoutReplacingCardIdentity() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "m-tagged",
+                authorId = "u1",
+                authorName = "Artin",
+                body = "Hello @member0"
+            )
+        val contextState =
+            mutableStateOf(
+                ThreadMarkdownPresentationContext(
+                    highlightedMentions = emptySet(),
+                    isTagValid = { false },
+                    resolveTagLabel = null,
+                    activeTagKey = null
+                )
+            )
+        val presentationState =
+            threadMarkdownPresentationState(
+                body = message.body,
+                inlineContentScope = "message-m-tagged",
+                contextState = contextState
+            )
+        val identity = threadMarkdownPresentationIdentity(message, message.body, "message-m-tagged")
+        val handle = ThreadMarkdownPresentationHandle(presentationState, identity)
+        val initial = handle.state.value
+
+        contextState.value =
+            ThreadMarkdownPresentationContext(
+                highlightedMentions = setOf("member0"),
+                isTagValid = { tag -> tag.label == "@member0" },
+                resolveTagLabel = { tag -> if (tag.label == "@member0") "@Display Name" else tag.label },
+                activeTagKey = null
+            )
+        val hydrated = handle.state.value
+
+        assertSame(presentationState, handle.state)
+        assertEquals(identity, handle.identity)
+        assertNotSame(initial, hydrated)
+        assertEquals("@Display Name", hydrated.tokenPlan.tagTokens().single().resolvedLabel)
+    }
+
+    @Test
+    @OptIn(ExperimentalComposeApi::class)
+    fun taggedPresentationHydrationRecomposesOnlyBodyLeafInRealComposition() = runBlocking {
+        val contextState =
+            mutableStateOf(
+                ThreadMarkdownPresentationContext(
+                    highlightedMentions = emptySet(),
+                    isTagValid = { false },
+                    resolveTagLabel = null,
+                    activeTagKey = null
+                )
+            )
+        val presentationState =
+            threadMarkdownPresentationState(
+                body = "Hello @member0",
+                inlineContentScope = "message-m-tagged",
+                contextState = contextState
+            )
+        val handle = ThreadMarkdownPresentationHandle(presentationState, "pr-stable")
+        val counts = TaggedPresentationCompositionCounts()
+        val recomposer = Recomposer(coroutineContext)
+        val recomposerJob = launch { recomposer.runRecomposeAndApplyChanges() }
+        val composition = Composition(UnitTestApplier(), recomposer)
+        try {
+            composition.setContent {
+                TaggedPresentationItemProbe(handle = handle, counts = counts)
+            }
+            recomposer.awaitIdle()
+            assertEquals(1, counts.item)
+            assertEquals(1, counts.card)
+            assertEquals(1, counts.body)
+
+            contextState.value =
+                ThreadMarkdownPresentationContext(
+                    highlightedMentions = setOf("member0"),
+                    isTagValid = { tag -> tag.label == "@member0" },
+                    resolveTagLabel = { tag -> if (tag.label == "@member0") "@Display Name" else tag.label },
+                    activeTagKey = null
+                )
+            recomposer.awaitIdle()
+
+            assertEquals(1, counts.item)
+            assertEquals(1, counts.card)
+            assertEquals(2, counts.body)
+            assertEquals("@Display Name", counts.resolvedLabel)
+        } finally {
+            composition.dispose()
+            recomposer.close()
+            recomposerJob.join()
+        }
     }
 
     @Test
@@ -1865,4 +2030,53 @@ class SlockMarkdownTest {
         } else {
             code
         }
+}
+
+private class UnitTestApplier : AbstractApplier<Unit>(Unit) {
+    override fun insertTopDown(index: Int, instance: Unit) = Unit
+
+    override fun insertBottomUp(index: Int, instance: Unit) = Unit
+
+    override fun remove(index: Int, count: Int) = Unit
+
+    override fun move(from: Int, to: Int, count: Int) = Unit
+
+    override fun onClear() = Unit
+}
+
+private class TaggedPresentationCompositionCounts {
+    var item: Int = 0
+    var card: Int = 0
+    var body: Int = 0
+    var resolvedLabel: String? = null
+}
+
+@Composable
+private fun TaggedPresentationItemProbe(
+    handle: ThreadMarkdownPresentationHandle,
+    counts: TaggedPresentationCompositionCounts
+) {
+    SideEffect { counts.item += 1 }
+    TaggedPresentationCardProbe(handle = handle, counts = counts)
+}
+
+@Composable
+private fun TaggedPresentationCardProbe(
+    handle: ThreadMarkdownPresentationHandle,
+    counts: TaggedPresentationCompositionCounts
+) {
+    SideEffect { counts.card += 1 }
+    TaggedPresentationBodyProbe(presentationState = handle.state, counts = counts)
+}
+
+@Composable
+private fun TaggedPresentationBodyProbe(
+    presentationState: androidx.compose.runtime.State<MarkdownBodyPresentation>,
+    counts: TaggedPresentationCompositionCounts
+) {
+    val presentation = presentationState.value
+    SideEffect {
+        counts.body += 1
+        counts.resolvedLabel = presentation.tokenPlan.tagTokens().singleOrNull()?.resolvedLabel
+    }
 }

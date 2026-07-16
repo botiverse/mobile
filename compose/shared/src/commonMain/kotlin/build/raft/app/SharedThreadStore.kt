@@ -111,6 +111,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -130,6 +131,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -1932,9 +1934,20 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         onSummaries: (ThreadReplySummariesSnapshot) -> Unit = {}
     ): DataResult<KuiklyThreadScreenPayload> {
-        if (conversationRepository == null) return DataResult.Content(basePayload)
+        return fetchFollowedThreadSummaries(basePayload).map { summaries ->
+            onSummaries(summaries)
+            basePayload.withReplySummaries(summaries)
+        }
+    }
+
+    suspend fun fetchFollowedThreadSummaries(
+        basePayload: KuiklyThreadScreenPayload
+    ): DataResult<ThreadReplySummariesSnapshot> {
+        if (conversationRepository == null) {
+            return DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+        }
         if (basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-            return DataResult.Content(basePayload)
+            return DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
         }
         readSession() ?: return authSessionRequiredResult()
         val resolvedThreadId =
@@ -1947,10 +1960,6 @@ internal class SharedThreadDataSource(
                 threadId = ThreadId(resolvedThreadId),
                 parentMessageIds = parentMessageIds
             )
-            .map { summaries ->
-                onSummaries(summaries)
-                basePayload.withReplySummaries(summaries)
-            }
     }
 
     fun cacheReplyCountProjection(
@@ -3483,12 +3492,131 @@ internal object SharedThreadPaging {
 private const val SharedThreadFirstFrameDelayMillis = 16L
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
+internal const val ThreadLargeAuxiliaryParseThresholdBytes = 262_144
+
+internal fun threadAuxiliaryParseDispatcher(bytes: Long): String =
+    if (bytes >= ThreadLargeAuxiliaryParseThresholdBytes) "background_parse" else "default"
+
+internal interface ThreadAuxiliaryParseExecutor {
+    val dispatcherName: String
+
+    suspend fun parseFollowedSummary(
+        basePayload: KuiklyThreadScreenPayload,
+        snapshot: ThreadReplySummariesSnapshot
+    ): KuiklyThreadScreenPayload
+}
+
+internal object DefaultThreadAuxiliaryParseExecutor : ThreadAuxiliaryParseExecutor {
+    override val dispatcherName: String = "background_parse"
+
+    override suspend fun parseFollowedSummary(
+        basePayload: KuiklyThreadScreenPayload,
+        snapshot: ThreadReplySummariesSnapshot
+    ): KuiklyThreadScreenPayload =
+        withContext(Dispatchers.Default) {
+            basePayload.withReplySummaries(snapshot)
+        }
+}
+
+internal fun threadAuxiliaryParsePayloadBytes(snapshot: ThreadReplySummariesSnapshot): Long =
+    snapshot.toString().encodeToByteArray().size.toLong()
+
+internal suspend fun parseFollowedSummaryForThreadAuxiliary(
+    basePayload: KuiklyThreadScreenPayload,
+    snapshot: ThreadReplySummariesSnapshot,
+    encodedBytes: Long = threadAuxiliaryParsePayloadBytes(snapshot),
+    executor: ThreadAuxiliaryParseExecutor = DefaultThreadAuxiliaryParseExecutor
+): KuiklyThreadScreenPayload {
+    val requiredDispatcher = threadAuxiliaryParseDispatcher(encodedBytes)
+    check(requiredDispatcher != "background_parse" || executor.dispatcherName == "background_parse") {
+        "large thread auxiliary parse requires background_parse, actual=${executor.dispatcherName} bytes=$encodedBytes"
+    }
+    return executor.parseFollowedSummary(basePayload, snapshot)
+}
+
+private object ThreadRenderIdentitySequence {
+    private var value: Long = 0L
+
+    fun next(prefix: String): String {
+        value += 1L
+        return "$prefix-$value"
+    }
+}
+
+internal data class ThreadRenderCommitToken(
+    val surfaceOwner: String,
+    val pageInstance: String,
+    val intent: String,
+    val routeGeneration: Long,
+    val resolvedRouteKey: String,
+    val renderRevision: Long,
+    val windowGeneration: Long
+) {
+    fun diagnosticsFields(): String =
+        "surfaceOwner=$surfaceOwner pageInstance=$pageInstance intent=$intent " +
+            "routeGeneration=$routeGeneration resolvedRouteKey=$resolvedRouteKey " +
+            "renderRevision=$renderRevision windowGeneration=$windowGeneration"
+}
+
+internal data class ThreadFirstContentDrawObservation(
+    val token: ThreadRenderCommitToken,
+    val visible: Boolean,
+    val drawSeq: Long,
+    val declaration: ThreadRenderWindowDeclaration? = null
+)
+
+internal data class ThreadRenderWindowDeclaration(
+    val totalCount: Int,
+    val windowStart: Int,
+    val windowEnd: Int,
+    val anchor: String,
+    val windowKeyCount: Int,
+    val windowKeysDigest: String,
+    val reason: String = "initial"
+) {
+    fun diagnosticsFields(): String =
+        "totalCount=$totalCount windowStart=$windowStart windowEnd=$windowEnd " +
+            "anchor=$anchor windowKeyCount=$windowKeyCount windowKeysDigest=$windowKeysDigest reason=$reason"
+}
+
+internal data class ThreadRenderControlState(
+    val mountedPageInstance: String? = null,
+    val surfaceVisible: Boolean = true,
+    val disposed: Boolean = false,
+    val cleared: Boolean = false,
+    val declaredToken: ThreadRenderCommitToken? = null,
+    val windowDeclaration: ThreadRenderWindowDeclaration? = null,
+    val committedToken: ThreadRenderCommitToken? = null
+)
+
+internal data class ThreadAuxiliaryDemand(
+    val serverId: String? = null,
+    val channelId: String? = null,
+    val mentionChannelId: String? = null,
+    val memberScopedMentions: Boolean = false,
+    val memberSuggestions: Boolean = false,
+    val channelSuggestions: Boolean = false,
+    val chatMounted: Boolean = true,
+    val composerMounted: Boolean = false
+)
+
+internal interface ThreadAuxiliaryExecutor {
+    suspend fun loadChannelMembers(serverId: String, channelId: String)
+    suspend fun ensureMemberSuggestions(
+        serverId: String,
+        mentionChannelId: String?,
+        memberScopedMentions: Boolean
+    )
+    fun ensureChannelSuggestions()
+}
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
     val timelineSlice: ThreadTimelineSlice = payload.toThreadTimelineSlice(),
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata> = payload.toThreadReplyMetadataMap(),
     val highlightedMentions: Set<String> = emptySet(),
+    val firstContentFrameGeneration: Long = 0L,
+    val renderCommitToken: ThreadRenderCommitToken? = null,
     val accessResolution: ThreadAccessResolution = ThreadAccessResolution.Loading,
     val canonicalAccessResolved: Boolean = false,
     val initialHomeAccessLookupComplete: Boolean = false,
@@ -3534,6 +3662,8 @@ internal data class SharedThreadRenderSlice(
     val timelineSlice: ThreadTimelineSlice,
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     val highlightedMentions: Set<String>,
+    val firstContentFrameGeneration: Long,
+    val renderCommitToken: ThreadRenderCommitToken?,
     val accessResolution: ThreadAccessResolution,
     val canonicalAccessResolved: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
@@ -3546,6 +3676,8 @@ private fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         timelineSlice = timelineSlice,
         replyMetadataByParentId = replyMetadataByParentId,
         highlightedMentions = highlightedMentions,
+        firstContentFrameGeneration = firstContentFrameGeneration,
+        renderCommitToken = renderCommitToken,
         accessResolution = accessResolution,
         canonicalAccessResolved = canonicalAccessResolved,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
@@ -3657,7 +3789,17 @@ internal sealed interface SharedThreadIntent {
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
     data object MarkVisibleRead : SharedThreadIntent
-    data object FirstContentReady : SharedThreadIntent
+    data class ObserveFirstContentDraw(
+        val observation: ThreadFirstContentDrawObservation
+    ) : SharedThreadIntent
+    data class DeclareRenderWindow(
+        val token: ThreadRenderCommitToken,
+        val declaration: ThreadRenderWindowDeclaration
+    ) : SharedThreadIntent
+    data object MountThreadSurface : SharedThreadIntent
+    data class SetThreadSurfaceVisible(val visible: Boolean) : SharedThreadIntent
+    data object DisposeThreadSurface : SharedThreadIntent
+    data class UpdateAuxiliaryDemand(val demand: ThreadAuxiliaryDemand) : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
@@ -3669,10 +3811,18 @@ internal class SharedThreadStore(
     private val dataSource: SharedThreadDataSource,
     private val scope: CoroutineScope,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
+    private val auxiliaryExecutor: ThreadAuxiliaryExecutor? = null,
+    private val auxiliaryParseExecutor: ThreadAuxiliaryParseExecutor = DefaultThreadAuxiliaryParseExecutor,
     initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload()
 ) {
+    private val surfaceOwner = ThreadRenderIdentitySequence.next("thread-surface")
+    private var pageInstance = ThreadRenderIdentitySequence.next("thread-page")
+    private var intentIdentity = ThreadRenderIdentitySequence.next("thread-intent")
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
+    private val _renderControlState =
+        MutableStateFlow(ThreadRenderControlState(mountedPageInstance = pageInstance))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
+    val renderControlState: StateFlow<ThreadRenderControlState> = _renderControlState.asStateFlow()
     fun payloadFlow(): Flow<KuiklyThreadScreenPayload> =
         state
             .map { threadState -> threadState.payload.withoutThreadTimelineContent() }
@@ -3709,11 +3859,20 @@ internal class SharedThreadStore(
     private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadAt: TimeMark? = null
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
-    private var firstContentReadyRouteKey: String? = null
-    private var pendingAuxiliaryHydration: PendingAuxiliaryHydration? = null
+    private var firstContentFrameCommittedRouteKey: String? = null
+    private var firstContentFrameCommittedGeneration: Long? = null
+    private var firstContentFrameCommittedToken: ThreadRenderCommitToken? = null
+    private var auxiliaryDemand = ThreadAuxiliaryDemand()
+    private var auxiliaryDemandInitialized = false
+    private val completedAuxiliaryOperations = mutableSetOf<String>()
+    private val activeAuxiliaryOperations = mutableSetOf<String>()
+    private val launchedAuxiliaryStages = mutableSetOf<String>()
+    private var pendingMembersHydration: PendingAuxiliaryHydration? = null
+    private var pendingSecondaryTimelineHydration: PendingAuxiliaryHydration? = null
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
     private val initialAccessStateMutex = Mutex()
+    private val renderControlMutex = Mutex()
     private val realtimeGapRecoveryMutex = Mutex()
     private var realtimeGapRecoveryState: RealtimeGapRecoveryState? = null
     private var loadNewerState: LoadNewerState? = null
@@ -3739,8 +3898,13 @@ internal class SharedThreadStore(
     private data class PendingAuxiliaryHydration(
         val routePayload: KuiklyThreadScreenPayload,
         val staleToken: MviStaleToken,
-        val launchSecondaryTimelineRefresh: Boolean,
-        val launchMembersHydration: Boolean
+        val frameGeneration: Long
+    )
+
+    private data class AuxiliaryOperationDecision(
+        val operation: String,
+        val applicable: Boolean,
+        val reason: String
     )
 
     private fun KuiklyThreadScreenPayload.realtimeGapRouteIdentity(): ThreadRouteIdentity =
@@ -3809,6 +3973,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.SetRemoveMemberStatus,
             is SharedThreadIntent.SetPagingAvailability ->
                 scope.launch { accept(intent) }
+            is SharedThreadIntent.UpdateAuxiliaryDemand ->
+                scope.launch { accept(intent) }
             is SharedThreadIntent.ApplyRealtimeEvent -> {
                 scope.launch {
                     applyRealtimeEvent(
@@ -3820,8 +3986,16 @@ internal class SharedThreadStore(
             SharedThreadIntent.MarkVisibleRead -> {
                 scope.launch { markVisibleRead() }
             }
-            SharedThreadIntent.FirstContentReady -> {
-                scope.launch { markFirstContentReady() }
+            is SharedThreadIntent.ObserveFirstContentDraw -> {
+                scope.launch {
+                    observeFirstContentDraw(intent.observation)
+                }
+            }
+            is SharedThreadIntent.DeclareRenderWindow,
+            SharedThreadIntent.MountThreadSurface,
+            is SharedThreadIntent.SetThreadSurfaceVisible,
+            SharedThreadIntent.DisposeThreadSurface -> {
+                scope.launch { accept(intent) }
             }
             SharedThreadIntent.LoadMembers -> {
                 scope.launch { loadMembers() }
@@ -3885,7 +4059,14 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
             SharedThreadIntent.MarkVisibleRead -> markVisibleRead()
-            SharedThreadIntent.FirstContentReady -> markFirstContentReady()
+            is SharedThreadIntent.ObserveFirstContentDraw ->
+                observeFirstContentDraw(intent.observation)
+            is SharedThreadIntent.DeclareRenderWindow ->
+                declareRenderWindow(intent.token, intent.declaration)
+            SharedThreadIntent.MountThreadSurface -> mountThreadSurface()
+            is SharedThreadIntent.SetThreadSurfaceVisible -> setThreadSurfaceVisible(intent.visible)
+            SharedThreadIntent.DisposeThreadSurface -> disposeThreadSurface()
+            is SharedThreadIntent.UpdateAuxiliaryDemand -> updateAuxiliaryDemand(intent.demand)
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
@@ -3908,8 +4089,20 @@ internal class SharedThreadStore(
         backgroundMembersHydrationJob?.cancel()
         backgroundMembersHydrationJob = null
         lastRoutePayload = null
-        firstContentReadyRouteKey = null
-        pendingAuxiliaryHydration = null
+        firstContentFrameCommittedRouteKey = null
+        firstContentFrameCommittedGeneration = null
+        firstContentFrameCommittedToken = null
+        _renderControlState.value =
+            ThreadRenderControlState(
+                mountedPageInstance = null,
+                surfaceVisible = false,
+                cleared = true
+            )
+        completedAuxiliaryOperations.clear()
+        activeAuxiliaryOperations.clear()
+        launchedAuxiliaryStages.clear()
+        pendingMembersHydration = null
+        pendingSecondaryTimelineHydration = null
         advanceRouteStaleToken()
         reducePayloadPatch(cachePayload = true) { currentPayload ->
             if (currentPayload.newerMessagesStatus == "loading") {
@@ -3934,10 +4127,32 @@ internal class SharedThreadStore(
                 .withCachedReplyParentCandidate(routeCandidatePayload)
                 .withoutTransientLocalSendingMessages()
         val staleToken = advanceRouteStaleToken()
+        intentIdentity = ThreadRenderIdentitySequence.next("thread-intent")
         lastRoutePayload = routeContextPayload
-        firstContentReadyRouteKey = null
-        pendingAuxiliaryHydration = null
+        firstContentFrameCommittedRouteKey = null
+        firstContentFrameCommittedGeneration = null
+        firstContentFrameCommittedToken = null
+        _renderControlState.value =
+            ThreadRenderControlState(
+                mountedPageInstance = pageInstance,
+                surfaceVisible = _renderControlState.value.surfaceVisible
+            )
+        completedAuxiliaryOperations.clear()
+        activeAuxiliaryOperations.clear()
+        launchedAuxiliaryStages.clear()
+        pendingMembersHydration = null
+        pendingSecondaryTimelineHydration = null
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
+        val renderCommitToken =
+            ThreadRenderCommitToken(
+                surfaceOwner = surfaceOwner,
+                pageInstance = pageInstance,
+                intent = intentIdentity,
+                routeGeneration = staleToken.value,
+                resolvedRouteKey = routeIdentity.instanceKey,
+                renderRevision = 1L,
+                windowGeneration = 1L
+            )
         val threadId = routeIdentity.timelineKey
         val cached =
             threadId
@@ -3975,6 +4190,8 @@ internal class SharedThreadStore(
                 SharedThreadState(
                     payload = visiblePayload,
                     highlightedMentions = emptySet(),
+                    firstContentFrameGeneration = staleToken.value,
+                    renderCommitToken = renderCommitToken,
                     accessResolution = ThreadAccessResolution.Loading,
                     canonicalAccessResolved = false,
                     initialHomeAccessLookupComplete = false,
@@ -4004,10 +4221,10 @@ internal class SharedThreadStore(
             )
             return
         }
-        // Same-identity intent updates (tab/focus/nonce) do not invalidate the
-        // in-flight canonical content/access generation. Content projection
-        // deliberately does not own those intent fields, so the latest intent
-        // remains intact when the current generation completes.
+        // The route/access generation remains intact for a retained page, but
+        // reducePayloadPatch atomically advances the render intent whenever
+        // tab/focus/nonce is non-equivalent. That reopens applicability under a
+        // new exact token without restarting canonical network ownership.
         lastRoutePayload =
             (lastRoutePayload ?: currentPayload)
                 .withRouteIntentFrom(routeCandidatePayload)
@@ -4150,14 +4367,16 @@ internal class SharedThreadStore(
                         requiresParentAccessCandidate =
                             projectedPayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
                     )
-                val didEmit =
+                val payloadEmitted = reducePayloadProjection(projectedPayload)
+                val latestState = _state.value
+                val metadataEmitted =
                     reduceState(
-                        currentState.copy(
-                            payload = projectedPayload,
+                        latestState.copy(
                             accessResolution = projectedAccessResolution,
                             canonicalAccessResolved = canonicalAccessResolved
                         )
                     )
+                val didEmit = payloadEmitted || metadataEmitted
                 if (didEmit && visiblePayload != null) {
                     dataSource.cachePayload(projectedPayload)
                 }
@@ -4190,64 +4409,472 @@ internal class SharedThreadStore(
         launchSecondaryTimelineRefresh: Boolean,
         launchMembersHydration: Boolean
     ) {
-        if (!launchSecondaryTimelineRefresh && !launchMembersHydration) {
-            pendingAuxiliaryHydration = null
-            return
-        }
-        pendingAuxiliaryHydration =
+        val pending =
             PendingAuxiliaryHydration(
                 routePayload = routePayload,
                 staleToken = staleToken,
-                launchSecondaryTimelineRefresh = launchSecondaryTimelineRefresh,
-                launchMembersHydration = launchMembersHydration
+                frameGeneration = _state.value.firstContentFrameGeneration
             )
+        pendingMembersHydration = pending.takeIf { launchMembersHydration }
+        pendingSecondaryTimelineHydration = pending.takeIf { launchSecondaryTimelineRefresh }
         diagnosticsLogger?.invoke(
-            "thread_auxiliary_hydration result=queued " +
+            "thread_auxiliary_queue result=queued " +
                 "threadId=${routePayload.sourceThreadId.orEmpty()} " +
                 "secondary=$launchSecondaryTimelineRefresh members=$launchMembersHydration"
         )
         launchPendingAuxiliaryHydrationIfReady()
     }
 
-    private fun markFirstContentReady() {
-        val currentPayload = _state.value.payload
-        val routeKey = currentPayload.resolveThreadRouteIdentity().instanceKey
-        firstContentReadyRouteKey = routeKey
+    private suspend fun mountThreadSurface() {
+        renderControlMutex.withLock {
+            val control = _renderControlState.value
+            if (!control.disposed && control.mountedPageInstance != null) return
+            pageInstance = ThreadRenderIdentitySequence.next("thread-page")
+            val currentToken = _state.value.renderCommitToken
+            val mountedToken =
+                currentToken?.copy(
+                    pageInstance = pageInstance,
+                    windowGeneration = 1L
+                )
+            firstContentFrameCommittedRouteKey = null
+            firstContentFrameCommittedGeneration = null
+            firstContentFrameCommittedToken = null
+            if (mountedToken != currentToken) {
+                reduceState(_state.value.copy(renderCommitToken = mountedToken))
+            }
+            _renderControlState.value =
+                ThreadRenderControlState(
+                    mountedPageInstance = pageInstance,
+                    surfaceVisible = control.surfaceVisible
+                )
+        }
+    }
+
+    private suspend fun setThreadSurfaceVisible(visible: Boolean) {
+        renderControlMutex.withLock {
+            val control = _renderControlState.value
+            if (control.surfaceVisible == visible) return
+            _renderControlState.value = control.copy(surfaceVisible = visible)
+        }
+    }
+
+    private suspend fun disposeThreadSurface() {
+        renderControlMutex.withLock {
+            val control = _renderControlState.value
+            if (control.disposed) return
+            firstContentFrameCommittedRouteKey = null
+            firstContentFrameCommittedGeneration = null
+            firstContentFrameCommittedToken = null
+            pendingMembersHydration = null
+            pendingSecondaryTimelineHydration = null
+            activeAuxiliaryOperations.clear()
+            launchedAuxiliaryStages.clear()
+            _renderControlState.value =
+                control.copy(
+                    mountedPageInstance = null,
+                    surfaceVisible = false,
+                    disposed = true,
+                    declaredToken = null,
+                    windowDeclaration = null,
+                    committedToken = null
+                )
+        }
+        secondaryTimelineRefreshJob?.cancel()
+        backgroundMembersHydrationJob?.cancel()
+    }
+
+    private suspend fun declareRenderWindow(
+        token: ThreadRenderCommitToken,
+        declaration: ThreadRenderWindowDeclaration
+    ) {
+        renderControlMutex.withLock {
+            bindRenderWindowLocked(token, declaration)
+        }
+    }
+
+    /**
+     * Binds an exact production Lazy window to [token]. A first/equivalent
+     * declaration is control-only. A materially different pre-commit window
+     * publishes a replacement token before the old draw can enter the CAS.
+     */
+    private fun bindRenderWindowLocked(
+        token: ThreadRenderCommitToken,
+        declaration: ThreadRenderWindowDeclaration
+    ): ThreadRenderCommitToken? {
+        val currentToken = _state.value.renderCommitToken ?: return null
+        val control = _renderControlState.value
+        if (token != currentToken || control.disposed || control.cleared) return currentToken
+        if (control.declaredToken != token) {
+            _renderControlState.value =
+                control.copy(
+                    declaredToken = token,
+                    windowDeclaration = declaration
+                )
+            diagnosticsLogger?.invoke(
+                "thread_render_window_declared ${token.diagnosticsFields()} ${declaration.diagnosticsFields()}"
+            )
+            return token
+        }
+        if (control.windowDeclaration == declaration) return token
+        if (control.committedToken == token) return token
+
+        val replacement = token.copy(windowGeneration = token.windowGeneration + 1L)
+        firstContentFrameCommittedRouteKey = null
+        firstContentFrameCommittedGeneration = null
+        firstContentFrameCommittedToken = null
+        reduceState(_state.value.copy(renderCommitToken = replacement))
+        _renderControlState.value =
+            control.copy(
+                declaredToken = replacement,
+                windowDeclaration = declaration,
+                committedToken = null
+            )
         diagnosticsLogger?.invoke(
-            "thread_first_content_ready threadId=${currentPayload.sourceThreadId.orEmpty()} routeKey=$routeKey"
+            "thread_render_window_declared ${replacement.diagnosticsFields()} ${declaration.diagnosticsFields()}"
         )
-        launchPendingAuxiliaryHydrationIfReady()
+        return replacement
+    }
+
+    private suspend fun observeFirstContentDraw(observation: ThreadFirstContentDrawObservation) {
+        renderControlMutex.withLock {
+            val token = observation.token
+            observation.declaration?.let { declaration ->
+                bindRenderWindowLocked(token, declaration)
+            }
+            val currentState = _state.value
+            val currentPayload = currentState.payload
+            val currentToken = currentState.renderCommitToken
+            val control = _renderControlState.value
+            diagnosticsLogger?.invoke(
+                "thread_first_content_draw_observed ${token.diagnosticsFields()} " +
+                    "visible=${observation.visible} drawSeq=${observation.drawSeq}"
+            )
+            if (firstContentFrameCommittedToken == token) {
+                return
+            }
+            val dropReason =
+                when {
+                    token.surfaceOwner.isBlank() || token.pageInstance.isBlank() || token.intent.isBlank() ||
+                        token.routeGeneration <= 0L || token.resolvedRouteKey.isBlank() ||
+                        token.renderRevision <= 0L || token.windowGeneration <= 0L -> "invalid_token"
+                    control.cleared -> "cleared"
+                    control.disposed || control.mountedPageInstance == null -> "disposed"
+                    currentToken == null -> "no_pending_snapshot"
+                    token.surfaceOwner != currentToken.surfaceOwner -> "surface_owner_mismatch"
+                    token.pageInstance != control.mountedPageInstance ||
+                        token.pageInstance != currentToken.pageInstance -> "page_instance_mismatch"
+                    token.intent != currentToken.intent -> "intent_mismatch"
+                    token.routeGeneration != currentToken.routeGeneration -> "route_generation_mismatch"
+                    token.resolvedRouteKey != currentToken.resolvedRouteKey -> "resolved_route_mismatch"
+                    token.renderRevision != currentToken.renderRevision -> "render_revision_mismatch"
+                    token.windowGeneration != currentToken.windowGeneration -> "window_generation_mismatch"
+                    !observation.visible || !control.surfaceVisible -> "surface_not_visible"
+                    currentPayload.status == "loading" -> "no_pending_snapshot"
+                    control.declaredToken != token || control.windowDeclaration == null -> "window_not_declared"
+                    else -> null
+                }
+            if (dropReason != null) {
+                diagnosticsLogger?.invoke(
+                    "thread_first_content_frame_commit_drop reason=$dropReason drawSeq=${observation.drawSeq} " +
+                        "${token.diagnosticsFields()} " +
+                        "currentSurfaceOwner=${currentToken?.surfaceOwner ?: "none"} " +
+                        "currentPageInstance=${control.mountedPageInstance ?: "none"} " +
+                        "currentIntent=${currentToken?.intent ?: "none"} " +
+                        "currentRouteGeneration=${currentToken?.routeGeneration ?: 0L} " +
+                        "currentResolvedRouteKey=${currentToken?.resolvedRouteKey ?: "none"} " +
+                        "currentRenderRevision=${currentToken?.renderRevision ?: 0L} " +
+                        "currentWindowGeneration=${currentToken?.windowGeneration ?: 0L}"
+                )
+                return
+            }
+            firstContentFrameCommittedToken = token
+            _renderControlState.value = control.copy(committedToken = token)
+            firstContentFrameCommittedRouteKey = token.resolvedRouteKey
+            firstContentFrameCommittedGeneration = token.routeGeneration
+            diagnosticsLogger?.invoke(
+                "thread_first_content_frame_committed " +
+                    "threadId=${currentPayload.sourceThreadId.orEmpty()} ${token.diagnosticsFields()}"
+            )
+            launchPendingAuxiliaryHydrationIfReady()
+        }
     }
 
     private fun launchPendingAuxiliaryHydrationIfReady() {
-        val pending = pendingAuxiliaryHydration ?: return
-        val pendingRouteKey = pending.routePayload.resolveThreadRouteIdentity().instanceKey
-        if (firstContentReadyRouteKey != pendingRouteKey) return
-        val currentPayload = _state.value.payload
+        val token = firstContentFrameCommittedToken ?: return
+        if (token != _state.value.renderCommitToken) return
+        if (auxiliaryExecutor != null && !auxiliaryDemandInitialized) return
+        launchPendingMembersHydrationIfReady(token)
+        launchPendingSecondaryTimelineHydrationIfReady(token)
+    }
+
+    private fun launchPendingMembersHydrationIfReady(token: ThreadRenderCommitToken) {
+        val pending = pendingMembersHydration
+        if (pending != null && !pending.isReadyForCommittedFrame()) return
+        pendingMembersHydration = null
+        launchMembersStage(token)
+    }
+
+    private fun updateAuxiliaryDemand(demand: ThreadAuxiliaryDemand) {
+        if (auxiliaryDemandInitialized && auxiliaryDemand == demand) return
+        val hadCommittedRender = firstContentFrameCommittedToken != null
+        auxiliaryDemand = demand
+        auxiliaryDemandInitialized = true
+        if (hadCommittedRender) {
+            // Composer/tab applicability is part of the rendered intent. Once
+            // a token has declared/finished its stage matrix, changing demand
+            // must rebind a new exact token instead of trying to reuse a
+            // consumed (token, stage) admission.
+            reducePayloadProjection(_state.value.payload, forceIntentAdvance = true)
+            return
+        }
+    }
+
+    private fun launchMembersStage(token: ThreadRenderCommitToken) {
+        val stage = "members"
+        if (!launchedAuxiliaryStages.add(auxiliaryStageKey(token, stage))) return
+        val executor = auxiliaryExecutor
+        val payload = _state.value.payload
+        val demand = auxiliaryDemand
+        // selectedTab is part of the exact render intent/token and therefore
+        // cannot lag behind SelectTab the way the page-level demand effect can.
+        // Use it as the authoritative tab fence; demand still owns composer
+        // and suggestion applicability within the mounted Chat surface.
+        val chatMounted = payload.hasChatRenderIntent()
+        val hasContent = payload.hasRenderableThreadContent()
+        val supportsChannelMembers = payload.surfaceKind != KuiklyThreadSurfaceKind.DirectMessage
+        val decisions =
+            listOf(
+                AuxiliaryOperationDecision(
+                    operation = "channel_members",
+                    applicable =
+                        chatMounted && supportsChannelMembers &&
+                            ((executor != null && demand.serverId != null && demand.channelId != null) ||
+                                (executor == null && !payload.sourceThreadId.isNullOrBlank())) &&
+                            (hasContent || demand.memberSuggestions),
+                    reason =
+                        when {
+                            !chatMounted -> "tab_not_chat"
+                            !supportsChannelMembers ||
+                                (executor != null && (demand.serverId == null || demand.channelId == null)) ||
+                                (executor == null && payload.sourceThreadId.isNullOrBlank()) ->
+                                "surface_not_supported"
+                            !hasContent && !demand.memberSuggestions -> "operation_not_demanded"
+                            else -> "resolved_snapshot"
+                        }
+                ),
+                AuxiliaryOperationDecision(
+                    operation = "member_suggestions",
+                    applicable =
+                        executor != null && chatMounted && demand.composerMounted && demand.memberSuggestions &&
+                            demand.serverId != null,
+                    reason =
+                        when {
+                            !chatMounted -> "tab_not_chat"
+                            !demand.composerMounted -> "composer_not_mounted"
+                            !demand.memberSuggestions -> "operation_not_demanded"
+                            executor == null || demand.serverId == null -> "surface_not_supported"
+                            else -> "composer_member_demand"
+                        }
+                ),
+                AuxiliaryOperationDecision(
+                    operation = "channel_suggestions",
+                    applicable = executor != null && chatMounted && demand.composerMounted && demand.channelSuggestions,
+                    reason =
+                        when {
+                            !chatMounted -> "tab_not_chat"
+                            !demand.composerMounted -> "composer_not_mounted"
+                            !demand.channelSuggestions -> "operation_not_demanded"
+                            executor == null -> "surface_not_supported"
+                            else -> "composer_channel_demand"
+                        }
+                )
+            )
+        val applicable = decisions.any(AuxiliaryOperationDecision::applicable)
+        val stageAdmissionId = auxiliaryStageAdmissionId(token, stage)
+        if (!applicable) {
+            val reason = decisions.first().reason
+            diagnosticsLogger?.invoke(
+                "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                    "applicable=false result=skipped terminal=none reason=$reason ${token.diagnosticsFields()}"
+            )
+            decisions.forEach { decision -> logAuxiliaryOperationDecision(stage, stageAdmissionId, decision, token) }
+            return
+        }
+        diagnosticsLogger?.invoke(
+            "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                "applicable=true result=admitted terminal=none reason=resolved_snapshot ${token.diagnosticsFields()}"
+        )
+        decisions.forEach { decision -> logAuxiliaryOperationDecision(stage, stageAdmissionId, decision, token) }
+        diagnosticsLogger?.invoke(
+            "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                "applicable=true result=launched terminal=none reason=resolved_snapshot ${token.diagnosticsFields()}"
+        )
+        scope.launch {
+            var failed = false
+            decisions.filter(AuxiliaryOperationDecision::applicable).forEach { decision ->
+                val operation = decision.operation
+                val requestId = operationKey(token, operation)
+                if (!activeAuxiliaryOperations.add(requestId)) {
+                    diagnosticsLogger?.invoke(
+                        "thread_auxiliary_request_join stage=$stage operation=$operation " +
+                            "stageAdmissionId=$stageAdmissionId requestId=$requestId reason=coalesced " +
+                            token.diagnosticsFields()
+                    )
+                    return@forEach
+                }
+                diagnosticsLogger?.invoke(
+                    "thread_auxiliary_request stage=$stage operation=$operation stageAdmissionId=$stageAdmissionId " +
+                        "requestId=$requestId phase=started result=none reason=resolved_snapshot ${token.diagnosticsFields()}"
+                )
+                var requestFailure: Throwable? = null
+                try {
+                    when (operation) {
+                        "channel_members" ->
+                            if (executor != null) {
+                                executor.loadChannelMembers(demand.serverId!!, demand.channelId!!)
+                            } else {
+                                loadMembers(force = true)
+                            }
+                        "member_suggestions" ->
+                            requireNotNull(executor).ensureMemberSuggestions(
+                                serverId = demand.serverId!!,
+                                mentionChannelId = demand.mentionChannelId,
+                                memberScopedMentions = demand.memberScopedMentions
+                            )
+                        "channel_suggestions" -> requireNotNull(executor).ensureChannelSuggestions()
+                    }
+                } catch (cancellation: CancellationException) {
+                    requestFailure = cancellation
+                } catch (failure: Throwable) {
+                    requestFailure = failure
+                }
+                val cancelled = requestFailure is CancellationException
+                val succeeded = requestFailure == null
+                activeAuxiliaryOperations.remove(requestId)
+                if (succeeded) {
+                    completedAuxiliaryOperations += requestId
+                } else if (!cancelled) {
+                    failed = true
+                }
+                val terminalResult =
+                    when {
+                        succeeded -> "success"
+                        cancelled -> "cancelled"
+                        else -> "failure"
+                    }
+                val terminalReason =
+                    when {
+                        succeeded -> "resolved_snapshot"
+                        cancelled -> "cancelled"
+                        else -> "request_failed"
+                    }
+                diagnosticsLogger?.invoke(
+                    "thread_auxiliary_request stage=$stage operation=$operation stageAdmissionId=$stageAdmissionId " +
+                        "requestId=$requestId phase=terminal result=$terminalResult reason=$terminalReason " +
+                        token.diagnosticsFields()
+                )
+                if (cancelled) {
+                    diagnosticsLogger?.invoke(
+                        "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                            "applicable=true result=terminal terminal=cancelled reason=cancelled ${token.diagnosticsFields()}"
+                    )
+                    throw requireNotNull(requestFailure)
+                }
+                if (_state.value.renderCommitToken != token || _renderControlState.value.disposed) {
+                    diagnosticsLogger?.invoke(
+                        "thread_auxiliary_completion_drop stage=$stage operation=$operation " +
+                            "stageAdmissionId=$stageAdmissionId requestId=$requestId phase=request " +
+                            "reason=${if (_renderControlState.value.disposed) "disposed" else "stale_token"} " +
+                            token.diagnosticsFields()
+                    )
+                    failed = true
+                }
+            }
+            diagnosticsLogger?.invoke(
+                "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                    "applicable=true result=terminal terminal=${if (failed) "failure" else "success"} " +
+                    "reason=${if (failed) "request_failed" else "resolved_snapshot"} ${token.diagnosticsFields()}"
+            )
+        }
+    }
+
+    private fun logAuxiliaryOperationDecision(
+        stage: String,
+        stageAdmissionId: String,
+        decision: AuxiliaryOperationDecision,
+        token: ThreadRenderCommitToken
+    ) {
+        diagnosticsLogger?.invoke(
+            "thread_auxiliary_operation stage=$stage operation=${decision.operation} " +
+                "stageAdmissionId=$stageAdmissionId applicable=${decision.applicable} " +
+                "result=${if (decision.applicable) "admitted" else "skipped"} reason=${decision.reason} " +
+                token.diagnosticsFields()
+        )
+    }
+
+    private fun auxiliaryStageAdmissionId(token: ThreadRenderCommitToken, stage: String): String =
+        "${operationKey(token, stage)}:admission"
+
+    private fun auxiliaryStageKey(token: ThreadRenderCommitToken, stage: String): String =
+        "${operationKey(token, stage)}:stage"
+
+    private fun operationKey(token: ThreadRenderCommitToken, operation: String): String =
+        "${token.surfaceOwner}:${token.pageInstance}:${token.intent}:${token.routeGeneration}:" +
+            "${token.resolvedRouteKey}:${token.renderRevision}:${token.windowGeneration}:$operation"
+
+    private fun auxiliaryFenceReason(
+        token: ThreadRenderCommitToken,
+        staleToken: MviStaleToken,
+        routePayload: KuiklyThreadScreenPayload
+    ): String? {
+        val control = _renderControlState.value
+        val currentState = _state.value
+        return when {
+            control.cleared -> "cleared"
+            control.disposed || control.mountedPageInstance == null -> "disposed"
+            currentState.renderCommitToken != token || control.committedToken != token -> "stale_token"
+            !staleToken.isCurrent(routeStaleToken) -> "route_switched"
+            !currentState.payload.isUsableCachedPayloadForRoute(routePayload) -> "route_switched"
+            else -> null
+        }
+    }
+
+    private fun launchPendingSecondaryTimelineHydrationIfReady(token: ThreadRenderCommitToken) {
+        val pending = pendingSecondaryTimelineHydration
+        if (pending != null && !pending.isReadyForCommittedFrame()) return
+        pendingSecondaryTimelineHydration = null
+        launchSecondaryStage(
+            token = token,
+            routePayload = pending?.routePayload ?: _state.value.payload,
+            staleToken = pending?.staleToken ?: routeStaleToken
+        )
+    }
+
+    private fun PendingAuxiliaryHydration.isReadyForCommittedFrame(): Boolean {
+        val currentState = _state.value
+        val currentPayload = currentState.payload
         if (
-            !pending.staleToken.isCurrent(routeStaleToken) ||
+            firstContentFrameCommittedToken == null ||
+            firstContentFrameCommittedToken != currentState.renderCommitToken ||
+            firstContentFrameCommittedGeneration != frameGeneration
+        ) {
+            return false
+        }
+        if (
+            frameGeneration != currentState.firstContentFrameGeneration ||
+            !staleToken.isCurrent(routeStaleToken) ||
             !routeStillCurrent(
-                pending.routePayload,
+                routePayload,
                 "thread_auxiliary_hydration",
                 "launch",
                 currentPayload
             )
         ) {
-            pendingAuxiliaryHydration = null
-            return
+            if (pendingMembersHydration === this) pendingMembersHydration = null
+            if (pendingSecondaryTimelineHydration === this) pendingSecondaryTimelineHydration = null
+            return false
         }
-        pendingAuxiliaryHydration = null
-        diagnosticsLogger?.invoke(
-            "thread_auxiliary_hydration result=launched " +
-                "threadId=${pending.routePayload.sourceThreadId.orEmpty()} " +
-                "secondary=${pending.launchSecondaryTimelineRefresh} members=${pending.launchMembersHydration}"
-        )
-        if (pending.launchSecondaryTimelineRefresh) {
-            launchSecondaryTimelineRefresh(pending.routePayload, pending.staleToken)
-        }
-        if (pending.launchMembersHydration) {
-            launchBackgroundMembersHydration(pending.routePayload)
-        }
+        return true
     }
 
     private fun launchFocusedOriginHydrationIfNeeded(
@@ -4492,14 +5119,75 @@ internal class SharedThreadStore(
             }
     }
 
-    private fun launchSecondaryTimelineRefresh(
+    private fun launchSecondaryStage(
+        token: ThreadRenderCommitToken,
         routePayload: KuiklyThreadScreenPayload,
         staleToken: MviStaleToken
     ) {
+        val stage = "secondary"
+        if (!launchedAuxiliaryStages.add(auxiliaryStageKey(token, stage))) return
+        val payload = _state.value.payload
+        val chatMounted = payload.hasChatRenderIntent()
+        val hasContent = payload.hasRenderableThreadContent()
+        val decisions =
+            listOf(
+                AuxiliaryOperationDecision(
+                    operation = "followed_summary",
+                    applicable =
+                        chatMounted && hasContent &&
+                            payload.surfaceKind == KuiklyThreadSurfaceKind.Channel,
+                    reason =
+                        when {
+                            !chatMounted -> "tab_not_chat"
+                            !hasContent -> "no_renderable_content"
+                            payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ->
+                                "reply_thread_followed_not_applicable"
+                            payload.surfaceKind != KuiklyThreadSurfaceKind.Channel -> "surface_not_supported"
+                            else -> "resolved_snapshot"
+                        }
+                ),
+                AuxiliaryOperationDecision(
+                    operation = "saved_status_enrichment",
+                    applicable = chatMounted && hasContent,
+                    reason =
+                        when {
+                            !chatMounted -> "tab_not_chat"
+                            !hasContent -> "no_renderable_content"
+                            else -> "resolved_snapshot"
+                        }
+                )
+            )
+        val applicable = decisions.any(AuxiliaryOperationDecision::applicable)
+        val stageAdmissionId = auxiliaryStageAdmissionId(token, stage)
+        if (!applicable) {
+            diagnosticsLogger?.invoke(
+                "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                    "applicable=false result=skipped terminal=none reason=${decisions.first().reason} " +
+                    token.diagnosticsFields()
+            )
+            decisions.forEach { decision -> logAuxiliaryOperationDecision(stage, stageAdmissionId, decision, token) }
+            return
+        }
+        diagnosticsLogger?.invoke(
+            "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                "applicable=true result=admitted terminal=none reason=resolved_snapshot ${token.diagnosticsFields()}"
+        )
+        decisions.forEach { decision -> logAuxiliaryOperationDecision(stage, stageAdmissionId, decision, token) }
+        diagnosticsLogger?.invoke(
+            "thread_auxiliary_hydration stage=$stage stageAdmissionId=$stageAdmissionId " +
+                "applicable=true result=launched terminal=none reason=resolved_snapshot ${token.diagnosticsFields()}"
+        )
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob =
             scope.launch {
-                refreshSecondaryTimelineData(routePayload, staleToken)
+                refreshSecondaryTimelineData(
+                    routePayload = routePayload,
+                    staleToken = staleToken,
+                    token = token,
+                    stageAdmissionId = stageAdmissionId,
+                    followedApplicable = decisions.first { it.operation == "followed_summary" }.applicable,
+                    savedApplicable = decisions.first { it.operation == "saved_status_enrichment" }.applicable
+                )
             }
     }
 
@@ -4520,87 +5208,299 @@ internal class SharedThreadStore(
 
     private suspend fun refreshSecondaryTimelineData(
         routePayload: KuiklyThreadScreenPayload,
-        staleToken: MviStaleToken
+        staleToken: MviStaleToken,
+        token: ThreadRenderCommitToken,
+        stageAdmissionId: String,
+        followedApplicable: Boolean,
+        savedApplicable: Boolean
     ) {
         val startedAt = TimeSource.Monotonic.markNow()
         val beforeFetch = _state.value.payload
-        if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "start", beforeFetch)) {
-            return
-        }
-        if (!beforeFetch.hasRenderableThreadContent()) {
+        val initialFence = auxiliaryFenceReason(token, staleToken, routePayload)
+        if (initialFence != null || !routeStillCurrent(routePayload, "thread_secondary_refresh", "start", beforeFetch)) {
+            diagnosticsLogger?.invoke(
+                "thread_auxiliary_hydration stage=secondary stageAdmissionId=$stageAdmissionId " +
+                    "applicable=true result=terminal terminal=failure " +
+                    "reason=${initialFence ?: "route_switched"} ${token.diagnosticsFields()}"
+            )
             return
         }
         var replySummaries: ThreadReplySummariesSnapshot? = null
-        val followedPayload =
-            if (beforeFetch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-                // ReplyThread loads are already scoped to a single canonical stream,
-                // and RealConversationRepository.getReplyThread does not attach
-                // followed-channel summaries. Re-running it here only duplicates the
-                // complete messages/context request after the first result is visible.
+        var stageFailureReason: String? = null
+        var stageTerminalLogged = false
+        fun logStageTerminal(terminal: String, reason: String) {
+            if (stageTerminalLogged) return
+            stageTerminalLogged = true
+            diagnosticsLogger?.invoke(
+                "thread_auxiliary_hydration stage=secondary stageAdmissionId=$stageAdmissionId " +
+                    "applicable=true result=terminal terminal=$terminal reason=$reason ${token.diagnosticsFields()}"
+            )
+        }
+        fun logCompletionDrop(operation: String, requestId: String, phase: String, reason: String) {
+            diagnosticsLogger?.invoke(
+                "thread_auxiliary_completion_drop stage=secondary operation=$operation " +
+                    "stageAdmissionId=$stageAdmissionId requestId=$requestId phase=$phase " +
+                    "reason=$reason ${token.diagnosticsFields()}"
+            )
+        }
+        val startedOperations = linkedMapOf<String, String>()
+        val completionDroppedOperations = mutableSetOf<String>()
+        fun markOperationStarted(operation: String, requestId: String) {
+            startedOperations[operation] = requestId
+        }
+        fun logObsoleteStartedOperations(phase: String, reason: String) {
+            startedOperations.forEach { (operation, requestId) ->
+                if (completionDroppedOperations.add(operation)) {
+                    logCompletionDrop(operation, requestId, phase, reason)
+                }
+            }
+        }
+        val completedOperations = mutableListOf<Pair<String, String>>()
+        val followedOperation = "followed_summary"
+        val followedRequestId = operationKey(token, followedOperation)
+        var followedPayload = beforeFetch
+        try {
+            if (followedApplicable) {
                 diagnosticsLogger?.invoke(
-                    "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                        "result=skipped:reply_thread durationMs=0"
+                    "thread_auxiliary_request stage=secondary operation=$followedOperation " +
+                        "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=started " +
+                        "result=none reason=resolved_snapshot ${token.diagnosticsFields()}"
                 )
-                beforeFetch
-            } else {
+                markOperationStarted(followedOperation, followedRequestId)
                 val followedStartedAt = TimeSource.Monotonic.markNow()
                 val followedResult =
-                    dataSource.fetchFollowedThreadPayload(beforeFetch) { snapshot ->
-                        replySummaries = snapshot
+                    try {
+                        withContext(Dispatchers.Default) {
+                            dataSource.fetchFollowedThreadSummaries(beforeFetch)
+                        }
+                    } catch (cancellation: CancellationException) {
+                        diagnosticsLogger?.invoke(
+                            "thread_auxiliary_request stage=secondary operation=$followedOperation " +
+                                "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=terminal " +
+                                "result=cancelled reason=cancelled ${token.diagnosticsFields()}"
+                        )
+                        logStageTerminal("cancelled", "cancelled")
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        diagnosticsLogger?.invoke(
+                            "thread_auxiliary_request stage=secondary operation=$followedOperation " +
+                                "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=terminal " +
+                                "result=failure reason=request_failed ${token.diagnosticsFields()}"
+                        )
+                        logStageTerminal("failure", "request_failed")
+                        return
                     }
+                val followedRequestFailed = followedResult is DataResult.Error || followedResult is DataResult.NoPermission
+                diagnosticsLogger?.invoke(
+                    "thread_auxiliary_request stage=secondary operation=$followedOperation " +
+                        "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=terminal " +
+                        "result=${if (followedRequestFailed) "failure" else "success"} " +
+                        "reason=${if (followedRequestFailed) "request_failed" else "resolved_snapshot"} " +
+                        token.diagnosticsFields()
+                )
                 diagnosticsLogger?.invoke(
                     "thread_secondary_followed_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
                         "result=${followedResult.threadDiagnosticsResult()} " +
                         "durationMs=${followedStartedAt.elapsedNow().inWholeMilliseconds}"
                 )
+                val followedFence = auxiliaryFenceReason(token, staleToken, routePayload)
+                if (followedFence != null) {
+                    logObsoleteStartedOperations("request", followedFence)
+                    logStageTerminal("failure", followedFence)
+                    return
+                }
                 when (followedResult) {
-                    is DataResult.Content -> followedResult.data
-                    is DataResult.Empty,
+                    is DataResult.Content -> {
+                        replySummaries = followedResult.data
+                        val followedBytes =
+                            withContext(Dispatchers.Default) {
+                                threadAuxiliaryParsePayloadBytes(followedResult.data)
+                            }
+                        val preParseFence = auxiliaryFenceReason(token, staleToken, routePayload)
+                        if (preParseFence != null) {
+                            logObsoleteStartedOperations("request", preParseFence)
+                            logStageTerminal("failure", preParseFence)
+                            return
+                        }
+                        val dispatcher = auxiliaryParseExecutor.dispatcherName
+                        diagnosticsLogger?.invoke(
+                            "thread_auxiliary_parse stage=secondary operation=$followedOperation " +
+                                "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=started " +
+                                "result=none reason=resolved_snapshot dispatcher=$dispatcher bytes=$followedBytes " +
+                                token.diagnosticsFields()
+                        )
+                        followedPayload =
+                            try {
+                                parseFollowedSummaryForThreadAuxiliary(
+                                    basePayload = beforeFetch,
+                                    snapshot = followedResult.data,
+                                    encodedBytes = followedBytes,
+                                    executor = auxiliaryParseExecutor
+                                )
+                            } catch (cancellation: CancellationException) {
+                                diagnosticsLogger?.invoke(
+                                    "thread_auxiliary_parse stage=secondary operation=$followedOperation " +
+                                        "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=terminal " +
+                                        "result=cancelled reason=cancelled dispatcher=$dispatcher bytes=$followedBytes " +
+                                        token.diagnosticsFields()
+                                )
+                                logStageTerminal("cancelled", "cancelled")
+                                throw cancellation
+                            } catch (_: Throwable) {
+                                diagnosticsLogger?.invoke(
+                                    "thread_auxiliary_parse stage=secondary operation=$followedOperation " +
+                                        "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=terminal " +
+                                        "result=failure reason=parse_failed dispatcher=$dispatcher bytes=$followedBytes " +
+                                        token.diagnosticsFields()
+                                )
+                                logStageTerminal("failure", "parse_failed")
+                                return
+                            }
+                        diagnosticsLogger?.invoke(
+                            "thread_auxiliary_parse stage=secondary operation=$followedOperation " +
+                                "stageAdmissionId=$stageAdmissionId requestId=$followedRequestId phase=terminal " +
+                                "result=success reason=resolved_snapshot dispatcher=$dispatcher bytes=$followedBytes " +
+                                token.diagnosticsFields()
+                        )
+                        val parseFence = auxiliaryFenceReason(token, staleToken, routePayload)
+                        if (parseFence != null) {
+                            logObsoleteStartedOperations("parse", parseFence)
+                            logStageTerminal("failure", parseFence)
+                            return
+                        }
+                        completedOperations += followedOperation to followedRequestId
+                    }
+                    is DataResult.Empty -> {
+                        completedOperations += followedOperation to followedRequestId
+                    }
                     is DataResult.Error,
-                    is DataResult.NoPermission -> beforeFetch
+                    is DataResult.NoPermission -> {
+                        stageFailureReason = "request_failed"
+                    }
                 }
             }
-        val enriched = dataSource.enrichSavedStatus(followedPayload)
-        val latest = _state.value.payload
-        if (
-            !staleTokenStillCurrent(staleToken, "thread_secondary_refresh", "after_fetch", routePayload, latest) ||
-            !routeStillCurrent(routePayload, "thread_secondary_refresh", "after_fetch", latest)
-        ) {
+
+            val savedOperation = "saved_status_enrichment"
+            val savedRequestId = operationKey(token, savedOperation)
+            var enriched = followedPayload
+            if (savedApplicable) {
+                val preSavedFence = auxiliaryFenceReason(token, staleToken, routePayload)
+                if (preSavedFence != null) {
+                    logObsoleteStartedOperations("emit", preSavedFence)
+                    logStageTerminal("failure", preSavedFence)
+                    return
+                }
+                diagnosticsLogger?.invoke(
+                    "thread_auxiliary_request stage=secondary operation=$savedOperation " +
+                        "stageAdmissionId=$stageAdmissionId requestId=$savedRequestId phase=started " +
+                        "result=none reason=resolved_snapshot ${token.diagnosticsFields()}"
+                )
+                markOperationStarted(savedOperation, savedRequestId)
+                enriched =
+                    try {
+                        withContext(Dispatchers.Default) { dataSource.enrichSavedStatus(followedPayload) }
+                    } catch (cancellation: CancellationException) {
+                        diagnosticsLogger?.invoke(
+                            "thread_auxiliary_request stage=secondary operation=$savedOperation " +
+                                "stageAdmissionId=$stageAdmissionId requestId=$savedRequestId phase=terminal " +
+                                "result=cancelled reason=cancelled ${token.diagnosticsFields()}"
+                        )
+                        logStageTerminal("cancelled", "cancelled")
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        diagnosticsLogger?.invoke(
+                            "thread_auxiliary_request stage=secondary operation=$savedOperation " +
+                                "stageAdmissionId=$stageAdmissionId requestId=$savedRequestId phase=terminal " +
+                                "result=failure reason=request_failed ${token.diagnosticsFields()}"
+                        )
+                        logStageTerminal("failure", "request_failed")
+                        return
+                    }
+                diagnosticsLogger?.invoke(
+                    "thread_auxiliary_request stage=secondary operation=$savedOperation " +
+                        "stageAdmissionId=$stageAdmissionId requestId=$savedRequestId phase=terminal " +
+                        "result=success reason=resolved_snapshot ${token.diagnosticsFields()}"
+                )
+                val savedFence = auxiliaryFenceReason(token, staleToken, routePayload)
+                if (savedFence != null) {
+                    logObsoleteStartedOperations("request", savedFence)
+                    logStageTerminal("failure", savedFence)
+                    return
+                }
+                completedOperations += savedOperation to savedRequestId
+            }
+
+            val beforePublishFence = auxiliaryFenceReason(token, staleToken, routePayload)
+            if (beforePublishFence != null) {
+                logObsoleteStartedOperations("emit", beforePublishFence)
+                completedOperations.forEach { (operation, requestId) ->
+                    diagnosticsLogger?.invoke(
+                        "thread_auxiliary_emit stage=secondary operation=$operation " +
+                            "stageAdmissionId=$stageAdmissionId requestId=$requestId result=dropped " +
+                            "reason=$beforePublishFence emitted=false ${token.diagnosticsFields()}"
+                    )
+                }
+                logStageTerminal("failure", beforePublishFence)
+                return
+            }
+
+            replySummaries?.let { snapshot ->
+                routePayload.cacheThreadId()?.let { threadId ->
+                    dataSource.cacheReplyCountProjection(threadId, snapshot)
+                }
+            }
+            val latest = _state.value.payload
+            val patch =
+                enriched
+                    .withRouteContext(routePayload)
+                    .preserveStableTimelineFrom(latest)
+            var applyFenceReason: String? = null
+            val emitted =
+                reducePayloadPatchAndCache(cachePayload = true) { currentPayload ->
+                    val fence = auxiliaryFenceReason(token, staleToken, routePayload)
+                    if (fence != null) {
+                        applyFenceReason = fence
+                        return@reducePayloadPatchAndCache currentPayload
+                    }
+                    currentPayload.withThreadContentProjectionFrom(patch)
+                }
+            if (applyFenceReason != null) {
+                val fence = requireNotNull(applyFenceReason)
+                logObsoleteStartedOperations("emit", fence)
+                completedOperations.forEach { (operation, requestId) ->
+                    diagnosticsLogger?.invoke(
+                        "thread_auxiliary_emit stage=secondary operation=$operation " +
+                            "stageAdmissionId=$stageAdmissionId requestId=$requestId result=dropped " +
+                            "reason=$fence emitted=false ${token.diagnosticsFields()}"
+                    )
+                }
+                logStageTerminal("failure", fence)
+                return
+            }
+            completedOperations.forEach { (operation, requestId) ->
+                diagnosticsLogger?.invoke(
+                    "thread_auxiliary_emit stage=secondary operation=$operation " +
+                        "stageAdmissionId=$stageAdmissionId requestId=$requestId result=accepted " +
+                        "reason=${if (emitted) "resolved_snapshot" else "projection_unchanged"} emitted=$emitted " +
+                        token.diagnosticsFields()
+                )
+            }
+            logStageTerminal(
+                terminal = if (stageFailureReason == null) "success" else "failure",
+                reason = stageFailureReason ?: "resolved_snapshot"
+            )
             diagnosticsLogger?.invoke(
                 "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                    "ignored=true reason=stale_route durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    "emitted=$emitted messages=${patch.messages.size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
-            return
+        } catch (cancellation: CancellationException) {
+            logObsoleteStartedOperations(
+                phase = "request",
+                reason = auxiliaryFenceReason(token, staleToken, routePayload) ?: "late_completion"
+            )
+            logStageTerminal("cancelled", "cancelled")
+            throw cancellation
         }
-        replySummaries?.let { snapshot ->
-            routePayload.cacheThreadId()?.let { threadId ->
-                dataSource.cacheReplyCountProjection(threadId, snapshot)
-            }
-        }
-        val patch =
-            enriched
-                .withRouteContext(routePayload)
-                .preserveStableTimelineFrom(latest)
-        val emitted =
-            reducePayloadPatchAndCache(cachePayload = true) { currentPayload ->
-                if (
-                    !staleTokenStillCurrent(
-                        staleToken,
-                        "thread_secondary_refresh",
-                        "apply",
-                        routePayload,
-                        currentPayload
-                    ) ||
-                    !routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)
-                ) {
-                    return@reducePayloadPatchAndCache currentPayload
-                }
-                currentPayload.withThreadContentProjectionFrom(patch)
-            }
-        diagnosticsLogger?.invoke(
-            "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                "emitted=$emitted messages=${patch.messages.size} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-        )
     }
 
     /**
@@ -4617,6 +5517,26 @@ internal class SharedThreadStore(
      *   never leaks into the next thread.
      */
     private suspend fun loadMembers(force: Boolean = false) {
+        if (auxiliaryExecutor != null) {
+            val token = firstContentFrameCommittedToken ?: return
+            val operation = "channel_members"
+            val key = operationKey(token, operation)
+            val stageAdmissionId = auxiliaryStageAdmissionId(token, "members")
+            when {
+                key in activeAuxiliaryOperations ->
+                    diagnosticsLogger?.invoke(
+                        "thread_auxiliary_request_join stage=members operation=$operation " +
+                            "stageAdmissionId=$stageAdmissionId requestId=$key reason=coalesced " +
+                            token.diagnosticsFields()
+                    )
+                key in completedAuxiliaryOperations ->
+                    diagnosticsLogger?.invoke(
+                        "thread_auxiliary_legacy_members result=joined_completed operation=$operation " +
+                            "requestId=$key ${token.diagnosticsFields()}"
+                    )
+            }
+            return
+        }
         val membersStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
         val basePayload = existing
@@ -5776,17 +6696,24 @@ internal class SharedThreadStore(
 
     private fun selectTab(tab: String) {
         val normalizedTab = tab.takeIf { it.isNotBlank() } ?: return
-        reducePayloadPatch { it.copy(selectedTab = normalizedTab) }
+        val current = _state.value.payload
+        val next = current.copy(selectedTab = normalizedTab)
+        if (next == current) return
+        lastRoutePayload = (lastRoutePayload ?: current).withRouteIntentFrom(next)
+        reducePayloadProjection(next, forceIntentAdvance = true)
     }
 
     private fun focusMessage(messageId: String, switchToTab: String?) {
         val normalizedMessageId = messageId.takeIf { it.isNotBlank() } ?: return
-        reducePayloadPatch {
-            it.copy(
-                selectedTab = switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: it.selectedTab,
+        val current = _state.value.payload
+        val next =
+            current.copy(
+                selectedTab = switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: current.selectedTab,
                 focusedMessageId = normalizedMessageId
             )
-        }
+        if (next == current) return
+        lastRoutePayload = (lastRoutePayload ?: current).withRouteIntentFrom(next)
+        reducePayloadProjection(next, forceIntentAdvance = true)
     }
 
     private fun prepareForLocalSend() {
@@ -5941,12 +6868,102 @@ internal class SharedThreadStore(
         return true
     }
 
+    private data class RenderIntentProjection(
+        val resolvedRouteKey: String,
+        val selectedTab: String,
+        val focusedMessageId: String?,
+        val focusedMessageRequestNonce: Int,
+        val composerSyncNonce: Int,
+        val composerFocusRequestNonce: Int
+    )
+
+    private fun KuiklyThreadScreenPayload.renderIntentProjection(): RenderIntentProjection =
+        RenderIntentProjection(
+            resolvedRouteKey = resolveThreadRouteIdentity().instanceKey,
+            selectedTab = selectedTab,
+            focusedMessageId = focusedMessageId,
+            focusedMessageRequestNonce = focusedMessageRequestNonce,
+            composerSyncNonce = composer.syncNonce,
+            composerFocusRequestNonce = composer.focusRequestNonce
+        )
+
+    private fun KuiklyThreadScreenPayload.hasChatRenderIntent(): Boolean =
+        selectedTab.trim().lowercase().let { tab -> tab.isBlank() || tab == "chat" }
+
+    /**
+     * Publishes the payload and the store-owned pending-render token in one
+     * state transition. The first accepted frame owns the current token; later
+     * background/realtime patches retain it. Before acceptance, any real
+     * rendered timeline projection starts a fresh render revision and resets
+     * the window lifecycle to generation 1. Non-equivalent route/tab/focus
+     * intent always starts a fresh token so previously skipped applicability
+     * can be evaluated again and every old draw/aux completion is fenced.
+     */
+    private fun reducePayloadProjection(
+        nextPayload: KuiklyThreadScreenPayload,
+        forceIntentAdvance: Boolean = false
+    ): Boolean {
+        val currentState = _state.value
+        val currentPayload = currentState.payload
+        val currentToken = currentState.renderCommitToken
+        val control = _renderControlState.value
+        val projectedRouteKey = nextPayload.resolveThreadRouteIdentity().instanceKey
+        val routeRefined = currentToken != null && currentToken.resolvedRouteKey != projectedRouteKey
+        val intentChanged = forceIntentAdvance || currentPayload.renderIntentProjection() != nextPayload.renderIntentProjection()
+        val committed = currentToken != null && control.committedToken == currentToken
+        val renderedProjectionChanged = nextPayload.toThreadTimelineSlice() != currentState.timelineSlice
+        val pendingRenderChanged = currentToken != null && !committed && renderedProjectionChanged
+        val renderOwnerActive = !control.disposed && !control.cleared && control.mountedPageInstance != null
+        val rotateToken = currentToken != null && renderOwnerActive && (routeRefined || intentChanged || pendingRenderChanged)
+        val projectedToken =
+            if (rotateToken) {
+                if (routeRefined || intentChanged) {
+                    intentIdentity = ThreadRenderIdentitySequence.next("thread-intent")
+                }
+                currentToken.copy(
+                    intent = if (routeRefined || intentChanged) intentIdentity else currentToken.intent,
+                    resolvedRouteKey = projectedRouteKey,
+                    renderRevision = currentToken.renderRevision + 1L,
+                    windowGeneration = 1L
+                )
+            } else {
+                currentToken
+            }
+        if (projectedToken != currentToken) {
+            firstContentFrameCommittedRouteKey = null
+            firstContentFrameCommittedGeneration = null
+            firstContentFrameCommittedToken = null
+            _renderControlState.value =
+                control.copy(
+                    declaredToken = null,
+                    windowDeclaration = null,
+                    committedToken = null
+                )
+            diagnosticsLogger?.invoke(
+                "thread_pending_render_rebound reason=${
+                    when {
+                        routeRefined -> "route_refined"
+                        intentChanged -> "intent_changed"
+                        else -> "render_projection_changed"
+                    }
+                } ${projectedToken?.diagnosticsFields().orEmpty()}"
+            )
+        }
+        return reduceState(
+            currentState.copy(
+                payload = nextPayload,
+                renderCommitToken = projectedToken
+            )
+        )
+    }
+
     private suspend fun reducePayloadPatchAndCache(
         cachePayload: Boolean = false,
+        forceIntentAdvance: Boolean = false,
         patch: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
     ): Boolean {
         val nextPayload = patch(_state.value.payload)
-        val emitted = reduceState(_state.value.copy(payload = nextPayload))
+        val emitted = reducePayloadProjection(nextPayload, forceIntentAdvance)
         if (emitted && cachePayload) {
             dataSource.cachePayload(nextPayload)
         }
@@ -5998,10 +7015,11 @@ internal class SharedThreadStore(
 
     private fun reducePayloadPatch(
         cachePayload: Boolean = false,
+        forceIntentAdvance: Boolean = false,
         patch: (KuiklyThreadScreenPayload) -> KuiklyThreadScreenPayload
     ): Boolean {
         val nextPayload = patch(_state.value.payload)
-        val emitted = reduceState(_state.value.copy(payload = nextPayload))
+        val emitted = reducePayloadProjection(nextPayload, forceIntentAdvance)
         if (emitted && cachePayload) {
             dataSource.cachePayload(nextPayload)
         }
@@ -6012,7 +7030,8 @@ internal class SharedThreadStore(
 internal class SharedThreadViewModel(
     private val dataSource: SharedThreadDataSource,
     private val initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    private val auxiliaryExecutor: ThreadAuxiliaryExecutor? = null
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
@@ -6020,12 +7039,15 @@ internal class SharedThreadViewModel(
                 dataSource = dataSource,
                 scope = viewModelScope,
                 diagnosticsLogger = diagnosticsLogger,
+                auxiliaryExecutor = auxiliaryExecutor,
                 initialPayload = initialPayload
             )
         }
     private val store: SharedThreadStore by storeDelegate
     val state: StateFlow<SharedThreadState>
         get() = store.state
+    val renderControlState: StateFlow<ThreadRenderControlState>
+        get() = store.renderControlState
     val currentPayload: KuiklyThreadScreenPayload
         get() = store.state.value.payload.withoutThreadTimelineContent()
     val currentTimelineSlice: ThreadTimelineSlice

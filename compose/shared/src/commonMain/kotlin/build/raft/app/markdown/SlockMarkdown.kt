@@ -13,8 +13,10 @@ import build.raft.app.withResolvedSlockFontFamily
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import build.raft.app.base.Utils
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -157,6 +159,7 @@ internal data class MarkdownInlineToken(
     val highlighted: Boolean = false
 )
 
+@Immutable
 internal data class MarkdownInlineTokenPlan(
     val content: String,
     val tokens: List<MarkdownInlineToken>,
@@ -363,6 +366,49 @@ internal class SlockMarkdownInlineTokenPlanner(
         val safeLimit = limit.coerceAtLeast(1)
         while (size > safeLimit) {
             keys.firstOrNull()?.let(::remove) ?: return
+        }
+    }
+}
+
+/**
+ * Stable, body-local input passed across the Thread Lazy item/Card boundary.
+ * It deliberately contains no member directory, validator, resolver, or
+ * global context signature. Directory hydration may ask the planner again,
+ * but unrelated bodies receive this exact same presentation instance.
+ */
+@Immutable
+internal data class MarkdownBodyPresentation(
+    val tokenPlan: MarkdownInlineTokenPlan,
+    val activeTagKey: String?
+)
+
+private data class MarkdownBodyPresentationCacheKey(
+    val tokenPlan: MarkdownInlineTokenPlan,
+    val activeTagKey: String?
+)
+
+private object SlockMarkdownBodyPresentationRegistry {
+    private const val MaxEntries = 512
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashMap<MarkdownBodyPresentationCacheKey, MarkdownBodyPresentation>()
+
+    fun presentation(
+        tokenPlan: MarkdownInlineTokenPlan,
+        activeTagKey: String?
+    ): MarkdownBodyPresentation {
+        val key = MarkdownBodyPresentationCacheKey(tokenPlan = tokenPlan, activeTagKey = activeTagKey)
+        return synchronized(lock) {
+            entries.remove(key)?.also { cached ->
+                entries[key] = cached
+            } ?: MarkdownBodyPresentation(
+                tokenPlan = tokenPlan,
+                activeTagKey = activeTagKey
+            ).also { created ->
+                entries[key] = created
+                while (entries.size > MaxEntries) {
+                    entries.keys.firstOrNull()?.let(entries::remove) ?: break
+                }
+            }
         }
     }
 }
@@ -1710,8 +1756,115 @@ private const val SlockMarkdownDefaultPreparseLimit = 20
 private val SlockMarkdownBodyFontSize = 14.sp
 private val SlockMarkdownBodyLineHeight = 22.sp
 
+/**
+ * Derives the immutable presentation plan for one Markdown body. Global member
+ * directories may replace the validator/resolver lambdas, but the bounded
+ * planner returns the same plan instance when none of this body's own tags
+ * changed. Passing that stable plan into [SlockMarkdownBody] lets Compose skip
+ * the expensive renderer body for unrelated member hydration.
+ */
 @Composable
-fun SlockMarkdownBody(
+internal fun rememberSlockMarkdownBodyTokenPlan(
+    body: String,
+    highlightedMentions: Set<String> = emptySet(),
+    isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    inlineContentScope: String? = null
+): MarkdownInlineTokenPlan {
+    return remember(
+        body,
+        highlightedMentions,
+        isTagValid,
+        resolveTagLabel,
+        inlineContentScope
+    ) {
+        slockMarkdownBodyTokenPlan(
+            body = body,
+            highlightedMentions = highlightedMentions,
+            isTagValid = isTagValid,
+            resolveTagLabel = resolveTagLabel,
+            inlineContentScope = inlineContentScope
+        )
+    }
+}
+
+internal fun slockMarkdownBodyTokenPlan(
+    body: String,
+    highlightedMentions: Set<String> = emptySet(),
+    isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    inlineContentScope: String? = null
+): MarkdownInlineTokenPlan {
+    val content =
+        SlockMarkdownPreparedBodyCache.getOrPut(body) {
+            body.normalizeThreadMarkdownBody()
+        }.first
+    return SlockMarkdownInlineTokenRegistry.plan(
+        content = MarkdownParserContent.from(content).parserContent,
+        highlightedMentions = highlightedMentions,
+        isTagValid = isTagValid,
+        resolveTagLabel = resolveTagLabel,
+        inlineContentScope = inlineContentScope
+    )
+}
+
+internal fun slockMarkdownBodyPresentation(
+    body: String,
+    highlightedMentions: Set<String> = emptySet(),
+    isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    inlineContentScope: String? = null,
+    activeTagKey: String? = null
+): MarkdownBodyPresentation {
+    val tokenPlan =
+        slockMarkdownBodyTokenPlan(
+            body = body,
+            highlightedMentions = highlightedMentions,
+            isTagValid = isTagValid,
+            resolveTagLabel = resolveTagLabel,
+            inlineContentScope = inlineContentScope
+        )
+    val bodyActiveTagKey =
+        activeTagKey?.takeIf { targetKey ->
+            tokenPlan.tagTokens().any { token ->
+                token.tag?.let(::threadMarkdownTagActivationKey) == targetKey
+            }
+        }
+    return SlockMarkdownBodyPresentationRegistry.presentation(
+        tokenPlan = tokenPlan,
+        activeTagKey = bodyActiveTagKey
+    )
+}
+
+@Composable
+internal fun rememberSlockMarkdownBodyPresentation(
+    body: String,
+    highlightedMentions: Set<String> = emptySet(),
+    isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    inlineContentScope: String? = null,
+    activeTagKey: String? = null
+): MarkdownBodyPresentation =
+    remember(
+        body,
+        highlightedMentions,
+        isTagValid,
+        resolveTagLabel,
+        inlineContentScope,
+        activeTagKey
+    ) {
+        slockMarkdownBodyPresentation(
+            body = body,
+            highlightedMentions = highlightedMentions,
+            isTagValid = isTagValid,
+            resolveTagLabel = resolveTagLabel,
+            inlineContentScope = inlineContentScope,
+            activeTagKey = activeTagKey
+        )
+    }
+
+@Composable
+internal fun SlockMarkdownBody(
     body: String,
     modifier: Modifier = Modifier,
     textStyle: TextStyle = SlockType.Body.copy(
@@ -1725,6 +1878,9 @@ fun SlockMarkdownBody(
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
+    precomputedTokenPlan: MarkdownInlineTokenPlan? = null,
+    presentationState: State<MarkdownBodyPresentation>? = null,
+    presentationIdentity: String = "direct",
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {}
 ) {
@@ -1737,8 +1893,14 @@ fun SlockMarkdownBody(
     SlockMarkdownBodyRecomposeMarker(
         performanceKey = performanceKey,
         bodyLength = body.length,
+        presentationIdentity = presentationIdentity,
         performanceLogger = performanceLogger
     )
+    // The tagged presentation handle crosses the Lazy item and Card without
+    // dereference. This Body leaf is the sole subscriber to its current value,
+    // so directory hydration can update the rendered tag without invalidating
+    // the item/Card composition scope.
+    val currentPresentation = presentationState?.value
     val content = remember(body, performanceKey) {
         val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
         val (prepared, cacheHit) =
@@ -1791,24 +1953,26 @@ fun SlockMarkdownBody(
     }
     val parserContent = markdownParserContent.parserContent
     val tokenPlan =
-        remember(
-            markdownParserContent,
-            highlightedMentions,
-            isTagValid,
-            resolveTagLabel,
-            inlineContentScope
-        ) {
-            SlockMarkdownInlineTokenRegistry.plan(
-                parserContent,
+        currentPresentation?.tokenPlan
+            ?: precomputedTokenPlan
+            ?: remember(
+                markdownParserContent,
                 highlightedMentions,
                 isTagValid,
-                resolveTagLabel = resolveTagLabel,
-                inlineContentScope = inlineContentScope
-            )
-        }
+                resolveTagLabel,
+                inlineContentScope
+            ) {
+                SlockMarkdownInlineTokenRegistry.plan(
+                    parserContent,
+                    highlightedMentions,
+                    isTagValid,
+                    resolveTagLabel = resolveTagLabel,
+                    inlineContentScope = inlineContentScope
+                )
+            }
     val bodyActiveTagKey =
-        remember(tokenPlan, activeTagKey) {
-            activeTagKey?.takeIf { targetKey ->
+        remember(tokenPlan, currentPresentation?.activeTagKey, activeTagKey) {
+            (currentPresentation?.activeTagKey ?: activeTagKey)?.takeIf { targetKey ->
                 tokenPlan.tagTokens().any { token ->
                     token.tag?.let(::threadMarkdownTagActivationKey) == targetKey
                 }

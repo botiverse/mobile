@@ -1178,6 +1178,25 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun ordinaryBottomAnchorRequiresExactAcceptedRenderToken() {
+        val token =
+            ThreadRenderCommitToken(
+                surfaceOwner = "surface-1",
+                pageInstance = "page-1",
+                intent = "intent-1",
+                routeGeneration = 1L,
+                resolvedRouteKey = "channel:channel-1",
+                renderRevision = 2L,
+                windowGeneration = 1L
+            )
+
+        assertFalse(ordinaryBottomAutoAnchorOwnsCommittedRender(token, null))
+        assertFalse(ordinaryBottomAutoAnchorOwnsCommittedRender(token, token.copy(windowGeneration = 2L)))
+        assertFalse(ordinaryBottomAutoAnchorOwnsCommittedRender(token, token.copy(renderRevision = 1L)))
+        assertTrue(ordinaryBottomAutoAnchorOwnsCommittedRender(token, token))
+    }
+
+    @Test
     fun focusedAnchorOwnershipKeepsBottomAutoAnchorDisabledUntilRequestRetires() {
         val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
 

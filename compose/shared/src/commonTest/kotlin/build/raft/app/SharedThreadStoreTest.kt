@@ -156,9 +156,719 @@ private class ConcurrentTestLogBuffer {
         }
         return seen.any(predicate)
     }
+
+    fun snapshot(): List<String> {
+        any { false }
+        return seen.toList()
+    }
 }
 
+private fun SharedThreadStore.firstContentFrameCommittedIntent(
+    token: ThreadRenderCommitToken = requireNotNull(state.value.renderCommitToken),
+    visible: Boolean = true,
+    drawSeq: Long = 1L,
+    declaration: ThreadRenderWindowDeclaration? = testEmptyWindowDeclaration()
+): SharedThreadIntent.ObserveFirstContentDraw =
+    SharedThreadIntent.ObserveFirstContentDraw(
+        ThreadFirstContentDrawObservation(
+            token = token,
+            visible = visible,
+            drawSeq = drawSeq,
+            declaration = declaration
+        )
+    )
+
+private fun testEmptyWindowDeclaration(): ThreadRenderWindowDeclaration =
+    ThreadRenderWindowDeclaration(
+        totalCount = 0,
+        windowStart = -1,
+        windowEnd = -1,
+        anchor = "empty",
+        windowKeyCount = 0,
+        windowKeysDigest = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
+
+private fun testSingleMessageWindowDeclaration(): ThreadRenderWindowDeclaration =
+    ThreadRenderWindowDeclaration(
+        totalCount = 1,
+        windowStart = 0,
+        windowEnd = 0,
+        anchor = "bottom",
+        windowKeyCount = 1,
+        windowKeysDigest = "5e32ae34f3ac1e5cd060d2d1c33532db9f09cbcb873fdbd165c03f2a780b2b77"
+    )
+
 class SharedThreadStoreTest {
+    @Test
+    fun firstContentDrawWitnessIgnoresFrameTicksAndObservesEveryDraw() {
+        val token =
+            ThreadRenderCommitToken(
+                surfaceOwner = "surface-1",
+                pageInstance = "page-1",
+                intent = "intent-1",
+                routeGeneration = 7L,
+                resolvedRouteKey = "channel:raft-mobile",
+                renderRevision = 1L,
+                windowGeneration = 1L
+            )
+        val policy =
+            ThreadFirstContentDrawWitnessPolicy(token = token)
+
+        assertNull(policy.onFrameTick())
+        assertNull(policy.onFrameTick())
+        assertEquals(
+            ThreadFirstContentDrawWitness(
+                ThreadFirstContentDrawObservation(token = token, visible = false, drawSeq = 1L)
+            ),
+            policy.onContentDrawn(visible = false)
+        )
+        assertEquals(
+            ThreadFirstContentDrawWitness(
+                ThreadFirstContentDrawObservation(token = token, visible = true, drawSeq = 2L)
+            ),
+            policy.onContentDrawn(visible = true)
+        )
+    }
+
+    @Test
+    fun offscreenDrawDoesNotConsumeTokenAndSameTokenCommitsWhenVisible() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val token = requireNotNull(store.state.value.renderCommitToken)
+        store.accept(store.firstContentFrameCommittedIntent(token = token, visible = false, drawSeq = 1L))
+
+        assertNull(store.renderControlState.value.committedToken)
+        assertTrue(
+            logs.any {
+                it.contains("thread_first_content_frame_commit_drop reason=surface_not_visible drawSeq=1") &&
+                    it.contains(token.diagnosticsFields())
+            }
+        )
+
+        store.accept(store.firstContentFrameCommittedIntent(token = token, visible = true, drawSeq = 2L))
+        assertEquals(token, store.renderControlState.value.committedToken)
+        assertTrue(logs.any { it.startsWith("thread_first_content_frame_committed ") })
+        scope.cancel()
+    }
+
+    @Test
+    fun factualVisibleLoadingDrawDropsAsNoPendingSnapshotNotSurfaceInvisible() = runBlocking {
+        val logs = mutableListOf<String>()
+        val api = FakeThreadApi(bodyText = messagesResponse("body")).also {
+            it.channelMessagesStarted = CompletableDeferred()
+            it.releaseChannelMessages = CompletableDeferred()
+        }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = api,
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+        val start = async { store.accept(SharedThreadIntent.Start(basePayload())) }
+        api.channelMessagesStarted?.await()
+        val token = requireNotNull(store.state.value.renderCommitToken)
+
+        store.accept(store.firstContentFrameCommittedIntent(token = token, visible = true, drawSeq = 1L))
+
+        assertTrue(logs.any { it.contains("reason=no_pending_snapshot drawSeq=1") })
+        assertFalse(logs.any { it.contains("reason=surface_not_visible drawSeq=1") })
+        api.releaseChannelMessages?.complete(Unit)
+        start.await()
+        scope.cancel()
+    }
+
+    @Test
+    fun drawBeforeWindowDeclarationDoesNotStall() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val token = requireNotNull(store.state.value.renderCommitToken)
+        store.accept(
+            store.firstContentFrameCommittedIntent(
+                token = token,
+                drawSeq = 1L,
+                declaration = null
+            )
+        )
+
+        assertNull(store.renderControlState.value.committedToken)
+        assertTrue(logs.any { it.contains("reason=window_not_declared drawSeq=1") })
+
+        store.accept(store.firstContentFrameCommittedIntent(token = token, drawSeq = 2L))
+        assertEquals(token, store.renderControlState.value.committedToken)
+        scope.cancel()
+    }
+
+    @Test
+    fun equivalentWindowDeclarationIsNoOp() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val token = requireNotNull(store.state.value.renderCommitToken)
+        val declaration = testEmptyWindowDeclaration()
+        store.accept(SharedThreadIntent.DeclareRenderWindow(token, declaration))
+        store.accept(SharedThreadIntent.DeclareRenderWindow(token, declaration))
+
+        assertEquals(token, store.state.value.renderCommitToken)
+        assertEquals(
+            1,
+            logs.count { it.startsWith("thread_render_window_declared ") && it.contains(token.diagnosticsFields()) }
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun windowDeclarationChangeInvalidatesPendingBeforeCommit() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val oldToken = requireNotNull(store.state.value.renderCommitToken)
+        val first = testEmptyWindowDeclaration()
+        val changed = first.copy(anchor = "cached", reason = "changed_refresh")
+        store.accept(SharedThreadIntent.DeclareRenderWindow(oldToken, first))
+        store.accept(SharedThreadIntent.DeclareRenderWindow(oldToken, changed))
+        val replacement = requireNotNull(store.state.value.renderCommitToken)
+
+        assertEquals(oldToken.windowGeneration + 1L, replacement.windowGeneration)
+        store.accept(
+            store.firstContentFrameCommittedIntent(
+                token = oldToken,
+                drawSeq = 1L,
+                declaration = first
+            )
+        )
+        assertTrue(logs.any { it.contains("reason=window_generation_mismatch drawSeq=1") })
+        store.accept(
+            store.firstContentFrameCommittedIntent(
+                token = replacement,
+                drawSeq = 2L,
+                declaration = changed
+            )
+        )
+        assertEquals(replacement, store.renderControlState.value.committedToken)
+        scope.cancel()
+    }
+
+    @Test
+    fun semanticNoOpRetainsPendingTokenButRealPrecommitProjectionResetsWindowGeneration() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val initial = requireNotNull(store.state.value.renderCommitToken)
+        val first = testSingleMessageWindowDeclaration()
+        val replacementDeclaration = first.copy(reason = "changed_refresh", windowKeysDigest = "changed")
+        store.accept(SharedThreadIntent.DeclareRenderWindow(initial, first))
+        store.accept(SharedThreadIntent.DeclareRenderWindow(initial, replacementDeclaration))
+        val replacedWindow = requireNotNull(store.state.value.renderCommitToken)
+        assertEquals(initial.renderRevision, replacedWindow.renderRevision)
+        assertEquals(initial.windowGeneration + 1L, replacedWindow.windowGeneration)
+
+        store.accept(SharedThreadIntent.ApplyRouteIntent(store.state.value.payload))
+        assertEquals(replacedWindow, store.state.value.renderCommitToken)
+
+        store.accept(SharedThreadIntent.AppendSentPage(sentPage("sent-render", "new pending render")))
+        val projected = requireNotNull(store.state.value.renderCommitToken)
+        assertEquals(replacedWindow.intent, projected.intent)
+        assertEquals(replacedWindow.renderRevision + 1L, projected.renderRevision)
+        assertEquals(1L, projected.windowGeneration)
+
+        store.accept(
+            store.firstContentFrameCommittedIntent(
+                token = replacedWindow,
+                drawSeq = 1L,
+                declaration = replacementDeclaration
+            )
+        )
+        assertTrue(
+            logs.any {
+                it.contains("thread_first_content_frame_commit_drop") &&
+                    (it.contains("reason=render_revision_mismatch") || it.contains("reason=window_generation_mismatch"))
+            }
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun overlayAndBackgroundRetainPageInstance() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val token = requireNotNull(store.state.value.renderCommitToken)
+        store.accept(SharedThreadIntent.SetThreadSurfaceVisible(false))
+        assertEquals(token.pageInstance, store.renderControlState.value.mountedPageInstance)
+        store.accept(SharedThreadIntent.SetThreadSurfaceVisible(true))
+        assertEquals(token.pageInstance, store.state.value.renderCommitToken?.pageInstance)
+        scope.cancel()
+    }
+
+    @Test
+    fun disposeRemountAdvancesPageInstanceAndFencesLateDraw() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val oldToken = requireNotNull(store.state.value.renderCommitToken)
+        store.accept(SharedThreadIntent.DisposeThreadSurface)
+        store.accept(store.firstContentFrameCommittedIntent(token = oldToken, drawSeq = 1L))
+        assertTrue(logs.any { it.contains("reason=disposed drawSeq=1") })
+
+        store.accept(SharedThreadIntent.MountThreadSurface)
+        store.accept(SharedThreadIntent.SetThreadSurfaceVisible(true))
+        val remounted = requireNotNull(store.state.value.renderCommitToken)
+        assertTrue(remounted.pageInstance != oldToken.pageInstance)
+        store.accept(store.firstContentFrameCommittedIntent(token = remounted, drawSeq = 2L))
+        assertEquals(remounted, store.renderControlState.value.committedToken)
+        scope.cancel()
+    }
+
+    @Test
+    fun controlPlaneTransitionsEmitNoRenderSliceAndNoCardDelta() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val emissions = mutableListOf<SharedThreadRenderSlice>()
+        val collector =
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                store.renderSliceFlow().collect(emissions::add)
+            }
+        val initialCount = emissions.size
+        val token = requireNotNull(store.state.value.renderCommitToken)
+
+        store.accept(SharedThreadIntent.DeclareRenderWindow(token, testEmptyWindowDeclaration()))
+        store.accept(SharedThreadIntent.SetThreadSurfaceVisible(false))
+        store.accept(
+            store.firstContentFrameCommittedIntent(
+                token = token,
+                visible = false,
+                drawSeq = 1L
+            )
+        )
+
+        assertEquals(initialCount, emissions.size)
+        assertFalse(logs.any { it.startsWith("thread_row_recompose ") })
+        collector.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun committedStagesDeclareAndRunEveryApplicableOperationExactlyOnce() = runBlocking {
+        val logs = mutableListOf<String>()
+        val calls = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val executor =
+            object : ThreadAuxiliaryExecutor {
+                override suspend fun loadChannelMembers(serverId: String, channelId: String) {
+                    calls += "channel_members:$serverId:$channelId"
+                }
+
+                override suspend fun ensureMemberSuggestions(
+                    serverId: String,
+                    mentionChannelId: String?,
+                    memberScopedMentions: Boolean
+                ) {
+                    calls += "member_suggestions:$serverId:${mentionChannelId.orEmpty()}:$memberScopedMentions"
+                }
+
+                override fun ensureChannelSuggestions() {
+                    calls += "channel_suggestions"
+                }
+            }
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("body")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+                auxiliaryExecutor = executor
+            )
+        store.accept(
+            SharedThreadIntent.UpdateAuxiliaryDemand(
+                ThreadAuxiliaryDemand(
+                    serverId = "server-1",
+                    channelId = "channel-1",
+                    mentionChannelId = "channel-1",
+                    memberSuggestions = true,
+                    channelSuggestions = true,
+                    chatMounted = true,
+                    composerMounted = true
+                )
+            )
+        )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertFalse(logs.any { it.startsWith("thread_auxiliary_request ") })
+        val token = requireNotNull(store.state.value.renderCommitToken)
+        store.accept(
+            store.firstContentFrameCommittedIntent(
+                token = token,
+                declaration = testSingleMessageWindowDeclaration()
+            )
+        )
+        withTimeout(1_000L) {
+            while (
+                logs.none {
+                    it.startsWith("thread_auxiliary_hydration stage=secondary ") &&
+                        it.contains("result=terminal")
+                }
+            ) {
+                delay(10L)
+            }
+        }
+
+        listOf("members", "secondary").forEach { stage ->
+            assertEquals(
+                1,
+                logs.count {
+                    it.startsWith("thread_auxiliary_hydration stage=$stage ") &&
+                        it.contains("result=admitted")
+                },
+                stage
+            )
+            assertEquals(
+                1,
+                logs.count {
+                    it.startsWith("thread_auxiliary_hydration stage=$stage ") &&
+                        it.contains("result=launched")
+                },
+                stage
+            )
+            assertEquals(
+                1,
+                logs.count {
+                    it.startsWith("thread_auxiliary_hydration stage=$stage ") &&
+                        it.contains("result=terminal")
+                },
+                stage
+            )
+        }
+        val operations =
+            listOf(
+                "members" to "channel_members",
+                "members" to "member_suggestions",
+                "members" to "channel_suggestions",
+                "secondary" to "followed_summary",
+                "secondary" to "saved_status_enrichment"
+            )
+        operations.forEach { (stage, operation) ->
+            assertEquals(
+                1,
+                logs.count {
+                    it.startsWith("thread_auxiliary_operation stage=$stage operation=$operation ") &&
+                        it.contains("applicable=true result=admitted")
+                },
+                "$stage/$operation declaration"
+            )
+            assertEquals(
+                1,
+                logs.count {
+                    it.startsWith("thread_auxiliary_request stage=$stage operation=$operation ") &&
+                        it.contains("phase=started")
+                },
+                "$stage/$operation request start"
+            )
+            assertEquals(
+                1,
+                logs.count {
+                    it.startsWith("thread_auxiliary_request stage=$stage operation=$operation ") &&
+                        it.contains("phase=terminal")
+                },
+                "$stage/$operation request terminal"
+            )
+        }
+        assertEquals(3, calls.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun emptyChannelAndDmComposerSuggestionsRemainAvailable() = runBlocking {
+        suspend fun exercise(
+            payload: KuiklyThreadScreenPayload,
+            channelId: String
+        ): Pair<List<String>, List<String>> {
+            val logs = mutableListOf<String>()
+            val calls = mutableListOf<String>()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val executor =
+                object : ThreadAuxiliaryExecutor {
+                    override suspend fun loadChannelMembers(serverId: String, channelId: String) {
+                        calls += "channel_members"
+                    }
+
+                    override suspend fun ensureMemberSuggestions(
+                        serverId: String,
+                        mentionChannelId: String?,
+                        memberScopedMentions: Boolean
+                    ) {
+                        calls += "member_suggestions"
+                    }
+
+                    override fun ensureChannelSuggestions() {
+                        calls += "channel_suggestions"
+                    }
+                }
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        SharedThreadDataSource(
+                            networkApi = FakeThreadApi(bodyText = emptyMessagesResponse()),
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = logs::add,
+                    auxiliaryExecutor = executor
+                )
+            store.accept(
+                SharedThreadIntent.UpdateAuxiliaryDemand(
+                    ThreadAuxiliaryDemand(
+                        serverId = "server-1",
+                        channelId = channelId,
+                        mentionChannelId = channelId,
+                        memberSuggestions = true,
+                        channelSuggestions = true,
+                        chatMounted = true,
+                        composerMounted = true
+                    )
+                )
+            )
+            store.accept(SharedThreadIntent.Start(payload))
+            store.accept(store.firstContentFrameCommittedIntent())
+            withTimeout(1_000L) {
+                while (
+                    "member_suggestions" !in calls ||
+                    "channel_suggestions" !in calls ||
+                    logs.none { it.startsWith("thread_auxiliary_hydration stage=secondary ") }
+                ) {
+                    delay(10L)
+                }
+            }
+            scope.cancel()
+            return calls to logs
+        }
+
+        val (channelCalls, channelLogs) = exercise(basePayload(), "channel-1")
+        assertTrue("member_suggestions" in channelCalls)
+        assertTrue("channel_suggestions" in channelCalls)
+        assertTrue("channel_members" in channelCalls)
+        assertTrue(
+            channelLogs.any {
+                it.contains("stage=secondary operation=followed_summary") &&
+                    it.contains("applicable=false result=skipped reason=no_renderable_content")
+            }
+        )
+
+        val (dmCalls, dmLogs) = exercise(directMessagePayload(), "dm-1")
+        assertTrue("member_suggestions" in dmCalls)
+        assertTrue("channel_suggestions" in dmCalls)
+        assertFalse("channel_members" in dmCalls)
+        assertTrue(
+            dmLogs.any {
+                it.contains("stage=members operation=channel_members") &&
+                    it.contains("applicable=false result=skipped reason=surface_not_supported")
+            }
+        )
+    }
+
+    @Test
+    fun actualLazyItemKeyEncodingCoversOptimisticAndDuplicateFallback() {
+        val optimistic = KuiklyThreadMessageItem(id = "m-1", authorId = "u1", authorName = "Artin", randomId = "local-1")
+        val duplicateA = KuiklyThreadMessageItem(id = "m-2", authorId = "u1", authorName = "Artin", randomId = "dup")
+        val duplicateB = KuiklyThreadMessageItem(id = "m-3", authorId = "u1", authorName = "Artin", randomId = "dup")
+        val duplicates = listOf(duplicateA, duplicateB).threadDuplicateRandomIds()
+
+        assertEquals("thread-page:random:local-1", optimistic.messageListItemKey())
+        assertEquals("thread-page:m-2", duplicateA.messageListItemKey(duplicates))
+        assertEquals("thread-page:m-3", duplicateB.messageListItemKey(duplicates))
+        assertFalse("=" in optimistic.messageListItemKey().threadLazyItemKeyDiagnosticEncoding())
+    }
+
+    @Test
+    fun largeAuxiliaryParseThresholdIsFrozenAt256KiB() {
+        assertEquals(262_144, ThreadLargeAuxiliaryParseThresholdBytes)
+        assertTrue(390_598 >= ThreadLargeAuxiliaryParseThresholdBytes)
+        assertEquals("background_parse", threadAuxiliaryParseDispatcher(390_598L))
+        assertEquals("default", threadAuxiliaryParseDispatcher(262_143L))
+    }
+
+    @Test
+    fun largeAuxiliaryParseRunsTheProductionProjectionSeamAt390598Bytes() = runBlocking {
+        var calls = 0
+        var observedBase: KuiklyThreadScreenPayload? = null
+        var observedSnapshot: ThreadReplySummariesSnapshot? = null
+        val seedItem =
+            InboxItem(
+                key = "thread:m-large",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-large"),
+                channelName = "large reply thread",
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("m-large"),
+                lastMessagePreview = ""
+            )
+        val seedSnapshot = ThreadReplySummariesSnapshot(threads = listOf(seedItem))
+        val targetBytes = 390_598L
+        val previewBytes = targetBytes - threadAuxiliaryParsePayloadBytes(seedSnapshot)
+        assertTrue(previewBytes > 0L)
+        val snapshot =
+            ThreadReplySummariesSnapshot(
+                threads = listOf(seedItem.copy(lastMessagePreview = "x".repeat(previewBytes.toInt())))
+            )
+        assertEquals(targetBytes, threadAuxiliaryParsePayloadBytes(snapshot))
+        val executor =
+            object : ThreadAuxiliaryParseExecutor {
+                override val dispatcherName: String = "background_parse"
+
+                override suspend fun parseFollowedSummary(
+                    basePayload: KuiklyThreadScreenPayload,
+                    snapshot: ThreadReplySummariesSnapshot
+                ): KuiklyThreadScreenPayload {
+                    calls += 1
+                    observedBase = basePayload
+                    observedSnapshot = snapshot
+                    return basePayload.copy(backgroundRefreshing = true)
+                }
+            }
+        val base = basePayload()
+
+        val parsed =
+            parseFollowedSummaryForThreadAuxiliary(
+                basePayload = base,
+                snapshot = snapshot,
+                executor = executor
+            )
+
+        assertEquals(1, calls)
+        assertEquals(base, observedBase)
+        assertEquals(snapshot, observedSnapshot)
+        assertTrue(parsed.backgroundRefreshing)
+    }
+
+    @Test
+    fun largeAuxiliaryParseRejectsUiCriticalDispatcherBeforeProjection() = runBlocking {
+        var calls = 0
+        val executor =
+            object : ThreadAuxiliaryParseExecutor {
+                override val dispatcherName: String = "ui"
+
+                override suspend fun parseFollowedSummary(
+                    basePayload: KuiklyThreadScreenPayload,
+                    snapshot: ThreadReplySummariesSnapshot
+                ): KuiklyThreadScreenPayload {
+                    calls += 1
+                    return basePayload
+                }
+            }
+
+        val failure =
+            try {
+                parseFollowedSummaryForThreadAuxiliary(
+                    basePayload = basePayload(),
+                    snapshot = ThreadReplySummariesSnapshot(threads = emptyList()),
+                    encodedBytes = 390_598L,
+                    executor = executor
+                )
+                null
+            } catch (error: IllegalStateException) {
+                error
+            }
+
+        assertNotNull(failure)
+        assertTrue(failure.message.orEmpty().contains("requires background_parse"))
+        assertEquals(0, calls)
+    }
+
     @Test
     fun channelProfileUpdateAppliesCanonicalResponseAndPublishesHomeProjection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -1769,6 +2479,90 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun unresolvedReplyParentRebindsToResolvedStreamTokenAndRejectsOldOrForeignIntent() = runBlocking {
+        val logs = ConcurrentTestLogBuffer()
+        val repository = replyHintRepository().also {
+            it.getReplyThreadStarted = CompletableDeferred()
+            it.releaseGetReplyThread = CompletableDeferred()
+        }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+        val start = async { store.accept(SharedThreadIntent.Start(unresolvedReplyPayload(parentMessageId = "m1"))) }
+        repository.getReplyThreadStarted?.await()
+        val parentToken = requireNotNull(store.state.value.renderCommitToken)
+        assertEquals("reply-parent:channel-1:m1", parentToken.resolvedRouteKey)
+
+        repository.releaseGetReplyThread?.complete(Unit)
+        start.await()
+        val streamToken = requireNotNull(store.state.value.renderCommitToken)
+        assertEquals("reply-stream:thread-m1", streamToken.resolvedRouteKey)
+        assertTrue(streamToken.intent != parentToken.intent)
+        assertTrue(streamToken.renderRevision > parentToken.renderRevision)
+        assertEquals(1L, streamToken.windowGeneration)
+
+        store.accept(store.firstContentFrameCommittedIntent(token = parentToken, drawSeq = 1L))
+        assertTrue(
+            logs.any {
+                it.contains("thread_first_content_frame_commit_drop") &&
+                    (it.contains("reason=intent_mismatch") || it.contains("reason=resolved_route_mismatch"))
+            }
+        )
+        val beforeForeign = store.state.value.renderCommitToken
+        store.accept(
+            SharedThreadIntent.ApplyRouteIntent(
+                unresolvedReplyPayload(parentMessageId = "foreign-parent")
+            )
+        )
+        assertEquals(beforeForeign, store.state.value.renderCommitToken)
+        assertTrue(logs.any { it.contains("thread_route_intent_drop reason=route_changed") })
+
+        store.accept(store.firstContentFrameCommittedIntent(token = streamToken, drawSeq = 2L))
+        assertEquals(streamToken, store.renderControlState.value.committedToken)
+        withTimeout(1_000L) {
+            while (
+                listOf("members", "secondary").any { stage ->
+                    logs.snapshot().none {
+                        it.startsWith("thread_auxiliary_hydration stage=$stage ") &&
+                            it.contains("result=terminal") &&
+                            it.contains("intent=${streamToken.intent}")
+                    }
+                }
+            ) {
+                delay(10L)
+            }
+        }
+        listOf("members", "secondary").forEach { stage ->
+            assertEquals(
+                1,
+                logs.snapshot().count {
+                    it.startsWith("thread_auxiliary_hydration stage=$stage ") &&
+                        it.contains("result=launched") &&
+                        it.contains("intent=${streamToken.intent}")
+                }
+            )
+            assertEquals(
+                1,
+                logs.snapshot().count {
+                    it.startsWith("thread_auxiliary_hydration stage=$stage ") &&
+                        it.contains("result=terminal") &&
+                        it.contains("intent=${streamToken.intent}")
+                }
+            )
+        }
+        scope.cancel()
+    }
+
+    @Test
     fun cachedThreadPayloadSurvivesVisibleFetchFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true)
@@ -1896,6 +2690,7 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(route))
         val afterStart = store.state.value.payload
+        val beforeIntentUpdate = requireNotNull(store.state.value.renderCommitToken)
         assertEquals(1, api.channelMessageCalls)
 
         val originCandidate =
@@ -1934,6 +2729,12 @@ class SharedThreadStoreTest {
         assertEquals(afterStart.messages, payload.messages)
         assertNull(payload.originMessage)
         assertEquals(afterStart.originStatus, payload.originStatus)
+        val afterIntentUpdate = requireNotNull(store.state.value.renderCommitToken)
+        assertTrue(afterIntentUpdate.intent != beforeIntentUpdate.intent)
+        assertEquals(1L, afterIntentUpdate.windowGeneration)
+
+        store.accept(SharedThreadIntent.ApplyRouteIntent(store.state.value.payload))
+        assertEquals(afterIntentUpdate, store.state.value.renderCommitToken)
         scope.cancel()
     }
 
@@ -4754,7 +5555,7 @@ class SharedThreadStoreTest {
         assertTrue(memberRepository.channelMemberRequests.isEmpty())
         assertTrue(store.state.value.payload.members.isEmpty())
 
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(store.firstContentFrameCommittedIntent())
         assertEquals(2, store.state.value.payload.membersCount)
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         assertEquals(listOf("u1", "agent-1"), store.state.value.payload.members.map { it.id })
@@ -4800,10 +5601,10 @@ class SharedThreadStoreTest {
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(0, flakyMemberRepository.channelMemberCalls, "members must wait for first content readiness")
+        assertEquals(0, flakyMemberRepository.channelMemberCalls, "members must wait for a committed content frame")
 
-        store.accept(SharedThreadIntent.FirstContentReady)
-        assertEquals(1, flakyMemberRepository.channelMemberCalls, "first content readiness starts background members")
+        store.accept(store.firstContentFrameCommittedIntent())
+        assertEquals(1, flakyMemberRepository.channelMemberCalls, "committed content frame starts background members")
 
         store.accept(SharedThreadIntent.LoadMembers)
         val callsAfterFirstLoad = flakyMemberRepository.channelMemberCalls
@@ -5185,7 +5986,7 @@ class SharedThreadStoreTest {
 
         assertEquals("content", store.state.value.payload.status)
         assertTrue(memberRepository.channelMemberRequests.isEmpty())
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(store.firstContentFrameCommittedIntent())
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
         assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
@@ -5956,6 +6757,144 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun committedFramePreSignalLaunchesSeparatedAuxiliaryWorkOnlyAfterInitialPayloadQueuesIt() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "initial body")),
+                threadReplySummariesResult =
+                    DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+            ).also {
+                it.getThreadStarted = CompletableDeferred()
+                it.releaseGetThread = CompletableDeferred()
+            }
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin")),
+                channelMembers = listOf(member("u1", "Artin"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                memberRepository = memberRepository
+            )
+        val logs = ConcurrentTestLogBuffer()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        val start = async { store.accept(SharedThreadIntent.Start(basePayload())) }
+        repository.getThreadStarted?.await()
+
+        store.accept(store.firstContentFrameCommittedIntent())
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        assertEquals(0, memberRepository.channelMemberCalls)
+
+        repository.releaseGetThread?.complete(Unit)
+        start.await()
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        assertEquals(0, memberRepository.channelMemberCalls)
+        store.accept(
+            store.firstContentFrameCommittedIntent(
+                token = requireNotNull(store.state.value.renderCommitToken)
+            )
+        )
+        withTimeout(1_000L) {
+            while (
+                repository.getThreadReplySummariesRequests.isEmpty() ||
+                memberRepository.channelMemberCalls == 0
+            ) {
+                delay(10L)
+            }
+        }
+
+        assertEquals(
+            listOf(ThreadId("channel-1") to listOf(MessageId("m1"))),
+            repository.getThreadReplySummariesRequests
+        )
+        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        assertTrue(logs.any { it.contains("stage=members") && it.contains("result=launched") })
+        assertTrue(logs.any { it.contains("stage=secondary") && it.contains("result=launched") })
+        scope.cancel()
+    }
+
+    @Test
+    fun staleRouteOrGenerationDrawWitnessCannotReleaseCurrentAuxiliaryWork() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "initial body")),
+                threadReplySummariesResult =
+                    DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+            ).also {
+                it.getThreadStarted = CompletableDeferred()
+                it.releaseGetThread = CompletableDeferred()
+            }
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin")),
+                channelMembers = listOf(member("u1", "Artin"))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                memberRepository = memberRepository
+            )
+        val logs = ConcurrentTestLogBuffer()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        val start = async { store.accept(SharedThreadIntent.Start(basePayload())) }
+        repository.getThreadStarted?.await()
+
+        val current = store.firstContentFrameCommittedIntent()
+        store.accept(
+            current.copy(
+                observation =
+                    current.observation.copy(
+                        token = current.observation.token.copy(resolvedRouteKey = "channel:old-route")
+                    )
+            )
+        )
+        store.accept(
+            current.copy(
+                observation =
+                    current.observation.copy(
+                        token =
+                            current.observation.token.copy(
+                                routeGeneration = current.observation.token.routeGeneration - 1L
+                            ),
+                        drawSeq = 2L
+                    )
+            )
+        )
+
+        repository.releaseGetThread?.complete(Unit)
+        start.await()
+        delay(20L)
+        assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
+        assertEquals(0, memberRepository.channelMemberCalls)
+        assertTrue(logs.any { it.startsWith("thread_first_content_frame_commit_drop") })
+
+        store.accept(store.firstContentFrameCommittedIntent())
+        repeat(100) {
+            if (
+                repository.getThreadReplySummariesRequests.isNotEmpty() &&
+                memberRepository.channelMemberCalls > 0
+            ) {
+                scope.cancel()
+                return@runBlocking
+            }
+            delay(10L)
+        }
+        assertTrue(
+            repository.getThreadReplySummariesRequests.isNotEmpty(),
+            logs.snapshot().joinToString("\n")
+        )
+        assertTrue(memberRepository.channelMemberCalls > 0, logs.snapshot().joinToString("\n"))
+        scope.cancel()
+    }
+
+    @Test
     fun secondaryRefreshBackfillsFollowedSummariesWithoutBlockingInitialFetch() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
@@ -6010,7 +6949,7 @@ class SharedThreadStoreTest {
 
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(repository.getThreadReplySummariesRequests.isEmpty())
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(store.firstContentFrameCommittedIntent())
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -6025,6 +6964,327 @@ class SharedThreadStoreTest {
         assertEquals("reply-6", message.firstUnreadReplyMessageId)
         assertTrue(message.isThreadFollowed)
         assertEquals(0, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun secondaryParseFailureClosesRequestParseAndStageExactlyOnce() = runBlocking {
+        val logs = mutableListOf<String>()
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "initial body")),
+                threadReplySummariesResult =
+                    DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+            )
+        val parser =
+            object : ThreadAuxiliaryParseExecutor {
+                override val dispatcherName: String = "background_parse"
+
+                override suspend fun parseFollowedSummary(
+                    basePayload: KuiklyThreadScreenPayload,
+                    snapshot: ThreadReplySummariesSnapshot
+                ): KuiklyThreadScreenPayload = error("parse boom")
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+                auxiliaryParseExecutor = parser
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(store.firstContentFrameCommittedIntent())
+        withTimeout(1_000L) {
+            while (logs.none { it.contains("stage=secondary") && it.contains("terminal=failure reason=parse_failed") }) {
+                delay(10L)
+            }
+        }
+
+        assertEquals(
+            1,
+            logs.count {
+                it.startsWith("thread_auxiliary_request stage=secondary operation=followed_summary ") &&
+                    it.contains("phase=terminal result=success")
+            }
+        )
+        assertEquals(
+            1,
+            logs.count {
+                it.startsWith("thread_auxiliary_parse stage=secondary operation=followed_summary ") &&
+                    it.contains("phase=terminal result=failure reason=parse_failed")
+            }
+        )
+        assertEquals(
+            1,
+            logs.count {
+                it.startsWith("thread_auxiliary_hydration stage=secondary ") &&
+                    it.contains("result=terminal terminal=failure reason=parse_failed")
+            }
+        )
+        assertFalse(logs.any { it.contains("operation=saved_status_enrichment") && it.contains("phase=started") })
+        assertFalse(logs.any { it.startsWith("thread_auxiliary_emit stage=secondary ") })
+        scope.cancel()
+    }
+
+    @Test
+    fun secondaryParseCancellationClosesParseAndStageExactlyOnceWithoutLaterWork() = runBlocking {
+        val logs = mutableListOf<String>()
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "initial body")),
+                threadReplySummariesResult =
+                    DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+            )
+        val parser =
+            object : ThreadAuxiliaryParseExecutor {
+                override val dispatcherName: String = "background_parse"
+
+                override suspend fun parseFollowedSummary(
+                    basePayload: KuiklyThreadScreenPayload,
+                    snapshot: ThreadReplySummariesSnapshot
+                ): KuiklyThreadScreenPayload = throw CancellationException("cancel parse")
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+                auxiliaryParseExecutor = parser
+            )
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(store.firstContentFrameCommittedIntent())
+        withTimeout(1_000L) {
+            while (logs.none { it.contains("stage=secondary") && it.contains("terminal=cancelled reason=cancelled") }) {
+                delay(10L)
+            }
+        }
+
+        assertEquals(
+            1,
+            logs.count {
+                it.startsWith("thread_auxiliary_parse stage=secondary operation=followed_summary ") &&
+                    it.contains("phase=terminal result=cancelled reason=cancelled")
+            }
+        )
+        assertEquals(
+            1,
+            logs.count {
+                it.startsWith("thread_auxiliary_hydration stage=secondary ") &&
+                    it.contains("result=terminal terminal=cancelled reason=cancelled")
+            }
+        )
+        assertEquals(
+            1,
+            logs.count {
+                it.startsWith("thread_auxiliary_completion_drop stage=secondary operation=followed_summary ") &&
+                    it.contains("reason=late_completion")
+            }
+        )
+        assertFalse(logs.any { it.contains("operation=saved_status_enrichment") && it.contains("phase=started") })
+        assertFalse(logs.any { it.startsWith("thread_auxiliary_emit stage=secondary ") })
+        scope.cancel()
+    }
+
+    @Test
+    fun clearAndDisposeCancelSecondaryWithExactCompletionDropAndSingleStageTerminal() = runBlocking {
+        suspend fun exercise(close: suspend (SharedThreadStore) -> Unit): Pair<String, List<String>> {
+            val logs = ConcurrentTestLogBuffer()
+            val repository =
+                FakeConversationRepository(
+                    threadResult = DataResult.Content(threadSnapshot(body = "initial body")),
+                    threadReplySummariesResult =
+                        DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+                ).also {
+                    it.threadReplySummariesStarted = CompletableDeferred()
+                    it.releaseThreadReplySummaries = CompletableDeferred()
+                }
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val store =
+                SharedThreadStore(
+                    dataSource =
+                        SharedThreadDataSource(
+                            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                            conversationRepository = repository
+                        ),
+                    scope = scope,
+                    diagnosticsLogger = logs::add
+                )
+            store.accept(SharedThreadIntent.Start(basePayload()))
+            val token = requireNotNull(store.state.value.renderCommitToken)
+            store.accept(store.firstContentFrameCommittedIntent(token = token))
+            repository.threadReplySummariesStarted?.await()
+
+            close(store)
+            withTimeout(1_000L) {
+                while (
+                    logs.snapshot().none {
+                        it.startsWith("thread_auxiliary_completion_drop stage=secondary operation=followed_summary ")
+                    }
+                ) {
+                    delay(10L)
+                }
+            }
+            val snapshot = logs.snapshot()
+            scope.cancel()
+            return token.intent to snapshot
+        }
+
+        val (clearedIntent, clearedLogs) = exercise { store -> store.clear() }
+        assertEquals(
+            1,
+            clearedLogs.count {
+                it.startsWith("thread_auxiliary_completion_drop stage=secondary operation=followed_summary ") &&
+                    it.contains("reason=cleared") &&
+                    it.contains("intent=$clearedIntent")
+            }
+        )
+        assertEquals(
+            1,
+            clearedLogs.count {
+                it.startsWith("thread_auxiliary_hydration stage=secondary ") &&
+                    it.contains("result=terminal terminal=cancelled reason=cancelled") &&
+                    it.contains("intent=$clearedIntent")
+            }
+        )
+
+        val (disposedIntent, disposedLogs) =
+            exercise { store -> store.accept(SharedThreadIntent.DisposeThreadSurface) }
+        assertEquals(
+            1,
+            disposedLogs.count {
+                it.startsWith("thread_auxiliary_completion_drop stage=secondary operation=followed_summary ") &&
+                    it.contains("reason=disposed") &&
+                    it.contains("intent=$disposedIntent")
+            }
+        )
+        assertEquals(
+            1,
+            disposedLogs.count {
+                it.startsWith("thread_auxiliary_hydration stage=secondary ") &&
+                    it.contains("result=terminal terminal=cancelled reason=cancelled") &&
+                    it.contains("intent=$disposedIntent")
+            }
+        )
+    }
+
+    @Test
+    fun nonEquivalentIntentFencesLateSecondaryBeforeParseAndReadmitsSkippedStages() = runBlocking {
+        val logs = ConcurrentTestLogBuffer()
+        val calls = ConcurrentTestLogBuffer()
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Content(threadSnapshot(body = "initial body")),
+                threadReplySummariesResult =
+                    DataResult.Content(ThreadReplySummariesSnapshot(threads = emptyList()))
+            ).also {
+                it.threadReplySummariesStarted = CompletableDeferred()
+                it.releaseThreadReplySummaries = CompletableDeferred()
+            }
+        val executor =
+            object : ThreadAuxiliaryExecutor {
+                override suspend fun loadChannelMembers(serverId: String, channelId: String) {
+                    calls.add("channel_members")
+                }
+
+                override suspend fun ensureMemberSuggestions(
+                    serverId: String,
+                    mentionChannelId: String?,
+                    memberScopedMentions: Boolean
+                ) {
+                    calls.add("member_suggestions")
+                }
+
+                override fun ensureChannelSuggestions() {
+                    calls.add("channel_suggestions")
+                }
+            }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        conversationRepository = repository
+                    ),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+                auxiliaryExecutor = executor
+            )
+        store.accept(
+            SharedThreadIntent.UpdateAuxiliaryDemand(
+                ThreadAuxiliaryDemand(
+                    serverId = "server-1",
+                    channelId = "channel-1",
+                    mentionChannelId = "channel-1",
+                    memberSuggestions = true,
+                    channelSuggestions = true,
+                    chatMounted = true,
+                    composerMounted = true
+                )
+            )
+        )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val oldToken = requireNotNull(store.state.value.renderCommitToken)
+        store.accept(store.firstContentFrameCommittedIntent(token = oldToken))
+        repository.threadReplySummariesStarted?.await()
+
+        store.accept(SharedThreadIntent.SelectTab("tasks"))
+        val tasksToken = requireNotNull(store.state.value.renderCommitToken)
+        assertTrue(tasksToken.intent != oldToken.intent)
+        repository.releaseThreadReplySummaries?.complete(Unit)
+        withTimeout(1_000L) {
+            while (!logs.any { it.contains("operation=followed_summary") && it.contains("phase=request reason=stale_token") }) {
+                delay(10L)
+            }
+        }
+        assertEquals(
+            1,
+            logs.snapshot().count {
+                it.startsWith("thread_auxiliary_completion_drop stage=secondary operation=followed_summary ") &&
+                    it.contains("phase=request reason=stale_token") &&
+                    it.contains("intent=${oldToken.intent}")
+            }
+        )
+        assertFalse(logs.any { it.contains("operation=followed_summary") && it.contains("thread_auxiliary_parse") })
+
+        // The page-level demand effect can trail the synchronous tab intent.
+        // The exact Tasks token must still skip Chat-only work even while the
+        // last published demand says Chat/composer are mounted.
+        store.accept(store.firstContentFrameCommittedIntent(token = tasksToken, drawSeq = 2L))
+        assertTrue(logs.any { it.contains("stage=members") && it.contains("result=skipped") && it.contains("reason=tab_not_chat") })
+
+        store.accept(SharedThreadIntent.SelectTab("chat"))
+        val chatToken = requireNotNull(store.state.value.renderCommitToken)
+        assertTrue(chatToken.intent != tasksToken.intent)
+        store.accept(store.firstContentFrameCommittedIntent(token = chatToken, drawSeq = 3L))
+        withTimeout(1_000L) {
+            while (calls.snapshot().count { it == "channel_members" } < 2 ||
+                calls.snapshot().count { it == "member_suggestions" } < 2 ||
+                calls.snapshot().count { it == "channel_suggestions" } < 2
+            ) {
+                delay(10L)
+            }
+        }
+        val callSnapshot = calls.snapshot()
+        assertEquals(2, callSnapshot.count { it == "channel_members" })
+        assertEquals(2, callSnapshot.count { it == "member_suggestions" })
+        assertEquals(2, callSnapshot.count { it == "channel_suggestions" })
         scope.cancel()
     }
 
@@ -6061,7 +7321,7 @@ class SharedThreadStoreTest {
         val firstStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
         firstStore.accept(SharedThreadIntent.Start(basePayload()))
-        firstStore.accept(SharedThreadIntent.FirstContentReady)
+        firstStore.accept(firstStore.firstContentFrameCommittedIntent())
         delay(1L)
         assertEquals(7, firstStore.state.value.payload.messages.single().replyCount)
 
@@ -6072,7 +7332,7 @@ class SharedThreadStoreTest {
         val secondStore = SharedThreadStore(dataSource = dataSource, scope = appScope)
 
         secondStore.accept(SharedThreadIntent.Start(basePayload()))
-        secondStore.accept(SharedThreadIntent.FirstContentReady)
+        secondStore.accept(secondStore.firstContentFrameCommittedIntent())
         repository.threadReplySummariesStarted?.await()
 
         assertEquals(7, secondStore.state.value.payload.messages.single().replyCount)
@@ -6104,9 +7364,9 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertTrue(
             repository.getThreadReplySummariesRequests.isEmpty(),
-            "thread summaries must not race the first content frame or bottom anchor"
+            "thread summaries must not race the first committed content frame"
         )
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(store.firstContentFrameCommittedIntent())
         delay(1L)
 
         assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
@@ -6209,7 +7469,7 @@ class SharedThreadStoreTest {
         releaseReplyFetch.complete(Unit)
         assertTrue(prewarm.await() is DataResult.Content)
         visibleStart.await()
-        store.accept(SharedThreadIntent.FirstContentReady)
+        store.accept(store.firstContentFrameCommittedIntent())
         withTimeout(1_000L) {
             while (!logs.any { it.startsWith("thread_secondary_refresh_result") }) {
                 delay(10L)

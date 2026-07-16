@@ -173,6 +173,11 @@ const cases = [
     expect: "card presentation identity changed",
   },
   {
+    name: "production-marker-missing-presentation",
+    mutate: (L) => L.map((l) => l.includes("thread_row_recompose") ? l.replace(" presentation=pr1", "") : l),
+    expect: "rowRecompose marker invalid/missing fields: presentation",
+  },
+  {
     name: "stale-token-row",
     mutate: (L) => { L.splice(1, 0, `thread_row_recompose scope=card index=20 lazyItemKey=${KEYS[0].keyB64} n=1 bodyLen=40 ${TOK.replace("windowGeneration=1", "windowGeneration=0")} presentation=pr1`); return L; },
     expect: "stale window composition",
