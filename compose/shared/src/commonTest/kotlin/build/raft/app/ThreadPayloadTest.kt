@@ -2984,10 +2984,37 @@ class ThreadPayloadTest {
             KuiklyThreadScreenPayload(
                 surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                 parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "channel",
                 memberScopedMentions = true
             )
 
         assertEquals(false, payload.threadComposerMemberScopedMentions())
+        assertEquals(true, payload.threadComposerMemberSuggestionHeadersVisible())
+    }
+
+    @Test
+    fun jointReplyThreadComposerUsesParentChannelMemberScope() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "joint-channel-1",
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                parentChannelKind = "joint",
+                memberScopedMentions = true,
+                composer =
+                    buildThreadSurfaceComposerPayload(
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        displayName = ThreadReplyPageTitle,
+                        fallbackId = "joint-parent-1",
+                        enabled = true,
+                        mentionChannelId = "joint-channel-1",
+                        parentMessageId = "joint-parent-1",
+                        streamChannelId = "joint-thread-1"
+                    )
+            )
+
+        assertEquals("joint-channel-1", payload.resolveThreadComposer().mentionChannelId)
+        assertEquals(true, payload.threadComposerMemberScopedMentions())
         assertEquals(true, payload.threadComposerMemberSuggestionHeadersVisible())
     }
 
@@ -3674,6 +3701,7 @@ class ThreadPayloadTest {
         assertEquals("joint", replyPayload.parentChannelKind)
         assertEquals("joint", launchPayload.parentChannelKind)
         assertEquals("joint", parsedPayload.parentChannelKind)
+        assertEquals(true, parsedPayload.threadComposerMemberScopedMentions())
         assertEquals(KuiklyThreadSurfaceKind.Channel, parentPayload.surfaceKind)
         assertEquals("joint-channel-1", parentPayload.sourceThreadId)
         assertEquals("joint", parentPayload.channelKind)
