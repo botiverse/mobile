@@ -937,7 +937,7 @@ private data class SharedThreadPrewarmLookup(
 )
 
 private fun Message.needsSharedThreadMessageStoreHydration(): Boolean =
-    body.isBlank() && attachments.isEmpty()
+    body.isBlank() && attachments.isEmpty() && forwardBundle == null
 
 private fun Message.matchesSharedThreadMessageStoreKey(
     channelId: ChannelId,

@@ -10450,8 +10450,23 @@ private fun ThreadPageContent(
                                     selectedShareMessageIds + messageId
                                 }
                         },
-                        onOpenForwardBundle = { bundle ->
-                            threadScreenPagerForForwardBundle.openThreadForwardBundlePage(bundle)
+                        onOpenForwardBundle = { messageId ->
+                            val serverId = forwardServerId?.value
+                            val channelId = payload.resolveThreadRouteIdentity().timelineChannelId
+                            if (serverId != null && channelId != null) {
+                                threadScreenPagerForForwardBundle.openThreadForwardBundlePage(
+                                    ThreadForwardBundleRoute(
+                                        serverId = ServerId(serverId),
+                                        channelId = ChannelId(channelId),
+                                        messageId = MessageId(messageId)
+                                    )
+                                )
+                            } else {
+                                diagnosticsLogger(
+                                    "thread_forward_bundle_open_rejected reason=route_identity_missing " +
+                                        "messageId=$messageId serverId=${serverId.orEmpty()} channelId=${channelId.orEmpty()}"
+                                )
+                            }
                         },
                         translationStore = translationStore,
                         onThreadContentReady = {}
@@ -11377,7 +11392,7 @@ private fun ThreadChatTab(
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
-    onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
+    onOpenForwardBundle: (String) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {}
 ) {
@@ -11853,7 +11868,7 @@ private fun ThreadMessagesList(
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
-    onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
+    onOpenForwardBundle: (String) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {}
 ) {
@@ -14746,7 +14761,7 @@ private fun ThreadMessageCard(
     translation: ThreadMessageTranslationUi? = null,
     onToggleTranslationOriginal: () -> Unit = {},
     onRetryTranslation: () -> Unit = {},
-    onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
+    onOpenForwardBundle: (String) -> Unit = {},
     longMessageCollapseEnabled: Boolean = false,
     longMessageExpanded: Boolean = false,
     onToggleLongMessage: () -> Unit = {},
@@ -14953,7 +14968,7 @@ private fun ThreadMessageCard(
                                 bundle = forwardBundle,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                 onOpenUrl = onOpenMarkdownUrl,
-                                onOpenAll = { onOpenForwardBundle(forwardBundle) }
+                                onOpenAll = { onOpenForwardBundle(message.id) }
                             )
                         } else if (message.body.isNotBlank()) {
                             if (richContentEnabled) {
@@ -18781,7 +18796,7 @@ private fun forwardAttachmentKindLabel(mimeType: String?): String {
     return subtype.split('+', '.', '-').firstOrNull()?.uppercase()?.takeIf { it.isNotBlank() } ?: "FILE"
 }
 
-private const val ThreadForwardBundleInlinePreviewLimit = 3
+internal const val ThreadForwardBundleInlinePreviewLimit = 3
 
 @Composable
 private fun ThreadForwardBundleCard(
@@ -18826,11 +18841,12 @@ private fun ThreadForwardBundleCard(
                 maxLines = 1
             )
         }
-        // artin's redesign (task #64): the inline card previews at most three
-        // forwarded messages; longer bundles add a "View all N" row that opens
-        // the full-screen bundle page.
-        val previewMessages = bundle.messages.take(ThreadForwardBundleInlinePreviewLimit)
-        previewMessages.forEach { item ->
+        // Keep Web's long-content threshold (420 chars / 8 lines), but use the
+        // mobile navigation contract requested for 1.6.0: every bundle has a
+        // full-page entry, including a single forwarded message.
+        val previewMessages = bundle.inlinePreviewMessages()
+        previewMessages.forEach { preview ->
+            val item = preview.item
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -18859,20 +18875,30 @@ private fun ThreadForwardBundleCard(
                         )
                     }
                 }
-                if (item.body.isNotBlank()) {
+                if (preview.body.isNotBlank()) {
                     // Web's ForwardedBundleCard renders each forwarded body
                     // through MarkdownContent — plain Text left **bold**,
                     // [links](…) and `code` raw (task #63).
-                    SlockMarkdownBody(
-                        body = item.body,
-                        textStyle = ThreadMessageBodyTextStyle,
-                        onOpenUrl = onOpenUrl
-                    )
+                    if (preview.truncated) {
+                        Text(
+                            text = preview.body,
+                            style = ThreadMessageBodyTextStyle,
+                            color = SlockColor.TextBlack,
+                            maxLines = ThreadForwardBundlePreviewLineLimit,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    } else {
+                        SlockMarkdownBody(
+                            body = preview.body,
+                            textStyle = ThreadMessageBodyTextStyle,
+                            onOpenUrl = onOpenUrl
+                        )
+                    }
                 }
                 ThreadForwardAttachmentChips(item)
             }
         }
-        if (onOpenAll != null && bundle.displayCount() > ThreadForwardBundleInlinePreviewLimit) {
+        if (onOpenAll != null) {
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
             Row(
                 modifier =
@@ -18884,7 +18910,12 @@ private fun ThreadForwardBundleCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = stringResource(MR.strings.thread_forward_view_all, bundle.displayCount()),
+                    text =
+                        if (bundle.displayCount() == 1) {
+                            stringResource(MR.strings.thread_forward_view_message)
+                        } else {
+                            stringResource(MR.strings.thread_forward_view_all, bundle.displayCount())
+                        },
                     style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1
@@ -19243,19 +19274,20 @@ internal fun ThreadCommentAnchorVisualScreen() {
 
 const val THREAD_FORWARD_BUNDLE_PAGE = "compose_thread_forward_bundle_page"
 
-private val threadForwardBundlePageJson = Json { ignoreUnknownKeys = true }
-
 // Full forwarded-bundle list as its own single-page pager (task #64): the
-// inline card previews at most three messages; "View all N" routes here. Same
+// inline card previews at most three messages; every bundle can route here. Same
 // standalone-pager architecture as Billing/Administration so the list gets a
 // full-height viewport and a clean lifecycle. Replaces the old in-thread modal.
-internal fun Pager.openThreadForwardBundlePage(bundle: ForwardMessageBundle) {
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-        THREAD_FORWARD_BUNDLE_PAGE,
-        com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
-            put("pageName", THREAD_FORWARD_BUNDLE_PAGE)
-            put("payload", threadForwardBundlePageJson.encodeToString(bundle))
-        }
+internal fun Pager.openThreadForwardBundlePage(route: ThreadForwardBundleRoute) {
+    openSlockPage(
+        pageName = THREAD_FORWARD_BUNDLE_PAGE,
+        pageData =
+            com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
+                put("pageName", THREAD_FORWARD_BUNDLE_PAGE)
+                put("serverId", route.serverId.value)
+                put("channelId", route.channelId.value)
+                put("messageId", route.messageId.value)
+            }
     )
 }
 
@@ -19271,17 +19303,44 @@ internal class ComposeThreadForwardBundlePage : build.raft.app.base.BasePager() 
 private fun ThreadForwardBundleScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val bundle =
-        remember {
-            val params = pager.pageData.params
-            if (params.optString("visualFixture") == "forward_bundle") {
-                threadForwardBundleVisualFixtureBundle()
-            } else {
-                runCatching {
-                    threadForwardBundlePageJson.decodeFromString<ForwardMessageBundle>(params.optString("payload"))
-                }.getOrNull()
+    val params = pager.pageData.params
+    val visualFixture = remember(params.toString()) { params.optString("visualFixture") == "forward_bundle" }
+    val route = remember(params.toString()) { params.toThreadForwardBundleRouteOrNull() }
+    val storeScope = remember(params.toString(), pager.pagerId) {
+        params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val repository =
+        remember(sharedStores, authStore, networkClient) {
+            RealThreadForwardBundleDetailRepository(
+                messageStore = sharedStores.threadMessageStore,
+                conversationRepository =
+                    RealConversationRepository(
+                        sessionStore = authStore,
+                        networkClient = networkClient,
+                        warningLogger = { message -> bridge.log("thread_forward_bundle_repository $message") }
+                    )
+            )
+        }
+    val detailViewModel: ThreadForwardBundleDetailViewModel? =
+        route?.let { resolvedRoute ->
+            viewModel(
+                key =
+                    "thread-forward-bundle-${resolvedRoute.serverId.value}-" +
+                        "${resolvedRoute.channelId.value}-${resolvedRoute.messageId.value}"
+            ) {
+                ThreadForwardBundleDetailViewModel(route = resolvedRoute, repository = repository)
             }
         }
+    val detailState by
+        detailViewModel?.state?.collectAsState()
+            ?: remember { mutableStateOf(ThreadForwardBundleDetailState(status = ThreadForwardBundleDetailStatus.Empty)) }
+    LaunchedEffect(detailViewModel, visualFixture) {
+        if (!visualFixture) detailViewModel?.dispatch(ThreadForwardBundleDetailIntent.Load)
+    }
+    val bundle = if (visualFixture) threadForwardBundleVisualFixtureBundle() else detailState.bundle
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = bundle?.localizedForwardTitle() ?: stringResource(MR.strings.thread_forward_bundle_fallback_title),
@@ -19298,40 +19357,81 @@ private fun ThreadForwardBundleScreen() {
                 )
             }
         )
-        val messages = bundle?.messages.orEmpty()
-        // Rows reuse the STANDARD chat message renderer (artin, task #64
-        // follow-up): same avatar/author/timestamp/markdown chrome and spacing
-        // as the thread flow, no bespoke dividers. Action callbacks are no-ops
-        // — this is a read-only list; only markdown links stay live.
-        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = SlockSpacing.Sm)) {
-            items(messages.size, key = { messages[it].id }) { index ->
-                val item = messages[index]
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    ThreadMessageCard(
-                        message = item.toThreadMessageItemForBundlePage(),
-                        onShowActions = {},
-                        onOpenMember = {},
-                        onOpenThread = {},
-                        onOpenTask = {},
-                        onOpenTaskStatusMenu = {},
-                        onToggleReaction = {},
-                        onOpenAttachment = {},
-                        onOpenMarkdownTag = {},
-                        onOpenMarkdownUrl = { url -> bridge.openUrl(url) },
-                        showReplyAction = false,
-                        showSaveAction = false,
-                        taskOpenEnabled = false,
-                        taskStatusActionsEnabled = false
-                    )
-                    if (item.attachments.isNotEmpty() || item.attachmentCount > 0) {
-                        ThreadForwardAttachmentChips(
-                            item = item,
-                            modifier = Modifier.padding(start = 60.dp, end = SlockSpacing.Md, bottom = SlockSpacing.Sm)
-                        )
+        when {
+            visualFixture || detailState.status == ThreadForwardBundleDetailStatus.Content -> {
+                val messages = bundle?.messages.orEmpty()
+                // Rows reuse the STANDARD chat message renderer (artin, task #64
+                // follow-up): same avatar/author/timestamp/markdown chrome and spacing
+                // as the thread flow, no bespoke dividers. Action callbacks are no-ops
+                // — this is a read-only list; only markdown links stay live.
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(vertical = SlockSpacing.Sm)) {
+                    items(messages.size, key = { messages[it].id }) { index ->
+                        val item = messages[index]
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            ThreadMessageCard(
+                                message = item.toThreadMessageItemForBundlePage(),
+                                onShowActions = {},
+                                onOpenMember = {},
+                                onOpenThread = {},
+                                onOpenTask = {},
+                                onOpenTaskStatusMenu = {},
+                                onToggleReaction = {},
+                                onOpenAttachment = {},
+                                onOpenMarkdownTag = {},
+                                onOpenMarkdownUrl = { url -> bridge.openUrl(url) },
+                                showReplyAction = false,
+                                showSaveAction = false,
+                                taskOpenEnabled = false,
+                                taskStatusActionsEnabled = false
+                            )
+                            if (item.attachments.isNotEmpty() || item.attachmentCount > 0) {
+                                ThreadForwardAttachmentChips(
+                                    item = item,
+                                    modifier = Modifier.padding(start = 60.dp, end = SlockSpacing.Md, bottom = SlockSpacing.Sm)
+                                )
+                            }
+                        }
                     }
                 }
             }
+            detailState.status == ThreadForwardBundleDetailStatus.Loading ->
+                SlockCenteredLoading(
+                    message = stringResource(MR.strings.common_loading),
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                )
+            else ->
+                ThreadForwardBundleLoadFailure(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onRetry = { detailViewModel?.dispatch(ThreadForwardBundleDetailIntent.Retry) }
+                )
         }
+    }
+}
+
+@Composable
+private fun ThreadForwardBundleLoadFailure(
+    modifier: Modifier = Modifier,
+    onRetry: () -> Unit
+) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = stringResource(MR.strings.thread_forward_bundle_unavailable),
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack
+        )
+        Spacer(Modifier.height(SlockSpacing.Md))
+        SlockBrutalActionButton(
+            label = stringResource(MR.strings.common_retry),
+            onClick = onRetry,
+            backgroundColor = SlockColor.SurfaceWhite,
+            minWidth = 0.dp,
+            minHeight = 36.dp,
+            shadowOffset = 2.dp
+        )
     }
 }
 
