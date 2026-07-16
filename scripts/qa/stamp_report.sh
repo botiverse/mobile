@@ -11,9 +11,18 @@ AUTH="Authorization: Bearer $STAMP_TOKEN"
 BASE="$STAMP_URL/api/agent/run-cases/$STAMP_RUN_CASE_ID"
 
 if [ "$PHASE" = "claim" ]; then
+  # bind the exact build under test to the run (artin: every run records its version)
+  APK_FILE=$(find apks -name '*.apk' 2>/dev/null | head -1)
+  APK_SHA=""; [ -n "$APK_FILE" ] && APK_SHA=$(sha256sum "$APK_FILE" | cut -d' ' -f1)
+  VN=""; VC=""
+  if [ -n "$APK_FILE" ] && command -v aapt >/dev/null 2>&1; then
+    BADGING=$(aapt dump badging "$APK_FILE" 2>/dev/null | head -1)
+    VN=$(printf '%s' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+    VC=$(printf '%s' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
+  fi
   curl -sf -X POST "$BASE/claim" -H "$AUTH" -H 'content-type: application/json' \
-    -d "{\"ci_job_ref\":\"${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}\"}" \
-    >/dev/null && echo "stamp: claimed" || echo "stamp: claim failed (continuing)"
+    -d "{\"ci_job_ref\":\"${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}\",\"source_commit\":\"${GITHUB_SHA:-}\",\"apk_sha256\":\"$APK_SHA\",\"app_version\":\"$VN\",\"version_code\":${VC:-null}}" \
+    >/dev/null && echo "stamp: claimed (commit=${GITHUB_SHA:-?} apk=${APK_SHA:0:12})" || echo "stamp: claim failed (continuing)"
   exit 0
 fi
 
