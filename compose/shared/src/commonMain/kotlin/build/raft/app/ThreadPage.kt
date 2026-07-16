@@ -171,6 +171,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
@@ -11895,6 +11896,13 @@ private fun ThreadMessagesList(
         ThreadFirstViewportProbe(threadRowProbeSessionMarker)
     }
     var firstViewportProbeActive by remember(threadInstanceKey) { mutableStateOf(true) }
+    var postFirstFrameBeyondBoundsEnabled by remember(threadInstanceKey) { mutableStateOf(false) }
+    val activeListBeyondBoundsItems =
+        if (postFirstFrameBeyondBoundsEnabled) {
+            threadLazyWindowConsumerCounts.listBeyondBoundsItems
+        } else {
+            0
+        }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
     // task #569: long-press on a reaction chip shows who reacted.
@@ -12235,7 +12243,7 @@ private fun ThreadMessagesList(
                 listState.threadLazyWindowStats(
                     timelineSlice = renderPayload,
                     lazyItemCount = lazyItemCount,
-                    beyondBoundsItems = threadLazyWindowConsumerCounts.diagnosticsBeyondBoundsItems
+                    beyondBoundsItems = activeListBeyondBoundsItems
                 )
             if (stats.visibleItems > 0) {
                 diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
@@ -12737,6 +12745,29 @@ private fun ThreadMessagesList(
             listState.scrollLatestItemToRenderedBottom(latestItemIndex)
         }
     }
+    LaunchedEffect(
+        threadInstanceKey,
+        initialBottomAnchorReady,
+        viewportMeasurementReady
+    ) {
+        if (
+            !initialBottomAnchorReady ||
+            !viewportMeasurementReady ||
+            postFirstFrameBeyondBoundsEnabled
+        ) {
+            return@LaunchedEffect
+        }
+        // The first frame only needs visible rows. Let that committed viewport
+        // draw before enabling the normal scroll-ahead window, so expensive
+        // card/Markdown composition does not compete with first paint.
+        withFrameNanos { }
+        withFrameNanos { }
+        postFirstFrameBeyondBoundsEnabled = true
+        diagnosticsLogger(
+            "thread_initial_beyond_bounds result=enabled_after_first_frame " +
+                "items=${threadLazyWindowConsumerCounts.listBeyondBoundsItems}"
+        )
+    }
     LaunchedEffect(threadInstanceKey, composerKeyboardInsetDp, latestItemIndex) {
         val shouldAnchor =
             shouldAnchorThreadKeyboardBottomOnInsetChange(
@@ -12809,7 +12840,7 @@ private fun ThreadMessagesList(
                         )
                     ),
                 verticalArrangement = Arrangement.Bottom,
-                beyondBoundsItemCount = threadLazyWindowConsumerCounts.listBeyondBoundsItems
+                beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
