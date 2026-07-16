@@ -10538,6 +10538,7 @@ private fun ThreadPageContent(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
+                    taskLinkedCount = forwardMessageSelection.taskLinkedCount,
                     query = forwardTargetQuery,
                     loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
                     targets = forwardTargetItems,
@@ -13392,15 +13393,18 @@ private fun ThreadTimelineSlice.threadSelectedShareMessages(
 
 internal const val ThreadNestedForwardUnsupportedMessage =
     "Forwarded messages can't be forwarded. Select the original message instead."
+internal const val ThreadTaskLinkedForwardUnsupportedMessage =
+    "Task-linked messages can't be forwarded yet. Select an ordinary message instead."
 internal const val ThreadUnsupportedSourceMessage =
-    "Tasks, system messages, and action messages can't be forwarded. Select an ordinary message instead."
+    "System messages and action messages can't be forwarded. Select an ordinary message instead."
 internal const val ThreadForwardSourceTargetForbiddenMessage =
     "Choose a different destination from the conversation you are forwarding."
 
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<KuiklyThreadMessageItem>,
     val skippedCount: Int,
-    val nestedForwardCount: Int
+    val nestedForwardCount: Int,
+    val taskLinkedCount: Int
 )
 
 internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): ThreadForwardMessageSelection {
@@ -13408,9 +13412,14 @@ internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): Thre
     return ThreadForwardMessageSelection(
         forwardableMessages = forwardableMessages,
         skippedCount = size - forwardableMessages.size,
-        nestedForwardCount = count { message -> message.forwardBundle != null }
+        nestedForwardCount = count { message -> message.forwardBundle != null },
+        taskLinkedCount = count { message -> message.isTaskLinkedChatMessage() }
     )
 }
+
+private fun KuiklyThreadMessageItem.isTaskLinkedChatMessage(): Boolean =
+    messageType.equals("Chat", ignoreCase = true) &&
+        (taskId != null || taskNumber != null || taskStatus != null)
 
 private fun KuiklyThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
     messageType.equals("Chat", ignoreCase = true) &&
@@ -13432,22 +13441,26 @@ internal fun String.threadForwardErrorMessage(): String =
     }
 
 internal fun ThreadForwardMessageSelection.threadForwardSelectionFailureMessage(): String =
-    if (nestedForwardCount == skippedCount) {
-        ThreadNestedForwardUnsupportedMessage
-    } else {
-        ThreadUnsupportedSourceMessage
+    when {
+        nestedForwardCount == skippedCount -> ThreadNestedForwardUnsupportedMessage
+        taskLinkedCount == skippedCount -> ThreadTaskLinkedForwardUnsupportedMessage
+        else -> ThreadUnsupportedSourceMessage
     }
 
 internal fun threadForwardSkippedWarning(
     skippedCount: Int,
-    nestedForwardCount: Int
+    nestedForwardCount: Int,
+    taskLinkedCount: Int = 0
 ): String? {
     if (skippedCount <= 0) return null
     val skippedLabel = if (skippedCount == 1) "1 selected message was" else "$skippedCount selected messages were"
-    return if (nestedForwardCount == skippedCount) {
-        "$skippedLabel skipped because forwarded messages can't be forwarded again."
-    } else {
-        "$skippedLabel skipped. Forwarded bundles, tasks, system messages, and action messages can't be forwarded."
+    return when {
+        nestedForwardCount == skippedCount ->
+            "$skippedLabel skipped because forwarded messages can't be forwarded again."
+        taskLinkedCount == skippedCount ->
+            "$skippedLabel skipped because task-linked messages can't be forwarded yet."
+        else ->
+            "$skippedLabel skipped. Forwarded bundles, task-linked messages, system messages, and action messages can't be forwarded."
     }
 }
 
@@ -18988,6 +19001,7 @@ internal fun ThreadForwardModalVisualScreen() {
         messageCount = 2,
         skippedCount = 0,
         nestedForwardCount = 0,
+        taskLinkedCount = 0,
         query = "",
         loading = false,
         targets = if (selectedProbeTargetId == null) fixtureTargets else emptyList(),
@@ -19313,6 +19327,7 @@ private fun ThreadForwardTargetPickerPage(
     messageCount: Int,
     skippedCount: Int,
     nestedForwardCount: Int,
+    taskLinkedCount: Int,
     query: String,
     loading: Boolean,
     targets: List<ThreadForwardTargetItem>,
@@ -19354,7 +19369,7 @@ private fun ThreadForwardTargetPickerPage(
                     )
                 }
             )
-            threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
+            threadForwardSkippedWarning(skippedCount, nestedForwardCount, taskLinkedCount)?.let { warning ->
                 Box(
                     modifier =
                         Modifier
