@@ -1,6 +1,9 @@
 package build.raft.app.network
 
+import android.app.Instrumentation
+import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.tencent.kmm.network.export.NetworkBody
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkResponse
@@ -348,12 +351,17 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
         transport: RuntimeTransport,
         sinkStats: RuntimeSinkStats
     ) {
-        println(
+        val marker =
             "TASK2_RUNTIME scenario=$scenario targetExists=${target.exists()} targetBytes=${if (target.exists()) target.length() else 0} " +
                 "progress=${observer.progress.size} terminals=${observer.results.size} transportStarts=${transport.calls.size} " +
                 "transportCancels=${transport.calls.sumOf { it.cancelCount.get() }} " +
                 "begin=${sinkStats.begin.get()} write=${sinkStats.write.get()} prepare=${sinkStats.prepare.get()} " +
                 "publish=${sinkStats.publish.get()} abort=${sinkStats.abort.get()}"
+        InstrumentationRegistry.getInstrumentation().sendStatus(
+            0,
+            Bundle().apply {
+                putString(Instrumentation.REPORT_KEY_STREAMRESULT, "$marker\n")
+            }
         )
     }
 
