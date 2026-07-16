@@ -11,6 +11,10 @@ Status: design note (docs-first, pre-head). Owner: HanXin. Contract-face + platf
 Builds on: #709 (T-wrapper V1 persistence, §9.9 one-txn + crash-window; canonical fact codec; scope
 rebaseline via `clearScope` + rebuild / `ingestSnapshot`) and the shadow-compare (`compareCanonicalShadow`).
 
+> Current authority/status: RFC 043 in `botiverse/slock` is normative. Mobile V2 implementation and RED
+> evidence are tracked in [canonical-message-v2-implementation-tracker.md](canonical-message-v2-implementation-tracker.md).
+> This older note does not authorize production binding, eligibility, flags or rollout.
+
 ## 1. Wiring point — the host-ingest apply owner (NOT the mapper hook)
 
 > **Correction (AD2 + MingQi t0).** The first draft wired sole-apply into
