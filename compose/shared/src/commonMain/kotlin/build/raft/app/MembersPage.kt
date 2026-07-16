@@ -2816,7 +2816,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
         is DataResult.Content -> {
             val launchPayload =
                 buildMembersDirectMessageThreadLaunchPayload(
-                    memberId = member.id,
+                    member = member,
                     conversation = data.conversation,
                     timeContext = timeContext
                 )
@@ -2840,7 +2840,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
 }
 
 internal fun buildMembersDirectMessageThreadLaunchPayload(
-    memberId: MemberId,
+    member: MemberProfile,
     conversation: HomeDirectMessageRow,
     timeContext: SlockTimeContext
 ): WireThreadLaunchPayload? {
@@ -2854,10 +2854,16 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
                 threadId = ThreadId(threadId),
                 channelId = ChannelId(threadId),
                 channelType = KuiklyThreadSurfaceKind.DirectMessage,
-                kind = ConversationKind.DirectMessage
+                kind = ConversationKind.DirectMessage,
+                dmPeerIdentity =
+                    memberDetailIdentity(
+                        memberId = member.id.value,
+                        kind = member.kind,
+                        sourceServerId = member.serverId?.value
+                    )
             ),
         timeContext = timeContext,
-        instanceIdOverride = "members-message-${memberId.value}-$threadId"
+        instanceIdOverride = "members-message-${member.id.value}-$threadId"
     )
 }
 
