@@ -69,14 +69,11 @@ function screenshotPng() {
   return adb(["exec-out", "screencap", "-p"], { encoding: "buffer" });
 }
 
-function dumpUi() {
+// Structured view of the current uiautomator dump — the single source both
+// dump_ui (rendered) and tap_text (fresh-bounds resolution) read from.
+function uiNodes() {
   adb(["shell", "uiautomator", "dump", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
   const xml = adb(["exec-out", "cat", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
-  // Raw uiautomator XML for a busy screen is ~60KB of mostly-useless
-  // attributes, and long dumps in context measurably degrade M3's output
-  // format (the forward-message batch run drowned in malformed replies right
-  // after dump-heavy turns). The agent only ever uses text + bounds (+focus),
-  // so compress to exactly that — lossless for its purposes, ~10x smaller.
   const nodes = [];
   for (const m of xml.matchAll(/<node[^>]*>/g)) {
     const tag = m[0];
@@ -85,19 +82,55 @@ function dumpUi() {
     const cls = /class="([^"]*)"/.exec(tag)?.[1] ?? "";
     const focused = /focused="true"/.test(tag);
     const clickable = /clickable="true"/.test(tag);
+    const editable = /EditText|TextField|AutoComplete/i.test(cls);
+    const b = /bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(tag);
+    nodes.push({ text, desc, editable, clickable, focused, bounds: b ? [+b[1], +b[2], +b[3], +b[4]] : null });
+  }
+  return nodes;
+}
+
+function dumpUi() {
+  // Raw uiautomator XML for a busy screen is ~60KB of mostly-useless
+  // attributes, and long dumps in context measurably degrade M3's output
+  // format (the forward-message batch run drowned in malformed replies right
+  // after dump-heavy turns). The agent only ever uses text + bounds (+focus),
+  // so compress to exactly that — lossless for its purposes, ~10x smaller.
+  const lines = [];
+  for (const n of uiNodes()) {
     // v2 keep-set (first compression dropped empty EditTexts — the login
     // fields — and the agent went blind, batch rerun 29505605156): editable
     // nodes ALWAYS survive even when empty, clickable nodes survive so
     // icon-only buttons finally have dump bounds, and content-desc counts
     // as a label.
-    const editable = /EditText|TextField|AutoComplete/i.test(cls);
-    if (!text && !desc && !focused && !editable && !clickable) continue;
-    const bounds = /bounds="(\[[^"]*\])"/.exec(tag)?.[1] ?? "";
-    const flags = `${editable ? "[INPUT] " : ""}${focused ? "[FOCUSED] " : ""}${!editable && clickable && !text ? "[BTN] " : ""}`;
-    nodes.push(`${flags}"${text || desc}" ${bounds}`);
+    if (!n.text && !n.desc && !n.focused && !n.editable && !n.clickable) continue;
+    const bounds = n.bounds ? `[${n.bounds[0]},${n.bounds[1]}][${n.bounds[2]},${n.bounds[3]}]` : "";
+    const flags = `${n.editable ? "[INPUT] " : ""}${n.focused ? "[FOCUSED] " : ""}${!n.editable && n.clickable && !n.text ? "[BTN] " : ""}`;
+    lines.push(`${flags}"${n.text || n.desc}" ${bounds}`);
   }
-  const compact = nodes.join("\n") || "(no labelled nodes on screen)";
+  const compact = lines.join("\n") || "(no labelled nodes on screen)";
   return compact.length > 20000 ? compact.slice(0, 20000) + "\n[truncated]" : compact;
+}
+
+// tap_text: resolve the target's bounds from a FRESH dump at execution time
+// and tap the center. Dialogs shift layout as selections/keyboards change, so
+// coordinates computed from an earlier dump go stale — the edit-name 80-turn
+// run burned 20+ turns blind-tapping a Create Channel button that had moved
+// ~100px (Argus's checkpoint-timeline diagnosis). Exact label match first,
+// unique-substring fallback; prefer clickable nodes when several match.
+function tapTextResolve(wanted) {
+  const nodes = uiNodes().filter((n) => n.bounds);
+  const norm = (s) => String(s).trim().toLowerCase();
+  const w = norm(wanted);
+  let matches = nodes.filter((n) => norm(n.text) === w || norm(n.desc) === w);
+  if (!matches.length) matches = nodes.filter((n) => (n.text && norm(n.text).includes(w)) || (n.desc && norm(n.desc).includes(w)));
+  if (!matches.length) return { feedback: `tap_text: no on-screen node matches "${wanted}" — use dump_ui to see what is visible` };
+  const clickables = matches.filter((n) => n.clickable);
+  const pick = (clickables.length ? clickables : matches)[0];
+  const [x1, y1, x2, y2] = pick.bounds;
+  const x = Math.round((x1 + x2) / 2), y = Math.round((y1 + y2) / 2);
+  const label = pick.text || pick.desc;
+  const note = matches.length > 1 ? ` (${matches.length} matches; picked the ${clickables.length ? "clickable" : "first"} one)` : "";
+  return { x, y, feedback: `tapped "${label}" at [${x},${y}]${note}` };
 }
 
 // `adb shell input text` word-splits on the device shell; %s is its space
@@ -153,6 +186,8 @@ function preamble(size) {
     "",
     "Respond with EXACTLY ONE action as strict JSON (no prose, no markdown):",
     '  {"action":"tap","x":<px>,"y":<px>}            tap a point',
+    '  {"action":"tap_text","text":"<visible label>"}  tap the element with that text/description —',
+    "                                                 bounds resolve from a FRESH dump at tap time",
     '  {"action":"long_press","x":<px>,"y":<px>}      long-press a point (message actions like',
     "                                                 reply/forward/task live behind long-press)",
     '  {"action":"open_link","url":"<https or app link>"}   open a link/deeplink via Android intent',
@@ -170,7 +205,10 @@ function preamble(size) {
     '   "annotations":[{"step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"<short>"}]}',
     "",
     "Rules:",
-    "- Before tapping anything non-obvious, use dump_ui and compute the tap point from node bounds",
+    "- PREFER tap_text for anything with a visible label: it re-resolves the element's bounds at",
+    "  the moment of the tap, so it survives dialog/keyboard/selection layout shifts that make",
+    "  earlier dump coordinates stale. Use coordinate tap only for unlabelled targets.",
+    "- Before tapping anything unlabelled, use dump_ui and compute the tap point from node bounds",
     '  ("[x1,y1][x2,y2]" -> center). Screenshots alone are not reliable for coordinates.',
     "- The test account is email {{QA_EMAIL}} password {{QA_PASSWORD}} — type them as these",
     "  EXACT placeholder strings in a text action; the runner substitutes real values.",
@@ -467,6 +505,19 @@ async function main() {
           // screenshot — that's the frame the crosshair belongs on.
           tapAnnotations.push({ step: turns - 1, x: Math.round(action.x), y: Math.round(action.y) });
           break;
+        case "tap_text": {
+          const wanted = String(action.text ?? "").trim();
+          if (!wanted) { feedback = "tap_text requires text"; break; }
+          const r = tapTextResolve(wanted);
+          feedback = r.feedback;
+          if (r.x !== undefined) {
+            adb(["shell", "input", "tap", String(r.x), String(r.y)]);
+            // Crosshair on the CURRENT frame: bounds came from a fresh dump,
+            // not the previous screenshot.
+            tapAnnotations.push({ step: turns, x: r.x, y: r.y });
+          }
+          break;
+        }
         case "swipe": {
           const { w, h } = size;
           const c = { up: [w / 2, h * 0.7, w / 2, h * 0.3], down: [w / 2, h * 0.3, w / 2, h * 0.7], left: [w * 0.8, h / 2, w * 0.2, h / 2], right: [w * 0.2, h / 2, w * 0.8, h / 2] }[action.direction] || [w / 2, h * 0.7, w / 2, h * 0.3];

@@ -102,3 +102,15 @@ consumers keep this in sync:
   CHANNELS section", "the row `#all`" — that is what the agent can find.
 - Expect the login state: cold-start lands on Sign In; a server picker may
   follow login (round-2 had to choose the server before Home).
+
+## Stale bounds in dialogs — prefer tap_text
+
+- Dialogs re-layout as state changes (a member row toggles selected, the
+  keyboard opens, a validation hint appears): bounds you computed from an
+  earlier dump_ui move out from under the tap. The edit-name 80-turn run
+  burned 20+ turns blind-tapping "Create Channel" ~100px above the real
+  button after the list shifted.
+- Use `tap_text` for anything with a visible label — the runner re-resolves
+  the element's bounds from a fresh dump at the instant of the tap. Reserve
+  coordinate taps for unlabelled/icon-only targets, and re-dump right before
+  those when inside a dialog.
