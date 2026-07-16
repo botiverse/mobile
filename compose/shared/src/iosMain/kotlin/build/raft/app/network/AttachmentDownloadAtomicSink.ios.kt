@@ -5,14 +5,11 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSThread
-import platform.posix.O_CREAT
-import platform.posix.O_TRUNC
-import platform.posix.O_WRONLY
 import platform.posix.S_IRUSR
 import platform.posix.S_IWUSR
 import platform.posix.close as posixClose
+import platform.posix.creat as posixCreat
 import platform.posix.fsync as posixFsync
-import platform.posix.open as posixOpen
 import platform.posix.rename as posixRename
 import platform.posix.unlink as posixUnlink
 import platform.posix.write as posixWrite
@@ -30,7 +27,7 @@ internal actual fun attachmentDownloadPauseMillis(durationMillis: Long) {
 @OptIn(ExperimentalForeignApi::class)
 private object IosAttachmentDownloadFileOps : AttachmentDownloadFileOps {
     override fun open(path: String): Any? =
-        posixOpen(path, O_CREAT or O_TRUNC or O_WRONLY, (S_IRUSR or S_IWUSR).convert())
+        posixCreat(path, (S_IRUSR or S_IWUSR).convert())
             .takeIf { it >= 0 }
             ?.let(::IosAttachmentDownloadFileHandle)
 
