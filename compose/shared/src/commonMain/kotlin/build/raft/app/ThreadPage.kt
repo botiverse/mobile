@@ -19322,11 +19322,19 @@ private fun ThreadForwardTargetPickerPage(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .slockNativeDispatchCapture()
                 .zIndex(100f)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Keep the native-dispatch barrier behind the interactive content.
+        // Kuikly LazyColumn is backed by a native ScrollerView; placing capture
+        // on this parent consumes ACTION_DOWN before that child can scroll.
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(SlockColor.SurfaceWhite)
+                    .slockNativeDispatchCapture()
+        )
+        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
             SlockTopPageHeader(
                 title = stringResource(MR.strings.thread_action_forward),
                 subtitle = stringResource(MR.strings.thread_forward_messages_selected, messageCount),

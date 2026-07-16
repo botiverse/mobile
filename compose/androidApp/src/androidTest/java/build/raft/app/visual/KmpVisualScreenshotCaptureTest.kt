@@ -830,6 +830,11 @@ class KmpVisualScreenshotCaptureTest {
             afterSwipe = afterSwipeBitmap
             val changedRatio = beforeBitmap.changedPixelRatio(afterSwipeBitmap)
             val yellowAfterSwipe = afterSwipeBitmap.countForwardProbeYellowSamples()
+            Log.i(
+                VISUAL_LOG_TAG,
+                "FORWARD_SCROLL_PROBE phase=swipe changedRatio=$changedRatio " +
+                    "yellowBefore=$yellowBefore yellowAfter=$yellowAfterSwipe"
+            )
             assertTrue(
                 "Forward recipient LazyColumn did not move after a real vertical swipe; changedRatio=$changedRatio",
                 changedRatio >= FORWARD_PROBE_MIN_SCROLL_CHANGED_RATIO
@@ -845,6 +850,10 @@ class KmpVisualScreenshotCaptureTest {
             val afterTapBitmap = captureActivityScreenshot(caseId)
             afterTap = afterTapBitmap
             val yellowAfterTap = afterTapBitmap.countForwardProbeYellowSamples()
+            Log.i(
+                VISUAL_LOG_TAG,
+                "FORWARD_SCROLL_PROBE phase=tap yellowBefore=$yellowAfterSwipe yellowAfter=$yellowAfterTap"
+            )
             assertTrue(
                 "A visible recipient row must remain tappable after scrolling; beforeTap=$yellowAfterSwipe afterTap=$yellowAfterTap",
                 yellowAfterTap <= yellowAfterSwipe / 3
