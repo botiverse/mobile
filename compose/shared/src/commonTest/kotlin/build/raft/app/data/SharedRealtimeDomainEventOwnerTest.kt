@@ -225,8 +225,8 @@ class SharedRealtimeDomainEventOwnerTest {
         // page has sinks registered (the page-scoped windows were how
         // machine-offline transitions got lost on the Members surface).
         val owner = SharedRealtimeDomainEventOwner()
-        val storeEvents = mutableListOf<MemberPresenceUpdated>()
-        owner.installMemberPresenceSink(storeEvents::add)
+        val delivered = mutableListOf<Pair<String, MemberPresenceUpdated>>()
+        owner.installMemberPresenceSink { serverId, event -> delivered += serverId to event }
         val event =
             MemberPresenceUpdated(
                 memberId = MemberId("agent-1"),
@@ -236,7 +236,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
         owner.accept("server-1", event, source = "app_shell")
 
-        assertEquals(listOf(event), storeEvents)
+        assertEquals(listOf("server-1" to event), delivered)
     }
 
     @Test
@@ -244,7 +244,7 @@ class SharedRealtimeDomainEventOwnerTest {
         val owner = SharedRealtimeDomainEventOwner()
         val storeEvents = mutableListOf<MemberPresenceUpdated>()
         val pageEvents = mutableListOf<MemberPresenceUpdated>()
-        owner.installMemberPresenceSink(storeEvents::add)
+        owner.installMemberPresenceSink { _, event -> storeEvents += event }
         owner.registerSinks(
             RealtimeDomainEventSinks(applyAgentActivity = pageEvents::add)
         )
