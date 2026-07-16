@@ -159,11 +159,14 @@ jobs:
           # line, so evidence still uploads and the verdict step decides.
           script: |
             adb wait-for-device
+            adb logcat -G 16M
+            adb logcat -c
             adb install -r "$(find apks -name '*.apk' | head -1)"
             adb shell am start -n build.raft.app/.MainActivity
             sleep 8
             mkdir -p qa-evidence
             export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            adb logcat -d > qa-evidence/logcat.txt
 
       - name: Upload evidence
         if: always()
