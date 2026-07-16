@@ -6,9 +6,10 @@
 > is form A: extend the existing relational tables (`messageEntity` + a `canonicalFactJson` column,
 > `syncCursorEntity`). The literal KV-table option (a `localSnapshotEntity` blob store) was rejected.
 
-Status: design note for the P1 persistence layer (RFC 043 §7.6 / §9.9), first increment = **one-txn gate**.
-Owner: HanXin. Review: LiBai + AD2. Line: `fold → app-bind → wrapper` (third segment; fold + app-bind
-landed on main 2026-07-11).
+Status: historical design note for the P1 persistence layer (RFC 043 §7.6 / §9.9). The one-txn/SQLite and
+continuation work landed; durable identity and migration later advanced beyond the assumptions in this note.
+See [`canonical-message-rollout-roadmap-audit-2026-07-16.md`](canonical-message-rollout-roadmap-audit-2026-07-16.md)
+for current status and superseding rulings. Owner: HanXin. Review: LiBai + AD2.
 
 This note pins the implementation-level contract so the RED tests can be written first (TDD). It does not
 add a migration — schema rides the pre-release `slock_cache_v4.db` fresh baseline (coordinated with #706).

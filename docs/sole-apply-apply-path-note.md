@@ -7,9 +7,15 @@
 > Decision: "pure canary metrics" (no bounded parity log). 3-party converged: HanXin (sync-line) / 赵
 > (contract face) / AD2 (platform).
 
-Status: design note (docs-first, pre-head). Owner: HanXin. Contract-face + platform gatekeepers: 赵 + AD2.
-Builds on: #709 (T-wrapper V1 persistence, §9.9 one-txn + crash-window; canonical fact codec; scope
-rebaseline via `clearScope` + rebuild / `ingestSnapshot`) and the shadow-compare (`compareCanonicalShadow`).
+Status: active canary contract; implementation/status audit:
+[`canonical-message-rollout-roadmap-audit-2026-07-16.md`](canonical-message-rollout-roadmap-audit-2026-07-16.md).
+Owner: HanXin. Contract-face + platform gatekeepers: 赵 + AD2. Builds on #709 (T-wrapper V1 persistence,
+§9.9 one-txn + crash-window; canonical fact codec; scope rebaseline via `clearScope` + rebuild /
+`ingestSnapshot`) and the shadow-compare (`compareCanonicalShadow`).
+
+The audit records later actor/failure rulings. In particular, “any error falls back to legacy” below applies
+only before a frame enters canonical commit ordering. Commit/queue/readback/rebaseline failures after canonical
+acceptance must hold the scope and reconcile; they may not leak the uncommitted event through legacy.
 
 ## 1. Wiring point — the host-ingest apply owner (NOT the mapper hook)
 

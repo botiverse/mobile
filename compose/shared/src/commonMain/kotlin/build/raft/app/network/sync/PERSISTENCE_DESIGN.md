@@ -1,5 +1,10 @@
 # KT Sync-Core Persistence — Implementation Design Note (P1 / task #491)
 
+> Historical implementation design. The one-transaction/projector/fail-stop principles remain active, but
+> durable identity, schema migration, and rollout status have advanced. Current status and superseding
+> identity/rollout rulings are in
+> `docs/canonical-message-rollout-roadmap-audit-2026-07-16.md`.
+
 **Owner:** HanXin · **Contract source of truth:** RFC 043 §9.9 + §10.1 amendment
 (botiverse/slock PR #4445, staging `6c6229fcf`) · **§9.9 gate criteria:** 王润基 ·
 **Android binding review + compile hard-gate:** Android-Developer-2 (task #494)

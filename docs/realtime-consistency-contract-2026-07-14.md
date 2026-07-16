@@ -1,5 +1,9 @@
 # Realtime Consistency Contract: Gap Recovery and Session Authority
 
+Implementation status after PR #1017 and the ordered V2→sole-apply remainder are tracked in
+[`canonical-message-rollout-roadmap-audit-2026-07-16.md`](canonical-message-rollout-roadmap-audit-2026-07-16.md).
+This contract remains normative; the audit distinguishes implemented mechanics from rollout authorization.
+
 - Status: **standard / frozen contract**
 - Contract versions: **Thread gap recovery v1** and **realtime foundation v1.2**
 - Scope: shared KMP realtime state, Android/OHOS hosts, SQLite persistence,
