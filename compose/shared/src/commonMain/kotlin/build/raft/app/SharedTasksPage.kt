@@ -89,6 +89,7 @@ private const val TasksListMaxBeyondBoundsItemCount = 4
 internal fun SharedTasksScreen(
     state: TasksUiState,
     onIntent: (SharedTasksRouteIntent) -> Unit,
+    scrollToTopRequest: Int = 0,
     modifier: Modifier = Modifier,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -100,6 +101,7 @@ internal fun SharedTasksScreen(
     SharedTasksPanel(
         state = state,
         onIntent = onIntent,
+        scrollToTopRequest = scrollToTopRequest,
         modifier = modifier,
         showHeader = true,
         showChannelFilter = true,
@@ -116,6 +118,7 @@ internal fun SharedTasksScreen(
 internal fun SharedTasksPanel(
     state: TasksUiState,
     onIntent: (SharedTasksRouteIntent) -> Unit,
+    scrollToTopRequest: Int = 0,
     modifier: Modifier = Modifier,
     showHeader: Boolean = true,
     showChannelFilter: Boolean = true,
@@ -177,6 +180,7 @@ internal fun SharedTasksPanel(
                     createTasksChannelId = createTasksChannelId,
                     onOpenTask = onOpenTask,
                     onIntent = onIntent,
+                    scrollToTopRequest = scrollToTopRequest,
                     bottomContentPadding = bottomContentPadding,
                     draftProjection = draftProjection,
                     initialListPosition = initialListPosition,
@@ -358,6 +362,7 @@ private fun SharedTasksLoadedBody(
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
+    scrollToTopRequest: Int,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     initialListPosition: AppShellLazyListPosition,
@@ -374,6 +379,7 @@ private fun SharedTasksLoadedBody(
             createTasksChannelId = createTasksChannelId,
             onOpenTask = onOpenTask,
             onIntent = onIntent,
+            scrollToTopRequest = scrollToTopRequest,
             defaultViewMode = defaultTasksViewMode(maxWidth),
             bottomContentPadding = bottomContentPadding,
             draftProjection = draftProjection,
@@ -394,6 +400,7 @@ private fun SharedTasksLoadedBodyContent(
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
+    scrollToTopRequest: Int,
     defaultViewMode: TasksViewMode,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
@@ -479,6 +486,15 @@ private fun SharedTasksLoadedBodyContent(
             initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
             initialFirstVisibleItemScrollOffset = initialListPosition.firstVisibleItemScrollOffset
         )
+    val listScrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
+    LaunchedEffect(scrollToTopRequest) {
+        if (
+            listScrollToTopRequestFence.consume(scrollToTopRequest) &&
+                presentationState.selectedMode == TasksViewMode.List
+        ) {
+            listModeListState.animateScrollToTopExpressive()
+        }
+    }
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
     DisposableEffect(listModeListState) {
         onDispose { latestOnListPositionSnapshot(listModeListState.toAppShellLazyListPosition()) }
@@ -610,7 +626,8 @@ private fun SharedTasksLoadedBodyContent(
                                         statusMenuAnchor = anchor
                                     },
                                     bottomContentPadding = bottomContentPadding,
-                                    draftProjection = draftProjection
+                                    draftProjection = draftProjection,
+                                    scrollToTopRequest = scrollToTopRequest,
                                 )
                             }
                         }
@@ -973,9 +990,16 @@ private fun SharedTasksBoardColumn(
     onStatusBadgeClick: (TaskSummary, Offset) -> Unit,
     onLongPressTask: (TaskSummary, Offset) -> Unit,
     bottomContentPadding: Dp,
-    draftProjection: SharedThreadComposerDraftProjection
+    draftProjection: SharedThreadComposerDraftProjection,
+    scrollToTopRequest: Int,
 ) {
     val columnListState = rememberLazyListState()
+    val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequestFence.consume(scrollToTopRequest) && !collapsed) {
+            columnListState.animateScrollToTopExpressive()
+        }
+    }
     // fillMaxHeight pins each board column to the LazyRow's height, giving the inner
     // LazyColumn a bounded constraint to scroll within. Without this, the inner list
     // tries to take infinite height and silently drops scrollability.

@@ -34,6 +34,7 @@ above and update the inventory when they establish a new ownership pattern.
 |---|---|---|
 | Home server list position restore | server-position restore | user-scroll generation + active-scroll fence; task #541 |
 | Home title and system scroll-to-top | direct user/system action | explicit viewport replacement; compliant |
+| Home / Tasks / Members bottom-tab double-tap | direct user action | per-surface monotonic one-shot request; remount replay fenced; list animation yields to a newer user gesture |
 | Activity automatic top anchor | parked top feed + genuine top update | pagination/read mutation excluded; drag fenced; compliant (#928) |
 | Activity “new updates” badge | direct user action | explicit viewport replacement; compliant |
 | Settings Activity/Search/Saved titles | direct user action | explicit viewport replacement; compliant |

@@ -745,6 +745,91 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun bottomTabDoubleTapScrollsOnlyTheCurrentHomeTasksOrMembersSurface() {
+        val tracker = AppShellBottomTabTapTracker(doubleTapWindowMs = 400L)
+
+        assertEquals(
+            AppShellBottomTabTapAction.ArmCurrent,
+            tracker.onTap(selectedTab = "home", tappedTab = "home", nowMs = 100L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ScrollCurrentToTop,
+            tracker.onTap(selectedTab = "home", tappedTab = "home", nowMs = 500L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ArmCurrent,
+            tracker.onTap(selectedTab = "home", tappedTab = "home", nowMs = 501L),
+        )
+
+        assertEquals(
+            AppShellBottomTabTapAction.Select,
+            tracker.onTap(selectedTab = "home", tappedTab = "tasks", nowMs = 1_000L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ScrollCurrentToTop,
+            tracker.onTap(selectedTab = "tasks", tappedTab = "tasks", nowMs = 1_250L),
+        )
+
+        assertEquals(
+            AppShellBottomTabTapAction.Select,
+            tracker.onTap(selectedTab = "tasks", tappedTab = "settings", nowMs = 2_000L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ArmCurrent,
+            tracker.onTap(selectedTab = "settings", tappedTab = "settings", nowMs = 2_100L),
+        )
+    }
+
+    @Test
+    fun bottomTabDoubleTapExpiresAndDifferentTabRetiresTheArmedIntent() {
+        val tracker = AppShellBottomTabTapTracker(doubleTapWindowMs = 400L)
+
+        assertEquals(
+            AppShellBottomTabTapAction.ArmCurrent,
+            tracker.onTap(selectedTab = "members", tappedTab = "members", nowMs = 100L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ArmCurrent,
+            tracker.onTap(selectedTab = "members", tappedTab = "members", nowMs = 501L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.Select,
+            tracker.onTap(selectedTab = "members", tappedTab = "home", nowMs = 550L),
+        )
+        assertEquals(
+            AppShellBottomTabTapAction.ArmCurrent,
+            tracker.onTap(selectedTab = "members", tappedTab = "members", nowMs = 600L),
+        )
+    }
+
+    @Test
+    fun tabScrollRequestsAreMonotonicPerSurfaceAndSettingsIsExcluded() {
+        val initial = AppShellTabScrollToTopRequests()
+        val requested =
+            initial
+                .request("home")
+                .request("tasks")
+                .request("members")
+                .request("settings")
+
+        assertEquals(1, requested.forTab("home"))
+        assertEquals(1, requested.forTab("tasks"))
+        assertEquals(1, requested.forTab("members"))
+        assertEquals(0, requested.forTab("settings"))
+    }
+
+    @Test
+    fun scrollRequestFenceDoesNotReplayAnIntentAfterListOwnerRemount() {
+        val fence = AppShellScrollToTopRequestFence(initialRequest = 7)
+
+        assertFalse(fence.consume(7))
+        assertTrue(fence.consume(8))
+        assertFalse(fence.consume(8))
+        assertFalse(fence.consume(6))
+        assertTrue(fence.consume(9))
+    }
+
+    @Test
     fun appShellTabSelectionDismissesHomeNotificationCenterOnlyWhenLeavingHome() {
         assertTrue(shouldDismissHomeNotificationCenterForAppShellTabSelection("home", "tasks"))
         assertTrue(shouldDismissHomeNotificationCenterForAppShellTabSelection("home", "settings"))

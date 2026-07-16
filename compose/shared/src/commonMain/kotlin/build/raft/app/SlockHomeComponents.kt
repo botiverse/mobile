@@ -907,6 +907,7 @@ internal fun SlockStructuralHomeShell(
     pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? = { null },
     diagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
+    scrollToTopRequest: Int = 0,
     listPositionServerId: String = currentServerId,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> }
@@ -1138,6 +1139,12 @@ internal fun SlockStructuralHomeShell(
         }
     }
     val listScope = rememberCoroutineScope()
+    val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequestFence.consume(scrollToTopRequest)) {
+            listState.animateScrollToTopExpressive()
+        }
+    }
     var pullRefreshActive by remember(currentServerId) { mutableStateOf(false) }
     LaunchedEffect(contentRefreshing, pullToRefreshEnabled) {
         if (!contentRefreshing || !pullToRefreshEnabled) {

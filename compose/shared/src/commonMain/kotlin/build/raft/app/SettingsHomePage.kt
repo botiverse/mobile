@@ -481,6 +481,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlin.time.TimeSource
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
@@ -2223,6 +2224,9 @@ private fun SlockAppShellContent(
     var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
+    var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
+    val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
+    val bottomTabTapClock = remember { TimeSource.Monotonic.markNow() }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
@@ -4132,6 +4136,20 @@ private fun SlockAppShellContent(
             bottomTabs = appShellBottomTabItems,
             onBottomTabSelected = onBottomTabSelected@{
                 val nextTab = retainedAppShellSelectedTab(it)
+                when (
+                    bottomTabTapTracker.onTap(
+                        selectedTab = selectedTab,
+                        tappedTab = nextTab,
+                        nowMs = bottomTabTapClock.elapsedNow().inWholeMilliseconds,
+                    )
+                ) {
+                    AppShellBottomTabTapAction.ScrollCurrentToTop -> {
+                        tabScrollToTopRequests = tabScrollToTopRequests.request(nextTab)
+                        return@onBottomTabSelected
+                    }
+                    AppShellBottomTabTapAction.ArmCurrent -> return@onBottomTabSelected
+                    AppShellBottomTabTapAction.Select -> Unit
+                }
                 if (!shouldHandleAppShellTabSelection(selectedTab, nextTab)) return@onBottomTabSelected
                 val visitedBefore = nextTab in retainedAppShellTabs
                 bridge.performanceMarker(
@@ -4174,6 +4192,7 @@ private fun SlockAppShellContent(
                         SharedTasksScreen(
                             state = tasksState,
                             onIntent = tasksViewModel::dispatch,
+                            scrollToTopRequest = tabScrollToTopRequests.tasks,
                             bottomContentPadding = appShellBottomContentInset,
                             draftProjection = draftProjection,
                             initialListPosition = tasksListPosition,
@@ -4207,6 +4226,7 @@ private fun SlockAppShellContent(
                                 bridge = bridge,
                                 state = homeState,
                                 active = active,
+                                scrollToTopRequest = tabScrollToTopRequests.home,
                                 sessionReady = readyServerId?.isNotBlank() == true,
                                 draftPersistSlice = composerDraftPersistSlice,
                                 conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
@@ -4353,6 +4373,7 @@ private fun SlockAppShellContent(
                             onRetry = { membersListRefreshKey += 1 },
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset,
+                            scrollToTopRequest = tabScrollToTopRequests.members,
                             initialListState = membersListState,
                             onListStateSnapshot = { membersListState = it }
                         )
@@ -13356,6 +13377,7 @@ private fun SharedMembersScreen(
     onRetry: () -> Unit,
     timeContext: AppShellTimeContext?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
     onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
 ) {
@@ -13700,6 +13722,7 @@ private fun SharedMembersScreen(
                 },
                 inviteHumanLoadJoinLink = { loadInviteJoinLink() },
                 bottomContentPadding = bottomContentPadding,
+                scrollToTopRequest = scrollToTopRequest,
                 initialListState = initialListState,
                 onListStateSnapshot = onListStateSnapshot
             )
@@ -13937,6 +13960,7 @@ private fun SharedHomeScreen(
     bridge: build.raft.app.base.BridgeModule,
     state: SharedHomeState,
     active: Boolean,
+    scrollToTopRequest: Int = 0,
     sessionReady: Boolean = true,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
@@ -14005,6 +14029,7 @@ private fun SharedHomeScreen(
             if (session != null) {
                 SharedHomeSessionShell(
                     session = session,
+                    scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
@@ -14029,6 +14054,7 @@ private fun SharedHomeScreen(
         is SharedHomeContentState.Empty ->
             SharedHomeSessionShell(
                 session = current.session,
+                scrollToTopRequest = scrollToTopRequest,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverUnreadCounts = state.serverUnreadCounts,
                 prefersChineseCommunity = prefersChineseCommunity,
@@ -14049,6 +14075,7 @@ private fun SharedHomeScreen(
             if (current.session != null) {
                 SharedHomeSessionShell(
                     session = current.session,
+                    scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
@@ -14335,6 +14362,7 @@ private fun SharedHomeScreen(
                 memberAvatarResolver = memberAvatarResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
                 diagnosticsLogger = bridge::log,
+                scrollToTopRequest = scrollToTopRequest,
                 listPositionServerId = listPositionServerId ?: snapshot.server.id.value,
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot
@@ -17152,6 +17180,7 @@ private fun String.searchAvatarSeed(): String =
 private fun SharedHomeSessionShell(
     session: StoredAuthSession,
     serverSwitcherExpanded: Boolean,
+    scrollToTopRequest: Int = 0,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     prefersChineseCommunity: Boolean = false,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -17189,7 +17218,8 @@ private fun SharedHomeSessionShell(
         onServerSelected = onServerSelected,
         onServerOrderChange = onServerOrderChange,
         onCreateServerClick = onCreateServerClick,
-        onCreateChannelClick = onCreateChannelClick
+        onCreateChannelClick = onCreateChannelClick,
+        scrollToTopRequest = scrollToTopRequest,
     )
 }
 
