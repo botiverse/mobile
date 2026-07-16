@@ -549,6 +549,7 @@ internal fun SlockModalCompactMemberRow(
                             Modifier
                                 .height(16.dp)
                                 .widthIn(max = 88.dp)
+                                // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1065
                                 .background(SlockColor.AccentCyan.copy(alpha = 0.24f))
                                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                                 .padding(horizontal = 4.dp),
