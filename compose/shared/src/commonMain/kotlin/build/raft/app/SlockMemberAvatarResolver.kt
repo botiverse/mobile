@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SharedServerMembersState
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import androidx.compose.runtime.Composable
@@ -12,9 +13,20 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
-internal typealias SlockMemberAvatarResolver = (String?) -> Flow<String?>
+internal class SlockMemberAvatarResolver(
+    private val currentAvatar: (String?) -> String?,
+    private val avatarFlow: (String?) -> Flow<String?>
+) {
+    fun current(memberId: String?): String? = currentAvatar(memberId)
 
-internal val EmptySlockMemberAvatarResolver: SlockMemberAvatarResolver = { flowOf(null) }
+    operator fun invoke(memberId: String?): Flow<String?> = avatarFlow(memberId)
+}
+
+internal val EmptySlockMemberAvatarResolver =
+    SlockMemberAvatarResolver(
+        currentAvatar = { null },
+        avatarFlow = { flowOf(null) }
+    )
 
 internal fun slockMemberAvatarResolver(
     serverMembersStore: SharedServerMembersStore?,
@@ -22,31 +34,44 @@ internal fun slockMemberAvatarResolver(
     diagnosticsLogger: (String) -> Unit = {}
 ): SlockMemberAvatarResolver {
     val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
-    return { memberId ->
-        if (serverMembersStore == null) {
-            diagnosticsLogger(
-                "result=missing_store serverId=${cleanServerId?.value ?: "none"} " +
-                    "memberId=${memberId.slockAvatarDiagnosticsId()}"
-            )
-            flowOf(null)
-        } else {
+    return SlockMemberAvatarResolver(
+        currentAvatar = { memberId ->
             serverMembersStore
-                .memberProfileFlow(cleanServerId, memberId)
-                .map { profile ->
-                    val avatarWireValue = profile?.avatarWireValueForRenderedAvatar()
-                    diagnosticsLogger(
-                        "result=profile serverId=${cleanServerId?.value ?: "current"} " +
-                            "memberId=${memberId.slockAvatarDiagnosticsId()} " +
-                            "profile=${profile != null} " +
-                            "kind=${profile?.kind?.name ?: "none"} " +
-                            "avatarSource=${avatarWireValue.slockAvatarDiagnosticsSource()}"
-                    )
-                    avatarWireValue
-                }
-                .distinctUntilChanged()
+                ?.state
+                ?.value
+                ?.currentMemberAvatarWireValue(cleanServerId, memberId)
+        },
+        avatarFlow = { memberId ->
+            if (serverMembersStore == null) {
+                diagnosticsLogger(
+                    "result=missing_store serverId=${cleanServerId?.value ?: "none"} " +
+                        "memberId=${memberId.slockAvatarDiagnosticsId()}"
+                )
+                flowOf(null)
+            } else {
+                serverMembersStore
+                    .memberProfileFlow(cleanServerId, memberId)
+                    .map { profile ->
+                        val avatarWireValue = profile?.avatarWireValueForRenderedAvatar()
+                        diagnosticsLogger(
+                            "result=profile serverId=${cleanServerId?.value ?: "current"} " +
+                                "memberId=${memberId.slockAvatarDiagnosticsId()} " +
+                                "profile=${profile != null} " +
+                                "kind=${profile?.kind?.name ?: "none"} " +
+                                "avatarSource=${avatarWireValue.slockAvatarDiagnosticsSource()}"
+                        )
+                        avatarWireValue
+                    }
+                    .distinctUntilChanged()
+            }
         }
-    }
+    )
 }
+
+internal fun SharedServerMembersState.currentMemberAvatarWireValue(
+    serverId: ServerId?,
+    memberId: String?
+): String? = memberProfile(serverId, memberId)?.avatarWireValueForRenderedAvatar()
 
 @Composable
 internal fun rememberSlockMemberAvatarWireValue(
@@ -54,7 +79,11 @@ internal fun rememberSlockMemberAvatarWireValue(
     memberId: String?
 ): String? {
     val avatarFlow = remember(memberAvatarResolver, memberId) { memberAvatarResolver(memberId) }
-    val avatarWireValue by avatarFlow.collectAsState(null)
+    val initialAvatarWireValue =
+        remember(memberAvatarResolver, memberId) {
+            memberAvatarResolver.current(memberId)
+        }
+    val avatarWireValue by avatarFlow.collectAsState(initialAvatarWireValue)
     return avatarWireValue
 }
 
