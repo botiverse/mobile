@@ -786,6 +786,17 @@ internal fun slockNotificationPushBannerOrNull(
         onSuppressed("visible_conversation")
         return null
     }
+    val routeIdentity = conversation.resolveThreadRouteIdentity()
+    val normalizedAcrossProjection =
+        conversation.kind == ConversationKind.Thread &&
+            (event.threadId?.value != routeIdentity.timelineChannelId ||
+                event.parentChannelId?.value != conversation.threadParentChannelId())
+    val resolvedTitle =
+        if (normalizedAcrossProjection) {
+            "Thread reply"
+        } else {
+            event.title.ifBlank { "New message" }
+        }
     return SlockForegroundMessageBanner(
         id = "push:${event.serverId.value}:${event.messageId.value}",
         serverId = event.serverId.value,
@@ -793,7 +804,7 @@ internal fun slockNotificationPushBannerOrNull(
         conversation = conversation,
         openRequest =
             openRequest,
-        title = event.title.ifBlank { "New message" },
+        title = resolvedTitle,
         context = conversation.resolveForegroundBannerContext(null, conversationDirectory),
         threadContext = null,
         body = event.body.ifBlank { "Sent a new message." },
@@ -801,6 +812,6 @@ internal fun slockNotificationPushBannerOrNull(
         iconName = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconName(conversation),
         senderMemberId = null,
         avatarWireValue = null,
-        avatarLabel = event.title.trim().take(2).uppercase().ifBlank { "??" }
+        avatarLabel = resolvedTitle.trim().take(2).uppercase().ifBlank { "??" }
     )
 }
