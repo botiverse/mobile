@@ -159,6 +159,62 @@ class ThreadComposerSuggestionSearchTest {
     }
 
     @Test
+    fun pendingQueryKeepsPreviousCandidatesUntilNewRankingIsReady() {
+        assertEquals(
+            listOf("artin", "android-developer"),
+            displayedThreadComposerSuggestions(
+                usesImmediateSuggestions = false,
+                rankingReady = false,
+                rankingResultSuggestions = listOf("artin", "android-developer"),
+                immediateSuggestions = emptyList(),
+                pendingFallbackSuggestions = listOf("cindy", "artin", "android-developer")
+            )
+        )
+    }
+
+    @Test
+    fun firstPendingQueryKeepsBoundedSourcePreviewInsteadOfEmptyState() {
+        assertEquals(
+            listOf("cindy", "artin"),
+            displayedThreadComposerSuggestions(
+                usesImmediateSuggestions = false,
+                rankingReady = false,
+                rankingResultSuggestions = emptyList(),
+                immediateSuggestions = emptyList(),
+                pendingFallbackSuggestions = listOf("cindy", "artin")
+            )
+        )
+    }
+
+    @Test
+    fun readyEmptyRankingReplacesRetainedCandidatesWithRealEmptyState() {
+        assertEquals(
+            emptyList(),
+            displayedThreadComposerSuggestions(
+                usesImmediateSuggestions = false,
+                rankingReady = true,
+                rankingResultSuggestions = emptyList(),
+                immediateSuggestions = emptyList(),
+                pendingFallbackSuggestions = listOf("artin", "cindy")
+            )
+        )
+    }
+
+    @Test
+    fun blankQueryUsesCurrentImmediateEmptyStateInsteadOfStaleRanking() {
+        assertEquals(
+            emptyList(),
+            displayedThreadComposerSuggestions(
+                usesImmediateSuggestions = true,
+                rankingReady = false,
+                rankingResultSuggestions = listOf("artin"),
+                immediateSuggestions = emptyList(),
+                pendingFallbackSuggestions = emptyList()
+            )
+        )
+    }
+
+    @Test
     fun blankMemberQueryKeepsSingleServerOrderAndLimit() {
         val suggestions =
             (0 until 100).map { index ->
