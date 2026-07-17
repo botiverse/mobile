@@ -1186,6 +1186,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Enabled",
             detail = "Use the keyboard action key to send messages. Turn off to make the keyboard key insert new lines."
         ),
+    val multiShellHost: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Open different workspaces in separate Android app windows. Existing windows remain open until you close them."
+        ),
     val threadRowAffordances: SettingsMobileMultiSelectionSnapshot =
         SettingsMobileMultiSelectionSnapshot(
             selectedKeys = ThreadRowAffordancePreference.Default.map { it.storageKey }.toSet(),

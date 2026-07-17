@@ -9,6 +9,8 @@ internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 // Android/iOS keep demand mounting until their own device evidence needs it.
 internal expect fun slockPlatformPrewarmsAppShellChildPages(): Boolean
 
+internal expect fun slockPlatformSupportsMultiShellHost(): Boolean
+
 // The iOS app shell always has the native UITabBar renderer available. Route
 // launches created after auth/server changes do not pass the SwiftUI root's
 // pageData, so shared needs a platform default when the host did not provide an

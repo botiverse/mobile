@@ -70,5 +70,17 @@ class HomeColdStartSplashGateTest {
             SlockKuiklyActivity::class.java,
             slockKuiklyHostActivityClass(SlockKuiklyActivity.PAGE_THREAD)
         )
+        assertEquals(
+            SlockAppShellActivity::class.java,
+            slockAppShellHostActivityClass(
+                AndroidShellLaunchTarget("android-default-app-shell", null, documentShell = false)
+            )
+        )
+        assertEquals(
+            SlockDocumentShellActivity::class.java,
+            slockAppShellHostActivityClass(
+                AndroidShellLaunchTarget("server-shell:server-a", "server-a", documentShell = true)
+            )
+        )
     }
 }

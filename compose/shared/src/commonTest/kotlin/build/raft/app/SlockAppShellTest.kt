@@ -3202,17 +3202,18 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun authChooseServerRouteNormalizesOriginatingDocumentIdentity() {
+    fun authChooseServerRouteCarriesOriginatingDocumentIdentity() {
         val pageData =
             authChooseServerPageData(
                 fromShell = true,
-                storeScope = SlockShellStoreScope.create("server-shell:server-a", "server-a")
+                storeScope = SlockShellStoreScope.create("server-shell:server-a", "server-a"),
+                documentShell = true
             )
 
         assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
         assertEquals("server-a", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertEquals("", pageData.optString("serverId"))
-        assertEquals(false, pageData.optBoolean("slockDocumentShell", false))
+        assertEquals(true, pageData.optBoolean("slockDocumentShell", false))
     }
 
     @Test
@@ -3229,6 +3230,36 @@ class SlockAppShellTest {
         assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
         assertEquals(false, pageData.optBoolean("slockDocumentShell", false))
         assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
+    }
+
+    @Test
+    fun enabledMultiShellCrossServerSelectionRequestsNewDocumentShell() {
+        val pageData =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = SlockShellStoreScope.create("android-default-app-shell", "server-a"),
+                selectedServerId = "server-b",
+                multiShellHostEnabled = true,
+                suppressRestoreLanding = true
+            )
+
+        assertEquals("server-b", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals("", pageData.optString("slockShellInstanceId"))
+        assertEquals(true, pageData.optBoolean("slockDocumentShell", false))
+        assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
+    }
+
+    @Test
+    fun enabledMultiShellSameServerSelectionReusesCurrentDocumentShell() {
+        val pageData =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = SlockShellStoreScope.create("server-shell:server-a", "server-a"),
+                sourceDocumentShell = true,
+                selectedServerId = "server-a",
+                multiShellHostEnabled = true
+            )
+
+        assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
+        assertEquals(true, pageData.optBoolean("slockDocumentShell", false))
     }
 
     @Test
