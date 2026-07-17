@@ -52,9 +52,33 @@ class SlockButtonAccessibilityTest {
         assertFalse(click())
         assertEquals(0, clickCount)
     }
+
+    @Test
+    fun dialogContentPointerBarrierDoesNotCreateAnAccessibilityNode() {
+        val configurations =
+            Modifier
+                .slockDialogContentPointerBarrier()
+                .semanticsConfigurations()
+
+        assertTrue(configurations.isEmpty())
+    }
+
+    @Test
+    fun dialogDismissPointerBarrierDoesNotCreateAFullScreenAccessibilityButton() {
+        val configurations =
+            Modifier
+                .slockModalDismissPointerBarrier(enabled = true) {}
+                .semanticsConfigurations()
+
+        assertTrue(configurations.isEmpty())
+    }
 }
 
 private fun Modifier.semanticsConfiguration(): SemanticsConfiguration =
-    foldIn<SemanticsConfiguration?>(null) { current, element ->
-        (element as? SemanticsModifier)?.semanticsConfiguration ?: current
-    } ?: error("Expected a semantics modifier")
+    semanticsConfigurations().lastOrNull() ?: error("Expected a semantics modifier")
+
+private fun Modifier.semanticsConfigurations(): List<SemanticsConfiguration> =
+    foldIn(emptyList<SemanticsConfiguration>()) { current, element ->
+        val semantics = (element as? SemanticsModifier)?.semanticsConfiguration
+        if (semantics == null) current else current + semantics
+    }

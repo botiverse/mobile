@@ -205,13 +205,16 @@ internal fun SlockModalDismissBarrier(
     onDismiss: () -> Unit,
     dismissEnabled: Boolean = true
 ) {
+    val currentOnDismiss = rememberUpdatedState(onDismiss)
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
                 .slockNativeDispatchCapture()
-                .clickable(enabled = dismissEnabled, onClick = onDismiss)
+                .slockModalDismissPointerBarrier(dismissEnabled) {
+                    currentOnDismiss.value.invoke()
+                }
     )
 }
 
