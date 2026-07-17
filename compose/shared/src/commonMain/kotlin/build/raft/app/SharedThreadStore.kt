@@ -2515,26 +2515,6 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun convertMessageToTask(messageId: String): DataResult<TaskSummary> {
-        if (messageId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
-        }
-        val response =
-            try {
-                api.convertMessageToTask(messageId)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_task_convert_network", retryable = true))
-            }
-        return when (response) {
-            is ThreadApiResult.Success ->
-                response.data?.let { DataResult.Content(it) }
-                    ?: DataResult.Error(ScreenError(code = "thread_task_convert_contract_mismatch", retryable = false))
-            is ThreadApiResult.Failure -> response.toThreadDataError("thread_task_convert_network")
-        }
-    }
-
     suspend fun createOrOpenReplyThread(
         basePayload: KuiklyThreadScreenPayload,
         parentMessage: KuiklyThreadMessageItem

@@ -108,6 +108,105 @@ class SharedTasksDataSource(
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
         }
+
+    suspend fun convertMessageToTask(messageId: MessageId): DataResult<TaskConvertResult> =
+        try {
+            typedApi.convertMessage(messageId)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_convert_message_network", retryable = true))
+        }
+}
+
+/**
+ * Converts the canonical message row into a task and commits the result through
+ * [SharedTasksDataStore]. The server keeps task identity equal to the converted
+ * message id. A successful response without a task projection therefore performs
+ * one bounded server-scope refresh and accepts success only when that exact id is
+ * present; it never fabricates a task id or task number.
+ */
+internal suspend fun convertMessageToCanonicalTask(
+    serverId: ServerId?,
+    messageId: MessageId,
+    tasksDataSource: SharedTasksDataSource,
+    tasksDataStore: SharedTasksDataStore?,
+    diagnosticsLogger: (String) -> Unit = {}
+): DataResult<TaskSummary> {
+    val convertResult = tasksDataSource.convertMessageToTask(messageId)
+    val accepted =
+        when (convertResult) {
+            is DataResult.Content -> convertResult.data
+            is DataResult.Empty -> return convertResult
+            is DataResult.Error -> return convertResult
+            is DataResult.NoPermission -> return convertResult
+        }
+    val responseTask = accepted.task
+    if (responseTask != null) {
+        if (responseTask.id.value != messageId.value) {
+            return DataResult.Error(
+                ScreenError(code = "tasks_convert_message_identity_mismatch", retryable = false)
+            )
+        }
+        val resolvedServerId = serverId
+            ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
+        val sharedStore = tasksDataStore
+            ?: return DataResult.Error(ScreenError(code = "tasks_store_missing", retryable = false))
+        sharedStore.upsertTask(resolvedServerId.value, responseTask)
+        diagnosticsLogger(
+            "tasks_convert_projection source=response taskId=${responseTask.id.value} serverId=${resolvedServerId.value}"
+        )
+        return DataResult.Content(responseTask)
+    }
+
+    val resolvedServerId = serverId
+        ?: return DataResult.Error(ScreenError(code = "selected_server_missing", retryable = false))
+    val sharedStore = tasksDataStore
+        ?: return DataResult.Error(ScreenError(code = "tasks_store_missing", retryable = false))
+    diagnosticsLogger(
+        "tasks_convert_projection source=canonical_refresh_start messageId=${messageId.value} " +
+            "serverId=${resolvedServerId.value}"
+    )
+    val refreshed =
+        sharedStore.loadSnapshot(
+            serverId = resolvedServerId.value,
+            scope = SharedTasksScope.Server,
+            forceRefresh = true
+        ) {
+            tasksDataSource.loadTasks(
+                serverId = resolvedServerId,
+                filter = TaskFilter(),
+                priority = DataRequestPriority.Foreground
+            )
+        }
+    return when (refreshed) {
+        is DataResult.Content -> {
+            val task = refreshed.data.tasks.firstOrNull { candidate -> candidate.id.value == messageId.value }
+                ?: run {
+                    diagnosticsLogger(
+                        "tasks_convert_projection source=canonical_refresh_missing messageId=${messageId.value} " +
+                            "serverId=${resolvedServerId.value} tasks=${refreshed.data.tasks.size}"
+                    )
+                    return DataResult.Error(
+                        ScreenError(code = "tasks_convert_message_projection_missing", retryable = true)
+                    )
+                }
+            diagnosticsLogger(
+                "tasks_convert_projection source=canonical_refresh taskId=${task.id.value} " +
+                    "serverId=${resolvedServerId.value}"
+            )
+            DataResult.Content(task)
+        }
+        is DataResult.Empty -> {
+            diagnosticsLogger(
+                "tasks_convert_projection source=canonical_refresh_missing messageId=${messageId.value} " +
+                    "serverId=${resolvedServerId.value} tasks=0"
+            )
+            DataResult.Error(ScreenError(code = "tasks_convert_message_projection_missing", retryable = true))
+        }
+        is DataResult.Error -> refreshed
+        is DataResult.NoPermission -> refreshed
+    }
 }
 
 data class TaskCreateDraft(
@@ -349,8 +448,8 @@ internal class SlockTasksApiClient(
     suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> =
         transport.claimTask(taskId).toTaskActionResult(source = "tasks_claim", diagnostics = diagnosticsLogger)
 
-    suspend fun convertMessage(messageId: MessageId): DataResult<TaskActionResult> =
-        transport.convertMessage(messageId).toTaskActionResult(
+    suspend fun convertMessage(messageId: MessageId): DataResult<TaskConvertResult> =
+        transport.convertMessage(messageId).toTaskConvertResult(
             source = "tasks_convert_message",
             diagnostics = diagnosticsLogger,
         )
@@ -496,6 +595,29 @@ private fun TaskStatus?.taskStatusAppliedWithoutProjectionResult(source: String)
             retryable = false,
         )
     )
+
+internal fun HomeNetworkResponse.toTaskConvertResult(
+    source: String = "tasks_convert_message",
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): DataResult<TaskConvertResult> {
+    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
+    if (code == 401 || code == 403) {
+        return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
+    }
+    if (!isSuccessful) {
+        return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
+    }
+    val body = bodyText?.trim().orEmpty()
+    if (body.isEmpty()) {
+        return DataResult.Content(TaskConvertResult(task = null))
+    }
+    val envelope = runCatching { tasksJson.decodeFromString<TaskEnvelope>(body) }.getOrNull()
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    val task = envelope.task ?: return DataResult.Content(TaskConvertResult(task = null))
+    val summary = task.toTaskSummary(diagnostics)
+        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+    return DataResult.Content(TaskConvertResult(summary))
+}
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }

@@ -11487,9 +11487,6 @@ class SharedThreadStoreTest {
             return HomeNetworkResponse(code = 200, bodyText = """{"id":"$messageId","reactions":[]}""")
         }
 
-        override suspend fun convertMessageToTask(messageId: String): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = """{"task":{"id":"task-$messageId","messageId":"$messageId"}}""")
-
         override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse {
             updatedTaskStatuses += taskId to status
             return HomeNetworkResponse(code = 200, bodyText = """{"id":"$taskId","status":"${status.name}"}""")

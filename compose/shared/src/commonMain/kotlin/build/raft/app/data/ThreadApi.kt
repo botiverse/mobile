@@ -65,7 +65,6 @@ internal interface SlockThreadApi {
     suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit>
     suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
     suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
-    suspend fun convertMessageToTask(messageId: String): ThreadApiResult<TaskSummary?>
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?>
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult>
 }
@@ -211,9 +210,6 @@ internal class SlockThreadApiClient(
             ) { wire ->
                 wire.toMessageMutationSummary()
             }
-
-    override suspend fun convertMessageToTask(messageId: String): ThreadApiResult<TaskSummary?> =
-        transport.convertMessageToTask(messageId).mapThreadTaskMutation()
 
     override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<TaskSummary?> =
         transport.updateTaskStatus(taskId, status).mapThreadTaskMutation()
@@ -365,14 +361,6 @@ internal class NetworkSlockThreadApi(
             path = "messages/${messageId.trim()}/reactions",
             method = "DELETE",
             bodyText = buildSharedReactionBody(emoji)
-        )
-
-    override suspend fun convertMessageToTask(messageId: String): HomeNetworkResponse =
-        networkClient.request(
-            priority = DataRequestPriority.Foreground,
-            path = "tasks/convert-message",
-            method = "POST",
-            bodyText = buildSharedTaskConvertBody(MessageId(messageId.trim()))
         )
 
     override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =

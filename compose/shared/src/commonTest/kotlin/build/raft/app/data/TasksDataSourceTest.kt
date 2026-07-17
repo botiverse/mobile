@@ -35,7 +35,7 @@ class TasksDataSourceTest {
         assertIs<DataResult.Content<TaskActionResult>>(byNumber)
         assertIs<DataResult.Content<TaskSnapshot>>(created)
         assertIs<DataResult.Content<TaskActionResult>>(claimed)
-        assertIs<DataResult.Content<TaskActionResult>>(converted)
+        assertIs<DataResult.Content<TaskConvertResult>>(converted)
         assertIs<DataResult.Content<TaskActionResult>>(unclaimed)
         assertIs<DataResult.Content<TaskActionResult>>(status)
         assertIs<DataResult.Content<Unit>>(deleted)
@@ -73,7 +73,7 @@ class TasksDataSourceTest {
             client.createTasks(ChannelId("channel-1"), listOf(TaskCreateDraft("Ship KMP")), DataRequestPriority.Visible)
         )
         assertIs<DataResult.Content<TaskActionResult>>(client.claimTask(TaskId("task-1")))
-        assertIs<DataResult.Content<TaskActionResult>>(client.convertMessage(MessageId("message-1")))
+        assertIs<DataResult.Content<TaskConvertResult>>(client.convertMessage(MessageId("message-1")))
         assertIs<DataResult.Content<TaskActionResult>>(client.unclaimTask(TaskId("task-1")))
         assertIs<DataResult.Content<TaskActionResult>>(client.updateTaskStatus(TaskId("task-1"), TaskStatus.InReview))
         assertIs<DataResult.Content<Unit>>(client.deleteTask(TaskId("task-1")))
@@ -104,6 +104,21 @@ class TasksDataSourceTest {
 
         val error = assertIs<DataResult.Error>(result)
         assertEquals("tasks_create_contract_mismatch", error.error.code)
+    }
+
+    @Test
+    fun convertMessageAcceptsSuccessfulResponseWithoutTaskProjection() = runBlocking {
+        val missingBody =
+            SlockTasksApiClient(
+                RecordingTasksApi(convertResponse = HomeNetworkResponse(code = 204, bodyText = null))
+            ).convertMessage(MessageId("message-1"))
+        val emptyEnvelope =
+            SlockTasksApiClient(
+                RecordingTasksApi(convertResponse = HomeNetworkResponse(code = 200, bodyText = "{}"))
+            ).convertMessage(MessageId("message-1"))
+
+        assertNull(assertIs<DataResult.Content<TaskConvertResult>>(missingBody).data.task)
+        assertNull(assertIs<DataResult.Content<TaskConvertResult>>(emptyEnvelope).data.task)
     }
 
     @Test
@@ -360,7 +375,8 @@ class TasksDataSourceTest {
         private val updateResponse: HomeNetworkResponse? = null,
         private val createBody: String =
             """{"tasks":[{"id":"task-2","channelId":"channel-1","taskNumber":2,"title":"Task #2: created","status":"todo","createdByType":"user","createdById":"user-1"}]}""",
-        private val deleteBody: String = """{"ok":true}"""
+        private val deleteBody: String = """{"ok":true}""",
+        private val convertResponse: HomeNetworkResponse? = null
     ) : SlockTasksApi {
         val calls = mutableListOf<String>()
 
@@ -399,7 +415,7 @@ class TasksDataSourceTest {
 
         override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse {
             calls += "POST tasks/convert-message body=${buildSharedTaskConvertBody(messageId)}"
-            return ok(actionBody)
+            return convertResponse ?: ok(actionBody)
         }
 
         override suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse {

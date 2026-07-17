@@ -691,7 +691,6 @@ internal interface SharedThreadNetworkApi {
     suspend fun unsaveMessage(messageId: String): HomeNetworkResponse
     suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse
-    suspend fun convertMessageToTask(messageId: String): HomeNetworkResponse
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse
 }

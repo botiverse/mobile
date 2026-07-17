@@ -368,9 +368,6 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<Unit>>(api.unsaveMessage("msg-1"))
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.addReaction("msg-1", "rocket"))
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.removeReaction("msg-1", "rocket"))
-        val taskConvertResult =
-            assertIs<ThreadApiResult.Success<TaskSummary?>>(api.convertMessageToTask("msg-1"))
-        assertEquals("task-converted", taskConvertResult.data?.id?.value)
         val taskStatusResult =
             assertIs<ThreadApiResult.Success<TaskSummary?>>(api.updateTaskStatus("task-1", TaskStatus.InReview))
         assertEquals("task-1", taskStatusResult.data?.id?.value)
@@ -394,7 +391,6 @@ class ThreadApiTest {
                 "DELETE channels/saved/msg-1 priority=Foreground query= server= body=",
                 """POST messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
                 """DELETE messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
-                """POST tasks/convert-message priority=Foreground query= server= body={"messageId":"msg-1"}""",
                 """PATCH tasks/task-1/status priority=Foreground query= server= body={"status":"in_review"}""",
                 """POST channels/channel-1/threads priority=Foreground query= server= body={"parentMessageId":"parent-1"}""",
                 """POST messages/mention-actions/execute priority=Foreground query= server= body={"action":"notify","resolutionIds":["res-1"]}"""
@@ -487,12 +483,6 @@ class ThreadApiTest {
         override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = reactionBody)
 
-        override suspend fun convertMessageToTask(messageId: String): HomeNetworkResponse =
-            HomeNetworkResponse(
-                code = 200,
-                bodyText = """{"task":{"id":"task-converted","messageId":"$messageId","status":"todo"}}""",
-            )
-
         override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"task":{"id":"$taskId","status":"in_review"}}""")
 
@@ -526,8 +516,6 @@ class ThreadApiTest {
                 normalizedPath == "channels/saved" && method == "POST" -> ok("""{"ok":true}""")
                 normalizedPath.startsWith("channels/saved/") && method == "DELETE" -> ok("""{"ok":true}""")
                 normalizedPath.endsWith("/reactions") -> ok(reactionBody)
-                normalizedPath == "tasks/convert-message" && method == "POST" ->
-                    ok("""{"task":{"id":"task-converted","status":"todo"}}""")
                 normalizedPath.startsWith("tasks/") && normalizedPath.endsWith("/status") -> {
                     val taskId = normalizedPath.removePrefix("tasks/").removeSuffix("/status")
                     ok("""{"task":{"id":"$taskId","status":"in_review"}}""")
