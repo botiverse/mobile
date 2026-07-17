@@ -1038,9 +1038,14 @@ internal fun MembersPageContent() {
         }
     }
     val bridgeCallScope = rememberCoroutineScope()
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope) {
-            BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
+        remember(bridge, bridgeCallScope, linkNavigator) {
+            BridgeSettingsPlatformCapabilities(
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
+                openUrlHandler = { url -> linkNavigator.open(url) }
+            )
         }
 
     // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
@@ -2081,6 +2086,7 @@ private fun rememberMemberDetailRouteProvider(
 private fun MemberDetailPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val memberIdCopied = stringResource(MR.strings.member_notice_member_id_copied)
     val diagnosticsCopied = stringResource(MR.strings.member_notice_diagnostics_copied)
     val removeFromSettings = stringResource(MR.strings.member_notice_remove_from_settings)
@@ -2410,7 +2416,7 @@ private fun MemberDetailPageContent() {
                     onRemoveMember = {
                         provider.bridge.toast(removeFromSettings)
                     },
-                    onOpenUrl = { provider.bridge.openUrl(it) },
+                    onOpenUrl = { linkNavigator.open(it) },
                     onOpenReminderMessage = { permalink ->
                         pager.openMembersReminderMessage(
                             permalink = permalink,
@@ -2418,7 +2424,9 @@ private fun MemberDetailPageContent() {
                             conversationIdentityProvider = provider.conversationIdentityProvider,
                             storeScope = provider.storeScope,
                             timeContext = timeContext,
-                            onOpenExternal = { provider.bridge.openUrl(it) },
+                            onOpenExternal = {
+                                linkNavigator.openMembersReminderForceExternalFallback(it)
+                            },
                             unavailableMessage = reminderOpenError,
                             onUnavailableAction = { provider.bridge.toast(it) }
                         )
@@ -2565,7 +2573,7 @@ private fun MemberDetailPageContent() {
                 onRemoveMember = if (canRemoveHumanMember) ({
                     provider.bridge.toast(removeFromSettings)
                 }) else null,
-                onOpenUrl = { provider.bridge.openUrl(it) },
+                onOpenUrl = { linkNavigator.open(it) },
                 onOpenReminderMessage = { permalink ->
                     pager.openMembersReminderMessage(
                         permalink = permalink,
@@ -2573,7 +2581,9 @@ private fun MemberDetailPageContent() {
                         conversationIdentityProvider = provider.conversationIdentityProvider,
                         storeScope = provider.storeScope,
                         timeContext = timeContext,
-                        onOpenExternal = { provider.bridge.openUrl(it) },
+                        onOpenExternal = {
+                            linkNavigator.openMembersReminderForceExternalFallback(it)
+                        },
                         unavailableMessage = reminderOpenError,
                         onUnavailableAction = { provider.bridge.toast(it) }
                     )
@@ -2763,6 +2773,11 @@ internal fun MembersAgentDetailVisualContent() {
 }
 
 private fun readCurrentServerId(): String? = null
+
+internal fun SlockLinkNavigator.openMembersReminderForceExternalFallback(
+    rawUrl: String
+): SlockLinkOpenDecision =
+    open(rawUrl, SlockLinkOpenIntent.ForceExternal)
 
 private fun Pager.openMembersReminderMessage(
     permalink: String,

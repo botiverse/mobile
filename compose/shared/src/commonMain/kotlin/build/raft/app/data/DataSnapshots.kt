@@ -1205,6 +1205,24 @@ data class SettingsMobileSnapshot(
                         label = it.name
                     )
                 }
+        ),
+    val linkOpenMode: SettingsMobileSelectionSnapshot =
+        SettingsMobileSelectionSnapshot(
+            selectedKey = LinkOpenMode.Default.storageKey,
+            selectedLabel = "Default browser",
+            statusLabel = "Default browser",
+            detail = "Choose whether web links open in the default browser or inside Raft.",
+            options =
+                listOf(
+                    SettingsMobileSelectionOptionSnapshot(
+                        key = LinkOpenMode.SystemBrowser.storageKey,
+                        label = "Default browser"
+                    ),
+                    SettingsMobileSelectionOptionSnapshot(
+                        key = LinkOpenMode.InAppBrowser.storageKey,
+                        label = "In-app browser"
+                    )
+                )
         )
 )
 

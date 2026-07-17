@@ -1307,6 +1307,17 @@
     <string name="settings_appearance_preview">Preview</string>
     <string name="settings_appearance_preview_sender">Onboarding Assistant</string>
     <string name="settings_appearance_preview_message">@Joy #proj-uiux love the new design — doing a git pull now to try it locally.</string>
+    <string name="settings_mobile_link_open_mode_title">Open web links</string>
+    <string name="settings_mobile_link_open_mode_detail">Choose whether web links open in the default browser or inside Raft.</string>
+    <string name="settings_mobile_link_open_mode_system_browser">Default browser</string>
+    <string name="settings_mobile_link_open_mode_in_app_browser">In-app browser</string>
+    <string name="in_app_browser_title">Browser</string>
+    <string name="in_app_browser_forward">Forward</string>
+    <string name="in_app_browser_reload">Reload</string>
+    <string name="in_app_browser_open_system">Open in default browser</string>
+    <string name="in_app_browser_invalid_link">This link cannot be opened.</string>
+    <string name="in_app_browser_load_error">Unable to load this page.</string>
+    <string name="in_app_browser_unable_to_open_link">Unable to open link</string>
     <string name="settings_mobile_compact_messages">Compact consecutive messages</string>
     <string name="settings_mobile_multi_shell_host">Multiple app windows</string>
     <string name="settings_mobile_multi_shell_host_detail">Open different workspaces in separate Android app windows. Existing windows remain open until you close them.</string>

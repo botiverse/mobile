@@ -4,9 +4,11 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
+import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
@@ -55,9 +57,14 @@ internal fun rememberStandaloneSettingsEnvironment(
         sharedStores.serverMembersStore(storeScope)
     }
     val scope = rememberCoroutineScope()
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val settingsCapabilities =
-        remember(bridge, scope) {
-            BridgeSettingsPlatformCapabilities(bridge, scope.kuiklyBridgeCallContext())
+        remember(bridge, scope, linkNavigator) {
+            BridgeSettingsPlatformCapabilities(
+                bridge = bridge,
+                bridgeCallContext = scope.kuiklyBridgeCallContext(),
+                openUrlHandler = { url -> linkNavigator.open(url) }
+            )
         }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val dataSource =
@@ -75,6 +82,8 @@ internal fun rememberStandaloneSettingsEnvironment(
                 localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
                 chatLayoutPreferenceRepository =
                     PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)),
+                linkOpenPreferenceRepository =
+                    PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(sharedPreferenceStore)),
                 recompositionProfilerPreferenceRepository =
                     PersistentRecompositionProfilerPreferenceRepository(
                         KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
@@ -123,7 +132,7 @@ internal fun StandaloneSettingsEffectHandler(
                     .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
             }
             is SharedSettingsEffect.OpenUrl -> {
-                environment.settingsCapabilities.openUrl(effect.url)
+                environment.settingsCapabilities.openExternalUrl(effect.url)
             }
             is SharedSettingsEffect.CopyText -> {
                 environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)

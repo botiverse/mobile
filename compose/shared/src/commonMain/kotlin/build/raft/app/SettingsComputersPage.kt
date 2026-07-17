@@ -25,7 +25,9 @@ internal fun SettingsComputersWebViewContent(
     bottomContentPadding: Dp,
     modifier: Modifier = Modifier,
     onUrlChange: (String) -> Unit = {},
-    onLoadFailure: (String) -> Unit = {}
+    onLoadFailure: (String) -> Unit = {},
+    controller: SlockWebViewController = rememberSlockWebViewController(),
+    onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {}
 ) {
     val webUrl = remember(session, webBaseUrl) {
         settingsComputersWebViewUrl(webBaseUrl, session)
@@ -45,12 +47,15 @@ internal fun SettingsComputersWebViewContent(
                 .background(SlockColor.SurfaceWhite)
                 .padding(bottom = bottomContentPadding),
         allowNavigation = true,
+        allowedNavigationSchemes = setOf("http", "https"),
         domStorageEnabled = true,
         cacheEnabled = true,
         ephemeral = false,
         injectedJavaScript = injectedJavaScript,
+        controller = controller,
         onUrlChange = onUrlChange,
-        onLoadFailure = onLoadFailure
+        onLoadFailure = onLoadFailure,
+        onNavigationStateChange = onNavigationStateChange
     )
 }
 

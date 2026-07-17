@@ -130,6 +130,7 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetServerMute -> MviActionKey(MOBILE_ACTION_SERVER_MUTE)
                 is SharedSettingsIntent.SetLocale -> MviActionKey(MOBILE_ACTION_LANGUAGE)
                 is SharedSettingsIntent.SetMessageAlignment -> MviActionKey(MOBILE_ACTION_MESSAGE_ALIGNMENT)
+                is SharedSettingsIntent.SetLinkOpenMode -> MviActionKey(MOBILE_ACTION_LINK_OPEN_MODE)
                 is SharedSettingsIntent.SetCompactConsecutiveMessages -> MviActionKey(MOBILE_ACTION_COMPACT_MESSAGES)
                 is SharedSettingsIntent.SetLongMessageCollapseEnabled -> MviActionKey(MOBILE_ACTION_LONG_MESSAGE_COLLAPSE)
                 is SharedSettingsIntent.SetImageAnnotationEnabled -> MviActionKey(MOBILE_ACTION_IMAGE_ANNOTATION)

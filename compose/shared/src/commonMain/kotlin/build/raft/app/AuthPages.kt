@@ -173,6 +173,12 @@ internal class ComposeAuthAboutPage : build.raft.app.base.BasePager() {
 private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator =
+        rememberSlockLinkNavigator(
+            pager = pager,
+            bridge = bridge,
+            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+        )
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
     var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
@@ -326,8 +332,8 @@ private fun LoginScreen() {
         },
         onForgotPassword = { pager.openAuthPage(FORGOT_PASSWORD_PAGE) },
         onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
-        onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
-        onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) },
+        onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
+        onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
@@ -365,6 +371,12 @@ private data class PendingMobileOAuthLegalAcceptance(
 private fun AuthLegalAcceptanceScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator =
+        rememberSlockLinkNavigator(
+            pager = pager,
+            bridge = bridge,
+            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+        )
     val paramsSignature = pager.pageData.params.toString()
     val providerId = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_LEGAL_PROVIDER_KEY).ifBlank { AuthProvider.Google.providerId() }
@@ -477,8 +489,8 @@ private fun AuthLegalAcceptanceScreen() {
                 )
             )
         },
-        onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
-        onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) }
+        onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
+        onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) }
     )
 }
 
@@ -668,13 +680,20 @@ private enum class AuthAboutDestination {
 private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAboutDestination.About) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator =
+        rememberSlockLinkNavigator(
+            pager = pager,
+            bridge = bridge,
+            routeScope = SlockInAppBrowserRouteScope.Unscoped,
+        )
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope) {
+        remember(bridge, bridgeCallScope, linkNavigator) {
             BridgeSettingsPlatformCapabilities(
-                bridge,
-                bridgeCallScope.kuiklyBridgeCallContext()
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
+                openUrlHandler = { url -> linkNavigator.open(url) }
             )
         }
     val settingsDataSource =
@@ -777,7 +796,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     actionState = actionState,
                     onCopyBuild = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
                     webUrl = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl.orEmpty(),
-                    onOpenSlock = settingsCapabilities::openUrl,
+                    onOpenSlock = { url -> linkNavigator.open(url) },
                     onCheckQuiverUpdate = {
                         bridgeCallScope.launch {
                             developerState =

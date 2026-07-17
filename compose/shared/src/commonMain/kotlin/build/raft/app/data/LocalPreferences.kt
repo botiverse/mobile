@@ -172,6 +172,63 @@ enum class TranslationModePreference(val storageKey: String) {
     }
 }
 
+enum class LinkOpenMode(val storageKey: String) {
+    SystemBrowser("system"),
+    InAppBrowser("in_app");
+
+    companion object {
+        val Default: LinkOpenMode = SystemBrowser
+
+        fun fromStorageKey(value: String?): LinkOpenMode =
+            entries.firstOrNull { it.storageKey == value } ?: Default
+    }
+}
+
+interface LinkOpenPreferenceStore {
+    fun readLinkOpenModeSync(): LinkOpenMode
+    suspend fun readLinkOpenMode(): LinkOpenMode
+    suspend fun saveLinkOpenMode(mode: LinkOpenMode)
+}
+
+class KeyValueLinkOpenPreferenceStore(
+    private val store: SharedPreferenceStore
+) : LinkOpenPreferenceStore {
+    override fun readLinkOpenModeSync(): LinkOpenMode =
+        LinkOpenMode.fromStorageKey(store.getString(KEY_LINK_OPEN_MODE))
+
+    override suspend fun readLinkOpenMode(): LinkOpenMode =
+        readLinkOpenModeSync()
+
+    override suspend fun saveLinkOpenMode(mode: LinkOpenMode) {
+        store.putString(KEY_LINK_OPEN_MODE, mode.storageKey)
+    }
+
+    private companion object {
+        const val KEY_LINK_OPEN_MODE = "navigation:link_open_mode"
+    }
+}
+
+interface LinkOpenPreferenceRepository {
+    fun getLinkOpenModeSync(): LinkOpenMode
+    suspend fun getLinkOpenMode(): LinkOpenMode
+    suspend fun selectLinkOpenMode(mode: LinkOpenMode): LinkOpenMode
+}
+
+class PersistentLinkOpenPreferenceRepository(
+    private val store: LinkOpenPreferenceStore
+) : LinkOpenPreferenceRepository {
+    override fun getLinkOpenModeSync(): LinkOpenMode =
+        store.readLinkOpenModeSync()
+
+    override suspend fun getLinkOpenMode(): LinkOpenMode =
+        store.readLinkOpenMode()
+
+    override suspend fun selectLinkOpenMode(mode: LinkOpenMode): LinkOpenMode {
+        store.saveLinkOpenMode(mode)
+        return mode
+    }
+}
+
 data class ChatLayoutPreferenceSnapshot(
     val myMessageAlignment: MyMessageAlignmentPreference,
     val supportedAlignments: List<MyMessageAlignmentPreference> =

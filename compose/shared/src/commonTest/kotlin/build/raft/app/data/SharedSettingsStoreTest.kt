@@ -761,6 +761,7 @@ class SharedSettingsStoreTest {
         val notificationRepository = FakeNotificationPreferenceRepository(enabled = false)
         val localeRepository = FakeLocaleRepository(current = AppLocale.English)
         val chatLayoutRepository = FakeChatLayoutPreferenceRepository(alignment = MyMessageAlignmentPreference.Left)
+        val linkOpenPreferenceRepository = FakeLinkOpenPreferenceRepository()
         val store =
             SharedSettingsStore(
                 dataSource =
@@ -769,7 +770,8 @@ class SharedSettingsStoreTest {
                         settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
                         notificationPreferenceRepository = notificationRepository,
                         localeRepository = localeRepository,
-                        chatLayoutPreferenceRepository = chatLayoutRepository
+                        chatLayoutPreferenceRepository = chatLayoutRepository,
+                        linkOpenPreferenceRepository = linkOpenPreferenceRepository
                     ),
                 scope = scope
             )
@@ -778,6 +780,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetNotificationPreference(true))
         store.accept(SharedSettingsIntent.SetLocale("zh-Hans"))
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
+        store.accept(SharedSettingsIntent.SetLinkOpenMode("in_app"))
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
         store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
@@ -791,6 +794,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, notificationRepository.enabled)
         assertEquals(AppLocale.SimplifiedChinese, localeRepository.current)
         assertEquals(MyMessageAlignmentPreference.Right, chatLayoutRepository.alignment)
+        assertEquals(LinkOpenMode.InAppBrowser, linkOpenPreferenceRepository.mode)
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
         assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
@@ -806,6 +810,9 @@ class SharedSettingsStoreTest {
             mobile.localePreference.options.map { it.key }
         )
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
+        assertEquals("in_app", mobile.linkOpenMode.selectedKey)
+        assertEquals("In-app browser", mobile.linkOpenMode.statusLabel)
+        assertEquals(listOf("system", "in_app"), mobile.linkOpenMode.options.map { it.key })
         assertEquals(true, mobile.compactConsecutiveMessages.enabled)
         assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
         assertEquals(true, mobile.longMessageCollapse.enabled)
@@ -830,6 +837,32 @@ class SharedSettingsStoreTest {
             assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(AppLocale.System, localeRepository.current)
         assertEquals("System default", systemMobile.localePreference.statusLabel)
+        scope.cancel()
+    }
+
+    @Test
+    fun mobileLinkOpenModeRejectsUnknownSelectionWithoutOverwritingPreference() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val linkOpenPreferenceRepository = FakeLinkOpenPreferenceRepository()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        linkOpenPreferenceRepository = linkOpenPreferenceRepository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
+        store.accept(SharedSettingsIntent.SetLinkOpenMode("unsupported"))
+
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(LinkOpenMode.SystemBrowser, linkOpenPreferenceRepository.mode)
+        assertEquals("system", mobile.linkOpenMode.selectedKey)
+        assertEquals(MOBILE_ACTION_LINK_OPEN_MODE, store.state.value.actionState?.action)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertEquals("settings_link_open_mode_unknown", store.state.value.actionState?.errorCode)
         scope.cancel()
     }
 
@@ -3167,6 +3200,19 @@ class SharedSettingsStoreTest {
         override suspend fun selectLocale(locale: AppLocale): LocaleSnapshot {
             current = locale
             return LocaleSnapshot(current = current)
+        }
+    }
+
+    private class FakeLinkOpenPreferenceRepository(
+        var mode: LinkOpenMode = LinkOpenMode.SystemBrowser
+    ) : LinkOpenPreferenceRepository {
+        override fun getLinkOpenModeSync(): LinkOpenMode = mode
+
+        override suspend fun getLinkOpenMode(): LinkOpenMode = mode
+
+        override suspend fun selectLinkOpenMode(mode: LinkOpenMode): LinkOpenMode {
+            this.mode = mode
+            return mode
         }
     }
 

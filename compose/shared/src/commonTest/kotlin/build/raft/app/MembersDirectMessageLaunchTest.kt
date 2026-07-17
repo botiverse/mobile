@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
@@ -141,6 +142,32 @@ class MembersDirectMessageLaunchTest {
         assertEquals("dm-human-artin", payload.threadId)
         assertEquals("dm-human-artin", payload.sourceThreadId)
         assertEquals("dm-human-artin", payload.streamChannelId)
+    }
+
+    @Test
+    fun unrecognizedHttpReminderFallbackStaysExternalWhenInAppBrowserIsPreferred() {
+        val url = "https://custom.raft.example/s/workspace/channel/channel-1?msg=message-1"
+        var inAppOpenCount = 0
+        var externallyOpenedUrl: String? = null
+        var rejectedReason: SlockLinkRejectReason? = null
+        val navigator =
+            SlockLinkNavigator(
+                modeProvider = { LinkOpenMode.InAppBrowser },
+                openInAppBrowser = {
+                    inAppOpenCount += 1
+                    true
+                },
+                openExternalBrowser = { externallyOpenedUrl = it },
+                onRejected = { rejectedReason = it },
+            )
+
+        assertNull(url.toSlockThreadWebLinkTarget())
+        val decision = navigator.openMembersReminderForceExternalFallback(url)
+
+        assertEquals(SlockLinkOpenTarget.ExternalBrowser, decision.target)
+        assertEquals(url, externallyOpenedUrl)
+        assertEquals(0, inAppOpenCount)
+        assertNull(rejectedReason)
     }
 
     @Test

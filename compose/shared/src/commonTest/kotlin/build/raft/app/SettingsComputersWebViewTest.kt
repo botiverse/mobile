@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SettingsComputersWebViewTest {
     @Test
@@ -38,6 +39,13 @@ class SettingsComputersWebViewTest {
         assertFalse(script.contains("h-panel-header"))
         assertFalse(script.contains("MutationObserver"))
         assertFalse(script.contains("querySelector"))
+    }
+
+    @Test
+    fun computersBackConsumesWebHistoryBeforeLeavingSettings() {
+        assertTrue(settingsComputersShouldConsumeBack("computers", canGoBack = true))
+        assertFalse(settingsComputersShouldConsumeBack("computers", canGoBack = false))
+        assertFalse(settingsComputersShouldConsumeBack("mobile", canGoBack = true))
     }
 }
 
