@@ -5,9 +5,10 @@ tier: L1
 version: "0.1"
 description: |
   Regression case from Hands feedback fd9c0487: after double-tap to scroll
-  to top, scrolling down causes infinite bounce back to top. The scroll
-  position is forcibly pulled back instead of following user input.
-  Tests scroll state ownership after programmatic scroll-to-top.
+  to top in a ReplyThread, scrolling down causes infinite bounce back.
+  CRITICAL: scroll-to-top only works on ReplyThread chat surfaces (threads
+  with replies), NOT regular channel lists. Must open a thread with replies
+  first. Tests scroll state ownership after programmatic scroll-to-top.
 tags: [scroll, interaction, regression, P1]
 timeout_seconds: 120
 max_retries: 1
@@ -26,24 +27,22 @@ preconditions:
   - type: app_installed
     params: { package: build.raft.app }
   - type: logged_in
-  - type: channel_has_many_messages
+  - type: thread_has_replies
     params:
-      channel: "#all"
-      min_messages: 30
-      note: "Need enough messages to scroll multiple screens"
+      note: "Must open a ReplyThread (thread with replies), not a regular channel. Use a thread with reply count chip visible."
 
 cleanup:
   - action: stop_app
 
 steps:
-  - id: open-channel
-    goal: "Open #all channel with many messages"
+  - id: open-thread
+    goal: "Open a ReplyThread (a message thread with replies). Look for a message with a reply count chip (e.g. '3 replies') and tap it to open the thread. CRITICAL: This must be a thread surface, not a regular channel."
     action_category: navigate
-    hint: "Navigate to #all channel"
+    hint: "Find a message with 'N replies' chip in #all or any channel. Tap it to open the ReplyThread. Verify logcat shows surface=thread."
     capture: [screenshot]
 
-  - id: wait-messages-load
-    goal: "Wait for messages to fully load"
+  - id: wait-thread-load
+    goal: "Wait for thread messages to fully load"
     action_category: wait
     params:
       duration_ms: 2000
