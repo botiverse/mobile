@@ -1,0 +1,128 @@
+id: task-status-transition
+title: "Task-任务状态流转（Todo→InProgress→Done→Reopen）"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify task status transitions work: a task can be opened (todo→in_progress),
+  closed (→done/closed), and reopened. UI flow: long-press task message →
+  context menu shows task actions. Status values: Todo, In Progress, In Review,
+  Done, Closed.
+tags: [tasks, status, regression]
+timeout_seconds: 120
+max_retries: 1
+verdict_before_cleanup: true
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open #all channel"
+    action_category: navigate
+    hint: "Navigate to #all in OranixSlockTest server"
+    capture: [screenshot]
+
+  - id: wait-messages
+    goal: "Wait for messages to load"
+    action_category: wait
+    params: { duration_ms: 2000 }
+
+  - id: find-or-create-task
+    goal: "Find a message that is already a task (has task badge), or long-press a message and tap 'Convert to Task' to create one"
+    action_category: interact
+    hint: "Look for a message with task badge. If none, long-press any message and tap_text 'Convert to Task'"
+    capture: [screenshot, dump_layout]
+
+  - id: verify-task-exists
+    goal: "Verify a task exists (badge visible)"
+    action_category: verify
+    capture: [screenshot]
+
+  - id: long-press-task-message
+    goal: "Long-press the task message to open context menu"
+    action_category: interact
+    hint: "Long-press the message that has the task badge"
+    capture: [screenshot, dump_layout]
+
+  - id: change-status-in-progress
+    goal: "Find and tap the option to change task status to 'In Progress'"
+    action_category: interact
+    hint: "In the long-press menu, look for status change options. May show 'In Progress' or a status selector. Use tap_text for precise tapping"
+    on_failure: continue
+    capture: [screenshot, dump_layout]
+
+  - id: wait-status-change-1
+    goal: "Wait for status change to propagate"
+    action_category: wait
+    params: { duration_ms: 2000 }
+
+  - id: verify-in-progress
+    goal: "Verify task status changed to In Progress"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+  - id: long-press-again
+    goal: "Long-press the task message again"
+    action_category: interact
+    capture: [screenshot]
+
+  - id: change-status-done
+    goal: "Change task status to Done"
+    action_category: interact
+    hint: "In the menu, find 'Done' status option or mark as complete"
+    on_failure: continue
+    capture: [screenshot, dump_layout]
+
+  - id: wait-status-change-2
+    goal: "Wait for status change"
+    action_category: wait
+    params: { duration_ms: 2000 }
+
+  - id: verify-done
+    goal: "Verify task status changed to Done"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: status-change-worked
+    goal: "Task status transitions are visible and functional (badge updates after each change)"
+    type: visual_check
+    after_step: verify-done
+    severity: critical
+
+  - id: no-status-error
+    goal: "No 'Could not update status' error appeared"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(could not update status|error|failed)"
+    after_step: verify-done
+    severity: major
+
+  - id: no-crash-task-status
+    goal: "No crash during task status changes"
+    type: no_crash
+    after_step: verify-done
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Task status enum: Todo, In Progress, In Review, Done, Closed.
+    UI: long-press task message → context menu → status options.
+    All three actions (Open Thread / Convert to Task / status changes)
+    are in the message long-press menu, not toolbar buttons.

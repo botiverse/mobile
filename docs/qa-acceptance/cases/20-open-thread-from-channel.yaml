@@ -1,0 +1,103 @@
+id: open-thread-from-channel
+title: "Thread-在频道中打开消息的Thread"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that tapping a message's reply chip opens its thread. User can
+  see the thread conversation with the parent message and replies.
+  UI flow (from code): message with reply chip → tap chip → thread opens
+  with onOpenThreadPayload. Tests thread navigation and rendering.
+tags: [messaging, thread, navigation, regression]
+timeout_seconds: 120
+max_retries: 1
+verdict_before_cleanup: true
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+  - type: channel_has_thread
+    params:
+      note: "Need a message with at least 1 reply (reply chip visible)"
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open #all channel"
+    action_category: navigate
+    hint: "Navigate to #all in OranixSlockTest server"
+    capture: [screenshot]
+
+  - id: wait-messages
+    goal: "Wait for messages to load"
+    action_category: wait
+    params: { duration_ms: 2000 }
+
+  - id: find-reply-chip
+    goal: "Scroll through messages to find one with a reply chip (e.g. '1 reply', 'N replies')"
+    action_category: interact
+    hint: "Swipe up to scroll and look for reply count chips below messages"
+    capture: [screenshot, dump_layout]
+
+  - id: tap-reply-chip
+    goal: "Tap the reply chip to open the thread"
+    action_category: interact
+    hint: "Tap the 'N replies' chip below a message. This opens the ReplyThread via onOpenThreadPayload"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-thread
+    goal: "Wait for thread to load"
+    action_category: wait
+    params: { duration_ms: 2000 }
+
+  - id: verify-thread-open
+    goal: "Verify the thread is open — should see parent message and reply conversation"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: thread-content-visible
+    goal: "Thread conversation is visible with parent message and replies"
+    type: visual_check
+    after_step: verify-thread-open
+    severity: critical
+
+  - id: thread-composer-visible
+    goal: "Thread reply composer/input is visible at the bottom"
+    type: visual_check
+    after_step: verify-thread-open
+    severity: major
+
+  - id: no-open-thread-error
+    goal: "No error when opening thread"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(unable to open|error|failed)"
+    after_step: verify-thread-open
+    severity: major
+
+  - id: no-crash-thread
+    goal: "No crash when opening thread"
+    type: no_crash
+    after_step: verify-thread-open
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Tests thread opening from channel. UI path: tap reply chip →
+    onOpenThreadPayload → thread view with parent + replies.
+    If no messages have reply chips, need QA fixture thread first.
