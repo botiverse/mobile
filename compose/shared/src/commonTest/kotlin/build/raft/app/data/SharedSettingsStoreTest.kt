@@ -57,7 +57,7 @@ class SharedSettingsStoreTest {
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Diagnostics })
         // Developer is no longer a home nav item — it is hidden behind header taps (035d4b96).
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Developer })
-        assertEquals("Version and diagnostics", home.items.first { it.destination == SharedSettingsDestination.About }.subtitle)
+        assertEquals("Version and build information", home.items.first { it.destination == SharedSettingsDestination.About }.subtitle)
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Router && it.productVisible })
         scope.cancel()
     }

@@ -98,7 +98,7 @@
     <string name="settings_billing_subtitle">套餐与用量</string>
     <string name="settings_storage_title">存储</string>
     <string name="settings_about_title">关于</string>
-    <string name="settings_about_subtitle">版本与诊断</string>
+    <string name="settings_about_subtitle">版本与构建信息</string>
     <string name="settings_release_notes_title">更新日志</string>
     <string name="settings_release_notes_subtitle">版本历史与更新记录</string>
     <string name="settings_feedback_title">发送反馈</string>
