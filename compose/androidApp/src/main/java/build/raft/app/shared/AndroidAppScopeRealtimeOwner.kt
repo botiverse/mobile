@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import build.raft.app.BuildConfig
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
@@ -40,6 +39,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
     private const val ForegroundReconnectAfterBackgroundMillis = 5L * 60L * 1000L
     private const val RealtimeOwnerReplaceGraceMillis = 1_500L
+    private const val ProcessRealtimeOwnerId = "process-realtime-host-owner"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -48,6 +48,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private var realtimeConnectionWitness: RealtimeConnectionWitnessToken? = null
     private var realtimeConnectJob: Job? = null
     private var multiSessionRegistry: AndroidRealtimeSessionRegistry<MultiSessionRuntime>? = null
+    private var multiSessionIdentity: MultiSessionIdentity? = null
     private val visibleShellOwners = AndroidVisibleShellOwners()
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var lastHiddenAtMillis: Long? = null
@@ -306,6 +307,80 @@ internal object AndroidAppScopeRealtimeOwner {
             }
     }
 
+    fun reconcileFromSharedRequest(
+        context: Context,
+        serverIds: Set<String>,
+        accessToken: String,
+        environmentId: String,
+        socketUrl: String,
+        forceReconnect: Boolean,
+        disconnectReason: String,
+        witness: RealtimeConnectionWitnessToken,
+    ) {
+        val desiredServerIds = serverIds.map(String::trim).filter(String::isNotEmpty).map(::ServerId).toSet()
+        if (desiredServerIds.isEmpty()) {
+            multiSessionRegistry?.disconnectAll(disconnectReason)
+            multiSessionRegistry = null
+            multiSessionIdentity = null
+            realtimeConnectionWitness = null
+            backgroundKeepAliveEnabled = false
+            SlockAppLog.d(LOG_TAG, "process_reconcile result=cleared reason=$disconnectReason")
+            return
+        }
+        if (
+            accessToken.isBlank() ||
+            environmentId.isBlank() ||
+            witness.scopeLeaseId.isBlank() ||
+            witness.principalId.isBlank() ||
+            witness.authGeneration <= 0L ||
+            witness.connectionFamilyId.isBlank()
+        ) {
+            SlockAppLog.w(LOG_TAG, "process_reconcile_skip reason=invalid_authority serverCount=${desiredServerIds.size}")
+            multiSessionRegistry?.disconnectAll("invalid_process_authority")
+            multiSessionRegistry = null
+            multiSessionIdentity = null
+            realtimeConnectionWitness = null
+            return
+        }
+        val nextIdentity =
+            MultiSessionIdentity(
+                socketUrl = socketUrl.trim(),
+                environmentId = environmentId.trim().trimEnd('/'),
+                principalId = witness.principalId,
+                authGeneration = witness.authGeneration,
+                connectionFamilyId = witness.connectionFamilyId,
+                accessToken = accessToken,
+            )
+        val identityChanged = multiSessionIdentity != null && multiSessionIdentity != nextIdentity
+        if (identityChanged) {
+            multiSessionRegistry?.disconnectAll("process_identity_replaced")
+            multiSessionRegistry = null
+        }
+        multiSessionIdentity = nextIdentity
+        realtimeConnectionWitness = witness
+        val registry = multiSessionRegistry(context.applicationContext)
+        registry.snapshots()
+            .map(AndroidRealtimeSessionRegistrySnapshot::serverId)
+            .filterNot(desiredServerIds::contains)
+            .forEach { serverId -> registry.disconnectServer(serverId, GeneratedRealtimeContract.DisconnectReason.ServerRemoved) }
+        desiredServerIds.sortedBy(ServerId::value).forEach { serverId ->
+            connectMultiSession(
+                context = context.applicationContext,
+                serverId = serverId,
+                accessToken = accessToken,
+                shellInstanceId = ProcessRealtimeOwnerId,
+                requestedLastSeq = registry.runtime(serverId)?.runtime?.lastSeq ?: 0L,
+                forceReconnect = forceReconnect || identityChanged,
+                witness = witness,
+            )
+        }
+        SlockAppLog.d(
+            LOG_TAG,
+            "process_reconcile result=applied serverCount=${desiredServerIds.size} " +
+                "identityChanged=$identityChanged forceReconnect=$forceReconnect"
+        )
+    }
+
     fun onNetworkAvailable(context: Context) {
         SlockAppLog.d(
             LOG_TAG,
@@ -431,6 +506,7 @@ internal object AndroidAppScopeRealtimeOwner {
             if (cleanReason in ProcessWideDisconnectReasons) {
                 registry.disconnectAll(cleanReason)
                 multiSessionRegistry = null
+                multiSessionIdentity = null
                 backgroundKeepAliveEnabled = false
                 realtimeConnectionWitness = null
                 return
@@ -497,12 +573,20 @@ internal object AndroidAppScopeRealtimeOwner {
         witness: RealtimeConnectionWitnessToken,
     ) {
         val registry = multiSessionRegistry(context)
-        registry.releaseOwnerFromOtherServers(
-            shellInstanceId = shellInstanceId,
-            exceptServerId = serverId,
-            mode = AndroidRealtimeOwnerReleaseMode.ReplaceGrace
-        )
         val holder = registry.acquire(serverId, shellInstanceId)
+        val requestedIdentity =
+            MultiSessionConnectIdentity(
+                accessToken = accessToken,
+                scopeLeaseId = witness.scopeLeaseId,
+                principalId = witness.principalId,
+                authGeneration = witness.authGeneration,
+                connectionFamilyId = witness.connectionFamilyId,
+            )
+        if (!forceReconnect && holder.requestedIdentity == requestedIdentity && holder.connectJob?.isActive == true) {
+            SlockAppLog.d(LOG_TAG, "multi_session_connect_skip reason=duplicate_in_flight serverId=${serverId.value}")
+            return
+        }
+        holder.requestedIdentity = requestedIdentity
         holder.witness = witness
         holder.connectJob?.cancel()
         holder.connectJob =
@@ -616,7 +700,7 @@ internal object AndroidAppScopeRealtimeOwner {
             realtimeRuntime?.joinedChannelCount ?: 0
         }
 
-    private fun multiServerRealtimeEnabled(): Boolean = BuildConfig.ENABLE_MULTI_SERVER_REALTIME_SESSIONS
+    private fun multiServerRealtimeEnabled(): Boolean = true
 
     private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
         realtimeRuntime?.let { return it }
@@ -745,6 +829,24 @@ internal object AndroidAppScopeRealtimeOwner {
         val runtime: SlockRealtimeAppScopeRuntime,
         var connectJob: Job? = null,
         var witness: RealtimeConnectionWitnessToken? = null,
+        var requestedIdentity: MultiSessionConnectIdentity? = null,
+    )
+
+    private data class MultiSessionConnectIdentity(
+        val accessToken: String,
+        val scopeLeaseId: String,
+        val principalId: String,
+        val authGeneration: Long,
+        val connectionFamilyId: String,
+    )
+
+    private data class MultiSessionIdentity(
+        val environmentId: String,
+        val socketUrl: String,
+        val principalId: String,
+        val authGeneration: Long,
+        val connectionFamilyId: String,
+        val accessToken: String,
     )
 
     private val ProcessWideDisconnectReasons =

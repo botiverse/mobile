@@ -386,12 +386,33 @@ class SlockRealtimeAppScopeEngine {
                     rawPayload = rawPayload,
                     logMessage = "native_raw_event_skip reason=missing_server eventName=$eventName"
                 )
+        return onRawEventForConnection(currentServerId.value, eventName, rawPayload)
+    }
+
+    fun onRawEventForConnection(
+        connectionServerIdValue: String,
+        eventName: String,
+        rawPayload: String,
+    ): SlockRealtimeAppScopeRawDecision {
+        val gate = realtimePayloadServerGate(connectionServerIdValue, rawPayload)
+        if (!gate.shouldAccept) {
+            return SlockRealtimeAppScopeRawDecision(
+                shouldFanOut = false,
+                serverId = null,
+                eventName = eventName,
+                rawPayload = rawPayload,
+                logMessage =
+                    "native_raw_event_skip reason=payload_server_${gate.reason} " +
+                        "connectionServerId=${connectionServerIdValue.trim()} " +
+                        "payloadServerId=${gate.payloadServerId} eventName=$eventName",
+            )
+        }
         return SlockRealtimeAppScopeRawDecision(
             shouldFanOut = true,
-            serverId = currentServerId,
+            serverId = ServerId(connectionServerIdValue.trim()),
             eventName = eventName,
             rawPayload = rawPayload,
-            logMessage = ""
+            logMessage = "",
         )
     }
 
@@ -531,7 +552,11 @@ class SlockRealtimeAppScopeCoordinator(
                 .trim()
                 .takeIf { it.isNotBlank() }
         val ownedServerId = engine.serverId?.value
-        if (targetServerId != null && targetServerId != ownedServerId) {
+        if (targetServerId == null) {
+            sink.log("room_command_skip reason=missing_target_server ownedServerId=${ownedServerId.orEmpty()}")
+            return false
+        }
+        if (targetServerId != ownedServerId) {
             sink.log("room_command_skip reason=server_mismatch targetServerId=$targetServerId ownedServerId=${ownedServerId.orEmpty()}")
             return false
         }
@@ -575,7 +600,7 @@ class SlockRealtimeAppScopeCoordinator(
         eventName: String,
         rawPayload: String,
     ) {
-        val decision = engine.onRawEvent(eventName, rawPayload)
+        val decision = engine.onRawEventForConnection(context.serverId.value, eventName, rawPayload)
         if (decision.shouldFanOut) {
             sink.fanOutRawRealtimeEvent(
                 serverId = context.serverId,

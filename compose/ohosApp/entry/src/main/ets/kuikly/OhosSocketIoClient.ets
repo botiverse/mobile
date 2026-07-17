@@ -197,6 +197,9 @@ export class OhosSocketIoClient {
       header: headers,
     };
     socket.connect(this.socketIoWebSocketUrl(params.socketUrl), options).catch((error: Error) => {
+      if (this.socket !== socket) {
+        return;
+      }
       console.error(`[OhosSocketIo] websocket_connect_failed ${error.message}`);
       this.listener.onConnectError?.(error.message);
       if (!this.manualDisconnect) {

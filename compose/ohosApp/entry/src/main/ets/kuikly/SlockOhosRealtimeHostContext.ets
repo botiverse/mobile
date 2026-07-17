@@ -2,7 +2,7 @@ import emitter from '@ohos.events.emitter';
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
 import { registerSingleServiceProvider } from '@kuiklybase/knoi';
 import { GeneratedRealtimeContract } from './GeneratedRealtimeContract';
-import { OhosSocketIoClient } from './OhosSocketIoClient';
+import { OhosSocketIoClient, OhosSocketIoConnectParams } from './OhosSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
 import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
 import slockOhosRealtimeKnoiBridge from './SlockOhosRealtimeKnoiBridge';
@@ -28,20 +28,16 @@ interface RealtimeConnectParams {
   authorityConnectionFamilyId: string;
 }
 
-class SlockOhosEnhancedNotifySink {
-  private readonly hostContext: SlockOhosRealtimeHostContext;
-
-  constructor(hostContext: SlockOhosRealtimeHostContext) {
-    this.hostContext = hostContext;
-  }
-
-  onEvent(eventName: string, eventDataJson: string, envelopeJson: string): void {
-    this.hostContext.handleSharedEnhancedNotifyEvent(eventName, eventDataJson, envelopeJson);
-  }
+interface RealtimeProcessIdentity {
+  environmentId: string;
+  socketUrl: string;
+  principalId: string;
+  authGeneration: number;
+  connectionFamilyId: string;
+  accessToken: string;
 }
 
-export class SlockOhosRealtimeHostContext {
-  private controller?: KRNativeRenderController;
+class SlockOhosRealtimeRuntime {
   private readonly socketIo: OhosSocketIoClient = new OhosSocketIoClient();
   private readonly joinedChannels: Set<string> = new Set();
   private connectParams?: RealtimeConnectParams;
@@ -49,137 +45,31 @@ export class SlockOhosRealtimeHostContext {
   private lastHeartbeatAtMillis?: number;
   private lastInboundEventAtMillis?: number;
   private authRefreshInFlight: boolean = false;
-  private enhancedNotifyCallback?: Callback<emitter.EventData>;
-  private socketListenerInstalled: boolean = false;
-  private enhancedNotifySinkInstalled: boolean = false;
+  private connectInFlight: boolean = false;
+  private generation: number = 0;
+  private readonly serverId: string;
+  private readonly runtimeId: string;
+  private readonly owner: Object;
+  private readonly notify: (data: KRRecord) => void;
 
-  bindController(controller?: KRNativeRenderController): void {
-    this.controller = controller;
+  constructor(serverId: string, owner: Object, notify: (data: KRRecord) => void) {
+    this.serverId = serverId;
+    this.runtimeId = `server:${serverId}`;
+    this.owner = owner;
+    this.notify = notify;
   }
 
-  bootstrapRealtime(): void {
-    this.installEnhancedNotifySink();
-    this.installSocketListener();
-    this.installEnhancedNotifyBridge();
+  currentLastSeq(): number {
+    return this.connectParams?.lastSeq ?? 0;
   }
 
-  handleCommand(params: KRRecord): void {
-    const action = params['action'] as string;
-    switch (action) {
-      case 'connect':
-        this.connect({
-          serverId: (params['serverId'] as string) ?? '',
-          accessToken: (params['accessToken'] as string) ?? '',
-          socketUrl: (params['socketUrl'] as string) ?? DEFAULT_SOCKET_URL,
-          lastSeq: Number(params['lastSeq'] ?? 0),
-          authorityScopeLeaseId: (params['authorityScopeLeaseId'] as string) ?? '',
-          authorityPrincipalId: (params['authorityPrincipalId'] as string) ?? '',
-          authorityAuthGeneration: Number(params['authorityAuthGeneration'] ?? 0),
-          authorityConnectionFamilyId: (params['authorityConnectionFamilyId'] as string) ?? '',
-        }, params['forceReconnect'] === true);
-        break;
-      case 'disconnect':
-        this.disconnectForRealtimeCommand((params['reason'] as string) ?? 'shared_disconnect');
-        break;
-      case 'syncResume':
-        this.syncResume(Number(params['lastSeq'] ?? 0));
-        break;
-      case 'authRefreshFinished':
-        this.authRefreshInFlight = false;
-        console.info(`[SlockOhosRealtime] auth_refresh_finished reason=${(params['reason'] as string) ?? ''} success=${params['success'] === true}`);
-        break;
-      default:
-        console.warn(`[SlockOhosRealtime] unsupported action=${action}`);
-        break;
-    }
-  }
-
-  onPageShow(): void {
-    slockOhosRealtimeKnoiBridge.onAppShown();
-    this.socketIo.resume();
-    this.sendAppLifecycleEvent('show');
-  }
-
-  onPageHide(keepAlive: boolean = false): void {
-    slockOhosRealtimeKnoiBridge.onAppHidden();
-    this.sendAppLifecycleEvent(keepAlive ? 'hide_keep_alive' : 'hide');
-    if (keepAlive) {
-      console.info('[SlockOhosRealtime] page_hide_keep_alive socket_retained');
-      return;
-    }
-    this.socketIo.suspend('background');
-  }
-
-  disconnectForSessionEnd(reason: string): void {
-    if (!slockOhosRealtimeKnoiBridge.disconnectForSessionEnd(reason)) {
-      console.info(`[SlockOhosRealtime] disconnect_ignored reason=${reason}`);
-      return;
-    }
-    this.disconnect(reason);
-  }
-
-  handleSharedEnhancedNotifyEvent(eventName: string, eventDataJson: string, envelopeJson: string): void {
-    emitter.emit(eventName, {
-      data: {
-        eventName: eventName,
-        stringify: eventDataJson.length > 0 ? eventDataJson : '{}',
-      },
-    });
-    if (eventName !== ENHANCED_NOTIFY_EVENT_NAME) {
-      emitter.emit(ENHANCED_NOTIFY_EVENT_NAME, {
-        data: {
-          eventName: ENHANCED_NOTIFY_EVENT_NAME,
-          stringify: envelopeJson.length > 0 ? envelopeJson : '{}',
-        },
-      });
-    }
-  }
-
-  private installEnhancedNotifySink(): void {
-    if (this.enhancedNotifySinkInstalled) {
-      return;
-    }
-    registerSingleServiceProvider(
-      ENHANCED_NOTIFY_SINK_SERVICE,
-      new SlockOhosEnhancedNotifySink(this)
-    );
-    this.enhancedNotifySinkInstalled = true;
-    console.info('[SlockOhosRealtime] enhanced_notify_sink_registered');
-  }
-
-  private installSocketListener(): void {
-    if (this.socketListenerInstalled) {
-      return;
-    }
-    this.socketIo.setListener({
-      onConnected: () => {
-        this.markInbound();
-        this.startHeartbeatWatchdog();
-        console.info('[SlockOhosRealtime] socket_io_connected');
-        this.rejoinChannels('connect');
-      },
-      onDisconnected: (reason: string) => {
-        this.stopHeartbeatWatchdog();
-        console.info(`[SlockOhosRealtime] socket_io_disconnected reason=${reason}`);
-      },
-      onConnectError: (message: string) => {
-        this.markInbound();
-        console.warn(`[SlockOhosRealtime] socket_io_connect_error ${message}`);
-        this.requestAuthRefresh('connect_error');
-      },
-      onEvent: (eventName, payload) => {
-        this.handleSocketIoEvent(eventName, payload);
-      }
-    });
-    this.socketListenerInstalled = true;
-  }
-
-  private connect(params: RealtimeConnectParams, forceReconnect: boolean = false): void {
+  connect(params: RealtimeConnectParams, forceReconnect: boolean): void {
     if (params.serverId.length === 0 || params.accessToken.length === 0) {
-      console.warn('[SlockOhosRealtime] connect skipped: missing server/token');
+      console.warn(`[SlockOhosRealtime] connect_skip reason=missing_server_or_token serverId=${this.serverId}`);
       return;
     }
     const decision = slockOhosRealtimeKnoiBridge.connectDecision(
+      this.runtimeId,
       params.serverId,
       params.accessToken,
       params.lastSeq,
@@ -187,7 +77,7 @@ export class SlockOhosRealtimeHostContext {
       this.connectionStateName()
     );
     if (decision.logMessage.length > 0) {
-      console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
+      console.info(`[SlockOhosRealtime] serverId=${this.serverId} ${decision.logMessage}`);
     }
     if (decision.sessionChanged) {
       this.joinedChannels.clear();
@@ -208,41 +98,99 @@ export class SlockOhosRealtimeHostContext {
     this.authRefreshInFlight = false;
     this.lastHeartbeatAtMillis = undefined;
     this.lastInboundEventAtMillis = undefined;
-    this.disconnect('reconnect');
-    {
-      const resolvedSocketUrl = SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this);
-      this.socketIo.connect({
-        socketUrl: resolvedSocketUrl,
-        auth: {
-          token: params.accessToken,
-          serverId: params.serverId,
-          clientKind: 'mobile',
-        },
-        headers: {
-          'Authorization': `Bearer ${params.accessToken}`,
-          'X-Server-Id': params.serverId,
-        }
-      });
+    this.generation += 1;
+    const capturedGeneration = this.generation;
+    this.installSocketListener(capturedGeneration);
+    this.connectInFlight = true;
+    this.socketIo.connect(this.socketConnectParams(this.connectParams));
+  }
+
+  onAppShown(): void {
+    slockOhosRealtimeKnoiBridge.onAppShown(this.runtimeId);
+    this.socketIo.resume();
+  }
+
+  onAppHidden(keepAlive: boolean): void {
+    slockOhosRealtimeKnoiBridge.onAppHidden(this.runtimeId);
+    if (!keepAlive) {
+      this.socketIo.suspend('background');
     }
   }
 
-  private disconnectForRealtimeCommand(reason: string): void {
-    if (slockOhosRealtimeKnoiBridge.disconnectForSessionEnd(reason)) {
-      this.disconnect(reason);
+  disconnectForSessionEnd(reason: string): void {
+    if (!slockOhosRealtimeKnoiBridge.disconnectForSessionEnd(this.runtimeId, reason)) {
+      console.info(`[SlockOhosRealtime] disconnect_ignored reason=${reason} serverId=${this.serverId}`);
       return;
     }
-    console.info(`[SlockOhosRealtime] disconnect_local_only reason=${reason}`);
     this.disconnect(reason);
   }
 
-  private disconnect(reason: string): void {
-    if (reason !== 'reconnect') {
-      this.joinedChannels.clear();
-      this.connectParams = undefined;
-    }
+  disconnect(reason: string): void {
+    this.generation += 1;
+    this.joinedChannels.clear();
+    this.connectParams = undefined;
     this.authRefreshInFlight = false;
+    this.connectInFlight = false;
     this.stopHeartbeatWatchdog();
     this.socketIo.disconnect(reason);
+    slockOhosRealtimeKnoiBridge.releaseRuntime(this.runtimeId);
+  }
+
+  authRefreshFinished(reason: string, success: boolean): void {
+    this.authRefreshInFlight = false;
+    console.info(`[SlockOhosRealtime] auth_refresh_finished serverId=${this.serverId} reason=${reason} success=${success}`);
+  }
+
+  handleRoomCommand(action: string, channelId: string, source: string): void {
+    const decision = slockOhosRealtimeKnoiBridge.roomCommandDecision(
+      this.runtimeId,
+      action,
+      channelId,
+      source
+    );
+    if (decision.logMessage.length > 0) {
+      console.info(`[SlockOhosRealtime] serverId=${this.serverId} ${decision.logMessage}`);
+    }
+    if (decision.channelId.length > 0) {
+      if (decision.joinedChannelAction === 'join' || decision.joinedChannelAction === 'rejoin') {
+        this.joinedChannels.add(decision.channelId);
+      } else if (decision.joinedChannelAction === 'leave') {
+        this.joinedChannels.delete(decision.channelId);
+      }
+    }
+    if (decision.shouldEmit) {
+      this.emitRoomCommand(decision.eventName, decision.payload);
+    }
+  }
+
+  private installSocketListener(capturedGeneration: number): void {
+    this.socketIo.setListener({
+      onConnected: () => {
+        if (!this.isCurrent(capturedGeneration)) return;
+        this.markInbound();
+        this.connectInFlight = false;
+        this.startHeartbeatWatchdog(capturedGeneration);
+        console.info(`[SlockOhosRealtime] socket_io_connected serverId=${this.serverId} generation=${capturedGeneration}`);
+        this.rejoinChannels('connect');
+      },
+      onDisconnected: (reason: string) => {
+        if (!this.isCurrent(capturedGeneration)) return;
+        this.stopHeartbeatWatchdog();
+        this.connectInFlight = false;
+        console.info(`[SlockOhosRealtime] socket_io_disconnected serverId=${this.serverId} reason=${reason}`);
+      },
+      onConnectError: (message: string) => {
+        if (!this.isCurrent(capturedGeneration)) return;
+        this.markInbound();
+        this.connectInFlight = false;
+        console.warn(`[SlockOhosRealtime] socket_io_connect_error serverId=${this.serverId} ${message}`);
+        this.requestAuthRefresh('connect_error');
+      },
+      onEvent: (eventName, payload) => {
+        if (!this.isCurrent(capturedGeneration)) return;
+        this.handleSocketIoEvent(eventName, payload);
+      }
+    });
   }
 
   private handleSocketIoEvent(eventName: string, payload: KRAny): void {
@@ -256,22 +204,31 @@ export class SlockOhosRealtimeHostContext {
     }
     if (eventName === GeneratedRealtimeContract.SocketEvent.Heartbeat) {
       const heartbeat = payload as KRRecord;
-      console.info(`[SlockOhosRealtime] app_heartbeat_received seq=${Number(heartbeat['seq'] ?? 0)}`);
+      console.info(`[SlockOhosRealtime] app_heartbeat_received serverId=${this.serverId} seq=${Number(heartbeat['seq'] ?? 0)}`);
     }
     const rawPayload = JSON.stringify(payload ?? {});
-    const decision = slockOhosRealtimeKnoiBridge.rawDecision(eventName, rawPayload);
+    const decision = slockOhosRealtimeKnoiBridge.rawDecision(
+      this.runtimeId,
+      this.serverId,
+      eventName,
+      rawPayload
+    );
     if (decision.logMessage.length > 0) {
       console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
     }
     if (!decision.shouldFanOut) {
       return;
     }
-    this.sendRealtimeNotify({
-      serverId: decision.serverId,
-      authorityScopeLeaseId: this.connectParams?.authorityScopeLeaseId ?? '',
-      authorityPrincipalId: this.connectParams?.authorityPrincipalId ?? '',
-      authorityAuthGeneration: this.connectParams?.authorityAuthGeneration ?? 0,
-      authorityConnectionFamilyId: this.connectParams?.authorityConnectionFamilyId ?? '',
+    const params = this.connectParams;
+    if (params === undefined) {
+      return;
+    }
+    this.notify({
+      serverId: params.serverId,
+      authorityScopeLeaseId: params.authorityScopeLeaseId,
+      authorityPrincipalId: params.authorityPrincipalId,
+      authorityAuthGeneration: params.authorityAuthGeneration,
+      authorityConnectionFamilyId: params.authorityConnectionFamilyId,
       eventName: decision.eventName,
       rawPayload: decision.rawPayload,
     });
@@ -279,39 +236,21 @@ export class SlockOhosRealtimeHostContext {
 
   private onRoomsJoined(): void {
     const lastSeq = this.connectParams?.lastSeq ?? 0;
-    console.info(`[SlockOhosRealtime] rooms_joined joinedRooms=${this.joinedChannels.size} lastSeq=${lastSeq}`);
+    console.info(`[SlockOhosRealtime] rooms_joined serverId=${this.serverId} joinedRooms=${this.joinedChannels.size} lastSeq=${lastSeq}`);
     if (lastSeq > 0) {
-      this.syncResume(lastSeq);
+      this.emitSocketEvent(GeneratedRealtimeContract.SocketEvent.SyncResume, { 'lastSeq': lastSeq });
     }
-  }
-
-  private handleRoomCommand(action: string, channelId: string, source: string): void {
-    const decision = slockOhosRealtimeKnoiBridge.roomCommandDecision(action, channelId, source);
-    if (decision.logMessage.length > 0) {
-      console.info(`[SlockOhosRealtime] ${decision.logMessage}`);
-    }
-    if (decision.channelId.length > 0) {
-      if (decision.joinedChannelAction === 'join') {
-        this.joinedChannels.add(decision.channelId);
-      } else if (decision.joinedChannelAction === 'leave') {
-        this.joinedChannels.delete(decision.channelId);
-      }
-    }
-    if (!decision.shouldEmit) {
-      return;
-    }
-    this.emitRoomCommand(decision.eventName, decision.payload);
   }
 
   private emitRoomCommand(eventName: string, payload: string): void {
     if (!this.emitSocketEvent(eventName, { 'channelId': payload })) {
-      console.info(`[SlockOhosRealtime] room_command_deferred eventName=${eventName}`);
+      console.info(`[SlockOhosRealtime] room_command_deferred serverId=${this.serverId} eventName=${eventName}`);
     }
   }
 
   private rejoinChannels(reason: string): void {
     this.joinedChannels.forEach((channelId) => {
-      console.info(`[SlockOhosRealtime] rejoin_channel reason=${reason}`);
+      console.info(`[SlockOhosRealtime] rejoin_channel serverId=${this.serverId} reason=${reason}`);
       this.emitRoomCommand(GeneratedRealtimeContract.SocketEvent.JoinChannel, channelId);
     });
   }
@@ -323,44 +262,6 @@ export class SlockOhosRealtimeHostContext {
     return this.socketIo.emit(eventName, payload);
   }
 
-  private installEnhancedNotifyBridge(): void {
-    if (this.enhancedNotifyCallback !== undefined) {
-      return;
-    }
-    this.enhancedNotifyCallback = (event: emitter.EventData) => {
-      const data = event.data as Record<string, string>;
-      const stringify = data.stringify ?? '{}';
-      try {
-        this.handleEnhancedNotify(JSON.parse(stringify) as KRRecord);
-      } catch (error) {
-        console.warn(`[SlockOhosRealtime] enhanced_notify_parse_failed message=${JSON.stringify(error)}`);
-      }
-    };
-    emitter.on(ENHANCED_NOTIFY_EVENT_NAME, this.enhancedNotifyCallback);
-    console.info('[SlockOhosRealtime] enhanced_notify_bridge_installed');
-  }
-
-  private handleEnhancedNotify(envelope: KRRecord): void {
-    const eventName = (envelope[ENHANCED_NOTIFY_KEY_EVENT_NAME] as string) ?? '';
-    const source = (envelope[ENHANCED_NOTIFY_KEY_SOURCE] as string) ?? 'notify';
-    const params = (envelope[ENHANCED_NOTIFY_KEY_DATA] as KRRecord) ?? {};
-    if (eventName === GeneratedRealtimeContract.Notify.RoomsEventName) {
-      this.handleRoomCommand(
-        (params[GeneratedRealtimeContract.PayloadKey.Action] as string) ?? '',
-        (params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '',
-        source
-      );
-    }
-  }
-
-  private syncResume(lastSeq: number): void {
-    if (lastSeq <= 0) {
-      return;
-    }
-    console.info(`[SlockOhosRealtime] sync_resume_emit lastSeq=${lastSeq}`);
-    this.emitSocketEvent(GeneratedRealtimeContract.SocketEvent.SyncResume, { 'lastSeq': lastSeq });
-  }
-
   private markInbound(eventName?: string): void {
     const now = Date.now();
     this.lastInboundEventAtMillis = now;
@@ -369,16 +270,12 @@ export class SlockOhosRealtimeHostContext {
     }
   }
 
-  private connectionStateName(): string {
-    return this.socketIo.isConnected() ? 'Connected' : 'Disconnected';
-  }
-
-  private startHeartbeatWatchdog(): void {
-    if (this.watchdogTimer !== undefined) {
-      return;
-    }
+  private startHeartbeatWatchdog(capturedGeneration: number): void {
+    this.stopHeartbeatWatchdog();
     this.watchdogTimer = setInterval(() => {
-      this.checkHeartbeatSilence();
+      if (this.isCurrent(capturedGeneration)) {
+        this.checkHeartbeatSilence();
+      }
     }, WATCHDOG_INTERVAL_MILLIS);
   }
 
@@ -390,30 +287,46 @@ export class SlockOhosRealtimeHostContext {
   }
 
   private checkHeartbeatSilence(): void {
-    if (!this.socketIo.isConnected()) {
-      return;
-    }
+    if (!this.socketIo.isConnected()) return;
     const heartbeatAt = this.lastHeartbeatAtMillis;
     const inboundAt = this.lastInboundEventAtMillis;
-    if (heartbeatAt === undefined || inboundAt === undefined) {
-      return;
-    }
+    if (heartbeatAt === undefined || inboundAt === undefined) return;
     const now = Date.now();
-    if (now - heartbeatAt <= HEARTBEAT_SILENCE_MILLIS || now - inboundAt <= INBOUND_SILENCE_MILLIS) {
-      return;
-    }
-    console.warn(`[SlockOhosRealtime] heartbeat_silence_reconnect lastHeartbeatAt=${heartbeatAt} lastInboundAt=${inboundAt}`);
+    if (now - heartbeatAt <= HEARTBEAT_SILENCE_MILLIS || now - inboundAt <= INBOUND_SILENCE_MILLIS) return;
     const params = this.connectParams;
-    if (params === undefined) {
-      return;
-    }
+    if (params === undefined) return;
+    console.warn(`[SlockOhosRealtime] heartbeat_silence_reconnect serverId=${this.serverId}`);
     this.lastHeartbeatAtMillis = undefined;
     this.lastInboundEventAtMillis = now;
-    if (this.requestAuthRefresh('heartbeat_silence')) {
-      return;
+    if (!this.requestAuthRefresh('heartbeat_silence')) {
+      this.connect(params, true);
     }
-    this.socketIo.connect({
-      socketUrl: SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this),
+  }
+
+  private requestAuthRefresh(reason: string): boolean {
+    const params = this.connectParams;
+    if (params === undefined || params.serverId.length === 0) return false;
+    if (this.authRefreshInFlight) {
+      console.info(`[SlockOhosRealtime] auth_refresh_skip serverId=${this.serverId} reason=${reason} result=in_flight`);
+      return true;
+    }
+    this.authRefreshInFlight = true;
+    this.notify({
+      action: 'authRefreshRequired',
+      reason: reason,
+      serverId: params.serverId,
+    });
+    return true;
+  }
+
+  private connectionStateName(): string {
+    if (this.socketIo.isConnected()) return 'Connected';
+    return this.connectInFlight ? 'Connecting' : 'Disconnected';
+  }
+
+  private socketConnectParams(params: RealtimeConnectParams): OhosSocketIoConnectParams {
+    return {
+      socketUrl: SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this.owner),
       auth: {
         token: params.accessToken,
         serverId: params.serverId,
@@ -423,26 +336,231 @@ export class SlockOhosRealtimeHostContext {
         'Authorization': `Bearer ${params.accessToken}`,
         'X-Server-Id': params.serverId,
       }
-    });
+    };
   }
 
-  private requestAuthRefresh(reason: string): boolean {
-    const params = this.connectParams;
-    if (params === undefined || params.serverId.length === 0) {
-      return false;
+  private isCurrent(capturedGeneration: number): boolean {
+    return this.generation === capturedGeneration && this.connectParams !== undefined;
+  }
+}
+
+class SlockOhosEnhancedNotifySink {
+  private readonly hostContext: SlockOhosRealtimeHostContext;
+
+  constructor(hostContext: SlockOhosRealtimeHostContext) {
+    this.hostContext = hostContext;
+  }
+
+  onEvent(eventName: string, eventDataJson: string, envelopeJson: string): void {
+    this.hostContext.handleSharedEnhancedNotifyEvent(eventName, eventDataJson, envelopeJson);
+  }
+}
+
+export class SlockOhosRealtimeHostContext {
+  private controller?: KRNativeRenderController;
+  private readonly runtimes: Map<string, SlockOhosRealtimeRuntime> = new Map();
+  private processIdentity?: RealtimeProcessIdentity;
+  private enhancedNotifyCallback?: Callback<emitter.EventData>;
+  private enhancedNotifySinkInstalled: boolean = false;
+
+  bindController(controller?: KRNativeRenderController): void {
+    this.controller = controller;
+  }
+
+  bootstrapRealtime(): void {
+    this.installEnhancedNotifySink();
+    this.installEnhancedNotifyBridge();
+  }
+
+  handleCommand(params: KRRecord): void {
+    const action = params['action'] as string;
+    switch (action) {
+      case 'reconcile':
+        this.reconcile(params);
+        break;
+      case 'connect':
+        this.reconcileLegacyConnect(params);
+        break;
+      case 'disconnect':
+        this.disconnectForRealtimeCommand(
+          (params['reason'] as string) ?? 'shared_disconnect',
+          (params['serverId'] as string) ?? ''
+        );
+        break;
+      case 'authRefreshFinished':
+        this.runtimes.forEach((runtime) => runtime.authRefreshFinished(
+          (params['reason'] as string) ?? '',
+          params['success'] === true
+        ));
+        break;
+      default:
+        console.warn(`[SlockOhosRealtime] unsupported action=${action}`);
+        break;
     }
-    if (this.authRefreshInFlight) {
-      console.info(`[SlockOhosRealtime] auth_refresh_skip reason=${reason} result=in_flight`);
-      return true;
-    }
-    this.authRefreshInFlight = true;
-    console.info(`[SlockOhosRealtime] auth_refresh_request reason=${reason} serverId=${params.serverId}`);
-    this.sendRealtimeNotify({
-      action: 'authRefreshRequired',
-      reason: reason,
-      serverId: params.serverId,
+  }
+
+  onPageShow(): void {
+    this.runtimes.forEach((runtime) => runtime.onAppShown());
+    this.sendAppLifecycleEvent('show');
+  }
+
+  onPageHide(keepAlive: boolean = false): void {
+    this.runtimes.forEach((runtime) => runtime.onAppHidden(keepAlive));
+    this.sendAppLifecycleEvent(keepAlive ? 'hide_keep_alive' : 'hide');
+  }
+
+  disconnectForSessionEnd(reason: string): void {
+    Array.from(this.runtimes.keys()).forEach((serverId) => this.removeRuntime(serverId, reason));
+    this.processIdentity = undefined;
+  }
+
+  handleSharedEnhancedNotifyEvent(eventName: string, eventDataJson: string, envelopeJson: string): void {
+    emitter.emit(eventName, {
+      data: { eventName: eventName, stringify: eventDataJson.length > 0 ? eventDataJson : '{}' },
     });
-    return true;
+    if (eventName !== ENHANCED_NOTIFY_EVENT_NAME) {
+      emitter.emit(ENHANCED_NOTIFY_EVENT_NAME, {
+        data: { eventName: ENHANCED_NOTIFY_EVENT_NAME, stringify: envelopeJson.length > 0 ? envelopeJson : '{}' },
+      });
+    }
+  }
+
+  private reconcile(params: KRRecord): void {
+    const desiredServerIds = new Set<string>();
+    const rawServerIds = (params['serverIds'] as Array<KRAny>) ?? [];
+    rawServerIds.forEach((value) => {
+      const serverId = `${value ?? ''}`.trim();
+      if (serverId.length > 0) desiredServerIds.add(serverId);
+    });
+    const disconnectReason = (params['disconnectReason'] as string) ?? 'auth_invalid';
+    if (desiredServerIds.size === 0) {
+      Array.from(this.runtimes.keys()).forEach((serverId) => this.removeRuntime(serverId, disconnectReason));
+      this.processIdentity = undefined;
+      return;
+    }
+    const accessToken = ((params['accessToken'] as string) ?? '').trim();
+    const environmentId = ((params['environmentId'] as string) ?? '').trim();
+    const socketUrl = ((params['socketUrl'] as string) ?? DEFAULT_SOCKET_URL).trim();
+    const scopeLeaseId = ((params['authorityScopeLeaseId'] as string) ?? '').trim();
+    const principalId = ((params['authorityPrincipalId'] as string) ?? '').trim();
+    const authGeneration = Number(params['authorityAuthGeneration'] ?? 0);
+    const familyId = ((params['authorityConnectionFamilyId'] as string) ?? '').trim();
+    if (accessToken.length === 0 || environmentId.length === 0 || scopeLeaseId.length === 0 || principalId.length === 0 || authGeneration <= 0 || familyId.length === 0) {
+      console.warn(`[SlockOhosRealtime] process_reconcile_skip reason=invalid_authority serverCount=${desiredServerIds.size}`);
+      Array.from(this.runtimes.keys()).forEach((serverId) => this.removeRuntime(serverId, 'invalid_process_authority'));
+      this.processIdentity = undefined;
+      return;
+    }
+    const nextIdentity: RealtimeProcessIdentity = {
+      environmentId,
+      socketUrl,
+      principalId,
+      authGeneration,
+      connectionFamilyId: familyId,
+      accessToken,
+    };
+    const identityChanged = this.processIdentity !== undefined && !this.sameIdentity(this.processIdentity, nextIdentity);
+    if (identityChanged) {
+      Array.from(this.runtimes.keys()).forEach((serverId) => this.removeRuntime(serverId, 'process_identity_replaced'));
+    }
+    this.processIdentity = nextIdentity;
+    Array.from(this.runtimes.keys())
+      .filter((serverId) => !desiredServerIds.has(serverId))
+      .forEach((serverId) => this.removeRuntime(serverId, 'server_removed'));
+    Array.from(desiredServerIds).sort().forEach((serverId) => {
+      const runtime = this.runtimes.get(serverId) ?? this.createRuntime(serverId);
+      runtime.connect({
+        serverId,
+        accessToken,
+        socketUrl,
+        lastSeq: runtime.currentLastSeq(),
+        authorityScopeLeaseId: scopeLeaseId,
+        authorityPrincipalId: principalId,
+        authorityAuthGeneration: authGeneration,
+        authorityConnectionFamilyId: familyId,
+      }, params['forceReconnect'] === true || identityChanged);
+    });
+    console.info(`[SlockOhosRealtime] process_reconcile result=applied serverCount=${desiredServerIds.size} identityChanged=${identityChanged}`);
+  }
+
+  private reconcileLegacyConnect(params: KRRecord): void {
+    const serverId = ((params['serverId'] as string) ?? '').trim();
+    if (serverId.length === 0) return;
+    const runtime = this.runtimes.get(serverId) ?? this.createRuntime(serverId);
+    runtime.connect({
+      serverId,
+      accessToken: (params['accessToken'] as string) ?? '',
+      socketUrl: (params['socketUrl'] as string) ?? DEFAULT_SOCKET_URL,
+      lastSeq: Number(params['lastSeq'] ?? 0),
+      authorityScopeLeaseId: (params['authorityScopeLeaseId'] as string) ?? '',
+      authorityPrincipalId: (params['authorityPrincipalId'] as string) ?? '',
+      authorityAuthGeneration: Number(params['authorityAuthGeneration'] ?? 0),
+      authorityConnectionFamilyId: (params['authorityConnectionFamilyId'] as string) ?? '',
+    }, params['forceReconnect'] === true);
+  }
+
+  private createRuntime(serverId: string): SlockOhosRealtimeRuntime {
+    const runtime = new SlockOhosRealtimeRuntime(serverId, this, (data) => this.sendRealtimeNotify(data));
+    this.runtimes.set(serverId, runtime);
+    return runtime;
+  }
+
+  private removeRuntime(serverId: string, reason: string): void {
+    const runtime = this.runtimes.get(serverId);
+    if (runtime === undefined) return;
+    this.runtimes.delete(serverId);
+    runtime.disconnect(reason);
+  }
+
+  private disconnectForRealtimeCommand(reason: string, serverId: string): void {
+    if (serverId.trim().length > 0) {
+      this.removeRuntime(serverId.trim(), reason);
+      return;
+    }
+    Array.from(this.runtimes.keys()).forEach((currentServerId) => this.removeRuntime(currentServerId, reason));
+    this.processIdentity = undefined;
+  }
+
+  private installEnhancedNotifySink(): void {
+    if (this.enhancedNotifySinkInstalled) return;
+    registerSingleServiceProvider(ENHANCED_NOTIFY_SINK_SERVICE, new SlockOhosEnhancedNotifySink(this));
+    this.enhancedNotifySinkInstalled = true;
+  }
+
+  private installEnhancedNotifyBridge(): void {
+    if (this.enhancedNotifyCallback !== undefined) return;
+    this.enhancedNotifyCallback = (event: emitter.EventData) => {
+      const data = event.data as Record<string, string>;
+      try {
+        this.handleEnhancedNotify(JSON.parse(data.stringify ?? '{}') as KRRecord);
+      } catch (error) {
+        console.warn(`[SlockOhosRealtime] enhanced_notify_parse_failed message=${JSON.stringify(error)}`);
+      }
+    };
+    emitter.on(ENHANCED_NOTIFY_EVENT_NAME, this.enhancedNotifyCallback);
+  }
+
+  private handleEnhancedNotify(envelope: KRRecord): void {
+    const eventName = (envelope[ENHANCED_NOTIFY_KEY_EVENT_NAME] as string) ?? '';
+    if (eventName !== GeneratedRealtimeContract.Notify.RoomsEventName) return;
+    const source = (envelope[ENHANCED_NOTIFY_KEY_SOURCE] as string) ?? 'notify';
+    const params = (envelope[ENHANCED_NOTIFY_KEY_DATA] as KRRecord) ?? {};
+    const targetServerId = ((params[GeneratedRealtimeContract.PayloadKey.ServerId] as string) ?? '').trim();
+    let runtime: SlockOhosRealtimeRuntime | undefined;
+    if (targetServerId.length > 0) {
+      runtime = this.runtimes.get(targetServerId);
+    } else if (this.runtimes.size === 1) {
+      runtime = this.runtimes.values().next().value as SlockOhosRealtimeRuntime;
+    }
+    if (runtime === undefined) {
+      console.info(`[SlockOhosRealtime] room_command_skip reason=ambiguous_or_missing_server targetServerId=${targetServerId} runtimeCount=${this.runtimes.size}`);
+      return;
+    }
+    runtime.handleRoomCommand(
+      (params[GeneratedRealtimeContract.PayloadKey.Action] as string) ?? '',
+      (params[GeneratedRealtimeContract.PayloadKey.ChannelId] as string) ?? '',
+      source
+    );
   }
 
   private sendAppLifecycleEvent(event: string): void {
@@ -460,6 +578,15 @@ export class SlockOhosRealtimeHostContext {
         stringify: JSON.stringify(data),
       },
     });
+  }
+
+  private sameIdentity(left: RealtimeProcessIdentity, right: RealtimeProcessIdentity): boolean {
+    return left.socketUrl === right.socketUrl &&
+      left.environmentId === right.environmentId &&
+      left.principalId === right.principalId &&
+      left.authGeneration === right.authGeneration &&
+      left.connectionFamilyId === right.connectionFamilyId &&
+      left.accessToken === right.accessToken;
   }
 }
 

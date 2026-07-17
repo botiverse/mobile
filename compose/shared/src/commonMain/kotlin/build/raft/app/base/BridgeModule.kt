@@ -703,6 +703,35 @@ internal class BridgeModule : Module() {
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
+    fun realtimeReconcile(
+        serverIds: Set<String>,
+        accessToken: String,
+        environmentId: String,
+        socketUrl: String = SLOCK_SOCKET_BASE_URL,
+        forceReconnect: Boolean = false,
+        disconnectReason: String = "auth_invalid",
+        authorityScopeLeaseId: String = "",
+        authorityPrincipalId: String = "",
+        authorityAuthGeneration: Long = 0L,
+        authorityConnectionFamilyId: String = "",
+    ) {
+        val methodArgs = JSONObject()
+        val serverIdArray = JSONArray()
+        serverIds.map(String::trim).filter(String::isNotEmpty).distinct().sorted().forEach(serverIdArray::put)
+        methodArgs.put("action", "reconcile")
+        methodArgs.put("serverIds", serverIdArray)
+        methodArgs.put("accessToken", accessToken)
+        methodArgs.put("environmentId", environmentId)
+        methodArgs.put("socketUrl", socketUrl)
+        methodArgs.put("forceReconnect", forceReconnect)
+        methodArgs.put("disconnectReason", disconnectReason)
+        methodArgs.put("authorityScopeLeaseId", authorityScopeLeaseId)
+        methodArgs.put("authorityPrincipalId", authorityPrincipalId)
+        methodArgs.put("authorityAuthGeneration", authorityAuthGeneration)
+        methodArgs.put("authorityConnectionFamilyId", authorityConnectionFamilyId)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
     fun realtimeDisconnect(
         reason: String = "shared_disconnect",
         serverId: String = "",
