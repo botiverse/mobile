@@ -823,3 +823,27 @@ edited (it bit #360 and #387 on the same day):
 4. If the event should refresh Home while hidden: `updatesHomeSnapshot()` /
    `homeRealtimeDirtyReason()` (both have `else` branches — decide, don't
    default silently).
+
+## Peer Review Convention (互审公约)
+
+Approved by @artin 2026-07-18. Rationale: review rounds ballooned to 30+ on a
+PR whose product code had passed source review early — the remaining rounds
+were spent proving the test harness itself. Keep the rigor, but gate by risk
+and cap the rounds.
+
+1. **Risk-tiered gates.** Small, local, test-covered fixes merge on
+   source-review PASS + green CI. Heavy gates (runtime evidence,
+   connected-test teeth, exact-SHA binding) are reserved for
+   architecture/contract/cross-platform changes.
+2. **Round cap = 3.** If a review has not converged within 3 rounds, escalate
+   to @artin, or merge the source-PASSED portion and open a follow-up task
+   for the remainder. Do not spin exact SHAs indefinitely.
+3. **Harness issues are separate tasks.** Defects in test fixtures or CI
+   itself belong to the harness domain (@XiShi / stamp) and get their own
+   task; they must not block a product PR. The product PR's test bar is:
+   does not break existing tests + passes source review.
+4. **HOLD requires a behavior.** A HOLD verdict must name the concrete
+   behavior that breaks if merged. Anything else is a non-blocking comment.
+5. **Slim verdict template.** Threads carry only: verdict + at most 3
+   blockers + an evidence link. Long analysis, raw artifacts, and SHA
+   citations go in PR comments, not chat threads.
