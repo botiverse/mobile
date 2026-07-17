@@ -713,7 +713,7 @@ private fun SharedActivityList(
                         selectedItemKey = item.key
                         onIntent(
                             SharedActivityIntent.PrewarmActivityTail(
-                                activityReplyThreadPrewarmTailAfterClick(
+                                activityReplyThreadPrewarmNextAfterClick(
                                     items = snapshot.items,
                                     clickedIndex = index,
                                     serverId = snapshot.server.id.value
@@ -818,19 +818,21 @@ private fun SharedActivityList(
 }
 
 /**
- * Activity prewarm is click-progressive: consuming row N arms the canonical tail
- * from N+1 onward. The store owns the serialized chain, so opening the selected
- * Thread can detach this viewport without cancelling the outer warm work.
+ * Activity prewarm is click-progressive: consuming row N arms only the next
+ * eligible reply Thread. Warming the full tail after navigation competes with
+ * the opened Thread's foreground work, especially while confirming a send.
  */
-internal fun activityReplyThreadPrewarmTailAfterClick(
+internal fun activityReplyThreadPrewarmNextAfterClick(
     items: List<InboxItem>,
     clickedIndex: Int,
     serverId: String
 ): List<ActivityReplyThreadPrewarmMarker> {
     if (clickedIndex !in items.indices) return emptyList()
-    return items
+    return listOfNotNull(
+        items
         .drop(clickedIndex + 1)
-        .mapNotNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
+        .firstNotNullOfOrNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
+    )
 }
 
 internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
