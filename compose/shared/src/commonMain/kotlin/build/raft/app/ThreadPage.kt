@@ -1510,6 +1510,7 @@ internal data class KuiklyThreadMemberItem(
     val displayName: String,
     val handle: String = "",
     val roleLabel: String = "",
+    val description: String = "",
     val avatarUrl: String? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
     val kind: String = "human",
@@ -3366,6 +3367,7 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
             displayName = "Product UX Designer",
             handle = "Product-UX-Designer",
             roleLabel = "",
+            description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
             avatarUrl = "pixel:paint",
             avatarLabel = "PU",
             kind = "agent",
@@ -3376,6 +3378,7 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
             displayName = "artin",
             handle = "artin",
             roleLabel = "",
+            description = "Owner",
             avatarLabel = "AR",
             kind = "human"
         ),
@@ -3384,6 +3387,7 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
             displayName = "Designer",
             handle = "designer",
             roleLabel = "",
+            description = "Product design",
             avatarLabel = "DE",
             kind = "human"
         )
@@ -20247,11 +20251,22 @@ private fun ThreadMembersPagerRow(
     onRemove: (KuiklyThreadMemberItem) -> Unit
 ) {
     val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+    val subtitle =
+        threadMembersRosterSubtitle(
+            memberKind = member.kind,
+            liveActivityLabel = status?.label,
+            humanRoleLabel =
+                if (member.kind.equals("agent", ignoreCase = true)) {
+                    ""
+                } else {
+                    member.localizedModalRoleLabel()
+                }
+        )
     val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
         ?: member.modalAvatarWireValue()
     SlockModalCompactMemberRow(
         title = member.displayName,
-        subtitle = member.localizedModalRoleLabel(),
+        subtitle = subtitle,
         sourceBadgeLabel = member.sourceServerLabel,
         avatarWireValue = avatarWireValue,
         avatarLabel = member.modalAvatarLabel(),
@@ -20284,17 +20299,7 @@ private fun ThreadAddMemberModal(
     var selectedId by remember(candidates, initialSelectedId) { mutableStateOf(initialSelectedId) }
     var localError by remember { mutableStateOf(false) }
     val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
-    val filteredCandidates =
-        filterPeopleSuggestions(
-            query = query,
-            suggestions = candidates,
-            handle = { member -> member.handle },
-            displayName = { member -> member.displayName },
-            description = { member -> member.roleLabel },
-            sourceServerLabel = { member -> member.sourceServerLabel },
-            legacyId = { member -> member.id }
-        )
-            .distinctBy { it.memberKey }
+    val filteredCandidates = filterThreadAddMemberCandidates(query = query, candidates = candidates)
     val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
     val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
@@ -20375,7 +20380,7 @@ private fun ThreadAddMemberModal(
                                 ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
-                                subtitle = member.localizedModalRoleLabel(),
+                                subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
@@ -20403,7 +20408,7 @@ private fun ThreadAddMemberModal(
                                 ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
-                                subtitle = member.localizedModalRoleLabel(),
+                                subtitle = threadAddMemberCandidateSubtitle(member.description),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
@@ -20506,6 +20511,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
                     MemberKind.Human -> "Member"
                     MemberKind.System -> "System"
                 },
+        description = normalizedThreadMemberDescription(description),
         avatarUrl = avatarWireValueForAvatarSlot(),
         avatarLabel = avatarLabel,
         kind = kind.name.lowercase(),
@@ -20533,6 +20539,45 @@ private fun KuiklyThreadMemberItem.modalAvatarWireValue(): String? =
 private fun KuiklyThreadMemberItem.modalAvatarLabel(): String =
     avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }
 
+internal fun threadMembersRosterSubtitle(
+    memberKind: String,
+    liveActivityLabel: String?,
+    humanRoleLabel: String
+): String =
+    if (memberKind.equals("agent", ignoreCase = true)) {
+        liveActivityLabel?.trim().orEmpty()
+    } else {
+        humanRoleLabel
+    }
+
+internal fun threadAddMemberCandidateSubtitle(description: String): String = description.trim()
+
+internal fun normalizedThreadMemberDescription(description: String?): String = description?.trim().orEmpty()
+
+internal fun filterThreadAddMemberCandidates(
+    query: String,
+    candidates: List<KuiklyThreadMemberItem>
+): List<KuiklyThreadMemberItem> =
+    filterPeopleSuggestions(
+        query = query,
+        suggestions = candidates,
+        handle = { member -> member.handle },
+        displayName = { member -> member.displayName },
+        description = { member -> member.description },
+        sourceServerLabel = { member -> member.sourceServerLabel },
+        legacyId = { member -> member.id }
+    )
+        .distinctBy { it.memberKey }
+
+internal fun threadMemberFallbackAgentStatusIndicatorState(
+    agentStatus: AgentStatus?,
+    presence: Presence?
+): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = agentStatus,
+        presence = presence ?: agentStatus?.presence ?: Presence.Offline
+    )
+
 @Composable
 private fun KuiklyThreadMemberItem.localizedModalRoleLabel(): String =
     when {
@@ -20548,7 +20593,7 @@ private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(
 ): SlockAgentStatusIndicatorState? {
     if (!kind.equals("agent", ignoreCase = true)) return null
     return rememberSlockAgentStatusIndicatorState(agentStatusResolver, id)
-        ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
+        ?: threadMemberFallbackAgentStatusIndicatorState(agentStatus = agentStatus, presence = presence)
 }
 
 private enum class ThreadSettingsDangerAction(

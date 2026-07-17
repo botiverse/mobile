@@ -6823,6 +6823,7 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId?): Ku
                     MemberKind.Human -> "Member"
                     MemberKind.System -> "System"
                 },
+        description = normalizedThreadMemberDescription(description),
         avatarUrl = avatarWireValueForAvatarSlot(),
         avatarLabel = avatarLabel,
         kind = kind.name.lowercase(),
