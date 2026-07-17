@@ -1791,6 +1791,130 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadMemberProjectionNormalizesDescriptionForAddMembers() {
+        assertEquals(
+            "Coordinates release validation.",
+            normalizedThreadMemberDescription("  Coordinates release validation.  ")
+        )
+        assertEquals("", normalizedThreadMemberDescription(null))
+        assertEquals("", normalizedThreadMemberDescription("   "))
+    }
+
+    @Test
+    fun threadMembersRosterSubtitleUsesLiveActivityOnlyForAgents() {
+        assertEquals(
+            "Compacting context",
+            threadMembersRosterSubtitle(
+                memberKind = "agent",
+                liveActivityLabel = "  Compacting context  ",
+                humanRoleLabel = "Agent"
+            )
+        )
+        assertEquals(
+            "Owner",
+            threadMembersRosterSubtitle(
+                memberKind = "human",
+                liveActivityLabel = "Online",
+                humanRoleLabel = "Owner"
+            )
+        )
+        assertEquals(
+            "",
+            threadMembersRosterSubtitle(
+                memberKind = "agent",
+                liveActivityLabel = null,
+                humanRoleLabel = "Agent"
+            )
+        )
+    }
+
+    @Test
+    fun threadAddMemberCandidateSubtitleUsesDescriptionWithoutRoleFallback() {
+        val agent =
+            KuiklyThreadMemberItem(
+                id = "agent-1",
+                displayName = "Release Steward",
+                kind = "agent",
+                roleLabel = "Agent",
+                description = "  Coordinates release validation.  "
+            )
+        val human =
+            KuiklyThreadMemberItem(
+                id = "human-1",
+                displayName = "Cindy",
+                kind = "human",
+                roleLabel = "Member",
+                description = "Reviews mobile release evidence."
+            )
+        val blank =
+            KuiklyThreadMemberItem(
+                id = "agent-2",
+                displayName = "No Description",
+                kind = "agent",
+                roleLabel = "Agent"
+            )
+
+        assertEquals("Coordinates release validation.", threadAddMemberCandidateSubtitle(agent.description))
+        assertEquals("Reviews mobile release evidence.", threadAddMemberCandidateSubtitle(human.description))
+        assertEquals("", threadAddMemberCandidateSubtitle(blank.description))
+    }
+
+    @Test
+    fun threadAddMemberSearchUsesDescriptionWithoutRoleFallback() {
+        val candidates =
+            listOf(
+                KuiklyThreadMemberItem(
+                    id = "agent-1",
+                    displayName = "Release Steward",
+                    handle = "release-steward",
+                    kind = "agent",
+                    roleLabel = "Runtime Operator",
+                    description = "Coordinates package validation."
+                ),
+                KuiklyThreadMemberItem(
+                    id = "human-1",
+                    displayName = "Cindy",
+                    handle = "cindy",
+                    kind = "human",
+                    roleLabel = "Workspace Admin",
+                    description = "Reviews mobile evidence."
+                )
+            )
+
+        assertEquals(
+            listOf("agent-1"),
+            filterThreadAddMemberCandidates(query = "package", candidates = candidates).map { it.id }
+        )
+        assertEquals(
+            emptyList(),
+            filterThreadAddMemberCandidates(query = "Operator", candidates = candidates).map { it.id }
+        )
+        assertEquals(
+            emptyList(),
+            filterThreadAddMemberCandidates(query = "Admin", candidates = candidates).map { it.id }
+        )
+    }
+
+    @Test
+    fun threadMemberFallbackActivityUsesProjectedAgentStatusAndPresence() {
+        val working =
+            threadMemberFallbackAgentStatusIndicatorState(
+                agentStatus = AgentStatus.Working,
+                presence = null
+            )
+        val away =
+            threadMemberFallbackAgentStatusIndicatorState(
+                agentStatus = null,
+                presence = Presence.Away
+            )
+
+        assertEquals("Working", working.label)
+        assertEquals(true, working.pulsing)
+        assertEquals("Away", away.label)
+        assertEquals(false, away.pulsing)
+    }
+
+    @Test
     fun invalidPayloadReturnsErrorState() {
         val payload = parseThreadScreenPayload("{not-json", "bad-1")
 
