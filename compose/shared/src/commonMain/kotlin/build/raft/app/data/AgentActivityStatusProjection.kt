@@ -8,7 +8,17 @@ import build.raft.app.model.Presence
 
 internal data class AgentActivityStatusProjection(
     val status: AgentStatus,
-    val detail: String? = null
+    val detail: String? = null,
+    /**
+     * task #137(b): freshness evidence of the source snapshot — the
+     * server-assigned trajectory timestamp (epoch millis) of the entry this
+     * projection was taken from. Null for evidence-less fallbacks (detail
+     * summary, current-activity list entry). The presence registry keeps a
+     * per-owner/member watermark of the newest evidence seen and rejects
+     * older / evidence-less projections, so a late stale REST snapshot can
+     * never displace a fresher one.
+     */
+    val evidenceTimestamp: Long? = null
 ) {
     val presence: Presence
         get() = status.presence
@@ -67,7 +77,12 @@ internal fun List<AgentActivityEntry>.latestAgentActivityStatusProjection(): Age
                 text = entry.body,
                 toolName = entry.toolName
             )
-        if (projection != null) return projection
+        // The chosen entry's server timestamp is the projection's freshness
+        // evidence (task #137(b)); trajectory entries carry epoch millis,
+        // evidence-less fallbacks carry none.
+        if (projection != null) {
+            return projection.copy(evidenceTimestamp = entry.timestamp?.toLongOrNull())
+        }
     }
     return null
 }
