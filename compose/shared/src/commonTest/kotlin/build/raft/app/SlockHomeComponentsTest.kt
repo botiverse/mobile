@@ -1206,6 +1206,8 @@ class SlockHomeComponentsTest {
         assertEquals(18, homeListBeyondBoundsItemCount(itemCount = 40, viewportHeightDp = 600f))
         assertEquals(22, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 720f))
         assertEquals(24, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 2_000f))
+        assertFalse(homeListShouldRampBeyondBounds(contentRefreshing = true))
+        assertTrue(homeListShouldRampBeyondBounds(contentRefreshing = false))
         assertEquals(6, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 24))
         assertEquals(4, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
         assertEquals(

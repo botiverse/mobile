@@ -1261,7 +1261,8 @@ internal fun SlockStructuralHomeShell(
                         listPositionServerId,
                         initialListPosition.firstVisibleItemIndex,
                         initialListPosition.firstVisibleItemScrollOffset,
-                        targetHomeBeyondBoundsItemCount
+                        targetHomeBeyondBoundsItemCount,
+                        contentRefreshing
                     ) {
                         if (listStateServerId != listPositionServerId) {
                             latestOnListPositionSnapshot(
@@ -1292,6 +1293,9 @@ internal fun SlockStructuralHomeShell(
                         }
                         if (listPremeasureLimit > targetHomeBeyondBoundsItemCount) {
                             listPremeasureLimit = targetHomeBeyondBoundsItemCount
+                        }
+                        if (!homeListShouldRampBeyondBounds(contentRefreshing)) {
+                            return@LaunchedEffect
                         }
                         while (listPremeasureLimit < targetHomeBeyondBoundsItemCount) {
                             withFrameNanos { }
@@ -1938,6 +1942,8 @@ internal fun homeListBeyondBoundsItemCount(
     )
 
 internal fun homeListInitialBeyondBoundsItemCount(): Int = 0
+
+internal fun homeListShouldRampBeyondBounds(contentRefreshing: Boolean): Boolean = !contentRefreshing
 
 internal fun homeListNextServerSwitchBeyondBoundsItemCount(current: Int, target: Int): Int =
     if (current <= 0) {
