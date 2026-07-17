@@ -33,10 +33,17 @@ struct ContentView: View {
                 pageName: "compose_slock_app_shell",
                 data: [
                     "pageName": "compose_slock_app_shell",
-                    "slockNativeTabBarRenderer": "iosLiquidGlass"
+                    "slockNativeTabBarRenderer": ContentView.appTabBarRenderer()
                 ]
             ).ignoresSafeArea()
         }
+    }
+
+    private static func appTabBarRenderer() -> String {
+        if #available(iOS 26.0, *) {
+            return "iosLiquidGlass"
+        }
+        return "sharedCompose"
     }
 
     private struct VisualFixtureLaunch {

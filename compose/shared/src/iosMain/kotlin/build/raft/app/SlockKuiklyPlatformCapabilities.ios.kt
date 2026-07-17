@@ -8,7 +8,10 @@ internal actual fun slockPlatformPrewarmsAppShellChildPages(): Boolean = false
 
 internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
 
-internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = "iosLiquidGlass"
+// Keep the platform default conservative. The Swift host explicitly opts into
+// Liquid Glass only when the runtime is iOS 26+; alternate launch surfaces that
+// omit the renderer must retain the normal shared tab bar.
+internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = "sharedCompose"
 
 // task #11: the iOS video host embeds AVPlayerViewController — the system's
 // mature controller (scrub, ±15s, fullscreen) owns the surface, so the
