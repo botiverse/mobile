@@ -1861,7 +1861,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startRendersCachedReplyParentBeforeReplyNetworkFetch() = runBlocking {
+    fun startRendersCachedReplyParentContentBeforeReplyNetworkFetch() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val messageStore = SharedThreadMessageStore()
         messageStore.upsert(
@@ -1884,7 +1884,7 @@ class SharedThreadStoreTest {
         val firstFrame = store.state.value.payload
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, firstFrame.surfaceKind)
         assertEquals("loading", firstFrame.status)
-        assertEquals("loading", firstFrame.originStatus)
+        assertEquals("loaded", firstFrame.originStatus)
         assertEquals("stored parent body", firstFrame.originMessage?.body)
         assertEquals("m1", firstFrame.originParentMessageId)
         assertTrue(firstFrame.messages.isEmpty())
