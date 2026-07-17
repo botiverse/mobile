@@ -269,15 +269,28 @@ jobs:
           # line, so evidence still uploads and the verdict step decides.
           script: |
             adb wait-for-device
-            adb install -r "$(find apks -name '*.apk' | head -1)"
-            adb shell am start -n build.raft.app/.MainActivity
+            APK="$(find apks -name '*.apk' | head -1)"
+            adb install -r "$APK"
+            # Derive package + launchable activity from the APK, don't hardcode:
+            # pinned alpha packages are build.raft.app.alpha, not build.raft.app,
+            # so a fixed `am start build.raft.app/.MainActivity` installed the app
+            # but launched nothing → agent saw the launcher home (smoke 29547013378).
+            BT="$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)"
+            PKG="$("$BT/aapt" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"
+            ACT="$("$BT/aapt" dump badging "$APK" | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -1)"
+            echo "launching $PKG / ${ACT:-.MainActivity}"
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 || adb shell am start -n "$PKG/${ACT:-.MainActivity}"
+            # Script lines don't share shell vars — persist the package so the
+            # node invocation (below) passes it to --package for the launch
+            # action + screenshots.
+            echo "$PKG" > qa-app-package.txt
             sleep 8
             mkdir -p qa-evidence
             cp "$(find apks -name build-info.json | head -1)" qa-evidence/build-info.json 2>/dev/null || true
             bash scripts/qa/stamp_report.sh claim
             adb logcat -c
             adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
-            export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+            export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
             adb logcat -d > qa-evidence/logcat.txt 2>&1 || true
             adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true
             adb shell pkill -INT screenrecord 2>/dev/null || true
