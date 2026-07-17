@@ -12,6 +12,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageType
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
@@ -529,7 +530,7 @@ internal fun slockForegroundMessageBannerProjectionResult(
     )
 }
 
-private fun SlockForegroundMessageBanner.inlineContextLabel(): String {
+internal fun SlockForegroundMessageBanner.inlineContextLabel(): String {
     if (iconKind == SlockForegroundMessageBannerIconKind.DirectMessage) return ""
     val parts = context.split(" - ").map { it.trim() }.filter { it.isNotBlank() }
     val compactParts = parts.filterNot { it == "thread" || it == "direct message" || it == "now" }
@@ -822,7 +823,7 @@ private fun String.toForegroundBannerPreview(maxLength: Int = ForegroundBannerPr
  * retry machinery of the message-driven path does not apply here.
  */
 internal fun slockNotificationPushBannerOrNull(
-    event: build.raft.app.model.NotificationPushReceived,
+    event: NotificationPushReceived,
     currentServerId: String?,
     visibleConversationKey: String?,
     visibleRouteIdentity: ThreadRouteIdentity? = null,
@@ -867,14 +868,45 @@ internal fun slockNotificationPushBannerOrNull(
         conversation = conversation,
         openRequest =
             openRequest,
-        title = event.title.ifBlank { "New message" },
-        context = conversation.resolveForegroundBannerContext(null, conversationDirectory),
+        title = event.foregroundBannerTitle(),
+        context = "",
         threadContext = null,
-        body = event.body.ifBlank { "Sent a new message." },
+        body = event.foregroundBannerBody(),
         iconKind = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconKind(conversation),
         iconName = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconName(conversation),
         senderMemberId = null,
         avatarWireValue = null,
-        avatarLabel = event.title.trim().take(2).uppercase().ifBlank { "??" }
+        avatarLabel = (event.senderName ?: event.title).trim().take(2).uppercase().ifBlank { "??" }
     )
+}
+
+private fun NotificationPushReceived.foregroundBannerTitle(): String {
+    val serverLabel = serverName?.trim()?.takeIf { it.isNotBlank() }
+        ?: return title.ifBlank { "New message" }
+    val conversationLabel = channelName?.trim()?.takeIf { it.isNotBlank() }
+    return when (kind) {
+        ConversationKind.DirectMessage -> "DM · $serverLabel"
+        ConversationKind.Channel,
+        ConversationKind.Joint -> conversationLabel?.let { "#${it.removePrefix("#")} · $serverLabel" }
+        ConversationKind.Thread ->
+            when (parentChannelKind) {
+                ConversationKind.DirectMessage -> "Thread in DM · $serverLabel"
+                ConversationKind.Channel,
+                ConversationKind.Joint ->
+                    conversationLabel?.let { "Thread in #${it.removePrefix("#")} · $serverLabel" }
+                else -> null
+            }
+        else -> null
+    } ?: title.ifBlank { "New message" }
+}
+
+private fun NotificationPushReceived.foregroundBannerBody(): String {
+    val senderLabel = senderName?.trim()?.takeIf { it.isNotBlank() }
+    val preview = messagePreview?.trim()?.takeIf { it.isNotBlank() }
+    if (senderLabel == null || preview == null) return body.ifBlank { "Sent a new message." }
+    return if (mentioned == true) {
+        "$senderLabel mentioned you: $preview"
+    } else {
+        "$senderLabel: $preview"
+    }
 }
