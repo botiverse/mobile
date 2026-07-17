@@ -108,8 +108,12 @@ export function createIosDriver({ ioDir, udid = "booted", bundle = "build.raft.a
     openLink(url) {
       simctl(["openurl", udid, url]);
     },
-    launch() {
-      simctl(["launch", udid, bundle]);
+    async launch() {
+      // Go through the loop protocol so the XCTest-side XCUIApplication
+      // rebinds to the new process. An external `simctl launch` starts the
+      // process but leaves the harness handle stale — every later action then
+      // fails "Application <bundle> is not running" (task #8).
+      return send({ type: "launch" }, 120000);
     },
 
     // Same semantic compression as the Android uiautomator dump: editable
