@@ -114,3 +114,25 @@ consumers keep this in sync:
   the element's bounds from a fresh dump at the instant of the tap. Reserve
   coordinate taps for unlabelled/icon-only targets, and re-dump right before
   those when inside a dialog.
+
+## Smoke before product QA (pinned-bits / new-package runs)
+
+Before running product acceptance cases against a package the harness
+hasn't driven before — a pinned APK (`--apk-run`/`--apk`), an alpha/release
+build, or after any workflow change — dispatch a cheap 5-turn smoke first
+("confirm a Raft screen is visible, not the launcher"). A smoke failure is a
+harness/infra defect, NOT a product verdict, and must not consume a real case
+round. The 1.5.0 release-day pinned-bits path shipped four latent defects
+that all surfaced in smoke, zero reaching product QA:
+
+- cross-run artifact read needs `actions: read` (else HTTP 403);
+- launch must derive package + activity from the APK (alpha is
+  `build.raft.app.alpha`, not the hardcoded `build.raft.app`);
+- build-info for a foreign run records `dispatch_ref` + aapt package/version,
+  never the run's headSha-as-source_commit (`apk_sha256` is authoritative);
+- the build-skip path removes the ~20min boot cushion, so wait for
+  `sys.boot_completed` before `adb install` (wait-for-device returns on
+  connect, not boot).
+
+Rule: smoke green → product case. Smoke red → fix infra, re-smoke; never mark
+the product case FAIL on a harness failure.
