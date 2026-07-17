@@ -236,7 +236,7 @@ class RealTaskRepository(
             DataRequestPriority.Foreground,
             taskId,
             buildSharedTaskStatusBody(status)
-        ).toTaskActionResult(source = "tasks_status")
+        ).toTaskActionResult(source = "tasks_status", requestedStatus = status)
     }
 }
 
@@ -362,6 +362,7 @@ internal class SlockTasksApiClient(
         transport.updateTaskStatus(taskId, status).toTaskActionResult(
             source = "tasks_status",
             diagnostics = diagnosticsLogger,
+            requestedStatus = status,
         )
 
     suspend fun deleteTask(taskId: TaskId): DataResult<Unit> =
@@ -435,24 +436,66 @@ internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
 internal fun HomeNetworkResponse.toTaskActionResult(
     source: String = "tasks_action",
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+    requestedStatus: TaskStatus? = null,
 ): DataResult<TaskActionResult> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
     }
     if (!isSuccessful) {
+        taskStatusAlreadyAppliedErrorCode(requestedStatus)?.let { errorCode ->
+            return DataResult.Error(ScreenError(code = errorCode, retryable = false))
+        }
         return DataResult.Error(ScreenError(code = "tasks_$code", retryable = true))
     }
     val body = bodyText
-        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+        ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
     val envelope = runCatching { tasksJson.decodeFromString<TaskEnvelope>(body) }.getOrNull()
-        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+        ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
     val task = envelope.task
-        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+        ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
     val summary = task.toTaskSummary(diagnostics)
-        ?: return DataResult.Error(ScreenError(code = "${source}_contract_mismatch", retryable = false))
+        ?: return requestedStatus.taskStatusAppliedWithoutProjectionResult(source)
     return DataResult.Content(TaskActionResult(summary))
 }
+
+internal fun taskStatusAlreadyAppliedErrorCode(
+    httpCode: Int,
+    errorBodyText: String?,
+    bodyText: String?,
+    requestedStatus: TaskStatus?,
+): String? {
+    if (httpCode != 409 || requestedStatus == null) return null
+    val payload = errorBodyText ?: bodyText ?: return null
+    val envelope =
+        runCatching {
+            tasksJson.decodeFromString(TaskActionErrorEnvelope.serializer(), payload)
+        }.getOrNull() ?: return null
+    val serverCode = (envelope.code ?: envelope.error)?.trim()?.lowercase() ?: return null
+    val expectedCode = "already_${requestedStatus.toWireValue()}"
+    return if (serverCode == expectedCode) requestedStatus.taskStatusAlreadyAppliedErrorCode() else null
+}
+
+private fun HomeNetworkResponse.taskStatusAlreadyAppliedErrorCode(requestedStatus: TaskStatus?): String? =
+    taskStatusAlreadyAppliedErrorCode(
+        httpCode = code,
+        errorBodyText = errorBodyText,
+        bodyText = bodyText,
+        requestedStatus = requestedStatus,
+    )
+
+internal fun TaskStatus.taskStatusAlreadyAppliedErrorCode(): String =
+    "tasks_status_already_${toWireValue()}"
+
+internal const val TASKS_STATUS_APPLIED_WITHOUT_PROJECTION = "tasks_status_applied_without_projection"
+
+private fun TaskStatus?.taskStatusAppliedWithoutProjectionResult(source: String): DataResult<TaskActionResult> =
+    DataResult.Error(
+        ScreenError(
+            code = if (this == null) "${source}_contract_mismatch" else TASKS_STATUS_APPLIED_WITHOUT_PROJECTION,
+            retryable = false,
+        )
+    )
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
     unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
@@ -529,6 +572,12 @@ internal data class TaskEnvelope(val task: TaskWireDto? = null)
 
 @Serializable
 internal data class OkEnvelope(val ok: Boolean = false)
+
+@Serializable
+private data class TaskActionErrorEnvelope(
+    val error: String? = null,
+    val code: String? = null,
+)
 
 /** Mirror of React `TaskInfo` (packages/shared/src/index.ts). */
 @Serializable

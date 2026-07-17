@@ -465,9 +465,10 @@ internal class SharedTasksViewModel(
             return
         }
         if (store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))) {
-            state.value.currentTaskSummary(task.id.value)?.let { optimisticTask ->
-                publishSharedTaskUpdate(optimisticTask, "status_optimistic")
-            }
+            val optimisticTask =
+                state.value.currentTaskSummary(task.id.value)?.copy(status = status)
+                    ?: task.copy(status = status)
+            publishSharedTaskUpdate(optimisticTask, "status_optimistic")
         }
         try {
             when (val result = useCase.updateTaskStatus(TasksStatusUpdateRequest(task.id, status))) {
@@ -477,14 +478,35 @@ internal class SharedTasksViewModel(
                 }
                 else -> {
                     val errorCode = result.failureCodeOrNull() ?: "tasks_status_unknown"
-                    events.emit(SharedTasksEvent.OperationFailed(errorCode))
-                    if (store.accept(
-                        SharedTasksIntent.TaskStatusUpdateFailed(
-                            previousTask = task,
-                            errorCode = errorCode
+                    if (
+                        errorCode == status.taskStatusAlreadyAppliedErrorCode() ||
+                        errorCode == TASKS_STATUS_APPLIED_WITHOUT_PROJECTION
+                    ) {
+                        val acceptedTask =
+                            state.value.currentTaskSummary(task.id.value)?.copy(status = status)
+                                ?: task.copy(status = status)
+                        val source =
+                            if (errorCode == TASKS_STATUS_APPLIED_WITHOUT_PROJECTION) {
+                                "status_accepted_without_projection"
+                            } else {
+                                "status_idempotent"
+                            }
+                        publishSharedTaskUpdate(acceptedTask, source)
+                        store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(acceptedTask))
+                        diagnosticsLogger(
+                            "tasks_status_update_accepted taskId=${task.id.value} status=${status.name} " +
+                                "serverCode=$errorCode"
                         )
-                    )) {
-                        publishSharedTaskUpdate(task, "status_rollback")
+                    } else {
+                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                        if (store.accept(
+                            SharedTasksIntent.TaskStatusUpdateFailed(
+                                previousTask = task,
+                                errorCode = errorCode
+                            )
+                        )) {
+                            publishSharedTaskUpdate(task, "status_rollback")
+                        }
                     }
                 }
             }

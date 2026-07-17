@@ -9,6 +9,7 @@ import build.raft.app.model.TaskStatus
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -113,6 +114,64 @@ class TasksDataSourceTest {
 
         val error = assertIs<DataResult.Error>(result)
         assertEquals("tasks_delete_contract_mismatch", error.error.code)
+    }
+
+    @Test
+    fun statusUpdateMapsMatchingAlreadyAppliedConflict() = runBlocking {
+        val client =
+            SlockTasksApiClient(
+                RecordingTasksApi(
+                    updateResponse =
+                        HomeNetworkResponse(
+                            code = 409,
+                            bodyText = null,
+                            errorBodyText = """{"error":"already_closed"}""",
+                        )
+                )
+            )
+
+        val result = client.updateTaskStatus(TaskId("task-1"), TaskStatus.Closed)
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("tasks_status_already_closed", error.code)
+        assertFalse(error.retryable)
+    }
+
+    @Test
+    fun statusUpdateDoesNotAcceptMismatchedAlreadyAppliedConflict() = runBlocking {
+        val client =
+            SlockTasksApiClient(
+                RecordingTasksApi(
+                    updateResponse =
+                        HomeNetworkResponse(
+                            code = 409,
+                            bodyText = null,
+                            errorBodyText = """{"error":"already_done"}""",
+                        )
+                )
+            )
+
+        val result = client.updateTaskStatus(TaskId("task-1"), TaskStatus.Closed)
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("tasks_409", error.code)
+        assertTrue(error.retryable)
+    }
+
+    @Test
+    fun statusUpdateAcceptsSuccessfulResponseWithoutTaskProjection() = runBlocking {
+        val client =
+            SlockTasksApiClient(
+                RecordingTasksApi(
+                    updateResponse = HomeNetworkResponse(code = 204, bodyText = null)
+                )
+            )
+
+        val result = client.updateTaskStatus(TaskId("task-1"), TaskStatus.Closed)
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals(TASKS_STATUS_APPLIED_WITHOUT_PROJECTION, error.code)
+        assertFalse(error.retryable)
     }
 
     @Test
@@ -298,6 +357,7 @@ class TasksDataSourceTest {
             """{"tasks":[{"id":"task-1","channelId":"channel-1","taskNumber":1,"title":"Task #1: canonical","status":"todo","createdByType":"user","createdById":"user-1"}]}""",
         private val actionBody: String =
             """{"task":{"id":"task-1","channelId":"channel-1","taskNumber":1,"title":"Task #1: canonical","status":"todo","createdByType":"user","createdById":"user-1"}}""",
+        private val updateResponse: HomeNetworkResponse? = null,
         private val createBody: String =
             """{"tasks":[{"id":"task-2","channelId":"channel-1","taskNumber":2,"title":"Task #2: created","status":"todo","createdByType":"user","createdById":"user-1"}]}""",
         private val deleteBody: String = """{"ok":true}"""
@@ -349,7 +409,7 @@ class TasksDataSourceTest {
 
         override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse {
             calls += "PATCH tasks/${taskId.value}/status body=${buildSharedTaskStatusBody(status)}"
-            return ok(actionBody)
+            return updateResponse ?: ok(actionBody)
         }
 
         override suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse {
