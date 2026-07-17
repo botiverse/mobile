@@ -67,6 +67,22 @@ internal class ComposeHomeNotificationCenterVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_app_update_banner_visual", supportInLocal = true)
+internal class ComposeHomeAppUpdateBannerVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeAppUpdateBannerVisualScreen() }
+    }
+}
+
+@Page("compose_app_update_details_visual", supportInLocal = true)
+internal class ComposeAppUpdateDetailsVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AppUpdateDetailsVisualScreen() }
+    }
+}
+
 @Page("compose_thread_files_visual", supportInLocal = true)
 internal class ComposeThreadFilesVisualPage : BasePager() {
     override fun willInit() {

@@ -1171,6 +1171,24 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeAppUpdateBanner() {
+        captureKmpComponentCase(
+            caseId = "components.home.app-update-banner",
+            pageName = "compose_home_app_update_banner_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureAppUpdateDetails() {
+        captureKmpComponentCase(
+            caseId = "screens.app-update.details",
+            pageName = "compose_app_update_details_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureHomeSearchResults() {
         captureKmpComponentCase(
             caseId = "components.home.search.results",

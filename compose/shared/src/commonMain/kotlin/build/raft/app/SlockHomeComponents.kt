@@ -788,6 +788,40 @@ internal fun HomeNotificationCenterVisualScreen() {
     }
 }
 
+@Composable
+internal fun HomeAppUpdateBannerVisualScreen() {
+    Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+        HomeTitlebar(
+            serverName = "Raft Design",
+            hasOtherServerUnread = false,
+            notifications = emptyList(),
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+        HomeAppUpdateBanner(
+            notification =
+                SlockHomeNotificationItem(
+                    id = APP_UPDATE_HOME_NOTIFICATION_ID,
+                    title = "Raft 1.6.0 is available",
+                    body = "See what's new, then download and install the update.",
+                    actionLabel = "View",
+                    kind = SlockHomeNotificationKind.Info,
+                    icon = SlockHomeNotificationIcon.CircleArrowUp
+                ),
+            onClick = {}
+        )
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp)) {
+            Text(
+                text = "HOME",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+        }
+    }
+}
+
 private fun visualHomeNotifications(): List<SlockHomeNotificationItem> =
     listOf(
         SlockHomeNotificationItem(

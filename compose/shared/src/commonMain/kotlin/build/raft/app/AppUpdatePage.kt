@@ -24,8 +24,10 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -141,7 +143,7 @@ private fun AppUpdateScreen() {
 }
 
 @Composable
-private fun AppUpdateSummary(
+internal fun AppUpdateSummary(
     snapshot: SharedSettingsUpdateCheckSnapshot?,
     loading: Boolean,
     actionRunning: Boolean,
@@ -209,6 +211,66 @@ private fun AppUpdateSummary(
                 leadingIcon = if (errorCode != null && snapshot == null) SlockLucideIconName.RefreshCw else SlockLucideIconName.Download,
                 minWidth = 96.dp,
                 backgroundColor = SlockColor.AccentPink
+            )
+        }
+    }
+}
+
+@Composable
+internal fun AppUpdateDetailsVisualScreen() {
+    val snapshot =
+        SharedSettingsUpdateCheckSnapshot(
+            supported = true,
+            statusLabel = "download",
+            detail = "A faster, clearer Raft experience is ready to install.",
+            actionLabel = "download",
+            updateAvailable = true,
+            currentVersionLabel = "1.5.0",
+            currentVersionCode = 1_050_000L,
+            latestVersionLabel = "1.6.0",
+            latestVersionCode = 1_060_000L,
+            checkedAtLabel = "Just now"
+        )
+    Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+        SlockTopPageHeader(
+            title = stringResource(MR.strings.home_notification_app_update_title),
+            iconName = SlockLucideIconName.CircleArrowUp,
+            backgroundColor = SlockColor.BrandYellow,
+            leadingContent = {
+                SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = {})
+            }
+        )
+        AppUpdateSummary(
+            snapshot = snapshot,
+            loading = false,
+            actionRunning = false,
+            errorCode = null,
+            onRetry = {},
+            onAction = {}
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "WHAT'S NEW IN 1.6.0",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+            Text(
+                text = "A focused update for faster collaboration",
+                style = SlockType.PageTitle,
+                color = SlockColor.TextBlack
+            )
+            Text(
+                text = "Update Raft to get clearer activity states, smoother navigation, and the latest reliability improvements.",
+                style = SlockType.Body,
+                color = SlockColor.TextBlack
+            )
+            Text(
+                text = "- Review new activity at a glance\n- Move between conversations with fewer interruptions\n- Download and install updates without leaving Raft",
+                style = SlockType.Body,
+                color = SlockColor.TextBlack
             )
         }
     }
