@@ -720,9 +720,7 @@ private fun SharedActivityList(
                                 )
                             )
                         )
-                        if (item.unreadCount > 0) {
-                            onIntent(SharedActivityIntent.MarkRead(item))
-                        }
+                        item.activityOpenReadIntent()?.let(onIntent)
                         onOpenItem(item)
                     },
                     onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
@@ -833,6 +831,13 @@ internal fun activityReplyThreadPrewarmTailAfterClick(
     return items
         .drop(clickedIndex + 1)
         .mapNotNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
+}
+
+internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
+    // The destination store acknowledges the stable channel/thread identity after it is loaded
+    // and visible. Activity rows can reorder while navigation is in flight, so the list must not
+    // infer or write read state from its transient presentation snapshot.
+    return null
 }
 
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {

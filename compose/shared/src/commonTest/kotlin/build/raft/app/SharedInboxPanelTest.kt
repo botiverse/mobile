@@ -32,6 +32,15 @@ import kotlin.test.assertTrue
 
 class SharedInboxPanelTest {
     @Test
+    fun openingActivityRowsLeavesReadAcknowledgementToTheDestinationStore() {
+        val opened = activityItem(key = "thread:opened").copy(unreadCount = 2)
+        val promotedWhileNavigating = activityItem(key = "thread:promoted").copy(unreadCount = 1)
+
+        assertEquals(null, opened.activityOpenReadIntent())
+        assertEquals(null, promotedWhileNavigating.activityOpenReadIntent())
+    }
+
+    @Test
     fun activityTailSentinelRequestsNextPageWhenMoreContentExists() {
         assertTrue(
             activityShouldRequestLoadMore(
