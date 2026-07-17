@@ -719,6 +719,122 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageBodyTapOpensThread() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-body-tap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-body-tap")
+                    .put("visualFixture", "default"),
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                waitForIdleBounded()
+                var before: Bitmap? = null
+                var after: Bitmap? = null
+                try {
+                    before = captureActivityScreenshot("components.thread.message-body-tap.before")
+                    val yellowBefore = before.countThreadTapProbeYellowSamples()
+                    tapDisplayDp(x = 300f, y = 70f)
+                    waitForIdleBounded()
+                    Thread.sleep(500)
+                    after = captureActivityScreenshot("components.thread.message-body-tap.after")
+                    val yellowAfter = after.countThreadTapProbeYellowSamples()
+                    assertTrue(
+                        "Tapping the ordinary message body must open its thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
+                        yellowAfter >= yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                } finally {
+                    before?.recycle()
+                    after?.recycle()
+                }
+            }
+        )
+    }
+
+    @Test
+    fun captureThreadInteractiveChildrenDoNotOpenThread() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-interactive-child-tap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-interactive-child-tap")
+                    .put("visualFixture", "default"),
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                waitForIdleBounded()
+                var before: Bitmap? = null
+                var after: Bitmap? = null
+                try {
+                    before = captureActivityScreenshot("components.thread.message-interactive-child-tap.before")
+                    val yellowBefore = before.countThreadTapProbeYellowSamples()
+                    tapDisplayDp(x = 25f, y = 35f)
+                    waitForIdleBounded()
+                    Thread.sleep(300)
+                    tapDisplayDp(x = 120f, y = 95f)
+                    waitForIdleBounded()
+                    Thread.sleep(300)
+                    after = captureActivityScreenshot("components.thread.message-interactive-child-tap.after")
+                    val yellowAfter = after.countThreadTapProbeYellowSamples()
+                    assertTrue(
+                        "Avatar and markdown-tag taps must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
+                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                } finally {
+                    before?.recycle()
+                    after?.recycle()
+                }
+            }
+        )
+    }
+
+    @Test
+    fun captureThreadMessageBodyLongPressOpensActionsWithoutOpeningThread() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-body-long-press",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-body-long-press")
+                    .put("visualFixture", "default"),
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                waitForIdleBounded()
+                var before: Bitmap? = null
+                var after: Bitmap? = null
+                try {
+                    before = captureActivityScreenshot("components.thread.message-body-long-press.before")
+                    val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
+                    longPressDisplayDp(x = 300f, y = 70f)
+                    waitForIdleBounded()
+                    Thread.sleep(500)
+                    after = captureActivityScreenshot("components.thread.message-body-long-press.after")
+                    val yellowAfter = after.countThreadOpenProbeYellowSamplesInTopBand()
+                    val changedRatio = before.fullBitmapChangedPixelRatio(after)
+                    assertTrue(
+                        "Long-pressing the ordinary body must render the actions menu; changedRatio=$changedRatio",
+                        changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
+                    )
+                    assertTrue(
+                        "Long press must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
+                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                } finally {
+                    before?.recycle()
+                    after?.recycle()
+                }
+            }
+        )
+    }
+
+    @Test
     fun captureThreadMessageSavedBadge() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.saved-badge",
@@ -729,6 +845,52 @@ class KmpVisualScreenshotCaptureTest {
                     .put("visualFixture", "saved"),
             crop = THREAD_MESSAGE_ROW_SAVED_CROP,
             requireReactionAtlas = true
+        )
+    }
+
+    @Test
+    fun captureThreadPinnedParentAfterReplyScroll() {
+        captureKmpComponentCase(
+            caseId = "components.thread.pinned-parent",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-pinned-parent")
+                    .put("visualFixture", "pinned_parent"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000,
+            beforeScreenshot = {
+                swipeDisplayFraction(startYFraction = 0.82f, endYFraction = 0.35f)
+                Thread.sleep(600)
+                swipeDisplayFraction(startYFraction = 0.82f, endYFraction = 0.35f)
+                Thread.sleep(600)
+            },
+            assertBitmap = { bitmap ->
+                assertTrue(
+                    "Pinned parent marker disappeared from the top band after reply scrolling",
+                    bitmap.countThreadPinnedParentMarkerSamplesInTopBand() >= THREAD_PINNED_PARENT_MIN_MARKER_SAMPLES
+                )
+            }
+        )
+    }
+
+    @Test
+    fun captureThreadPinnedParentShortStartsAtTop() {
+        captureKmpComponentCase(
+            caseId = "components.thread.pinned-parent-short",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-pinned-parent-short")
+                    .put("visualFixture", "pinned_parent_short"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000,
+            assertBitmap = { bitmap ->
+                assertTrue(
+                    "Short reply thread did not keep the parent marker in the top band",
+                    bitmap.countThreadPinnedParentMarkerSamplesInTopBand() >= THREAD_PINNED_PARENT_MIN_MARKER_SAMPLES
+                )
+            }
         )
     }
 
@@ -968,6 +1130,96 @@ class KmpVisualScreenshotCaptureTest {
             y += FORWARD_PROBE_PIXEL_STRIDE
         }
         return samples
+    }
+
+    private fun Bitmap.countThreadTapProbeYellowSamples(): Int {
+        var samples = 0
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                if (
+                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
+                        kotlin.math.abs(Color.green(pixel) - 0xD4) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
+                        kotlin.math.abs(Color.blue(pixel) - 0x40) <= FORWARD_PROBE_YELLOW_TOLERANCE
+                ) {
+                    samples++
+                }
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return samples
+    }
+
+    private fun Bitmap.countThreadOpenProbeYellowSamplesInTopBand(): Int {
+        val endY = (height * THREAD_OPEN_PROBE_TOP_BAND_FRACTION).toInt()
+        var samples = 0
+        var y = 0
+        while (y < endY) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                if (
+                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
+                    kotlin.math.abs(Color.green(pixel) - 0xD4) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
+                    kotlin.math.abs(Color.blue(pixel) - 0x40) <= FORWARD_PROBE_YELLOW_TOLERANCE
+                ) {
+                    samples++
+                }
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return samples
+    }
+
+    private fun Bitmap.countThreadPinnedParentMarkerSamplesInTopBand(): Int {
+        val endY = (height * THREAD_PINNED_PARENT_TOP_BAND_FRACTION).toInt()
+        var samples = 0
+        var y = 0
+        while (y < endY) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                if (
+                    Color.red(pixel) in 150..210 &&
+                    Color.green(pixel) in 135..195 &&
+                    Color.blue(pixel) in 205..255
+                ) {
+                    samples++
+                }
+                x += THREAD_PINNED_PARENT_PIXEL_STRIDE
+            }
+            y += THREAD_PINNED_PARENT_PIXEL_STRIDE
+        }
+        return samples
+    }
+
+    private fun Bitmap.fullBitmapChangedPixelRatio(other: Bitmap): Float {
+        require(width == other.width && height == other.height) {
+            "Bitmap size changed: ${width}x$height vs ${other.width}x${other.height}"
+        }
+        var sampled = 0
+        var changed = 0
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                val before = getPixel(x, y)
+                val after = other.getPixel(x, y)
+                val distance =
+                    kotlin.math.abs(Color.red(before) - Color.red(after)) +
+                        kotlin.math.abs(Color.green(before) - Color.green(after)) +
+                        kotlin.math.abs(Color.blue(before) - Color.blue(after))
+                if (distance >= FORWARD_PROBE_MIN_COLOR_DISTANCE) changed++
+                sampled++
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return if (sampled == 0) 0f else changed.toFloat() / sampled.toFloat()
     }
 
     @Test
@@ -2336,6 +2588,27 @@ class KmpVisualScreenshotCaptureTest {
             MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, xPx, yPx, 0),
             true,
         )
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, xPx, yPx, 0),
+            true,
+        )
+    }
+
+    private fun longPressDisplayDp(
+        x: Float,
+        y: Float,
+        durationMs: Long = 700L
+    ) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val density = instrumentation.targetContext.resources.displayMetrics.density
+        val xPx = x * density
+        val yPx = y * density
+        val downTime = SystemClock.uptimeMillis()
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, xPx, yPx, 0),
+            true,
+        )
+        Thread.sleep(durationMs)
         instrumentation.uiAutomation.injectInputEvent(
             MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, xPx, yPx, 0),
             true,
@@ -3872,6 +4145,12 @@ class KmpVisualScreenshotCaptureTest {
         private const val FORWARD_PROBE_YELLOW_TOLERANCE = 20
         private const val FORWARD_PROBE_PIXEL_STRIDE = 4
         private const val FORWARD_PROBE_MIN_YELLOW_SAMPLES = 1_500
+        private const val THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES = 100
+        private const val THREAD_PINNED_PARENT_TOP_BAND_FRACTION = 0.18f
+        private const val THREAD_PINNED_PARENT_PIXEL_STRIDE = 4
+        private const val THREAD_PINNED_PARENT_MIN_MARKER_SAMPLES = 150
+        private const val THREAD_LONG_PRESS_MIN_CHANGED_RATIO = 0.02f
+        private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12
         private const val FORWARD_PROBE_SWIPE_DURATION_MS = 360L
 

@@ -1682,6 +1682,7 @@ internal data class ThreadTimelineRenderConfig(
     val errorCode: String?,
     val originPreview: String?,
     val originErrorCode: String?,
+    val pinOriginToTop: Boolean = false,
     val timeContext: SlockTimeContext,
     val members: List<KuiklyThreadMemberItem>
 )
@@ -1692,6 +1693,7 @@ internal fun KuiklyThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTim
         errorCode = errorCode,
         originPreview = originPreview,
         originErrorCode = originErrorCode,
+        pinOriginToTop = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread,
         timeContext = toSlockTimeContext(),
         members = members
     )
@@ -2828,6 +2830,29 @@ private fun ThreadMessageVisualScreenContent() {
         remember(payload) {
             payload.toThreadReplyMetadataMap()
         }
+    if (
+        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT ||
+        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT_SHORT
+    ) {
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            ThreadMessagesList(
+                threadInstanceKey = payload.instanceId,
+                renderConfig = payload.toThreadTimelineRenderConfig(),
+                timelineSlice = payload.toThreadTimelineSlice(),
+                replyMetadataByParentId = visualReplyMetadataByParentId,
+                activeReplyDraftParentMessageIds = emptySet(),
+                composerKeyboardInsetDp = 0f,
+                linkedTasksProjection = emptyThreadLinkedTasksProjection(),
+                highlightedMentions = highlightedMentions,
+                onThreadEvent = { _, _, _, _ -> },
+                onOpenMember = {},
+                onMentionAuthor = {},
+                onOpenMarkdownTag = {},
+                onOpenMarkdownUrl = {}
+            )
+        }
+        return
+    }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
         // task #415: measure unbounded (see the default fixture Column below).
@@ -2944,9 +2969,10 @@ private fun ThreadMessageVisualScreenContent() {
                 baseMessage
             }
         }
+    var actionsMenuVisible by remember(visualFixture, menuVariant) { mutableStateOf(menuVariant.isNotBlank()) }
     val menuActions =
-        remember(message, menuVariant) {
-            if (message == null || menuVariant.isBlank()) {
+        remember(message, menuVariant, actionsMenuVisible) {
+            if (message == null || !actionsMenuVisible) {
                 emptyList()
             } else {
                 threadMessageMenuActions(
@@ -2989,6 +3015,7 @@ private fun ThreadMessageVisualScreenContent() {
                 }
             }
         }
+    var openedVisualThreadMessageId by remember(visualFixture) { mutableStateOf<String?>(null) }
     CompositionLocalProvider(
         LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
         LocalSlockMarkdownRenderConfig provides
@@ -3010,6 +3037,14 @@ private fun ThreadMessageVisualScreenContent() {
                     .padding(SlockSpacing.Md)
         ) {
             if (message != null) {
+                if (openedVisualThreadMessageId != null) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(24.dp)
+                                .background(SlockColor.BrandYellow)
+                    )
+                }
                 ThreadMessageCard(
                     message = message,
                     replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
@@ -3030,9 +3065,9 @@ private fun ThreadMessageVisualScreenContent() {
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
                     timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                    onShowActions = {},
+                    onShowActions = { actionsMenuVisible = true },
                     onOpenMember = {},
-                    onOpenThread = {},
+                    onOpenThread = { openedVisualThreadMessageId = it },
                     onOpenTask = {},
                     onOpenTaskStatusMenu = {},
                     onToggleReaction = {},
@@ -8347,6 +8382,8 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT = "pinned_parent"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT_SHORT = "pinned_parent_short"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
@@ -8389,6 +8426,53 @@ internal fun threadVisualFixture(
 ): KuiklyThreadScreenPayload {
     val resolvedInstanceId = instanceId.ifBlank { "visual-thread-$fixture" }
     return when (fixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            base.copy(
+                title = "Thread",
+                subtitle = "Pinned parent fixture",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                streamChannelId = "thread-pinned-parent",
+                sourceThreadId = "thread-pinned-parent",
+                parentChannelId = "channel-design",
+                parentMessageId = "parent-pinned-parent",
+                originParentMessageId = "parent-pinned-parent",
+                originStatus = "content",
+                originMessage =
+                    KuiklyThreadMessageItem(
+                        id = "parent-pinned-parent",
+                        authorId = "visual-user",
+                        authorName = "artin",
+                        authorKind = "human",
+                        avatarLabel = "AR",
+                        timestampLabel = "07/17 22:30",
+                        messageType = "Chat",
+                        body = "Pinned parent: this message must remain visible while the replies scroll beneath it."
+                    ),
+                messages =
+                    List(14) { index ->
+                        KuiklyThreadMessageItem(
+                            id = "reply-pinned-parent-$index",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/17 22:${31 + index}",
+                            messageType = "Chat",
+                            body = "Reply ${index + 1}: scrolling this reply list must not move the parent message."
+                        )
+                    },
+                showReplyActions = false,
+                alignOwnMessagesRight = false
+            )
+        }
+        THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT_SHORT -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT, resolvedInstanceId)
+            base.copy(
+                subtitle = "Pinned parent short fixture",
+                messages = base.messages.take(2)
+            )
+        }
         THREAD_MESSAGE_VISUAL_FIXTURE_SAVED -> {
             val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
             base.copy(
@@ -13084,11 +13168,25 @@ private fun ThreadMessagesList(
                             revealLatestLocalSendBeforeInitialAnchor = revealLatestLocalSendBeforeInitialAnchor
                         )
                     ),
-                verticalArrangement = Arrangement.Bottom,
+                verticalArrangement =
+                    if (
+                        threadMessagesPinOriginToTop(
+                            pinOriginToTop = renderConfig.pinOriginToTop,
+                            originStatus = renderPayload.originStatus
+                        )
+                    ) {
+                        Arrangement.Top
+                    } else {
+                        Arrangement.Bottom
+                    },
                 beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
             if (renderPayload.hasThreadOriginItem()) {
-                item(key = ThreadOriginListItemKey) {
+                Hover(
+                    modifier = Modifier.fillMaxWidth(),
+                    key = ThreadOriginListItemKey,
+                    listState = listState
+                ) {
                     ThreadOriginCard(
                         modifier =
                             Modifier
@@ -14094,6 +14192,11 @@ private fun KuiklyThreadScreenPayload.hasThreadHistoryBoundaryItem(): Boolean =
 private fun KuiklyThreadScreenPayload.hasThreadOriginItem(): Boolean =
     originStatus != "none"
 
+internal fun threadMessagesPinOriginToTop(
+    pinOriginToTop: Boolean,
+    originStatus: String
+): Boolean = pinOriginToTop && originStatus != "none"
+
 private fun KuiklyThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
     if (hasThreadOriginItem()) 1 else 0
 
@@ -15059,10 +15162,17 @@ private fun ThreadMessageCard(
     )
     var pressed by remember(message.id) { mutableStateOf(false) }
     var pressRippleOrigin by remember(message.id) { mutableStateOf<Offset?>(null) }
+    var suppressBodyTapAfterLongPress by remember(message.id) { mutableStateOf(false) }
     LaunchedEffect(message.id, pressed) {
         if (!pressed && pressRippleOrigin != null) {
             delay(ThreadMessageRippleFadeMs.toLong() + ThreadMessageRippleResetMarginMs)
             pressRippleOrigin = null
+        }
+    }
+    LaunchedEffect(message.id, suppressBodyTapAfterLongPress) {
+        if (suppressBodyTapAfterLongPress) {
+            delay(ThreadBodyTapAfterLongPressSuppressionMs)
+            suppressBodyTapAfterLongPress = false
         }
     }
     val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
@@ -15096,7 +15206,10 @@ private fun ThreadMessageCard(
                         Modifier.threadMessageLongPressActions(
                             messageId = message.id,
                             captureLongPressAnchor = captureLongPressAnchor,
-                            onShowActions = onShowActions,
+                            onShowActions = { anchor ->
+                                suppressBodyTapAfterLongPress = true
+                                onShowActions(anchor)
+                            },
                             onPressChanged = { isPressed, position ->
                                 pressed = isPressed
                                 if (position != null) {
@@ -15257,6 +15370,24 @@ private fun ThreadMessageCard(
                                     } else {
                                         renderedBody
                                     }
+                                val bodyTapAction =
+                                    if (
+                                        threadMessageTapOpensThread(
+                                            showReplyAction = showReplyAction,
+                                            shareSelectionActive = shareSelectionActive,
+                                            hasLocalSendState = message.hasLocalSendState()
+                                        )
+                                    ) {
+                                        {
+                                            if (suppressBodyTapAfterLongPress) {
+                                                suppressBodyTapAfterLongPress = false
+                                            } else {
+                                                onOpenThread(message.id)
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    }
                                 if (translation?.pendingPlaceholder == true) {
                                     ThreadMessageTranslationPendingPlaceholder()
                                 } else if (showLongMessageToggle && !longMessageExpanded) {
@@ -15265,7 +15396,8 @@ private fun ThreadMessageCard(
                                         style = ThreadMessageBodyTextStyle,
                                         color = SlockColor.TextBlack,
                                         maxLines = ThreadLongMessagePreviewLineLimit,
-                                        overflow = TextOverflow.Ellipsis
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = if (bodyTapAction != null) Modifier.clickable(onClick = bodyTapAction) else Modifier
                                     )
                                 } else if (richContentEnabled) {
                                     val markdownRenderSignature =
@@ -15289,6 +15421,7 @@ private fun ThreadMessageCard(
                                     key(markdownRenderSignature) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
+                                            onClick = bodyTapAction,
                                             textStyle = ThreadMessageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
@@ -15305,7 +15438,8 @@ private fun ThreadMessageCard(
                                     Text(
                                         text = bodyForRender,
                                         style = ThreadMessageBodyTextStyle,
-                                        color = SlockColor.TextBlack
+                                        color = SlockColor.TextBlack,
+                                        modifier = if (bodyTapAction != null) Modifier.clickable(onClick = bodyTapAction) else Modifier
                                     )
                                 }
                                 if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
@@ -16278,11 +16412,19 @@ private const val ThreadMessagePressIndicationDelayMs = 120L
 private const val ThreadMessageRippleExpandMs = 260
 private const val ThreadMessageRippleFadeMs = 240
 private const val ThreadMessageRippleResetMarginMs = 60L
+private const val ThreadBodyTapAfterLongPressSuppressionMs = 1_000L
 private const val ThreadMessageRippleAlpha = 0.10f
 private val ThreadMessageRippleMinRadius = 24.dp
 
 internal fun threadMessageUsesFullRowLongPressActions(shareSelectionActive: Boolean): Boolean =
     !shareSelectionActive
+
+internal fun threadMessageTapOpensThread(
+    showReplyAction: Boolean,
+    shareSelectionActive: Boolean,
+    hasLocalSendState: Boolean
+): Boolean =
+    showReplyAction && !shareSelectionActive && !hasLocalSendState
 
 @Composable
 private fun BoxScope.ThreadMessagePressRipple(

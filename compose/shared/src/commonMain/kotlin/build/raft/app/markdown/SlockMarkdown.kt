@@ -1170,25 +1170,49 @@ private object SlockMarkdownTextProvider : TextProvider {
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
         val markdownOverflow = slockMarkdownContentOverflow(overflow)
-        KuiklyText(
-            text = text,
-            modifier = modifier,
-            color = color,
-            fontSize = fontSize,
-            fontStyle = fontStyle,
-            fontWeight = fontWeight,
-            fontFamily = fontFamily ?: resolvedStyle.fontFamily,
-            letterSpacing = letterSpacing,
-            textDecoration = textDecoration,
-            textAlign = textAlign,
-            lineHeight = lineHeight,
-            overflow = markdownOverflow,
-            softWrap = softWrap,
-            maxLines = maxLines,
-            minLines = minLines,
-            onTextLayout = onTextLayout,
-            style = resolvedStyle
-        )
+        val bodyClick = LocalSlockMarkdownBodyClick.current
+        if (bodyClick == null) {
+            KuiklyText(
+                text = text,
+                modifier = modifier,
+                color = color,
+                fontSize = fontSize,
+                fontStyle = fontStyle,
+                fontWeight = fontWeight,
+                fontFamily = fontFamily ?: resolvedStyle.fontFamily,
+                letterSpacing = letterSpacing,
+                textDecoration = textDecoration,
+                textAlign = textAlign,
+                lineHeight = lineHeight,
+                overflow = markdownOverflow,
+                softWrap = softWrap,
+                maxLines = maxLines,
+                minLines = minLines,
+                onTextLayout = onTextLayout,
+                style = resolvedStyle
+            )
+        } else {
+            KuiklyText(
+                text = AnnotatedString(text).withSlockMarkdownBodyClick(bodyClick),
+                modifier = modifier,
+                color = color,
+                fontSize = fontSize,
+                fontStyle = fontStyle,
+                fontWeight = fontWeight,
+                fontFamily = fontFamily ?: resolvedStyle.fontFamily,
+                letterSpacing = letterSpacing,
+                textDecoration = textDecoration,
+                textAlign = textAlign,
+                lineHeight = lineHeight,
+                overflow = markdownOverflow,
+                softWrap = softWrap,
+                maxLines = maxLines,
+                minLines = minLines,
+                inlineContent = emptyMap(),
+                onTextLayout = onTextLayout ?: {},
+                style = resolvedStyle
+            )
+        }
     }
 
     @Composable
@@ -1214,6 +1238,7 @@ private object SlockMarkdownTextProvider : TextProvider {
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
         val markdownOverflow = slockMarkdownContentOverflow(overflow)
+        val bodyClick = LocalSlockMarkdownBodyClick.current
         val permalinkLabelResolver = LocalSlockMessagePermalinkLabelResolver.current
         val renderMessagePermalinksAsTag =
             LocalSlockMarkdownRenderConfig.current.renderMessagePermalinksAsTag
@@ -1236,9 +1261,13 @@ private object SlockMarkdownTextProvider : TextProvider {
                     permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
                 }
             }
-        val resolvedText = remember(permalinkContent.text, resolvedStyle) {
+        val styledText = remember(permalinkContent.text, resolvedStyle) {
             permalinkContent.text.withSlockMarkdownSpanFonts(resolvedStyle)
         }
+        val resolvedText =
+            remember(styledText, bodyClick) {
+                styledText.withSlockMarkdownBodyClick(bodyClick)
+            }
         val resolvedInlineContent =
             resolvedText.filteredSlockMarkdownInlineContent(
                 inlineContent + permalinkContent.inlineContent
@@ -1315,6 +1344,43 @@ private object SlockMarkdownTextProvider : TextProvider {
             style = resolvedStyle
         )
     }
+}
+
+internal fun AnnotatedString.withSlockMarkdownBodyClick(onClick: (() -> Unit)?): AnnotatedString {
+    if (onClick == null || isEmpty()) return this
+    val occupiedRanges =
+        getLinkAnnotations(0, length)
+            .map { it.start until it.end }
+            .sortedBy { it.first }
+    val openBody =
+        LinkAnnotation.Clickable(
+            tag = SlockMarkdownBodyClickTag,
+            linkInteractionListener = LinkInteractionListener { onClick() }
+        )
+    return AnnotatedString.Builder(length)
+        .apply {
+            append(text)
+            spanStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            paragraphStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            getStringAnnotations(0, length).forEach { range ->
+                addStringAnnotation(range.tag, range.item, range.start, range.end)
+            }
+            getLinkAnnotations(0, length).forEach { range ->
+                when (val link = range.item) {
+                    is LinkAnnotation.Url -> addLink(link, range.start, range.end)
+                    is LinkAnnotation.Clickable -> addLink(link, range.start, range.end)
+                }
+            }
+            var cursor = 0
+            occupiedRanges.forEach { range ->
+                val start = range.first.coerceIn(0, length)
+                val endExclusive = (range.last + 1).coerceIn(start, length)
+                if (start > cursor) addLink(openBody, cursor, start)
+                cursor = maxOf(cursor, endExclusive)
+            }
+            if (cursor < length) addLink(openBody, cursor, length)
+        }
+        .toAnnotatedString()
 }
 
 internal fun slockMarkdownContentOverflow(overflow: TextOverflow): TextOverflow =
@@ -1755,6 +1821,8 @@ private const val SlockMarkdownDefaultPreparseLimit = 20
 
 private val SlockMarkdownBodyFontSize = 14.sp
 private val SlockMarkdownBodyLineHeight = 22.sp
+private const val SlockMarkdownBodyClickTag = "slock-markdown-body-click"
+private val LocalSlockMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { null }
 
 @Composable
 fun SlockMarkdownBody(
@@ -1768,6 +1836,7 @@ fun SlockMarkdownBody(
     isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
+    onClick: (() -> Unit)? = null,
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     inlineContentScope: String? = null,
     activeTagKey: String? = null,
@@ -1971,7 +2040,8 @@ fun SlockMarkdownBody(
         }
     CompositionLocalProvider(
         LocalTextProvider provides SlockMarkdownTextProvider,
-        LocalUriHandler provides uriHandler
+        LocalUriHandler provides uriHandler,
+        LocalSlockMarkdownBodyClick provides onClick
     ) {
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             // #192 long-body sub-trace: split layout phase into pre-block setup
