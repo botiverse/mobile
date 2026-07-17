@@ -28,6 +28,20 @@ internal fun <T> immediateThreadComposerSuggestions(
 ): List<T> =
     if (query.isBlank()) suggestions.take(ThreadComposerSuggestionMaxResults) else emptyList()
 
+internal fun <T> displayedThreadComposerSuggestions(
+    usesImmediateSuggestions: Boolean,
+    rankingReady: Boolean,
+    rankingResultSuggestions: List<T>,
+    immediateSuggestions: List<T>,
+    pendingFallbackSuggestions: List<T>
+): List<T> =
+    when {
+        usesImmediateSuggestions -> immediateSuggestions
+        rankingReady -> rankingResultSuggestions
+        rankingResultSuggestions.isNotEmpty() -> rankingResultSuggestions
+        else -> pendingFallbackSuggestions
+    }
+
 internal fun immediateThreadComposerMemberSuggestions(
     query: String,
     suggestions: List<KuiklyComposerMemberItem>
