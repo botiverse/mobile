@@ -6511,6 +6511,39 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadTaskStatusUpdateUsesLinkedTaskThroughGlobalStoreIntent() {
+        val task =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "historical task",
+                status = TaskStatus.InProgress,
+                taskNumber = 240,
+                messageId = MessageId("message-240"),
+                assignee = null,
+                updatedAtLabel = ""
+            )
+        val projection =
+            ThreadLinkedTasksProjection(
+                authoritative = true,
+                lookup = listOf(task).threadLinkedTasksByMessageLookup()
+            )
+
+        val intent = requireNotNull(projection.statusUpdateIntent("task-240", TaskStatus.Closed))
+
+        assertEquals(task, intent.task)
+        assertEquals(TaskStatus.Closed, intent.status)
+    }
+
+    @Test
+    fun threadTaskStatusUpdateRequiresLinkedTaskProjection() {
+        val intent =
+            emptyThreadLinkedTasksProjection()
+                .statusUpdateIntent("task-missing", TaskStatus.Closed)
+
+        assertEquals(null, intent)
+    }
+
+    @Test
     fun markdownTaskNumberLaunchPayloadUsesTaskIdentityOnly() {
         val payload =
             KuiklyThreadScreenPayload(

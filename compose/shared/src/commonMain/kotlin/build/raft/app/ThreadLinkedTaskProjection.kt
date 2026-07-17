@@ -3,7 +3,9 @@ package build.raft.app
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
+import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TasksUiState
+import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 
 internal data class ThreadLinkedTasksProjection(
@@ -13,6 +15,12 @@ internal data class ThreadLinkedTasksProjection(
 
 internal fun emptyThreadLinkedTasksProjection(): ThreadLinkedTasksProjection =
     ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
+
+internal fun ThreadLinkedTasksProjection.statusUpdateIntent(
+    taskId: String,
+    status: TaskStatus,
+): SharedTasksRouteIntent.UpdateStatus? =
+    lookup[taskId.trim()]?.let { task -> SharedTasksRouteIntent.UpdateStatus(task, status) }
 
 internal data class ThreadLinkedTaskReferences(
     val messageIds: Set<String>,
