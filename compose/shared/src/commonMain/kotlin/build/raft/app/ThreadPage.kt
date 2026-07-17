@@ -11274,6 +11274,15 @@ internal fun threadHeaderScrollToTopEnabled(surfaceKind: String?, selectedTab: S
 internal fun threadHeaderScrollToTopTargetIndex(lazyItemCount: Int): Int? =
     if (lazyItemCount > 0) 0 else null
 
+internal fun consumeThreadHeaderScrollToTopRequest(
+    request: Int,
+    lazyItemCount: Int,
+    fence: AppShellScrollToTopRequestFence,
+): Boolean =
+    request > 0 &&
+        threadHeaderScrollToTopTargetIndex(lazyItemCount) != null &&
+        fence.consume(request)
+
 @Composable
 private fun ThreadChatTab(
     threadInstanceKey: String,
@@ -12183,9 +12192,15 @@ private fun ThreadMessagesList(
     }
     val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
+    val headerScrollToTopRequestFence =
+        remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
-        val targetIndex = threadHeaderScrollToTopTargetIndex(lazyItemCount)
-        if (headerScrollToTopRequest <= 0 || targetIndex == null) {
+        if (!consumeThreadHeaderScrollToTopRequest(
+                request = headerScrollToTopRequest,
+                lazyItemCount = lazyItemCount,
+                fence = headerScrollToTopRequestFence,
+            )
+        ) {
             return@LaunchedEffect
         }
         pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
