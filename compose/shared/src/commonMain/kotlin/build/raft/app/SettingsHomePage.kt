@@ -134,6 +134,7 @@ import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
+import build.raft.app.data.SlockSystemNotificationContract
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.realtime.realtimeProcessDesiredSession
@@ -2832,6 +2833,36 @@ internal fun SlockAppShellContent(
                         .initialServerId
             )
         }
+    var systemNotificationNavigationTick by remember { mutableStateOf(0) }
+    DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
+        val subscription =
+            eventBus.observe(SlockSystemNotificationContract.OpenEventName) { eventData ->
+                val intent = eventData.appShellSystemNotificationNavigationIntent()
+                if (intent == null) {
+                    bridge.logWarn("window_navigation_drop source=system_notification reason=invalid_identity")
+                    return@observe
+                }
+                val enqueued = windowNavigationCoordinator.enqueue(intent)
+                bridge.log(
+                    "window_navigation_received source=system_notification enqueued=$enqueued " +
+                        "targetServerId=${intent.serverId}"
+                )
+                systemNotificationNavigationTick += 1
+            }
+        eventBus.post(
+            eventName = SlockSystemNotificationContract.OpenReadyEventName,
+            eventData = JSONObject(),
+            source = "app_shell_notification_navigation_ready"
+        )
+        onDispose {
+            eventBus.post(
+                eventName = SlockSystemNotificationContract.OpenNotReadyEventName,
+                eventData = JSONObject(),
+                source = "app_shell_notification_navigation_not_ready"
+            )
+            subscription.close()
+        }
+    }
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
         viewModel(key = "shared-home-search-saved") {
             SharedHomeSearchSavedViewModel(
@@ -3406,6 +3437,7 @@ internal fun SlockAppShellContent(
     // recreation or duplicate PendingIntent cannot replay the route.
     LaunchedEffect(
         notificationWindowNavigationIntent?.key,
+        systemNotificationNavigationTick,
         readySession?.currentServerId,
         readySession?.servers,
         homeState.content,
@@ -17830,6 +17862,13 @@ internal fun JSONObject.appShellWindowNavigationIntent(fallbackServerId: String?
         source = "system_notification"
     )
 }
+
+internal fun JSONObject?.appShellSystemNotificationNavigationIntent(): WindowNavigationIntent? =
+    this
+        ?.takeIf {
+            it.optString(AppShellNotificationKindKey).trim() in setOf("channel", "dm", "thread")
+        }
+        ?.appShellWindowNavigationIntent(fallbackServerId = null)
 
 internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     request: AppShellNotificationThreadLaunchRequest,

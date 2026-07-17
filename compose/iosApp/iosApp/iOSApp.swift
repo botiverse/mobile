@@ -12,10 +12,18 @@ private enum SlockIosPushEnvironment: String {
 
 private enum SlockIosPushHost {
     private static let remoteNotificationsStateName = Notification.Name("slockIosRemoteNotificationsState")
+    private static let systemNotificationOpenName = Notification.Name("slockSystemNotificationOpen")
+    private static let systemNotificationOpenReadyName = Notification.Name("slockSystemNotificationOpenReady")
+    private static let systemNotificationOpenNotReadyName = Notification.Name("slockSystemNotificationOpenNotReady")
     private static var installationId: String?
     private static var remoteNotificationsObserver: NSObjectProtocol?
+    private static var systemNotificationOpenReadyObserver: NSObjectProtocol?
+    private static var systemNotificationOpenNotReadyObserver: NSObjectProtocol?
     private static var desiredRemoteNotificationsEnabled = false
     private static var remoteNotificationsGeneration: UInt64 = 0
+    private static var systemNotificationOpenReadyCount = 0
+    private static var pendingSystemNotificationOpens: [[String: String]] = []
+    private static var pendingSystemNotificationOpenKeys: Set<String> = []
 
     static func install() {
         if remoteNotificationsObserver == nil {
@@ -33,6 +41,25 @@ private enum SlockIosPushHost {
                     return
                 }
                 setRemoteNotificationsEnabled(enabled)
+            }
+        }
+        if systemNotificationOpenReadyObserver == nil {
+            systemNotificationOpenReadyObserver = NotificationCenter.default.addObserver(
+                forName: systemNotificationOpenReadyName,
+                object: nil,
+                queue: .main
+            ) { _ in
+                systemNotificationOpenReadyCount += 1
+                drainPendingSystemNotificationOpens()
+            }
+        }
+        if systemNotificationOpenNotReadyObserver == nil {
+            systemNotificationOpenNotReadyObserver = NotificationCenter.default.addObserver(
+                forName: systemNotificationOpenNotReadyName,
+                object: nil,
+                queue: .main
+            ) { _ in
+                systemNotificationOpenReadyCount = max(0, systemNotificationOpenReadyCount - 1)
             }
         }
         let candidate = UUID().uuidString.lowercased()
@@ -184,6 +211,125 @@ private enum SlockIosPushHost {
         )
     }
 
+    static func acceptSystemNotificationOpen(
+        userInfo: [AnyHashable: Any],
+        categoryIdentifier: String? = nil,
+        source: String
+    ) {
+        runOnMain {
+            guard let payload = sanitizedSystemNotificationOpenPayload(
+                userInfo: userInfo,
+                categoryIdentifier: categoryIdentifier
+            ) else {
+                SlockIosDiagnosticsRecord(
+                    "warn",
+                    "SlockIosPush",
+                    "system_notification_open_rejected reason=invalid_identity source=\(source)"
+                )
+                return
+            }
+            let key = systemNotificationOpenKey(payload)
+            guard !pendingSystemNotificationOpenKeys.contains(key) else {
+                SlockIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "system_notification_open_skipped reason=duplicate source=\(source)"
+                )
+                return
+            }
+            if systemNotificationOpenReadyCount > 0 {
+                dispatchSystemNotificationOpen(payload, source: source)
+                return
+            }
+            pendingSystemNotificationOpenKeys.insert(key)
+            pendingSystemNotificationOpens.append(payload)
+            if pendingSystemNotificationOpens.count > 8 {
+                let removed = pendingSystemNotificationOpens.removeFirst()
+                pendingSystemNotificationOpenKeys.remove(systemNotificationOpenKey(removed))
+            }
+            SlockIosDiagnosticsRecord(
+                "info",
+                "SlockIosPush",
+                "system_notification_open_queued source=\(source)"
+            )
+        }
+    }
+
+    private static func sanitizedSystemNotificationOpenPayload(
+        userInfo: [AnyHashable: Any],
+        categoryIdentifier: String?
+    ) -> [String: String]? {
+        func stringValue(_ key: String) -> String? {
+            guard let value = userInfo[key] as? String else {
+                return nil
+            }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        guard
+            let serverId = stringValue("serverId"),
+            let channelId = stringValue("channelId"),
+            let messageId = stringValue("messageId"),
+            let kind = stringValue("kind"),
+            ["channel", "dm", "thread"].contains(kind)
+        else {
+            return nil
+        }
+        let threadId = stringValue("threadId") ?? channelId
+        var payload = [
+            "slockNotificationServerId": serverId,
+            "slockNotificationThreadId": threadId,
+            "slockNotificationChannelId": channelId,
+            "slockNotificationMessageId": messageId,
+            "slockNotificationKind": kind,
+        ]
+        if let parentChannelId = stringValue("parentChannelId") {
+            payload["slockNotificationParentChannelId"] = parentChannelId
+        }
+        if let parentMessageId = stringValue("parentMessageId") {
+            payload["slockNotificationParentMessageId"] = parentMessageId
+        }
+        let category =
+            categoryIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
+                ?? ((userInfo["aps"] as? [AnyHashable: Any])?["category"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines).takeIfNotEmpty()
+        if let category {
+            payload["slockNotificationCategory"] = category
+        }
+        return payload
+    }
+
+    private static func systemNotificationOpenKey(_ payload: [String: String]) -> String {
+        [
+            payload["slockNotificationServerId"] ?? "",
+            payload["slockNotificationThreadId"] ?? "",
+            payload["slockNotificationMessageId"] ?? "",
+        ].joined(separator: "|")
+    }
+
+    private static func drainPendingSystemNotificationOpens() {
+        let pending = pendingSystemNotificationOpens
+        pendingSystemNotificationOpens.removeAll(keepingCapacity: true)
+        for payload in pending {
+            dispatchSystemNotificationOpen(payload, source: "ready_drain")
+        }
+    }
+
+    private static func dispatchSystemNotificationOpen(_ payload: [String: String], source: String) {
+        pendingSystemNotificationOpenKeys.remove(systemNotificationOpenKey(payload))
+        NotificationCenter.default.post(
+            name: systemNotificationOpenName,
+            object: nil,
+            userInfo: payload
+        )
+        SlockIosDiagnosticsRecord(
+            "info",
+            "SlockIosPush",
+            "system_notification_open_dispatched source=\(source)"
+        )
+    }
+
     private static func signedPushEnvironment() -> SlockIosPushEnvironment? {
         // `SlockAPNSEnvironment` and the app's `aps-environment` entitlement are
         // expanded from the same APS_ENVIRONMENT build setting. This keeps the
@@ -203,7 +349,27 @@ private enum SlockIosPushHost {
     }
 }
 
-final class SlockIosAppDelegate: NSObject, UIApplicationDelegate {
+private extension String {
+    func takeIfNotEmpty() -> String? {
+        isEmpty ? nil : self
+    }
+}
+
+final class SlockIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        if let userInfo = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
+            SlockIosPushHost.acceptSystemNotificationOpen(
+                userInfo: userInfo,
+                source: "cold_launch"
+            )
+        }
+        return true
+    }
+
     func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
@@ -216,6 +382,29 @@ final class SlockIosAppDelegate: NSObject, UIApplicationDelegate {
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         SlockIosPushHost.didFailToRegister(error: error)
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        SlockIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
+        completionHandler([.banner, .list, .sound, .badge])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let content = response.notification.request.content
+        SlockIosPushHost.acceptSystemNotificationOpen(
+            userInfo: content.userInfo,
+            categoryIdentifier: content.categoryIdentifier,
+            source: "notification_response"
+        )
+        completionHandler()
     }
 }
 

@@ -548,6 +548,43 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun dynamicSystemNotificationEnvelopeRequiresServerQualifiedIdentity() {
+        val intent =
+            assertNotNull(
+                JSONObject()
+                    .put("slockNotificationServerId", "server-b")
+                    .put("slockNotificationThreadId", "thread-b")
+                    .put("slockNotificationChannelId", "thread-b")
+                    .put("slockNotificationMessageId", "reply-b")
+                    .put("slockNotificationParentChannelId", "channel-b")
+                    .put("slockNotificationParentMessageId", "parent-b")
+                    .put("slockNotificationKind", "thread")
+                    .appShellSystemNotificationNavigationIntent()
+            )
+
+        assertEquals("server-b", intent.serverId)
+        assertEquals("thread-b", intent.sourceIdentity.threadChannelId)
+        assertEquals("channel-b", intent.sourceIdentity.parentChannelId)
+        assertEquals("parent-b", intent.sourceIdentity.parentMessageId)
+        assertEquals("reply-b", intent.sourceIdentity.messageId)
+        assertNull(
+            JSONObject()
+                .put("slockNotificationServerId", "server-b")
+                .put("slockNotificationThreadId", "thread-b")
+                .put("slockNotificationMessageId", "reply-b")
+                .appShellSystemNotificationNavigationIntent()
+        )
+        assertNull(
+            JSONObject()
+                .put("slockNotificationServerId", "server-b")
+                .put("slockNotificationThreadId", "thread-b")
+                .put("slockNotificationMessageId", "reply-b")
+                .put("slockNotificationKind", "unknown")
+                .appShellSystemNotificationNavigationIntent()
+        )
+    }
+
+    @Test
     fun shellScopeProvidesExplicitPanelInsets() {
         val scope =
             SlockAppShellScope(
