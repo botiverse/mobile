@@ -124,14 +124,20 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityThreadIconUsesTheSameMutedToneAsReadPrimaryText() {
+    fun activityReadPrimaryContentMutedCoversConversationKinds() {
         val readThread = activityItem(key = "thread:read").copy(kind = InboxItemKind.Thread)
         val unreadThread = readThread.copy(key = "thread:unread", unreadCount = 1)
         val readChannel = activityItem(key = "channel:read")
+        val readDirectMessage = readChannel.copy(key = "dm:read", kind = InboxItemKind.DirectMessage)
+        val readMention = readChannel.copy(key = "mention:read", kind = InboxItemKind.MentionAction)
+        val readSystem = readChannel.copy(key = "system:read", kind = InboxItemKind.System)
 
         assertTrue(readThread.activityPrimaryContentMuted())
         assertEquals(false, unreadThread.activityPrimaryContentMuted())
-        assertEquals(false, readChannel.activityPrimaryContentMuted())
+        assertTrue(readChannel.activityPrimaryContentMuted())
+        assertTrue(readDirectMessage.activityPrimaryContentMuted())
+        assertTrue(readMention.activityPrimaryContentMuted())
+        assertEquals(false, readSystem.activityPrimaryContentMuted())
     }
 
     @Test

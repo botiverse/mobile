@@ -1006,7 +1006,7 @@ private fun SharedActivityRow(
 }
 
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
-    kind == InboxItemKind.Thread && unreadCount == 0
+    kind != InboxItemKind.System && unreadCount == 0
 
 internal fun InboxItem.activityDoneClickIdentity(): String = "activity-done:$key"
 
