@@ -5,10 +5,9 @@ tier: L1
 version: "0.1"
 description: |
   Verify that selecting a file/attachment and uploading it to a conversation
-  works. Covers: file picker, file selection, composer preview, and send.
-  Multi-platform case — iOS uses Files picker (UIDocumentPicker), Android
-  uses system file picker (ACTION_GET_CONTENT / SAF).
-tags: [attachments, file, upload, regression]
+  works on Android. Covers: file picker, file selection, composer preview, send.
+  iOS variant will be added after case IR unification (platform overlay).
+tags: [attachments, file, upload, regression, android]
 timeout_seconds: 120
 max_retries: 1
 verdict_before_cleanup: true

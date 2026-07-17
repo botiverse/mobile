@@ -5,11 +5,11 @@ tier: L1
 version: "0.1"
 description: |
   Verify that selecting an image from the photo gallery and uploading it
-  to a conversation works. Covers: permission request, picker UI, image
-  selection, composer preview, and send.
-  Multi-platform case — iOS variant uses PHPicker, Android uses system
-  photo picker. From iOS feedback: image button must request album permission.
-tags: [attachments, image, upload, critical, regression]
+  to a conversation works on Android. Covers: permission request, picker
+  UI, image selection, composer preview, and send.
+  From iOS feedback (PR #1193): image button must request album permission.
+  iOS variant will be added after case IR unification (platform overlay).
+tags: [attachments, image, upload, critical, regression, android]
 timeout_seconds: 120
 max_retries: 1
 verdict_before_cleanup: true
@@ -85,12 +85,20 @@ steps:
     capture: [screenshot, dump_layout]
 
 assertions:
-  - id: permission-requested
-    goal: "Image button triggers photo permission request (first time) or opens picker directly"
+  - id: picker-opened
+    goal: "Photo picker or gallery is open and images are visible (proves image button works and permission was granted or not needed)"
     type: visual_check
     after_step: select-image
     severity: critical
-    hint: "Either permission dialog appeared and was granted, OR picker opened directly (if previously granted)"
+    hint: "If we see a system permission dialog instead, it must be handled first. If we see a blank/error screen, that's a fail."
+
+  - id: permission-not-denied
+    goal: "No 'permission denied' or 'access restricted' error visible"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(permission denied|access restricted|not allowed|forbidden)"
+    after_step: select-image
+    severity: critical
 
   - id: image-in-composer
     goal: "Selected image appears as preview/thumbnail in composer before sending"
