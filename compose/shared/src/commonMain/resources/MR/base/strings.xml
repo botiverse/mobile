@@ -385,6 +385,10 @@
     <string name="thread_action_card_create_agent">Create Agent</string>
     <string name="thread_action_card_add_members">Add Members</string>
     <string name="thread_action_card_approve_login">Approve Login</string>
+    <string name="thread_action_card_approve_action">Approve Action</string>
+    <string name="thread_action_card_register_app">Register App</string>
+    <string name="thread_action_card_recover_owner">Recover Owner</string>
+    <string name="thread_action_card_unavailable">Unavailable</string>
     <string name="thread_action_card_action">Action</string>
     <string name="thread_action_card_adding">Adding…</string>
     <string name="thread_action_card_approving">Approving…</string>
@@ -394,6 +398,9 @@
     <string name="thread_action_card_title_add_member">Add 1 member to %1$s</string>
     <string name="thread_action_card_title_add_members">Add %1$d members to %2$s</string>
     <string name="thread_action_card_title_approve_login">Approve %1$s for @%2$s</string>
+    <string name="thread_action_card_title_register_app">Register Connected App %1$s</string>
+    <string name="thread_action_card_title_recover_owner">Recover Connected App owner</string>
+    <string name="thread_action_card_title_generic">Approve %1$s</string>
     <string name="thread_action_card_public">public</string>
     <string name="thread_action_card_private">private</string>
     <string name="thread_action_card_channel">channel</string>
@@ -411,6 +418,9 @@
     <string name="thread_action_card_label_service">Service</string>
     <string name="thread_action_card_label_agent">Agent</string>
     <string name="thread_action_card_label_scopes">Scopes:</string>
+    <string name="thread_action_card_label_type">Type</string>
+    <string name="thread_action_card_hidden_value">Hidden for security</string>
+    <string name="thread_action_card_legacy_unavailable_hint">This legacy action can no longer be executed. Use the current Connected Apps management command instead.</string>
     <string name="thread_action_card_approval_hint">%1$s is requesting human approval to use %2$s. Server-installed apps do not need this approval; Marketplace apps do.</string>
     <string name="thread_action_card_scope_identity">Reads who you are — human or agent, your Raft subject, and which server/principal you are acting as. No content access.</string>
     <string name="thread_action_card_scope_openid">Signs you in with Raft and issues a stable identity token. Authentication only.</string>

@@ -59,6 +59,7 @@ import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.WireActionCardAction
 import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.toWireJsonObject
 import build.raft.app.data.WireAttachment
 import build.raft.app.data.WireMessage
 import build.raft.app.data.WireReaction
@@ -5877,7 +5878,7 @@ class ThreadPayloadTest {
                                                     description = "负责 Chrome 插件前端工程与视觉对齐。",
                                                     suggestedComputer = "machine-2",
                                                     draftHint = "请创建这个专家 agent"
-                                                )
+                                                ).toWireJsonObject()
                                         )
                                 )
                             ),
@@ -5939,7 +5940,7 @@ class ThreadPayloadTest {
                                                     visibility = "private",
                                                     initialHumans = listOf("u2"),
                                                     initialAgents = listOf("agent-2")
-                                                )
+                                                ).toWireJsonObject()
                                         )
                                 ),
                                 WireMessage(
@@ -5962,7 +5963,7 @@ class ThreadPayloadTest {
                                                     humans = listOf("u3"),
                                                     agents = listOf("agent-3"),
                                                     draftHint = "Bring the review owners in."
-                                                )
+                                                ).toWireJsonObject()
                                         )
                                 )
                             ),
@@ -6034,7 +6035,7 @@ class ThreadPayloadTest {
                                                     clientName = "Quiver",
                                                     scopes = listOf("identity", "profile"),
                                                     draftHint = "KMP-专家 is requesting human approval."
-                                                )
+                                                ).toWireJsonObject()
                                         )
                                 )
                             ),

@@ -385,6 +385,10 @@
     <string name="thread_action_card_create_agent">创建智能体</string>
     <string name="thread_action_card_add_members">添加成员</string>
     <string name="thread_action_card_approve_login">批准登录</string>
+    <string name="thread_action_card_approve_action">同意操作</string>
+    <string name="thread_action_card_register_app">创建 Connected App</string>
+    <string name="thread_action_card_recover_owner">恢复所有者</string>
+    <string name="thread_action_card_unavailable">已停用</string>
     <string name="thread_action_card_action">执行操作</string>
     <string name="thread_action_card_adding">添加中…</string>
     <string name="thread_action_card_approving">批准中…</string>
@@ -394,6 +398,9 @@
     <string name="thread_action_card_title_add_member">将 1 名成员添加到 %1$s</string>
     <string name="thread_action_card_title_add_members">将 %1$d 名成员添加到 %2$s</string>
     <string name="thread_action_card_title_approve_login">批准 %1$s 供 @%2$s 使用</string>
+    <string name="thread_action_card_title_register_app">创建 Connected App %1$s</string>
+    <string name="thread_action_card_title_recover_owner">恢复 Connected App 所有者</string>
+    <string name="thread_action_card_title_generic">同意%1$s</string>
     <string name="thread_action_card_public">公开</string>
     <string name="thread_action_card_private">私密</string>
     <string name="thread_action_card_channel">频道</string>
@@ -411,6 +418,9 @@
     <string name="thread_action_card_label_service">服务</string>
     <string name="thread_action_card_label_agent">智能体</string>
     <string name="thread_action_card_label_scopes">权限范围：</string>
+    <string name="thread_action_card_label_type">类型</string>
+    <string name="thread_action_card_hidden_value">已为安全隐藏</string>
+    <string name="thread_action_card_legacy_unavailable_hint">这项旧操作已不能执行，请改用当前的 Connected Apps 管理命令。</string>
     <string name="thread_action_card_approval_hint">%1$s 正在请求人类批准使用 %2$s。服务器安装的应用无需此批准；Marketplace 应用需要批准。</string>
     <string name="thread_action_card_scope_identity">读取你的身份类型（人类或智能体）、Raft 主体，以及当前代表的服务器和身份。不包含内容访问权限。</string>
     <string name="thread_action_card_scope_openid">使用 Raft 登录并签发稳定身份令牌，仅用于身份验证。</string>

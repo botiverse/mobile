@@ -6,6 +6,14 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.Json
 
 private const val ActionCardMetadataPrefix = "actionCard."
@@ -46,21 +54,50 @@ internal data class ThreadActionCard(
     val clientKey: String? = null,
     val clientName: String? = null,
     val scopes: List<String> = emptyList(),
+    val metadataItems: List<ThreadActionCardMetadataItem> = emptyList(),
+    val presentationTitle: String? = null,
+    val presentationConfirmLabel: String? = null,
+    val presentationWarning: String? = null,
+    val genericApprovalAllowed: Boolean = false,
 ) {
     val isExecuted: Boolean
         get() = state.equals("executed", ignoreCase = true)
 }
 
 @Serializable
+internal data class ThreadActionCardMetadataItem(
+    val key: String,
+    val value: String,
+    val redacted: Boolean = false,
+)
+
+@Serializable
+internal data class WireActionCardPresentation(
+    val title: String? = null,
+    val confirmLabel: String? = null,
+    val warning: String? = null,
+    val genericApprovalAllowed: Boolean = false,
+    val displayItems: List<ThreadActionCardMetadataItem> = emptyList(),
+)
+
+@Serializable
 internal data class WireActionCardMetadata(
     val kind: String? = null,
     val version: Int? = null,
     val forwardedItems: List<WireForwardedBundleItem> = emptyList(),
-    val action: WireActionCardAction? = null,
+    /**
+     * Keep the canonical action object intact at the wire boundary. Mobile has
+     * specialized renderers for a few action types, but a newer server can add
+     * fields or action types before the app ships another release. Decoding
+     * directly into [WireActionCardAction] would silently discard those fields
+     * under `ignoreUnknownKeys`, leaving the fallback card blank.
+     */
+    val action: JsonObject? = null,
     val state: String = "prepared",
     val executedAt: String? = null,
     val executedByUserName: String? = null,
     val result: WireActionCardResult? = null,
+    val presentation: WireActionCardPresentation? = null,
 )
 
 @Serializable
@@ -93,6 +130,11 @@ internal data class WireActionCardResult(
     val name: String? = null,
     val channelId: String? = null,
     val channelName: String? = null,
+    val clientId: String? = null,
+    val clientKey: String? = null,
+    val clientName: String? = null,
+    val ownerAgentId: String? = null,
+    val ownerAgentName: String? = null,
     val addedHumanIds: List<String> = emptyList(),
     val addedAgentIds: List<String> = emptyList(),
 )
@@ -100,7 +142,11 @@ internal data class WireActionCardResult(
 internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
     val meta = this ?: return null
     if (meta.kind != "action-card") return null
-    val action = meta.action ?: return null
+    val actionObject = meta.action ?: return null
+    val action =
+        runCatching {
+            threadActionCardJson.decodeFromJsonElement(WireActionCardAction.serializer(), actionObject)
+        }.getOrNull() ?: return null
     val type = action.type.takeIf { it.isNotBlank() } ?: return null
     return ThreadActionCard(
         type = type,
@@ -119,8 +165,8 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         executedAt = meta.executedAt?.takeIf { it.isNotBlank() },
         executedByUserName = meta.executedByUserName?.takeIf { it.isNotBlank() },
         resultKind = meta.result?.kind?.takeIf { it.isNotBlank() },
-        resultId = firstNonBlank(meta.result?.id, meta.result?.channelId),
-        resultName = meta.result?.name?.takeIf { it.isNotBlank() },
+        resultId = firstNonBlank(meta.result?.id, meta.result?.channelId, meta.result?.clientId, meta.result?.ownerAgentId),
+        resultName = firstNonBlank(meta.result?.name, meta.result?.clientName, meta.result?.ownerAgentName),
         resultChannelName = meta.result?.channelName?.takeIf { it.isNotBlank() },
         resultAddedHumanIds = meta.result?.addedHumanIds.orEmpty(),
         resultAddedAgentIds = meta.result?.addedAgentIds.orEmpty(),
@@ -131,8 +177,17 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         clientKey = action.clientKey?.takeIf { it.isNotBlank() },
         clientName = action.clientName?.takeIf { it.isNotBlank() },
         scopes = action.scopes,
+        metadataItems = meta.presentation?.displayItems?.toSafeServerPresentationItems()?.takeIf { it.isNotEmpty() }
+            ?: actionObject.toSafeActionCardMetadataItems(),
+        presentationTitle = meta.presentation?.title?.takeIf { it.isNotBlank() },
+        presentationConfirmLabel = meta.presentation?.confirmLabel?.takeIf { it.isNotBlank() },
+        presentationWarning = meta.presentation?.warning?.takeIf { it.isNotBlank() },
+        genericApprovalAllowed = meta.presentation?.genericApprovalAllowed == true,
     )
 }
+
+internal fun WireActionCardAction.toWireJsonObject(): JsonObject =
+    threadActionCardJson.encodeToJsonElement(WireActionCardAction.serializer(), this).jsonObject
 
 internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
     buildMap {
@@ -165,6 +220,11 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("clientKey", clientKey)
         putString("clientName", clientName)
         putList("scopes", scopes)
+        putMetadataItems("metadataItems", metadataItems)
+        putString("presentationTitle", presentationTitle)
+        putString("presentationConfirmLabel", presentationConfirmLabel)
+        putString("presentationWarning", presentationWarning)
+        putBoolean("genericApprovalAllowed", genericApprovalAllowed)
     }
 
 internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): ThreadActionCard? {
@@ -199,6 +259,12 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         clientKey = metadata["${ActionCardMetadataPrefix}clientKey"]?.takeIf { it.isNotBlank() },
         clientName = metadata["${ActionCardMetadataPrefix}clientName"]?.takeIf { it.isNotBlank() },
         scopes = metadata.decodeList("scopes"),
+        metadataItems = metadata.decodeMetadataItems("metadataItems"),
+        presentationTitle = metadata["${ActionCardMetadataPrefix}presentationTitle"]?.takeIf { it.isNotBlank() },
+        presentationConfirmLabel = metadata["${ActionCardMetadataPrefix}presentationConfirmLabel"]?.takeIf { it.isNotBlank() },
+        presentationWarning = metadata["${ActionCardMetadataPrefix}presentationWarning"]?.takeIf { it.isNotBlank() },
+        genericApprovalAllowed =
+            metadata["${ActionCardMetadataPrefix}genericApprovalAllowed"]?.equals("true", ignoreCase = true) == true,
     )
 }
 
@@ -241,7 +307,28 @@ internal fun ThreadActionCard.isSupportedCommitAction(): Boolean =
     type.equals("agent:create", ignoreCase = true) ||
         type.equals("channel:create", ignoreCase = true) ||
         type.equals("channel:add_member", ignoreCase = true) ||
-        type.equals("integration:approve_agent_login", ignoreCase = true)
+        type.equals("integration:approve_agent_login", ignoreCase = true) ||
+        isGenericInlineCommitAction()
+
+/**
+ * Server-prepared operation cards are canonical, human-commit requests. A
+ * newer server action can therefore use the generic execute endpoint before
+ * mobile has a bespoke renderer. The one historical update-card type is
+ * deliberately terminal on the server (HTTP 410), so an old carrier must not
+ * regain an enabled button through this fallback.
+ */
+internal fun ThreadActionCard.isGenericInlineCommitAction(): Boolean =
+    type.isNotBlank() &&
+        !type.equals("agent:create", ignoreCase = true) &&
+        !type.equals("channel:create", ignoreCase = true) &&
+        !type.equals("channel:add_member", ignoreCase = true) &&
+        !type.equals("integration:approve_agent_login", ignoreCase = true) &&
+        !type.equals("integration:update_app_registration", ignoreCase = true) &&
+        (
+            genericApprovalAllowed ||
+                type.equals("integration:register_app", ignoreCase = true) ||
+                type.equals("integration:recover_app_owner", ignoreCase = true)
+        )
 
 private fun MutableMap<String, String>.putString(key: String, value: String?) {
     val normalized = value?.takeIf { it.isNotBlank() } ?: return
@@ -253,6 +340,18 @@ private fun MutableMap<String, String>.putList(key: String, value: List<String>)
     put("$ActionCardMetadataPrefix$key", threadActionCardJson.encodeToString(ListSerializer(String.serializer()), value))
 }
 
+private fun MutableMap<String, String>.putBoolean(key: String, value: Boolean) {
+    if (value) put("$ActionCardMetadataPrefix$key", "true")
+}
+
+private fun MutableMap<String, String>.putMetadataItems(key: String, value: List<ThreadActionCardMetadataItem>) {
+    if (value.isEmpty()) return
+    put(
+        "$ActionCardMetadataPrefix$key",
+        threadActionCardJson.encodeToString(ListSerializer(ThreadActionCardMetadataItem.serializer()), value)
+    )
+}
+
 private fun Map<String, String>.decodeList(key: String): List<String> {
     val raw = this["$ActionCardMetadataPrefix$key"]?.takeIf { it.isNotBlank() } ?: return emptyList()
     return try {
@@ -260,6 +359,79 @@ private fun Map<String, String>.decodeList(key: String): List<String> {
     } catch (_: SerializationException) {
         raw.split(",").map { it.trim() }.filter { it.isNotBlank() }
     }
+}
+
+private fun Map<String, String>.decodeMetadataItems(key: String): List<ThreadActionCardMetadataItem> {
+    val raw = this["$ActionCardMetadataPrefix$key"]?.takeIf { it.isNotBlank() } ?: return emptyList()
+    return try {
+        threadActionCardJson.decodeFromString(ListSerializer(ThreadActionCardMetadataItem.serializer()), raw)
+    } catch (_: SerializationException) {
+        emptyList()
+    }
+}
+
+private val sensitiveActionCardFieldFragments =
+    listOf(
+        "secret",
+        "token",
+        "password",
+        "credential",
+        "authorization",
+        "privatekey",
+        "private_key",
+        "accesstoken",
+        "access_token",
+        "refreshtoken",
+        "refresh_token",
+    )
+
+private fun JsonObject.toSafeActionCardMetadataItems(): List<ThreadActionCardMetadataItem> =
+    entries
+        .asSequence()
+        .filterNot { (key, _) -> key.equals("type", ignoreCase = true) || key.equals("draftHint", ignoreCase = true) }
+        .take(24)
+        .map { (key, element) ->
+            val sensitive = key.isSensitiveActionCardField()
+            ThreadActionCardMetadataItem(
+                key = key,
+                value = if (sensitive) "Hidden" else element.toSafeActionCardDisplayValue(),
+                redacted = sensitive,
+            )
+        }
+        .filter { item -> item.value.isNotBlank() }
+        .toList()
+
+private fun List<ThreadActionCardMetadataItem>.toSafeServerPresentationItems(): List<ThreadActionCardMetadataItem> =
+    asSequence()
+        .filter { item -> item.key.isNotBlank() }
+        .take(24)
+        .map { item ->
+            val sensitive = item.redacted || item.key.isSensitiveActionCardField()
+            item.copy(
+                value = if (sensitive) "Hidden" else item.value.take(500),
+                redacted = sensitive,
+            )
+        }
+        .filter { item -> item.value.isNotBlank() }
+        .toList()
+
+private fun JsonElement.toSafeActionCardDisplayValue(): String {
+    val rendered =
+        when (this) {
+            JsonNull -> "-"
+            is JsonPrimitive -> content
+            is JsonArray -> joinToString(", ") { child -> child.toSafeActionCardDisplayValue() }
+            is JsonObject ->
+                entries.joinToString(", ") { (key, value) ->
+                    "$key: ${if (key.isSensitiveActionCardField()) "Hidden" else value.toSafeActionCardDisplayValue()}"
+                }
+        }
+    return if (rendered.length <= 500) rendered else rendered.take(497) + "..."
+}
+
+private fun String.isSensitiveActionCardField(): Boolean {
+    val normalized = lowercase().replace("-", "").replace(".", "")
+    return sensitiveActionCardFieldFragments.any { fragment -> normalized.contains(fragment) }
 }
 
 private fun firstNonBlank(vararg values: String?): String? =
