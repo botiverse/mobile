@@ -1749,13 +1749,14 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     return trimmed.length > 0 ? trimmed : @"attachment";
 }
 
-@interface HRBridgeModule () <UIDocumentPickerDelegate>
+@interface HRBridgeModule () <UIDocumentPickerDelegate, SharedAttachmentDownloadObserver>
 
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
 @property(nonatomic, strong, nullable) NSURL *slock_attachmentExportURL;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportFileName;
 @property(nonatomic, strong, nullable) NSNumber *slock_attachmentExportSizeBytes;
+@property(nonatomic) BOOL slock_attachmentExportTrackProgress;
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result;
 
@@ -2039,94 +2040,108 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
         return;
     }
     NSString *fileName = SlockAttachmentExportFileName(SlockBridgeString(params[@"fileName"]));
-    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
     NSString *requestId = NSUUID.UUID.UUIDString;
+    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    if (downloadId.length == 0) downloadId = requestId;
     self.slock_attachmentExportCallback = callback;
-    self.slock_attachmentExportRequestId = requestId;
+    self.slock_attachmentExportRequestId = @"pending";
     self.slock_attachmentExportFileName = fileName;
-    if (SlockBridgeBool(params[@"trackProgress"])) {
-        NSMutableDictionary *progress = [@{
-            @"status" : @"progress",
-            @"downloadedBytes" : @0
-        } mutableCopy];
-        if (downloadId.length > 0) {
-            progress[@"downloadId"] = downloadId;
-        }
-        callback(progress);
+    self.slock_attachmentExportTrackProgress = SlockBridgeBool(params[@"trackProgress"]);
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSURL *root = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"SlockAttachmentExports"] isDirectory:YES];
+    NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
+    NSURL *targetURL = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
+    NSError *fileError = nil;
+    [fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&fileError];
+    if (fileError) {
+        [self slock_finishAttachmentExport:@{
+            @"status" : @"storage_failed",
+            @"message" : @"Unable to prepare attachment for export"
+        }];
+        return;
     }
+    self.slock_attachmentExportURL = targetURL;
+    NSString *attemptToken =
+        [SharedAttachmentDownloadCoordinator.shared startDownloadId:downloadId
+                                                          targetKey:targetURL.path
+                                                                url:urlText
+                                                         targetPath:targetURL.path
+                                                           observer:self];
+    if (self.slock_attachmentExportCallback) {
+        self.slock_attachmentExportRequestId = attemptToken;
+        if (attemptToken.length == 0) {
+            [self slock_finishAttachmentExport:@{
+                @"status" : @"failed",
+                @"message" : @"Unable to start attachment download"
+            }];
+        }
+    }
+}
 
+- (void)onProgressProgress:(SharedAttachmentDownloadProgress *)progress {
     __weak typeof(self) weakSelf = self;
-    NSURLSessionDownloadTask *task =
-        [NSURLSession.sharedSession downloadTaskWithURL:url
-                                      completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+    SlockBridgeRunOnMain(^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf || ![strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
+        if (!strongSelf.slock_attachmentExportTrackProgress || !strongSelf.slock_attachmentExportCallback ||
+            (strongSelf.slock_attachmentExportRequestId.length > 0 &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:progress.attemptToken])) {
             return;
         }
-        NSHTTPURLResponse *httpResponse = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-        if (error || !location || (httpResponse && (httpResponse.statusCode < 200 || httpResponse.statusCode >= 300))) {
-            SlockBridgeRunOnMain(^{
-                if ([strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
-                    [strongSelf slock_finishAttachmentExport:@{
-                        @"status" : @"failed",
-                        @"message" : @"Unable to download attachment"
-                    }];
-                }
-            });
-            return;
-        }
+        NSMutableDictionary *payload = [@{
+            @"status" : @"progress",
+            @"downloadId" : progress.downloadId ?: @"",
+            @"attemptToken" : progress.attemptToken ?: @"",
+            @"sequence" : @(progress.sequence),
+            @"phase" : progress.phase ?: @"",
+            @"downloadedBytes" : @(progress.downloadedBytes)
+        } mutableCopy];
+        if (progress.totalBytes) payload[@"totalBytes"] = progress.totalBytes;
+        if (progress.percent) payload[@"percent"] = progress.percent;
+        if (progress.bytesPerSecond) payload[@"bytesPerSecond"] = progress.bytesPerSecond;
+        strongSelf.slock_attachmentExportCallback(payload);
+    });
+}
 
-        NSFileManager *fileManager = NSFileManager.defaultManager;
-        NSURL *root = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"SlockAttachmentExports"] isDirectory:YES];
-        NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
-        NSURL *targetURL = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
-        NSError *fileError = nil;
-        [fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&fileError];
-        if (!fileError) {
-            [fileManager removeItemAtURL:targetURL error:nil];
-            if (![fileManager moveItemAtURL:location toURL:targetURL error:&fileError]) {
-                fileError = nil;
-                [fileManager copyItemAtURL:location toURL:targetURL error:&fileError];
-            }
-        }
-        NSDictionary *attributes = fileError ? nil : [fileManager attributesOfItemAtPath:targetURL.path error:&fileError];
-        NSNumber *sizeBytes = attributes[NSFileSize] ?: @0;
-        if (fileError || sizeBytes.unsignedLongLongValue == 0) {
-            [fileManager removeItemAtURL:directory error:nil];
-            SlockBridgeRunOnMain(^{
-                if ([strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
-                    [strongSelf slock_finishAttachmentExport:@{
-                        @"status" : @"storage_failed",
-                        @"message" : @"Unable to prepare attachment for export"
-                    }];
-                }
-            });
+- (void)onCompleteResult:(SharedAttachmentDownloadResult *)result {
+    __weak typeof(self) weakSelf = self;
+    SlockBridgeRunOnMain(^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || !strongSelf.slock_attachmentExportCallback ||
+            (strongSelf.slock_attachmentExportRequestId.length > 0 &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:@"pending"] &&
+             ![strongSelf.slock_attachmentExportRequestId isEqualToString:result.attemptToken])) {
             return;
         }
-
-        SlockBridgeRunOnMain(^{
-            if (![strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
-                [fileManager removeItemAtURL:directory error:nil];
-                return;
-            }
-            UIViewController *controller = [strongSelf slock_currentViewController];
-            if (!controller) {
-                [fileManager removeItemAtURL:directory error:nil];
-                [strongSelf slock_finishAttachmentExport:@{
-                    @"status" : @"storage_failed",
-                    @"message" : @"Unable to open Files"
-                }];
-                return;
-            }
-            strongSelf.slock_attachmentExportURL = targetURL;
-            strongSelf.slock_attachmentExportSizeBytes = sizeBytes;
-            UIDocumentPickerViewController *pickerController =
-                [[UIDocumentPickerViewController alloc] initForExportingURLs:@[targetURL] asCopy:YES];
-            pickerController.delegate = strongSelf;
-            [controller presentViewController:pickerController animated:YES completion:nil];
-        });
-    }];
-    [task resume];
+        if (![result.status isEqualToString:@"complete"]) {
+            [strongSelf slock_finishAttachmentExport:@{
+                @"status" : result.status ?: @"failed",
+                @"message" : result.message ?: @"Unable to download attachment"
+            }];
+            return;
+        }
+        NSURL *targetURL = strongSelf.slock_attachmentExportURL;
+        if (!targetURL) {
+            [strongSelf slock_finishAttachmentExport:@{
+                @"status" : @"storage_failed",
+                @"message" : @"Unable to prepare attachment for export"
+            }];
+            return;
+        }
+        UIViewController *controller = [strongSelf slock_currentViewController];
+        if (!controller) {
+            [strongSelf slock_finishAttachmentExport:@{
+                @"status" : @"storage_failed",
+                @"message" : @"Unable to open Files"
+            }];
+            return;
+        }
+        strongSelf.slock_attachmentExportSizeBytes = @(result.downloadedBytes);
+        UIDocumentPickerViewController *pickerController =
+            [[UIDocumentPickerViewController alloc] initForExportingURLs:@[targetURL] asCopy:YES];
+        pickerController.delegate = strongSelf;
+        [controller presentViewController:pickerController animated:YES completion:nil];
+    });
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
@@ -2153,6 +2168,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     self.slock_attachmentExportURL = nil;
     self.slock_attachmentExportFileName = nil;
     self.slock_attachmentExportSizeBytes = nil;
+    self.slock_attachmentExportTrackProgress = NO;
     if (exportURL) {
         [NSFileManager.defaultManager removeItemAtURL:[exportURL URLByDeletingLastPathComponent] error:nil];
     }
@@ -2179,10 +2195,19 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 
 - (void)attachmentDownloadControl:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback([self slock_unsupportedResultWithCode:@"attachment_download_unavailable"
-                                               message:@"Attachment downloads are out of scope for iOS P0 host bridge"]);
+    if (!callback) return;
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    NSString *attemptToken = SlockBridgeString(params[@"attemptToken"]);
+    NSString *action = SlockBridgeString(params[@"action"]);
+    if (downloadId.length == 0 || action.length == 0) {
+        callback(@{ @"status" : @"failed", @"message" : @"Missing download control field" });
+        return;
     }
+    NSString *status = [SharedAttachmentDownloadCoordinator.shared controlDownloadId:downloadId
+                                                              expectedAttemptToken:attemptToken
+                                                                            action:action];
+    callback(@{ @"status" : status ?: @"failed" });
 }
 
 - (void)relationalStore:(NSDictionary *)args {

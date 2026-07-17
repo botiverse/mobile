@@ -14,6 +14,7 @@ import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
 import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
+import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
@@ -4089,6 +4090,7 @@ internal fun SharedThreadRouteContent(
     var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
+    var nextAttachmentDownloadGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     var inlineVideoPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
@@ -4994,7 +4996,8 @@ internal fun SharedThreadRouteContent(
     }
     fun openAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        val downloadId = attachment.threadAttachmentDownloadId()
+        nextAttachmentDownloadGeneration += 1L
+        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
         attachmentOpenStates =
             attachmentOpenStates +
                 (attachment.id to ThreadAttachmentOpenUiState(
@@ -5010,14 +5013,20 @@ internal fun SharedThreadRouteContent(
                     attachment = attachment,
                     downloadId = downloadId,
                     onProgress = { progress ->
-                        if (progress.downloadId.isNotBlank() && progress.downloadId != downloadId) return@openSharedThreadAttachment
                         val current = attachmentOpenStates[attachment.id]
                         if (current?.downloadId != downloadId) return@openSharedThreadAttachment
+                        val reduced =
+                            reduceAttachmentDownloadProgress(
+                                current = current.progress,
+                                incoming = progress,
+                                expectedDownloadId = downloadId
+                            )
+                        if (reduced === current.progress) return@openSharedThreadAttachment
                         attachmentOpenStates =
                             attachmentOpenStates +
                                 (attachment.id to current.copy(
-                                    status = if (progress.status == "paused") "paused" else "downloading",
-                                    progress = progress.copy(downloadId = progress.downloadId.ifBlank { downloadId })
+                                    status = if (reduced?.status == "paused") "paused" else "downloading",
+                                    progress = reduced
                                 ))
                     }
                 )
@@ -5039,7 +5048,8 @@ internal fun SharedThreadRouteContent(
     }
     fun saveAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        val downloadId = attachment.threadAttachmentDownloadId()
+        nextAttachmentDownloadGeneration += 1L
+        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
         attachmentOpenStates =
             attachmentOpenStates +
                 (attachment.id to ThreadAttachmentOpenUiState(
@@ -5055,14 +5065,20 @@ internal fun SharedThreadRouteContent(
                     attachment = attachment,
                     downloadId = downloadId,
                     onProgress = { progress ->
-                        if (progress.downloadId.isNotBlank() && progress.downloadId != downloadId) return@saveSharedThreadAttachment
                         val current = attachmentOpenStates[attachment.id]
                         if (current?.downloadId != downloadId) return@saveSharedThreadAttachment
+                        val reduced =
+                            reduceAttachmentDownloadProgress(
+                                current = current.progress,
+                                incoming = progress,
+                                expectedDownloadId = downloadId
+                            )
+                        if (reduced === current.progress) return@saveSharedThreadAttachment
                         attachmentOpenStates =
                             attachmentOpenStates +
                                 (attachment.id to current.copy(
-                                    status = if (progress.status == "paused") "paused" else "downloading",
-                                    progress = progress.copy(downloadId = progress.downloadId.ifBlank { downloadId })
+                                    status = if (reduced?.status == "paused") "paused" else "downloading",
+                                    progress = reduced
                                 ))
                     }
                 )
@@ -18032,8 +18048,8 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
 
-private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(): String =
-    listOf("thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
+private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(generation: Long): String =
+    listOf("attempt-$generation", "thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
         .joinToString(":")
         .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
         .take(160)

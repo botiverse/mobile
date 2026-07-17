@@ -1,6 +1,7 @@
 package build.raft.app.base
 
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
+import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.slockLogDebug
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
@@ -15,6 +16,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.atomicfu.atomic
 
 internal enum class BridgeLogLevel(
     val wireValue: String
@@ -39,6 +41,7 @@ internal enum class BridgeLogLevel(
 internal fun BridgeLogLevel.mirrorsToConsole(): Boolean = this != BridgeLogLevel.Debug
 
 internal class BridgeModule : Module() {
+    private val nextAttachmentDownloadId = atomic(0L)
 
     override fun moduleName(): String {
         return MODULE_NAME
@@ -341,12 +344,14 @@ internal class BridgeModule : Module() {
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
+            val resolvedDownloadId = attachmentDownloadId(downloadId, attachmentId, fileName)
+            var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
             methodArgs.put("trackProgress", onProgress != null)
-            downloadId?.takeIf { it.isNotBlank() }?.let { methodArgs.put("downloadId", it) }
+            methodArgs.put("downloadId", resolvedDownloadId)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null
             var completed = false
@@ -360,7 +365,9 @@ internal class BridgeModule : Module() {
                             return@toNative
                         }
                         if (payload?.optString("status") == "progress") {
-                            onProgress?.invoke(payload.toBridgeAttachmentDownloadProgress())
+                            val progress = payload.toBridgeAttachmentDownloadProgress()
+                            activeAttemptToken = progress.attemptToken.takeIf { it.isNotBlank() }
+                            onProgress?.invoke(progress)
                             return@toNative
                         }
                         completed = true
@@ -371,6 +378,12 @@ internal class BridgeModule : Module() {
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
+                AttachmentDownloadCoordinator.control(
+                    downloadId = resolvedDownloadId,
+                    expectedAttemptToken = activeAttemptToken,
+                    action = "cancel"
+                )
+                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
                 callbackRef?.let { removeCallback(it) }
             }
         }
@@ -384,12 +397,14 @@ internal class BridgeModule : Module() {
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
+            val resolvedDownloadId = attachmentDownloadId(downloadId, attachmentId, fileName)
+            var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
             methodArgs.put("trackProgress", onProgress != null)
-            downloadId?.takeIf { it.isNotBlank() }?.let { methodArgs.put("downloadId", it) }
+            methodArgs.put("downloadId", resolvedDownloadId)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null
             var completed = false
@@ -403,7 +418,9 @@ internal class BridgeModule : Module() {
                             return@toNative
                         }
                         if (payload?.optString("status") == "progress") {
-                            onProgress?.invoke(payload.toBridgeAttachmentDownloadProgress())
+                            val progress = payload.toBridgeAttachmentDownloadProgress()
+                            activeAttemptToken = progress.attemptToken.takeIf { it.isNotBlank() }
+                            onProgress?.invoke(progress)
                             return@toNative
                         }
                         completed = true
@@ -414,30 +431,66 @@ internal class BridgeModule : Module() {
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
+                AttachmentDownloadCoordinator.control(
+                    downloadId = resolvedDownloadId,
+                    expectedAttemptToken = activeAttemptToken,
+                    action = "cancel"
+                )
+                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
                 callbackRef?.let { removeCallback(it) }
             }
         }
 
-    suspend fun attachmentDownloadControl(downloadId: String, action: String): JSONObject? =
-        suspendCancellableCoroutine { continuation ->
-            val methodArgs = JSONObject()
-            methodArgs.put("downloadId", downloadId)
-            methodArgs.put("action", action)
-            val result =
-                toNative(
-                    methodName = ATTACHMENT_DOWNLOAD_CONTROL,
-                    param = methodArgs.toString(),
-                    callback = { payload ->
-                        if (continuation.isActive) {
-                            continuation.resume(payload)
+    suspend fun attachmentDownloadControl(
+        downloadId: String,
+        expectedAttemptToken: String? = null,
+        action: String
+    ): JSONObject {
+        val commonStatus =
+            AttachmentDownloadCoordinator.control(
+                downloadId = downloadId,
+                expectedAttemptToken = expectedAttemptToken,
+                action = action
+            )
+        val isStop = action == "cancel" || action == "stop"
+        if (commonStatus != "missing" && !isStop) {
+            return JSONObject().apply { put("status", commonStatus) }
+        }
+        return suspendCoroutine { continuation ->
+            requestAttachmentDownloadControl(downloadId, expectedAttemptToken, action) { payload ->
+                val nativeStatus = payload?.optString("status").orEmpty()
+                continuation.resume(
+                    when {
+                        nativeStatus.isNotBlank() && nativeStatus != "missing" -> payload!!
+                        commonStatus != "missing" -> JSONObject().apply { put("status", commonStatus) }
+                        else -> payload ?: JSONObject().apply {
+                            put("status", "failed")
+                            put("message", "Download control did not return a result")
                         }
-                    },
-                    syncCall = false
+                    }
                 )
-            continuation.invokeOnCancellation {
-                result.callbackRef?.let { removeCallback(it) }
             }
         }
+    }
+
+    private fun requestAttachmentDownloadControl(
+        downloadId: String,
+        expectedAttemptToken: String?,
+        action: String,
+        callback: ((JSONObject?) -> Unit)? = null
+    ) {
+        val methodArgs = JSONObject()
+        methodArgs.put("downloadId", downloadId)
+        methodArgs.put("commonHandled", true)
+        expectedAttemptToken?.takeIf { it.isNotBlank() }?.let { methodArgs.put("attemptToken", it) }
+        methodArgs.put("action", action)
+        callNativeMethod(ATTACHMENT_DOWNLOAD_CONTROL, methodArgs, callback)
+    }
+
+    private fun attachmentDownloadId(explicit: String?, attachmentId: String, fileName: String): String =
+        explicit?.trim()?.takeIf { it.isNotBlank() }
+            ?: "bridge:${attachmentId.hashCode().toUInt().toString(16)}:" +
+                "${fileName.hashCode().toUInt().toString(16)}:${nextAttachmentDownloadId.incrementAndGet()}"
 
     suspend fun attachmentCacheStatus(
         attachmentId: String,
@@ -917,6 +970,9 @@ internal class BridgeModule : Module() {
 
 internal data class BridgeAttachmentDownloadProgress(
     val downloadId: String = "",
+    val attemptToken: String = "",
+    val sequence: Long = 0L,
+    val phase: String = "receiving",
     val status: String = "progress",
     val percent: Int?,
     val downloadedBytes: Long,
@@ -926,20 +982,65 @@ internal data class BridgeAttachmentDownloadProgress(
 
 internal fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
     val totalBytes = optString("totalBytes").toLongOrNull()?.takeIf { it > 0L }
-    val downloadedBytes = optString("downloadedBytes").toLongOrNull() ?: 0L
+    val downloadedBytes = (optString("downloadedBytes").toLongOrNull() ?: 0L).coerceAtLeast(0L)
     val bytesPerSecond = optString("bytesPerSecond").toLongOrNull()?.takeIf { it > 0L }
+    val explicitPercent = optString("percent").toIntOrNull()?.coerceIn(0, 100)
     val percent =
-        optString("percent").toIntOrNull()
-            ?.coerceIn(0, 100)
-            ?: totalBytes?.let { total ->
-                if (total <= 0L) null else ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
-    }
+        when {
+            explicitPercent == 100 -> 100
+            downloadedBytes <= 0L -> null
+            explicitPercent != null -> explicitPercent.coerceIn(1, 99)
+            totalBytes != null ->
+                ((downloadedBytes.toDouble() * 100.0) / totalBytes.toDouble())
+                    .toInt()
+                    .coerceIn(1, 99)
+            else -> null
+        }
     return BridgeAttachmentDownloadProgress(
         downloadId = optString("downloadId"),
+        attemptToken = optString("attemptToken"),
+        sequence = optString("sequence").toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
+        phase = optString("phase").ifBlank { if (downloadedBytes > 0L) "receiving" else "response_wait" },
         status = optString("status").ifBlank { "progress" },
         percent = percent,
         downloadedBytes = downloadedBytes,
         totalBytes = totalBytes,
         bytesPerSecond = bytesPerSecond
+    )
+}
+
+/**
+ * Request-scoped monotonic reducer for attachment transfer samples.
+ *
+ * Native callbacks and render scheduling are asynchronous. A late sample must never rewind the
+ * visible byte count, percentage, or sequence for the active download attempt.
+ */
+internal fun reduceAttachmentDownloadProgress(
+    current: BridgeAttachmentDownloadProgress?,
+    incoming: BridgeAttachmentDownloadProgress,
+    expectedDownloadId: String
+): BridgeAttachmentDownloadProgress? {
+    if (incoming.downloadId.isBlank() || incoming.downloadId != expectedDownloadId) return current
+    if (current == null || current.downloadId != incoming.downloadId) return incoming
+    if (current.attemptToken.isNotBlank() && incoming.attemptToken.isNotBlank() &&
+        current.attemptToken != incoming.attemptToken
+    ) {
+        return if (
+            incoming.sequence == 1L &&
+                (incoming.phase == "response_wait" || incoming.phase == "export_insert")
+        ) {
+            incoming
+        } else {
+            current
+        }
+    }
+    if (incoming.sequence > 0L && current.sequence > 0L && incoming.sequence <= current.sequence) return current
+    if (incoming.downloadedBytes < current.downloadedBytes) return current
+    val currentPercent = current.percent
+    val incomingPercent = incoming.percent
+    if (currentPercent != null && incomingPercent != null && incomingPercent < currentPercent) return current
+    return incoming.copy(
+        totalBytes = incoming.totalBytes ?: current.totalBytes,
+        percent = incomingPercent ?: currentPercent?.takeIf { incoming.downloadedBytes > 0L }
     )
 }

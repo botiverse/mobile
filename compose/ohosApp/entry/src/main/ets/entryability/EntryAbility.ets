@@ -20,6 +20,10 @@ import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
 import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
+import {
+  SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
+  slockOhosAttachmentDownloadSink
+} from '../kuikly/SlockOhosAttachmentDownloadSink';
 import { Hands } from '@botiverse/hands';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
@@ -214,6 +218,10 @@ export default class EntryAbility extends UIAbility {
     registerSingleServiceProvider(
       SLOCK_SHARED_LOG_SINK_SERVICE,
       new SlockOhosSharedLogSink()
+    );
+    registerSingleServiceProvider(
+      SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
+      slockOhosAttachmentDownloadSink
     );
     // KmmResource contract: must complete after KNOI setup()/init() and
     // before any Kuikly/shared page exists — the first shared

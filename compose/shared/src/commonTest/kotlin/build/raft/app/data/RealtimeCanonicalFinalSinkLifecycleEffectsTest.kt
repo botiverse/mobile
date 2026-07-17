@@ -113,6 +113,27 @@ class RealtimeCanonicalFinalSinkLifecycleEffectsTest {
     }
 
     @Test
+    fun oldDisposeCannotDeleteAReplacementThatLegallyRemountedAgain() {
+        val fixture = CanonicalFinalGatewayFixture()
+        try {
+            val grant = fixture.grant()
+            val old = assertNotNull(
+                fixture.effects.mount(grant.scopeLeaseId, grant.serverId, RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature("route-a")) {},
+            )
+            fixture.effects.mount(grant.scopeLeaseId, grant.serverId, RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature("route-a")) {}
+            val remounted = assertNotNull(
+                fixture.effects.mount(grant.scopeLeaseId, grant.serverId, RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature("route-a")) {},
+            )
+
+            assertFalse(fixture.effects.dispose(old))
+            assertEquals(listOf(remounted), fixture.directory.capture(grant.scopeLeaseId, grant.serverId).map { it.handle })
+            assertTrue(fixture.effects.dispose(remounted))
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun selectedRankAndBackgroundIsolationUseTheSameProductionBinder() {
         val fixture = CanonicalFinalGatewayFixture()
         try {

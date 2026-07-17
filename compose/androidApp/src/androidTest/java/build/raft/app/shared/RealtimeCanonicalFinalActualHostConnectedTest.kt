@@ -123,7 +123,10 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertRegistrations(standaloneFirst, standaloneThreadSlots(nonce))
         assertRotationStable(standaloneFirst, standaloneRotated, expectedTokenEvent = "TokensRotated:2")
         assertReplacementChanged(standaloneFirst, standaloneReplacement)
-        assertSameRegistrations(standaloneReplacement, standaloneOldDisposed)
+        assertSuccessorRetainedAfterOldDispose(standaloneFirst, standaloneReplacement, standaloneOldDisposed)
+        val standaloneDisposeWitness = compactFields(standaloneOldDisposed, "standaloneDisposeWitness")
+        assertNotEquals(standaloneDisposeWitness.getValue("oc"), standaloneDisposeWitness.getValue("cc"))
+        assertNotEquals(standaloneDisposeWitness.getValue("of"), standaloneDisposeWitness.getValue("cf"))
         assertAuthorityPresent(standaloneFinalComponent)
         assertRegistrations(standaloneFinalComponent, emptyList())
         assertAuthorityAbsent(standaloneOuterReleased)
@@ -254,6 +257,26 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertEquals(registrations(expected), registrations(actual))
     }
 
+    private fun assertSuccessorRetainedAfterOldDispose(
+        old: JSONObject,
+        replacement: JSONObject,
+        afterOldDispose: JSONObject,
+    ) {
+        assertEquals(replacement.getString("lease"), afterOldDispose.getString("lease"))
+        val oldRecords = registrations(old)
+        val replacementRecords = registrations(replacement)
+        val currentRecords = registrations(afterOldDispose)
+        assertEquals(replacementRecords.map(RegistrationRecord::slot), currentRecords.map(RegistrationRecord::slot))
+        val oldBySlot = oldRecords.associateBy(RegistrationRecord::slot)
+        currentRecords.forEach { current ->
+            assertNotEquals(
+                "old component dispose must not restore or retain its captured exact handle",
+                oldBySlot.getValue(current.slot).registrationId,
+                current.registrationId,
+            )
+        }
+    }
+
     private fun assertRegistrations(payload: JSONObject, expected: List<RegistrationSlot>) {
         val records = registrations(payload)
         assertEquals(expected, records.map(RegistrationRecord::slot))
@@ -281,11 +304,15 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
     }
 
     private fun probe(payload: JSONObject): Map<String, String> {
-        val raw = payload.getString("probe")
-        assertTrue("Missing canonical projection probe in phase payload.", raw.isNotBlank())
+        return compactFields(payload, "probe")
+    }
+
+    private fun compactFields(payload: JSONObject, key: String): Map<String, String> {
+        val raw = payload.getString(key)
+        assertTrue("Missing $key in phase payload.", raw.isNotBlank())
         return raw.split(',').associate { field ->
             val separator = field.indexOf('=')
-            assertTrue("Malformed probe field: $field", separator > 0)
+            assertTrue("Malformed $key field: $field", separator > 0)
             field.substring(0, separator) to field.substring(separator + 1)
         }
     }

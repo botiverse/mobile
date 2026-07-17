@@ -478,6 +478,7 @@ jobs:
         run: |
           ./gradlew \
             -PslockVisualFixtures=true \
+            :shared:assembleDebugAndroidTest \
             :androidApp:assembleConnectedTest \
             :androidApp:assembleConnectedTestAndroidTest \
             --no-daemon \
@@ -490,6 +491,14 @@ jobs:
           path: |
             compose/androidApp/build/outputs/apk/connectedTest/*.apk
             compose/androidApp/build/outputs/apk/androidTest/connectedTest/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload shared atomic-sink test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-shared-atomic-sink-test-apk
+          path: compose/shared/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -525,6 +534,24 @@ jobs:
           name: android-connected-test-apks
           path: android-connected-test-apks
 
+      - name: Download shared atomic-sink test APK
+        uses: actions/download-artifact@v4
+        with:
+          name: android-shared-atomic-sink-test-apk
+          path: android-shared-atomic-sink-test-apk
+
+      - name: List downloaded APK members
+        run: |
+          find android-connected-test-apks -type f -name '*.apk' -print
+          find android-shared-atomic-sink-test-apk -type f -name '*.apk' -print
+          test "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | wc -l)" -eq 1
+          shared_test_apk="$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$aapt_bin"
+          "$aapt_bin" dump badging "$shared_test_apk" | tee shared-atomic-sink-test-apk-badging.txt
+          grep -Fq "package: name='build.raft.app.shared.test'" shared-atomic-sink-test-apk-badging.txt
+          grep -Fq "targetSdkVersion:'34'" shared-atomic-sink-test-apk-badging.txt
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -550,13 +577,29 @@ jobs:
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
             cat first-character-baseline-instrumentation.txt
             grep -Fq 'OK (1 test)' first-character-baseline-instrumentation.txt
+            adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
+            adb shell pm list instrumentation | tee attachment-atomic-sink-instrumentation.txt
+            grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-instrumentation.txt
+            adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee -a attachment-atomic-sink-instrumentation.txt
+            grep -Fq 'OK (2 tests)' attachment-atomic-sink-instrumentation.txt
+            adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadCoordinatorRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee attachment-download-runtime-instrumentation.txt
+            grep -Fq 'OK (6 tests)' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=slow_complete' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=cancel_paths' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=pause_resume' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=whole_timeout' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=publishing_replacement' attachment-download-runtime-instrumentation.txt
+            grep -Fq 'TASK2_RUNTIME scenario=generation_safety' attachment-download-runtime-instrumentation.txt
 
       - name: Upload instrumentation output
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: first-character-baseline-instrumentation
-          path: first-character-baseline-instrumentation.txt
+          path: |
+            first-character-baseline-instrumentation.txt
+            attachment-atomic-sink-instrumentation.txt
+            attachment-download-runtime-instrumentation.txt
           if-no-files-found: warn
           retention-days: 7
 
@@ -596,8 +639,14 @@ jobs:
             TEST_CLASS=build.raft.app.shared.RealtimeCanonicalFinalActualHostConnectedTest
             CHAIN="CFH_${GITHUB_RUN_ID: -8}_${GITHUB_RUN_ATTEMPT}"
             TARGET_UID=""
+            INSTRUMENT_PID=""
+            LOGCAT_PID=""
             cleanup() {
               set +eu
+              if test -n "${LOGCAT_PID:-}"; then
+                kill "$LOGCAT_PID" 2>/dev/null || true
+                wait "$LOGCAT_PID" 2>/dev/null || true
+              fi
               if test -n "${TARGET_UID:-}"; then
                 adb shell iptables -w -D OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
                 adb shell ip6tables -w -D OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
@@ -612,9 +661,41 @@ jobs:
             adb wait-for-device
             adb root
             adb wait-for-device
+            for attempt in $(seq 1 120); do
+              if test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 && adb shell cmd package list packages >/dev/null 2>&1; then
+                break
+              fi
+              sleep 0.5
+            done
+            test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+            adb shell cmd package list packages >/dev/null
             test "$(adb shell id -u | tr -d '\r')" = 0
-            adb install -r "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
-            adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
+            test "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | wc -l)" -eq 1
+            test "$(find android-connected-test-apks -type f -name '*androidTest.apk' | wc -l)" -eq 1
+            APP_APK="$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
+            APP_TEST_APK="$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
+            AAPT_BIN="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+            test -x "$AAPT_BIN"
+            "$AAPT_BIN" dump badging "$APP_APK" | tee canonical-final-app-apk-badging.txt
+            "$AAPT_BIN" dump badging "$APP_TEST_APK" | tee canonical-final-test-apk-badging.txt
+            grep -Fq "package: name='$PACKAGE'" canonical-final-app-apk-badging.txt
+            grep -Fq "package: name='$TEST_PACKAGE'" canonical-final-test-apk-badging.txt
+            adb install -r "$APP_APK"
+            adb install -r "$APP_TEST_APK"
+            for attempt in $(seq 1 60); do
+              if adb shell pm path "$PACKAGE" | grep -Fq package: && adb shell pm path "$TEST_PACKAGE" | grep -Fq package:; then
+                break
+              fi
+              sleep 0.5
+            done
+            adb shell pm path "$PACKAGE" | tee canonical-final-target-package-path.txt
+            adb shell pm path "$TEST_PACKAGE" | tee canonical-final-test-package-path.txt
+            grep -Fq package: canonical-final-target-package-path.txt
+            grep -Fq package: canonical-final-test-package-path.txt
+            adb shell pm list instrumentation | tee canonical-final-instrumentation-list.txt
+            grep -Fq "instrumentation:$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner" canonical-final-instrumentation-list.txt
+            adb shell dumpsys package "$PACKAGE" > canonical-final-target-package.txt
+            adb shell dumpsys package "$TEST_PACKAGE" > canonical-final-test-package.txt
 
             PID_BEFORE="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
             printf 'pid_before=%s\n' "$PID_BEFORE" > canonical-final-process.txt
@@ -645,7 +726,9 @@ jobs:
             test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-before.txt)" = "0 0"
 
             adb logcat -c
-            adb shell am instrument -w -r -e class "$TEST_CLASS" "$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner" > canonical-final-instrumentation.txt &
+            adb logcat -v threadtime > canonical-final-logcat-live.txt &
+            LOGCAT_PID=$!
+            (set +e; adb shell am instrument -w -r -e class "$TEST_CLASS" "$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner" > canonical-final-instrumentation.txt 2>&1; echo "$?" > canonical-final-instrumentation-status.txt) &
             INSTRUMENT_PID=$!
             PID_DURING=""
             for attempt in $(seq 1 200); do
@@ -655,20 +738,23 @@ jobs:
               fi
               sleep 0.1
             done
-            test -n "$PID_DURING"
             printf 'pid_during=%s\n' "$PID_DURING" >> canonical-final-process.txt
-            if test -n "$PID_BEFORE"; then
+            if test -n "$PID_BEFORE" && test -n "$PID_DURING"; then
               test "$PID_DURING" != "$PID_BEFORE"
             fi
-            set +e
             wait "$INSTRUMENT_PID"
-            INSTRUMENT_STATUS=$?
-            set -e
+            INSTRUMENT_STATUS="$(cat canonical-final-instrumentation-status.txt)"
+            kill "$LOGCAT_PID" 2>/dev/null || true
+            wait "$LOGCAT_PID" 2>/dev/null || true
+            LOGCAT_PID=""
             cat canonical-final-instrumentation.txt
             adb shell iptables -w -L "$CHAIN" -n -v -x > canonical-final-iptables-after.txt
             adb shell ip6tables -w -L "$CHAIN" -n -v -x > canonical-final-ip6tables-after.txt
             adb logcat -d -v threadtime > canonical-final-logcat.txt
-            grep 'canonical_final_actual_host_trace' canonical-final-logcat.txt > canonical-final-trace.txt
+            adb shell ps -A > canonical-final-process-list.txt
+            adb shell pm list instrumentation > canonical-final-instrumentation-list-after.txt
+            grep 'canonical_final_actual_host_trace' canonical-final-logcat.txt > canonical-final-trace.txt || true
+            test -n "$PID_DURING"
             test "$INSTRUMENT_STATUS" = 0
             grep -Fq 'OK (1 test)' canonical-final-instrumentation.txt
             if grep -Eiq '(^|[^0-9])0 tests|skipped|ignored|assumption.*fail' canonical-final-instrumentation.txt; then
@@ -734,8 +820,18 @@ jobs:
           name: canonical-final-actual-host-evidence
           path: |
             canonical-final-instrumentation.txt
+            canonical-final-instrumentation-status.txt
+            canonical-final-instrumentation-list.txt
+            canonical-final-instrumentation-list-after.txt
+            canonical-final-app-apk-badging.txt
+            canonical-final-test-apk-badging.txt
+            canonical-final-target-package-path.txt
+            canonical-final-test-package-path.txt
+            canonical-final-target-package.txt
+            canonical-final-test-package.txt
             canonical-final-pm-clear.txt
             canonical-final-process.txt
+            canonical-final-process-list.txt
             canonical-final-iptables-identity.txt
             canonical-final-iptables-before.txt
             canonical-final-iptables-after.txt
@@ -743,6 +839,7 @@ jobs:
             canonical-final-ip6tables-after.txt
             canonical-final-trace.txt
             canonical-final-logcat.txt
+            canonical-final-logcat-live.txt
           if-no-files-found: warn
           retention-days: 7
 
