@@ -9,9 +9,11 @@
 #import <mach/mach_time.h>
 #import <os/lock.h>
 #import <pthread.h>
+#import <PhotosUI/PhotosUI.h>
 #import <stdatomic.h>
 #import <string.h>
 #import <time.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 
 #if __has_include("RaftIosBuildMetadata.h")
@@ -41,6 +43,7 @@ static unsigned long long const SlockDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
 static NSUInteger const SlockDiagnosticsLogMaxFiles = 4;
 static NSUInteger const SlockDiagnosticsMaxLaunchSessions = 5;
 static NSUInteger const SlockDiagnosticsAttachmentMaxLogFiles = 20;
+static NSUInteger const SlockAttachmentPickerMaxFiles = 10;
 static NSUInteger const SlockDiagnosticsMinimumRetainedSnapshotCount = 5;
 static NSTimeInterval const SlockDiagnosticsFeedbackPruneMinimumAgeSeconds = 24.0 * 60.0 * 60.0;
 static NSUInteger const SlockDiagnosticsOutstandingLimit = 512;
@@ -1749,7 +1752,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     return trimmed.length > 0 ? trimmed : @"attachment";
 }
 
-@interface HRBridgeModule () <UIDocumentPickerDelegate, SharedAttachmentDownloadObserver>
+@interface HRBridgeModule () <UIDocumentPickerDelegate, PHPickerViewControllerDelegate, SharedAttachmentDownloadObserver>
 
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
@@ -1757,8 +1760,12 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 @property(nonatomic, copy, nullable) NSString *slock_attachmentExportFileName;
 @property(nonatomic, strong, nullable) NSNumber *slock_attachmentExportSizeBytes;
 @property(nonatomic) BOOL slock_attachmentExportTrackProgress;
+@property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentPickerCallback;
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result;
+- (void)slock_finishAttachmentPicker:(NSDictionary *)result;
+- (NSDictionary *)slock_attachmentPickerResultForURLs:(NSArray<NSURL *> *)urls;
+- (void)slock_handlePhotoPickerResults:(NSArray<PHPickerResult *> *)results;
 
 @end
 
@@ -1987,14 +1994,60 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 
 - (void)threadAttachmentUpload:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback(@{
-            @"code" : @204,
-            @"bodyText" : @"",
-            @"errorCode" : @"attachment_picker_unavailable",
-            @"errorBodyText" : @"Attachment picker unavailable on iOS P0 host bridge"
-        });
+    if (!callback) {
+        return;
     }
+    NSDictionary *params = SlockBridgeParams(args);
+    BOOL imageOnly = SlockBridgeBool(params[@"imageOnly"]);
+    __weak typeof(self) weakSelf = self;
+    SlockBridgeRunOnMain(^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
+            callback(@{
+                @"code" : @0,
+                @"bodyText" : @"",
+                @"errorCode" : @"attachment_picker_unavailable",
+                @"errorBodyText" : @"Attachment picker unavailable"
+            });
+            return;
+        }
+        if (strongSelf.slock_attachmentPickerCallback || strongSelf.slock_attachmentExportCallback) {
+            callback(@{
+                @"code" : @409,
+                @"bodyText" : @"",
+                @"errorCode" : @"attachment_picker_busy",
+                @"errorBodyText" : @"Attachment picker already open"
+            });
+            return;
+        }
+        UIViewController *controller = [strongSelf slock_currentViewController];
+        if (!controller) {
+            callback(@{
+                @"code" : @0,
+                @"bodyText" : @"",
+                @"errorCode" : @"attachment_picker_unavailable",
+                @"errorBodyText" : @"Unable to open Files"
+            });
+            return;
+        }
+        if (imageOnly) {
+            PHPickerConfiguration *configuration = [[PHPickerConfiguration alloc] initWithPhotoLibrary:PHPhotoLibrary.sharedPhotoLibrary];
+            configuration.filter = [PHPickerFilter anyFilterMatchingSubfilters:@[ PHPickerFilter.imagesFilter, PHPickerFilter.videosFilter ]];
+            configuration.selectionLimit = SlockAttachmentPickerMaxFiles;
+            PHPickerViewController *pickerController = [[PHPickerViewController alloc] initWithConfiguration:configuration];
+            pickerController.delegate = strongSelf;
+            strongSelf.slock_attachmentPickerCallback = callback;
+            [controller presentViewController:pickerController animated:YES completion:nil];
+            return;
+        }
+        NSArray<UTType *> *contentTypes = @[ UTTypeItem ];
+        UIDocumentPickerViewController *pickerController =
+            [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:contentTypes asCopy:YES];
+        pickerController.allowsMultipleSelection = YES;
+        pickerController.delegate = strongSelf;
+        strongSelf.slock_attachmentPickerCallback = callback;
+        [controller presentViewController:pickerController animated:YES completion:nil];
+    });
 }
 
 - (void)socialAuth:(NSDictionary *)args {
@@ -2022,7 +2075,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     if (!callback) {
         return;
     }
-    if (self.slock_attachmentExportCallback) {
+    if (self.slock_attachmentExportCallback || self.slock_attachmentPickerCallback) {
         callback(@{
             @"status" : @"failed",
             @"message" : @"Another file save is already active"
@@ -2145,6 +2198,21 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    if (self.slock_attachmentPickerCallback) {
+        NSArray<NSURL *> *pickedURLs = [urls copy] ?: @[];
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
+            NSDictionary *result = [strongSelf slock_attachmentPickerResultForURLs:pickedURLs];
+            SlockBridgeRunOnMain(^{
+                [strongSelf slock_finishAttachmentPicker:result];
+            });
+        });
+        return;
+    }
     NSURL *savedURL = urls.firstObject;
     [self slock_finishAttachmentExport:@{
         @"status" : @"saved",
@@ -2157,7 +2225,291 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 }
 
 - (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    if (self.slock_attachmentPickerCallback) {
+        [self slock_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+        return;
+    }
     [self slock_finishAttachmentExport:@{ @"status" : @"cancelled" }];
+}
+
+- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
+    [picker dismissViewControllerAnimated:YES completion:nil];
+    if (!self.slock_attachmentPickerCallback) {
+        return;
+    }
+    if (results.count == 0) {
+        [self slock_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
+        return;
+    }
+    [self slock_handlePhotoPickerResults:results];
+}
+
+- (void)slock_handlePhotoPickerResults:(NSArray<PHPickerResult *> *)results {
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSURL *cacheRoot = [[fileManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject
+        URLByAppendingPathComponent:@"SlockPickedAttachments" isDirectory:YES];
+    NSURL *stagingDirectory = [cacheRoot URLByAppendingPathComponent:[NSString stringWithFormat:@"photo-%@", [NSUUID UUID].UUIDString]
+                                                           isDirectory:YES];
+    NSError *directoryError = nil;
+    if (![fileManager createDirectoryAtURL:stagingDirectory
+               withIntermediateDirectories:YES
+                                attributes:nil
+                                     error:&directoryError]) {
+        [self slock_finishAttachmentPicker:@{
+            @"code" : @400,
+            @"bodyText" : @"",
+            @"errorCode" : @"attachment_read_failed",
+            @"errorBodyText" : directoryError.localizedDescription ?: @"Attachment cache unavailable"
+        }];
+        return;
+    }
+
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_queue_t resultQueue = dispatch_queue_create("build.raft.ios.attachment-picker", DISPATCH_QUEUE_SERIAL);
+    NSMutableDictionary<NSNumber *, NSURL *> *pickedURLsByIndex = [NSMutableDictionary dictionary];
+    NSMutableArray<NSDictionary *> *providerErrors = [NSMutableArray array];
+    [results enumerateObjectsUsingBlock:^(PHPickerResult *result, NSUInteger index, BOOL *stop) {
+        NSItemProvider *provider = result.itemProvider;
+        NSString *typeIdentifier =
+            [provider hasItemConformingToTypeIdentifier:UTTypeImage.identifier] ? UTTypeImage.identifier :
+            [provider hasItemConformingToTypeIdentifier:UTTypeMovie.identifier] ? UTTypeMovie.identifier :
+            provider.registeredTypeIdentifiers.firstObject;
+        if (typeIdentifier.length == 0) {
+            dispatch_sync(resultQueue, ^{
+                [providerErrors addObject:@{
+                    @"index" : @(index),
+                    @"errorCode" : @"attachment_type_unsupported",
+                    @"message" : @"Unsupported attachment type"
+                }];
+            });
+            return;
+        }
+        dispatch_group_enter(group);
+        [provider loadFileRepresentationForTypeIdentifier:typeIdentifier
+                                        completionHandler:^(NSURL *url, NSError *error) {
+            NSMutableDictionary *failure = nil;
+            NSURL *cachedURL = nil;
+            if (!url || error) {
+                failure = [@{
+                    @"index" : @(index),
+                    @"errorCode" : @"attachment_read_failed",
+                    @"message" : error.localizedDescription ?: @"Attachment read failed"
+                } mutableCopy];
+            } else {
+                NSString *suggestedName = provider.suggestedName;
+                NSString *fileName = SlockAttachmentExportFileName(
+                    suggestedName.length > 0 ? suggestedName : (url.lastPathComponent ?: @"attachment")
+                );
+                if (fileName.pathExtension.length == 0 && url.pathExtension.length > 0) {
+                    fileName = [fileName stringByAppendingPathExtension:url.pathExtension];
+                }
+                NSString *uniqueName = [NSString stringWithFormat:@"picked-%@-%lu-%@",
+                                                                  [NSUUID UUID].UUIDString,
+                                                                  (unsigned long)index,
+                                                                  fileName];
+                cachedURL = [stagingDirectory URLByAppendingPathComponent:uniqueName isDirectory:NO];
+                NSError *copyError = nil;
+                if (![fileManager copyItemAtURL:url toURL:cachedURL error:&copyError]) {
+                    cachedURL = nil;
+                    failure = [@{
+                        @"index" : @(index),
+                        @"errorCode" : @"attachment_read_failed",
+                        @"message" : copyError.localizedDescription ?: @"Attachment read failed"
+                    } mutableCopy];
+                }
+            }
+            dispatch_sync(resultQueue, ^{
+                if (cachedURL) {
+                    pickedURLsByIndex[@(index)] = cachedURL;
+                } else if (failure) {
+                    [providerErrors addObject:failure];
+                }
+            });
+            dispatch_group_leave(group);
+        }];
+    }];
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_group_notify(group, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
+        }
+        __block NSArray<NSURL *> *resolvedURLs;
+        __block NSArray<NSDictionary *> *resolvedErrors;
+        dispatch_sync(resultQueue, ^{
+            NSMutableArray<NSURL *> *orderedURLs = [NSMutableArray arrayWithCapacity:pickedURLsByIndex.count];
+            for (NSUInteger index = 0; index < results.count; index++) {
+                NSURL *url = pickedURLsByIndex[@(index)];
+                if (url) {
+                    [orderedURLs addObject:url];
+                }
+            }
+            resolvedURLs = [orderedURLs copy];
+            resolvedErrors = [providerErrors copy];
+        });
+        if (resolvedURLs.count == 0 && resolvedErrors.count > 0) {
+            [fileManager removeItemAtURL:stagingDirectory error:nil];
+            BOOL unsupportedOnly = [resolvedErrors indexOfObjectPassingTest:^BOOL(NSDictionary *error, NSUInteger index, BOOL *stop) {
+                return ![error[@"errorCode"] isEqualToString:@"attachment_type_unsupported"];
+            }] == NSNotFound;
+            NSDictionary *result = @{
+                @"code" : @400,
+                @"bodyText" : @"",
+                @"errors" : resolvedErrors,
+                @"skippedCount" : @(resolvedErrors.count),
+                @"errorCode" : unsupportedOnly ? @"attachment_type_unsupported" : @"attachment_read_failed",
+                @"errorBodyText" : unsupportedOnly ? @"Unsupported attachment type" : @"No readable attachments"
+            };
+            SlockBridgeRunOnMain(^{
+                [strongSelf slock_finishAttachmentPicker:result];
+            });
+            return;
+        }
+        NSMutableDictionary *result = [[strongSelf slock_attachmentPickerResultForURLs:resolvedURLs] mutableCopy];
+        [fileManager removeItemAtURL:stagingDirectory error:nil];
+        if (resolvedErrors.count > 0 && [result[@"files"] isKindOfClass:NSArray.class]) {
+            NSArray *files = result[@"files"];
+            NSMutableDictionary *body = [@{
+                @"files" : files,
+                @"errors" : resolvedErrors,
+                @"skippedCount" : @(resolvedErrors.count)
+            } mutableCopy];
+            NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+            result[@"code"] = @206;
+            result[@"bodyText"] = bodyData ? [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding] : @"";
+            result[@"errors"] = resolvedErrors;
+            result[@"skippedCount"] = @(resolvedErrors.count);
+            result[@"errorCode"] = @"attachment_read_partial";
+            result[@"errorBodyText"] = [NSString stringWithFormat:@"%lu attachment(s) could not be read", (unsigned long)resolvedErrors.count];
+        }
+        SlockBridgeRunOnMain(^{
+            [strongSelf slock_finishAttachmentPicker:result];
+        });
+    });
+}
+
+- (NSDictionary *)slock_attachmentPickerResultForURLs:(NSArray<NSURL *> *)urls {
+    if (urls.count == 0) {
+        return @{ @"code" : @204, @"bodyText" : @"" };
+    }
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSURL *cacheRoot = [[fileManager URLsForDirectory:NSCachesDirectory inDomains:NSUserDomainMask].firstObject
+        URLByAppendingPathComponent:@"SlockPickedAttachments" isDirectory:YES];
+    NSURL *requestDirectory = [cacheRoot URLByAppendingPathComponent:NSUUID.UUID.UUIDString isDirectory:YES];
+    NSError *directoryError = nil;
+    if (![fileManager createDirectoryAtURL:requestDirectory
+               withIntermediateDirectories:YES
+                                attributes:nil
+                                     error:&directoryError]) {
+        return @{
+            @"code" : @400,
+            @"bodyText" : @"",
+            @"errorCode" : @"attachment_read_failed",
+            @"errorBodyText" : directoryError.localizedDescription ?: @"Attachment cache unavailable"
+        };
+    }
+
+    NSArray<NSURL *> *acceptedURLs =
+        urls.count > SlockAttachmentPickerMaxFiles
+            ? [urls subarrayWithRange:NSMakeRange(0, SlockAttachmentPickerMaxFiles)]
+            : urls;
+    NSMutableArray<NSDictionary *> *files = [NSMutableArray array];
+    NSMutableArray<NSDictionary *> *errors = [NSMutableArray array];
+    for (NSUInteger index = acceptedURLs.count; index < urls.count; index++) {
+        [errors addObject:@{
+            @"index" : @(index),
+            @"errorCode" : @"attachment_limit_exceeded",
+            @"message" : @"Only 10 attachments can be uploaded at once"
+        }];
+    }
+    [acceptedURLs enumerateObjectsUsingBlock:^(NSURL *sourceURL, NSUInteger index, BOOL *stop) {
+        BOOL securityScoped = [sourceURL startAccessingSecurityScopedResource];
+        @try {
+            NSError *resourceError = nil;
+            NSDictionary<NSURLResourceKey, id> *resourceValues =
+                [sourceURL resourceValuesForKeys:@[ NSURLNameKey, NSURLTypeIdentifierKey, NSURLFileSizeKey ]
+                                           error:&resourceError];
+            NSString *sourceName = SlockBridgeString(resourceValues[NSURLNameKey]);
+            if (sourceName.length == 0) {
+                sourceName = sourceURL.lastPathComponent ?: @"attachment";
+            }
+            NSString *fileName = SlockAttachmentExportFileName(sourceName);
+            NSString *uniqueName = [NSString stringWithFormat:@"picked-%@-%lu-%@",
+                                                              [NSUUID UUID].UUIDString,
+                                                              (unsigned long)index,
+                                                              fileName];
+            NSURL *targetURL = [requestDirectory URLByAppendingPathComponent:uniqueName isDirectory:NO];
+            NSError *copyError = nil;
+            if (![fileManager copyItemAtURL:sourceURL toURL:targetURL error:&copyError]) {
+                [errors addObject:@{
+                    @"index" : @(index),
+                    @"errorCode" : @"attachment_read_failed",
+                    @"message" : copyError.localizedDescription ?: resourceError.localizedDescription ?: @"Attachment read failed"
+                }];
+                return;
+            }
+            NSNumber *fileSize = nil;
+            [targetURL getResourceValue:&fileSize forKey:NSURLFileSizeKey error:nil];
+            NSString *typeIdentifier = SlockBridgeString(resourceValues[NSURLTypeIdentifierKey]);
+            UTType *type = typeIdentifier.length > 0 ? [UTType typeWithIdentifier:typeIdentifier] : nil;
+            if (!type) {
+                type = [UTType typeWithFilenameExtension:fileName.pathExtension];
+            }
+            NSString *mimeType = type.preferredMIMEType ?: @"application/octet-stream";
+            NSString *fileRef = targetURL.absoluteString ?: @"";
+            [files addObject:@{
+                @"id" : [NSString stringWithFormat:@"picked-%@-%lu", [NSUUID UUID].UUIDString, (unsigned long)index],
+                @"fileName" : fileName,
+                @"mimeType" : mimeType,
+                @"sizeBytes" : fileSize ?: @0,
+                @"previewUri" : fileRef,
+                @"fileRef" : fileRef,
+                @"source" : @"platform_picker"
+            }];
+        } @finally {
+            if (securityScoped) {
+                [sourceURL stopAccessingSecurityScopedResource];
+            }
+        }
+    }];
+
+    if (files.count == 0) {
+        [fileManager removeItemAtURL:requestDirectory error:nil];
+        return @{
+            @"code" : @400,
+            @"bodyText" : @"",
+            @"errorCode" : @"attachment_read_failed",
+            @"errorBodyText" : @"No readable attachments"
+        };
+    }
+    NSMutableDictionary *body = [@{ @"files" : files } mutableCopy];
+    if (errors.count > 0) {
+        body[@"errors"] = errors;
+        body[@"skippedCount"] = @(errors.count);
+    }
+    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+    NSString *bodyText = bodyData ? [[NSString alloc] initWithData:bodyData encoding:NSUTF8StringEncoding] : @"";
+    NSMutableDictionary *result = [@{
+        @"code" : errors.count > 0 ? @206 : @200,
+        @"bodyText" : bodyText ?: @"",
+        @"files" : files
+    } mutableCopy];
+    if (errors.count > 0) {
+        result[@"errors"] = errors;
+        result[@"skippedCount"] = @(errors.count);
+        result[@"errorCode"] = @"attachment_read_partial";
+        result[@"errorBodyText"] = [NSString stringWithFormat:@"%lu attachment(s) could not be read", (unsigned long)errors.count];
+    }
+    return result;
+}
+
+- (void)slock_finishAttachmentPicker:(NSDictionary *)result {
+    KuiklyRenderCallback callback = self.slock_attachmentPickerCallback;
+    self.slock_attachmentPickerCallback = nil;
+    if (callback) {
+        callback(result);
+    }
 }
 
 - (void)slock_finishAttachmentExport:(NSDictionary *)result {
