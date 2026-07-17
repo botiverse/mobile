@@ -957,7 +957,7 @@ class SlockAppShellTest {
     fun homeServerSwitchPremeasureRampsInSmallFrameSizedSteps() {
         assertEquals(9, homeListNextServerSwitchBeyondBoundsItemCount(current = 6, target = 24))
         assertEquals(15, homeListNextServerSwitchBeyondBoundsItemCount(current = 12, target = 15))
-        assertEquals(6, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
+        assertEquals(4, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
     }
 
     @Test

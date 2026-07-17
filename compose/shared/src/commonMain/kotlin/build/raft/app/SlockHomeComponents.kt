@@ -1937,11 +1937,14 @@ internal fun homeListBeyondBoundsItemCount(
         viewportFraction = HomeListOverscanViewportFraction
     )
 
-internal fun homeListInitialBeyondBoundsItemCount(): Int = HomeListMinBeyondBoundsItemCount
+internal fun homeListInitialBeyondBoundsItemCount(): Int = 0
 
 internal fun homeListNextServerSwitchBeyondBoundsItemCount(current: Int, target: Int): Int =
-    (current.coerceAtLeast(HomeListMinBeyondBoundsItemCount) + HomeListServerSwitchRampStep)
-        .coerceAtMost(target.coerceAtLeast(HomeListMinBeyondBoundsItemCount))
+    if (current <= 0) {
+        HomeListMinBeyondBoundsItemCount.coerceAtMost(target.coerceAtLeast(0))
+    } else {
+        (current + HomeListServerSwitchRampStep).coerceAtMost(target.coerceAtLeast(0))
+    }
 
 internal fun homeSidebarSlotKey(section: String, index: Int): String =
     "home-$section-slot-$index"
