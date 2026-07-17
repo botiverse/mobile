@@ -896,16 +896,30 @@ private fun SharedActivityRow(
                             .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
                             .padding(start = 12.dp, top = 12.dp)
                 ) {
-                // react ThreadsInbox row (#1039): the subtitle line is the
-                // channel tag ALONE (text-[11px] font-bold text-black/45);
-                // the timestamp sits at the RIGHT OF THE TITLE ROW, not here.
-                Text(
-                    text = item.channelLabel(),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.45f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                // Tag + timestamp share the top row — artin's ruling on #1039
+                // (#wg-nightly-visual-fix:4670869d, 2026-07-17): react's
+                // timestamp-beside-title placement steals width from the real
+                // message content; the android layout is the desired product
+                // behavior and react should adopt it (declared react-adopts-later).
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = item.channelLabel(),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = item.activityTimeLabel(timeContext),
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = SlockMonoFamily),
+                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Row(
                     verticalAlignment = Alignment.Top,
@@ -939,14 +953,6 @@ private fun SharedActivityRow(
                         maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
-                    )
-                    // react: `shrink-0 font-mono text-xs leading-5 text-black/40`
-                    // top-aligned beside the title's first line.
-                    Text(
-                        text = item.activityTimeLabel(timeContext),
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp, fontFamily = SlockMonoFamily),
-                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                        maxLines = 1
                     )
                 }
                 item.secondaryActivityPreviewText(
