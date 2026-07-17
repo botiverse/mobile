@@ -3995,8 +3995,8 @@ private fun ChannelRow(
                     style =
                         homeChannelTitleTextStyle(
                             selected = selected,
-                            hasUnread = badge != null,
-                            badgeTone = badgeTone,
+                            hasUnread = content.badge != null,
+                            badgeTone = content.badgeTone,
                         ),
                     color = titleColor,
                     modifier = Modifier.weight(1f, fill = false),
