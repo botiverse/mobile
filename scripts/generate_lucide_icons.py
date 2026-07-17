@@ -187,6 +187,7 @@ LUCIDE_ICONS = [
     "mail-plus",
     "message-circle",
     "message-circle-off",
+    "message-circle-plus",
     "message-square",
     "message-square-plus",
     "monitor",

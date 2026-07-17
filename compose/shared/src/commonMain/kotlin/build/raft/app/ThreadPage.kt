@@ -2974,12 +2974,24 @@ private fun ThreadMessageVisualScreenContent() {
         }
     var actionsMenuVisible by remember(visualFixture, menuVariant) { mutableStateOf(menuVariant.isNotBlank()) }
     val menuActions =
-        remember(message, menuVariant, actionsMenuVisible) {
+        remember(message, menuVariant, actionsMenuVisible, visualReplyMetadataByParentId) {
             if (message == null || !actionsMenuVisible) {
                 emptyList()
             } else {
+                val menuReplyMetadata =
+                    visualReplyMetadataByParentId.threadReplyMetadataFor(message).let { metadata ->
+                        if (menuVariant == "followed") {
+                            metadata.copy(
+                                threadChannelId = metadata.threadChannelId ?: "visual-followed-thread",
+                                isThreadFollowed = true
+                            )
+                        } else {
+                            metadata
+                        }
+                    }
                 threadMessageMenuActions(
                     message = message,
+                    replyMetadata = menuReplyMetadata,
                     showReplyAction = true,
                     showSaveAction = true,
                     showTaskStatusAction = menuVariant == "task",
@@ -17358,7 +17370,7 @@ private fun String.decodeBasicHtmlEntities(): String =
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
 
-private data class ThreadMessageMenuAction(
+internal data class ThreadMessageMenuAction(
     val label: StringDesc,
     val icon: SlockLucideIconName,
     val group: String,
@@ -17380,7 +17392,10 @@ internal fun shouldShowThreadFollowAction(
             replyMetadata.replyCount > 0 ||
             replyMetadata.isThreadFollowed)
 
-private fun threadMessageMenuActions(
+internal fun threadFollowMenuIcon(isFollowed: Boolean): SlockLucideIconName =
+    if (isFollowed) SlockLucideIconName.MessageCircleOff else SlockLucideIconName.MessageCirclePlus
+
+internal fun threadMessageMenuActions(
     message: KuiklyThreadMessageItem,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
     showReplyAction: Boolean,
@@ -17467,7 +17482,7 @@ private fun threadMessageMenuActions(
                         } else {
                             MR.strings.thread_action_follow_thread.desc()
                         },
-                    icon = SlockLucideIconName.MessageSquare,
+                    icon = threadFollowMenuIcon(replyMetadata.isThreadFollowed),
                     group = "message",
                     onClick = {
                         if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
