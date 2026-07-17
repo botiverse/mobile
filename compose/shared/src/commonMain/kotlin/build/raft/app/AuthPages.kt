@@ -792,6 +792,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     state = aboutState,
                     fallback = SharedSettingsAboutSnapshot(sessionStatusLabel = stringResource(MR.strings.settings_about_state_signed_out)),
                     developerState = developerState,
+                    includeDeveloperShortcuts = true,
                     updateCheck = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.updateCheck,
                     actionState = actionState,
                     onCopyBuild = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },

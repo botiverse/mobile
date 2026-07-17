@@ -1563,7 +1563,7 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
         SlockTabItemPayload(
             key = "about",
             title = "About",
-            subtitle = "Version and diagnostics",
+            subtitle = "Version and build information",
             iconName = SlockLucideIconName.BadgeInfo
         ),
         SlockTabItemPayload(
@@ -9480,6 +9480,7 @@ internal fun SharedSettingsAboutContent(
     state: ScreenLoadState<SharedSettingsAboutSnapshot>,
     fallback: SharedSettingsAboutSnapshot,
     developerState: ScreenLoadState<SharedSettingsDeveloperSnapshot> = ScreenLoadState.Loading,
+    includeDeveloperShortcuts: Boolean = false,
     updateCheck: SharedSettingsUpdateCheckSnapshot?,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -9519,32 +9520,36 @@ internal fun SharedSettingsAboutContent(
             stringResource(MR.strings.settings_developer_environment_detail)
         }
     val payload =
-        aboutPayload.copy(
-            sections =
-                aboutPayload.sections +
-                    KuiklySharedSettingsSection(
-                        title = stringResource(MR.strings.settings_developer_section_api_server),
-                        rows =
-                            listOf(
-                                KuiklySharedSettingsRow(
-                                    key = DEVELOPER_ACTION_API_ENVIRONMENT,
-                                    iconName = SlockLucideIconName.Server,
-                                    title = stringResource(MR.strings.settings_developer_api_environment),
-                                    detail = environmentDetail,
-                                    status = environmentStatus,
-                                    enabled = developerState is ScreenLoadState.Content
-                                ),
-                                KuiklySharedSettingsRow(
-                                    key = "diagnostics",
-                                    iconName = SlockLucideIconName.ClipboardList,
-                                    title = stringResource(MR.strings.settings_diagnostics_title),
-                                    detail = stringResource(MR.strings.settings_developer_diagnostics_detail),
-                                    status = stringResource(MR.strings.settings_state_open),
-                                    enabled = true
+        if (includeDeveloperShortcuts) {
+            aboutPayload.copy(
+                sections =
+                    aboutPayload.sections +
+                        KuiklySharedSettingsSection(
+                            title = stringResource(MR.strings.settings_developer_section_api_server),
+                            rows =
+                                listOf(
+                                    KuiklySharedSettingsRow(
+                                        key = DEVELOPER_ACTION_API_ENVIRONMENT,
+                                        iconName = SlockLucideIconName.Server,
+                                        title = stringResource(MR.strings.settings_developer_api_environment),
+                                        detail = environmentDetail,
+                                        status = environmentStatus,
+                                        enabled = developerState is ScreenLoadState.Content
+                                    ),
+                                    KuiklySharedSettingsRow(
+                                        key = "diagnostics",
+                                        iconName = SlockLucideIconName.ClipboardList,
+                                        title = stringResource(MR.strings.settings_diagnostics_title),
+                                        detail = stringResource(MR.strings.settings_developer_diagnostics_detail),
+                                        status = stringResource(MR.strings.settings_state_open),
+                                        enabled = true
+                                    )
                                 )
-                            )
-                    )
-        )
+                        )
+            )
+        } else {
+            aboutPayload
+        }
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
@@ -20223,7 +20228,7 @@ private fun settingsRouteVisualHomeSnapshot(selectedDestination: SharedSettingsD
                 SharedSettingsNavItem(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, settingsVisualFixtureValues.serverPlan.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Billing),
                 SharedSettingsNavItem(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination == SharedSettingsDestination.Administration),
                 SharedSettingsNavItem(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination == SharedSettingsDestination.ConnectedApps),
-                SharedSettingsNavItem(SharedSettingsDestination.About, "About", "Version and diagnostics", SlockLucideIconName.BadgeInfo, null, selectedDestination == SharedSettingsDestination.About)
+                SharedSettingsNavItem(SharedSettingsDestination.About, "About", "Version and build information", SlockLucideIconName.BadgeInfo, null, selectedDestination == SharedSettingsDestination.About)
             )
     )
 }

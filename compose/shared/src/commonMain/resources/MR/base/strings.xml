@@ -98,7 +98,7 @@
     <string name="settings_billing_subtitle">Plan and usage</string>
     <string name="settings_storage_title">Storage</string>
     <string name="settings_about_title">About</string>
-    <string name="settings_about_subtitle">Version and diagnostics</string>
+    <string name="settings_about_subtitle">Version and build information</string>
     <string name="settings_release_notes_title">Release Notes</string>
     <string name="settings_release_notes_subtitle">Version history and changelog</string>
     <string name="settings_feedback_title">Send feedback</string>
