@@ -1,0 +1,111 @@
+id: select-and-upload-file
+title: "附件上传-选择文件/附件上传到对话"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that selecting a file/attachment and uploading it to a conversation
+  works on Android. Covers: file picker, file selection, composer preview, send.
+  iOS variant will be added after case IR unification (platform overlay).
+tags: [attachments, file, upload, regression, android]
+timeout_seconds: 120
+max_retries: 1
+verdict_before_cleanup: true
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+  - type: device_has_files
+    params:
+      note: "Device/emulator must have at least 1 downloadable file. CI emulators have Downloads folder with files."
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open #all channel"
+    action_category: navigate
+    hint: "Navigate to #all in OranixSlockTest server"
+    capture: [screenshot]
+
+  - id: find-attach-button
+    goal: "Find and tap the file/attachment button near the message input"
+    action_category: interact
+    hint: "Look for a paperclip icon, file icon, or '+' button near the composer. May need to tap '+' first then select file option."
+    capture: [screenshot, dump_layout]
+
+  - id: select-file
+    goal: "In the file picker, select a file to upload"
+    action_category: interact
+    hint: "Navigate to Downloads or any folder, tap a file to select it. The picker may show recent files or a file browser."
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: verify-composer-preview
+    goal: "Verify the selected file appears as a preview/attachment chip in the composer"
+    action_category: verify
+    hint: "File should appear as a card or chip showing filename, above or in the message input area"
+    capture: [screenshot]
+
+  - id: send-with-file
+    goal: "Send the message with the attached file"
+    action_category: interact
+    hint: "Tap the send button"
+    capture: [screenshot]
+
+  - id: wait-upload
+    goal: "Wait for file upload"
+    action_category: wait
+    params:
+      duration_ms: 3000
+
+  - id: verify-sent
+    goal: "Verify the file message appears in the conversation"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: file-in-composer
+    goal: "Selected file appears as attachment preview in composer"
+    type: visual_check
+    after_step: verify-composer-preview
+    severity: critical
+
+  - id: file-sent
+    goal: "File attachment message appears in conversation"
+    type: visual_check
+    after_step: verify-sent
+    severity: critical
+
+  - id: no-upload-error
+    goal: "No upload errors"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(upload failed|error|could not|too large|unsupported)"
+    after_step: verify-sent
+    severity: major
+
+  - id: no-crash-file
+    goal: "No crash during file selection and upload"
+    type: no_crash
+    after_step: verify-sent
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Multi-platform case for file upload. Platform variants:
+    - Android: Storage Access Framework (SAF) / ACTION_GET_CONTENT
+    - iOS: UIDocumentPickerViewController (PR #1193)
+    - Precondition: device must have files accessible.
