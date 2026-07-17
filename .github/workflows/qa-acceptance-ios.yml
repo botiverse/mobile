@@ -145,6 +145,15 @@ jobs:
           echo "app=$app bundle_id=$bundle_id"
           echo "BUNDLE_ID=$bundle_id" >> "$GITHUB_ENV"
           xcrun simctl install "$UDID" "$app"
+          # iOS twin of the android build-info.json (#1120): bind the run to
+          # its exact bits — commit, app version, and the main binary's hash.
+          version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Info.plist" 2>/dev/null || echo "")
+          buildnum=$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist" 2>/dev/null || echo "")
+          binary=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist" 2>/dev/null || echo "iosApp")
+          binhash=$(shasum -a 256 "$app/$binary" 2>/dev/null | cut -d' ' -f1 || echo "")
+          printf '{\n "platform": "ios",\n "source_commit": "%s",\n "branch": "%s",\n "build_run_id": "%s",\n "app_version": "%s",\n "version_code": "%s",\n "binary_sha256": "%s",\n "bundle_id": "%s"\n}\n' \
+            "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_RUN_ID" "$version" "$buildnum" "$binhash" "$bundle_id" > "$GITHUB_WORKSPACE/build-info-ios.json"
+          cat "$GITHUB_WORKSPACE/build-info-ios.json"
 
       - name: Install M3 SDK (pi-ai)
         working-directory: ${{ runner.temp }}
@@ -186,6 +195,7 @@ jobs:
         run: |
           bash scripts/qa/stamp_report.sh claim
           mkdir -p qa-evidence
+          cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           export MINIMAX_API_KEY="$PI_API_KEY"
           set +e
           node scripts/qa/acceptance_agent.mjs \
