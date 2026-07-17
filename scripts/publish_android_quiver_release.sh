@@ -281,7 +281,13 @@ HANDS_ARGS=(
   --build-time "${BUILD_TIME}"
   --metadata "${METADATA_PATH}"
 )
-if [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
+if [ -n "${SLOCK_RELEASE_CHANGELOG_ZH_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_ZH_FILE}" ] &&
+  [ -n "${SLOCK_RELEASE_CHANGELOG_EN_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_EN_FILE}" ]; then
+  HANDS_ARGS+=(
+    --changelog-file "zh=${SLOCK_RELEASE_CHANGELOG_ZH_FILE}"
+    --changelog-file "en=${SLOCK_RELEASE_CHANGELOG_EN_FILE}"
+  )
+elif [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
   HANDS_ARGS+=(--changelog-file "${SLOCK_RELEASE_CHANGELOG_FILE}")
 fi
 if [ "${SLOCK_QUIVER_DRAFT:-0}" = "1" ]; then
