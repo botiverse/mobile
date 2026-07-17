@@ -9467,8 +9467,18 @@ internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
         } catch (_: Throwable) {
             AppLocale.Default.kmmResourceLocaleTag
         }
+    return sharedSettingsReleaseNotesUrlForLocale(
+        versionCode = versionCode,
+        localeTag = localeTag
+    )
+}
+
+internal fun sharedSettingsReleaseNotesUrlForLocale(
+    versionCode: String,
+    localeTag: String?
+): String {
     val baseUrl = "https://quiver.oranix.io/notes/${slockReleaseNotesAppSlug()}?version_code=$versionCode"
-    return localeTag?.let { "$baseUrl&lang=$it" } ?: baseUrl
+    return localeTag?.takeIf { it.isNotBlank() }?.let { "$baseUrl&lang=$it" } ?: baseUrl
 }
 
 @Composable

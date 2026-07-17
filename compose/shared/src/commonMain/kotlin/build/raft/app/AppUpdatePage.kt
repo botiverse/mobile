@@ -167,8 +167,7 @@ internal fun AppUpdateSummary(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceCream)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceWhite)
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -213,16 +212,22 @@ internal fun AppUpdateSummary(
                 backgroundColor = SlockColor.AccentPink
             )
         }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 
 @Composable
-internal fun AppUpdateDetailsVisualScreen() {
+internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
     val snapshot =
         SharedSettingsUpdateCheckSnapshot(
             supported = true,
             statusLabel = "download",
-            detail = "A faster, clearer Raft experience is ready to install.",
+            detail =
+                if (chinese) {
+                    "更快、更清晰的 Raft 新版本已可安装。"
+                } else {
+                    "A faster, clearer Raft experience is ready to install."
+                },
             actionLabel = "download",
             updateAvailable = true,
             currentVersionLabel = "1.5.0",
@@ -253,22 +258,32 @@ internal fun AppUpdateDetailsVisualScreen() {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "WHAT'S NEW IN 1.6.0",
+                text = if (chinese) "1.6.0 更新内容" else "WHAT'S NEW IN 1.6.0",
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
             Text(
-                text = "A focused update for faster collaboration",
+                text = if (chinese) "专注于更高效协作的更新" else "A focused update for faster collaboration",
                 style = SlockType.PageTitle,
                 color = SlockColor.TextBlack
             )
             Text(
-                text = "Update Raft to get clearer activity states, smoother navigation, and the latest reliability improvements.",
+                text =
+                    if (chinese) {
+                        "更新 Raft，获得更清晰的动态状态、更流畅的导航和最新的稳定性改进。"
+                    } else {
+                        "Update Raft to get clearer activity states, smoother navigation, and the latest reliability improvements."
+                    },
                 style = SlockType.Body,
                 color = SlockColor.TextBlack
             )
             Text(
-                text = "- Review new activity at a glance\n- Move between conversations with fewer interruptions\n- Download and install updates without leaving Raft",
+                text =
+                    if (chinese) {
+                        "- 快速查看最新动态\n- 更顺畅地切换对话\n- 无需离开 Raft 即可下载并安装更新"
+                    } else {
+                        "- Review new activity at a glance\n- Move between conversations with fewer interruptions\n- Download and install updates without leaving Raft"
+                    },
                 style = SlockType.Body,
                 color = SlockColor.TextBlack
             )

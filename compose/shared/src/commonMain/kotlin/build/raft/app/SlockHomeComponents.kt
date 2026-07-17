@@ -2985,17 +2985,22 @@ private fun HomeAppUpdateBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.BrandYellow)
+                .background(SlockColor.SurfaceWhite)
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.CircleArrowUp,
-            modifier = Modifier.size(18.dp),
-            color = "#FF000000"
-        )
+        Box(
+            modifier = Modifier.size(32.dp).background(SlockColor.BrandYellow),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(
+                SlockLucideIconName.CircleArrowUp,
+                modifier = Modifier.size(17.dp),
+                color = "#FF000000"
+            )
+        }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
                 text = notification.title.ifBlank { notification.body },
