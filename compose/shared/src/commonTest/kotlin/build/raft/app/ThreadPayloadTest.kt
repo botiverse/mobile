@@ -1303,6 +1303,26 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun inlineVideoPreviewWaitsForExplicitUserRequestBeforeCreatingVideoSource() {
+        assertEquals(ThreadInlineVideoRenderMode.AwaitingUser, null.renderMode())
+        assertEquals(
+            ThreadInlineVideoRenderMode.Loading,
+            ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Loading).renderMode()
+        )
+        assertEquals(
+            ThreadInlineVideoRenderMode.Ready,
+            ThreadInlineVideoPreviewUiState(
+                status = ThreadInlineVideoPreviewStatus.Ready,
+                url = "https://example.test/video.mp4"
+            ).renderMode()
+        )
+        assertEquals(
+            ThreadInlineVideoRenderMode.Error,
+            ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Ready).renderMode()
+        )
+    }
+
+    @Test
     fun authSessionSelfMentionNamesIncludeBareHandle() {
         val session =
             StoredAuthSession(
