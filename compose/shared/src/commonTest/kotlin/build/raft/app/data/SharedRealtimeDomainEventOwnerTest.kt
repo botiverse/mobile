@@ -23,10 +23,12 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class SharedRealtimeDomainEventOwnerTest {
     @Test
@@ -216,6 +218,344 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.accept("server-1", agentTwo, source = "app_shell")
 
         assertEquals(listOf(agentOne, agentTwo), activityEvents)
+    }
+
+    // ---- task #136 presence write-edge barriers (post-merge audit on PR
+    // #1054): these drive the REAL SharedRealtimeDomainEventOwner admission
+    // pipeline (grant-checked via a REAL RealtimeAuthorityRegistry) into the
+    // PRODUCTION processMemberPresenceRealtimeSink — no re-made helper. ----
+
+    private class PresenceHarness {
+        val authority = RealtimeAuthorityRegistry(
+            authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+            processInstanceId = "presence-harness",
+        )
+        val presenceRegistry = ProcessMemberPresenceRegistry()
+        val presenceAuthContext = MutableStateFlow<ProcessPresenceAuthContext?>(null)
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = authority::runIfCurrentGrant,
+        ).also {
+            // The exact production write edge the provider installs.
+            it.installMemberPresenceSink(
+                processMemberPresenceRealtimeSink(
+                    currentPresenceAuthContext = { presenceAuthContext.value },
+                    registry = presenceRegistry,
+                )
+            )
+        }
+
+        var boundEnvironmentId = "env-1"
+
+        // The PRODUCTION binding transition — the same function the provider
+        // installs as the authority hook.
+        val bindingTransition =
+            processPresenceBindingTransition(
+                presenceAuthContext = presenceAuthContext,
+                registry = presenceRegistry,
+            ) { boundEnvironmentId }
+
+        /** Production ordering: advance the revision, then run the SAME
+         *  transition the provider hook runs (binding ready before grants
+         *  would publish). */
+        suspend fun authenticate(accountId: String, environmentId: String = "env-1") {
+            boundEnvironmentId = environmentId
+            authority.advanceAuthFromCurrentSession(
+                RealtimeAuthoritySession(principalId = accountId, serverIds = listOf("server-1")),
+                force = true,
+            )
+            bindingTransition(authority.snapshot.value.authRevision)
+        }
+
+        fun signOut() {
+            presenceAuthContext.value = null
+            presenceRegistry.clearAll(reason = "cleared")
+        }
+
+        suspend fun currentGrant(leaseId: String): RealtimeGrantRecord =
+            authority.currentGrant(leaseId, "server-1")
+                ?: error("no current grant for server-1")
+    }
+
+    private fun presenceEvent(seq: Long, presence: Presence = Presence.Active) =
+        MemberPresenceUpdated(
+            memberId = MemberId("agent-1"),
+            presence = presence,
+            kind = MemberKind.Agent,
+            serverSeq = seq
+        )
+
+    private fun presenceOwner(accountId: String) =
+        ProcessServerMembersOwner("env-1", accountId, "server-1")
+
+    @Test
+    fun installedPresenceSinkReceivesAgentPresenceWithoutAnyPageSinks() = runBlocking {
+        // task #136 SSOT lock: the presence intake is installed for the
+        // owner's lifetime — agent presence must arrive even when NO page has
+        // sinks registered (the page-scoped windows were how machine-offline
+        // transitions got lost on the Members surface). Grant-admitted path.
+        val harness = PresenceHarness()
+        harness.authenticate("account-a")
+        val lease = harness.authority.register("shell:test")
+        val grant = harness.currentGrant(lease.id)
+
+        assertEquals(true, harness.owner.accept(grant, presenceEvent(seq = 1L), source = "test"))
+
+        assertEquals(
+            1L,
+            harness.presenceRegistry.factFor(presenceOwner("account-a"), "agent-1")?.serverSeq
+        )
+    }
+
+    @Test
+    fun heldOldAccountDeliveryCannotWriteTheNewAccountPartition() = runBlocking {
+        // Barrier: held-A → clear/auth-B → release-A. The released delivery
+        // must be rejected at grant admission; B's partition stays untouched
+        // and A is not resurrected. A genuine B delivery then succeeds.
+        val harness = PresenceHarness()
+        harness.authenticate("account-a")
+        val lease = harness.authority.register("shell:test")
+        val heldGrantA = harness.currentGrant(lease.id)
+
+        assertEquals(true, harness.owner.accept(heldGrantA, presenceEvent(seq = 1L), source = "test"))
+        assertEquals(
+            Presence.Active,
+            harness.presenceRegistry.factFor(presenceOwner("account-a"), "agent-1")?.presence
+        )
+
+        harness.authenticate("account-b")
+
+        val heldAccepted =
+            harness.owner.accept(heldGrantA, presenceEvent(seq = 9L, Presence.Offline), source = "test")
+
+        assertEquals(false, heldAccepted)
+        assertNull(harness.presenceRegistry.factFor(presenceOwner("account-b"), "agent-1"))
+        assertNull(harness.presenceRegistry.factFor(presenceOwner("account-a"), "agent-1"))
+        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
+
+        val grantB = harness.currentGrant(lease.id)
+        assertEquals(true, grantB != heldGrantA)
+        assertEquals(true, harness.owner.accept(grantB, presenceEvent(seq = 2L), source = "test"))
+        assertEquals(
+            Presence.Active,
+            harness.presenceRegistry.factFor(presenceOwner("account-b"), "agent-1")?.presence
+        )
+        assertNull(harness.presenceRegistry.factFor(presenceOwner("account-a"), "agent-1"))
+    }
+
+    @Test
+    fun samePrincipalRotationRejectsHeldDeliveryAtTheProductionSink() = runBlocking {
+        // Post-merge audit round 2 (PR #1075 block): same account X re-auths
+        // (authority revision + registry generation advance, environment also
+        // changes) while the OLD session's grant is still current — the held
+        // delivery passes runIfCurrentGrant, reaches the PRODUCTION sink, and
+        // must be rejected there by the authorityGeneration equality (the
+        // principal matches, so a principal-only check would let stale
+        // old-environment presence into the new binding with the NEW registry
+        // generation, which the CAS fence cannot catch).
+        val harness = PresenceHarness()
+        harness.authenticate("account-x", environmentId = "env-1")
+        val lease = harness.authority.register("shell:test")
+        val heldGrantX1 = harness.currentGrant(lease.id)
+
+        assertEquals(true, harness.owner.accept(heldGrantX1, presenceEvent(seq = 1L), source = "test"))
+        assertEquals(
+            1L,
+            harness.presenceRegistry.factFor(presenceOwner("account-x"), "agent-1")?.serverSeq
+        )
+
+        // Same-principal re-auth on the PRESENCE side only: registry retired
+        // and context republished (new authorityGeneration, new environment),
+        // but the authority grants have NOT rotated yet — the exact
+        // collector-race window.
+        val revision = harness.authority.snapshot.value.authRevision
+        val rotatedWriteGeneration = harness.presenceRegistry.clearAll(reason = "authority_session_advanced")
+        harness.presenceAuthContext.value =
+            ProcessPresenceAuthContext(
+                environmentId = "env-2",
+                accountId = "account-x",
+                authorityGeneration = revision.generation + 1L,
+                writeGeneration = rotatedWriteGeneration,
+            )
+
+        // LiBai's precondition assertion: the old grant is STILL current —
+        // acceptance succeeds, so a rejection can only come from the sink.
+        val heldAccepted = harness.owner.accept(heldGrantX1, presenceEvent(seq = 7L), source = "test")
+        assertEquals(true, heldAccepted)
+
+        // The production sink refused the retired-session delivery: nothing
+        // in the old binding, nothing in the new env-2 binding.
+        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
+        assertNull(
+            harness.presenceRegistry.factFor(
+                ProcessServerMembersOwner("env-2", "account-x", "server-1"),
+                "agent-1"
+            )
+        )
+
+        // After the authority side catches up (full re-auth transition), the
+        // new session's grant writes normally into the new binding.
+        harness.authenticate("account-x", environmentId = "env-2")
+        val grantX2 = harness.currentGrant(lease.id)
+        assertEquals(true, grantX2 != heldGrantX1)
+        assertEquals(true, harness.owner.accept(grantX2, presenceEvent(seq = 2L), source = "test"))
+        assertEquals(
+            2L,
+            harness.presenceRegistry.factFor(
+                ProcessServerMembersOwner("env-2", "account-x", "server-1"),
+                "agent-1"
+            )?.serverSeq
+        )
+    }
+
+    @Test
+    fun bothProductionOwnersShareTheSameGuardedWriteEdge() = runBlocking {
+        // Provider wiring proof shape: a second owner instance (scoped shell)
+        // installed with the SAME production sink function writes through the
+        // same admission gate into the same registry — and the same
+        // authorityGeneration equality rejects retired-session deliveries on
+        // it too.
+        val harness = PresenceHarness()
+        harness.authenticate("account-x")
+        val scopedOwner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = harness.authority::runIfCurrentGrant,
+        ).also {
+            it.installMemberPresenceSink(
+                processMemberPresenceRealtimeSink(
+                    currentPresenceAuthContext = { harness.presenceAuthContext.value },
+                    registry = harness.presenceRegistry,
+                )
+            )
+        }
+        val lease = harness.authority.register("shell:scoped")
+        val grant = harness.currentGrant(lease.id)
+
+        assertEquals(true, scopedOwner.accept(grant, presenceEvent(seq = 3L), source = "test"))
+        assertEquals(
+            3L,
+            harness.presenceRegistry.factFor(presenceOwner("account-x"), "agent-1")?.serverSeq
+        )
+
+        // Presence-side rotation only (old grant still current) — the scoped
+        // owner's sink rejects exactly like the legacy one.
+        val revision = harness.authority.snapshot.value.authRevision
+        val rotated = harness.presenceRegistry.clearAll(reason = "authority_session_advanced")
+        harness.presenceAuthContext.value =
+            ProcessPresenceAuthContext(
+                environmentId = "env-1",
+                accountId = "account-x",
+                authorityGeneration = revision.generation + 1L,
+                writeGeneration = rotated,
+            )
+        assertEquals(true, scopedOwner.accept(grant, presenceEvent(seq = 8L), source = "test"))
+        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
+    }
+
+    @Test
+    fun admissionPrincipalMismatchDropsThePresenceWrite() = runBlocking {
+        // Collector-race window: the presence context already moved to B while
+        // the authority registry still holds A's grants current (independent
+        // collectors may observe an auth transition in either order). The
+        // event passes grant admission but the production sink refuses to
+        // attribute an A-admitted delivery to the B binding.
+        val harness = PresenceHarness()
+        harness.authenticate("account-a")
+        val lease = harness.authority.register("shell:test")
+        val grantA = harness.currentGrant(lease.id)
+
+        val generation = harness.presenceRegistry.clearAll(reason = "authenticated")
+        harness.presenceAuthContext.value =
+            ProcessPresenceAuthContext(
+                environmentId = "env-1",
+                accountId = "account-b",
+                authorityGeneration = grantA.authGeneration,
+                writeGeneration = generation,
+            )
+
+        assertEquals(true, harness.owner.accept(grantA, presenceEvent(seq = 3L), source = "test"))
+
+        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
+    }
+
+    @Test
+    fun signedOutWindowDropsPresenceWrites() = runBlocking {
+        val harness = PresenceHarness()
+        harness.authenticate("account-a")
+        val lease = harness.authority.register("shell:test")
+        val grantA = harness.currentGrant(lease.id)
+
+        harness.signOut()
+
+        assertEquals(true, harness.owner.accept(grantA, presenceEvent(seq = 4L), source = "test"))
+        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
+    }
+
+    @Test
+    fun unguardedLegacyAcceptNeverWritesPresenceButStillFeedsPageSinks() = runBlocking {
+        // The legacy string-serverId overload has no grant, hence no admission
+        // identity: it must NOT write the presence registry (a held old-account
+        // callback released here after an account switch would be attributed
+        // to whoever is signed in now). Page-scoped activity sinks still fan out.
+        val harness = PresenceHarness()
+        harness.authenticate("account-a")
+        val pageEvents = mutableListOf<MemberPresenceUpdated>()
+        harness.owner.registerSinks(
+            RealtimeDomainEventSinks(applyAgentActivity = pageEvents::add)
+        )
+        val event = presenceEvent(seq = 5L)
+
+        harness.owner.accept("server-1", event, source = "app_shell")
+
+        assertEquals(listOf(event), pageEvents)
+        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
+    }
+
+    @Test
+    fun canonicalFinalSurfaceDeliveryNeverWritesPresence() = runBlocking {
+        // The canonical-final surface entry receives gateway-admitted message
+        // frames and carries no presence admission; a presence event arriving
+        // there must never reach the registry, while guarded page sinks still
+        // see it.
+        val harness = PresenceHarness()
+        harness.authenticate("account-a")
+        val pageEvents = mutableListOf<MemberPresenceUpdated>()
+        val sinks = RealtimeGuardedDomainEventSinks(applyAgentActivity = { pageEvents += it })
+        val event = presenceEvent(seq = 6L)
+
+        harness.owner.deliverGuardedAppShellDomainFinal(
+            sinks = sinks,
+            serverId = "server-1",
+            event = event,
+        )
+
+        assertEquals(listOf(event), pageEvents)
+        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
+    }
+
+    @Test
+    fun repeatedAgentRefreshHintsAreNotSwallowedAsDuplicates() {
+        // task #136 lock: refresh hints are idempotent triggers with no seq —
+        // remembering them in the accepted-key ledger made the SECOND state
+        // change for the same agent silently skip its refetch (observed on
+        // device: accept_skip reason=duplicate key=refresh:…:Agents:agent:session:…).
+        val owner = SharedRealtimeDomainEventOwner()
+        val refreshes = mutableListOf<RealtimeRefreshRequired>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyServerMembersRefresh = { _, event -> refreshes += event }
+            )
+        )
+        val hint =
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.Agents,
+                reason = "agent:session",
+                serverId = ServerId("server-1"),
+                subjectId = "agent-1"
+            )
+
+        owner.accept("server-1", hint, source = "app_shell")
+        owner.accept("server-1", hint, source = "app_shell")
+
+        assertEquals(2, refreshes.size)
     }
 
     @Test

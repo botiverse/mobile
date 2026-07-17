@@ -1214,12 +1214,16 @@ class SlockHomeComponentsTest {
 
     @Test
     fun homeListBeyondBoundsTracksOneViewportWithBounds() {
-        assertEquals(6, homeListInitialBeyondBoundsItemCount())
+        assertEquals(0, homeListInitialBeyondBoundsItemCount())
         assertEquals(0, homeListBeyondBoundsItemCount(itemCount = 0, viewportHeightDp = 0f))
         assertEquals(8, homeListBeyondBoundsItemCount(itemCount = 8, viewportHeightDp = 720f))
         assertEquals(18, homeListBeyondBoundsItemCount(itemCount = 40, viewportHeightDp = 600f))
         assertEquals(22, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 720f))
         assertEquals(24, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 2_000f))
+        assertFalse(homeListShouldRampBeyondBounds(contentRefreshing = true))
+        assertTrue(homeListShouldRampBeyondBounds(contentRefreshing = false))
+        assertEquals(6, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 24))
+        assertEquals(4, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
         assertEquals(
             14,
             homeListBeyondBoundsItemCount(

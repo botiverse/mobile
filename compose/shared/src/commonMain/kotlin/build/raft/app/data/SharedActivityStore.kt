@@ -181,6 +181,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.ApplyReadReceiptFailure -> handleReadReceiptFailure(intent.request)
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
+            SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 if (intent.event is PerReceiverReadStateChanged) {
                     scope.launch { applyPerReceiverReadStateChanged(intent.event) }
@@ -327,11 +328,12 @@ class SharedActivityStore internal constructor(
         return job
     }
 
-    // Lower-priority "tail": warm the rest of the activity list top-first, reusing the exact
+    // Lower-priority click-progressive "tail": after row N is consumed, warm the remaining
+    // eligible rows from N+1 top-first, reusing the exact
     // visible-prewarm machinery (same marker/key, same prewarmReplyThread, same replyPrewarmSemaphore,
-    // same completed/active/failed dedup maps, same shared candidate cache). The ordered list is
-    // visible-first then below-the-fold top-to-bottom; visible keys are handled by the visible flow
-    // and skipped here. A single serialized loop launches one tail item at a time and awaits it, so
+    // same completed/active/failed dedup maps, same shared candidate cache). Visible keys are handled
+    // by the visible flow and skipped here. A single serialized loop launches one tail item at a
+    // time and awaits it, so
     // the tail never holds more than one permit — it can only run when the visible set is not
     // saturating the shared Semaphore, and total concurrency stays bounded by that Semaphore.
     private fun prewarmActivityTail(orderedMarkers: List<ActivityReplyThreadPrewarmMarker>) {
@@ -1671,6 +1673,7 @@ sealed interface SharedActivityIntent {
     data class PrewarmActivityTail(
         val orderedMarkers: List<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
+    data object DetachPrewarmViewport : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true

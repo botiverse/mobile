@@ -16,6 +16,7 @@ class ThreadForwardMessageSelectionTest {
         assertEquals(listOf("message-1", "message-2"), selection.forwardableMessages.map { it.id })
         assertEquals(0, selection.skippedCount)
         assertEquals(0, selection.nestedForwardCount)
+        assertEquals(0, selection.taskLinkedCount)
     }
 
     @Test
@@ -33,17 +34,30 @@ class ThreadForwardMessageSelectionTest {
     }
 
     @Test
-    fun taskSystemAndActionCardMessagesAreNotForwardable() {
+    fun taskLinkedChatMessageUsesExplicitServerPolicyGuidance() {
         val selection =
             listOf(
-                message("task-1", taskStatus = "todo"),
-                message("system-1", messageType = "System"),
+                message("task-1", taskStatus = "todo")
+            ).threadForwardMessageSelection()
+
+        assertEquals(emptyList(), selection.forwardableMessages)
+        assertEquals(1, selection.skippedCount)
+        assertEquals(1, selection.taskLinkedCount)
+        assertEquals(ThreadTaskLinkedForwardUnsupportedMessage, selection.threadForwardSelectionFailureMessage())
+    }
+
+    @Test
+    fun actualTaskSystemAndActionCardMessagesAreNotForwardable() {
+        val selection =
+            listOf(
+                message("task-system-1", taskStatus = "todo", messageType = "System"),
                 message("action-1", actionCard = true)
             ).threadForwardMessageSelection()
 
         assertEquals(emptyList(), selection.forwardableMessages)
-        assertEquals(3, selection.skippedCount)
+        assertEquals(2, selection.skippedCount)
         assertEquals(0, selection.nestedForwardCount)
+        assertEquals(0, selection.taskLinkedCount)
         assertEquals(ThreadUnsupportedSourceMessage, selection.threadForwardSelectionFailureMessage())
     }
 
@@ -61,6 +75,7 @@ class ThreadForwardMessageSelectionTest {
         assertEquals(listOf("message-1", "message-2"), selection.forwardableMessages.map { it.id })
         assertEquals(3, selection.skippedCount)
         assertEquals(1, selection.nestedForwardCount)
+        assertEquals(1, selection.taskLinkedCount)
     }
 
     @Test
@@ -76,6 +91,14 @@ class ThreadForwardMessageSelectionTest {
             ThreadForwardSourceTargetForbiddenMessage,
             "forward_source_target_forbidden".threadForwardErrorMessage()
         )
+        assertEquals(
+            ThreadForwardCrossServerUnavailableMessage,
+            "forward_joint_projection_unavailable".threadForwardErrorMessage()
+        )
+        assertEquals(
+            ThreadForwardServerUnauthorizedMessage,
+            "forward_target_server_unauthorized".threadForwardErrorMessage()
+        )
         assertEquals("server_unavailable", "server_unavailable".threadForwardErrorMessage())
     }
 
@@ -86,8 +109,12 @@ class ThreadForwardMessageSelectionTest {
             threadForwardSkippedWarning(skippedCount = 2, nestedForwardCount = 2)
         )
         assertEquals(
-            "3 selected messages were skipped. Forwarded bundles, tasks, system messages, and action messages can't be forwarded.",
-            threadForwardSkippedWarning(skippedCount = 3, nestedForwardCount = 1)
+            "1 selected message was skipped because task-linked messages can't be forwarded yet.",
+            threadForwardSkippedWarning(skippedCount = 1, nestedForwardCount = 0, taskLinkedCount = 1)
+        )
+        assertEquals(
+            "3 selected messages were skipped. Forwarded bundles, task-linked messages, system messages, and action messages can't be forwarded.",
+            threadForwardSkippedWarning(skippedCount = 3, nestedForwardCount = 1, taskLinkedCount = 1)
         )
         assertEquals(null, threadForwardSkippedWarning(skippedCount = 0, nestedForwardCount = 0))
     }

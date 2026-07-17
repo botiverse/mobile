@@ -39,6 +39,7 @@ import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
+import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -1398,6 +1399,164 @@ class SlockMarkdownTest {
             secondAnnotated.slockMarkdownClickableTags()
         )
         assertFalse(firstPlan.signature == secondPlan.signature)
+    }
+
+    @Test
+    fun fiftyLongRowsOnlyRebuildPlansWhoseOwnMentionValidityChanges() {
+        val planner = SlockMarkdownInlineTokenPlanner(maxEntries = 256)
+        val bodies =
+            List(50) { index ->
+                buildString {
+                    append("Long joint-channel message $index: ")
+                    append("stable markdown content ".repeat(120))
+                    if (index < 9) append(" @member$index")
+                }
+            }
+        val noDirectory = validThreadMarkdownTags()
+        val membersDirectory =
+            validThreadMarkdownTags(
+                knownMentions = (0 until 9).mapTo(mutableSetOf()) { index -> "member$index" }
+            )
+        val candidatesDirectory =
+            validThreadMarkdownTags(
+                knownMentions =
+                    buildSet {
+                        (0 until 9).forEach { index -> add("member$index") }
+                        (0 until 80).forEach { index -> add("candidate$index") }
+                    }
+            )
+
+        val emptyPlans =
+            bodies.mapIndexed { index, body ->
+                planner.plan(body, isTagValid = noDirectory, inlineContentScope = "message-$index")
+            }
+        assertEquals(50, planner.planBuildCount)
+
+        val memberPlans =
+            bodies.mapIndexed { index, body ->
+                planner.plan(body, isTagValid = membersDirectory, inlineContentScope = "message-$index")
+            }
+        assertEquals(
+            59,
+            planner.planBuildCount,
+            "only the nine visible/overscan rows whose own mentions became valid may rebuild"
+        )
+        (0 until 9).forEach { index -> assertNotSame(emptyPlans[index], memberPlans[index]) }
+        (9 until 50).forEach { index -> assertSame(emptyPlans[index], memberPlans[index]) }
+
+        val candidatePlans =
+            bodies.mapIndexed { index, body ->
+                planner.plan(body, isTagValid = candidatesDirectory, inlineContentScope = "message-$index")
+            }
+        assertEquals(
+            59,
+            planner.planBuildCount,
+            "irrelevant candidate hydration must not create a third plan for any row"
+        )
+        memberPlans.indices.forEach { index -> assertSame(memberPlans[index], candidatePlans[index]) }
+    }
+
+    @Test
+    fun resolvedMentionLabelChangeRebuildsOnlyOwningRowAndUsesLatestHandler() {
+        val planner = SlockMarkdownInlineTokenPlanner(maxEntries = 256)
+        val bodies =
+            List(50) { index ->
+                buildString {
+                    append("Long joint-channel message $index: ")
+                    append("stable markdown content ".repeat(120))
+                    if (index == 0) append(" @member0")
+                }
+            }
+        val validator = validThreadMarkdownTags(knownMentions = setOf("member0"))
+        val initialResolver: (ThreadMarkdownTag) -> String = { tag ->
+            threadMarkdownTagDisplayLabel(tag.label)
+        }
+        val hydratedResolver: (ThreadMarkdownTag) -> String = { tag ->
+            if (tag.kind == ThreadMarkdownTagKind.UserMention && tag.label == "@member0") {
+                "@Display Name"
+            } else {
+                threadMarkdownTagDisplayLabel(tag.label)
+            }
+        }
+
+        val initialPlans =
+            bodies.mapIndexed { index, body ->
+                planner.plan(
+                    body,
+                    isTagValid = validator,
+                    resolveTagLabel = initialResolver,
+                    inlineContentScope = "message-$index"
+                )
+            }
+        assertEquals(50, planner.planBuildCount)
+
+        val hydratedPlans =
+            bodies.mapIndexed { index, body ->
+                planner.plan(
+                    body,
+                    isTagValid = validator,
+                    resolveTagLabel = hydratedResolver,
+                    inlineContentScope = "message-$index"
+                )
+            }
+        assertEquals(
+            51,
+            planner.planBuildCount,
+            "a valid mention whose resolved label changes must rebuild only its owning row"
+        )
+        assertNotSame(initialPlans[0], hydratedPlans[0])
+        (1 until 50).forEach { index -> assertSame(initialPlans[index], hydratedPlans[index]) }
+        assertEquals("@member0", initialPlans[0].tagTokens().single().resolvedLabel)
+        assertEquals("@Display Name", hydratedPlans[0].tagTokens().single().resolvedLabel)
+
+        val initialAnnotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = bodies[0],
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = bodies[0],
+                        isTagValid = validator,
+                        resolveTagLabel = initialResolver,
+                        tokenPlan = initialPlans[0]
+                    )
+            )
+        var openedBy = ""
+        var currentHandler: (ThreadMarkdownTag) -> Unit = { openedBy = "old:${it.label}" }
+        val hydratedAnnotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = bodies[0],
+                annotator =
+                    slockMarkdownAnnotator(
+                        content = bodies[0],
+                        isTagValid = validator,
+                        resolveTagLabel = hydratedResolver,
+                        onOpenTag = { tag -> currentHandler(tag) },
+                        tokenPlan = hydratedPlans[0]
+                    )
+            )
+
+        assertTrue(initialAnnotated.text.endsWith(" @member0"))
+        assertTrue(hydratedAnnotated.text.endsWith(" @Display Name"))
+        currentHandler = { openedBy = "new:${it.label}" }
+        val mentionLink =
+            hydratedAnnotated.getLinkAnnotations(0, hydratedAnnotated.length)
+                .map { it.item }
+                .filterIsInstance<LinkAnnotation.Clickable>()
+                .single()
+        mentionLink.linkInteractionListener?.onClick(mentionLink)
+        assertEquals("new:@member0", openedBy)
+
+        val candidatePlans =
+            bodies.mapIndexed { index, body ->
+                planner.plan(
+                    body,
+                    isTagValid = validator,
+                    resolveTagLabel = hydratedResolver,
+                    inlineContentScope = "message-$index"
+                )
+            }
+        assertEquals(51, planner.planBuildCount)
+        hydratedPlans.indices.forEach { index -> assertSame(hydratedPlans[index], candidatePlans[index]) }
     }
 
     @Test

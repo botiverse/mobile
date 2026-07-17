@@ -17,6 +17,7 @@ class RealtimeCanonicalFinalProductionFactoryTest {
         val auth = FakeCanonicalFinalAuthStore()
         val provider =
             createSharedRealtimeAuthorityProvider(
+            onAuthRevisionAdvanced = {},
                 registry =
                     RealtimeAuthorityRegistry(
                         authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
