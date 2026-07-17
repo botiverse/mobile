@@ -77,7 +77,7 @@ final class QaAcceptanceLoopTests: XCTestCase {
                     writeResult(ioDir, step: step, payload: ["ok": true])
                     return
                 }
-                let data = try perform(action, in: &app)
+                let data = try perform(action, in: &app, bundleId: bundleIdentifier)
                 payload = ["ok": true]
                 if let data { payload["data"] = data }
             } catch {
@@ -88,7 +88,7 @@ final class QaAcceptanceLoopTests: XCTestCase {
         }
     }
 
-    private func perform(_ action: Action, in app: inout XCUIApplication) throws -> Any? {
+    private func perform(_ action: Action, in app: inout XCUIApplication, bundleId: String) throws -> Any? {
         switch action.type {
         case "launch":
             // (Re)launch THROUGH XCTest so the XCUIApplication handle rebinds
@@ -96,11 +96,10 @@ final class QaAcceptanceLoopTests: XCTestCase {
             // process but leaves this handle pointing at the dead one — every
             // later action then fails "Application <bundle> is not running"
             // (task #8, case-06 feedback submit termination).
-            let bundleIdentifier = app.bundleIdentifier
             if app.state == .runningForeground || app.state == .runningBackground {
                 app.terminate()
             }
-            app = XCUIApplication(bundleIdentifier: bundleIdentifier)
+            app = XCUIApplication(bundleIdentifier: bundleId)
             app.launch()
             let deadline = Date().addingTimeInterval(30)
             while app.state != .runningForeground && Date() < deadline {
