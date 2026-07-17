@@ -335,6 +335,48 @@ private data class ThreadShareCaptureRect(
     val frame: Boolean = true
 )
 
+internal data class ThreadShareCaptureSlice(
+    val y: Float,
+    val height: Float
+)
+
+internal fun threadShareCaptureSlice(
+    messageHeight: Float,
+    currentMessageTop: Float,
+    captureViewportTop: Float,
+    captureViewportBottom: Float,
+    capturedHeight: Int,
+    segmentHeight: Int
+): ThreadShareCaptureSlice? {
+    val visibleContentStart = (captureViewportTop - currentMessageTop).coerceAtLeast(0f)
+    if (visibleContentStart > capturedHeight + ThreadShareCaptureGeometryTolerancePx) return null
+    val overlap = (capturedHeight - visibleContentStart).coerceAtLeast(0f)
+    val remainingHeight = messageHeight - capturedHeight
+    if (remainingHeight <= 0f) return null
+    val sliceTop = captureViewportTop + overlap
+    val visibleViewportHeight = captureViewportBottom - sliceTop
+    if (visibleViewportHeight <= 0f) return null
+    return ThreadShareCaptureSlice(
+        y = sliceTop,
+        height =
+            minOf(
+                if (segmentHeight > 0) segmentHeight.toFloat() else remainingHeight,
+                remainingHeight,
+                visibleViewportHeight
+            )
+    )
+}
+
+internal fun threadShareCaptureAnchorListItemIndex(
+    targetIndex: Int,
+    anchorBeforeTarget: Boolean
+): Int =
+    if (anchorBeforeTarget) {
+        (targetIndex - 1).coerceAtLeast(0)
+    } else {
+        targetIndex
+    }
+
 private data class ThreadSharePreviewImage(
     val uri: String,
     val path: String,
@@ -10098,6 +10140,12 @@ private fun ThreadPageContent(
     var sharePreviewLoading by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var shareCaptureAnchorBeforeTarget by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureTailPaddingActive by remember(threadInstanceKey) { mutableStateOf(false) }
+    var shareCaptureViewportBottomPx by remember(threadInstanceKey) { mutableStateOf(0f) }
+    var shareCaptureScrollOffsetPx by remember(threadInstanceKey) {
+        mutableStateOf(ThreadShareCaptureTopScrollOffsetPx)
+    }
     var inlineSearchVisible by remember(threadInstanceKey) { mutableStateOf(false) }
     var forwardTargetQuery by remember(threadInstanceKey) { mutableStateOf("") }
     var forwardTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
@@ -10187,6 +10235,9 @@ private fun ThreadPageContent(
         sharePreviewLoading = false
         shareCaptureMode = false
         shareCaptureTargetMessageId = null
+        shareCaptureAnchorBeforeTarget = false
+        shareCaptureTailPaddingActive = false
+        shareCaptureScrollOffsetPx = ThreadShareCaptureTopScrollOffsetPx
         if (activeModal == "sharePreview") {
             activeModal = null
         }
@@ -10207,47 +10258,128 @@ private fun ThreadPageContent(
             null -> Unit
         }
     }
-    fun selectedShareCaptureRect(): ThreadShareCaptureRect? {
-        val bounds = selectedShareMessageIds.mapNotNull { selectedShareBounds[it] }
-        if (bounds.isEmpty()) return null
-        var left = bounds.first().x
-        var top = bounds.first().y
-        var right = bounds.first().x + bounds.first().width
-        var bottom = bounds.first().y + bounds.first().height
-        bounds.drop(1).forEach { rect ->
-            if (rect.x < left) left = rect.x
-            if (rect.y < top) top = rect.y
-            if (rect.x + rect.width > right) right = rect.x + rect.width
-            if (rect.y + rect.height > bottom) bottom = rect.y + rect.height
-        }
-        return ThreadShareCaptureRect(
-            x = left,
-            y = top,
-            width = (right - left).coerceAtLeast(1f),
-            height = (bottom - top).coerceAtLeast(1f)
-        )
-    }
     suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
         val fragments = mutableListOf<String>()
+        var completedMessages = 0
+        diagnosticsLogger(
+            "thread_share_capture_start selected=${selectedShareMessages.size} " +
+                "ids=${selectedShareMessages.joinToString(separator = ",") { it.id }}"
+        )
         selectedShareMessages.forEach { message ->
             val targetIndex = timelineSlice.threadMessageListItemIndex(message.id)
-            if (targetIndex < 0) return@forEach
-            selectedShareBounds.clear()
+            if (targetIndex < 0) {
+                diagnosticsLogger("thread_share_capture_target_missing messageId=${message.id}")
+                return@forEach
+            }
             shareCaptureTargetMessageId = message.id
+            shareCaptureAnchorBeforeTarget = true
+            shareCaptureTailPaddingActive = true
+            var messageScrollBaseOffsetPx = ThreadShareCaptureTopScrollOffsetPx
+            shareCaptureScrollOffsetPx = messageScrollBaseOffsetPx
+            delay(ThreadShareCaptureScrollSettleMs + 64L)
+            // Keep the phase-one placement when the exact-target scroll is a
+            // no-op. Kuikly does not re-run onGloballyPositioned for an item
+            // whose placement did not change, so clearing here can discard the
+            // only fresh bounds for a target that was already visible.
+            shareCaptureAnchorBeforeTarget = false
             delay(ThreadShareCaptureScrollSettleMs + 64L)
             var attempts = 0
             while (attempts < 24 && selectedShareBounds[message.id] == null) {
                 delay(32)
                 attempts += 1
             }
-            val rect = selectedShareBounds[message.id] ?: return@forEach
-            val result = runCatching { onExportShareImage(rect.copy(frame = false)) }.getOrNull()
-            val path = result?.optString("path").orEmpty()
-            if (result?.optString("status") == "ok" && path.isNotBlank()) {
+            val initialRect =
+                selectedShareBounds[message.id]
+                    ?: run {
+                        diagnosticsLogger(
+                            "thread_share_capture_bounds_missing messageId=${message.id} " +
+                                "targetIndex=$targetIndex attempts=$attempts"
+                        )
+                        return@forEach
+                    }
+            diagnosticsLogger(
+                "thread_share_capture_bounds_ready messageId=${message.id} targetIndex=$targetIndex " +
+                    "x=${initialRect.x} y=${initialRect.y} width=${initialRect.width} height=${initialRect.height}"
+            )
+            val captureViewportTop = initialRect.y.coerceAtLeast(0f)
+            val captureViewportBottom = shareCaptureViewportBottomPx
+            if (captureViewportBottom <= captureViewportTop) {
+                diagnosticsLogger(
+                    "thread_share_capture_viewport_missing messageId=${message.id} " +
+                        "top=$captureViewportTop bottom=$captureViewportBottom"
+                )
+                return@forEach
+            }
+            var capturedHeight = 0
+            var segmentHeight = 0
+            var segmentCount = 0
+            while (capturedHeight < initialRect.height.roundToInt() && segmentCount < ThreadShareCaptureMaxSegmentsPerMessage) {
+                val rect = selectedShareBounds[message.id] ?: break
+                val slice =
+                    threadShareCaptureSlice(
+                        messageHeight = initialRect.height,
+                        currentMessageTop = rect.y,
+                        captureViewportTop = captureViewportTop,
+                        captureViewportBottom = captureViewportBottom,
+                        capturedHeight = capturedHeight,
+                        segmentHeight = segmentHeight
+                    ) ?: break
+                val captureRect =
+                    ThreadShareCaptureRect(
+                        x = rect.x,
+                        y = slice.y,
+                        width = rect.width,
+                        height = slice.height,
+                        frame = false
+                    )
+                val result = runCatching { onExportShareImage(captureRect) }.getOrNull()
+                val path = result?.optString("path").orEmpty()
+                val exportedHeight = result?.optString("height")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                if (result?.optString("status") != "ok" || path.isBlank() || exportedHeight <= 0) {
+                    diagnosticsLogger(
+                        "thread_share_capture_slice_failed messageId=${message.id} segment=$segmentCount " +
+                            "capturedHeight=$capturedHeight y=${captureRect.y} height=${captureRect.height} " +
+                            "status=${result?.optString("status").orEmpty()} " +
+                            "message=${result?.optString("message").orEmpty()} exportedHeight=$exportedHeight"
+                    )
+                    break
+                }
+                diagnosticsLogger(
+                    "thread_share_capture_slice_ok messageId=${message.id} segment=$segmentCount " +
+                        "capturedHeight=$capturedHeight exportedHeight=$exportedHeight"
+                )
                 fragments += path
+                segmentHeight = maxOf(segmentHeight, exportedHeight)
+                capturedHeight += exportedHeight
+                segmentCount += 1
+                if (capturedHeight >= initialRect.height.roundToInt()) {
+                    break
+                }
+                selectedShareBounds.clear()
+                shareCaptureAnchorBeforeTarget = false
+                shareCaptureTailPaddingActive = true
+                shareCaptureScrollOffsetPx = capturedHeight + messageScrollBaseOffsetPx
+                delay(ThreadShareCaptureScrollSettleMs + 64L)
+                attempts = 0
+                while (attempts < 24 && selectedShareBounds[message.id] == null) {
+                    delay(32)
+                    attempts += 1
+                }
+            }
+            if (capturedHeight >= initialRect.height.roundToInt()) {
+                completedMessages += 1
             }
         }
-        if (fragments.size != selectedShareMessages.size) return null
+        if (fragments.isEmpty() || completedMessages != selectedShareMessages.size) {
+            diagnosticsLogger(
+                "thread_share_capture_incomplete fragments=${fragments.size} " +
+                    "completed=$completedMessages selected=${selectedShareMessages.size}"
+            )
+            return null
+        }
+        diagnosticsLogger(
+            "thread_share_capture_complete fragments=${fragments.size} completed=$completedMessages"
+        )
         return ThreadShareCaptureRect(
             x = 0f,
             y = 0f,
@@ -10447,6 +10579,9 @@ private fun ThreadPageContent(
                         shareSelectionCaptureActive = shareCaptureMode,
                         shareSelectionCaptureAnchorMessageId =
                             shareCaptureTargetMessageId ?: selectedShareMessages.firstOrNull()?.id,
+                        shareSelectionCaptureAnchorBeforeTarget = shareCaptureAnchorBeforeTarget,
+                        shareSelectionCaptureTailPaddingActive = shareCaptureTailPaddingActive,
+                        shareSelectionCaptureScrollOffsetPx = shareCaptureScrollOffsetPx,
                         headerScrollToTopRequest = threadHeaderScrollToTopRequest,
                         selectedShareMessageIds = selectedShareMessageIds,
                         onShareSelectionBounds = { messageId, rect ->
@@ -10454,6 +10589,10 @@ private fun ThreadPageContent(
                                 selectedShareBounds.remove(messageId)
                             } else {
                                 selectedShareBounds[messageId] = rect
+                                diagnosticsLogger(
+                                    "thread_share_bounds_update messageId=$messageId " +
+                                        "x=${rect.x} y=${rect.y} width=${rect.width} height=${rect.height}"
+                                )
                             }
                         },
                         onEnterShareSelection = { messageId ->
@@ -10582,7 +10721,18 @@ private fun ThreadPageContent(
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
             } else if (shareSelectionActive) {
-                if (!shareCaptureMode) {
+                // Preserve the footer's layout height while capture owns the
+                // viewport. Removing it shifts Arrangement.Bottom rows after
+                // their bounds were reported, so PixelCopy starts one toolbar
+                // height above the selected message.
+                Box(
+                    modifier =
+                        Modifier
+                            .onGloballyPositioned { coordinates ->
+                                shareCaptureViewportBottomPx = coordinates.positionInRoot().y
+                            }
+                            .alpha(if (shareCaptureMode) 0f else 1f)
+                ) {
                     ThreadShareSelectionToolbar(
                         selectedCount = selectedShareMessages.size,
                         selectableCount = selectableShareMessageIds.size,
@@ -10609,31 +10759,32 @@ private fun ThreadPageContent(
                         },
                         onExportImage = {
                             if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
+                                diagnosticsLogger(
+                                    "thread_share_export_click selected=${selectedShareMessages.size} " +
+                                        "scopeActive=${shareExportScope.coroutineContext[Job]?.isActive == true}"
+                                )
                                 sharePreviewLoading = true
                                 sharePreviewImage = null
-                                selectedShareBounds.clear()
                                 shareCaptureMode = true
-                                shareExportScope.launch {
+                                // Start before this click hides the selection toolbar and
+                                // changes capture-mode row composition. Kuikly may apply that state change before a
+                                // normally-dispatched child gets its first turn, leaving capture
+                                // mode to scroll the anchor without ever entering the export job.
+                                shareExportScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                    diagnosticsLogger("thread_share_export_job_start")
                                     var result: JSONObject? = null
                                     try {
-                                        val captureRect =
-                                            if (selectedShareMessages.size > 1) {
-                                                captureSelectedShareFragments()
-                                            } else {
-                                                var attempts = 0
-                                                while (
-                                                    attempts < 24 &&
-                                                        selectedShareMessageIds.any { selectedShareBounds[it] == null }
-                                                ) {
-                                                    delay(32)
-                                                    attempts += 1
-                                                }
-                                                selectedShareCaptureRect()
+                                        val captureRect = captureSelectedShareFragments()
+                                        result =
+                                            captureRect?.let { rect ->
+                                                runCatching { onExportShareImage(rect) }.getOrNull()
                                             }
-                                        result = runCatching { onExportShareImage(captureRect) }.getOrNull()
                                     } finally {
                                         shareCaptureMode = false
                                         shareCaptureTargetMessageId = null
+                                        shareCaptureAnchorBeforeTarget = false
+                                        shareCaptureTailPaddingActive = false
+                                        shareCaptureScrollOffsetPx = ThreadShareCaptureTopScrollOffsetPx
                                         sharePreviewLoading = false
                                     }
                                     if (result?.optString("status") == "ok") {
@@ -11422,6 +11573,9 @@ private fun ThreadChatTab(
     shareSelectionActive: Boolean = false,
     shareSelectionCaptureActive: Boolean = false,
     shareSelectionCaptureAnchorMessageId: String? = null,
+    shareSelectionCaptureAnchorBeforeTarget: Boolean = false,
+    shareSelectionCaptureTailPaddingActive: Boolean = false,
+    shareSelectionCaptureScrollOffsetPx: Int = ThreadShareCaptureTopScrollOffsetPx,
     headerScrollToTopRequest: Int = 0,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
@@ -11495,6 +11649,9 @@ private fun ThreadChatTab(
                     shareSelectionActive = shareSelectionActive,
                     shareSelectionCaptureActive = shareSelectionCaptureActive,
                     shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                    shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                    shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                    shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                     headerScrollToTopRequest = headerScrollToTopRequest,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
@@ -11555,6 +11712,9 @@ private fun ThreadChatTab(
                     shareSelectionActive = shareSelectionActive,
                     shareSelectionCaptureActive = shareSelectionCaptureActive,
                     shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                    shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                    shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                    shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                     headerScrollToTopRequest = headerScrollToTopRequest,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
@@ -11605,6 +11765,9 @@ private fun ThreadChatTab(
                 shareSelectionActive = shareSelectionActive,
                 shareSelectionCaptureActive = shareSelectionCaptureActive,
                 shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+                shareSelectionCaptureTailPaddingActive = shareSelectionCaptureTailPaddingActive,
+                shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
                 headerScrollToTopRequest = headerScrollToTopRequest,
                 selectedShareMessageIds = selectedShareMessageIds,
                 onShareSelectionBounds = onShareSelectionBounds,
@@ -11898,6 +12061,9 @@ private fun ThreadMessagesList(
     shareSelectionActive: Boolean = false,
     shareSelectionCaptureActive: Boolean = false,
     shareSelectionCaptureAnchorMessageId: String? = null,
+    shareSelectionCaptureAnchorBeforeTarget: Boolean = false,
+    shareSelectionCaptureTailPaddingActive: Boolean = false,
+    shareSelectionCaptureScrollOffsetPx: Int = ThreadShareCaptureTopScrollOffsetPx,
     headerScrollToTopRequest: Int = 0,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
@@ -12013,7 +12179,9 @@ private fun ThreadMessagesList(
     var firstViewportProbeActive by remember(threadInstanceKey) { mutableStateOf(true) }
     var postFirstFrameBeyondBoundsEnabled by remember(threadInstanceKey) { mutableStateOf(false) }
     val activeListBeyondBoundsItems =
-        if (postFirstFrameBeyondBoundsEnabled) {
+        if (shareSelectionCaptureActive) {
+            0
+        } else if (postFirstFrameBeyondBoundsEnabled) {
             threadLazyWindowConsumerCounts.listBeyondBoundsItems
         } else {
             0
@@ -12328,6 +12496,8 @@ private fun ThreadMessagesList(
         threadInstanceKey,
         shareSelectionCaptureActive,
         shareSelectionCaptureAnchorMessageId,
+        shareSelectionCaptureAnchorBeforeTarget,
+        shareSelectionCaptureScrollOffsetPx,
         messageIndexSignature,
         lazyItemCount
     ) {
@@ -12336,15 +12506,36 @@ private fun ThreadMessagesList(
                 ?.takeIf { shareSelectionCaptureActive && it.isNotBlank() }
                 ?: return@LaunchedEffect
         val targetIndex = renderPayload.threadMessageListItemIndex(anchorMessageId)
-        if (!listState.canScrollToThreadItem(targetIndex)) {
+        val scrollIndex =
+            threadShareCaptureAnchorListItemIndex(
+                targetIndex = targetIndex,
+                anchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget
+            )
+        diagnosticsLogger(
+            "thread_share_anchor_start messageId=$anchorMessageId targetIndex=$targetIndex " +
+                "scrollIndex=$scrollIndex beforeTarget=$shareSelectionCaptureAnchorBeforeTarget " +
+                "offset=$shareSelectionCaptureScrollOffsetPx total=${listState.layoutInfo.totalItemsCount}"
+        )
+        if (!listState.canScrollToThreadItem(scrollIndex)) {
+            diagnosticsLogger(
+                "thread_share_anchor_rejected messageId=$anchorMessageId scrollIndex=$scrollIndex " +
+                    "total=${listState.layoutInfo.totalItemsCount}"
+            )
             return@LaunchedEffect
         }
         selectedShareMessageIds.forEach { messageId ->
             onShareSelectionBounds(messageId, null)
         }
-        listState.scrollToItem(targetIndex, ThreadShareCaptureTopScrollOffsetPx)
+        listState.scrollToItem(
+            scrollIndex,
+            if (shareSelectionCaptureAnchorBeforeTarget) 0 else shareSelectionCaptureScrollOffsetPx
+        )
         listState.awaitThreadMessagesLayoutFrame()
         delay(ThreadShareCaptureScrollSettleMs)
+        diagnosticsLogger(
+            "thread_share_anchor_complete messageId=$anchorMessageId " +
+                "visible=${listState.layoutInfo.visibleItemsInfo.joinToString(",") { it.index.toString() }}"
+        )
     }
     var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
@@ -12400,7 +12591,11 @@ private fun ThreadMessagesList(
             delay(ThreadLayoutStabilityFrameDelayMs)
         }
     }
-    LaunchedEffect(threadInstanceKey, latestItemIndex) {
+    LaunchedEffect(threadInstanceKey, latestItemIndex, shareSelectionCaptureActive) {
+        if (shareSelectionCaptureActive) {
+            allowBottomAutoAnchor = false
+            return@LaunchedEffect
+        }
         snapshotFlow {
             ThreadBottomAutoAnchorAvailabilityState(
                 currentAllow = allowBottomAutoAnchor,
@@ -12423,8 +12618,15 @@ private fun ThreadMessagesList(
                 }
             }
     }
-    LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady) {
-        if (latestItemIndex < 0 || !initialBottomAnchorReady) return@LaunchedEffect
+    LaunchedEffect(
+        threadInstanceKey,
+        latestItemIndex,
+        initialBottomAnchorReady,
+        shareSelectionCaptureActive
+    ) {
+        if (shareSelectionCaptureActive || latestItemIndex < 0 || !initialBottomAnchorReady) {
+            return@LaunchedEffect
+        }
         snapshotFlow {
             ThreadBottomAnchorCorrectionState(
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
@@ -12773,9 +12975,10 @@ private fun ThreadMessagesList(
         renderPayload.focusedMessageRequestNonce,
         focusedMessageTargetSignature,
         latestMessageLayoutKey,
-        latestItemIndex
+        latestItemIndex,
+        shareSelectionCaptureActive
     ) {
-        if (latestItemIndex < 0) return@LaunchedEffect
+        if (shareSelectionCaptureActive || latestItemIndex < 0) return@LaunchedEffect
         val focusedMessageTargetIndex =
             renderPayload.focusedMessageListItemIndex()
         if (focusedMessageTargetIndex >= 0) {
@@ -13146,7 +13349,13 @@ private fun ThreadMessagesList(
                             }
                     }
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
-                val captureShareBounds = shareSelectionCaptureActive && message.id in selectedShareMessageIds
+                // Start tracking as soon as the user selects a row. Export can
+                // begin UNDISTPATCHED before the capture-mode recomposition
+                // reaches this lazy item, so its already-visible bounds are the
+                // only deterministic initial placement in that window.
+                val captureShareBounds =
+                    (shareSelectionActive || shareSelectionCaptureActive) &&
+                        message.id in selectedShareMessageIds
                 val dateDividerLabel =
                     remember(
                         previousMessage?.timestampLabel,
@@ -13342,7 +13551,12 @@ private fun ThreadMessagesList(
                         .fillMaxWidth()
                         .height(
                             ThreadBottomScrollPaddingHeight +
-                                if (inlineSearchVisible) ThreadInlineSearchBarBottomInset else 0.dp
+                                (if (shareSelectionCaptureTailPaddingActive) {
+                                    ThreadShareCaptureBottomScrollPaddingHeight
+                                } else {
+                                    0.dp
+                                }) +
+                                (if (inlineSearchVisible) ThreadInlineSearchBarBottomInset else 0.dp)
                         )
                 )
             }
@@ -13599,6 +13813,7 @@ private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 private val ThreadBottomScrollPaddingHeight = 16.dp
+private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 private val ThreadInlineSearchBarBottomInset = 58.dp
 private const val ThreadInlineSearchBarZIndex = 2f
 internal data class ThreadInlineActionSpec(
@@ -14638,6 +14853,8 @@ private const val ThreadKeyboardBottomAnchorAttempts = 8
 private const val ThreadOlderAutoLoadVisibleItemThreshold = 8
 private const val ThreadShareCaptureTopScrollOffsetPx = -12
 private const val ThreadShareCaptureScrollSettleMs = 96L
+private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
+private const val ThreadShareCaptureGeometryTolerancePx = 2f
 private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
