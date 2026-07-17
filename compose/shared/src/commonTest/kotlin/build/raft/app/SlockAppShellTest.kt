@@ -2613,6 +2613,70 @@ class SlockAppShellTest {
         assertEquals(listOf("visible_conversation"), suppressed)
     }
 
+    @Test
+    fun notificationPushBannerSuppressesTheVisibleThreadRouteIdentity() {
+        val event =
+            NotificationPushReceived(
+                serverId = ServerId("server-1"),
+                kind = ConversationKind.Thread,
+                threadId = ChannelId("reply-stream"),
+                parentChannelId = ChannelId("parent-channel"),
+                parentMessageId = MessageId("parent-message"),
+                messageId = MessageId("reply-1"),
+                title = "#home-fixes · Thread",
+                body = "Ada: visible reply",
+                tag = "message:reply-1"
+            )
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "reply-stream",
+                        aliases = setOf("reply-stream", "parent-message"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "home-fixes",
+                        parentChannelId = "parent-channel",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+        val visibleRoute =
+            assertNotNull(
+                slockNotificationPushBannerOrNull(
+                    event = event,
+                    currentServerId = "server-1",
+                    visibleConversationKey = null,
+                    conversationDirectory = directory
+                )
+            ).conversation.resolveThreadRouteIdentity()
+        val suppressed = mutableListOf<String>()
+
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event = event,
+                currentServerId = "server-1",
+                visibleConversationKey = null,
+                visibleRouteIdentity = visibleRoute,
+                conversationDirectory = directory,
+                onSuppressed = suppressed::add
+            )
+
+        assertNull(banner)
+        assertEquals(listOf("visible_conversation"), suppressed)
+    }
+
     // task #441 (Quiver feedback 20d596f9): the thread's own row is not in the directory
     // and the parent CHANNEL row is. With the parent/anchor lookup tail deleted, the parent
     // row can no longer be hit at all — the Activity source rebuilds a correct Thread

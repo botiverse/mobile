@@ -136,7 +136,6 @@ import build.raft.app.markdown.threadMarkdownTagActivationKey
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
-import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
@@ -4123,15 +4122,18 @@ internal fun SharedThreadRouteContent(
         payload
             .withSharedShellEventCapabilities()
     }
-    val foregroundConversationDirectory =
-        remember(directoryConversationProjections) {
-            slockConversationDirectoryStateFromProjections(directoryConversationProjections.values)
+    val foregroundBannerStore =
+        remember(sharedStores, storeScope) {
+            sharedStores.foregroundBannerStore(storeScope)
         }
-    var foregroundMessageBanner by remember(initialThreadInstanceKey) {
-        mutableStateOf<SlockForegroundMessageBanner?>(null)
+    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
+    val foregroundBannerRouteOwnerId = "thread:$initialThreadInstanceKey"
+    DisposableEffect(active, payloadRouteIdentity, foregroundBannerStore) {
+        if (active) {
+            foregroundBannerStore.setVisibleRoute(foregroundBannerRouteOwnerId, payloadRouteIdentity)
+        }
+        onDispose { foregroundBannerStore.clearVisibleRoute(foregroundBannerRouteOwnerId) }
     }
-    val latestPayloadRouteIdentity by rememberUpdatedState(payloadRouteIdentity)
-    val latestForegroundConversationDirectory by rememberUpdatedState(foregroundConversationDirectory)
     var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
@@ -4169,8 +4171,6 @@ internal fun SharedThreadRouteContent(
         }
     fun imageAnnotationEnabled(): Boolean =
         chatLayoutPreferenceStore.readImageAnnotationEnabledSync()
-    fun foregroundMessageBannersEnabled(): Boolean =
-        chatLayoutPreferenceStore.readForegroundMessageBannersEnabledSync()
     val actionCardSuccessLabels =
         mapOf(
             "channel:create" to stringResource(MR.strings.thread_action_card_success_channel),
@@ -4656,23 +4656,6 @@ internal fun SharedThreadRouteContent(
     )
     suspend fun deliverThreadFeatureRealtimeEvent(serverId: String, event: RealtimeEvent) {
         latestThreadFeatureRealtimeEventHandler(event)
-        if (event is MessageNew) {
-            val session = latestCurrentSession
-            foregroundMessageBanner =
-                if (foregroundMessageBannersEnabled()) {
-                    slockForegroundMessageBannerProjection(
-                        serverId = serverId,
-                        currentServerId = session?.currentServerId ?: currentServerId,
-                        message = event.message,
-                        currentMemberId = session?.user?.id,
-                        visibleConversationKey = null,
-                        visibleRouteIdentity = latestPayloadRouteIdentity,
-                        conversationDirectory = latestForegroundConversationDirectory,
-                    ) ?: foregroundMessageBanner
-                } else {
-                    null
-                }
-        }
     }
     DisposableEffect(
         canonicalFinalLifecycleEffects,
@@ -4704,13 +4687,6 @@ internal fun SharedThreadRouteContent(
             }
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
-    }
-    LaunchedEffect(foregroundMessageBanner?.id) {
-        val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect
-        delay(slockForegroundBannerAutoDismissMs())
-        if (foregroundMessageBanner?.id == bannerId) {
-            foregroundMessageBanner = null
-        }
     }
     var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
@@ -5813,7 +5789,7 @@ internal fun SharedThreadRouteContent(
         currentServerStore = foregroundBannerCurrentServerStore,
         currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
         onBannerClick = { target ->
-            foregroundMessageBanner = null
+            foregroundBannerStore.dismiss(target.id)
             val request = target.openRequest
             val bannerPayload =
                 buildAppShellThreadPayload(
@@ -5836,9 +5812,7 @@ internal fun SharedThreadRouteContent(
                 onOpenThreadPayload(bannerPayload)
             }
         },
-        onBannerDismiss = {
-            foregroundMessageBanner = null
-        }
+        onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
     ) {
         CompositionLocalProvider(
             LocalThreadInlineVideoPreviewHost provides

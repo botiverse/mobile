@@ -9,6 +9,7 @@ import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
 import build.raft.app.SlockPlatformLogHint
+import build.raft.app.SharedForegroundBannerStore
 import build.raft.app.data.realtime.MessageSeqEnvelope
 import build.raft.app.data.realtime.MessageShadowObserver
 import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
@@ -317,6 +318,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val realtimeAuthorityRegistrations = SlockShellScopedStoreCache<String>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
+    private val shellForegroundBannerStores = SlockShellScopedStoreCache<SharedForegroundBannerStore>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -590,6 +592,9 @@ internal class SlockSharedStoreProvider private constructor(
      */
     fun windowNavigationCoordinator(scope: SlockShellStoreScope): SharedWindowNavigationCoordinator =
         shellNavigationCoordinators.getOrPut(scope) { SharedWindowNavigationCoordinator() }
+
+    fun foregroundBannerStore(scope: SlockShellStoreScope): SharedForegroundBannerStore =
+        shellForegroundBannerStores.getOrPut(scope) { SharedForegroundBannerStore(threadSendScope) }
 
     fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
@@ -880,6 +885,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
+        shellForegroundBannerStores.remove(scope)?.clear()
         selectedServerStores.remove(scope)
     }
 

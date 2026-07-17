@@ -3066,7 +3066,11 @@ internal fun SlockAppShellContent(
     var membersListRefreshKey by remember { mutableStateOf(0) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
-    var foregroundMessageBanner by remember { mutableStateOf<SlockForegroundMessageBanner?>(null) }
+    val foregroundBannerStore =
+        remember(sharedStores, navigationStoreScope) {
+            sharedStores.foregroundBannerStore(navigationStoreScope)
+        }
+    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
     val visibleRefreshGate = remember { AppShellVisibleRefreshGate() }
 
     fun refreshVisibleAppShellRoute(
@@ -3142,7 +3146,7 @@ internal fun SlockAppShellContent(
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
-        foregroundMessageBanner = null
+        foregroundBannerStore.clear()
         sharedStores.homeSavedStateCache.clear()
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
@@ -4127,6 +4131,7 @@ internal fun SlockAppShellContent(
                                             selectedHomeDestination = latestSelectedHomeDestination,
                                             selectedConversationId = latestSelectedHomeConversationId
                                         ),
+                                    visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
                                     conversationDirectory = latestAppShellConversationDirectory,
                                     onSuppressed = { reason ->
                                         bridge.log(
@@ -4140,10 +4145,10 @@ internal fun SlockAppShellContent(
                                         "notification_push_banner_shown serverId=${event.serverId.value} " +
                                             "messageId=${event.messageId.value} kind=${event.kind.name}"
                                     )
-                                    foregroundMessageBanner = it
+                                    foregroundBannerStore.show(it)
                                 }
                             } else {
-                                foregroundMessageBanner = null
+                                foregroundBannerStore.dismiss()
                             }
                         }
                     }
@@ -4178,14 +4183,6 @@ internal fun SlockAppShellContent(
         )
     }
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
-    LaunchedEffect(foregroundMessageBanner?.id) {
-        val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect
-        delay(slockForegroundBannerAutoDismissMs())
-        if (foregroundMessageBanner?.id == bannerId) {
-            foregroundMessageBanner = null
-        }
-    }
-
     val homeReadyForChildPagePrewarm =
         readyServerId != null && homeState.content is SharedHomeContentState.Content
     LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId) {
@@ -4512,7 +4509,7 @@ internal fun SlockAppShellContent(
                             onForegroundMessageBannersSelected = {
                                 foregroundMessageBannersEnabled = it
                                 if (!it) {
-                                    foregroundMessageBanner = null
+                                    foregroundBannerStore.dismiss()
                                 }
                             },
                             onActivityTaskStatusBadgesSelected = {
@@ -4690,16 +4687,14 @@ internal fun SlockAppShellContent(
             currentServerStore = sharedStores.localDataStore,
             currentServerIdOverride = readySession?.currentServerId?.let(::ServerId),
             onBannerClick = { target ->
-                foregroundMessageBanner = null
+                foregroundBannerStore.dismiss(target.id)
                 openHomeMessageRequest(
                     request = target.openRequest,
                     source = "foreground_banner",
                     fallbackAnchorMessageId = target.focusedMessageId
                 )
             },
-            onBannerDismiss = {
-                foregroundMessageBanner = null
-            }
+            onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
         ) {
             key("route-main") { mainRouteContent() }
         }
