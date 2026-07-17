@@ -214,10 +214,15 @@ jobs:
           # feedback submit) be judged product-crash vs sim-lifecycle from the
           # .ips instead of guessing from a SpringBoard screenshot.
           UDID="${UDID:-booted}"
-          # 1) System log for the app process (the logcat twin). App-scoped +
-          #    a 15m window so the artifact stays bounded.
-          xcrun simctl spawn "$UDID" log show --last 15m --style syslog \
-            --predicate 'process == "Raft"' > qa-evidence/system-log-raft.txt 2>&1 || true
+          # 1) System log (the logcat twin): last 12m of the sim's unified log,
+          #    kept to app + termination-relevant lines so the artifact stays
+          #    bounded. grep-filtered rather than a `process ==` predicate because
+          #    the Kuikly app's process name is its executable ("iosApp"), not
+          #    "Raft"; the daemon lines (SpringBoard/launchd/assertiond/jetsam)
+          #    carry the reason when the app is terminated.
+          xcrun simctl spawn "$UDID" log show --last 12m --style syslog 2>/dev/null \
+            | grep -iE 'raft|iosApp|SpringBoard|launchd|assertiond|runningboardd|jetsam|crash|terminat|signal|exception|watchdog' \
+            | tail -4000 > qa-evidence/system-log-raft.txt || true
           # 2) Crash reports: simulator app crashes write .ips to the host's
           #    DiagnosticReports. Copy any present (fresh runner => this run's).
           mkdir -p qa-evidence/crashes
