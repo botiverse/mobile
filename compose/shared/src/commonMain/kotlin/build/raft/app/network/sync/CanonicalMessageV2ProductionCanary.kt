@@ -221,7 +221,9 @@ internal class CanonicalMessageV2ProductionCanary(
         if (barrier != CanonicalMessageV2CanaryOutcome.Committed) return barrier
         generationEngine.invalidate(scope)
         selectionMutex.withLock {
-            selectedScopeByPartition.remove(scope.partition, scope)
+            if (selectedScopeByPartition[scope.partition] == scope) {
+                selectedScopeByPartition.remove(scope.partition)
+            }
             scopeMutexByKey.remove(scope)
             stateByScope.remove(scope)
         }
