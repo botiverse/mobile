@@ -1263,9 +1263,7 @@ internal fun SlockBrutalListShell(
     // Mirrors the proven SlockBrutalCard pattern (SlockBrutalCard.kt) and
     // fixes the earlier broken `padding(end, bottom).background(ShadowBlack)`
     // pattern that did not actually reserve outer space for the shadow to
-    // peek out. (Visual diff evidence:
-    // `visual-testing-results/diff/react__android/components.channel.members.panel.side-by-side.png`
-    // showed 81.18% pixel mismatch with a flat inner list box in Android.)
+    // peek out.
     Box(
         modifier =
             modifier

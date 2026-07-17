@@ -3293,44 +3293,6 @@ private fun ThreadReactionAtlasImagePreview() {
 }
 
 @Composable
-internal fun ChannelMembersPanelVisualScreen() {
-    val members = remember { channelPanelVisualMembers() }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        ThreadMembersModal(
-            members = members,
-            membersCount = members.size,
-            canAddMembers = true,
-            removeMemberStatus = "idle",
-            removingMemberId = null,
-            removeMemberErrorCode = null,
-            onDismiss = {},
-            onAddMember = {},
-            onOpenMember = {},
-            onRemoveMember = {}
-        )
-    }
-}
-
-@Composable
-internal fun ChannelMembersPanelJointChannelVisualScreen() {
-    val members = remember { channelPanelJointChannelVisualMembers() }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        ThreadMembersModal(
-            members = members,
-            membersCount = members.size,
-            canAddMembers = true,
-            removeMemberStatus = "idle",
-            removingMemberId = null,
-            removeMemberErrorCode = null,
-            onDismiss = {},
-            onAddMember = {},
-            onOpenMember = {},
-            onRemoveMember = {}
-        )
-    }
-}
-
-@Composable
 internal fun ChannelSettingsPanelVisualScreen() {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadSettingsModal(
@@ -3348,18 +3310,6 @@ internal fun ChannelAddMemberPanelVisualScreen() {
     val members = remember { channelPanelVisualMembers() }
     val candidates = remember { channelPanelVisualCandidates() }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        ThreadMembersModal(
-            members = members,
-            membersCount = members.size,
-            canAddMembers = true,
-            removeMemberStatus = "idle",
-            removingMemberId = null,
-            removeMemberErrorCode = null,
-            onDismiss = {},
-            onAddMember = {},
-            onOpenMember = {},
-            onRemoveMember = {}
-        )
         ThreadAddMemberModal(
             members = members,
             candidates = candidates,
@@ -3400,35 +3350,6 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
             avatarLabel = "AR",
             kind = "human",
             canRemove = true
-        )
-    )
-
-// Joint-channel example split out of components.channel.members.panel into its
-// own case components.channel.members.panel.joint-channel (task #370 scope
-// change): remote-server members carry the Botiverse source badge and cannot
-// be removed. The react counterpart + manifest entry land separately, so this
-// case is react-missing until then.
-private fun channelPanelJointChannelVisualMembers(): List<KuiklyThreadMemberItem> =
-    listOf(
-        KuiklyThreadMemberItem(
-            id = "agent_android",
-            displayName = "Android Developer",
-            handle = "Android-Developer",
-            roleLabel = "Online",
-            avatarLabel = "AD",
-            kind = "agent",
-            sourceServerLabel = "Botiverse",
-            canRemove = false
-        ),
-        KuiklyThreadMemberItem(
-            id = "user_artin",
-            displayName = "Artin",
-            handle = "artin",
-            roleLabel = "Project owner",
-            avatarLabel = "A",
-            kind = "human",
-            sourceServerLabel = "Botiverse",
-            canRemove = false
         )
     )
 
@@ -20314,132 +20235,6 @@ private fun threadSharePreviewImageHeight(image: ThreadSharePreviewImage?): Int 
     val width = image?.width?.takeIf { it > 0 } ?: return 280
     val height = image.height.takeIf { it > 0 } ?: return 280
     return ((height.toFloat() / width.toFloat()) * 320f).roundToInt().coerceIn(180, 440)
-}
-
-@Composable
-private fun ThreadMembersModal(
-    members: List<KuiklyThreadMemberItem>,
-    membersCount: Int,
-    canAddMembers: Boolean,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
-    removeMemberStatus: String,
-    removingMemberId: String?,
-    removeMemberErrorCode: String?,
-    onDismiss: () -> Unit,
-    onAddMember: () -> Unit,
-    onOpenMember: (KuiklyThreadMemberItem) -> Unit,
-    onRemoveMember: (String) -> Unit
-) {
-    val userFacingErrorLabels = threadUserFacingErrorLabels()
-    // Memoize the agents/humans partition so recomposition that does
-    // not change the members list does not re-run the filter. This
-    // pairs with the loadMembers idempotency in SharedThreadStore:
-    // once members are loaded for the current thread, the modal open /
-    // close cycle does not trigger a refetch AND does not redo the
-    // partition work either.
-    val (agents, humans) = remember(members) {
-        val a = members.filter { it.kind.equals("agent", ignoreCase = true) }
-        val h = members.filter { !it.kind.equals("agent", ignoreCase = true) }
-        a to h
-    }
-    val removeFailedLabel = stringResource(MR.strings.thread_members_remove_failed)
-    val genericErrorLabel = stringResource(MR.strings.common_error)
-    val removeErrorText =
-        when (removeMemberStatus) {
-            "failed" ->
-                "$removeFailedLabel: " +
-                    (userFacingErrorLabels.forErrorCode(removeMemberErrorCode ?: "member_remove_failed")
-                        ?: genericErrorLabel).uppercase()
-            "no_permission" -> stringResource(MR.strings.thread_members_remove_no_permission)
-            else -> null
-        }
-    val resolvedMemberCount = membersCount.takeIf { it > 0 } ?: members.size
-    SlockUnifiedDialog(
-        title = stringResource(MR.strings.thread_members_title, resolvedMemberCount),
-        onDismiss = onDismiss,
-        minWidth = 300.dp,
-        maxWidth = 332.dp,
-        contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22
-    ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (!removeErrorText.isNullOrBlank()) {
-                Text(
-                    text = removeErrorText,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed
-                )
-            }
-            SlockModalListShell(height = threadMemberListHeight(agents.size, humans.size).dp) {
-                if (members.isEmpty()) {
-                    item {
-                        ThreadModalEmptyState(
-                            title = stringResource(MR.strings.thread_state_no_members),
-                            detail = stringResource(MR.strings.thread_members_refresh_detail)
-                        )
-                    }
-                } else {
-                    if (agents.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
-                        items(agents.size, key = { agents[it].memberKey }) { index ->
-                            val member = agents[index]
-                            val removing = removeMemberStatus == "removing" && removingMemberId == member.id
-                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
-                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
-                                ?: member.modalAvatarWireValue()
-                            SlockModalCompactMemberRow(
-                                title = member.displayName,
-                                subtitle = member.localizedModalRoleLabel(),
-                                sourceBadgeLabel = member.sourceServerLabel,
-                                avatarWireValue = avatarWireValue,
-                                avatarLabel = member.modalAvatarLabel(),
-                                statusColor = status?.color,
-                                statusPulsing = status?.pulsing == true,
-                                enabled = !removing,
-                                trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
-                                trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
-                                onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null,
-                                onClick = { onOpenMember(member) }
-                            )
-                        }
-                    }
-                    if (humans.isNotEmpty()) {
-                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
-                        items(humans.size, key = { humans[it].memberKey }) { index ->
-                            val member = humans[index]
-                            val removing = removeMemberStatus == "removing" && removingMemberId == member.id
-                            val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
-                            val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
-                                ?: member.modalAvatarWireValue()
-                            SlockModalCompactMemberRow(
-                                title = member.displayName,
-                                subtitle = member.localizedModalRoleLabel(),
-                                sourceBadgeLabel = member.sourceServerLabel,
-                                avatarWireValue = avatarWireValue,
-                                avatarLabel = member.modalAvatarLabel(),
-                                statusColor = status?.color,
-                                statusPulsing = status?.pulsing == true,
-                                enabled = !removing,
-                                trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
-                                trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
-                                onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null,
-                                onClick = { onOpenMember(member) }
-                            )
-                        }
-                    }
-                }
-            }
-            SlockModalFullWidthActionButton(
-                label = stringResource(MR.strings.thread_action_add_member),
-                icon = SlockLucideIconName.UserPlus,
-                onClick = { if (canAddMembers) onAddMember() },
-                color = SlockColor.AccentPink,
-                enabled = canAddMembers
-            )
-        }
-    }
 }
 
 @Composable
