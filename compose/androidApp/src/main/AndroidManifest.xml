@@ -52,6 +52,14 @@
             android:launchMode="singleTask"
             android:theme="@style/Theme.Slock.Starting"
             android:windowSoftInputMode="adjustNothing" />
+        <activity
+            android:name=".shared.SlockDocumentShellActivity"
+            android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+            android:documentLaunchMode="intoExisting"
+            android:exported="false"
+            android:launchMode="standard"
+            android:theme="@style/Theme.Slock.Starting"
+            android:windowSoftInputMode="adjustNothing" />
         <activity-alias
             android:name=".core.diagnostics.DiagnosticsDeepLinkActivity"
             android:enabled="@bool/diagnostics_deeplink_enabled"

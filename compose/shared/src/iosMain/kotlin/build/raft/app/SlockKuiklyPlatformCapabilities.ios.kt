@@ -6,6 +6,8 @@ internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = false
 
 internal actual fun slockPlatformPrewarmsAppShellChildPages(): Boolean = false
 
+internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
+
 internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = "iosLiquidGlass"
 
 // task #11: the iOS video host embeds AVPlayerViewController — the system's

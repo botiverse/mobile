@@ -379,6 +379,7 @@ sealed interface SharedSettingsIntent {
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
     data class SetComposerSendKey(val enabled: Boolean) : SharedSettingsIntent
+    data class SetMultiShellHostEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
@@ -934,6 +935,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setMultiShellHostEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_multi_shell_host_unavailable", retryable = false))
+        repository.setMultiShellHostEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setThreadRowAffordance(
         affordanceKey: String,
         enabled: Boolean
@@ -1198,6 +1207,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Composer keyboard action preference is not available on this platform."
+                    ),
+            multiShellHost =
+                chatLayout?.toSettingsMobileMultiShellHostSnapshot()
+                    ?: multiShellHost.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Multiple app windows are not available on this platform."
                     ),
             threadRowAffordances =
                 chatLayout?.toSettingsMobileThreadRowAffordancesSnapshot()
@@ -1872,6 +1888,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setComposerSendKey(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_COMPOSER_SEND_KEY)
+            }
+            is SharedSettingsIntent.SetMultiShellHostEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_MULTI_SHELL_HOST, inProgress = true)
+                    )
+                dataSource.setMultiShellHostEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_MULTI_SHELL_HOST)
             }
             is SharedSettingsIntent.SetThreadRowAffordance -> {
                 _state.value =
@@ -2835,6 +2859,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
             is SharedSettingsIntent.SetComposerSendKey,
+            is SharedSettingsIntent.SetMultiShellHostEnabled,
             is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
@@ -3002,6 +3027,7 @@ internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
 internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
+internal const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
 internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
@@ -3176,6 +3202,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileComposerSendKeySnapshot
         available = true,
         statusLabel = if (composerSendKeyEnabled) "Send" else "New line",
         detail = "Choose what the keyboard action key does in the message composer. Long-pressing the input still offers Insert newline."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileMultiShellHostSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = multiShellHostEnabled,
+        available = true,
+        statusLabel = if (multiShellHostEnabled) "Enabled" else "Off",
+        detail = "Open different workspaces in separate Android app windows. Existing windows remain open until you close them."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadRowAffordancesSnapshot(): SettingsMobileMultiSelectionSnapshot =

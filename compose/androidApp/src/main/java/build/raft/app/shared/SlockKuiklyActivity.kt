@@ -89,11 +89,13 @@ import build.raft.app.core.data.storage.StorageManagementSnapshot
 import build.raft.app.widget.SlockActivityWidgetProvider
 import build.raft.app.widget.SlockAgentStatusWidgetProvider
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.SLOCK_APP_UPDATE_EVENT
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.postAndroidAppScopeEvent
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.model.MemberKind
@@ -660,7 +662,8 @@ open class SlockKuiklyActivity :
         SlockKuiklyPerformanceDiagnostics.recordPerformance("activity", pageName, data)
     }
 
-    override fun useHostDisplayMetrics(): Boolean = true
+    override fun useHostDisplayMetrics(): Boolean =
+        shouldUseGlobalHostDisplayMetrics(androidShellLaunchTarget)
 
     private fun installSlockInputFontBridge(container: ViewGroup) {
         updateDefaultShellDisplayMetrics(container)
@@ -678,6 +681,7 @@ open class SlockKuiklyActivity :
     }
 
     private fun updateDefaultShellDisplayMetrics(container: ViewGroup) {
+        if (!shouldUseGlobalHostDisplayMetrics(androidShellLaunchTarget)) return
         SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
     }
 
@@ -1386,15 +1390,20 @@ open class SlockKuiklyActivity :
             pageName: String,
             pageData: JSONObject = JSONObject(),
             clearTask: Boolean = false,
+            documentShellId: String? = null,
+            hostActivityClass: Class<out Activity>? = null,
         ) {
             SlockKuiklyAdapters.init(context.applicationContext)
             val hostPageData = pageData.withAndroidHostPageData(pageName)
             val starter =
-                    Intent(context, slockKuiklyHostActivityClass(pageName))
+                    Intent(context, hostActivityClass ?: slockKuiklyHostActivityClass(pageName))
                             .putExtra(KEY_PAGE_NAME, pageName)
                             .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(hostPageData).text)
             if (clearTask) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            } else if (!documentShellId.isNullOrBlank()) {
+                starter.data = Uri.parse("raft-shell://window/${Uri.encode(documentShellId)}")
+                starter.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS)
             } else if (context !is Activity) {
                 starter.addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -1410,11 +1419,24 @@ open class SlockKuiklyActivity :
             pageData: JSONObject = JSONObject(),
             clearTask: Boolean = false,
         ) {
+            val multiShellHostEnabled =
+                runCatching {
+                    KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                        .readMultiShellHostEnabledSync()
+                }.getOrDefault(false)
             val target =
-                androidShellLaunchTargetFromPageData(pageData)
-                    ?: resolveAndroidShellLaunchTarget(pageData)
+                androidShellLaunchTargetFromPageData(pageData, multiShellHostEnabled)
+                    ?: resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
             val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
-            start(context, PAGE_APP_SHELL, resolvedPageData, clearTask)
+            val taskLaunch = target.taskLaunchPlan(clearTask)
+            start(
+                context = context,
+                pageName = PAGE_APP_SHELL,
+                pageData = resolvedPageData,
+                clearTask = taskLaunch.clearTask,
+                documentShellId = taskLaunch.documentShellId,
+                hostActivityClass = slockAppShellHostActivityClass(target)
+            )
         }
 
         fun startAuthChooseServer(
@@ -1454,13 +1476,7 @@ open class SlockKuiklyActivity :
                     } else {
                         JSONObject(SlockKuiklyPageData.fromText(intent?.getStringExtra(KEY_PAGE_DATA)).text)
                     }
-            val resolvedPageData =
-                    if (resolvedPageName(intent) == PAGE_APP_SHELL) {
-                        normalizeAndroidAppShellPageData(rawPageData)
-                    } else {
-                        rawPageData
-                    }
-            return SlockKuiklyPageData.fromJson(resolvedPageData)
+            return SlockKuiklyPageData.fromJson(rawPageData)
         }
 
         private fun Intent?.isDiagnosticsDeepLinkIntent(): Boolean =

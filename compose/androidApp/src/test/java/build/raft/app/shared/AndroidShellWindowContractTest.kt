@@ -79,17 +79,17 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
-    fun pageDataRoundTripNormalizesLegacyDocumentIdentity() {
+    fun pageDataRoundTripPreservesEnabledDocumentIdentity() {
         val source = JSONObject().put("slockNotificationMessageId", "message-1")
         val target = AndroidShellLaunchTarget("shell-a", "server-a", documentShell = true)
 
         val enriched = source.withAndroidShellLaunchTarget(target)
         val restored = androidShellLaunchTargetFromPageData(enriched)
 
-        assertEquals("android-default-app-shell", restored?.shellInstanceId)
+        assertEquals("shell-a", restored?.shellInstanceId)
         assertEquals("server-a", restored?.serverId)
-        assertFalse(restored?.documentShell ?: true)
-        assertFalse(enriched.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
+        assertTrue(restored?.documentShell ?: false)
+        assertTrue(enriched.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
         assertEquals("message-1", enriched.getString("slockNotificationMessageId"))
     }
 
@@ -181,6 +181,56 @@ class AndroidShellWindowContractTest {
         assertEquals("android-default-app-shell", target.shellInstanceId)
         assertEquals("server-b", target.serverId)
         assertFalse(target.documentShell)
+    }
+
+    @Test
+    fun enabledExplicitDocumentRouteUsesDeterministicServerShell() {
+        val pageData =
+            JSONObject()
+                .put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
+                .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+
+        val target = resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled = true)
+        val taskLaunch = target.taskLaunchPlan(requestedTaskClear = true)
+
+        assertEquals("server-shell:server-b", target.shellInstanceId)
+        assertEquals("server-b", target.serverId)
+        assertTrue(target.documentShell)
+        assertFalse(taskLaunch.clearTask)
+        assertEquals("server-shell:server-b", taskLaunch.documentShellId)
+        assertFalse(shouldUseGlobalHostDisplayMetrics(target))
+    }
+
+    @Test
+    fun enabledDocumentRouteReusesRegisteredServerShell() {
+        AndroidShellWindowRegistry.register(
+            AndroidShellLaunchTarget("server-shell:existing", "server-b", documentShell = true)
+        )
+        val target =
+            resolveAndroidShellLaunchTarget(
+                JSONObject()
+                    .put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
+                    .put(ANDROID_DOCUMENT_SHELL_KEY, true),
+                multiShellHostEnabled = true
+            )
+
+        assertEquals("server-shell:existing", target.shellInstanceId)
+        assertTrue(target.documentShell)
+    }
+
+    @Test
+    fun disabledExplicitDocumentRouteFallsBackToDefaultShell() {
+        val target =
+            resolveAndroidShellLaunchTarget(
+                JSONObject()
+                    .put(ANDROID_SHELL_SERVER_ID_KEY, "server-b")
+                    .put(ANDROID_DOCUMENT_SHELL_KEY, true),
+                multiShellHostEnabled = false
+            )
+
+        assertEquals("android-default-app-shell", target.shellInstanceId)
+        assertFalse(target.documentShell)
+        assertTrue(shouldUseGlobalHostDisplayMetrics(target))
     }
 
     @Test

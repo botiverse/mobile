@@ -27,6 +27,15 @@ internal fun slockKuiklyHostActivityClass(pageName: String): Class<out Activity>
         SlockKuiklyActivity::class.java
     }
 
+internal fun slockAppShellHostActivityClass(
+    target: AndroidShellLaunchTarget,
+): Class<out Activity> =
+    if (target.documentShell) {
+        SlockDocumentShellActivity::class.java
+    } else {
+        SlockAppShellActivity::class.java
+    }
+
 internal class HomeColdStartSplashGate(
     enabled: Boolean,
     private val startedAtMillis: Long,

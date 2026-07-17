@@ -49,6 +49,7 @@ import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
+import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -1490,7 +1491,8 @@ internal data class KuiklySharedSettingsRow(
     val status: String = "",
     val enabled: Boolean = false,
     val toggleValue: Boolean? = null,
-    val supportingDetail: String = ""
+    val supportingDetail: String = "",
+    val badgeLabel: String = ""
 )
 
 private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
@@ -4388,7 +4390,8 @@ internal fun SlockAppShellContent(
                                 },
                                 onOpenServerSelection = {
                                     pager.openAuthChooseServerPage(
-                                        storeScope = navigationStoreScope
+                                        storeScope = navigationStoreScope,
+                                        documentShell = pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
                                     )
                                 },
                                 onCreateChannel = { openCreateChannelDialog() },
@@ -5450,6 +5453,9 @@ private fun SettingsAppShellContent(
                     },
                     onComposerSendKeyChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled))
+                    },
+                    onMultiShellHostChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetMultiShellHostEnabled(enabled))
                     },
                     onThreadRowAffordanceChange = { affordance, enabled ->
                         onSettingsIntent(
@@ -6545,6 +6551,7 @@ private fun SettingsMobileContent(
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
+    onMultiShellHostChange: (Boolean) -> Unit,
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val snapshot =
@@ -6592,6 +6599,15 @@ private fun SettingsMobileContent(
                     onComposerSendKeyChange = onComposerSendKeyChange
                 )
             }
+            if (slockPlatformSupportsMultiShellHost()) {
+                item {
+                    SettingsMultiShellHostCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onMultiShellHostChange = onMultiShellHostChange
+                    )
+                }
+            }
             item {
                 SettingsThreadRowAffordancesCard(
                     snapshot = snapshot,
@@ -6608,6 +6624,54 @@ private fun SettingsMobileContent(
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsMultiShellHostCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onMultiShellHostChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.inProgress
+    val preference = snapshot.multiShellHost
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.AppWindow,
+        title = stringResource(MR.strings.settings_mobile_multi_shell_host)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onMultiShellHostChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), SlockColor.BrandYellow)
+                    Text(
+                        preference.localizedToggleStatus(),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+                Text(
+                    stringResource(MR.strings.settings_mobile_multi_shell_host_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
     }
 }
 
@@ -9268,7 +9332,19 @@ private fun SharedSettingsRow(
                 )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(row.title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        row.title,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    row.badgeLabel.takeIf { it.isNotBlank() }?.let {
+                        SettingsConnectedAppsBadge(it, SlockColor.BrandYellow)
+                    }
+                }
                 row.detail.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -11385,7 +11461,7 @@ private fun MemberProfile.isWorkspaceAdmin(): Boolean {
         }
 }
 
-private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
+internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
     refreshing: Boolean
 ): KuiklySharedSettingsPayload {
@@ -11439,7 +11515,27 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             )
                         )
                 )
-            )
+            ) +
+                if (slockPlatformSupportsMultiShellHost()) {
+                    listOf(
+                        KuiklySharedSettingsSection(
+                            title = "Windowing",
+                            rows =
+                                listOf(
+                                    mobile.multiShellHost.toMobileToggleRow(
+                                        key = MOBILE_ACTION_MULTI_SHELL_HOST,
+                                        iconName = SlockLucideIconName.AppWindow,
+                                        title = "Multiple app windows",
+                                        fallbackStatus = "Off",
+                                        actionState = actionState,
+                                        badgeLabel = "Beta"
+                                    )
+                                )
+                        )
+                    )
+                } else {
+                    emptyList()
+                }
     )
 }
 
@@ -11647,7 +11743,8 @@ private fun SettingsMobileToggleSnapshot.toMobileToggleRow(
     iconName: SlockLucideIconName,
     title: String,
     fallbackStatus: String,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    badgeLabel: String = ""
 ): KuiklySharedSettingsRow =
     KuiklySharedSettingsRow(
         key = key,
@@ -11657,7 +11754,8 @@ private fun SettingsMobileToggleSnapshot.toMobileToggleRow(
         value = (!enabled).toString(),
         status = actionState.statusFor(key, statusLabel.ifBlank { fallbackStatus }),
         enabled = available && actionState?.inProgress != true,
-        toggleValue = enabled
+        toggleValue = enabled,
+        badgeLabel = badgeLabel
     )
 
 private fun SettingsServerAdminSnapshot.normalizedRole(): String =
@@ -12650,6 +12748,9 @@ private fun AuthChooseServerPageContent() {
     val sourceStoreScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
+    val sourceDocumentShell = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optBoolean(SLOCK_DOCUMENT_SHELL, false)
+    }
     val skipInitialLoad = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD, false)
     }
@@ -12721,12 +12822,26 @@ private fun AuthChooseServerPageContent() {
                 authDataSource = authDataSource,
                 skipInitialLoad = skipInitialLoad,
                 onReady = { readySession ->
-                    bridge.realtimeDisconnect("server_changed")
+                    val multiShellHostEnabled =
+                        slockPlatformSupportsMultiShellHost() &&
+                            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+                                .readMultiShellHostEnabledSync()
+                    val opensDocumentShell =
+                        isMultiShellCrossServerSelection(
+                            sourceStoreScope = sourceStoreScope,
+                            selectedServerId = readySession.selectedServerId,
+                            multiShellHostEnabled = multiShellHostEnabled
+                        )
+                    if (!opensDocumentShell) {
+                        bridge.realtimeDisconnect("server_changed")
+                    }
                     pager.openAppShellReplacingCurrentPage(
                         pageData =
                             appShellPageDataForServerSelection(
                                 sourceStoreScope = sourceStoreScope,
+                                sourceDocumentShell = sourceDocumentShell,
                                 selectedServerId = readySession.selectedServerId,
+                                multiShellHostEnabled = multiShellHostEnabled,
                                 suppressRestoreLanding = true
                             )
                     )
@@ -12903,7 +13018,8 @@ private fun Pager.openAppShellDeveloper() {
 }
 
 private fun Pager.openAuthChooseServerPage(
-    storeScope: SlockShellStoreScope
+    storeScope: SlockShellStoreScope,
+    documentShell: Boolean
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
@@ -12911,7 +13027,8 @@ private fun Pager.openAuthChooseServerPage(
             authChooseServerPageData(
                 replaceCurrent = false,
                 fromShell = true,
-                storeScope = storeScope
+                storeScope = storeScope,
+                documentShell = documentShell
             )
         )
 }
@@ -12937,7 +13054,8 @@ internal fun authChooseServerPageData(
     replaceCurrent: Boolean = false,
     fromShell: Boolean = false,
     skipInitialLoad: Boolean = false,
-    storeScope: SlockShellStoreScope? = null
+    storeScope: SlockShellStoreScope? = null,
+    documentShell: Boolean = false
 ): JSONObject =
     slockAuthRoutePageData(AUTH_CHOOSE_SERVER_PAGE, replaceCurrent)
         .apply {
@@ -12950,25 +13068,46 @@ internal fun authChooseServerPageData(
             storeScope?.let { scope ->
                 put(SLOCK_SHELL_INSTANCE_ID, scope.shellInstanceId)
                 scope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
-                put(SLOCK_DOCUMENT_SHELL, false)
+                put(SLOCK_DOCUMENT_SHELL, documentShell)
             }
         }
 
 internal fun appShellPageDataForServerSelection(
     sourceStoreScope: SlockShellStoreScope,
+    sourceDocumentShell: Boolean = false,
     selectedServerId: String?,
+    multiShellHostEnabled: Boolean = false,
     suppressRestoreLanding: Boolean = false
 ): JSONObject {
     val normalizedServerId = selectedServerId?.trim()?.takeIf { it.isNotBlank() }
+    val opensDocumentShell =
+        isMultiShellCrossServerSelection(
+            sourceStoreScope = sourceStoreScope,
+            selectedServerId = normalizedServerId,
+            multiShellHostEnabled = multiShellHostEnabled
+        )
     return appShellPageData(
         replaceCurrent = true,
         suppressRestoreLanding = suppressRestoreLanding
     ).apply {
         normalizedServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
-        put(SLOCK_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
-        put(SLOCK_DOCUMENT_SHELL, false)
+        if (opensDocumentShell) {
+            put(SLOCK_DOCUMENT_SHELL, true)
+        } else {
+            put(SLOCK_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
+            put(SLOCK_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)
+        }
     }
 }
+
+internal fun isMultiShellCrossServerSelection(
+    sourceStoreScope: SlockShellStoreScope,
+    selectedServerId: String?,
+    multiShellHostEnabled: Boolean
+): Boolean =
+    multiShellHostEnabled &&
+        !selectedServerId.isNullOrBlank() &&
+        selectedServerId.trim() != sourceStoreScope.initialServerId
 
 internal fun appShellPageData(
     replaceCurrent: Boolean = false,

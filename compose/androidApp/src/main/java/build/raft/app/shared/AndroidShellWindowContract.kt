@@ -15,13 +15,16 @@ internal data class AndroidShellLaunchTarget(
 
 internal data class AndroidShellTaskLaunch(
     val clearTask: Boolean,
+    val documentShellId: String?,
 )
 
 internal fun AndroidShellLaunchTarget.taskLaunchPlan(
     requestedTaskClear: Boolean,
 ): AndroidShellTaskLaunch {
+    val clearTask = requestedTaskClear && !documentShell
     return AndroidShellTaskLaunch(
-        clearTask = requestedTaskClear,
+        clearTask = clearTask,
+        documentShellId = shellInstanceId.takeIf { documentShell && !clearTask },
     )
 }
 
@@ -42,6 +45,9 @@ internal object AndroidShellWindowRegistry {
         shellsById.remove(shellInstanceId)
     }
 
+    fun targetForServer(serverId: String): AndroidShellLaunchTarget? =
+        shellsById.values.firstOrNull { registered -> registered.target.serverId == serverId }?.target
+
     fun hasShellInTask(taskId: Int): Boolean =
         shellsById.values.any { registered -> registered.taskId == taskId }
 
@@ -50,47 +56,82 @@ internal object AndroidShellWindowRegistry {
     }
 }
 
-internal fun resolveAndroidShellLaunchTarget(pageData: JSONObject): AndroidShellLaunchTarget {
+internal fun resolveAndroidShellLaunchTarget(
+    pageData: JSONObject,
+    multiShellHostEnabled: Boolean = false,
+): AndroidShellLaunchTarget {
     val serverId =
         pageData.optString(ANDROID_SHELL_SERVER_ID_KEY).trim().takeIf { it.isNotBlank() }
             ?: pageData.optString(SlockKuiklyActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID)
                 .trim()
                 .takeIf { it.isNotBlank() }
-    return AndroidShellLaunchTarget(
-        shellInstanceId = DEFAULT_ANDROID_SHELL_INSTANCE_ID,
-        serverId = serverId,
-        documentShell = false,
-    )
+    if (!multiShellHostEnabled || serverId == null || pageData.explicitAndroidDocumentShell() != true) {
+        return AndroidShellLaunchTarget(
+            shellInstanceId = DEFAULT_ANDROID_SHELL_INSTANCE_ID,
+            serverId = serverId,
+            documentShell = false,
+        )
+    }
+    return AndroidShellWindowRegistry.targetForServer(serverId)
+        ?: AndroidShellLaunchTarget(
+            shellInstanceId = serverDocumentShellInstanceId(serverId),
+            serverId = serverId,
+            documentShell = true,
+        )
 }
 
 internal fun JSONObject.withAndroidShellLaunchTarget(target: AndroidShellLaunchTarget): JSONObject =
     JSONObject(toString()).apply {
-        put(ANDROID_SHELL_INSTANCE_ID_KEY, DEFAULT_ANDROID_SHELL_INSTANCE_ID)
-        put(ANDROID_DOCUMENT_SHELL_KEY, false)
+        put(ANDROID_SHELL_INSTANCE_ID_KEY, target.shellInstanceId)
+        put(ANDROID_DOCUMENT_SHELL_KEY, target.documentShell)
         target.serverId?.let { put(ANDROID_SHELL_SERVER_ID_KEY, it) }
     }
 
-internal fun normalizeAndroidAppShellPageData(pageData: JSONObject): JSONObject {
+internal fun normalizeAndroidAppShellPageData(
+    pageData: JSONObject,
+    multiShellHostEnabled: Boolean = false,
+): JSONObject {
     val target =
-        androidShellLaunchTargetFromPageData(pageData)
-            ?: resolveAndroidShellLaunchTarget(pageData)
+        androidShellLaunchTargetFromPageData(pageData, multiShellHostEnabled)
+            ?: resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
     return pageData.withAndroidShellLaunchTarget(target)
 }
 
-internal fun androidShellLaunchTargetFromPageData(pageData: JSONObject): AndroidShellLaunchTarget? {
+internal fun androidShellLaunchTargetFromPageData(
+    pageData: JSONObject,
+    multiShellHostEnabled: Boolean = true,
+): AndroidShellLaunchTarget? {
     val requestedShellInstanceId = pageData.optString(ANDROID_SHELL_INSTANCE_ID_KEY).trim()
     if (requestedShellInstanceId.isBlank()) return null
     val serverId = resolveAndroidShellLaunchTarget(pageData).serverId
+    val documentShell =
+        multiShellHostEnabled &&
+            pageData.explicitAndroidDocumentShell() == true &&
+            requestedShellInstanceId != DEFAULT_ANDROID_SHELL_INSTANCE_ID &&
+            serverId != null
     return AndroidShellLaunchTarget(
-        shellInstanceId = DEFAULT_ANDROID_SHELL_INSTANCE_ID,
+        shellInstanceId = requestedShellInstanceId.takeIf { documentShell } ?: DEFAULT_ANDROID_SHELL_INSTANCE_ID,
         serverId = serverId,
-        documentShell = false,
+        documentShell = documentShell,
     )
 }
+
+internal fun serverDocumentShellInstanceId(serverId: String): String =
+    "server-shell:${serverId.trim()}"
 
 internal fun shouldReleaseAndroidShellWindow(
     isFinishing: Boolean,
     isChangingConfigurations: Boolean,
 ): Boolean = isFinishing && !isChangingConfigurations
+
+internal fun shouldUseGlobalHostDisplayMetrics(target: AndroidShellLaunchTarget?): Boolean =
+    target?.documentShell != true
+
+private fun JSONObject.explicitAndroidDocumentShell(): Boolean? =
+    if (has(ANDROID_DOCUMENT_SHELL_KEY)) {
+        optBoolean(ANDROID_DOCUMENT_SHELL_KEY, false)
+    } else {
+        null
+    }
 
 private const val DEFAULT_ANDROID_SHELL_INSTANCE_ID = "android-default-app-shell"
