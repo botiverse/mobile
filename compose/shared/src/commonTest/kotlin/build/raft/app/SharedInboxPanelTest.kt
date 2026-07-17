@@ -36,6 +36,7 @@ class SharedInboxPanelTest {
         assertTrue(
             activityShouldRequestLoadMore(
                 hasMore = true,
+                refreshing = false,
                 loadingMore = false,
                 loadMoreErrorCode = null
             )
@@ -47,6 +48,7 @@ class SharedInboxPanelTest {
         assertFalse(
             activityShouldRequestLoadMore(
                 hasMore = true,
+                refreshing = false,
                 loadingMore = true,
                 loadMoreErrorCode = null
             )
@@ -58,6 +60,7 @@ class SharedInboxPanelTest {
         assertFalse(
             activityShouldRequestLoadMore(
                 hasMore = true,
+                refreshing = false,
                 loadingMore = false,
                 loadMoreErrorCode = "Network"
             )
@@ -69,9 +72,54 @@ class SharedInboxPanelTest {
         assertFalse(
             activityShouldRequestLoadMore(
                 hasMore = false,
+                refreshing = false,
                 loadingMore = false,
                 loadMoreErrorCode = null
             )
+        )
+    }
+
+    @Test
+    fun activityTailSentinelGatesRepeatedRefreshesAndRearmsAtTheTerminalState() {
+        assertFalse(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                refreshing = true,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+        assertFalse(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                refreshing = true,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+        assertTrue(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                refreshing = false,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+    }
+
+    @Test
+    fun activityTailSentinelOnlyShowsLoadingForARealInFlightRequest() {
+        assertEquals(
+            ActivityLoadMoreFooterMode.Sentinel,
+            activityLoadMoreFooterMode(loadingMore = false, loadMoreErrorCode = null)
+        )
+        assertEquals(
+            ActivityLoadMoreFooterMode.Loading,
+            activityLoadMoreFooterMode(loadingMore = true, loadMoreErrorCode = null)
+        )
+        assertEquals(
+            ActivityLoadMoreFooterMode.Retry,
+            activityLoadMoreFooterMode(loadingMore = false, loadMoreErrorCode = "Network")
         )
     }
 

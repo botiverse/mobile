@@ -736,6 +736,7 @@ private fun SharedActivityList(
                 item(key = "activity_load_more") {
                     val shouldRequest = activityShouldRequestLoadMore(
                         hasMore = snapshot.hasMore,
+                        refreshing = refreshing,
                         loadingMore = loadingMore,
                         loadMoreErrorCode = loadMoreErrorCode
                     )
@@ -743,17 +744,20 @@ private fun SharedActivityList(
                     // more portable signal than observing LazyList layoutInfo: the latter did not
                     // emit on the affected Kuikly/Android build, leaving the user at the end of
                     // the first page with neither a request nor failure feedback (task #539).
-                    // Keep a stable effect key so appending a page cannot immediately cascade into
-                    // another request before the footer has actually left and re-entered view.
-                    LaunchedEffect(Unit) {
+                    // Keep page appends stable so one composed footer cannot cascade through every
+                    // remaining page. A refresh is different: it replaces the appended tail with
+                    // the first page while this keyed footer can remain composed. Re-key on the
+                    // refresh lifecycle so its terminal transition can request the lost tail again.
+                    LaunchedEffect(refreshing) {
                         if (shouldRequest) {
                             latestOnIntent(SharedActivityIntent.LoadMore)
                         }
                     }
-                    if (loadMoreErrorCode != null) {
-                        SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
-                    } else {
-                        SharedActivityLoadingMoreRow()
+                    when (activityLoadMoreFooterMode(loadingMore, loadMoreErrorCode)) {
+                        ActivityLoadMoreFooterMode.Sentinel -> Spacer(Modifier.fillMaxWidth().height(1.dp))
+                        ActivityLoadMoreFooterMode.Loading -> SharedActivityLoadingMoreRow()
+                        ActivityLoadMoreFooterMode.Retry ->
+                            SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
                     }
                 }
             }
@@ -1476,9 +1480,26 @@ internal fun InboxItem.activityFooterSlots(
 
 internal fun activityShouldRequestLoadMore(
     hasMore: Boolean,
+    refreshing: Boolean,
     loadingMore: Boolean,
     loadMoreErrorCode: String?
-): Boolean = hasMore && !loadingMore && loadMoreErrorCode == null
+): Boolean = hasMore && !refreshing && !loadingMore && loadMoreErrorCode == null
+
+internal enum class ActivityLoadMoreFooterMode {
+    Sentinel,
+    Loading,
+    Retry
+}
+
+internal fun activityLoadMoreFooterMode(
+    loadingMore: Boolean,
+    loadMoreErrorCode: String?
+): ActivityLoadMoreFooterMode =
+    when {
+        loadMoreErrorCode != null -> ActivityLoadMoreFooterMode.Retry
+        loadingMore -> ActivityLoadMoreFooterMode.Loading
+        else -> ActivityLoadMoreFooterMode.Sentinel
+    }
 
 private fun LazyListState.isActivityNearTop(): Boolean =
     firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
