@@ -43,14 +43,21 @@ import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.SlockNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
+import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
+import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
+import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
+import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
+import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.CurrentGrantMessageShadowCommitLane
 import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
 import build.raft.app.network.sync.LegacyRealtimeDedupKey
 import build.raft.app.network.sync.PreparedCurrentGrantMessageCommitDisposition
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
+import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
@@ -283,6 +290,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
     private val currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane,
+    private val canonicalMessageV2Canary: CanonicalMessageV2ProductionCanary,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -379,6 +387,9 @@ internal class SlockSharedStoreProvider private constructor(
         // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
+        realtimeDomainEventOwner.installCanonicalMessageV2OwnerGateway(
+            buildCanonicalMessageV2OwnerGateway(authStore, networkClient),
+        )
         realtimeAuthorityProvider.start(threadSendScope)
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
@@ -407,6 +418,17 @@ internal class SlockSharedStoreProvider private constructor(
         SyncCoreReactionShadowLane(
             featureFlags = serverFeatureFlags,
             logger = sharedInfoLogger("SyncCoreReactionShadow", "sync_core_reaction_shadow"),
+        )
+
+    private fun buildCanonicalMessageV2OwnerGateway(
+        sessionStore: SlockAuthSessionStore,
+        client: SlockNetworkClient,
+    ): CanonicalMessageV2OwnerGateway =
+        ProviderBackedCanonicalMessageV2OwnerGateway(
+            canary = canonicalMessageV2Canary,
+            authStore = sessionStore,
+            networkClient = client,
+            logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
         )
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
@@ -550,6 +572,9 @@ internal class SlockSharedStoreProvider private constructor(
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
                     it.installReactionShadowLane(buildReactionShadowLane())
+                    it.installCanonicalMessageV2OwnerGateway(
+                        buildCanonicalMessageV2OwnerGateway(authStore(scope), networkClient(scope)),
+                    )
                     // task #136: same owner-lifetime presence intake as the
                     // legacy owner — straight into the process registry's
                     // owner partition.
@@ -1174,6 +1199,25 @@ internal class SlockSharedStoreProvider private constructor(
                         )
                     },
                 )
+            val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
+            val canonicalMessageV2GenerationEngine =
+                CanonicalMessageV2GenerationEngine(
+                    coordinator = CanonicalMessageV2BaselineCoordinator(),
+                    store = SqlDelightCanonicalMessageV2Store(database, now = ::defaultNowMillis),
+                    snapshotCommitObserver =
+                        CanonicalMessageV2SnapshotCommitObserver(attachmentCommentsReadCacheV2::invalidateParent),
+                )
+            val canonicalMessageV2Canary =
+                CanonicalMessageV2ProductionCanary(
+                    isEnabledForServer = { serverId ->
+                        serverFeatureFlags.isEnabled(
+                            ServerId(serverId),
+                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+                        )
+                    },
+                    generationEngine = canonicalMessageV2GenerationEngine,
+                    logger = sharedInfoLogger("CanonicalMessageV2Canary", "canonical_v2_canary"),
+                )
             val threadSendScope = CoroutineScope(SupervisorJob())
             val realtimeAuthorityDiagnosticsLogger =
                 sharedInfoLogger("RealtimeAuthority", "realtime_authority")
@@ -1309,6 +1353,7 @@ internal class SlockSharedStoreProvider private constructor(
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,
                 currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
+                canonicalMessageV2Canary = canonicalMessageV2Canary,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
@@ -1514,6 +1559,7 @@ internal class SharedRealtimeDomainEventOwner(
     // every owner sharing this database installs the same instance.
     private var currentGrantMessageShadowCommitLane: CurrentGrantMessageShadowCommitLane? = null
     private var reactionShadowLane: SyncCoreReactionShadowLane? = null
+    private var canonicalMessageV2OwnerGateway: CanonicalMessageV2OwnerGateway? = null
 
     fun installMessageShadowFoldLane(lane: SyncCoreMessageShadowFoldLane) {
         messageShadowFoldLane = lane
@@ -1525,6 +1571,10 @@ internal class SharedRealtimeDomainEventOwner(
 
     fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {
         reactionShadowLane = lane
+    }
+
+    fun installCanonicalMessageV2OwnerGateway(gateway: CanonicalMessageV2OwnerGateway) {
+        canonicalMessageV2OwnerGateway = gateway
     }
 
     // task #136 (agent-status SSOT): agent presence facts must reach the
@@ -1633,6 +1683,16 @@ internal class SharedRealtimeDomainEventOwner(
             return runIfCurrentGrant(grant) {
                 legacyContinuation(grant.serverId, event, source)
             }
+        }
+        when (canonicalMessageV2OwnerGateway?.accept(grant, foldInput)) {
+            CanonicalMessageV2CanaryOutcome.Committed ->
+                return runIfCurrentGrant(grant) {
+                    legacyContinuation(grant.serverId, event, source)
+                }
+            is CanonicalMessageV2CanaryOutcome.Held -> return true
+            CanonicalMessageV2CanaryOutcome.NotSelected,
+            null,
+            -> Unit
         }
         val legacyKey = event.realtimeDomainKey(grant.serverId)?.let(::LegacyRealtimeDedupKey)
         val gateway = canonicalFinalOwnerGateway

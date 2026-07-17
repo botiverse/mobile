@@ -22,6 +22,7 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.FoldPersistFrame
 import build.raft.app.network.sync.FoldPersistenceAdapter
+import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.RestoredFoldState
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
@@ -398,4 +399,79 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
 
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
     }
+
+    @Test
+    fun committedV2CanaryProjectsExactlyOnceAfterCurrentGrantCheck() = runBlocking {
+        var currentGrantChecks = 0
+        var legacyRunnerChecks = 0
+        val projected = mutableListOf<RealtimeEvent>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block ->
+                currentGrantChecks += 1
+                block()
+                true
+            },
+            runWithCurrentMessageGrant = { _, block ->
+                legacyRunnerChecks += 1
+                block(CurrentMessageCommitContext(scopeKey.partition))
+                true
+            },
+        )
+        owner.installCanonicalMessageV2OwnerGateway(
+            CanonicalMessageV2OwnerGateway { _, _ -> CanonicalMessageV2CanaryOutcome.Committed },
+        )
+        owner.registerGuardedSinks(
+            RealtimeGuardedDomainEventSinks(
+                applyHomeShell = { _, event -> projected += event },
+            ),
+        )
+        val event = messageNewWithCanonical("v2-committed", 1L)
+
+        assertTrue(owner.accept(testGrant(), event, source = "test"))
+        assertEquals(1, currentGrantChecks)
+        assertEquals(0, legacyRunnerChecks)
+        assertEquals<List<RealtimeEvent>>(listOf(event), projected)
+    }
+
+    @Test
+    fun heldV2CanaryNeverLeaksToLegacyProjection() = runBlocking {
+        var currentGrantChecks = 0
+        var legacyRunnerChecks = 0
+        val projected = mutableListOf<RealtimeEvent>()
+        val owner = SharedRealtimeDomainEventOwner(
+            runIfCurrentGrant = { _, block ->
+                currentGrantChecks += 1
+                block()
+                true
+            },
+            runWithCurrentMessageGrant = { _, block ->
+                legacyRunnerChecks += 1
+                block(CurrentMessageCommitContext(scopeKey.partition))
+                true
+            },
+        )
+        owner.installCanonicalMessageV2OwnerGateway(
+            CanonicalMessageV2OwnerGateway { _, _ ->
+                CanonicalMessageV2CanaryOutcome.Held("snapshot_failed")
+            },
+        )
+        owner.registerGuardedSinks(
+            RealtimeGuardedDomainEventSinks(
+                applyHomeShell = { _, event -> projected += event },
+            ),
+        )
+
+        assertTrue(owner.accept(testGrant(), messageNewWithCanonical("v2-held", 1L), source = "test"))
+        assertEquals(0, currentGrantChecks)
+        assertEquals(0, legacyRunnerChecks)
+        assertTrue(projected.isEmpty())
+    }
+
+    private fun testGrant() = RealtimeGrantRecord(
+        slotKey = RealtimeSlotKey(scopeLeaseId = "scope-1", serverId = serverId),
+        principalId = "principal-1",
+        authGeneration = 1L,
+        connectionFamilyId = "family-1",
+        connectionEpochId = "epoch-1",
+    )
 }

@@ -139,6 +139,94 @@ internal object DurablePartitionLegacyV1Schema : SqlSchema<QueryResult.Value<Uni
     ): QueryResult.Value<Unit> = QueryResult.Unit
 }
 
+/** Minimal file-backed v2 fixture for the isolated one-DDL viewer-overlay migration. */
+internal object DurablePartitionV2Schema : SqlSchema<QueryResult.Value<Unit>> {
+    override val version: Long = 2L
+
+    override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
+        driver.execute(
+            null,
+            """
+            CREATE TABLE messageEntity (
+              serverId TEXT NOT NULL,
+              principalId TEXT NOT NULL,
+              consumerId TEXT NOT NULL,
+              id TEXT NOT NULL,
+              channelId TEXT NOT NULL,
+              scopeKind TEXT NOT NULL,
+              seq INTEGER NOT NULL,
+              createdAt TEXT NOT NULL,
+              canonicalFactJson TEXT NOT NULL,
+              PRIMARY KEY (serverId, principalId, consumerId, id)
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE INDEX messageEntity_partitionChannelSeqId " +
+                "ON messageEntity(serverId,principalId,consumerId,scopeKind,channelId,seq,id)",
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE syncCursorEntity (
+              scopeId TEXT NOT NULL,
+              serverId TEXT NOT NULL,
+              principalId TEXT NOT NULL,
+              consumerId TEXT NOT NULL,
+              scopeKind TEXT NOT NULL,
+              latestSeq INTEGER,
+              oldestLoadedSeq INTEGER,
+              newestLoadedSeq INTEGER,
+              hasLoadedOldest INTEGER NOT NULL DEFAULT 0,
+              hasLoadedNewest INTEGER NOT NULL DEFAULT 1,
+              updatedAtMs INTEGER NOT NULL,
+              epoch TEXT,
+              PRIMARY KEY (serverId, principalId, consumerId, scopeKind, scopeId)
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE outboxMessageEntity (
+              localId TEXT NOT NULL PRIMARY KEY,
+              serverId TEXT NOT NULL,
+              channelId TEXT NOT NULL,
+              body TEXT NOT NULL,
+              attachmentIdsJson TEXT NOT NULL DEFAULT '[]',
+              asTask INTEGER NOT NULL DEFAULT 0,
+              status TEXT NOT NULL,
+              createdAtMs INTEGER NOT NULL,
+              lastErrorCode TEXT
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE TABLE durablePartitionMigrationSentinel(id TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)",
+            0,
+        )
+        driver.execute(
+            null,
+            "CREATE INDEX durablePartitionMigrationSentinel_value ON durablePartitionMigrationSentinel(value)",
+            0,
+        )
+        return QueryResult.Unit
+    }
+
+    override fun migrate(
+        driver: SqlDriver,
+        oldVersion: Long,
+        newVersion: Long,
+        vararg callbacks: AfterVersion,
+    ): QueryResult.Value<Unit> = QueryResult.Unit
+}
+
 private data class DriverMasterDefinition(
     val type: String,
     val name: String,
@@ -159,7 +247,8 @@ private data class DriverOutboxRow(
 )
 
 /**
- * Runs the exact N=1..6 rollback/retry matrix against a real file-backed driver's automatic open path.
+ * Runs the exact v1->v3 N=1..7 and v2->v3 N=1 rollback/retry matrices against a real file-backed
+ * driver's automatic open path.
  * The caller supplies AndroidSqliteDriver or NativeSqliteDriver construction.
  */
 internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
@@ -167,7 +256,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
     openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
     cleanupDatabase: (databaseName: String) -> Unit,
 ) {
-    for (failAt in 1..6) {
+    for (failAt in 1..7) {
         val name = "slock-durable-$platformName-$failAt-${Random.nextLong().toString().replace('-', 'n')}.db"
         cleanupDatabase(name)
         try {
@@ -199,7 +288,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(2L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
+                assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName retry version")
                 assertMigratedFixtureIntact(driver, "$platformName fail-at-$failAt retry")
                 assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
                 assertEquals(expectedOutbox, driver.outboxRow())
@@ -207,7 +296,7 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
             }
 
             openDriver(SlockDatabase.Schema, name).useDriver { driver ->
-                assertEquals(2L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
+                assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName second reopen version")
                 assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity WHERE id='partition-message'"))
                 assertEquals(
                     11L,
@@ -223,6 +312,66 @@ internal fun assertFileBackedDurablePartitionMigrationRollbackRetry(
         } finally {
             cleanupDatabase(name)
         }
+    }
+
+    assertFileBackedV2ToV3RollbackRetry(platformName, openDriver, cleanupDatabase)
+}
+
+private fun assertFileBackedV2ToV3RollbackRetry(
+    platformName: String,
+    openDriver: (schema: SqlSchema<QueryResult.Value<Unit>>, databaseName: String) -> SqlDriver,
+    cleanupDatabase: (databaseName: String) -> Unit,
+) {
+    val name = "slock-overlay-$platformName-${Random.nextLong().toString().replace('-', 'n')}.db"
+    cleanupDatabase(name)
+    try {
+        var expectedNonCoreMaster = emptyList<DriverMasterDefinition>()
+        var expectedOutbox: DriverOutboxRow? = null
+        openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
+            seedV2MigrationRows(driver)
+            assertEquals(2L, driver.scalarLong("PRAGMA user_version"), "$platformName fresh v2 version")
+            assertV2FixtureIntact(driver, "$platformName fresh v2")
+            expectedNonCoreMaster = driver.nonCoreMasterDefinitions()
+            expectedOutbox = driver.outboxRow()
+        }
+
+        val failure = assertFails("$platformName v2->v3 fail-at-1 must abort driver open") {
+            openDriver(FailAtMigrationStatementSchema(SlockDatabase.Schema, 1), name).useDriver { driver ->
+                driver.scalarLong("SELECT 1")
+            }
+        }
+        assertTrue(
+            failure.hasCause<InjectedMigrationFailure>(),
+            "$platformName v2->v3 must expose the injected DDL failure, got $failure",
+        )
+
+        openDriver(DurablePartitionV2Schema, name).useDriver { driver ->
+            assertEquals(2L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 rollback version")
+            assertV2FixtureIntact(driver, "$platformName v2 rollback")
+            assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
+            assertEquals(expectedOutbox, driver.outboxRow())
+        }
+
+        openDriver(SlockDatabase.Schema, name).useDriver { driver ->
+            assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 retry version")
+            assertMigratedFixtureIntact(driver, "$platformName v2 retry", expectLegacyRowsCleared = false)
+            assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
+            assertEquals(expectedOutbox, driver.outboxRow())
+            seedViewerOverlayRow(driver)
+        }
+
+        openDriver(SlockDatabase.Schema, name).useDriver { driver ->
+            assertEquals(3L, driver.scalarLong("PRAGMA user_version"), "$platformName v2 second reopen version")
+            assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageViewerOverlayEntity"))
+            assertEquals(
+                Long.MAX_VALUE,
+                driver.scalarLong("SELECT overlayVersion FROM messageViewerOverlayEntity"),
+            )
+            assertEquals(expectedNonCoreMaster, driver.nonCoreMasterDefinitions())
+            assertEquals(expectedOutbox, driver.outboxRow())
+        }
+    } finally {
+        cleanupDatabase(name)
     }
 }
 
@@ -270,7 +419,11 @@ private fun assertLegacyFixtureIntact(driver: SqlDriver, label: String) {
     )
 }
 
-private fun assertMigratedFixtureIntact(driver: SqlDriver, label: String) {
+private fun assertMigratedFixtureIntact(
+    driver: SqlDriver,
+    label: String,
+    expectLegacyRowsCleared: Boolean = true,
+) {
     assertEquals(
         listOf(
             "serverId",
@@ -288,8 +441,26 @@ private fun assertMigratedFixtureIntact(driver: SqlDriver, label: String) {
     )
     assertFalse(driver.hasMasterObject("index", "messageEntity_channelSeqId"), "$label: old index survived")
     assertTrue(driver.hasMasterObject("index", "messageEntity_partitionChannelSeqId"), "$label: new index missing")
-    assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity"), "$label: old cache rows must not copy")
-    assertEquals(0L, driver.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"), "$label: old cursors must not copy")
+    val expectedCoreRows = if (expectLegacyRowsCleared) 0L else 1L
+    assertEquals(expectedCoreRows, driver.scalarLong("SELECT COUNT(*) FROM messageEntity"), "$label: message rows")
+    assertEquals(expectedCoreRows, driver.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"), "$label: cursor rows")
+    assertEquals(
+        listOf(
+            "serverId",
+            "principalId",
+            "consumerId",
+            "scopeKind",
+            "scopeId",
+            "subjectKind",
+            "subjectId",
+            "overlayKind",
+            "overlayVersion",
+            "completeness",
+            "payloadJson",
+        ),
+        driver.tableColumns("messageViewerOverlayEntity"),
+        "$label: viewer-overlay schema missing",
+    )
     assertEquals(expectedOutboxRow(), driver.outboxRow(), "$label: outbox columns changed")
     assertEquals(
         "keep-me",
@@ -298,6 +469,60 @@ private fun assertMigratedFixtureIntact(driver: SqlDriver, label: String) {
     assertTrue(
         driver.hasMasterObject("index", "durablePartitionMigrationSentinel_value"),
         "$label: non-core index definition must survive",
+    )
+}
+
+private fun seedV2MigrationRows(driver: SqlDriver) {
+    driver.execute(
+        null,
+        "INSERT INTO messageEntity(" +
+            "serverId,principalId,consumerId,id,channelId,scopeKind,seq,createdAt,canonicalFactJson" +
+            ") VALUES ('server-a','principal-a','sync-core.messages.v1','partition-message'," +
+            "'channel-a','channel',11,'t','{}')",
+        0,
+    )
+    driver.execute(
+        null,
+        "INSERT INTO syncCursorEntity(" +
+            "scopeId,serverId,principalId,consumerId,scopeKind,latestSeq,updatedAtMs" +
+            ") VALUES ('channel-a','server-a','principal-a','sync-core.messages.v1','channel',11,123)",
+        0,
+    )
+    driver.execute(
+        null,
+        "INSERT INTO outboxMessageEntity(" +
+            "localId,serverId,channelId,body,attachmentIdsJson,asTask,status,createdAtMs,lastErrorCode" +
+            ") VALUES ('outbox-a','server-a','channel-a','keep-me','[\"attachment-a\"]',1,'retry',123,'E_TEST')",
+        0,
+    )
+    driver.execute(
+        null,
+        "INSERT INTO durablePartitionMigrationSentinel(id,value) VALUES ('sentinel-a','keep-me')",
+        0,
+    )
+}
+
+private fun assertV2FixtureIntact(driver: SqlDriver, label: String) {
+    assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM messageEntity"), "$label: message row lost")
+    assertEquals(1L, driver.scalarLong("SELECT COUNT(*) FROM syncCursorEntity"), "$label: cursor row lost")
+    assertTrue(driver.hasMasterObject("index", "messageEntity_partitionChannelSeqId"), "$label: index missing")
+    assertFalse(driver.hasMasterObject("table", "messageViewerOverlayEntity"), "$label: overlay table leaked")
+    assertEquals(expectedOutboxRow(), driver.outboxRow(), "$label: outbox changed")
+    assertEquals(
+        "keep-me",
+        driver.scalarString("SELECT value FROM durablePartitionMigrationSentinel WHERE id='sentinel-a'"),
+    )
+}
+
+private fun seedViewerOverlayRow(driver: SqlDriver) {
+    driver.execute(
+        null,
+        "INSERT INTO messageViewerOverlayEntity(" +
+            "serverId,principalId,consumerId,scopeKind,scopeId,subjectKind,subjectId,overlayKind," +
+            "overlayVersion,completeness,payloadJson" +
+            ") VALUES ('server-a','principal-a','sync-core.messages.v2','channel','channel-a'," +
+            "'message','partition-message','reactions',9223372036854775807,'complete','{}')",
+        0,
     )
 }
 
@@ -360,6 +585,7 @@ private fun SqlDriver.nonCoreMasterDefinitions(): List<DriverMasterDefinition> =
         definition.name in setOf(
             "messageEntity",
             "syncCursorEntity",
+            "messageViewerOverlayEntity",
             "messageEntity_channelSeqId",
             "messageEntity_partitionChannelSeqId",
         )

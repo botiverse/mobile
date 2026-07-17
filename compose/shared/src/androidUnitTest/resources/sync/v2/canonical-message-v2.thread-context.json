@@ -1,0 +1,1 @@
+{"context":{"kind":"thread","replyScope":{"serverId":"server-a","scopeId":"thread-root"},"parentTopLevelScope":{"kind":"dm","serverId":"server-a","scopeId":"dm-a"},"rootMessageRef":{"serverId":"server-a","messageId":"message-root"}},"replyMembership":{"root":{"serverId":"server-a","messageId":"message-root"},"parentScope":{"serverId":"server-a","scopeId":"thread-root"}}}
