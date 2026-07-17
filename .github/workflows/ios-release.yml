@@ -403,6 +403,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload IPA to App Store Connect / TestFlight
+        # Runs on the SAME runner that built and signed — the IPA is already on
+        # disk. The previous standalone job needed a cross-job artifact
+        # download, which deterministically fails on Blacksmith macOS runners
+        # (ECONNREFUSED on ListArtifacts; uploads work, downloads do not).
+        if: needs.resolve.outputs.upload_testflight == 'true'
+        shell: bash
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          [ -n "${ASC_API_KEY_ID}" ] || { echo "::error::Missing ASC_API_KEY_ID"; exit 1; }
+          [ -n "${ASC_API_ISSUER_ID}" ] || { echo "::error::Missing ASC_API_ISSUER_ID"; exit 1; }
+          [ -n "${ASC_API_KEY_P8_BASE64}" ] || { echo "::error::Missing ASC_API_KEY_P8_BASE64"; exit 1; }
+          mkdir -p "${HOME}/.appstoreconnect/private_keys"
+          echo "${ASC_API_KEY_P8_BASE64}" | base64 --decode > "${HOME}/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
+          [ -s "$IPA" ] || { echo "::error::No IPA found under dist/ios"; exit 1; }
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "${IPA}" \
+            --apiKey "${ASC_API_KEY_ID}" \
+            --apiIssuer "${ASC_API_ISSUER_ID}" \
+            --output-format xml \
+            | tee testflight-upload.log
+
       - name: Upload export diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -539,43 +568,3 @@ jobs:
             echo "| **IPA sha256** | \`${{ needs.build_ios_release.outputs.ipa_sha256 }}\` |"
             echo "| **dSYM sha256** | \`${{ needs.build_ios_release.outputs.dsym_sha256 }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-
-  upload_testflight:
-    name: Upload to TestFlight
-    runs-on: blacksmith-12vcpu-macos-latest
-    timeout-minutes: 30
-    needs: [resolve, build_ios_release, publish_hands]
-    if: |
-      always() &&
-      needs.resolve.outputs.upload_testflight == 'true' &&
-      needs.build_ios_release.result == 'success' &&
-      (needs.publish_hands.result == 'success' || needs.publish_hands.result == 'skipped')
-    env:
-      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
-    steps:
-      - name: Download signed IPA
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-release-ipa
-          path: dist/ios/
-
-      - name: Upload IPA to App Store Connect
-        shell: bash
-        run: |
-          set -euo pipefail
-          [ -n "${ASC_API_KEY_ID}" ] || { echo "::error::Missing ASC_API_KEY_ID"; exit 1; }
-          [ -n "${ASC_API_ISSUER_ID}" ] || { echo "::error::Missing ASC_API_ISSUER_ID"; exit 1; }
-          [ -n "${ASC_API_KEY_P8_BASE64}" ] || { echo "::error::Missing ASC_API_KEY_P8_BASE64"; exit 1; }
-          mkdir -p "${HOME}/.appstoreconnect/private_keys"
-          echo "${ASC_API_KEY_P8_BASE64}" | base64 --decode > "${HOME}/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
-          IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
-          xcrun altool \
-            --upload-app \
-            --type ios \
-            --file "${IPA}" \
-            --apiKey "${ASC_API_KEY_ID}" \
-            --apiIssuer "${ASC_API_ISSUER_ID}" \
-            --output-format xml \
-            | tee testflight-upload.log
