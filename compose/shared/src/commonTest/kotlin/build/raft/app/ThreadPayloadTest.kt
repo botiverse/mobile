@@ -7493,14 +7493,15 @@ class ThreadPayloadTest {
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
-        assertEquals(8, threadMessagesBeyondBoundsItemCount(80))
-        assertEquals(12, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 720f))
-        assertEquals(24, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 10_000f))
+        assertEquals(3, threadMessagesBeyondBoundsItemCount(3))
+        assertEquals(4, threadMessagesBeyondBoundsItemCount(80))
+        assertEquals(8, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 720f))
+        assertEquals(8, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 10_000f))
         assertEquals(
             ThreadLazyWindowConsumerCounts(
-                listBeyondBoundsItems = 12,
-                markdownPreparseOverscanItems = 12,
-                diagnosticsBeyondBoundsItems = 12
+                listBeyondBoundsItems = 8,
+                markdownPreparseOverscanItems = 8,
+                diagnosticsBeyondBoundsItems = 8
             ),
             threadLazyWindowConsumerCounts(
                 itemCount = 80,

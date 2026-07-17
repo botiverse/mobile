@@ -283,8 +283,8 @@ import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
-private const val ThreadMessagesMinBeyondBoundsItemCount = 8
-private const val ThreadMessagesMaxBeyondBoundsItemCount = 24
+private const val ThreadMessagesMinBeyondBoundsItemCount = 4
+private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
