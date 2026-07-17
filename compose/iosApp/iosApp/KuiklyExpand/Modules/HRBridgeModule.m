@@ -2454,6 +2454,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
 - (void)slock_finishAttachmentPicker:(NSDictionary *)result {
     KuiklyRenderCallback callback = self.slock_attachmentPickerCallback;
     NSString *channelId = self.slock_attachmentPickerChannelId;
+    NSArray *files = [result[@"files"] isKindOfClass:NSArray.class] ? result[@"files"] : @[];
     self.slock_attachmentPickerCallback = nil;
     self.slock_attachmentPickerChannelId = nil;
     SlockDiagnosticsRecord(
@@ -2461,7 +2462,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
         @"SlockKuiklyAttachment",
         [NSString stringWithFormat:@"picker_finish code=%@ files=%lu channelIdPresent=%@",
                                    result[@"code"] ?: @0,
-                                   (unsigned long)[result[@"files"] count],
+                                   (unsigned long)files.count,
                                    channelId.length > 0 ? @"true" : @"false"]
     );
     if (callback) {
