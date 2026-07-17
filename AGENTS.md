@@ -778,6 +778,36 @@ Raft mobile ships and reports through Quiver. Two reference docs:
   `app_logs/*.jsonl`), the app-owned log format, and triage tips. Quiver
   delivers the raw attachment; this app owns the archive layout.
 
+## Versioned Mobile Changesets
+
+Raft Mobile release notes use version-scoped feature changesets under
+`change-logs/<version>/changesets/`. When a task, owner decision, or acceptance
+contract explicitly targets a release such as `1.6.0`, the implementation is
+not complete without its own changeset in that version directory.
+
+- Add one kebab-case Markdown file per user-facing feature, improvement, or
+  fix. Use
+  `change-logs/1.6.0/changesets/sync-core-v2-sole-apply-canary.md` as the
+  current structure reference.
+- Ship the changeset in the same PR as the product change whenever possible.
+  If the target version is assigned only after the product PR merged, create a
+  follow-up changeset PR immediately and reference the original product PR.
+- Preserve the frontmatter contract: `type`, `area`, `platforms`,
+  `pull_request`, and `rollout`. The `pull_request` value must identify the
+  product PR and must not remain a placeholder when the changeset merges.
+- Include both `## zh-CN` and `## en`. Write user-visible behavior and impact,
+  not implementation details, test inventories, commit hashes, or internal
+  architecture narration.
+- Do not guess a target version. If no version was explicitly assigned, do
+  not place the change in a version directory merely because that is the next
+  planned release; wait for owner/release-lane classification.
+- Do not edit consolidated `change-logs/<version>/zh-CN.md` or `en.md` as the
+  per-feature delivery path. The release lane owns their aggregation and
+  review using the accepted version changesets.
+- Before moving a version-targeted task to In Review, verify the changeset is
+  present, the bilingual copy matches the shipped scope, and the product PR
+  number/rollout metadata are accurate.
+
 ## Adding a RealtimeEvent subtype — checklist
 
 Missing any of these compiles-or-bites in a different layer than the one you
