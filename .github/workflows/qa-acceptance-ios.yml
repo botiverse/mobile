@@ -204,11 +204,28 @@ jobs:
           echo "$?" > qa-evidence/agent-rc.txt
           echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
 
-      - name: Collect harness log
+      - name: Collect harness log + system log + crashes + xcresult
         if: always()
         run: |
           cp xcodebuild-loop.log qa-evidence/xcodebuild-loop.log 2>/dev/null || true
           tail -50 xcodebuild-loop.log 2>/dev/null || true
+          # iOS evidence parity with Android (logcat + activity-top) — collected
+          # EVERY run, not just failures. Lets termination cases (e.g. case-06
+          # feedback submit) be judged product-crash vs sim-lifecycle from the
+          # .ips instead of guessing from a SpringBoard screenshot.
+          UDID="${UDID:-booted}"
+          # 1) System log for the app process (the logcat twin). App-scoped +
+          #    a 15m window so the artifact stays bounded.
+          xcrun simctl spawn "$UDID" log show --last 15m --style syslog \
+            --predicate 'process == "Raft"' > qa-evidence/system-log-raft.txt 2>&1 || true
+          # 2) Crash reports: simulator app crashes write .ips to the host's
+          #    DiagnosticReports. Copy any present (fresh runner => this run's).
+          mkdir -p qa-evidence/crashes
+          cp ~/Library/Logs/DiagnosticReports/*.ips qa-evidence/crashes/ 2>/dev/null || true
+          # 3) The XCUITest .xcresult bundle (definitive per-run test result).
+          find compose/iosApp/build/DerivedData/Logs/Test -maxdepth 1 -name '*.xcresult' \
+            -exec cp -R {} qa-evidence/ \; 2>/dev/null || true
+          echo "iOS evidence: system-log-raft.txt=$(wc -l < qa-evidence/system-log-raft.txt 2>/dev/null || echo 0) lines, crashes=$(ls qa-evidence/crashes 2>/dev/null | wc -l | tr -d ' ') .ips, xcresult=$(ls -d qa-evidence/*.xcresult 2>/dev/null | wc -l | tr -d ' ')"
 
       - name: Report to Stamp
         if: always()
@@ -238,5 +255,5 @@ jobs:
           else
             echo "no verdict.json produced (agent rc=$rc)" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "Evidence: qa-acceptance-ios-evidence artifact (per-step screenshots + steps.jsonl + xcodebuild-loop.log)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Evidence: qa-acceptance-ios-evidence artifact (per-step screenshots + steps.jsonl + xcodebuild-loop.log + system-log-raft.txt + crashes/*.ips + *.xcresult)." >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
