@@ -17616,7 +17616,7 @@ private fun ThreadMessageActionMenu(
         width = menuWidth + shadowOffsetPx,
         height = menuHeight + shadowOffsetPx
     )
-    SlockAnchoredPopover(
+    SlockModalAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,

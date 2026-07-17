@@ -515,7 +515,7 @@ internal fun SlockRaftUiControlledMenu(
                 height = rowHeight.toPx() * effectiveRowCount + shadowOffset.toPx()
             )
         }
-    SlockAnchoredPopover(
+    SlockModalAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,

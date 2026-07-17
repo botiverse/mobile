@@ -109,7 +109,7 @@ internal fun SlockBaseMenuOverlay(
     val horizontalOffsetPx = with(density) { horizontalOffset.toPx() }
     val verticalOffsetPx = with(density) { verticalOffset.toPx() }
     val viewportGapPx = with(density) { SlockBaseMenuViewportGap.toPx() }
-    SlockAnchoredPopover(
+    SlockModalAnchoredPopover(
         anchor = anchor,
         contentSize = menuSize,
         viewportGap = viewportGapPx,
