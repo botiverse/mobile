@@ -34,6 +34,13 @@ on:
         description: "Direct APK download URL to test (skips build)"
         required: false
         default: ""
+# Minimal token scopes: contents to check out, actions to read ANOTHER run's
+# artifacts for the pinned-bits path (403 'Resource not accessible by
+# integration' on the first --apk-run use, run 29546757069). No write scopes.
+permissions:
+  contents: read
+  actions: read
+
 env:
   # Login smoke: the default goal for pushes / empty dispatch inputs.
   DEFAULT_GOAL: >-
@@ -176,7 +183,28 @@ jobs:
         run: |
           mkdir -p apks
           if [ -n "$APK_RUN_ID" ]; then
-            gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n qa-acceptance-apk -D apks
+            # Named artifact first (our own build jobs); fall back to ALL
+            # artifacts for foreign runs (the alpha workflow names its APK
+            # android-alpha-<n>-<sha>), then bind build-info to the source
+            # run's head commit if the artifact didn't carry one.
+            gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n qa-acceptance-apk -D apks 2>/dev/null \
+              || gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -D apks
+            if ! find apks -name build-info.json | grep -q .; then
+              head=$(gh run view "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
+              apk=$(find apks -name '*.apk' | head -1)
+              APK="$apk" SRC="$head" PIN="$APK_RUN_ID" python3 - <<'EOF2'
+          import hashlib, json, os
+          apk = os.environ["APK"]
+          info = {
+              "platform": "android",
+              "source_commit": os.environ.get("SRC", ""),
+              "pinned_from_run": os.environ.get("PIN", ""),
+              "apk_sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+          }
+          json.dump(info, open("apks/build-info.json", "w"), indent=1)
+          print(json.dumps(info))
+          EOF2
+            fi
           else
             curl -sfL -o apks/pinned.apk "$APK_URL"
             APK=apks/pinned.apk SRC="external-apk" python3 - <<'EOF'
@@ -245,7 +273,7 @@ jobs:
             adb shell am start -n build.raft.app/.MainActivity
             sleep 8
             mkdir -p qa-evidence
-            cp apks/build-info.json qa-evidence/build-info.json 2>/dev/null || true
+            cp "$(find apks -name build-info.json | head -1)" qa-evidence/build-info.json 2>/dev/null || true
             bash scripts/qa/stamp_report.sh claim
             adb logcat -c
             adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
