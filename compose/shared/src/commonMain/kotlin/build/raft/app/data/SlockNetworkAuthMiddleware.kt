@@ -7,7 +7,8 @@ internal class SlockNetworkAuthMiddleware(
     authApi: SlockAuthApi,
     logger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {},
-    criticalLogger: (String) -> Unit = warningLogger
+    criticalLogger: (String) -> Unit = warningLogger,
+    private val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { _, _ -> }
 ) {
     private val refreshCoordinator =
         SharedAuthRefreshCoordinator(
@@ -45,8 +46,18 @@ internal class SlockNetworkAuthMiddleware(
                     )
             ) {
                 is SharedAuthRefreshResult.Success -> result.session
-                is SharedAuthRefreshResult.Failure,
-                SharedAuthRefreshResult.Unavailable -> null
+                is SharedAuthRefreshResult.Failure -> {
+                    if (result.response.code == 401 || result.response.code == 403) {
+                        terminalAuthLossReporter(session, caller)
+                    }
+                    null
+                }
+                SharedAuthRefreshResult.Unavailable -> {
+                    if (session.refreshToken.isBlank()) {
+                        terminalAuthLossReporter(session, caller)
+                    }
+                    null
+                }
             }
         if (refreshed == null) {
             return first.asSessionExpired()

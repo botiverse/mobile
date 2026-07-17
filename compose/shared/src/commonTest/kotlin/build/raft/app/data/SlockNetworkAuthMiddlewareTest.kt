@@ -34,11 +34,12 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
-    fun preservesSessionWhenRefreshTokenIsUnauthorized() = runBlocking {
+    fun reportsTerminalAuthLossWhenRefreshTokenIsUnauthorized() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(
                 sampleSession(accessToken = "preserve-access", refreshToken = "preserve-refresh")
             )
+        val reported = mutableListOf<Pair<String, String>>()
         val middleware =
             SlockNetworkAuthMiddleware(
                 store,
@@ -49,15 +50,174 @@ class SlockNetworkAuthMiddlewareTest {
                             code = 401,
                             errorBodyText = """{"error":"expiredToken"}"""
                         )
-                )
+                ),
+                terminalAuthLossReporter = { session, caller ->
+                    reported += session.accessToken to caller
+                }
             )
 
         val response =
-            middleware.request { HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""") }
+            middleware.request(caller = "test_terminal_auth_loss") {
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
 
         assertEquals(401, response.code)
         assertEquals("preserve-access", store.readSession()?.accessToken)
         assertEquals("preserve-refresh", store.readSession()?.refreshToken)
+        assertEquals(listOf("preserve-access" to "test_terminal_auth_loss"), reported)
+    }
+
+    @Test
+    fun doesNotReportTerminalAuthLossWhenRefreshFailsTransiently() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(sampleSession())
+        val reported = mutableListOf<String>()
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(
+                    refreshResult =
+                        AuthApiResult.Failure(
+                            code = 503,
+                            errorBodyText = """{"error":"temporarily_unavailable"}"""
+                        )
+                ),
+                terminalAuthLossReporter = { _, caller -> reported += caller }
+            )
+
+        val response =
+            middleware.request(caller = "test_transient_refresh") {
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(401, response.code)
+        assertEquals("expired-access", store.readSession()?.accessToken)
+        assertEquals(emptyList(), reported)
+    }
+
+    @Test
+    fun reportsTerminalAuthLossWhenRefreshCredentialIsMissing() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "missing-refresh-access", refreshToken = "")
+            )
+        val reported = mutableListOf<String>()
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(refreshResult = null),
+                terminalAuthLossReporter = { _, caller -> reported += caller }
+            )
+
+        val response =
+            middleware.request(caller = "test_missing_refresh") {
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(401, response.code)
+        assertEquals(listOf("test_missing_refresh"), reported)
+        assertEquals("missing-refresh-access", store.readSession()?.accessToken)
+    }
+
+    @Test
+    fun terminalAuthLossEntersFunnelAndClearsUnauthenticatedSession() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "funnel-access", refreshToken = "funnel-refresh")
+            )
+        val decisions = mutableListOf<AuthLossDecision>()
+        val funnel =
+            SharedAuthLossFunnel(
+                restoreSession = { SharedAuthResult.Unauthenticated },
+                clearSession = { reason, source -> store.clearSession(reason = reason, source = source) },
+                scope = this
+            )
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(
+                    refreshTokenAssertion = "funnel-refresh",
+                    refreshResult =
+                        AuthApiResult.Failure(
+                            code = 401,
+                            errorBodyText = """{"error":"invalid refresh"}"""
+                        )
+                ),
+                terminalAuthLossReporter = { session, caller ->
+                    decisions +=
+                        funnel.report(
+                            AuthLossSignal(
+                                source = caller,
+                                tokenFingerprint = session.accessToken.authLossTokenFingerprint()
+                            )
+                        ).await()
+                }
+            )
+
+        val response =
+            middleware.request(caller = "test_funnel") {
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(401, response.code)
+        assertEquals(null, store.readSession())
+        assertEquals(
+            listOf<AuthLossDecision>(AuthLossDecision.AuthRequired("restore_unauthenticated")),
+            decisions
+        )
+    }
+
+    @Test
+    fun terminalAuthLossPreservesSessionRotatedBeforeFunnelResolution() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "old-rotated-access", refreshToken = "old-rotated-refresh")
+            )
+        val rotated = sampleSession(accessToken = "rotated-access", refreshToken = "rotated-refresh")
+        val decisions = mutableListOf<AuthLossDecision>()
+        val funnel =
+            SharedAuthLossFunnel(
+                restoreSession = {
+                    store.readSession()
+                        ?.let { SharedAuthResult.Success(it) }
+                        ?: SharedAuthResult.Unauthenticated
+                },
+                clearSession = { reason, source -> store.clearSession(reason = reason, source = source) },
+                scope = this
+            )
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(
+                    refreshTokenAssertion = "old-rotated-refresh",
+                    refreshResult =
+                        AuthApiResult.Failure(
+                            code = 401,
+                            errorBodyText = """{"error":"invalid refresh"}"""
+                        )
+                ),
+                terminalAuthLossReporter = { session, caller ->
+                    store.saveSession(rotated)
+                    decisions +=
+                        funnel.report(
+                            AuthLossSignal(
+                                source = caller,
+                                tokenFingerprint = session.accessToken.authLossTokenFingerprint()
+                            )
+                        ).await()
+                }
+            )
+
+        val response =
+            middleware.request(caller = "test_rotated_session") {
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(401, response.code)
+        assertEquals("rotated-access", store.readSession()?.accessToken)
+        assertEquals(
+            listOf<AuthLossDecision>(AuthLossDecision.SessionPreserved("restore_success")),
+            decisions
+        )
     }
 
     @Test

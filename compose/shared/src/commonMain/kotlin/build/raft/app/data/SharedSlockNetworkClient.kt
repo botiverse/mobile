@@ -21,6 +21,7 @@ internal class SharedSlockNetworkClient(
     private val baseUrlProvider: () -> String = { baseUrl },
     private val warningLogger: (String) -> Unit = {},
     private val criticalWarningLogger: (String) -> Unit = warningLogger,
+    private val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { _, _ -> },
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
     private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
@@ -31,7 +32,8 @@ internal class SharedSlockNetworkClient(
             authApi = SlockAuthApiClient(SharedSlockAuthTransport(currentBaseUrl(), executor, warningLogger)),
             logger = warningLogger,
             warningLogger = warningLogger,
-            criticalLogger = criticalWarningLogger
+            criticalLogger = criticalWarningLogger,
+            terminalAuthLossReporter = terminalAuthLossReporter
         )
 
     override suspend fun request(
