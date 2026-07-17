@@ -3576,6 +3576,7 @@ internal fun SharedThreadRouteContent(
     onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val translationStore = remember(sharedStores) { sharedStores.messageTranslationStore }
     val realtimeDomainEventOwner =
@@ -6420,7 +6421,7 @@ internal fun SharedThreadRouteContent(
                 action == "openMarkdownUrl" && !itemId.isNullOrBlank() -> {
                     val target = itemId.toSlockThreadWebLinkTarget()
                     if (target == null) {
-                        bridge.openUrl(itemId, null)
+                        linkNavigator.open(itemId)
                     } else {
                         val serverId = currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
                         val directory =
@@ -19402,6 +19403,7 @@ internal class ComposeThreadForwardBundlePage : build.raft.app.base.BasePager() 
 private fun ThreadForwardBundleScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val params = pager.pageData.params
     val visualFixture = remember(params.toString()) { params.optString("visualFixture") == "forward_bundle" }
     val route = remember(params.toString()) { params.toThreadForwardBundleRouteOrNull() }
@@ -19477,7 +19479,7 @@ private fun ThreadForwardBundleScreen() {
                                 onToggleReaction = {},
                                 onOpenAttachment = {},
                                 onOpenMarkdownTag = {},
-                                onOpenMarkdownUrl = { url -> bridge.openUrl(url) },
+                                onOpenMarkdownUrl = { url -> linkNavigator.open(url) },
                                 showReplyAction = false,
                                 showSaveAction = false,
                                 taskOpenEnabled = false,

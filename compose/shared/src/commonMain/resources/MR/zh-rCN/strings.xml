@@ -1307,6 +1307,17 @@
     <string name="settings_appearance_preview">预览</string>
     <string name="settings_appearance_preview_sender">入门助手</string>
     <string name="settings_appearance_preview_message">@Joy #proj-uiux 喜欢这个新设计，我正在拉取代码后本地试用。</string>
+    <string name="settings_mobile_link_open_mode_title">链接打开方式</string>
+    <string name="settings_mobile_link_open_mode_detail">选择网页链接使用默认浏览器打开，还是在 Raft 内打开。</string>
+    <string name="settings_mobile_link_open_mode_system_browser">默认浏览器</string>
+    <string name="settings_mobile_link_open_mode_in_app_browser">内置浏览器</string>
+    <string name="in_app_browser_title">浏览器</string>
+    <string name="in_app_browser_forward">前进</string>
+    <string name="in_app_browser_reload">重新加载</string>
+    <string name="in_app_browser_open_system">在默认浏览器中打开</string>
+    <string name="in_app_browser_invalid_link">无法打开此链接。</string>
+    <string name="in_app_browser_load_error">无法加载此页面。</string>
+    <string name="in_app_browser_unable_to_open_link">无法打开链接</string>
     <string name="settings_mobile_compact_messages">紧凑显示连续消息</string>
     <string name="settings_mobile_multi_shell_host">多应用窗口</string>
     <string name="settings_mobile_multi_shell_host_detail">在独立的 Android 应用窗口中打开不同工作区。已打开的窗口会保留到你手动关闭。</string>

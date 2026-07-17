@@ -67,6 +67,7 @@ import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.BuildConfig
 import build.raft.app.releaseSlockShellStoreScope
+import build.raft.app.selectExternalWebHandlerPackage
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.GoogleSocialAuthGateway
 import build.raft.app.core.data.auth.GoogleSocialAuthResult
@@ -4272,15 +4273,13 @@ internal class SlockKuiklyBridgeModule(
         val request = JSONObject(params ?: "{}")
         val url = request.optString("url").takeIf { it.isNotBlank() } ?: return null
         val mimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
-        val viewIntent =
-                Intent(Intent.ACTION_VIEW).apply {
-                    if (mimeType != null) {
-                        setDataAndType(Uri.parse(url), mimeType)
-                    } else {
-                        data = Uri.parse(url)
-                    }
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
+        val uri = Uri.parse(url)
+        val viewIntent = externalUrlIntent(uri, mimeType)
+        if (viewIntent == null) {
+            Toast.makeText(appContext, appContext.getString(R.string.open_link_no_app_toast), Toast.LENGTH_SHORT)
+                    .show()
+            return null
+        }
         runCatching {
             appContext.startActivity(viewIntent)
         }.onFailure { throwable ->
@@ -4292,6 +4291,46 @@ internal class SlockKuiklyBridgeModule(
             }
         }
         return null
+    }
+
+    /**
+     * HTTP(S) links must leave Raft even when Android App Links resolve the same URL back to this
+     * application. Other schemes retain the platform's ordinary implicit-handler behavior.
+     */
+    private fun externalUrlIntent(uri: Uri, mimeType: String?): Intent? {
+        val isWebUrl = mimeType == null && uri.scheme?.lowercase() in setOf("http", "https")
+        val implicit =
+                Intent(Intent.ACTION_VIEW).apply {
+                    if (mimeType != null) {
+                        setDataAndType(uri, mimeType)
+                    } else {
+                        data = uri
+                    }
+                    if (isWebUrl) {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                    }
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+        if (!isWebUrl) {
+            return implicit
+        }
+        val candidates =
+                appContext.packageManager.queryIntentActivities(
+                        implicit,
+                        PackageManager.MATCH_DEFAULT_ONLY
+                )
+        val defaultPackage =
+                appContext.packageManager
+                        .resolveActivity(implicit, PackageManager.MATCH_DEFAULT_ONLY)
+                        ?.activityInfo
+                        ?.packageName
+        val selectedPackage =
+                selectExternalWebHandlerPackage(
+                        ownPackage = appContext.packageName,
+                        defaultPackage = defaultPackage,
+                        candidatePackages = candidates.map { it.activityInfo.packageName }
+                ) ?: return null
+        return implicit.setPackage(selectedPackage)
     }
 
     private fun openAttachment(params: String?, callback: KuiklyRenderCallback?) {

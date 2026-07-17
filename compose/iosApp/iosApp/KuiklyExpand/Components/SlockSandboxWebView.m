@@ -10,10 +10,27 @@ static NSString *const SlockSandboxWebViewDomStorageEnabledProp = @"domStorageEn
 static NSString *const SlockSandboxWebViewCacheEnabledProp = @"cacheEnabled";
 static NSString *const SlockSandboxWebViewEphemeralProp = @"ephemeral";
 static NSString *const SlockSandboxWebViewInjectedJavaScriptProp = @"injectedJavaScript";
+static NSString *const SlockSandboxWebViewAllowedNavigationSchemesProp = @"allowedNavigationSchemes";
+static NSString *const SlockSandboxWebViewNavigationCommandMethod = @"navigationCommand";
 static NSString *const SlockSandboxWebViewLoadSuccessProp = @"loadSuccess";
 static NSString *const SlockSandboxWebViewLoadFailureProp = @"loadFailure";
 static NSString *const SlockSandboxWebViewNavigationBlockedProp = @"navigationBlocked";
 static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
+static NSString *const SlockSandboxWebViewNavigationStateChangeProp = @"navigationStateChange";
+
+static NSString *const SlockSandboxWebViewCommandGoBack = @"goBack";
+static NSString *const SlockSandboxWebViewCommandGoForward = @"goForward";
+static NSString *const SlockSandboxWebViewCommandReload = @"reload";
+static NSString *const SlockSandboxWebViewCommandStop = @"stop";
+
+static NSArray<NSString *> *SlockSandboxWebViewObservedKeyPaths(void) {
+    static NSArray<NSString *> *keyPaths;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        keyPaths = @[ @"estimatedProgress", @"title", @"canGoBack", @"canGoForward", @"loading", @"URL" ];
+    });
+    return keyPaths;
+}
 
 @interface SlockSandboxWebView () <WKNavigationDelegate, WKUIDelegate>
 
@@ -26,10 +43,22 @@ static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
 @property (nonatomic, assign) BOOL cacheEnabled;
 @property (nonatomic, assign) BOOL ephemeral;
 @property (nonatomic, copy) NSString *injectedJavaScript;
+@property (nonatomic, copy) NSSet<NSString *> *allowedNavigationSchemes;
+@property (nonatomic, copy) NSString *currentURL;
+@property (nonatomic, copy) NSString *currentTitle;
+@property (nonatomic, assign) BOOL currentLoading;
+@property (nonatomic, assign) NSInteger currentProgress;
+@property (nonatomic, copy) NSString *lastNavigationStateKey;
+@property (nonatomic, copy) NSString *lastSuccessfulURL;
+@property (nonatomic, copy) NSString *lastLoadFailureKey;
+@property (nonatomic, assign) BOOL observingWebView;
+@property (nonatomic, assign) BOOL detachedFromSuperview;
+@property (nonatomic, assign) BOOL reloadOnReattach;
 @property (nonatomic, copy) KuiklyRenderCallback loadSuccessCallback;
 @property (nonatomic, copy) KuiklyRenderCallback loadFailureCallback;
 @property (nonatomic, copy) KuiklyRenderCallback navigationBlockedCallback;
 @property (nonatomic, copy) KuiklyRenderCallback urlChangeCallback;
+@property (nonatomic, copy) KuiklyRenderCallback navigationStateChangeCallback;
 
 @end
 
@@ -46,6 +75,12 @@ static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
         _cacheEnabled = NO;
         _ephemeral = YES;
         _injectedJavaScript = @"";
+        _allowedNavigationSchemes = [NSSet set];
+        _currentURL = @"";
+        _currentTitle = @"";
+        _lastNavigationStateKey = @"";
+        _lastSuccessfulURL = @"";
+        _lastLoadFailureKey = @"";
         self.backgroundColor = UIColor.whiteColor;
         [self rebuildWebView];
     }
@@ -68,6 +103,8 @@ static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
         [self updateEphemeral:[self boolFromValue:propValue defaultValue:YES]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewInjectedJavaScriptProp]) {
         [self updateInjectedJavaScript:[self stringFromValue:propValue]];
+    } else if ([propKey isEqualToString:SlockSandboxWebViewAllowedNavigationSchemesProp]) {
+        [self updateAllowedNavigationSchemes:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockSandboxWebViewLoadSuccessProp]) {
         self.loadSuccessCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewLoadFailureProp]) {
@@ -76,6 +113,17 @@ static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
         self.navigationBlockedCallback = propValue;
     } else if ([propKey isEqualToString:SlockSandboxWebViewUrlChangeProp]) {
         self.urlChangeCallback = propValue;
+    } else if ([propKey isEqualToString:SlockSandboxWebViewNavigationStateChangeProp]) {
+        self.navigationStateChangeCallback = propValue;
+        [self notifyNavigationStateForce:YES];
+    }
+}
+
+- (void)hrv_callWithMethod:(NSString *)method
+                    params:(NSString * _Nullable)params
+                  callback:(KuiklyRenderCallback _Nullable)callback {
+    if ([method isEqualToString:SlockSandboxWebViewNavigationCommandMethod]) {
+        [self executeNavigationCommand:params ?: @""];
     }
 }
 
@@ -85,9 +133,44 @@ static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
 }
 
 - (void)removeFromSuperview {
+    self.reloadOnReattach = self.currentLoading || self.webView.loading;
+    self.detachedFromSuperview = YES;
+    [self stopObservingWebView:self.webView];
+    self.webView.navigationDelegate = nil;
+    self.webView.UIDelegate = nil;
     [self.webView stopLoading];
-    [self.webView loadHTMLString:@"" baseURL:nil];
+    self.currentLoading = NO;
     [super removeFromSuperview];
+}
+
+- (void)didMoveToSuperview {
+    [super didMoveToSuperview];
+    if (!self.superview || !self.detachedFromSuperview) {
+        return;
+    }
+    self.detachedFromSuperview = NO;
+    self.webView.navigationDelegate = self;
+    self.webView.UIDelegate = self;
+    [self startObservingWebView:self.webView];
+    BOOL shouldReload = self.reloadOnReattach;
+    self.reloadOnReattach = NO;
+    if (shouldReload) {
+        [self loadCurrentSrc];
+    } else {
+        [self notifyNavigationStateForce:YES];
+    }
+}
+
+- (void)dealloc {
+    [self stopObservingWebView:self.webView];
+    self.webView.navigationDelegate = nil;
+    self.webView.UIDelegate = nil;
+    [self.webView stopLoading];
+    _loadSuccessCallback = nil;
+    _loadFailureCallback = nil;
+    _navigationBlockedCallback = nil;
+    _urlChangeCallback = nil;
+    _navigationStateChangeCallback = nil;
 }
 
 #pragma mark - WKNavigationDelegate
@@ -95,30 +178,82 @@ static NSString *const SlockSandboxWebViewUrlChangeProp = @"urlChange";
 - (void)webView:(WKWebView *)webView
 decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
 decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
-    NSURL *targetURL = navigationAction.request.URL;
-    BOOL isMainFrame = navigationAction.targetFrame == nil || navigationAction.targetFrame.isMainFrame;
-    if (isMainFrame && self.urlChangeCallback) {
-        self.urlChangeCallback(@{ @"url" : targetURL.absoluteString ?: @"" });
-    }
-    if (isMainFrame && !self.allowNavigation && ![self isAllowedMainDocumentURL:targetURL]) {
-        [self notifyNavigationBlocked:targetURL.absoluteString ?: @""];
+    if (webView != self.webView) {
         decisionHandler(WKNavigationActionPolicyCancel);
         return;
+    }
+    NSURL *targetURL = navigationAction.request.URL;
+    BOOL isMainFrame = navigationAction.targetFrame == nil || navigationAction.targetFrame.isMainFrame;
+    if (isMainFrame) {
+        if (![self isNavigationSchemeAllowedURL:targetURL] ||
+            (!self.allowNavigation && ![self isAllowedMainDocumentURL:targetURL])) {
+            [self handleBlockedMainFrameNavigation:targetURL.absoluteString ?: @""];
+            decisionHandler(WKNavigationActionPolicyCancel);
+            return;
+        }
+        self.currentURL = targetURL.absoluteString ?: @"";
+        if (self.urlChangeCallback) {
+            self.urlChangeCallback(@{ @"url" : self.currentURL });
+        }
+        [self notifyNavigationStateForce:NO];
     }
     decisionHandler(WKNavigationActionPolicyAllow);
 }
 
-- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    if (self.loadSuccessCallback) {
-        self.loadSuccessCallback(@{});
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+    if (webView != self.webView) {
+        return;
     }
+    self.currentURL = webView.URL.absoluteString ?: self.currentURL ?: @"";
+    self.currentTitle = @"";
+    self.currentProgress = MAX(0, MIN(100, (NSInteger)(webView.estimatedProgress * 100.0 + 0.5)));
+    self.currentLoading = YES;
+    self.lastSuccessfulURL = @"";
+    self.lastLoadFailureKey = @"";
+    [self notifyNavigationStateForce:NO];
+}
+
+- (void)webView:(WKWebView *)webView didCommitNavigation:(WKNavigation *)navigation {
+    if (webView != self.webView) {
+        return;
+    }
+    self.currentURL = webView.URL.absoluteString ?: self.currentURL ?: @"";
+    self.currentTitle = webView.title ?: self.currentTitle ?: @"";
+    self.currentLoading = webView.loading;
+    [self notifyURLChange:self.currentURL];
+    [self notifyNavigationStateForce:NO];
+}
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != self.webView) {
+        return;
+    }
+    self.currentURL = webView.URL.absoluteString ?: self.currentURL ?: @"";
+    self.currentTitle = webView.title ?: @"";
+    self.currentProgress = 100;
+    self.currentLoading = NO;
+    [self notifyURLChange:self.currentURL];
+    [self notifyNavigationStateForce:NO];
+    [self notifyLoadSuccess:self.currentURL];
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != self.webView || [self isIntentionalCancellation:error]) {
+        return;
+    }
+    self.currentURL = webView.URL.absoluteString ?: self.currentURL ?: @"";
+    self.currentLoading = NO;
+    [self notifyNavigationStateForce:NO];
     [self notifyLoadFailure:error.localizedDescription ?: @"webview_load_failed"];
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != self.webView || [self isIntentionalCancellation:error]) {
+        return;
+    }
+    self.currentURL = webView.URL.absoluteString ?: self.currentURL ?: @"";
+    self.currentLoading = NO;
+    [self notifyNavigationStateForce:NO];
     [self notifyLoadFailure:error.localizedDescription ?: @"webview_load_failed"];
 }
 
@@ -128,6 +263,9 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
 createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
    forNavigationAction:(WKNavigationAction *)navigationAction
         windowFeatures:(WKWindowFeatures *)windowFeatures {
+    if (webView != self.webView) {
+        return nil;
+    }
     [self notifyNavigationBlocked:navigationAction.request.URL.absoluteString ?: @""];
     return nil;
 }
@@ -135,8 +273,12 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
 #pragma mark - Private
 
 - (void)rebuildWebView {
-    [self.webView stopLoading];
-    [self.webView removeFromSuperview];
+    WKWebView *previousWebView = self.webView;
+    [self stopObservingWebView:previousWebView];
+    previousWebView.navigationDelegate = nil;
+    previousWebView.UIDelegate = nil;
+    [previousWebView stopLoading];
+    [previousWebView removeFromSuperview];
 
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configuration.websiteDataStore =
@@ -167,8 +309,10 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     }
 
     WKWebView *webView = [[WKWebView alloc] initWithFrame:self.bounds configuration:configuration];
-    webView.navigationDelegate = self;
-    webView.UIDelegate = self;
+    if (!self.detachedFromSuperview) {
+        webView.navigationDelegate = self;
+        webView.UIDelegate = self;
+    }
     webView.backgroundColor = UIColor.whiteColor;
     webView.opaque = YES;
     webView.allowsBackForwardNavigationGestures = NO;
@@ -177,7 +321,56 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     }
     self.webView = webView;
     [self addSubview:webView];
+    if (!self.detachedFromSuperview) {
+        [self startObservingWebView:webView];
+    }
+    self.currentProgress = 0;
+    self.currentLoading = NO;
+    self.currentTitle = @"";
+    self.lastNavigationStateKey = @"";
     [self loadCurrentSrc];
+}
+
+- (void)startObservingWebView:(WKWebView *)webView {
+    if (!webView || self.observingWebView) {
+        return;
+    }
+    for (NSString *keyPath in SlockSandboxWebViewObservedKeyPaths()) {
+        [webView addObserver:self forKeyPath:keyPath options:NSKeyValueObservingOptionNew context:nil];
+    }
+    self.observingWebView = YES;
+}
+
+- (void)stopObservingWebView:(WKWebView *)webView {
+    if (!webView || !self.observingWebView) {
+        return;
+    }
+    for (NSString *keyPath in SlockSandboxWebViewObservedKeyPaths()) {
+        @try {
+            [webView removeObserver:self forKeyPath:keyPath];
+        } @catch (__unused NSException *exception) {
+        }
+    }
+    self.observingWebView = NO;
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey, id> *)change
+                       context:(void *)context {
+    if (![SlockSandboxWebViewObservedKeyPaths() containsObject:keyPath]) {
+        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+        return;
+    }
+    if (object != self.webView) {
+        return;
+    }
+    WKWebView *webView = (WKWebView *)object;
+    self.currentURL = webView.URL.absoluteString ?: self.currentURL ?: @"";
+    self.currentTitle = webView.title ?: @"";
+    self.currentProgress = MAX(0, MIN(100, (NSInteger)(webView.estimatedProgress * 100.0 + 0.5)));
+    self.currentLoading = webView.loading;
+    [self notifyNavigationStateForce:NO];
 }
 
 - (void)updateAllowScripts:(BOOL)allowScripts {
@@ -221,6 +414,64 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     [self rebuildWebView];
 }
 
+- (void)updateAllowedNavigationSchemes:(NSString *)allowedNavigationSchemes {
+    NSMutableSet<NSString *> *normalizedSchemes = [NSMutableSet set];
+    NSCharacterSet *whitespace = NSCharacterSet.whitespaceAndNewlineCharacterSet;
+    for (NSString *rawScheme in [allowedNavigationSchemes componentsSeparatedByString:@","]) {
+        NSString *scheme = [[rawScheme stringByTrimmingCharactersInSet:whitespace] lowercaseString];
+        while ([scheme hasSuffix:@":"]) {
+            scheme = [scheme substringToIndex:scheme.length - 1];
+        }
+        if (scheme.length > 0) {
+            [normalizedSchemes addObject:scheme];
+        }
+    }
+    NSSet<NSString *> *nextSchemes = [normalizedSchemes copy];
+    if ([self.allowedNavigationSchemes isEqualToSet:nextSchemes]) {
+        return;
+    }
+    self.allowedNavigationSchemes = nextSchemes;
+    if (self.src.length == 0) {
+        return;
+    }
+    NSURL *activeURL = self.webView.URL;
+    if (!activeURL || [activeURL.absoluteString isEqualToString:@"about:blank"]) {
+        activeURL = [NSURL URLWithString:self.src];
+    }
+    if (activeURL && ![self isNavigationSchemeAllowedURL:activeURL]) {
+        [self.webView stopLoading];
+        self.currentLoading = NO;
+        [self notifyNavigationStateForce:NO];
+        [self notifyNavigationBlocked:activeURL.absoluteString ?: self.src ?: @""];
+    }
+}
+
+- (void)executeNavigationCommand:(NSString *)navigationCommand {
+    NSString *command =
+        [navigationCommand stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([command isEqualToString:SlockSandboxWebViewCommandGoBack]) {
+        if (self.webView.canGoBack) {
+            [self.webView goBack];
+        }
+    } else if ([command isEqualToString:SlockSandboxWebViewCommandGoForward]) {
+        if (self.webView.canGoForward) {
+            [self.webView goForward];
+        }
+    } else if ([command isEqualToString:SlockSandboxWebViewCommandReload]) {
+        self.lastSuccessfulURL = @"";
+        self.lastLoadFailureKey = @"";
+        self.currentProgress = 0;
+        self.currentLoading = YES;
+        [self.webView reload];
+    } else if ([command isEqualToString:SlockSandboxWebViewCommandStop]) {
+        [self.webView stopLoading];
+        self.currentLoading = NO;
+    } else {
+        return;
+    }
+    [self notifyNavigationStateForce:YES];
+}
+
 - (void)updateSrc:(NSString *)src {
     NSString *nextSrc = src.length > 0 ? src : @"";
     if ([self.src isEqualToString:nextSrc]) {
@@ -228,6 +479,12 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     }
     self.src = nextSrc;
     self.allowedURL = nextSrc.length > 0 ? [NSURL URLWithString:nextSrc] : nil;
+    self.currentURL = nextSrc;
+    self.currentTitle = @"";
+    self.currentProgress = 0;
+    self.currentLoading = NO;
+    self.lastSuccessfulURL = @"";
+    self.lastLoadFailureKey = @"";
     [self loadCurrentSrc];
 }
 
@@ -235,18 +492,107 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
     if (!self.webView) {
         return;
     }
+    if (self.detachedFromSuperview) {
+        self.reloadOnReattach = self.src.length > 0;
+        return;
+    }
     if (self.src.length == 0) {
+        self.currentURL = @"";
+        self.currentTitle = @"";
+        self.currentProgress = 0;
+        self.currentLoading = NO;
+        [self notifyNavigationStateForce:NO];
         [self.webView loadHTMLString:@"" baseURL:nil];
         return;
     }
     NSURL *url = [NSURL URLWithString:self.src];
     if (!url) {
-        [self notifyLoadFailure:@"invalid_preview_url"];
+        [self notifyNavigationStateForce:NO];
+        if (self.allowedNavigationSchemes.count > 0) {
+            [self notifyNavigationBlocked:self.src];
+        } else {
+            [self notifyLoadFailure:@"invalid_preview_url"];
+        }
         return;
     }
+    if (![self isNavigationSchemeAllowedURL:url]) {
+        [self notifyNavigationStateForce:NO];
+        [self notifyNavigationBlocked:self.src];
+        return;
+    }
+    self.currentLoading = YES;
+    [self notifyNavigationStateForce:NO];
     NSURLRequestCachePolicy cachePolicy =
         self.cacheEnabled ? NSURLRequestUseProtocolCachePolicy : NSURLRequestReloadIgnoringLocalCacheData;
     [self.webView loadRequest:[NSURLRequest requestWithURL:url cachePolicy:cachePolicy timeoutInterval:60.0]];
+}
+
+- (BOOL)isNavigationSchemeAllowedURL:(NSURL *)targetURL {
+    if (self.allowedNavigationSchemes.count == 0) {
+        return YES;
+    }
+    if (self.src.length == 0 && [targetURL.absoluteString isEqualToString:@"about:blank"]) {
+        return YES;
+    }
+    NSString *scheme = targetURL.scheme.lowercaseString;
+    return scheme.length > 0 && [self.allowedNavigationSchemes containsObject:scheme];
+}
+
+- (BOOL)isIntentionalCancellation:(NSError *)error {
+    return [error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled;
+}
+
+- (void)handleBlockedMainFrameNavigation:(NSString *)url {
+    self.currentLoading = NO;
+    [self notifyNavigationStateForce:NO];
+    [self notifyNavigationBlocked:url];
+}
+
+- (void)notifyURLChange:(NSString *)url {
+    if (self.urlChangeCallback) {
+        self.urlChangeCallback(@{ @"url" : url ?: @"" });
+    }
+}
+
+- (void)notifyNavigationStateForce:(BOOL)force {
+    NSString *url = self.currentURL ?: @"";
+    NSString *title = self.currentTitle ?: @"";
+    NSInteger progress = MAX(0, MIN(100, self.currentProgress));
+    BOOL canGoBack = self.webView.canGoBack;
+    BOOL canGoForward = self.webView.canGoForward;
+    NSString *stateKey = [NSString stringWithFormat:@"%@\x1f%@\x1f%d\x1f%d\x1f%d\x1f%ld",
+                                                        url,
+                                                        title,
+                                                        canGoBack,
+                                                        canGoForward,
+                                                        self.currentLoading,
+                                                        (long)progress];
+    if (!force && [self.lastNavigationStateKey isEqualToString:stateKey]) {
+        return;
+    }
+    self.lastNavigationStateKey = stateKey;
+    if (self.navigationStateChangeCallback) {
+        self.navigationStateChangeCallback(@{
+            @"url" : url,
+            @"title" : title,
+            @"canGoBack" : @(canGoBack),
+            @"canGoForward" : @(canGoForward),
+            @"isLoading" : @(self.currentLoading),
+            @"progress" : @(progress),
+        });
+    }
+}
+
+- (void)notifyLoadSuccess:(NSString *)url {
+    NSString *normalizedURL = url ?: @"";
+    if ([self.lastSuccessfulURL isEqualToString:normalizedURL]) {
+        return;
+    }
+    self.lastSuccessfulURL = normalizedURL;
+    self.lastLoadFailureKey = @"";
+    if (self.loadSuccessCallback) {
+        self.loadSuccessCallback(@{});
+    }
 }
 
 - (BOOL)isAllowedMainDocumentURL:(NSURL *)targetURL {
@@ -274,8 +620,14 @@ createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration
 }
 
 - (void)notifyLoadFailure:(NSString *)reason {
+    NSString *normalizedReason = reason ?: @"webview_load_failed";
+    NSString *failureKey = [NSString stringWithFormat:@"%@|%@", self.currentURL ?: @"", normalizedReason];
+    if ([self.lastLoadFailureKey isEqualToString:failureKey]) {
+        return;
+    }
+    self.lastLoadFailureKey = failureKey;
     if (self.loadFailureCallback) {
-        self.loadFailureCallback(@{ @"reason" : reason ?: @"webview_load_failed" });
+        self.loadFailureCallback(@{ @"reason" : normalizedReason });
     }
 }
 

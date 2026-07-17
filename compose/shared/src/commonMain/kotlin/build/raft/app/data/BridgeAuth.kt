@@ -30,7 +30,8 @@ class SettingsQuiverFeedbackSubmission(
 internal class BridgeSettingsPlatformCapabilities(
     private val bridge: BridgeModule,
     private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext,
-    private val feedbackVisualSubmission: SettingsQuiverFeedbackSubmission? = null
+    private val feedbackVisualSubmission: SettingsQuiverFeedbackSubmission? = null,
+    private val openUrlHandler: ((String) -> Unit)? = null
 ) : SharedSettingsPlatformCapabilities {
     fun bridgeCopyToClipboard(content: String) {
         bridge.copyToPasteboard(content)
@@ -42,6 +43,10 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     fun openUrl(url: String) {
+        openUrlHandler?.invoke(url) ?: bridge.openUrl(url)
+    }
+
+    fun openExternalUrl(url: String) {
         bridge.openUrl(url)
     }
 

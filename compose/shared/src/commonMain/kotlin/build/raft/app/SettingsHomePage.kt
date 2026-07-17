@@ -33,6 +33,7 @@ import build.raft.app.components.slockDisabledActionBackgroundFor
 import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
 import build.raft.app.data.KuiklyHostNetworkEvents
@@ -48,6 +49,7 @@ import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
+import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
@@ -69,6 +71,7 @@ import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
 import build.raft.app.data.MyMessageAlignmentPreference
+import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.CONNECTED_APPS_ACTION_DELETE
 import build.raft.app.data.CONNECTED_APPS_ACTION_INSTALL
@@ -101,6 +104,7 @@ import build.raft.app.data.SERVER_ACTION_SIDEBAR_ORDER
 import build.raft.app.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
+import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.AuthApiResult
@@ -552,6 +556,11 @@ private const val SettingsDestinationQuiverFeedback = "quiver-feedback"
 private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
+
+internal fun settingsComputersShouldConsumeBack(
+    selectedDestination: String,
+    canGoBack: Boolean
+): Boolean = selectedDestination == SettingsDestinationComputers && canGoBack
 private const val SettingsRouteVisualDestinationKey = "destination"
 private const val SettingsRouteVisualFixtureKey = "fixtureKey"
 private const val SettingsRouteVisualItemIdKey = "itemId"
@@ -885,9 +894,14 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val settingsCapabilities =
-        remember(bridge, bridgeCallScope) {
-            BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
+        remember(bridge, bridgeCallScope, linkNavigator) {
+            BridgeSettingsPlatformCapabilities(
+                bridge = bridge,
+                bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext(),
+                openUrlHandler = { url -> linkNavigator.open(url) }
+            )
         }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
@@ -2503,9 +2517,14 @@ internal fun SlockAppShellContent(
         return
     }
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val settingsCapabilities =
-        remember(bridge, appShellCoroutineScope) {
-            BridgeSettingsPlatformCapabilities(bridge, appShellCoroutineScope.kuiklyBridgeCallContext())
+        remember(bridge, appShellCoroutineScope, linkNavigator) {
+            BridgeSettingsPlatformCapabilities(
+                bridge = bridge,
+                bridgeCallContext = appShellCoroutineScope.kuiklyBridgeCallContext(),
+                openUrlHandler = { url -> linkNavigator.open(url) }
+            )
         }
     val memberRepository =
         remember(shellAuthStore, appShellNetworkClient) {
@@ -2623,6 +2642,10 @@ internal fun SlockAppShellContent(
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
             PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
+        }
+    val linkOpenPreferenceRepository =
+        remember(sharedPreferenceStore) {
+            PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(sharedPreferenceStore))
         }
     val recompositionProfilerPreferenceRepository =
         remember(sharedPreferenceStore) {
@@ -2747,7 +2770,7 @@ internal fun SlockAppShellContent(
             )
         }
     val settingsDataSource =
-        remember(shellAuthStore, appShellComputersStore) {
+        remember(shellAuthStore, appShellComputersStore, linkOpenPreferenceRepository) {
             SharedSettingsDataSource(
                 sessionStore = shellAuthStore,
                 settingsRepository = settingsRepository,
@@ -2756,6 +2779,7 @@ internal fun SlockAppShellContent(
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
+                linkOpenPreferenceRepository = linkOpenPreferenceRepository,
                 recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
@@ -4387,6 +4411,7 @@ internal fun SlockAppShellContent(
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
                                     selectedSettingsDestination = SettingsDestinationComputers
                                 },
+                                onOpenUrl = settingsCapabilities::openUrl,
                                 onOpenServerSelection = {
                                     pager.openAuthChooseServerPage(
                                         storeScope = navigationStoreScope,
@@ -4730,6 +4755,32 @@ private fun SettingsAppShellContent(
     onLogout: () -> Unit
 ) {
     val accountLinkScope = rememberCoroutineScope()
+    val computersWebViewController = remember(selectedDestination) { SlockWebViewController() }
+    var computersNavigationState by
+        remember(selectedDestination) {
+            mutableStateOf(SlockWebViewNavigationState())
+        }
+    val returnFromSettingsDetail: () -> Unit = {
+        when (selectedDestination) {
+            SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
+            SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationHome)
+            SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
+            SettingsDestinationOpenSourceLicenses -> onDestinationChange(SettingsDestinationAbout)
+            else -> onDestinationChange(SettingsDestinationHome)
+        }
+    }
+    val handleSettingsBack: () -> Unit = {
+        if (settingsComputersShouldConsumeBack(selectedDestination, computersNavigationState.canGoBack)) {
+            computersWebViewController.goBack()
+        } else {
+            returnFromSettingsDetail()
+        }
+    }
+    SlockBackHandler(
+        enabled = selectedDestination != SettingsDestinationHome,
+        label = "settings_detail",
+        onBack = handleSettingsBack
+    )
 
     LaunchedEffect(selectedDestination) {
         when (selectedDestination) {
@@ -4769,7 +4820,7 @@ private fun SettingsAppShellContent(
                 onLogout()
             }
             is SharedSettingsEffect.OpenUrl -> {
-                settingsCapabilities.openUrl(effect.url)
+                settingsCapabilities.openExternalUrl(effect.url)
             }
             is SharedSettingsEffect.CopyText -> {
                 settingsCapabilities.bridgeCopyToClipboard(effect.text)
@@ -4996,15 +5047,7 @@ private fun SettingsAppShellContent(
         title = settingsDestinationTitle(selectedDestination),
         subtitle = "",
         iconName = settingsDestinationIcon(selectedDestination),
-        onBack = {
-            when (selectedDestination) {
-                SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
-                SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationHome)
-                SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
-                SettingsDestinationOpenSourceLicenses -> onDestinationChange(SettingsDestinationAbout)
-                else -> onDestinationChange(SettingsDestinationHome)
-            }
-        },
+        onBack = handleSettingsBack,
         trailingContent = null
     ) {
         when (selectedDestination) {
@@ -5063,7 +5106,9 @@ private fun SettingsAppShellContent(
                 SettingsComputersWebViewContent(
                     session = session,
                     webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
-                    bottomContentPadding = bottomContentPadding
+                    bottomContentPadding = bottomContentPadding,
+                    controller = computersWebViewController,
+                    onNavigationStateChange = { computersNavigationState = it }
                 )
             }
             SettingsDestinationStorage ->
@@ -5434,6 +5479,13 @@ private fun SettingsAppShellContent(
                     onAlignmentChange = { itemId ->
                         onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
                         onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
+                    },
+                    onLinkOpenModeChange = { itemId ->
+                        onSettingsIntent(
+                            SharedSettingsIntent.SetLinkOpenMode(
+                                itemId ?: LinkOpenMode.Default.storageKey
+                            )
+                        )
                     },
                     onCompactConsecutiveMessagesChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
@@ -6544,6 +6596,7 @@ private fun SettingsMobileContent(
     refreshing: Boolean,
     bottomContentPadding: Dp,
     onAlignmentChange: (String?) -> Unit,
+    onLinkOpenModeChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
@@ -6567,6 +6620,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onAlignmentChange = onAlignmentChange
+                )
+            }
+            item {
+                SettingsLinkOpenModeCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onLinkOpenModeChange = onLinkOpenModeChange
                 )
             }
             item {
@@ -6733,6 +6793,41 @@ private fun SettingsMessageAlignmentCard(
             enabled = snapshot.messageAlignmentPreference.available && !busy
         )
         if (actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsLinkOpenModeCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onLinkOpenModeChange: (String?) -> Unit
+) {
+    val preference = snapshot.linkOpenMode
+    val busy = actionState?.action == MOBILE_ACTION_LINK_OPEN_MODE && actionState.inProgress
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.ExternalLink,
+        title = stringResource(MR.strings.settings_mobile_link_open_mode_title)
+    ) {
+        SettingsSegmentedControlField(
+            detail = stringResource(MR.strings.settings_mobile_link_open_mode_detail),
+            selectedValue = preference.selectedKey.ifBlank { LinkOpenMode.Default.storageKey },
+            options =
+                listOf(
+                    SegmentedControlOption(
+                        LinkOpenMode.SystemBrowser.storageKey,
+                        stringResource(MR.strings.settings_mobile_link_open_mode_system_browser)
+                    ),
+                    SegmentedControlOption(
+                        LinkOpenMode.InAppBrowser.storageKey,
+                        stringResource(MR.strings.settings_mobile_link_open_mode_in_app_browser)
+                    )
+                ),
+            onValueSelected = onLinkOpenModeChange,
+            enabled = preference.available && !busy
+        )
+        if (actionState?.action == MOBILE_ACTION_LINK_OPEN_MODE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -11470,12 +11565,12 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
         instanceId = "shared-shell-settings-mobile",
         title = "Mobile",
         heroIconName = SlockLucideIconName.Smartphone,
-        heroLabel = "Message alignment",
+        heroLabel = "Mobile preferences",
         detail =
             if (refreshing) {
                 "Refreshing mobile settings..."
             } else {
-                "Choose how your own messages align in conversations."
+                "Manage link opening and conversation behavior on this device."
             },
         sections =
             listOf(
@@ -11488,6 +11583,13 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 iconName = SlockLucideIconName.AlignHorizontalSpaceAround,
                                 title = "My message alignment",
                                 fallbackStatus = "Unsupported",
+                                actionState = actionState
+                            ),
+                            mobile.linkOpenMode.toMobileSelectionRow(
+                                key = MOBILE_ACTION_LINK_OPEN_MODE,
+                                iconName = SlockLucideIconName.ExternalLink,
+                                title = "Open web links",
+                                fallbackStatus = "Default browser",
                                 actionState = actionState
                             ),
                             mobile.compactConsecutiveMessages.toMobileToggleRow(
@@ -11688,7 +11790,7 @@ private fun appShellMobilePlaceholderPayload(
         instanceId = "shared-shell-settings-mobile-placeholder",
         title = "Mobile",
         heroIconName = SlockLucideIconName.Smartphone,
-        heroLabel = "Message alignment",
+        heroLabel = "Mobile preferences",
         detail = detail,
         sections =
             listOf(
@@ -14223,6 +14325,7 @@ private fun SharedHomeScreen(
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
     onOpenComputers: () -> Unit = {},
+    onOpenUrl: (String) -> Unit = bridge::openUrl,
     onOpenServerSelection: () -> Unit,
     onCreateChannel: () -> Unit,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
@@ -14532,7 +14635,7 @@ private fun SharedHomeScreen(
                             onOpenComputers()
                         notification.targetId?.startsWith("http://") == true ||
                             notification.targetId?.startsWith("https://") == true -> {
-                            notification.targetId?.let(bridge::openUrl)
+                            notification.targetId?.let(onOpenUrl)
                         }
                         else -> Unit
                     }
@@ -20087,7 +20190,7 @@ private fun settingsRouteVisualHomeSnapshot(selectedDestination: SharedSettingsD
                 SharedSettingsNavItem(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination == SharedSettingsDestination.LanguageRegion),
                 SharedSettingsNavItem(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination == SharedSettingsDestination.Appearance),
                 SharedSettingsNavItem(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination == SharedSettingsDestination.Notifications),
-                SharedSettingsNavItem(SharedSettingsDestination.Mobile, "Mobile", "My message alignment", SlockLucideIconName.Smartphone, null, selectedDestination == SharedSettingsDestination.Mobile),
+                SharedSettingsNavItem(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", SlockLucideIconName.Smartphone, null, selectedDestination == SharedSettingsDestination.Mobile),
                 SharedSettingsNavItem(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, settingsVisualFixtureValues.ownerRole.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Server),
                 SharedSettingsNavItem(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, settingsVisualFixtureValues.serverPlan.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Billing),
                 SharedSettingsNavItem(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination == SharedSettingsDestination.Administration),

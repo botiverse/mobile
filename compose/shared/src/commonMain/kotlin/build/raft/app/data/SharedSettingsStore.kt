@@ -373,6 +373,7 @@ sealed interface SharedSettingsIntent {
     ) : SharedSettingsIntent
     data class SetLocale(val localeTag: String) : SharedSettingsIntent
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
+    data class SetLinkOpenMode(val mode: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
@@ -491,7 +492,8 @@ class SharedSettingsDataSource(
     private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
-        SharedSettingsRecompositionProfilerController()
+        SharedSettingsRecompositionProfilerController(),
+    private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null
 ) {
     suspend fun loadHome(selectedDestination: SharedSettingsDestination): DataResult<SharedSettingsHomeSnapshot> {
         val session = sessionStore.readSession()
@@ -887,6 +889,18 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setLinkOpenMode(modeKey: String): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            linkOpenPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_link_open_mode_unavailable", retryable = false))
+        val mode =
+            LinkOpenMode.entries.firstOrNull {
+                it.storageKey == modeKey || it.name.equals(modeKey, ignoreCase = true)
+            } ?: return DataResult.Error(ScreenError("settings_link_open_mode_unknown", retryable = false))
+        repository.selectLinkOpenMode(mode)
+        return loadMobilePreferences()
+    }
+
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1109,6 +1123,7 @@ class SharedSettingsDataSource(
         val notificationPreference = notificationPreferenceRepository?.getNotificationPreference()
         val locale = localeRepository?.getLocale()
         val chatLayout = chatLayoutPreferenceRepository?.getChatLayoutPreference()
+        val linkOpenMode = linkOpenPreferenceRepository?.getLinkOpenMode()
         return copy(
             pushNotifications =
                 pushNotifications.copy(
@@ -1165,6 +1180,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Message alignment preference is not available on this platform."
+                    ),
+            linkOpenMode =
+                linkOpenMode?.toSettingsMobileLinkOpenModeSnapshot()
+                    ?: this.linkOpenMode.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Link opening preference is not available on this platform."
                     ),
             compactConsecutiveMessages =
                 chatLayout?.toSettingsMobileCompactMessagesSnapshot()
@@ -1840,6 +1862,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setMessageAlignment(intent.alignment)
                     .applyMobileActionResult(MOBILE_ACTION_MESSAGE_ALIGNMENT)
+            }
+            is SharedSettingsIntent.SetLinkOpenMode -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_LINK_OPEN_MODE, inProgress = true)
+                    )
+                dataSource.setLinkOpenMode(intent.mode)
+                    .applyMobileActionResult(MOBILE_ACTION_LINK_OPEN_MODE)
             }
             is SharedSettingsIntent.SetCompactConsecutiveMessages -> {
                 _state.value =
@@ -2853,6 +2883,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.CompleteSystemNotificationAction,
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
+            is SharedSettingsIntent.SetLinkOpenMode,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
@@ -3021,6 +3052,7 @@ internal const val DEVELOPER_ACTION_QUIVER_UPDATE_CHECK = "quiverUpdateCheck"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
+internal const val MOBILE_ACTION_LINK_OPEN_MODE = "linkOpenMode"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
@@ -3128,6 +3160,21 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSelectionSnapshot(): Se
             }
     )
 
+private fun LinkOpenMode.toSettingsMobileLinkOpenModeSnapshot(): SettingsMobileSelectionSnapshot =
+    SettingsMobileSelectionSnapshot(
+        selectedKey = storageKey,
+        selectedLabel = mobileLabel(),
+        statusLabel = mobileLabel(),
+        detail = "Choose whether web links open in the default browser or inside Raft.",
+        options =
+            LinkOpenMode.entries.map {
+                SettingsMobileSelectionOptionSnapshot(
+                    key = it.storageKey,
+                    label = it.mobileLabel()
+                )
+            }
+    )
+
 private fun SettingsLanguageRegionSnapshot.withLocalTranslationMode(
     mode: TranslationModePreference
 ): SettingsLanguageRegionSnapshot =
@@ -3154,6 +3201,12 @@ private fun TranslationModePreference.mobileLabel(): String =
         TranslationModePreference.Automatic -> "Automatic"
         TranslationModePreference.Manual -> "Manual"
         TranslationModePreference.Original -> "Original"
+    }
+
+private fun LinkOpenMode.mobileLabel(): String =
+    when (this) {
+        LinkOpenMode.SystemBrowser -> "Default browser"
+        LinkOpenMode.InAppBrowser -> "In-app browser"
     }
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileCompactMessagesSnapshot(): SettingsMobileToggleSnapshot =
@@ -3324,7 +3377,7 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination),
                 nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination),
                 nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "My message alignment", SlockLucideIconName.Smartphone, null, selectedDestination),
+                nav(SharedSettingsDestination.Mobile, "Mobile", "Links, conversations, and composer", SlockLucideIconName.Smartphone, null, selectedDestination),
                 nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
                 nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, server?.role?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, server?.plan?.titleLabel(), selectedDestination),

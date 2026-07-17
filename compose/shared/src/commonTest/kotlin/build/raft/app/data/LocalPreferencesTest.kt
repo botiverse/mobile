@@ -59,6 +59,40 @@ class LocalPreferencesTest {
     }
 
     @Test
+    fun linkOpenModeDefaultsToSystemBrowserAndFallsBackUnknownValues() = runBlocking {
+        val emptyRepository =
+            PersistentLinkOpenPreferenceRepository(
+                KeyValueLinkOpenPreferenceStore(InMemorySlockKeyValueStore())
+            )
+        val unknownRepository =
+            PersistentLinkOpenPreferenceRepository(
+                KeyValueLinkOpenPreferenceStore(
+                    InMemorySlockKeyValueStore(
+                        mapOf("navigation:link_open_mode" to "unsupported")
+                    )
+                )
+            )
+
+        assertEquals(LinkOpenMode.SystemBrowser, emptyRepository.getLinkOpenMode())
+        assertEquals(LinkOpenMode.SystemBrowser, unknownRepository.getLinkOpenMode())
+        assertEquals(LinkOpenMode.SystemBrowser, LinkOpenMode.fromStorageKey(null))
+        assertEquals(LinkOpenMode.SystemBrowser, LinkOpenMode.fromStorageKey("unknown"))
+    }
+
+    @Test
+    fun linkOpenModePersistsInAppBrowserUsingNavigationKey() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val repository =
+            PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(store))
+
+        val selected = repository.selectLinkOpenMode(LinkOpenMode.InAppBrowser)
+
+        assertEquals(LinkOpenMode.InAppBrowser, selected)
+        assertEquals(LinkOpenMode.InAppBrowser, repository.getLinkOpenModeSync())
+        assertEquals("in_app", store.getString("navigation:link_open_mode"))
+    }
+
+    @Test
     fun chatLayoutDefaultsToSharedValuesWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentChatLayoutPreferenceRepository(
             KeyValueChatLayoutPreferenceStore(InMemorySlockKeyValueStore())

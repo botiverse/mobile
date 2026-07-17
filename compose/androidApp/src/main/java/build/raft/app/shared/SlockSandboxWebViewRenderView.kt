@@ -4,11 +4,13 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Build
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -34,10 +36,18 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var cacheEnabled: Boolean = false
     private var ephemeral: Boolean = true
     private var injectedJavaScript: String = ""
+    private var allowedNavigationSchemes: Set<String> = emptySet()
+    private var currentUrl: String = ""
+    private var currentTitle: String = ""
+    private var currentProgress: Int = 0
+    private var currentIsLoading: Boolean = false
+    private var lastNavigationStateKey: String = ""
+    private var lastLoadFailureReason: String = ""
     private var loadSuccessCallback: KuiklyRenderCallback? = null
     private var loadFailureCallback: KuiklyRenderCallback? = null
     private var navigationBlockedCallback: KuiklyRenderCallback? = null
     private var urlChangeCallback: KuiklyRenderCallback? = null
+    private var navigationStateChangeCallback: KuiklyRenderCallback? = null
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -48,7 +58,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (destroyed && !propKey.isEventProp()) {
             Log.w(
                 LOG_TAG,
-                "post_destroy_prop prop=$propKey action=recreate previousSrc=${src.take(LOG_URL_LIMIT)}"
+                "post_destroy_prop prop=$propKey action=recreate previousSrc=${src.redactedUrlForLog()}"
             )
             recreateWebViewAfterDestroy()
         } else if (destroyed) {
@@ -83,6 +93,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateInjectedJavaScript(propValue.toString())
                 true
             }
+            PROP_ALLOWED_NAVIGATION_SCHEMES -> {
+                updateAllowedNavigationSchemes(propValue.toString())
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = propValue as? KuiklyRenderCallback
                 true
@@ -97,6 +111,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             }
             EVENT_URL_CHANGE -> {
                 urlChangeCallback = propValue as? KuiklyRenderCallback
+                true
+            }
+            EVENT_NAVIGATION_STATE_CHANGE -> {
+                navigationStateChangeCallback = propValue as? KuiklyRenderCallback
+                notifyNavigationState(force = true)
                 true
             }
             else -> super.setProp(propKey, propValue)
@@ -137,6 +156,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 updateInjectedJavaScript("")
                 true
             }
+            PROP_ALLOWED_NAVIGATION_SCHEMES -> {
+                updateAllowedNavigationSchemes("")
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = null
                 true
@@ -153,14 +176,27 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 urlChangeCallback = null
                 true
             }
+            EVENT_NAVIGATION_STATE_CHANGE -> {
+                navigationStateChangeCallback = null
+                true
+            }
             else -> super.resetProp(propKey)
         }
     }
 
+    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? =
+        when (method) {
+            METHOD_NAVIGATION_COMMAND -> {
+                executeNavigationCommand(params.orEmpty())
+                null
+            }
+            else -> super.call(method, params, callback)
+        }
+
     override fun setLayoutParams(params: ViewGroup.LayoutParams?) {
         super.setLayoutParams(params)
         if (destroyed) {
-            recreateWebViewAfterDestroy()
+            recreateWebViewAfterDestroy(restoreCurrentDocument = true)
         }
         webView.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
     }
@@ -175,7 +211,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         loadFailureCallback = null
         navigationBlockedCallback = null
         urlChangeCallback = null
-        Log.i(LOG_TAG, "destroy_webview loadedSrc=${loadedSrc.take(LOG_URL_LIMIT)}")
+        navigationStateChangeCallback = null
+        Log.i(LOG_TAG, "destroy_webview loadedSrc=${loadedSrc.redactedUrlForLog()}")
         webView.stopLoading()
         webView.loadUrl("about:blank")
         webView.webChromeClient = null
@@ -185,17 +222,39 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         super.onDestroy()
     }
 
-    private fun recreateWebViewAfterDestroy() {
-        Log.i(LOG_TAG, "recreate_after_destroy previousSrc=${src.take(LOG_URL_LIMIT)}")
+    private fun recreateWebViewAfterDestroy(restoreCurrentDocument: Boolean = false) {
+        Log.i(LOG_TAG, "recreate_after_destroy previousSrc=${src.redactedUrlForLog()}")
         destroyed = false
-        src = ""
         loadedSrc = ""
         lastSuccessfulUrl = ""
-        allowedUri = null
+        allowedUri = src.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        currentUrl = src
+        currentTitle = ""
+        currentProgress = 0
+        currentIsLoading = false
+        lastNavigationStateKey = ""
+        lastLoadFailureReason = ""
         webView = WebView(context)
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
+        if (restoreCurrentDocument) {
+            restoreCurrentDocumentAfterRecreation()
+        }
+    }
+
+    private fun restoreCurrentDocumentAfterRecreation() {
+        if (src.isBlank()) {
+            webView.loadUrl(ABOUT_BLANK_URL)
+            notifyNavigationState(force = true)
+            return
+        }
+        if (!isNavigationSchemeAllowed(src)) {
+            notifyNavigationBlocked(src)
+            notifyNavigationState(force = true)
+            return
+        }
+        loadAllowedSrc(src)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -221,6 +280,22 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         }
         webView.webChromeClient =
             object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    if (destroyed) return
+                    super.onProgressChanged(view, newProgress)
+                    currentProgress = newProgress.coerceIn(0, 100)
+                    currentUrl = view?.url.orEmpty().ifBlank { currentUrl }
+                    notifyNavigationState()
+                }
+
+                override fun onReceivedTitle(view: WebView?, title: String?) {
+                    if (destroyed) return
+                    super.onReceivedTitle(view, title)
+                    currentTitle = title.orEmpty()
+                    currentUrl = view?.url.orEmpty().ifBlank { currentUrl }
+                    notifyNavigationState()
+                }
+
                 override fun onCreateWindow(
                     view: WebView?,
                     isDialog: Boolean,
@@ -233,6 +308,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 }
 
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                    if (isRestrictedGenericMode()) {
+                        return true
+                    }
                     if (!destroyed && consoleMessage != null) {
                         logConsoleMessage(consoleMessage)
                     }
@@ -244,20 +322,35 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed) return
                     super.onPageStarted(view, url, favicon)
-                    Log.i(LOG_TAG, "page_started url=${url.orEmpty().take(LOG_URL_LIMIT)}")
-                    url?.let { notifyUrlChange(it) }
-                    if (url != null && !allowNavigation && !isAllowedMainDocumentUrl(url)) {
+                    val target = url.orEmpty()
+                    Log.i(LOG_TAG, "page_started url=${target.redactedUrlForLog()}")
+                    if (wouldBlockMainFrameNavigation(url)) {
                         view?.stopLoading()
-                        notifyNavigationBlocked(url)
+                        handleBlockedMainFrameNavigation(url)
+                        return
                     }
+                    currentUrl = target
+                    currentTitle = ""
+                    currentProgress = 0
+                    currentIsLoading = true
+                    lastSuccessfulUrl = ""
+                    lastLoadFailureReason = ""
+                    notifyUrlChange(target)
+                    notifyNavigationState()
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (destroyed) return
                     super.onPageFinished(view, url)
-                    Log.i(LOG_TAG, "page_finished url=${url.orEmpty().take(LOG_URL_LIMIT)}")
-                    url?.let { notifyUrlChange(it) }
-                    if (url != null && (allowNavigation || isAllowedMainDocumentUrl(url))) {
+                    val target = url.orEmpty()
+                    Log.i(LOG_TAG, "page_finished url=${target.redactedUrlForLog()}")
+                    if (url != null && !shouldBlockMainFrameNavigation(url)) {
+                        currentUrl = target
+                        currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
+                        currentProgress = 100
+                        currentIsLoading = false
+                        notifyUrlChange(target)
+                        notifyNavigationState()
                         evaluateInjectedJavaScript()
                         notifyLoadSuccess(url, "finished")
                     }
@@ -266,24 +359,51 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 override fun onPageCommitVisible(view: WebView?, url: String?) {
                     if (destroyed) return
                     super.onPageCommitVisible(view, url)
-                    Log.i(LOG_TAG, "page_commit_visible url=${url.orEmpty().take(LOG_URL_LIMIT)}")
-                    url?.let { notifyUrlChange(it) }
-                    if (url != null && (allowNavigation || isAllowedMainDocumentUrl(url))) {
+                    val target = url.orEmpty()
+                    Log.i(LOG_TAG, "page_commit_visible url=${target.redactedUrlForLog()}")
+                    if (url != null && !shouldBlockMainFrameNavigation(url)) {
+                        currentUrl = target
+                        currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
+                        notifyUrlChange(target)
+                        notifyNavigationState()
                         notifyLoadSuccess(url, "commit_visible")
                     }
                 }
 
                 @Suppress("OVERRIDE_DEPRECATION")
                 override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-                    if (destroyed) true else shouldBlockNavigation(url)
+                    if (destroyed) true else shouldSilentlyBlockSubframeNavigation(url)
 
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
-                    if (destroyed) true else shouldBlockNavigation(request?.url?.toString())
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    if (destroyed) return true
+                    val target = request?.url?.toString()
+                    return if (request?.isForMainFrame == true) {
+                        shouldBlockMainFrameNavigation(target)
+                    } else {
+                        shouldSilentlyBlockSubframeNavigation(target)
+                    }
+                }
+
+                override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                    if (destroyed) return
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    val target = url.orEmpty()
+                    // History API / fragment updates are same-document state changes, not a new
+                    // main-frame navigation. Keep the visible URL/history state in sync even when
+                    // allowNavigation is false; scheme gating still guards malformed callbacks.
+                    if (target.isBlank() || !isNavigationSchemeAllowed(target)) return
+                    currentUrl = target
+                    currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
+                    notifyUrlChange(target)
+                    notifyNavigationState()
+                }
 
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     if (destroyed) return null
                     val url = request?.url?.toString()
-                    if (request?.isForMainFrame == true && !allowNavigation && shouldBlockNavigation(url)) {
+                    if (request?.isForMainFrame == true && wouldBlockMainFrameNavigation(url)) {
+                        val blockedUrl = url.orEmpty()
+                        view?.post { handleBlockedMainFrameNavigation(blockedUrl) }
                         return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                     }
                     if (request?.isForMainFrame == true && request.method.equals("GET", ignoreCase = true)) {
@@ -306,7 +426,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                             } else {
                                 null
                             } ?: "webview_load_failed"
-                        Log.w(LOG_TAG, "page_error reason=$reason url=${request.url?.toString().orEmpty().take(LOG_URL_LIMIT)}")
+                        currentUrl = request.url?.toString().orEmpty().ifBlank { currentUrl }
+                        currentIsLoading = false
+                        val errorCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) error?.errorCode ?: 0 else 0
+                        Log.w(LOG_TAG, "page_error code=$errorCode url=${currentUrl.redactedUrlForLog()}")
+                        notifyNavigationState()
                         notifyLoadFailure(reason)
                     }
                 }
@@ -315,8 +439,28 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                     if (destroyed) return
                     super.onReceivedError(view, errorCode, description, failingUrl)
-                    Log.w(LOG_TAG, "page_error reason=${description.orEmpty()} url=${failingUrl.orEmpty().take(LOG_URL_LIMIT)}")
+                    currentUrl = failingUrl.orEmpty().ifBlank { currentUrl }
+                    currentIsLoading = false
+                    Log.w(
+                        LOG_TAG,
+                        "page_error code=$errorCode url=${currentUrl.redactedUrlForLog()}"
+                    )
+                    notifyNavigationState()
                     notifyLoadFailure(description ?: "webview_load_failed")
+                }
+
+                override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                    if (destroyed) {
+                        handler?.cancel()
+                        return
+                    }
+                    handler?.cancel()
+                    currentUrl = error?.url.orEmpty().ifBlank { currentUrl }
+                    currentIsLoading = false
+                    val reason = "ssl_error_${error?.primaryError ?: -1}"
+                    Log.w(LOG_TAG, "page_error reason=$reason url=${currentUrl.redactedUrlForLog()}")
+                    notifyNavigationState()
+                    notifyLoadFailure(reason)
                 }
             }
         webView.setDownloadListener(
@@ -365,21 +509,83 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         injectedJavaScript = next
     }
 
+    private fun updateAllowedNavigationSchemes(next: String) {
+        if (destroyed) return
+        val normalized =
+            next.split(',')
+                .asSequence()
+                .map { value -> value.trim().removeSuffix(":").lowercase() }
+                .filter { value -> value.isNotEmpty() }
+                .toSet()
+        if (allowedNavigationSchemes == normalized) return
+        allowedNavigationSchemes = normalized
+        val activeUrl = currentUrl.ifBlank { src }
+        if (activeUrl.isNotBlank() && !isNavigationSchemeAllowed(activeUrl)) {
+            webView.stopLoading()
+            currentIsLoading = false
+            notifyNavigationState()
+            notifyNavigationBlocked(activeUrl)
+        }
+    }
+
+    private fun executeNavigationCommand(next: String) {
+        if (destroyed) return
+        when (next.trim()) {
+            COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
+            COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
+            COMMAND_RELOAD -> {
+                lastSuccessfulUrl = ""
+                lastLoadFailureReason = ""
+                currentProgress = 0
+                currentIsLoading = true
+                webView.reload()
+            }
+            COMMAND_STOP -> {
+                webView.stopLoading()
+                currentIsLoading = false
+            }
+            else -> return
+        }
+        notifyNavigationState(force = true)
+    }
+
     private fun updateSrc(next: String) {
         if (destroyed) return
         val normalized = next.trim()
-        if (src == normalized) return
+        if (src == normalized && (normalized.isBlank() || loadedSrc == normalized)) return
         src = normalized
         loadedSrc = ""
         lastSuccessfulUrl = ""
+        lastLoadFailureReason = ""
         allowedUri = normalized.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
         if (normalized.isBlank()) {
+            currentUrl = ""
+            currentTitle = ""
+            currentProgress = 0
+            currentIsLoading = false
+            notifyNavigationState()
             webView.loadUrl("about:blank")
             return
         }
+        currentUrl = normalized
+        currentTitle = ""
+        currentProgress = 0
+        currentIsLoading = false
+        if (!isNavigationSchemeAllowed(normalized)) {
+            notifyNavigationState()
+            notifyNavigationBlocked(normalized)
+            return
+        }
+        loadAllowedSrc(normalized)
+    }
+
+    private fun loadAllowedSrc(normalized: String) {
         loadedSrc = normalized
+        currentUrl = normalized
+        currentIsLoading = true
+        notifyNavigationState()
         if (shouldBootstrapInjectedJavaScript()) {
-            Log.i(LOG_TAG, "load_src bootstrap=true url=${normalized.take(LOG_URL_LIMIT)}")
+            Log.i(LOG_TAG, "load_src bootstrap=true url=${normalized.redactedUrlForLog()}")
             webView.loadDataWithBaseURL(
                 normalized,
                 injectedJavaScriptBootstrapHtml(normalized),
@@ -388,20 +594,45 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 normalized
             )
         } else {
-            Log.i(LOG_TAG, "load_src bootstrap=false url=${normalized.take(LOG_URL_LIMIT)}")
+            Log.i(LOG_TAG, "load_src bootstrap=false url=${normalized.redactedUrlForLog()}")
             webView.loadUrl(normalized)
         }
     }
 
-    private fun shouldBlockNavigation(url: String?): Boolean {
-        if (allowNavigation) return false
-        val target = url ?: return true
-        if (isAllowedMainDocumentUrl(target)) return false
-        notifyNavigationBlocked(target)
+    private fun shouldBlockMainFrameNavigation(url: String?): Boolean {
+        if (!wouldBlockMainFrameNavigation(url)) return false
+        handleBlockedMainFrameNavigation(url)
         return true
     }
 
+    private fun handleBlockedMainFrameNavigation(url: String?) {
+        if (destroyed) return
+        currentIsLoading = false
+        notifyNavigationState()
+        url?.let(::notifyNavigationBlocked)
+    }
+
+    private fun shouldSilentlyBlockSubframeNavigation(url: String?): Boolean {
+        val target = url ?: return true
+        return !isNavigationSchemeAllowed(target)
+    }
+
+    private fun wouldBlockMainFrameNavigation(url: String?): Boolean {
+        val target = url ?: return true
+        if (src.isBlank() && target == ABOUT_BLANK_URL) return false
+        if (!isNavigationSchemeAllowed(target)) return true
+        if (allowNavigation) return false
+        return !isAllowedMainDocumentUrl(target)
+    }
+
+    private fun isNavigationSchemeAllowed(url: String): Boolean {
+        if (allowedNavigationSchemes.isEmpty()) return true
+        val scheme = runCatching { Uri.parse(url).scheme?.lowercase() }.getOrNull()
+        return scheme != null && scheme in allowedNavigationSchemes
+    }
+
     private fun isAllowedMainDocumentUrl(url: String): Boolean {
+        if (src.isBlank() && url == ABOUT_BLANK_URL) return true
         if (url == loadedSrc) return true
         val allowed = allowedUri ?: return false
         val target = runCatching { Uri.parse(url) }.getOrNull() ?: return false
@@ -414,6 +645,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     private fun notifyLoadFailure(reason: String) {
         if (destroyed) return
+        val failureKey = "$currentUrl|$reason"
+        if (failureKey == lastLoadFailureReason) return
+        lastLoadFailureReason = failureKey
         loadFailureCallback?.invoke(mapOf("reason" to reason))
     }
 
@@ -421,7 +655,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (destroyed) return
         if (lastSuccessfulUrl == url) return
         lastSuccessfulUrl = url
-        Log.i(LOG_TAG, "page_success phase=$phase url=${url.take(LOG_URL_LIMIT)}")
+        lastLoadFailureReason = ""
+        Log.i(LOG_TAG, "page_success phase=$phase url=${url.redactedUrlForLog()}")
         loadSuccessCallback?.invoke(emptyMap<String, Any>())
     }
 
@@ -433,6 +668,23 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private fun notifyUrlChange(url: String) {
         if (destroyed) return
         urlChangeCallback?.invoke(mapOf("url" to url))
+    }
+
+    private fun notifyNavigationState(force: Boolean = false) {
+        if (destroyed) return
+        val state =
+            mapOf(
+                "url" to currentUrl,
+                "title" to currentTitle,
+                "canGoBack" to webView.canGoBack(),
+                "canGoForward" to webView.canGoForward(),
+                "isLoading" to currentIsLoading,
+                "progress" to currentProgress.coerceIn(0, 100)
+            )
+        val stateKey = state.entries.joinToString(separator = "\u0000") { entry -> "${entry.key}=${entry.value}" }
+        if (!force && stateKey == lastNavigationStateKey) return
+        lastNavigationStateKey = stateKey
+        navigationStateChangeCallback?.invoke(state)
     }
 
     private fun evaluateInjectedJavaScript() {
@@ -447,8 +699,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     }
 
     private fun logConsoleMessage(consoleMessage: ConsoleMessage) {
-        val source = consoleMessage.sourceId().orEmpty().take(LOG_URL_LIMIT)
-        val message = consoleMessage.message().orEmpty().take(LOG_MESSAGE_LIMIT)
+        val source = consoleMessage.sourceId().orEmpty().redactedUrlForLog()
+        val message = consoleMessage.message().orEmpty().sanitizedLogValue(LOG_MESSAGE_LIMIT)
         val line = consoleMessage.lineNumber()
         when (consoleMessage.messageLevel()) {
             ConsoleMessage.MessageLevel.ERROR ->
@@ -468,6 +720,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             allowScripts &&
             domStorageEnabled &&
             injectedJavaScript.isNotBlank()
+
+    private fun isRestrictedGenericMode(): Boolean =
+        allowedNavigationSchemes.isNotEmpty() && injectedJavaScript.isBlank()
 
     private fun injectedJavaScriptBootstrapHtml(targetUrl: String): String {
         val safeScript = injectedJavaScript.replace("</script", "<\\/script", ignoreCase = true)
@@ -501,7 +756,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
             LOG_TAG,
             "release_notes_main_document source=${document.source} " +
                 "bytes=${document.bytes.size} durationMs=${System.currentTimeMillis() - startedAt} " +
-                "url=${target.take(LOG_URL_LIMIT)}"
+                "url=${target.redactedUrlForLog()}"
         )
         return WebResourceResponse(
             document.mimeType,
@@ -521,8 +776,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     companion object {
         const val VIEW_NAME = "SlockSandboxWebView"
         private const val LOG_TAG = "SlockWebView"
-        private const val LOG_URL_LIMIT = 160
         private const val LOG_MESSAGE_LIMIT = 500
+        private const val ABOUT_BLANK_URL = "about:blank"
         private const val PROP_SRC = "src"
         private const val PROP_ALLOW_SCRIPTS = "allowScripts"
         private const val PROP_ALLOW_NAVIGATION = "allowNavigation"
@@ -530,15 +785,35 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val PROP_CACHE_ENABLED = "cacheEnabled"
         private const val PROP_EPHEMERAL = "ephemeral"
         private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"
+        private const val PROP_ALLOWED_NAVIGATION_SCHEMES = "allowedNavigationSchemes"
+        private const val METHOD_NAVIGATION_COMMAND = "navigationCommand"
         private const val EVENT_LOAD_SUCCESS = "loadSuccess"
         private const val EVENT_LOAD_FAILURE = "loadFailure"
         private const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"
         private const val EVENT_URL_CHANGE = "urlChange"
+        private const val EVENT_NAVIGATION_STATE_CHANGE = "navigationStateChange"
+        private const val COMMAND_GO_BACK = "goBack"
+        private const val COMMAND_GO_FORWARD = "goForward"
+        private const val COMMAND_RELOAD = "reload"
+        private const val COMMAND_STOP = "stop"
 
         private fun String.isEventProp(): Boolean =
             this == EVENT_LOAD_SUCCESS ||
                 this == EVENT_LOAD_FAILURE ||
                 this == EVENT_NAVIGATION_BLOCKED ||
-                this == EVENT_URL_CHANGE
+                this == EVENT_URL_CHANGE ||
+                this == EVENT_NAVIGATION_STATE_CHANGE
     }
 }
+
+private fun String.redactedUrlForLog(): String {
+    val uri = runCatching { Uri.parse(this) }.getOrNull() ?: return "<invalid>"
+    val scheme = uri.scheme?.lowercase()?.takeIf { it.matches(Regex("[a-z][a-z0-9+.-]*")) } ?: return "<invalid>"
+    val host = uri.host?.takeIf { it.isNotBlank() } ?: return "$scheme:<redacted>"
+    val port = uri.port.takeIf { it >= 0 }?.let { value -> ":$value" }.orEmpty()
+    val path = uri.encodedPath.orEmpty()
+    return "$scheme://${host.sanitizedLogValue()}$port${path.sanitizedLogValue()}".take(160)
+}
+
+private fun String.sanitizedLogValue(limit: Int = 160): String =
+    replace('\n', ' ').replace('\r', ' ').take(limit)
