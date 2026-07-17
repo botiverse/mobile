@@ -1343,6 +1343,204 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun idempotentTerminalConflictKeepsOptimisticStatusAsSuccess() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val previousTask = task("task-1", TaskStatus.InReview)
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                runtimeScopeOverride = runtimeScope,
+                useCase =
+                    SharedTasksUseCase(
+                        authStore = authStore,
+                        repository =
+                            FakeTasksRepository(
+                                updateResult =
+                                    DataResult.Error(
+                                        ScreenError(
+                                            code = TaskStatus.Closed.taskStatusAlreadyAppliedErrorCode(),
+                                            retryable = false
+                                        )
+                                    )
+                            )
+                    )
+            )
+        viewModel.dispatch(
+            SharedTasksRouteIntent.SeedContent(
+                TaskSnapshot(tasks = listOf(previousTask), summaryCounts = mapOf(TaskStatus.InReview to 1))
+            )
+        )
+
+        viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
+        yield()
+
+        val state = viewModel.state.value
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(state.loadState).data
+        assertEquals(TaskStatus.Closed, content.tasks.single().status)
+        assertEquals(null, state.statusUpdatingTaskId)
+        assertEquals(null, state.statusUpdateErrorCode)
+        runtimeScope.cancel()
+    }
+
+    @Test
+    fun successfulStatusWithoutProjectionKeepsOptimisticStatusAsSuccess() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val previousTask = task("task-1", TaskStatus.InReview)
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                runtimeScopeOverride = runtimeScope,
+                useCase =
+                    SharedTasksUseCase(
+                        authStore = authStore,
+                        repository =
+                            FakeTasksRepository(
+                                updateResult =
+                                    DataResult.Error(
+                                        ScreenError(
+                                            code = TASKS_STATUS_APPLIED_WITHOUT_PROJECTION,
+                                            retryable = false
+                                        )
+                                    )
+                            )
+                    )
+            )
+        viewModel.dispatch(
+            SharedTasksRouteIntent.SeedContent(
+                TaskSnapshot(tasks = listOf(previousTask), summaryCounts = mapOf(TaskStatus.InReview to 1))
+            )
+        )
+
+        viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
+        yield()
+
+        val state = viewModel.state.value
+        val content = assertIs<ScreenLoadState.Content<TasksContent>>(state.loadState).data
+        assertEquals(TaskStatus.Closed, content.tasks.single().status)
+        assertEquals(null, state.statusUpdatingTaskId)
+        assertEquals(null, state.statusUpdateErrorCode)
+        runtimeScope.cancel()
+    }
+
+    @Test
+    fun unloadedChatMutationOwnerPublishesAndMutatesExactlyOnce() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sharedStore = SharedTasksDataStore()
+        val previousTask = task("task-1", TaskStatus.InReview, channelId = ChannelId("channel-1"))
+        val repository =
+            FakeTasksRepository(
+                updateResult =
+                    DataResult.Error(
+                        ScreenError(
+                            code = TASKS_STATUS_APPLIED_WITHOUT_PROJECTION,
+                            retryable = false
+                        )
+                    )
+            )
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+                sharedTasksDataStore = sharedStore,
+                runtimeScopeOverride = runtimeScope,
+                useCase =
+                    SharedTasksUseCase(
+                        authStore = authStore,
+                        repository = repository,
+                        scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+                    )
+            )
+
+        viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
+        yield()
+
+        val projection =
+            sharedStore
+                .projectionFlow("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+                .first()
+        assertEquals(1, repository.updateCalls)
+        assertEquals(TaskStatus.Closed, projection.tasks.single().status)
+        assertEquals(null, viewModel.state.value.statusUpdatingTaskId)
+        runtimeScope.cancel()
+    }
+
+    @Test
+    fun unloadedChatMutationOwnerRollsBackOrdinaryFailure() = runBlocking {
+        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sharedStore = SharedTasksDataStore()
+        val previousTask = task("task-1", TaskStatus.InReview, channelId = ChannelId("channel-1"))
+        val repository =
+            FakeTasksRepository(
+                updateResult = DataResult.Error(ScreenError(code = "tasks_500", retryable = true))
+            )
+        val authStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "token",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-1"
+                )
+            )
+        val viewModel =
+            SharedTasksViewModel(
+                authStore = authStore,
+                dataSource = noOpTasksDataSource(),
+                scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+                sharedTasksDataStore = sharedStore,
+                runtimeScopeOverride = runtimeScope,
+                useCase =
+                    SharedTasksUseCase(
+                        authStore = authStore,
+                        repository = repository,
+                        scope = SharedTasksScope.Channel(ChannelId("channel-1"))
+                    )
+            )
+
+        viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
+        yield()
+
+        val projection =
+            sharedStore
+                .projectionFlow("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
+                .first()
+        assertEquals(1, repository.updateCalls)
+        assertEquals(TaskStatus.InReview, projection.tasks.single().status)
+        assertEquals("tasks_500", viewModel.state.value.statusUpdateErrorCode)
+        runtimeScope.cancel()
+    }
+
+    @Test
     fun updateTaskStatusMatchesTaskByMessageId() {
         val task = task("task-1", TaskStatus.Todo)
         val state =
@@ -1790,6 +1988,8 @@ class SharedTasksStoreTest {
     ) : SharedTasksRepository {
         var loadCalls = 0
             private set
+        var updateCalls = 0
+            private set
         var lastServerId: ServerId? = null
             private set
         var lastScope: SharedTasksScope? = null
@@ -1824,8 +2024,10 @@ class SharedTasksStoreTest {
             serverId: ServerId,
             taskId: TaskId,
             status: TaskStatus
-        ): DataResult<TaskActionResult> =
-            updateResult
+        ): DataResult<TaskActionResult> {
+            updateCalls += 1
+            return updateResult
+        }
 
         override suspend fun createTasks(
             serverId: ServerId,
