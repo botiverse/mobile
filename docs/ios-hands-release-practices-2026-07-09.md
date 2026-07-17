@@ -124,11 +124,9 @@ status through the Hands CLI and agent manifest. Until that contract is
 available, an authorized Hands app admin must trigger submission; CI must not
 work around the gap by exporting the ASC credential.
 
-The workflow's current `upload_testflight` implementation invokes `altool` and
-reads GitHub ASC secrets. That path is not the supported release architecture
-and must remain disabled for production dispatches until it is replaced with
-the Hands submit/status operation. `publish_hands=true` remains the supported
-way to register the signed IPA and dSYM before server-side submission.
+`publish_hands=true` is the supported way to register the signed IPA and dSYM
+before server-side submission. The mobile workflow must not add a parallel
+client-side TestFlight upload path.
 
 ## Required Secrets
 
