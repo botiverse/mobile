@@ -268,7 +268,14 @@ jobs:
           # agent's exit code is persisted to a file instead of failing the
           # line, so evidence still uploads and the verdict step decides.
           script: |
+            # wait-for-device returns on CONNECT, not BOOT — the pinned-bits
+            # path skips the ~20min build job, so the emulator is still
+            # "offline" when adb install fires (smokes 29547438316/29547563763
+            # both raced here; build-path runs never hit it). Block on
+            # sys.boot_completed before touching the device.
             adb wait-for-device
+            timeout 300 adb shell 'while [ "$(getprop sys.boot_completed 2>/dev/null)" != "1" ]; do sleep 2; done'
+            adb shell input keyevent 82 || true
             APK="$(find apks -name '*.apk' | head -1)"
             adb install -r "$APK"
             # Derive package + launchable activity from the APK, don't hardcode:
