@@ -294,35 +294,22 @@ jobs:
           # agent's exit code is persisted to a file instead of failing the
           # line, so evidence still uploads and the verdict step decides.
           script: |
-            # wait-for-device returns on CONNECT, not BOOT, and while the
-            # device is "offline" adb shell fails outright — so the boot-poll
-            # must loop in THIS shell, re-invoking adb each pass (a while-loop
-            # INSIDE one adb shell exits immediately when offline; that was the
-            # ineffective first attempt). Reconnect adb if the daemon dropped
-            # (blacksmith runners flake "Unable to connect to adb daemon" under
-            # load — smokes 29547438316/29547563763/29547835920).
-            timeout 420 bash -c '
-              until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do
-                adb reconnect >/dev/null 2>&1 || true
-                sleep 3
-              done
-            ' || { echo "emulator never reached boot_completed"; exit 2; }
+            # The emulator-runner action already waits for sys.boot_completed
+            # before running this script (its own `[command] getprop` poll), so
+            # no custom boot-wait is needed — the "device offline" failures on
+            # 29547438316/29547563763/29547835920 were the ACTION'S boot-wait
+            # under blacksmith pool contention (infra), not this script. Just
+            # dismiss the keyguard.
             adb shell input keyevent 82 || true
-            APK="$(find apks -name '*.apk' | head -1)"
-            adb install -r "$APK"
-            # Derive package + launchable activity from the APK, don't hardcode:
-            # pinned alpha packages are build.raft.app.alpha, not build.raft.app,
-            # so a fixed `am start build.raft.app/.MainActivity` installed the app
-            # but launched nothing → agent saw the launcher home (smoke 29547013378).
-            BT="$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)"
-            PKG="$("$BT/aapt" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"
-            ACT="$("$BT/aapt" dump badging "$APK" | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -1)"
-            echo "launching $PKG / ${ACT:-.MainActivity}"
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 || adb shell am start -n "$PKG/${ACT:-.MainActivity}"
-            # Script lines don't share shell vars — persist the package so the
-            # node invocation (below) passes it to --package for the launch
-            # action + screenshots.
-            echo "$PKG" > qa-app-package.txt
+            # emulator-runner executes each script LINE as its own `sh -c`, so
+            # shell vars do NOT survive to the next line (林舟: my earlier
+            # `APK=$(...)` on one line + `adb install "$APK"` on the next gave an
+            # empty path). Do the whole install→derive-package→launch in ONE
+            # physical line so APK/PKG/ACT share a single shell; test the path is
+            # non-empty; persist the package to a FILE for the node line below.
+            # (Pinned alpha is build.raft.app.alpha, not build.raft.app — a fixed
+            # am start launched nothing and the agent saw the launcher home.)
+            APK="$(find apks -name '*.apk' | head -1)"; test -s "$APK" || { echo "no APK found under apks/"; exit 2; }; echo "installing $APK"; adb install -r "$APK"; BT="$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)"; PKG="$("$BT/aapt" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"; ACT="$("$BT/aapt" dump badging "$APK" | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -1)"; echo "launching $PKG / ${ACT:-.MainActivity}"; echo "$PKG" > qa-app-package.txt; adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 || adb shell am start -n "$PKG/${ACT:-.MainActivity}"
             sleep 8
             mkdir -p qa-evidence
             cp "$(find apks -name build-info.json | head -1)" qa-evidence/build-info.json 2>/dev/null || true
