@@ -1,7 +1,6 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +44,22 @@ internal data class ThreadInlineVideoPreviewUiState(
     val expiresAt: String? = null
 )
 
+internal enum class ThreadInlineVideoRenderMode {
+    AwaitingUser,
+    Loading,
+    Ready,
+    Error
+}
+
+internal fun ThreadInlineVideoPreviewUiState?.renderMode(): ThreadInlineVideoRenderMode =
+    when (this?.status) {
+        null -> ThreadInlineVideoRenderMode.AwaitingUser
+        ThreadInlineVideoPreviewStatus.Loading -> ThreadInlineVideoRenderMode.Loading
+        ThreadInlineVideoPreviewStatus.Ready ->
+            if (url.isBlank()) ThreadInlineVideoRenderMode.Error else ThreadInlineVideoRenderMode.Ready
+        ThreadInlineVideoPreviewStatus.Error -> ThreadInlineVideoRenderMode.Error
+    }
+
 internal fun Map<String, ThreadInlineVideoPreviewUiState>.canRequestInlineVideoPreview(
     attachmentId: String
 ): Boolean {
@@ -76,12 +91,6 @@ internal fun ThreadInlineVideoAttachmentCard(
     val previewState = host?.states?.get(attachment.id)
     val canOpenComments = commentsEnabled
 
-    LaunchedEffect(attachment.id) {
-        if (previewState == null) {
-            host?.requestPreview?.invoke(attachment.id, false)
-        }
-    }
-
     Column(
         modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
@@ -97,6 +106,7 @@ internal fun ThreadInlineVideoAttachmentCard(
                 attachment = attachment,
                 previewState = previewState,
                 previewEnabled = host != null,
+                onRequestPreview = { host?.requestPreview?.invoke(attachment.id, false) },
                 onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
                 onOpenPreview = onOpenPreview
             )
@@ -143,10 +153,12 @@ private fun ThreadInlineVideoSurface(
     attachment: KuiklyThreadAttachmentItem,
     previewState: ThreadInlineVideoPreviewUiState?,
     previewEnabled: Boolean,
+    onRequestPreview: () -> Unit,
     onRetry: () -> Unit,
     onOpenPreview: () -> Unit
 ) {
     val source = previewState?.url.orEmpty()
+    val renderMode = previewState.renderMode()
     var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
     var playState by remember(source) { mutableStateOf(PlayState.NONE) }
     var firstFrameVisible by remember(source) { mutableStateOf(false) }
@@ -156,7 +168,7 @@ private fun ThreadInlineVideoSurface(
         modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color(0xFF000000)),
         contentAlignment = Alignment.Center
     ) {
-        if (previewState?.status == ThreadInlineVideoPreviewStatus.Ready && source.isNotBlank()) {
+        if (renderMode == ThreadInlineVideoRenderMode.Ready) {
             SlockFilePreviewKuiklyVideo(
                 source = source,
                 playControl = playControl,
@@ -176,7 +188,16 @@ private fun ThreadInlineVideoSurface(
                     actionIcon = SlockLucideIconName.AppWindow,
                     onAction = onOpenPreview
                 )
-            previewState?.status == ThreadInlineVideoPreviewStatus.Error ->
+            renderMode == ThreadInlineVideoRenderMode.AwaitingUser ->
+                ThreadInlineVideoOverlay(
+                    iconName = SlockLucideIconName.Play,
+                    label = stringResource(MR.strings.file_preview_video),
+                    actionIcon = SlockLucideIconName.Play,
+                    onAction = onRequestPreview,
+                    secondaryActionIcon = SlockLucideIconName.AppWindow,
+                    onSecondaryAction = onOpenPreview
+                )
+            renderMode == ThreadInlineVideoRenderMode.Error ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.TriangleAlert,
                     label = stringResource(MR.strings.thread_video_preview_unavailable),
@@ -185,7 +206,7 @@ private fun ThreadInlineVideoSurface(
                     secondaryActionIcon = SlockLucideIconName.AppWindow,
                     onSecondaryAction = onOpenPreview
                 )
-            previewState?.status != ThreadInlineVideoPreviewStatus.Ready || source.isBlank() ->
+            renderMode == ThreadInlineVideoRenderMode.Loading ->
                 ThreadInlineVideoOverlay(
                     iconName = SlockLucideIconName.LoaderCircle,
                     label = stringResource(MR.strings.thread_video_preview_loading),
