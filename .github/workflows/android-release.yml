@@ -433,8 +433,15 @@ jobs:
         shell: bash
         env:
           SLOCK_RELEASE_CHANGELOG_FILE: ${{ github.workspace }}/changelog.txt
+          SLOCK_RELEASE_CHANGELOG_ZH_FILE: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}/zh-CN.md
+          SLOCK_RELEASE_CHANGELOG_EN_FILE: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}/en.md
         run: |
           set -euo pipefail
+          if [ -s "${SLOCK_RELEASE_CHANGELOG_ZH_FILE}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_EN_FILE}" ]; then
+            echo "Using reviewed bilingual changelog from change-logs/${{ needs.resolve.outputs.version_name }}/"
+          else
+            echo "Reviewed bilingual changelog not found; falling back to generated git history."
+          fi
           # The release helper handles metadata.json generation, channel
           # routing, and Hands CLI invocation. Build + sign were already
           # done in build_android_release; --skip-gradle-build reuses the
