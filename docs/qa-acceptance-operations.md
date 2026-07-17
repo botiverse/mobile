@@ -114,3 +114,16 @@ consumers keep this in sync:
   the element's bounds from a fresh dump at the instant of the tap. Reserve
   coordinate taps for unlabelled/icon-only targets, and re-dump right before
   those when inside a dialog.
+
+## Workflow checker steps — the `bash -e` + verdict-exit-code trap
+
+- A post-run checker (coverage gate, marker gate) signals its verdict with a
+  non-zero exit (3 = coverage-invalid). GitHub Actions runs steps with
+  `bash -e` by default, so `node check_x.mjs > out.json; rc=$?` **kills the
+  step on the non-zero exit before the rc file is written** — the run then
+  shows a red "infra-looking" step instead of the Report-verdict step's
+  graceful verdict override (found by the require_markers gate-bites
+  verification run 29611067596; fixed in f0e60de).
+- Always capture through `rc=0; node check_x.mjs ... || rc=$?` (or append
+  `|| true`) and let the **Report verdict** step own the final exit code.
+  A gate step that is red for an expected verdict is a bug; red is for infra.
