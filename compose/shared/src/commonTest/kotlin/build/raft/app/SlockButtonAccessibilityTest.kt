@@ -72,6 +72,14 @@ class SlockButtonAccessibilityTest {
 
         assertTrue(configurations.isEmpty())
     }
+
+    @Test
+    fun modalDisablesKuiklyFrameworkOutsideClickWrappers() {
+        val properties = slockModalDialogProperties()
+
+        assertFalse(properties.dismissOnClickOutside)
+        assertFalse(properties.usePlatformDefaultWidth)
+    }
 }
 
 private fun Modifier.semanticsConfiguration(): SemanticsConfiguration =

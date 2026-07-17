@@ -605,16 +605,29 @@ fun Modal(
 ) {
     Dialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            scrimColor = Color.Transparent
-        )
+        properties = slockModalDialogProperties()
     ) {
         Box(modifier = modifier.fillMaxSize()) {
             content()
         }
     }
 }
+
+/**
+ * Slock renders and handles its own dismiss scrim inside every modal.
+ *
+ * Kuikly's default `dismissOnClickOutside = true` adds another full-window clickable plus a no-op
+ * clickable around the dialog content. Those framework nodes are harmless on Android's virtual
+ * accessibility tree, but UIKit exposes the full-window native parent as an accessibility leaf and
+ * hides the independent child actions. Disable the framework click wrappers and leave outside-tap
+ * dismissal to [SlockModalDismissBarrier].
+ */
+internal fun slockModalDialogProperties(): DialogProperties =
+    DialogProperties(
+        dismissOnClickOutside = false,
+        usePlatformDefaultWidth = false,
+        scrimColor = Color.Transparent
+    )
 
 @Composable
 fun Modifier.dragEnable(enable: Boolean): Modifier {
