@@ -757,8 +757,15 @@ class SharedServerMembersStore internal constructor(
         val memberId = agentId.value.trim()
         if (memberId.isBlank()) return
         val write = presenceWrite(serverId) ?: return
-        // Gap-fill path: never displaces a seq-carrying realtime fact.
-        presenceRegistry.applyProjection(write.owner, projection.toMemberPresenceUpdated(agentId), write.writeGeneration)
+        // Gap-fill path: never displaces a seq-carrying realtime fact, and
+        // (task #137(b)) the registry's evidence watermark rejects a stale
+        // or evidence-less snapshot once fresher evidence has been seen.
+        presenceRegistry.applyProjection(
+            write.owner,
+            projection.toMemberPresenceUpdated(agentId),
+            write.writeGeneration,
+            evidenceTimestamp = projection.evidenceTimestamp
+        )
     }
 
     suspend fun refreshMembers(
