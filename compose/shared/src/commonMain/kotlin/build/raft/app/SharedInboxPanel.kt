@@ -98,7 +98,6 @@ import kotlinx.coroutines.launch
 private val ActivitySelectedRowShadowOffset = 2.dp
 private const val ActivityNearTopThresholdPx = 50
 private const val ActivityUpdateTrackingWindow = 20
-private const val ActivityMutedPrimaryColorArgb = "#80000000"
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -901,6 +900,11 @@ private fun SharedActivityRow(
                             .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
                             .padding(start = 12.dp, top = 12.dp)
                 ) {
+                // Tag + timestamp share the top row — artin's ruling on #1039
+                // (#wg-nightly-visual-fix:4670869d, 2026-07-17): react's
+                // timestamp-beside-title placement steals width from the real
+                // message content; the android layout is the desired product
+                // behavior and react should adopt it (declared react-adopts-later).
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -929,7 +933,9 @@ private fun SharedActivityRow(
                         SlockLucideIcon(
                             SlockLucideIconName.MessageSquare,
                             modifier = Modifier.size(13.dp),
-                            color = if (mutedPrimaryContent) ActivityMutedPrimaryColorArgb else SlockColor.TextBlackArgb,
+                            // react title icon is text-black/45 in EVERY state
+                            // (#1039); only the title text dims when read.
+                            color = "#73000000",
                             verticalOffsetDp = 2f
                         )
                     }
@@ -964,7 +970,9 @@ private fun SharedActivityRow(
                         text = secondary.toAnnotatedString(),
                         style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
-                        maxLines = 1,
+                        // react body is line-clamp-2 (#1039): the preview gets
+                        // two lines before ellipsis, not one.
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
