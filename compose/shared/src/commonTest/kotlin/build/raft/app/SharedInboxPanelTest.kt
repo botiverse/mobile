@@ -183,6 +183,41 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityReplyPrewarmTailStartsAfterTheClickedRowAndContinuesTopFirst() {
+        val previous = replyActivityItem("previous")
+        val clicked = activityItem(key = "clicked")
+        val next = replyActivityItem("next")
+        val ineligibleRead = replyActivityItem("read").copy(unreadCount = 0)
+        val later = replyActivityItem("later")
+
+        val tail =
+            activityReplyThreadPrewarmTailAfterClick(
+                items = listOf(previous, clicked, next, ineligibleRead, later),
+                clickedIndex = 1,
+                serverId = "server-1"
+            )
+
+        assertEquals(
+            listOf("reply-next", "reply-later"),
+            tail.map { marker -> marker.key.threadChannelId }
+        )
+    }
+
+    @Test
+    fun activityReplyPrewarmTailDoesNotWarmBeforeAValidClick() {
+        val items = listOf(replyActivityItem("first"), replyActivityItem("second"))
+
+        assertEquals(
+            emptyList(),
+            activityReplyThreadPrewarmTailAfterClick(items, clickedIndex = -1, serverId = "server-1")
+        )
+        assertEquals(
+            emptyList(),
+            activityReplyThreadPrewarmTailAfterClick(items, clickedIndex = items.size, serverId = "server-1")
+        )
+    }
+
+    @Test
     fun activityPageDidAppearRefreshesOnlyAfterInitialAppearance() {
         assertEquals(false, activityPageDidAppearShouldRefresh(0))
         assertEquals(true, activityPageDidAppearShouldRefresh(1))
@@ -1165,5 +1200,17 @@ class SharedInboxPanelTest {
             latestActivityMessageId = latestActivityMessageId?.let(::MessageId),
             lastMessageAt = lastMessageAt,
             latestActivityAt = latestActivityAt
+        )
+
+    private fun replyActivityItem(key: String): InboxItem =
+        InboxItem(
+            key = "thread:$key",
+            kind = InboxItemKind.Thread,
+            channelId = ChannelId("parent-$key"),
+            channelName = "channel-$key",
+            unreadCount = 1,
+            threadChannelId = ChannelId("reply-$key"),
+            parentChannelId = ChannelId("parent-$key"),
+            parentMessageId = MessageId("message-$key")
         )
 }
