@@ -1302,7 +1302,8 @@ internal fun SlockStructuralHomeShell(
                         listPositionServerId,
                         initialListPosition.firstVisibleItemIndex,
                         initialListPosition.firstVisibleItemScrollOffset,
-                        targetHomeBeyondBoundsItemCount
+                        targetHomeBeyondBoundsItemCount,
+                        contentRefreshing
                     ) {
                         if (listStateServerId != listPositionServerId) {
                             latestOnListPositionSnapshot(
@@ -1333,6 +1334,9 @@ internal fun SlockStructuralHomeShell(
                         }
                         if (listPremeasureLimit > targetHomeBeyondBoundsItemCount) {
                             listPremeasureLimit = targetHomeBeyondBoundsItemCount
+                        }
+                        if (!homeListShouldRampBeyondBounds(contentRefreshing)) {
+                            return@LaunchedEffect
                         }
                         while (listPremeasureLimit < targetHomeBeyondBoundsItemCount) {
                             withFrameNanos { }
@@ -1978,11 +1982,16 @@ internal fun homeListBeyondBoundsItemCount(
         viewportFraction = HomeListOverscanViewportFraction
     )
 
-internal fun homeListInitialBeyondBoundsItemCount(): Int = HomeListMinBeyondBoundsItemCount
+internal fun homeListInitialBeyondBoundsItemCount(): Int = 0
+
+internal fun homeListShouldRampBeyondBounds(contentRefreshing: Boolean): Boolean = !contentRefreshing
 
 internal fun homeListNextServerSwitchBeyondBoundsItemCount(current: Int, target: Int): Int =
-    (current.coerceAtLeast(HomeListMinBeyondBoundsItemCount) + HomeListServerSwitchRampStep)
-        .coerceAtMost(target.coerceAtLeast(HomeListMinBeyondBoundsItemCount))
+    if (current <= 0) {
+        HomeListMinBeyondBoundsItemCount.coerceAtMost(target.coerceAtLeast(0))
+    } else {
+        (current + HomeListServerSwitchRampStep).coerceAtMost(target.coerceAtLeast(0))
+    }
 
 internal fun homeSidebarSlotKey(section: String, index: Int): String =
     "home-$section-slot-$index"

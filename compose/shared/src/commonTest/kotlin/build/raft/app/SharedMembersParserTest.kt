@@ -301,6 +301,22 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun membersDetailPageDataLaunchesSelfAndOtherHumansWithTypedSourceServer() {
+        val payload = KuiklyMembersPayload(instanceId = "members-server-a")
+
+        listOf("human-self", "human-other").forEach { memberId ->
+            val pageData =
+                payload.toMemberDetailPageData(
+                    MemberDetailIdentity(MemberId(memberId), MemberKind.Human, ServerId("server-a"))
+                )!!
+
+            assertEquals(memberId, pageData.optString("memberId"))
+            assertEquals("human", pageData.optString("memberKind"))
+            assertEquals("server-a", pageData.optString("sourceServerId"))
+        }
+    }
+
+    @Test
     fun agentDetailPageDataDefaultsInitialTabFromServerOrder() {
         val payload =
             KuiklyMembersPayload(

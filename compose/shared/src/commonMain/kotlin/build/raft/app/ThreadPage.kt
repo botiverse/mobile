@@ -113,7 +113,7 @@ import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.isSupportedCommitAction
-import build.raft.app.data.isValidChannelName
+import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
@@ -138,7 +138,6 @@ import build.raft.app.markdown.threadMarkdownTagActivationKey
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
-import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
@@ -173,6 +172,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.coil3.AsyncImagePainter
@@ -284,8 +284,8 @@ import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
-private const val ThreadMessagesMinBeyondBoundsItemCount = 8
-private const val ThreadMessagesMaxBeyondBoundsItemCount = 24
+private const val ThreadMessagesMinBeyondBoundsItemCount = 4
+private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
@@ -1941,6 +1941,38 @@ private fun KuiklyThreadScreenPayload.isRenderableEmptyReplyThread(): Boolean =
 private fun KuiklyThreadScreenPayload.isReadyForThreadPerformanceGate(): Boolean =
     status == "content" || isRenderableEmptyReplyThread()
 
+internal const val ThreadPayloadReadyBudgetMs = 1_500L
+internal const val ThreadFirstLayoutBudgetMs = 100L
+internal const val ThreadFirstDrawBudgetMs = 100L
+
+internal data class ThreadFirstContentPerformanceBudgetResult(
+    val payloadReadyWithinBudget: Boolean?,
+    val layoutWithinBudget: Boolean?,
+    val drawWithinBudget: Boolean?
+) {
+    val passed: Boolean
+        get() {
+            val measurements =
+                listOfNotNull(
+                    payloadReadyWithinBudget,
+                    layoutWithinBudget,
+                    drawWithinBudget
+                )
+            return measurements.isNotEmpty() && measurements.all { it }
+        }
+}
+
+internal fun evaluateThreadFirstContentPerformanceBudget(
+    payloadReadyMs: Long? = null,
+    layoutMs: Long? = null,
+    drawMs: Long? = null
+): ThreadFirstContentPerformanceBudgetResult =
+    ThreadFirstContentPerformanceBudgetResult(
+        payloadReadyWithinBudget = payloadReadyMs?.let { it <= ThreadPayloadReadyBudgetMs },
+        layoutWithinBudget = layoutMs?.let { it <= ThreadFirstLayoutBudgetMs },
+        drawWithinBudget = drawMs?.let { it <= ThreadFirstDrawBudgetMs }
+    )
+
 private fun requestKuiklyThreadPerformanceSnapshot(
     bridge: build.raft.app.base.BridgeModule,
     threadId: String,
@@ -1951,6 +1983,13 @@ private fun requestKuiklyThreadPerformanceSnapshot(
         PagerManager.getCurrentPager()
             .acquireModule<PerformanceModule>(PerformanceModule.MODULE_NAME)
             .getPerformanceData { data ->
+                val layoutMs = data?.pageLoadTime?.pageLayoutCost?.toLong()
+                val drawMs = data?.pageLoadTime?.renderCost?.toLong()
+                val budget =
+                    evaluateThreadFirstContentPerformanceBudget(
+                        layoutMs = layoutMs,
+                        drawMs = drawMs
+                    )
                 val summary = bridge.reportKuiklyPerformanceSnapshot(
                     routeName = "kuikly_thread",
                     reason = reason,
@@ -1966,10 +2005,19 @@ private fun requestKuiklyThreadPerformanceSnapshot(
                     metadata =
                         mapOf(
                             "reason" to reason,
-                            "status" to status
+                            "status" to status,
+                            "layoutBudgetMs" to ThreadFirstLayoutBudgetMs.toString(),
+                            "drawBudgetMs" to ThreadFirstDrawBudgetMs.toString(),
+                            "layoutWithinBudget" to budget.layoutWithinBudget.toString(),
+                            "drawWithinBudget" to budget.drawWithinBudget.toString()
                         )
                 )
                 bridge.log("kuikly_perf_snapshot $summary")
+                bridge.log(
+                    "thread_first_content_budget phase=render layoutMs=${layoutMs ?: -1} " +
+                        "drawMs=${drawMs ?: -1} layoutBudgetMs=$ThreadFirstLayoutBudgetMs " +
+                        "drawBudgetMs=$ThreadFirstDrawBudgetMs pass=${budget.passed}"
+                )
             }
     }.onFailure { error ->
         val summary = bridge.reportKuiklyPerformanceSnapshot(
@@ -3607,6 +3655,9 @@ internal fun SharedThreadRouteContent(
     var startedRouteIdentity by remember(initialThreadInstanceKey) {
         mutableStateOf<ThreadRouteIdentity?>(null)
     }
+    var threadOpenStartedAt by remember(initialThreadInstanceKey) {
+        mutableStateOf<TimeMark?>(null)
+    }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(authStore, initialThreadInstanceKey) {
         val session = authStore.readSession()
@@ -3625,6 +3676,7 @@ internal fun SharedThreadRouteContent(
             return@LaunchedEffect
         }
         startedRouteIdentity = incomingRouteIdentity
+        threadOpenStartedAt = TimeSource.Monotonic.markNow()
         bridge.performanceMarker(
             phase = "thread_open_start",
             routeName = "kuikly_thread",
@@ -3686,6 +3738,13 @@ internal fun SharedThreadRouteContent(
                 sessionServerId = currentSession?.currentServerId,
                 scopeInitialServerId = storeScope.initialServerId
             )?.let(::ServerId)
+        }
+    val memberAvatarResolver =
+        remember(serverMembersStore, headerProjectionServerId) {
+            slockMemberAvatarResolver(
+                serverMembersStore = serverMembersStore,
+                serverId = headerProjectionServerId?.value
+            )
         }
     val initialDirectoryConversationProjections =
         remember(
@@ -3858,9 +3917,9 @@ internal fun SharedThreadRouteContent(
                         )
                     )
                 }
-                if (event is MemberPresenceUpdated) {
-                    serverMembersStore?.applyPresence(event)
-                }
+                // task #136: MemberPresenceUpdated now reaches the members store
+                // via the provider-installed presence sink on this owner (store
+                // lifetime, SSOT) — no page-level tee needed.
             }
         }
     )
@@ -3969,6 +4028,7 @@ internal fun SharedThreadRouteContent(
         ThreadDeferredLoadingRouteContent(
             payload = payload,
             displayModel = headerDisplayModel,
+            memberAvatarResolver = memberAvatarResolver,
             onBack = onBack
         )
         return
@@ -4059,15 +4119,18 @@ internal fun SharedThreadRouteContent(
         payload
             .withSharedShellEventCapabilities()
     }
-    val foregroundConversationDirectory =
-        remember(directoryConversationProjections) {
-            slockConversationDirectoryStateFromProjections(directoryConversationProjections.values)
+    val foregroundBannerStore =
+        remember(sharedStores, storeScope) {
+            sharedStores.foregroundBannerStore(storeScope)
         }
-    var foregroundMessageBanner by remember(initialThreadInstanceKey) {
-        mutableStateOf<SlockForegroundMessageBanner?>(null)
+    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
+    val foregroundBannerRouteOwnerId = "thread:$initialThreadInstanceKey"
+    DisposableEffect(active, payloadRouteIdentity, foregroundBannerStore) {
+        if (active) {
+            foregroundBannerStore.setVisibleRoute(foregroundBannerRouteOwnerId, payloadRouteIdentity)
+        }
+        onDispose { foregroundBannerStore.clearVisibleRoute(foregroundBannerRouteOwnerId) }
     }
-    val latestPayloadRouteIdentity by rememberUpdatedState(payloadRouteIdentity)
-    val latestForegroundConversationDirectory by rememberUpdatedState(foregroundConversationDirectory)
     var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingTaskConvertMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
@@ -4106,8 +4169,6 @@ internal fun SharedThreadRouteContent(
         }
     fun imageAnnotationEnabled(): Boolean =
         chatLayoutPreferenceStore.readImageAnnotationEnabledSync()
-    fun foregroundMessageBannersEnabled(): Boolean =
-        chatLayoutPreferenceStore.readForegroundMessageBannersEnabledSync()
     val actionCardSuccessLabels =
         mapOf(
             "channel:create" to stringResource(MR.strings.thread_action_card_success_channel),
@@ -4247,22 +4308,30 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
         if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
             firstContentLoggedThreadId = threadInstanceKey
+            val payloadReadyMs = threadOpenStartedAt?.elapsedNow()?.inWholeMilliseconds
+            val payloadReadyBudget =
+                evaluateThreadFirstContentPerformanceBudget(payloadReadyMs = payloadReadyMs)
             bridge.performanceMarker(
                 phase = "thread_payload_ready",
                 routeName = "kuikly_thread",
                 event = "instant",
                 threadId = threadTimelineKey ?: threadInstanceKey,
+                durationMs = payloadReadyMs,
                 metadata =
                     mapOf(
                         "status" to timelineSlice.status.ifBlank { "unknown" },
                         "source" to payload.threadRenderDiagnosticsSource(timelineSlice),
-                        "messages" to timelineSlice.messages.size.toString()
+                        "messages" to timelineSlice.messages.size.toString(),
+                        "budgetMs" to ThreadPayloadReadyBudgetMs.toString(),
+                        "withinBudget" to payloadReadyBudget.payloadReadyWithinBudget.toString()
                     )
             )
             bridge.log(
                 "thread_payload_ready_gate threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
                     "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
-                    "source=${payload.threadRenderDiagnosticsSource(timelineSlice)}"
+                    "source=${payload.threadRenderDiagnosticsSource(timelineSlice)} " +
+                    "durationMs=${payloadReadyMs ?: -1} budgetMs=$ThreadPayloadReadyBudgetMs " +
+                    "pass=${payloadReadyBudget.passed}"
             )
             if (performanceSnapshotLoggedThreadId != threadInstanceKey) {
                 performanceSnapshotLoggedThreadId = threadInstanceKey
@@ -4596,23 +4665,6 @@ internal fun SharedThreadRouteContent(
     )
     suspend fun deliverThreadFeatureRealtimeEvent(serverId: String, event: RealtimeEvent) {
         latestThreadFeatureRealtimeEventHandler(event)
-        if (event is MessageNew) {
-            val session = latestCurrentSession
-            foregroundMessageBanner =
-                if (foregroundMessageBannersEnabled()) {
-                    slockForegroundMessageBannerProjection(
-                        serverId = serverId,
-                        currentServerId = session?.currentServerId ?: currentServerId,
-                        message = event.message,
-                        currentMemberId = session?.user?.id,
-                        visibleConversationKey = null,
-                        visibleRouteIdentity = latestPayloadRouteIdentity,
-                        conversationDirectory = latestForegroundConversationDirectory,
-                    ) ?: foregroundMessageBanner
-                } else {
-                    null
-                }
-        }
     }
     DisposableEffect(
         canonicalFinalLifecycleEffects,
@@ -4644,13 +4696,6 @@ internal fun SharedThreadRouteContent(
             }
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
-    }
-    LaunchedEffect(foregroundMessageBanner?.id) {
-        val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect
-        delay(slockForegroundBannerAutoDismissMs())
-        if (foregroundMessageBanner?.id == bannerId) {
-            foregroundMessageBanner = null
-        }
     }
     var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
@@ -4708,10 +4753,6 @@ internal fun SharedThreadRouteContent(
     val agentStatusResolver =
         remember(serverMembersStore, currentSession?.currentServerId) {
             slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)
-        }
-    val memberAvatarResolver =
-        remember(serverMembersStore, currentSession?.currentServerId) {
-            slockMemberAvatarResolver(serverMembersStore, currentSession?.currentServerId)
         }
     val renderedThread = renderedPayload
     val messagePermalinkLabelResolver =
@@ -5771,7 +5812,7 @@ internal fun SharedThreadRouteContent(
         currentServerStore = foregroundBannerCurrentServerStore,
         currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
         onBannerClick = { target ->
-            foregroundMessageBanner = null
+            foregroundBannerStore.dismiss(target.id)
             val request = target.openRequest
             val bannerPayload =
                 buildAppShellThreadPayload(
@@ -5794,9 +5835,7 @@ internal fun SharedThreadRouteContent(
                 onOpenThreadPayload(bannerPayload)
             }
         },
-        onBannerDismiss = {
-            foregroundMessageBanner = null
-        }
+        onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
     ) {
         CompositionLocalProvider(
             LocalThreadInlineVideoPreviewHost provides
@@ -5848,7 +5887,7 @@ internal fun SharedThreadRouteContent(
                         )
                     }
                 },
-            forwardServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+            forwardServerId = headerProjectionServerId,
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
             onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
@@ -5898,6 +5937,9 @@ internal fun SharedThreadRouteContent(
             },
             onSaveShareImage = { path ->
                 bridge.saveThreadShareImage(path)
+            },
+            onFirstContentReady = {
+                threadViewModel.dispatch(SharedThreadIntent.FirstContentReady)
             },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
@@ -9883,6 +9925,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
 private fun ThreadDeferredLoadingRouteContent(
     payload: KuiklyThreadScreenPayload,
     displayModel: ThreadHeaderDisplayModel,
+    memberAvatarResolver: SlockMemberAvatarResolver,
     onBack: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -9891,7 +9934,7 @@ private fun ThreadDeferredLoadingRouteContent(
                 payload = payload,
                 headerDisplay = displayModel,
                 activityMuteState = null,
-                memberAvatarResolver = EmptySlockMemberAvatarResolver,
+                memberAvatarResolver = memberAvatarResolver,
                 showActions = false,
                 onBack = onBack,
                 onOpenInChannel = {},
@@ -9964,6 +10007,7 @@ private fun ThreadPageContent(
     mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
+    onFirstContentReady: () -> Unit = {},
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -9979,6 +10023,15 @@ private fun ThreadPageContent(
     val accessErrorLabels = threadUserFacingErrorLabels()
     val shareExportScope = rememberCoroutineScope()
     val markdownTagFeedbackScope = rememberCoroutineScope()
+    LaunchedEffect(threadInstanceKey, selectedTab, timelineSlice.status, timelineSlice.messages.size) {
+        if (
+            selectedTab != KuiklyThreadTab.Chat &&
+            payload.isReadyForThreadPerformanceGate()
+        ) {
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            onFirstContentReady()
+        }
+    }
     LaunchedEffect(
         threadInstanceKey,
         timelineSlice.status,
@@ -10047,6 +10100,7 @@ private fun ThreadPageContent(
     var forwardTargetStatus by remember(threadInstanceKey) { mutableStateOf(SharedMembersLoadStatus.Idle) }
     var forwardTargetErrorCode by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var forwardSending by remember(threadInstanceKey) { mutableStateOf(false) }
+    var forwardSourceServerId by remember(threadInstanceKey) { mutableStateOf<ServerId?>(null) }
     var forwardSelectedTarget by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTarget?>(null) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
     var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
@@ -10076,15 +10130,15 @@ private fun ThreadPageContent(
         }
     val forwardSourceChannelId = remember(payload) { payload.threadForwardSourceChannelId() }
     val forwardTargetItems =
-        remember(forwardTargets, forwardSourceChannelId) {
+        remember(forwardTargets, forwardSourceServerId, forwardSourceChannelId) {
             forwardTargets
-                .threadForwardPickerTargets(forwardSourceChannelId)
+                .threadForwardPickerTargets(forwardSourceServerId, forwardSourceChannelId)
                 .map { it.toThreadForwardTargetItem() }
         }
-    LaunchedEffect(activeModal, forwardTargetQuery, forwardServerId, forwardTargetRepository, selectedShareMessageIds) {
+    LaunchedEffect(activeModal, forwardTargetQuery, forwardSourceServerId, forwardTargetRepository, selectedShareMessageIds) {
         if (activeModal != "forwardTargets") return@LaunchedEffect
         val repository = forwardTargetRepository
-        val serverId = forwardServerId
+        val serverId = forwardSourceServerId
         if (repository == null || serverId == null) {
             forwardTargets = emptyList()
             forwardTargetStatus = SharedMembersLoadStatus.Error
@@ -10429,7 +10483,7 @@ private fun ThreadPageContent(
                             }
                         },
                         translationStore = translationStore,
-                        onThreadContentReady = {}
+                        onThreadContentReady = onFirstContentReady
                     )
                 KuiklyThreadTab.Tasks ->
                     ThreadTasksTab(
@@ -10542,6 +10596,7 @@ private fun ThreadPageContent(
                                 )
                             } else {
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
+                                forwardSourceServerId = forwardServerId
                                 forwardTargetQuery = ""
                                 forwardSelectedTarget = null
                                 forwardNote = ""
@@ -10659,6 +10714,7 @@ private fun ThreadPageContent(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
+                    taskLinkedCount = forwardMessageSelection.taskLinkedCount,
                     query = forwardTargetQuery,
                     loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
                     targets = forwardTargetItems,
@@ -10682,6 +10738,7 @@ private fun ThreadPageContent(
                     onDismiss = { activeModal = "forwardTargets" },
                     onSend = {
                         val repository = forwardTargetRepository
+                        val sourceServerId = forwardSourceServerId
                         val sourceChannelId = forwardSourceChannelId
                         val selectedTarget = forwardSelectedTarget
                         when {
@@ -10689,6 +10746,8 @@ private fun ThreadPageContent(
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
                             sourceChannelId == null ->
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
+                            sourceServerId == null ->
+                                onThreadEvent("forwardMessagesFailed", "Source server unavailable", null, null)
                             selectedTarget == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
                             !forwardSending -> {
@@ -10698,6 +10757,7 @@ private fun ThreadPageContent(
                                         val outcome =
                                             executeThreadForward(
                                                 repository = repository,
+                                                sourceServerId = sourceServerId,
                                                 sourceChannelId = sourceChannelId,
                                                 target = selectedTarget,
                                                 messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
@@ -11313,6 +11373,15 @@ internal fun threadHeaderScrollToTopEnabled(surfaceKind: String?, selectedTab: S
 
 internal fun threadHeaderScrollToTopTargetIndex(lazyItemCount: Int): Int? =
     if (lazyItemCount > 0) 0 else null
+
+internal fun consumeThreadHeaderScrollToTopRequest(
+    request: Int,
+    lazyItemCount: Int,
+    fence: AppShellScrollToTopRequestFence,
+): Boolean =
+    request > 0 &&
+        threadHeaderScrollToTopTargetIndex(lazyItemCount) != null &&
+        fence.consume(request)
 
 @Composable
 private fun ThreadChatTab(
@@ -11936,6 +12005,13 @@ private fun ThreadMessagesList(
         ThreadFirstViewportProbe(threadRowProbeSessionMarker)
     }
     var firstViewportProbeActive by remember(threadInstanceKey) { mutableStateOf(true) }
+    var postFirstFrameBeyondBoundsEnabled by remember(threadInstanceKey) { mutableStateOf(false) }
+    val activeListBeyondBoundsItems =
+        if (postFirstFrameBeyondBoundsEnabled) {
+            threadLazyWindowConsumerCounts.listBeyondBoundsItems
+        } else {
+            0
+        }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
     // task #569: long-press on a reaction chip shows who reacted.
@@ -12216,9 +12292,15 @@ private fun ThreadMessagesList(
     }
     val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
+    val headerScrollToTopRequestFence =
+        remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
-        val targetIndex = threadHeaderScrollToTopTargetIndex(lazyItemCount)
-        if (headerScrollToTopRequest <= 0 || targetIndex == null) {
+        if (!consumeThreadHeaderScrollToTopRequest(
+                request = headerScrollToTopRequest,
+                lazyItemCount = lazyItemCount,
+                fence = headerScrollToTopRequestFence,
+            )
+        ) {
             return@LaunchedEffect
         }
         pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
@@ -12276,7 +12358,7 @@ private fun ThreadMessagesList(
                 listState.threadLazyWindowStats(
                     timelineSlice = renderPayload,
                     lazyItemCount = lazyItemCount,
-                    beyondBoundsItems = threadLazyWindowConsumerCounts.diagnosticsBeyondBoundsItems
+                    beyondBoundsItems = activeListBeyondBoundsItems
                 )
             if (stats.visibleItems > 0) {
                 diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
@@ -12778,6 +12860,29 @@ private fun ThreadMessagesList(
             listState.scrollLatestItemToRenderedBottom(latestItemIndex)
         }
     }
+    LaunchedEffect(
+        threadInstanceKey,
+        initialBottomAnchorReady,
+        viewportMeasurementReady
+    ) {
+        if (
+            !initialBottomAnchorReady ||
+            !viewportMeasurementReady ||
+            postFirstFrameBeyondBoundsEnabled
+        ) {
+            return@LaunchedEffect
+        }
+        // The first frame only needs visible rows. Let that committed viewport
+        // draw before enabling the normal scroll-ahead window, so expensive
+        // card/Markdown composition does not compete with first paint.
+        withFrameNanos { }
+        withFrameNanos { }
+        postFirstFrameBeyondBoundsEnabled = true
+        diagnosticsLogger(
+            "thread_initial_beyond_bounds result=enabled_after_first_frame " +
+                "items=${threadLazyWindowConsumerCounts.listBeyondBoundsItems}"
+        )
+    }
     LaunchedEffect(threadInstanceKey, composerKeyboardInsetDp, latestItemIndex) {
         val shouldAnchor =
             shouldAnchorThreadKeyboardBottomOnInsetChange(
@@ -12850,7 +12955,7 @@ private fun ThreadMessagesList(
                         )
                     ),
                 verticalArrangement = Arrangement.Bottom,
-                beyondBoundsItemCount = threadLazyWindowConsumerCounts.listBeyondBoundsItems
+                beyondBoundsItemCount = activeListBeyondBoundsItems
             ) {
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
@@ -13513,15 +13618,22 @@ private fun ThreadTimelineSlice.threadSelectedShareMessages(
 
 internal const val ThreadNestedForwardUnsupportedMessage =
     "Forwarded messages can't be forwarded. Select the original message instead."
+internal const val ThreadTaskLinkedForwardUnsupportedMessage =
+    "Task-linked messages can't be forwarded yet. Select an ordinary message instead."
 internal const val ThreadUnsupportedSourceMessage =
-    "Tasks, system messages, and action messages can't be forwarded. Select an ordinary message instead."
+    "System messages and action messages can't be forwarded. Select an ordinary message instead."
 internal const val ThreadForwardSourceTargetForbiddenMessage =
     "Choose a different destination from the conversation you are forwarding."
+internal const val ThreadForwardCrossServerUnavailableMessage =
+    "This destination is not available from the source server. Choose its joint-channel projection or another destination."
+internal const val ThreadForwardServerUnauthorizedMessage =
+    "You no longer have access to the source or destination server. Refresh and choose another destination."
 
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<KuiklyThreadMessageItem>,
     val skippedCount: Int,
-    val nestedForwardCount: Int
+    val nestedForwardCount: Int,
+    val taskLinkedCount: Int
 )
 
 internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): ThreadForwardMessageSelection {
@@ -13529,9 +13641,14 @@ internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): Thre
     return ThreadForwardMessageSelection(
         forwardableMessages = forwardableMessages,
         skippedCount = size - forwardableMessages.size,
-        nestedForwardCount = count { message -> message.forwardBundle != null }
+        nestedForwardCount = count { message -> message.forwardBundle != null },
+        taskLinkedCount = count { message -> message.isTaskLinkedChatMessage() }
     )
 }
+
+private fun KuiklyThreadMessageItem.isTaskLinkedChatMessage(): Boolean =
+    messageType.equals("Chat", ignoreCase = true) &&
+        (taskId != null || taskNumber != null || taskStatus != null)
 
 private fun KuiklyThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
     messageType.equals("Chat", ignoreCase = true) &&
@@ -13549,26 +13666,35 @@ internal fun String.threadForwardErrorMessage(): String =
         "forwarded_source_not_supported" -> ThreadNestedForwardUnsupportedMessage
         "unsupported_source_message" -> ThreadUnsupportedSourceMessage
         "forward_source_target_forbidden" -> ThreadForwardSourceTargetForbiddenMessage
+        "forward_cross_server_target_unsupported",
+        "forward_joint_projection_unavailable" -> ThreadForwardCrossServerUnavailableMessage
+        "forward_source_server_unauthorized",
+        "forward_target_server_unauthorized",
+        "forward_target_server_not_selected" -> ThreadForwardServerUnauthorizedMessage
         else -> this
     }
 
 internal fun ThreadForwardMessageSelection.threadForwardSelectionFailureMessage(): String =
-    if (nestedForwardCount == skippedCount) {
-        ThreadNestedForwardUnsupportedMessage
-    } else {
-        ThreadUnsupportedSourceMessage
+    when {
+        nestedForwardCount == skippedCount -> ThreadNestedForwardUnsupportedMessage
+        taskLinkedCount == skippedCount -> ThreadTaskLinkedForwardUnsupportedMessage
+        else -> ThreadUnsupportedSourceMessage
     }
 
 internal fun threadForwardSkippedWarning(
     skippedCount: Int,
-    nestedForwardCount: Int
+    nestedForwardCount: Int,
+    taskLinkedCount: Int = 0
 ): String? {
     if (skippedCount <= 0) return null
     val skippedLabel = if (skippedCount == 1) "1 selected message was" else "$skippedCount selected messages were"
-    return if (nestedForwardCount == skippedCount) {
-        "$skippedLabel skipped because forwarded messages can't be forwarded again."
-    } else {
-        "$skippedLabel skipped. Forwarded bundles, tasks, system messages, and action messages can't be forwarded."
+    return when {
+        nestedForwardCount == skippedCount ->
+            "$skippedLabel skipped because forwarded messages can't be forwarded again."
+        taskLinkedCount == skippedCount ->
+            "$skippedLabel skipped because task-linked messages can't be forwarded yet."
+        else ->
+            "$skippedLabel skipped. Forwarded bundles, task-linked messages, system messages, and action messages can't be forwarded."
     }
 }
 
@@ -14981,7 +15107,7 @@ private fun ThreadMessageCard(
                                                 message.copy(body = bodyForRender).threadMarkdownRenderSignature()
                                             }
                                         }
-                                    LaunchedEffect(markdownRenderSignature, markdownTagContextSignature) {
+                                    LaunchedEffect(markdownRenderSignature) {
                                         diagnosticsLogger(
                                             "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
                                                 "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
@@ -14991,7 +15117,7 @@ private fun ThreadMessageCard(
                                                 "context=$markdownTagContextSignature"
                                         )
                                     }
-                                    key(markdownRenderSignature, markdownTagContextSignature, activeMarkdownTagKey) {
+                                    key(markdownRenderSignature) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
                                             textStyle = ThreadMessageBodyTextStyle,
@@ -16145,10 +16271,13 @@ internal data class ThreadAgentStatusLookup(
     companion object {
         fun from(
             serverMembersState: SharedServerMembersState,
-            serverId: String?
+            serverId: String?,
+            // task #136: presence facts come from the process registry (the
+            // SSOT) — the members state no longer carries a presence slice.
+            presenceFacts: Map<String, MemberPresenceUpdated> = emptyMap()
         ): ThreadAgentStatusLookup {
             val statusByMemberId = linkedMapOf<String, AgentStatus>()
-            serverMembersState.recordThreadAgentStatuses(serverId, statusByMemberId)
+            serverMembersState.recordThreadAgentStatuses(serverId, statusByMemberId, presenceFacts)
             return ThreadAgentStatusLookup(
                 statusByMemberId = statusByMemberId.toMap()
             )
@@ -16167,9 +16296,10 @@ internal fun KuiklyThreadMessageItem.threadAuthorAgentStatusIndicatorState(): Sl
 
 private fun SharedServerMembersState.recordThreadAgentStatuses(
     serverId: String?,
-    statusByMemberId: MutableMap<String, AgentStatus>
+    statusByMemberId: MutableMap<String, AgentStatus>,
+    presenceFacts: Map<String, MemberPresenceUpdated>
 ) {
-    presenceByMemberId.forEach { (memberId, event) ->
+    presenceFacts.forEach { (memberId, event) ->
         val status = event.agentStatus ?: return@forEach
         memberId.threadProjectionMemberId()?.let { statusByMemberId[it] = status }
     }
@@ -16183,7 +16313,7 @@ private fun SharedServerMembersState.recordThreadAgentStatuses(
     entries
         .flatMap { entry -> entry.members }
         .forEach { member ->
-            val status = presenceFor(member.id.value)?.agentStatus ?: member.agentStatus ?: return@forEach
+            val status = presenceFacts[member.id.value.trim()]?.agentStatus ?: member.agentStatus ?: return@forEach
             if (member.kind != MemberKind.Agent) return@forEach
             member.id.value.threadProjectionMemberId()?.let { memberId ->
                 if (memberId !in statusByMemberId) {
@@ -18917,25 +19047,30 @@ internal data class ThreadForwardOutcome(
     val failureCode: String? = null
 )
 
-internal fun ForwardMessageTarget.threadForwardSelectionKey(): String = "${kind.name}:$id"
+internal fun ForwardMessageTarget.threadForwardSelectionKey(): String = "${serverId.value}:${kind.name}:$id"
 
 internal fun List<ForwardMessageTarget>.threadForwardPickerTargets(
+    sourceServerId: ServerId?,
     sourceChannelId: ChannelId?
 ): List<ForwardMessageTarget> =
     filterNot { target ->
-        sourceChannelId != null && target.channelId == sourceChannelId
+        sourceServerId != null &&
+            sourceChannelId != null &&
+            target.serverId == sourceServerId &&
+            target.channelId == sourceChannelId
     }
 
 internal suspend fun executeThreadForward(
     repository: ForwardMessageTargetRepository,
+    sourceServerId: ServerId,
     sourceChannelId: ChannelId,
     target: ForwardMessageTarget,
     messageIds: List<String>,
     mode: ForwardMessageSendMode,
     note: String
 ): ThreadForwardOutcome {
-    val resolved = repository.resolveTargetChannel(target)
-    val targetChannelId =
+    val resolved = repository.resolveTargetChannel(sourceServerId, target)
+    val destination =
         when (resolved) {
             is DataResult.Content -> resolved.data
             else ->
@@ -18943,14 +19078,15 @@ internal suspend fun executeThreadForward(
                     failureCode = resolved.threadForwardFailureCode("forward_target_unavailable")
                 )
         }
-    if (targetChannelId == sourceChannelId) {
+    if (destination.serverId == sourceServerId && destination.channelId == sourceChannelId) {
         return ThreadForwardOutcome(failureCode = "forward_source_target_forbidden")
     }
     val forwarded =
         repository.forwardMessages(
             ForwardMessageExecuteRequest(
+                sourceServerId = sourceServerId,
                 sourceChannelId = sourceChannelId,
-                targetChannelId = targetChannelId,
+                destination = destination,
                 messageIds = messageIds,
                 mode = mode,
                 note = note
@@ -19051,48 +19187,68 @@ internal class ComposeThreadForwardModalVisualPage : build.raft.app.base.BasePag
 
 @Composable
 internal fun ThreadForwardModalVisualScreen() {
-    val targets =
-        remember {
-            listOf(
-                ThreadForwardTargetItem(
-                    id = "channel-design",
-                    title = "design",
-                    subtitle = "Product and UI decisions",
-                    kind = ThreadForwardTargetKind.Channel
-                ),
-                ThreadForwardTargetItem(
-                    id = "dm-artin",
-                    title = "artin",
-                    subtitle = "Direct message",
-                    kind = ThreadForwardTargetKind.DirectMessage
-                ),
-                ThreadForwardTargetItem(
-                    id = "channel-android",
-                    title = "android-artifacts",
-                    subtitle = "Public channel",
-                    kind = ThreadForwardTargetKind.PublicChannelUnjoined
-                ),
-                ThreadForwardTargetItem(
-                    id = "member-cindy",
-                    title = "Cindy",
-                    subtitle = "Keeps visual testing release notes aligned",
-                    kind = ThreadForwardTargetKind.Member
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    val scrollProbe = params.optString("fixture") == ThreadForwardScrollProbeFixture
+    var selectedProbeTargetId by remember(scrollProbe) { mutableStateOf<String?>(null) }
+    val fixtureTargets =
+        remember(scrollProbe) {
+            if (scrollProbe) {
+                List(ThreadForwardScrollProbeTargetCount) { index ->
+                    ThreadForwardTargetItem(
+                        id = "forward-scroll-probe-$index",
+                        title = "Forward target ${index + 1}",
+                        subtitle = "Recent DM",
+                        kind = ThreadForwardTargetKind.DirectMessage
+                    )
+                }
+            } else {
+                listOf(
+                    ThreadForwardTargetItem(
+                        id = "channel-design",
+                        title = "design",
+                        subtitle = "Product and UI decisions",
+                        kind = ThreadForwardTargetKind.Channel
+                    ),
+                    ThreadForwardTargetItem(
+                        id = "dm-artin",
+                        title = "artin",
+                        subtitle = "Direct message",
+                        kind = ThreadForwardTargetKind.DirectMessage
+                    ),
+                    ThreadForwardTargetItem(
+                        id = "channel-android",
+                        title = "android-artifacts",
+                        subtitle = "Public channel",
+                        kind = ThreadForwardTargetKind.PublicChannelUnjoined
+                    ),
+                    ThreadForwardTargetItem(
+                        id = "member-cindy",
+                        title = "Cindy",
+                        subtitle = "Keeps visual testing release notes aligned",
+                        kind = ThreadForwardTargetKind.Member
+                    )
                 )
-            )
+            }
         }
     ThreadForwardTargetPickerPage(
         messageCount = 2,
         skippedCount = 0,
         nestedForwardCount = 0,
+        taskLinkedCount = 0,
         query = "",
         loading = false,
-        targets = targets,
+        targets = if (selectedProbeTargetId == null) fixtureTargets else emptyList(),
         errorCode = null,
         onQueryChange = {},
         onDismiss = {},
-        onSelectTarget = {}
+        onSelectTarget = { target ->
+            if (scrollProbe) selectedProbeTargetId = target.id
+        }
     )
 }
+
+private const val ThreadForwardScrollProbeFixture = "scroll_probe"
+private const val ThreadForwardScrollProbeTargetCount = 24
 
 @Page("compose_thread_forward_note_visual", supportInLocal = true)
 internal class ComposeThreadForwardNoteVisualPage : build.raft.app.base.BasePager() {
@@ -19107,6 +19263,7 @@ internal fun ThreadForwardNoteVisualScreen() {
     val target =
         remember {
             ForwardMessageTarget(
+                serverId = ServerId("server-visual"),
                 kind = ForwardMessageTargetKind.RecentChannel,
                 id = "channel-design",
                 title = "#design",
@@ -19473,6 +19630,7 @@ private fun ThreadForwardTargetPickerPage(
     messageCount: Int,
     skippedCount: Int,
     nestedForwardCount: Int,
+    taskLinkedCount: Int,
     query: String,
     loading: Boolean,
     targets: List<ThreadForwardTargetItem>,
@@ -19487,11 +19645,19 @@ private fun ThreadForwardTargetPickerPage(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .slockNativeDispatchCapture()
                 .zIndex(100f)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Keep the native-dispatch barrier behind the interactive content.
+        // Kuikly LazyColumn is backed by a native ScrollerView; placing capture
+        // on this parent consumes ACTION_DOWN before that child can scroll.
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(SlockColor.SurfaceWhite)
+                    .slockNativeDispatchCapture()
+        )
+        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
             SlockTopPageHeader(
                 title = stringResource(MR.strings.thread_action_forward),
                 subtitle = stringResource(MR.strings.thread_forward_messages_selected, messageCount),
@@ -19506,7 +19672,7 @@ private fun ThreadForwardTargetPickerPage(
                     )
                 }
             )
-            threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
+            threadForwardSkippedWarning(skippedCount, nestedForwardCount, taskLinkedCount)?.let { warning ->
                 Box(
                     modifier =
                         Modifier
@@ -20481,7 +20647,7 @@ private fun ThreadSettingsModal(
     val trimmedName = name.trim()
     val trimmedDescription = description.trim()
     val profileChanged = trimmedName != channelName.trim() || trimmedDescription != subtitle.orEmpty().trim()
-    val profileValid = trimmedName.isValidChannelName() && trimmedDescription.length <= 500
+    val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
     SlockUnifiedDialog(
         title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
@@ -20506,7 +20672,7 @@ private fun ThreadSettingsModal(
                     fieldMinHeight = 66.dp,
                     maxLines = 2
                 )
-                if (trimmedName.isNotEmpty() && !trimmedName.isValidChannelName()) {
+                if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
                     Text(
                         text = stringResource(MR.strings.channel_create_error_name_format),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),

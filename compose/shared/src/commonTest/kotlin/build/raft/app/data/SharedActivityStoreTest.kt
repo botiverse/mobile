@@ -196,6 +196,39 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun activityTailKeepsRunningAfterTheActivityViewportDetaches() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val first = keyedMarker("row-1")
+        val second = keyedMarker("row-2")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    if (marker.key == first.key) {
+                        firstStarted.complete(Unit)
+                        releaseFirst.await()
+                    }
+                    DataResult.Content(Unit)
+                }
+            )
+
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(first, second)))
+        firstStarted.await()
+
+        // Opening the clicked Thread removes the Activity viewport owner, but the store-owned
+        // click-progressive tail must keep draining outside that route.
+        store.dispatch(SharedActivityIntent.DetachPrewarmViewport)
+        releaseFirst.complete(Unit)
+
+        assertEquals(listOf(first.key, second.key), calls.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun activityTailPrewarmHonorsDepthCap() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()

@@ -32,10 +32,20 @@ import kotlin.test.assertTrue
 
 class SharedInboxPanelTest {
     @Test
+    fun openingActivityRowsLeavesReadAcknowledgementToTheDestinationStore() {
+        val opened = activityItem(key = "thread:opened").copy(unreadCount = 2)
+        val promotedWhileNavigating = activityItem(key = "thread:promoted").copy(unreadCount = 1)
+
+        assertEquals(null, opened.activityOpenReadIntent())
+        assertEquals(null, promotedWhileNavigating.activityOpenReadIntent())
+    }
+
+    @Test
     fun activityTailSentinelRequestsNextPageWhenMoreContentExists() {
         assertTrue(
             activityShouldRequestLoadMore(
                 hasMore = true,
+                refreshing = false,
                 loadingMore = false,
                 loadMoreErrorCode = null
             )
@@ -47,6 +57,7 @@ class SharedInboxPanelTest {
         assertFalse(
             activityShouldRequestLoadMore(
                 hasMore = true,
+                refreshing = false,
                 loadingMore = true,
                 loadMoreErrorCode = null
             )
@@ -58,6 +69,7 @@ class SharedInboxPanelTest {
         assertFalse(
             activityShouldRequestLoadMore(
                 hasMore = true,
+                refreshing = false,
                 loadingMore = false,
                 loadMoreErrorCode = "Network"
             )
@@ -69,6 +81,7 @@ class SharedInboxPanelTest {
         assertFalse(
             activityShouldRequestLoadMore(
                 hasMore = false,
+                refreshing = false,
                 loadingMore = false,
                 loadMoreErrorCode = null
             )
@@ -76,14 +89,64 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityThreadIconUsesTheSameMutedToneAsReadPrimaryText() {
+    fun activityTailSentinelGatesRepeatedRefreshesAndRearmsAtTheTerminalState() {
+        assertFalse(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                refreshing = true,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+        assertFalse(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                refreshing = true,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+        assertTrue(
+            activityShouldRequestLoadMore(
+                hasMore = true,
+                refreshing = false,
+                loadingMore = false,
+                loadMoreErrorCode = null
+            )
+        )
+    }
+
+    @Test
+    fun activityTailSentinelOnlyShowsLoadingForARealInFlightRequest() {
+        assertEquals(
+            ActivityLoadMoreFooterMode.Sentinel,
+            activityLoadMoreFooterMode(loadingMore = false, loadMoreErrorCode = null)
+        )
+        assertEquals(
+            ActivityLoadMoreFooterMode.Loading,
+            activityLoadMoreFooterMode(loadingMore = true, loadMoreErrorCode = null)
+        )
+        assertEquals(
+            ActivityLoadMoreFooterMode.Retry,
+            activityLoadMoreFooterMode(loadingMore = false, loadMoreErrorCode = "Network")
+        )
+    }
+
+    @Test
+    fun activityReadPrimaryContentMutedCoversConversationKinds() {
         val readThread = activityItem(key = "thread:read").copy(kind = InboxItemKind.Thread)
         val unreadThread = readThread.copy(key = "thread:unread", unreadCount = 1)
         val readChannel = activityItem(key = "channel:read")
+        val readDirectMessage = readChannel.copy(key = "dm:read", kind = InboxItemKind.DirectMessage)
+        val readMention = readChannel.copy(key = "mention:read", kind = InboxItemKind.MentionAction)
+        val readSystem = readChannel.copy(key = "system:read", kind = InboxItemKind.System)
 
         assertTrue(readThread.activityPrimaryContentMuted())
         assertEquals(false, unreadThread.activityPrimaryContentMuted())
-        assertEquals(false, readChannel.activityPrimaryContentMuted())
+        assertTrue(readChannel.activityPrimaryContentMuted())
+        assertTrue(readDirectMessage.activityPrimaryContentMuted())
+        assertTrue(readMention.activityPrimaryContentMuted())
+        assertEquals(false, readSystem.activityPrimaryContentMuted())
     }
 
     @Test
@@ -126,6 +189,41 @@ class SharedInboxPanelTest {
         assertEquals(null, unreadReply.copy(kind = InboxItemKind.Channel).toReplyThreadPrewarmMarker("server-1"))
         assertEquals(null, unreadReply.copy(threadChannelId = null).toReplyThreadPrewarmMarker("server-1"))
         assertEquals(null, unreadReply.toReplyThreadPrewarmMarker(""))
+    }
+
+    @Test
+    fun activityReplyPrewarmTailStartsAfterTheClickedRowAndContinuesTopFirst() {
+        val previous = replyActivityItem("previous")
+        val clicked = activityItem(key = "clicked")
+        val next = replyActivityItem("next")
+        val ineligibleRead = replyActivityItem("read").copy(unreadCount = 0)
+        val later = replyActivityItem("later")
+
+        val tail =
+            activityReplyThreadPrewarmTailAfterClick(
+                items = listOf(previous, clicked, next, ineligibleRead, later),
+                clickedIndex = 1,
+                serverId = "server-1"
+            )
+
+        assertEquals(
+            listOf("reply-next", "reply-later"),
+            tail.map { marker -> marker.key.threadChannelId }
+        )
+    }
+
+    @Test
+    fun activityReplyPrewarmTailDoesNotWarmBeforeAValidClick() {
+        val items = listOf(replyActivityItem("first"), replyActivityItem("second"))
+
+        assertEquals(
+            emptyList(),
+            activityReplyThreadPrewarmTailAfterClick(items, clickedIndex = -1, serverId = "server-1")
+        )
+        assertEquals(
+            emptyList(),
+            activityReplyThreadPrewarmTailAfterClick(items, clickedIndex = items.size, serverId = "server-1")
+        )
     }
 
     @Test
@@ -1111,5 +1209,17 @@ class SharedInboxPanelTest {
             latestActivityMessageId = latestActivityMessageId?.let(::MessageId),
             lastMessageAt = lastMessageAt,
             latestActivityAt = latestActivityAt
+        )
+
+    private fun replyActivityItem(key: String): InboxItem =
+        InboxItem(
+            key = "thread:$key",
+            kind = InboxItemKind.Thread,
+            channelId = ChannelId("parent-$key"),
+            channelName = "channel-$key",
+            unreadCount = 1,
+            threadChannelId = ChannelId("reply-$key"),
+            parentChannelId = ChannelId("parent-$key"),
+            parentMessageId = MessageId("message-$key")
         )
 }

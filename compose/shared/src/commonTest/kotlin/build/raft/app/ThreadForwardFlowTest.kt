@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.ForwardMessageDestination
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
@@ -9,6 +10,7 @@ import build.raft.app.data.ForwardMessageTargetKind
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import kotlin.test.Test
@@ -16,6 +18,8 @@ import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 
 class ThreadForwardFlowTest {
+    private val sourceServerId = ServerId("server-source")
+
     @Test
     fun pickerExcludesSourceConversationAndKeepsOtherDestinationKinds() {
         val source = ChannelId("channel-source")
@@ -25,6 +29,7 @@ class ThreadForwardFlowTest {
                 target("channel", ForwardMessageTargetKind.RecentChannel, ChannelId("channel-other")),
                 target("dm", ForwardMessageTargetKind.RecentDirectMessage, ChannelId("dm-other")),
                 ForwardMessageTarget(
+                    serverId = sourceServerId,
                     kind = ForwardMessageTargetKind.AgentDirectMessageCandidate,
                     id = "agent-1",
                     title = "Agent One",
@@ -34,7 +39,7 @@ class ThreadForwardFlowTest {
 
         assertEquals(
             listOf("channel", "dm", "agent-1"),
-            targets.threadForwardPickerTargets(source).map { it.id }
+            targets.threadForwardPickerTargets(sourceServerId, source).map { it.id }
         )
     }
 
@@ -46,6 +51,7 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
+                sourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
                 target = selected,
                 messageIds = listOf("message-1", "message-2"),
@@ -56,6 +62,8 @@ class ThreadForwardFlowTest {
         assertEquals(null, outcome.failureCode)
         assertEquals(1, repository.requests.size)
         val request = repository.requests.single()
+        assertEquals(sourceServerId, request.sourceServerId)
+        assertEquals(sourceServerId, request.destination.serverId)
         assertEquals(ChannelId("channel-selected"), request.targetChannelId)
         assertEquals(listOf("message-1", "message-2"), request.messageIds)
         assertEquals(ForwardMessageSendMode.Merged, request.mode)
@@ -77,6 +85,7 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
+                sourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("source"),
                 target = selected,
                 messageIds = listOf("message-1"),
@@ -92,6 +101,7 @@ class ThreadForwardFlowTest {
     fun candidateResolvingToSourceConversationIsRejectedWithoutForwardRequest() = runBlocking {
         val candidate =
             ForwardMessageTarget(
+                serverId = sourceServerId,
                 kind = ForwardMessageTargetKind.HumanDirectMessageCandidate,
                 id = "user-source",
                 title = "Source peer",
@@ -106,6 +116,7 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
+                sourceServerId = sourceServerId,
                 sourceChannelId = sourceChannelId,
                 target = candidate,
                 messageIds = listOf("message-1"),
@@ -121,6 +132,7 @@ class ThreadForwardFlowTest {
     fun candidateResolvingToDifferentConversationForwardsExactlyOnce() = runBlocking {
         val candidate =
             ForwardMessageTarget(
+                serverId = sourceServerId,
                 kind = ForwardMessageTargetKind.AgentDirectMessageCandidate,
                 id = "agent-other",
                 title = "Other agent",
@@ -135,6 +147,7 @@ class ThreadForwardFlowTest {
         val outcome =
             executeThreadForward(
                 repository = repository,
+                sourceServerId = sourceServerId,
                 sourceChannelId = ChannelId("dm-source"),
                 target = candidate,
                 messageIds = listOf("message-1"),
@@ -146,12 +159,49 @@ class ThreadForwardFlowTest {
         assertEquals(listOf(resolvedChannelId), repository.requests.map { it.targetChannelId })
     }
 
+    @Test
+    fun crossServerJointTargetUsesResolvedSourceServerProjection() = runBlocking {
+        val selected =
+            ForwardMessageTarget(
+                serverId = ServerId("server-peer"),
+                kind = ForwardMessageTargetKind.RecentChannel,
+                id = "joint-peer-projection",
+                title = "#joint-room",
+                channelId = ChannelId("joint-peer-projection"),
+                channelKind = ConversationKind.Joint,
+                jointChannelId = "joint-root"
+            )
+        val resolved =
+            ForwardMessageDestination(
+                serverId = sourceServerId,
+                channelId = ChannelId("joint-source-projection"),
+                channelKind = ConversationKind.Joint,
+                jointChannelId = "joint-root"
+            )
+        val repository = RecordingForwardRepository(resolvedDestinations = mapOf(selected.id to resolved))
+
+        val outcome =
+            executeThreadForward(
+                repository = repository,
+                sourceServerId = sourceServerId,
+                sourceChannelId = ChannelId("source-channel"),
+                target = selected,
+                messageIds = listOf("message-1"),
+                mode = ForwardMessageSendMode.Individual,
+                note = ""
+            )
+
+        assertEquals(null, outcome.failureCode)
+        assertEquals(resolved, repository.requests.single().destination)
+    }
+
     private fun target(
         id: String,
         kind: ForwardMessageTargetKind,
         channelId: ChannelId
     ): ForwardMessageTarget =
         ForwardMessageTarget(
+            serverId = sourceServerId,
             kind = kind,
             id = id,
             title = id,
@@ -162,6 +212,7 @@ class ThreadForwardFlowTest {
 
 private class RecordingForwardRepository(
     private val resolvedChannels: Map<String, ChannelId> = emptyMap(),
+    private val resolvedDestinations: Map<String, ForwardMessageDestination> = emptyMap(),
     private val forwardResults: Map<ChannelId, DataResult<Unit>> = emptyMap()
 ) : ForwardMessageTargetRepository {
     val requests = mutableListOf<ForwardMessageExecuteRequest>()
@@ -176,11 +227,31 @@ private class RecordingForwardRepository(
     ): DataResult<List<ForwardMessageTarget>> = DataResult.Empty(EmptyReason.NoMessages)
 
     override suspend fun resolveTargetChannel(
+        sourceServerId: ServerId,
         target: ForwardMessageTarget,
         allowJoin: Boolean
-    ): DataResult<ChannelId> =
-        resolvedChannels[target.id]?.let { DataResult.Content(it) }
-            ?: target.channelId?.let { DataResult.Content(it) }
+    ): DataResult<ForwardMessageDestination> =
+        resolvedDestinations[target.id]?.let { DataResult.Content(it) }
+            ?: resolvedChannels[target.id]?.let {
+                DataResult.Content(
+                    ForwardMessageDestination(
+                        serverId = target.serverId,
+                        channelId = it,
+                        channelKind = target.channelKind,
+                        jointChannelId = target.jointChannelId
+                    )
+                )
+            }
+            ?: target.channelId?.let {
+                DataResult.Content(
+                    ForwardMessageDestination(
+                        serverId = target.serverId,
+                        channelId = it,
+                        channelKind = target.channelKind,
+                        jointChannelId = target.jointChannelId
+                    )
+                )
+            }
             ?: DataResult.Error(ScreenError(code = "missing_channel", retryable = false))
 
     override suspend fun forwardMessages(request: ForwardMessageExecuteRequest): DataResult<Unit> {

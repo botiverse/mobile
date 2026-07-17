@@ -957,7 +957,7 @@ class SlockAppShellTest {
     fun homeServerSwitchPremeasureRampsInSmallFrameSizedSteps() {
         assertEquals(9, homeListNextServerSwitchBeyondBoundsItemCount(current = 6, target = 24))
         assertEquals(15, homeListNextServerSwitchBeyondBoundsItemCount(current = 12, target = 15))
-        assertEquals(6, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
+        assertEquals(4, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
     }
 
     @Test
@@ -2610,6 +2610,70 @@ class SlockAppShellTest {
             )
 
         assertNull(visible)
+        assertEquals(listOf("visible_conversation"), suppressed)
+    }
+
+    @Test
+    fun notificationPushBannerSuppressesTheVisibleThreadRouteIdentity() {
+        val event =
+            NotificationPushReceived(
+                serverId = ServerId("server-1"),
+                kind = ConversationKind.Thread,
+                threadId = ChannelId("reply-stream"),
+                parentChannelId = ChannelId("parent-channel"),
+                parentMessageId = MessageId("parent-message"),
+                messageId = MessageId("reply-1"),
+                title = "#home-fixes · Thread",
+                body = "Ada: visible reply",
+                tag = "message:reply-1"
+            )
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "reply-stream",
+                        aliases = setOf("reply-stream", "parent-message"),
+                        conversationKind = ConversationKind.Thread,
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "home-fixes",
+                        parentChannelId = "parent-channel",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+        val visibleRoute =
+            assertNotNull(
+                slockNotificationPushBannerOrNull(
+                    event = event,
+                    currentServerId = "server-1",
+                    visibleConversationKey = null,
+                    conversationDirectory = directory
+                )
+            ).conversation.resolveThreadRouteIdentity()
+        val suppressed = mutableListOf<String>()
+
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event = event,
+                currentServerId = "server-1",
+                visibleConversationKey = null,
+                visibleRouteIdentity = visibleRoute,
+                conversationDirectory = directory,
+                onSuppressed = suppressed::add
+            )
+
+        assertNull(banner)
         assertEquals(listOf("visible_conversation"), suppressed)
     }
 

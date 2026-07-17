@@ -1122,8 +1122,8 @@
     <string name="channel_create_title">创建频道</string>
     <string name="channel_create_label_name">名称</string>
     <string name="channel_create_placeholder_name">例如：ai-research</string>
-    <string name="channel_create_hint_name_format">请以英文字母开头，仅使用字母、数字、连字符或下划线。</string>
-    <string name="channel_create_error_name_format">频道名必须以英文字母开头，且只能包含字母、数字、连字符或下划线。</string>
+    <string name="channel_create_hint_name_format">请以任意语言的字母开头，可使用任意语言的字母、数字、连字符或下划线，最多 32 个字符。</string>
+    <string name="channel_create_error_name_format">频道名必须以任意语言的字母开头，且只能包含字母、数字、连字符或下划线，最多 32 个字符。</string>
     <string name="channel_create_label_description">描述</string>
     <string name="channel_create_placeholder_description">这个频道用于讨论什么？</string>
     <string name="channel_create_label_visibility">可见性</string>

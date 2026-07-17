@@ -300,7 +300,7 @@ internal fun buildSlockRichTextDocumentFromMarkdownPlan(
                         id = token.id,
                         kind = SlockRichTextInlineKind.SlockRef,
                         range = token.range.toRichTextRange(),
-                        text = threadMarkdownTagDisplayLabel(tag.label),
+                        text = token.resolvedLabel ?: threadMarkdownTagDisplayLabel(tag.label),
                         sourceText = content.substring(token.range),
                         chrome =
                             tag.toRichTextChromeKind(

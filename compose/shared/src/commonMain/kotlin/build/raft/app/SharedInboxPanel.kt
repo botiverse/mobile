@@ -679,17 +679,9 @@ private fun SharedActivityList(
                 onIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(markers))
             }
     }
-    LaunchedEffect(snapshot.server.id, snapshot.items) {
-        val orderedMarkers =
-            snapshot.items.mapNotNull { item ->
-                item.toReplyThreadPrewarmMarker(snapshot.server.id.value)
-            }
-        onIntent(SharedActivityIntent.PrewarmActivityTail(orderedMarkers))
-    }
     DisposableEffect(listState) {
         onDispose {
-            latestOnIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(emptySet()))
-            latestOnIntent(SharedActivityIntent.PrewarmActivityTail(emptyList()))
+            latestOnIntent(SharedActivityIntent.DetachPrewarmViewport)
         }
     }
     val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
@@ -719,9 +711,16 @@ private fun SharedActivityList(
                     captureMenuAnchor = !listState.isScrollInProgress,
                     onOpen = {
                         selectedItemKey = item.key
-                        if (item.unreadCount > 0) {
-                            onIntent(SharedActivityIntent.MarkRead(item))
-                        }
+                        onIntent(
+                            SharedActivityIntent.PrewarmActivityTail(
+                                activityReplyThreadPrewarmTailAfterClick(
+                                    items = snapshot.items,
+                                    clickedIndex = index,
+                                    serverId = snapshot.server.id.value
+                                )
+                            )
+                        )
+                        item.activityOpenReadIntent()?.let(onIntent)
                         onOpenItem(item)
                     },
                     onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
@@ -735,6 +734,7 @@ private fun SharedActivityList(
                 item(key = "activity_load_more") {
                     val shouldRequest = activityShouldRequestLoadMore(
                         hasMore = snapshot.hasMore,
+                        refreshing = refreshing,
                         loadingMore = loadingMore,
                         loadMoreErrorCode = loadMoreErrorCode
                     )
@@ -742,17 +742,20 @@ private fun SharedActivityList(
                     // more portable signal than observing LazyList layoutInfo: the latter did not
                     // emit on the affected Kuikly/Android build, leaving the user at the end of
                     // the first page with neither a request nor failure feedback (task #539).
-                    // Keep a stable effect key so appending a page cannot immediately cascade into
-                    // another request before the footer has actually left and re-entered view.
-                    LaunchedEffect(Unit) {
+                    // Keep page appends stable so one composed footer cannot cascade through every
+                    // remaining page. A refresh is different: it replaces the appended tail with
+                    // the first page while this keyed footer can remain composed. Re-key on the
+                    // refresh lifecycle so its terminal transition can request the lost tail again.
+                    LaunchedEffect(refreshing) {
                         if (shouldRequest) {
                             latestOnIntent(SharedActivityIntent.LoadMore)
                         }
                     }
-                    if (loadMoreErrorCode != null) {
-                        SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
-                    } else {
-                        SharedActivityLoadingMoreRow()
+                    when (activityLoadMoreFooterMode(loadingMore, loadMoreErrorCode)) {
+                        ActivityLoadMoreFooterMode.Sentinel -> Spacer(Modifier.fillMaxWidth().height(1.dp))
+                        ActivityLoadMoreFooterMode.Loading -> SharedActivityLoadingMoreRow()
+                        ActivityLoadMoreFooterMode.Retry ->
+                            SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
                     }
                 }
             }
@@ -812,6 +815,29 @@ private fun SharedActivityList(
             )
         }
     }
+}
+
+/**
+ * Activity prewarm is click-progressive: consuming row N arms the canonical tail
+ * from N+1 onward. The store owns the serialized chain, so opening the selected
+ * Thread can detach this viewport without cancelling the outer warm work.
+ */
+internal fun activityReplyThreadPrewarmTailAfterClick(
+    items: List<InboxItem>,
+    clickedIndex: Int,
+    serverId: String
+): List<ActivityReplyThreadPrewarmMarker> {
+    if (clickedIndex !in items.indices) return emptyList()
+    return items
+        .drop(clickedIndex + 1)
+        .mapNotNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
+}
+
+internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
+    // The destination store acknowledges the stable channel/thread identity after it is loaded
+    // and visible. Activity rows can reorder while navigation is in flight, so the list must not
+    // infer or write read state from its transient presentation snapshot.
+    return null
 }
 
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
@@ -1002,7 +1028,7 @@ private fun SharedActivityRow(
 }
 
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
-    kind == InboxItemKind.Thread && unreadCount == 0
+    kind != InboxItemKind.System && unreadCount == 0
 
 internal fun InboxItem.activityDoneClickIdentity(): String = "activity-done:$key"
 
@@ -1484,9 +1510,26 @@ internal fun InboxItem.activityFooterSlots(
 
 internal fun activityShouldRequestLoadMore(
     hasMore: Boolean,
+    refreshing: Boolean,
     loadingMore: Boolean,
     loadMoreErrorCode: String?
-): Boolean = hasMore && !loadingMore && loadMoreErrorCode == null
+): Boolean = hasMore && !refreshing && !loadingMore && loadMoreErrorCode == null
+
+internal enum class ActivityLoadMoreFooterMode {
+    Sentinel,
+    Loading,
+    Retry
+}
+
+internal fun activityLoadMoreFooterMode(
+    loadingMore: Boolean,
+    loadMoreErrorCode: String?
+): ActivityLoadMoreFooterMode =
+    when {
+        loadMoreErrorCode != null -> ActivityLoadMoreFooterMode.Retry
+        loadingMore -> ActivityLoadMoreFooterMode.Loading
+        else -> ActivityLoadMoreFooterMode.Sentinel
+    }
 
 private fun LazyListState.isActivityNearTop(): Boolean =
     firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
