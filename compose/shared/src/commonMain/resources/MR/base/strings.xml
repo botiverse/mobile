@@ -1168,6 +1168,7 @@
     <string name="app_update_install">Install</string>
     <string name="app_update_unavailable">Update information is temporarily unavailable.</string>
     <string name="app_update_version_summary">%1$s → %2$s</string>
+    <string name="app_update_skip_version">Skip this version</string>
     <string name="home_notification_action_download">Download</string>
     <string name="home_notification_action_downloading">Downloading</string>
     <string name="home_notification_action_install">Install</string>

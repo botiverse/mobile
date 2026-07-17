@@ -8,6 +8,17 @@ import kotlin.test.assertTrue
 
 class AppUpdatePageTest {
     @Test
+    fun skippedVersionSuppressesOnlyMatchingHandsBuild() {
+        val version160 =
+            SharedSettingsUpdateCheckSnapshot(
+                updateAvailable = true,
+                latestVersionCode = 1_060_000L
+            )
+        assertFalse(version160.withSkippedAppUpdateVersionApplied(1_060_000L).updateAvailable)
+        assertTrue(version160.withSkippedAppUpdateVersionApplied(1_061_000L).updateAvailable)
+    }
+
+    @Test
     fun `release notes url requests target Hands version in selected language`() {
         assertEquals(
             "https://quiver.oranix.io/notes/raft-android?version_code=1060000&lang=en",

@@ -2985,40 +2985,25 @@ private fun HomeAppUpdateBanner(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.SurfaceCream)
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            modifier = Modifier.size(32.dp).background(SlockColor.BrandYellow),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon(
-                SlockLucideIconName.CircleArrowUp,
-                modifier = Modifier.size(17.dp),
-                color = "#FF000000"
-            )
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                text = notification.title.ifBlank { notification.body },
-                style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (notification.body.isNotBlank() && notification.title.isNotBlank()) {
-                Text(
-                    text = notification.body,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.68f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+        SlockLucideIcon(
+            SlockLucideIconName.CircleArrowUp,
+            modifier = Modifier.size(16.dp),
+            color = "#FF000000"
+        )
+        Text(
+            text = notification.title.ifBlank { notification.body },
+            modifier = Modifier.weight(1f),
+            style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 15.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Text(
             text = stringResource(MR.strings.app_update_view),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),

@@ -15,9 +15,12 @@ import build.raft.app.data.KuiklyAppUpdateEvents
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -117,6 +120,11 @@ private fun AppUpdateScreen() {
             actionRunning = actionRunning,
             errorCode = errorCode,
             onRetry = ::refresh,
+            onSkipVersion = {
+                snapshot?.latestVersionCode?.let(::saveSkippedAppUpdateVersionCode)
+                appUpdateEvents.notifyStatusChanged()
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+            },
             onAction = {
                 scope.launch {
                     actionRunning = true
@@ -149,6 +157,7 @@ internal fun AppUpdateSummary(
     actionRunning: Boolean,
     errorCode: String?,
     onRetry: () -> Unit,
+    onSkipVersion: () -> Unit,
     onAction: () -> Unit
 ) {
     val currentVersion = snapshot?.currentVersionLabel.orEmpty().ifBlank { "-" }
@@ -213,6 +222,14 @@ internal fun AppUpdateSummary(
             )
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        if (snapshot?.latestVersionCode?.let { it > 0L } == true) {
+            Text(
+                text = stringResource(MR.strings.app_update_skip_version),
+                modifier = Modifier.align(Alignment.End).clickable(onClick = onSkipVersion).padding(vertical = 4.dp),
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+        }
     }
 }
 
@@ -251,6 +268,7 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
             actionRunning = false,
             errorCode = null,
             onRetry = {},
+            onSkipVersion = {},
             onAction = {}
         )
         Column(
@@ -290,6 +308,30 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
         }
     }
 }
+
+private const val SkippedAppUpdateVersionCodeKey = "appUpdate.skippedVersionCode"
+
+internal fun skippedAppUpdateVersionCode(
+    store: SharedPreferenceStore = slockSharedPreferenceStore()
+): Long = store.getString(SkippedAppUpdateVersionCodeKey)?.toLongOrNull() ?: 0L
+
+internal fun saveSkippedAppUpdateVersionCode(
+    versionCode: Long,
+    store: SharedPreferenceStore = slockSharedPreferenceStore()
+) {
+    if (versionCode > 0L) {
+        store.putString(SkippedAppUpdateVersionCodeKey, versionCode.toString())
+    }
+}
+
+internal fun SharedSettingsUpdateCheckSnapshot.withSkippedAppUpdateVersionApplied(
+    skippedVersionCode: Long = skippedAppUpdateVersionCode()
+): SharedSettingsUpdateCheckSnapshot =
+    if (latestVersionCode > 0L && latestVersionCode == skippedVersionCode) {
+        copy(updateAvailable = false)
+    } else {
+        this
+    }
 
 internal fun appUpdatePrimaryActionLabel(
     snapshot: SharedSettingsUpdateCheckSnapshot?,

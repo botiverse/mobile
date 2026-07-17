@@ -2520,7 +2520,15 @@ internal fun SlockAppShellContent(
                 api = NetworkSlockHomeApi(appShellNetworkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
-                appUpdateStatusProvider = { settingsCapabilities.checkQuiverUpdateStatus() },
+                appUpdateStatusProvider = {
+                    when (val result = settingsCapabilities.checkQuiverUpdateStatus()) {
+                        is DataResult.Content ->
+                            DataResult.Content(result.data.withSkippedAppUpdateVersionApplied())
+                        is DataResult.Empty -> result
+                        is DataResult.Error -> result
+                        is DataResult.NoPermission -> result
+                    }
+                },
                 memberRepository = memberRepository,
                 serverMembersStore = appShellServerMembersStore,
                 parseHome = { payload, session ->
