@@ -17177,40 +17177,46 @@ private fun ThreadMessageMenuChrome(
     onReact: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .padding(end = 4.dp, bottom = 4.dp)
-            .width(ThreadMessageMenuWidth)
-    ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = 4f, y = 4f)
-                .background(SlockColor.ShadowBlack)
+    // task #11 (artin: 统一两套菜单): the action rows render through the shared
+    // SlockBrutalDropdownMenu surface — press wash, row metrics and icon specs
+    // come from the one component instead of a hand-rolled Button stack. The
+    // reaction bar rides in the surface's header slot; group boundaries map to
+    // dividerBeforeIds.
+    val menuItems = actions.mapIndexed { index, action ->
+        SlockBrutalDropdownMenuItem(
+            id = index.toString(),
+            label = action.label.localized(),
+            icon = action.icon,
+            enabled = action.enabled
         )
-        Column(
-            modifier = Modifier
-                .width(ThreadMessageMenuWidth)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .slockFloatingContentClickTarget()
-        ) {
-            if (showReactionActions) {
-                ThreadMessageReactionRow(
-                    reactionAtlasImage = reactionAtlasImage,
-                    onReact = onReact
-                )
-                ThreadMessageMenuDivider()
-            }
-            actions.forEachIndexed { index, action ->
-                val previousGroup = actions.getOrNull(index - 1)?.group
-                if (index > 0 && previousGroup != action.group) {
-                    ThreadMessageMenuDivider()
-                }
-                ThreadMessageMenuItem(action)
-            }
-        }
     }
+    val groupDividerIds = actions.mapIndexedNotNull { index, action ->
+        val previousGroup = actions.getOrNull(index - 1)?.group
+        if (index > 0 && previousGroup != action.group) index.toString() else null
+    }.toSet()
+    SlockBrutalDropdownMenuSurface(
+        items = menuItems,
+        onSelect = { id -> actions.getOrNull(id.toIntOrNull() ?: -1)?.let { if (it.enabled) it.onClick() } },
+        modifier = modifier,
+        width = ThreadMessageMenuWidth,
+        // Keep the message menu's 44dp mobile tap target; visual language
+        // (press wash, icon box, label style) is the shared row's.
+        rowHeight = 44.dp,
+        shadowOffset = 4.dp,
+        showDividers = false,
+        dividerBeforeIds = groupDividerIds,
+        headerContent =
+            if (showReactionActions) {
+                {
+                    ThreadMessageReactionRow(
+                        reactionAtlasImage = reactionAtlasImage,
+                        onReact = onReact
+                    )
+                }
+            } else {
+                null
+            }
+    )
 }
 
 @Composable
@@ -17382,43 +17388,6 @@ private fun ThreadTextReactionGlyph(
             overflow = TextOverflow.Visible
         )
     }
-}
-
-@Composable
-private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
-    Button(
-        onClick = action.onClick,
-        enabled = action.enabled,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 44.dp)
-            .padding(horizontal = 12.dp, vertical = 9.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            SlockLucideIcon(
-                action.icon,
-                modifier = Modifier.size(14.dp),
-                color = if (action.enabled) "#FF000000" else "#FF6B625F"
-            )
-            Text(
-                text = action.label.localized(),
-                style = (if (action.enabled) SlockType.Button else SlockType.Body)
-                    .copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = if (action.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThreadMessageMenuDivider() {
-    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
 }
 
 @Composable

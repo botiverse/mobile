@@ -144,6 +144,10 @@ internal fun SlockBrutalDropdownMenuSurface(
     shadowOffset: Dp = SlockBrutalDropdownMenuShadowOffsetValue.dp,
     showDividers: Boolean = true,
     dividerBeforeIds: Set<String> = emptySet(),
+    // Optional card header rendered above the rows inside the same border/shadow
+    // (task #11: the message long-press menu's reaction bar), separated from the
+    // rows by a heavy divider.
+    headerContent: (@Composable () -> Unit)? = null,
     onDismiss: () -> Unit = {}
 ) {
     Box(
@@ -167,6 +171,10 @@ internal fun SlockBrutalDropdownMenuSurface(
                 // in by the stroke to match (task #370).
                 .padding(SlockStroke.Default)
         ) {
+            headerContent?.let { header ->
+                header()
+                Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            }
             if (items.isEmpty()) {
                 SlockBrutalDropdownMenuEmptyRow(rowHeight = rowHeight)
             } else {
