@@ -1487,12 +1487,17 @@ private fun AuthLegalNotice(
                 color = SlockColor.TextBlack,
                 modifier = Modifier.clickable { onOpenTerms() }
             )
+            // Kuikly Text trims leading/trailing whitespace, so the " and "
+            // resource rendered jammed ("Serviceand Privacy", #962). Explicit
+            // spacers restore react's word gaps, locale-safe.
+            Spacer(Modifier.width(4.dp))
             Text(
                 stringResource(MR.strings.auth_legal_notice_connector),
                 style = AuthLegalNoticeTextStyle,
                 color = AuthLegalNoticeTextColor,
                 modifier = Modifier.authPageStaticTextFocus()
             )
+            Spacer(Modifier.width(4.dp))
             Text(
                 stringResource(MR.strings.auth_link_privacy_policy),
                 style = AuthLegalNoticeLinkStyle,
