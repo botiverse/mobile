@@ -2520,7 +2520,15 @@ internal fun SlockAppShellContent(
                 api = NetworkSlockHomeApi(appShellNetworkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
-                appUpdateStatusProvider = { settingsCapabilities.checkQuiverUpdateStatus() },
+                appUpdateStatusProvider = {
+                    when (val result = settingsCapabilities.checkQuiverUpdateStatus()) {
+                        is DataResult.Content ->
+                            DataResult.Content(result.data.withSkippedAppUpdateVersionApplied())
+                        is DataResult.Empty -> result
+                        is DataResult.Error -> result
+                        is DataResult.NoPermission -> result
+                    }
+                },
                 memberRepository = memberRepository,
                 serverMembersStore = appShellServerMembersStore,
                 parseHome = { payload, session ->
@@ -4356,29 +4364,8 @@ internal fun SlockAppShellContent(
                                 onNotificationDismiss = { id ->
                                     homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
                                 },
-                                onAppUpdateInstall = {
-                                    appShellCoroutineScope.launch {
-                                        when (val result = settingsCapabilities.installQuiverUpdate()) {
-                                            is DataResult.Content -> {
-                                                val update = result.data
-                                                update.toSharedHomeAppUpdateNotification()?.let { notification ->
-                                                    homeShellStore.dispatch(
-                                                        SharedHomeShellIntent.Home(
-                                                            SharedHomeIntent.UpsertNotification(notification)
-                                                        )
-                                                    )
-                                                }
-                                                update.detail.takeIf { it.isNotBlank() }?.let(bridge::log)
-                                                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
-                                            }
-                                            is DataResult.Empty ->
-                                                bridge.toast("App update is unavailable")
-                                            is DataResult.Error ->
-                                                bridge.toast(result.error.settingsUserFacingMessage())
-                                            is DataResult.NoPermission ->
-                                                bridge.toast(result.blocker.settingsUserFacingMessage())
-                                        }
-                                    }
+                                onAppUpdateOpen = {
+                                    pager.openAppUpdatePage(storeScope)
                                 },
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
@@ -9488,8 +9475,18 @@ internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
         } catch (_: Throwable) {
             AppLocale.Default.kmmResourceLocaleTag
         }
+    return sharedSettingsReleaseNotesUrlForLocale(
+        versionCode = versionCode,
+        localeTag = localeTag
+    )
+}
+
+internal fun sharedSettingsReleaseNotesUrlForLocale(
+    versionCode: String,
+    localeTag: String?
+): String {
     val baseUrl = "https://quiver.oranix.io/notes/${slockReleaseNotesAppSlug()}?version_code=$versionCode"
-    return localeTag?.let { "$baseUrl&lang=$it" } ?: baseUrl
+    return localeTag?.takeIf { it.isNotBlank() }?.let { "$baseUrl&lang=$it" } ?: baseUrl
 }
 
 @Composable
@@ -14079,7 +14076,7 @@ private fun SharedHomeScreen(
     prefersChineseCommunity: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
-    onAppUpdateInstall: (() -> Unit)? = null,
+    onAppUpdateOpen: (() -> Unit)? = null,
     externalFocusLossDismissEpoch: Int = 0,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
@@ -14390,8 +14387,8 @@ private fun SharedHomeScreen(
                 },
                 onNotificationView = { notification ->
                     when {
-                        notification.id.isAppUpdateHomeNotificationId() && onAppUpdateInstall != null ->
-                            onAppUpdateInstall()
+                        notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
+                            onAppUpdateOpen()
                         notification.id.isMachineHomeNotificationId() ->
                             onOpenComputers()
                         notification.targetId?.startsWith("http://") == true ||

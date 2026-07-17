@@ -788,6 +788,40 @@ internal fun HomeNotificationCenterVisualScreen() {
     }
 }
 
+@Composable
+internal fun HomeAppUpdateBannerVisualScreen() {
+    Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+        HomeTitlebar(
+            serverName = "Raft Design",
+            hasOtherServerUnread = false,
+            notifications = emptyList(),
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+        HomeAppUpdateBanner(
+            notification =
+                SlockHomeNotificationItem(
+                    id = APP_UPDATE_HOME_NOTIFICATION_ID,
+                    title = "Raft 1.6.0 is available",
+                    body = "See what's new, then download and install the update.",
+                    actionLabel = "View",
+                    kind = SlockHomeNotificationKind.Info,
+                    icon = SlockHomeNotificationIcon.CircleArrowUp
+                ),
+            onClick = {}
+        )
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(16.dp)) {
+            Text(
+                text = "HOME",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+        }
+    }
+}
+
 private fun visualHomeNotifications(): List<SlockHomeNotificationItem> =
     listOf(
         SlockHomeNotificationItem(
@@ -1156,7 +1190,8 @@ internal fun SlockStructuralHomeShell(
         contentRefreshing = contentRefreshing,
         pullRefreshing = pullRefreshing
     )
-    val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
+    val appUpdateBanner = remember(notifications) { notifications.homeAppUpdateBannerNotification() }
+    val visibleNotifications = remember(notifications) { notifications.nonAppUpdateHomeNotifications() }
     var notificationCenterExpanded by remember(currentServerId) { mutableStateOf(false) }
     LaunchedEffect(visibleNotifications.size) {
         if (visibleNotifications.isEmpty()) {
@@ -1244,6 +1279,12 @@ internal fun SlockStructuralHomeShell(
                     )
                 }
                 SlockAppShellBodyTopBanner()
+                appUpdateBanner?.let { update ->
+                    HomeAppUpdateBanner(
+                        notification = update,
+                        onClick = { onNotificationView(update) }
+                    )
+                }
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val targetHomeBeyondBoundsItemCount =
                         homeListBeyondBoundsItemCount(
@@ -2928,6 +2969,51 @@ internal fun List<SlockHomeNotificationItem>.visibleHomeNotifications(): List<Sl
     filter { notification ->
         notification.title.isNotBlank() || notification.body.isNotBlank()
     }
+
+internal fun List<SlockHomeNotificationItem>.homeAppUpdateBannerNotification(): SlockHomeNotificationItem? =
+    visibleHomeNotifications().firstOrNull { it.id == APP_UPDATE_HOME_NOTIFICATION_ID }
+
+internal fun List<SlockHomeNotificationItem>.nonAppUpdateHomeNotifications(): List<SlockHomeNotificationItem> =
+    visibleHomeNotifications().filterNot { it.id == APP_UPDATE_HOME_NOTIFICATION_ID }
+
+@Composable
+private fun HomeAppUpdateBanner(
+    notification: SlockHomeNotificationItem,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceCream)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.CircleArrowUp,
+            modifier = Modifier.size(16.dp),
+            color = "#FF000000"
+        )
+        Text(
+            text = notification.title.ifBlank { notification.body },
+            modifier = Modifier.weight(1f),
+            style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 15.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = stringResource(MR.strings.app_update_view),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+        SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(16.dp), color = "#FF000000")
+    }
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+}
 
 internal fun List<SlockHomeNotificationItem>.homeNotificationTriggerIconName(): SlockLucideIconName =
     visibleHomeNotifications()

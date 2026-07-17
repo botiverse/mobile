@@ -159,7 +159,7 @@ internal fun releaseNotesSanitizeVersionCode(value: String): String =
     value.trim().takeIf { versionCode -> versionCode.all(Char::isDigit) }.orEmpty()
 
 @Composable
-private fun ReleaseNotesWebViewBody(versionCode: String) {
+internal fun ReleaseNotesWebViewBody(versionCode: String) {
     val loadingMessage = stringResource(MR.strings.release_notes_loading)
     if (versionCode.isBlank()) {
         ReleaseNotesCenteredNotice(loadingMessage)
@@ -275,7 +275,7 @@ internal fun releaseNotesWebViewFrameIsReady(
 ): Boolean = positionY > 0f && width > 0 && height > 0
 
 @Composable
-private fun ReleaseNotesCenteredNotice(message: String) {
+internal fun ReleaseNotesCenteredNotice(message: String) {
     Box(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
         contentAlignment = Alignment.Center

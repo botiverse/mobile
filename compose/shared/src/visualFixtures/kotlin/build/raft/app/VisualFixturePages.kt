@@ -1,10 +1,15 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import build.raft.app.base.BasePager
+import build.raft.app.data.AppLocale
+import build.raft.app.data.stringDescLocaleType
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 @Page("compose_home_titlebar_visual", supportInLocal = true)
 internal class ComposeHomeTitlebarVisualPage : BasePager() {
@@ -65,6 +70,40 @@ internal class ComposeHomeNotificationCenterVisualPage : BasePager() {
         super.willInit()
         setContent { HomeNotificationCenterVisualScreen() }
     }
+}
+
+@Page("compose_home_app_update_banner_visual", supportInLocal = true)
+internal class ComposeHomeAppUpdateBannerVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeAppUpdateBannerVisualScreen() }
+    }
+}
+
+@Page("compose_app_update_details_visual", supportInLocal = true)
+internal class ComposeAppUpdateDetailsVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AppUpdateDetailsVisualScreen() }
+    }
+}
+
+@Page("compose_app_update_details_zh_visual", supportInLocal = true)
+internal class ComposeAppUpdateDetailsZhVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AppUpdateDetailsChineseVisualContent() }
+    }
+}
+
+@Composable
+private fun AppUpdateDetailsChineseVisualContent() {
+    val previousLocaleType = remember { StringDesc.localeType }
+    StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
+    DisposableEffect(Unit) {
+        onDispose { StringDesc.localeType = previousLocaleType }
+    }
+    AppUpdateDetailsVisualScreen(chinese = true)
 }
 
 @Page("compose_thread_files_visual", supportInLocal = true)

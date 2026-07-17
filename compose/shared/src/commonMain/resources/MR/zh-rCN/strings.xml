@@ -1160,6 +1160,15 @@
     <string name="home_notification_center_item_count_many">%1$d 条</string>
     <string name="home_notification_app_update_title">有可用的应用更新</string>
     <string name="home_notification_app_update_body">当前版本：%1$s；最新版本：%2$s。</string>
+    <string name="app_update_view">查看</string>
+    <string name="app_update_retry">重试</string>
+    <string name="app_update_working">处理中...</string>
+    <string name="app_update_download">下载</string>
+    <string name="app_update_downloading">下载中</string>
+    <string name="app_update_install">安装</string>
+    <string name="app_update_unavailable">暂时无法获取更新信息。</string>
+    <string name="app_update_version_summary">%1$s → %2$s</string>
+    <string name="app_update_skip_version">跳过此版本</string>
     <string name="home_notification_action_download">下载</string>
     <string name="home_notification_action_downloading">下载中</string>
     <string name="home_notification_action_install">安装</string>

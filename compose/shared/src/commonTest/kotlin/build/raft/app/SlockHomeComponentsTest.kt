@@ -33,6 +33,20 @@ import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
     @Test
+    fun appUpdateNotificationMovesToDedicatedBanner() {
+        val update =
+            SlockHomeNotificationItem(
+                id = build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID,
+                title = "Update available"
+            )
+        val machine = SlockHomeNotificationItem(id = "machine-offline:1", title = "Offline")
+        val notifications = listOf(machine, update)
+
+        assertEquals(update, notifications.homeAppUpdateBannerNotification())
+        assertEquals(listOf(machine), notifications.nonAppUpdateHomeNotifications())
+    }
+
+    @Test
     fun homeSearchErrorDisplayUsesUnifiedRetryModel() {
         val serverError = sharedHomeSearchErrorDisplay("server_unavailable")
 
