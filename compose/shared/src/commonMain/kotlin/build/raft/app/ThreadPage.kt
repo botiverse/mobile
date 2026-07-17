@@ -10004,7 +10004,7 @@ private fun ThreadPageContent(
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
-    composerSendKeyEnabled: Boolean = true,
+    composerSendKeyEnabled: Boolean = false,
     longMessageCollapseEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
@@ -11044,7 +11044,7 @@ private fun ThreadComposerRoute(
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
-    composerSendKeyEnabled: Boolean = true,
+    composerSendKeyEnabled: Boolean = false,
     onKeyboardHeightChange: (Float) -> Unit
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
@@ -11090,7 +11090,7 @@ private fun ThreadComposerContentWithSuggestions(
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {},
-    composerSendKeyEnabled: Boolean = true,
+    composerSendKeyEnabled: Boolean = false,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp
