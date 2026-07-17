@@ -167,43 +167,52 @@ static NSString *SlockBridgeGitCommit(void) {
 }
 
 static NSDictionary *SlockDiagnosticsCurrentEnvironmentAbout(void) {
-    NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
-    NSString *version = SlockBridgeString(info[@"CFBundleShortVersionString"]);
-    NSString *build = SlockBridgeString(info[@"CFBundleVersion"]);
-    NSString *gitCommit = SlockBridgeGitCommit();
-    UIDevice *device = UIDevice.currentDevice;
-    UIScreen *screen = UIScreen.mainScreen;
-    CGRect bounds = screen.bounds;
-    CGFloat scale = screen.scale;
-    NSString *contentSizeCategory = @"--";
-    if (@available(iOS 10.0, *)) {
-        contentSizeCategory = SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory).length > 0
-            ? SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory)
-            : @"--";
-    }
-    return @{
-        @"appName" : SlockBridgeString(info[@"CFBundleDisplayName"]).length > 0 ? SlockBridgeString(info[@"CFBundleDisplayName"]) : @"Raft",
-        @"versionLabel" : version,
-        @"versionCodeLabel" : build,
-        @"buildLabel" : build,
-        @"sourceLabel" : gitCommit.length > 0 ? gitCommit : @"unknown",
-        @"packageName" : SlockBridgeString(NSBundle.mainBundle.bundleIdentifier),
-        @"buildTime" : SlockBridgeBuildTime(),
-        @"gitCommit" : gitCommit,
-        @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
-        @"modelLabel" : device.model ?: @"--",
-        @"platformLabel" : [NSString stringWithFormat:@"iOS %@", device.systemVersion ?: @""],
-        @"sdkLabel" : @"--",
-        @"installTimeLabel" : @"--",
-        @"screenLabel" : [NSString stringWithFormat:@"%.0fx%.0f pt @%.0fx", bounds.size.width, bounds.size.height, scale],
-        @"densityLabel" : [NSString stringWithFormat:@"@%.0fx", scale],
-        @"fontScaleLabel" : contentSizeCategory,
-        @"sessionStatusLabel" : @"Not wired",
-        @"signedInUserLabel" : @"--",
-        @"selectedServerLabel" : @"--",
-        @"socketStatusLabel" : [SlockIosRealtimeHost shared].statusLabel,
-        @"notificationStatusLabel" : @"Notifications unsupported"
+    __block NSDictionary *about = nil;
+    dispatch_block_t collect = ^{
+        NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
+        NSString *version = SlockBridgeString(info[@"CFBundleShortVersionString"]);
+        NSString *build = SlockBridgeString(info[@"CFBundleVersion"]);
+        NSString *gitCommit = SlockBridgeGitCommit();
+        UIDevice *device = UIDevice.currentDevice;
+        UIScreen *screen = UIScreen.mainScreen;
+        CGRect bounds = screen.bounds;
+        CGFloat scale = screen.scale;
+        NSString *contentSizeCategory = @"--";
+        if (@available(iOS 10.0, *)) {
+            contentSizeCategory = SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory).length > 0
+                ? SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory)
+                : @"--";
+        }
+        about = @{
+            @"appName" : SlockBridgeString(info[@"CFBundleDisplayName"]).length > 0 ? SlockBridgeString(info[@"CFBundleDisplayName"]) : @"Raft",
+            @"versionLabel" : version,
+            @"versionCodeLabel" : build,
+            @"buildLabel" : build,
+            @"sourceLabel" : gitCommit.length > 0 ? gitCommit : @"unknown",
+            @"packageName" : SlockBridgeString(NSBundle.mainBundle.bundleIdentifier),
+            @"buildTime" : SlockBridgeBuildTime(),
+            @"gitCommit" : gitCommit,
+            @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
+            @"modelLabel" : device.model ?: @"--",
+            @"platformLabel" : [NSString stringWithFormat:@"iOS %@", device.systemVersion ?: @""],
+            @"sdkLabel" : @"--",
+            @"installTimeLabel" : @"--",
+            @"screenLabel" : [NSString stringWithFormat:@"%.0fx%.0f pt @%.0fx", bounds.size.width, bounds.size.height, scale],
+            @"densityLabel" : [NSString stringWithFormat:@"@%.0fx", scale],
+            @"fontScaleLabel" : contentSizeCategory,
+            @"sessionStatusLabel" : @"Not wired",
+            @"signedInUserLabel" : @"--",
+            @"selectedServerLabel" : @"--",
+            @"socketStatusLabel" : [SlockIosRealtimeHost shared].statusLabel,
+            @"notificationStatusLabel" : @"Notifications unsupported"
+        };
     };
+    if ([NSThread isMainThread]) {
+        collect();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), collect);
+    }
+    return about ?: @{};
 }
 
 static BOOL SlockBridgeBool(id value) {
