@@ -22,6 +22,18 @@ on:
         description: "Stamp run_case id — when set, evidence + verdict report back to Stamp"
         required: false
         default: ""
+      # Pinned-bits verification (artin: bug-verify runs must test the EXACT
+      # package): apk_run_id reuses another run's qa-acceptance-apk artifact;
+      # apk_url tests a downloadable APK (e.g. the Hands link). Either one
+      # skips the build job entirely. Branch builds use plain --ref dispatch.
+      apk_run_id:
+        description: "Reuse the qa-acceptance-apk artifact from this workflow run id (skips build)"
+        required: false
+        default: ""
+      apk_url:
+        description: "Direct APK download URL to test (skips build)"
+        required: false
+        default: ""
 env:
   # Login smoke: the default goal for pushes / empty dispatch inputs.
   DEFAULT_GOAL: >-
@@ -33,6 +45,7 @@ env:
 jobs:
   build:
     name: Build debug APK
+    if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
@@ -130,6 +143,8 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     needs: build
+    # Run when build succeeded OR was skipped (pinned-bits inputs replace it).
+    if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v5
@@ -143,10 +158,41 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Download APK
+        if: ${{ inputs.apk_run_id == '' && inputs.apk_url == '' }}
         uses: actions/download-artifact@v4
         with:
           name: qa-acceptance-apk
           path: apks
+
+      # Pinned bits: reuse another run's artifact (same sha256 the reporter
+      # verified) or fetch a direct URL; synthesize build-info for the URL
+      # case so the version binding never goes missing.
+      - name: Fetch pinned APK
+        if: ${{ inputs.apk_run_id != '' || inputs.apk_url != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_RUN_ID: ${{ inputs.apk_run_id }}
+          APK_URL: ${{ inputs.apk_url }}
+        run: |
+          mkdir -p apks
+          if [ -n "$APK_RUN_ID" ]; then
+            gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n qa-acceptance-apk -D apks
+          else
+            curl -sfL -o apks/pinned.apk "$APK_URL"
+            APK=apks/pinned.apk SRC="external-apk" python3 - <<'EOF'
+          import hashlib, json, os
+          apk = os.environ["APK"]
+          info = {
+              "platform": "android",
+              "source_commit": os.environ.get("SRC", ""),
+              "apk_url": os.environ.get("APK_URL", ""),
+              "apk_sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+          }
+          json.dump(info, open("apks/build-info.json", "w"), indent=1)
+          print(json.dumps(info))
+          EOF
+          fi
+          ls -la apks
 
       - name: Enable KVM
         run: |

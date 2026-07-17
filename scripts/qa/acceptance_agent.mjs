@@ -37,7 +37,16 @@ const opts = {
   device: arg("--device", ""),
   appPackage: arg("--package", "build.raft.app"),
   playbook: arg("--playbook", process.env.QA_PLAYBOOK || "docs/qa-acceptance-operations.md"),
+  // "android" drives adb directly (unchanged); "ios" delegates every device
+  // primitive to scripts/qa/ios_driver.mjs (simctl + XCUITest loop harness).
+  platform: arg("--platform", process.env.QA_PLATFORM || "android"),
+  iosIoDir: arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || ""),
+  iosUdid: arg("--ios-udid", process.env.QA_IOS_UDID || "booted"),
 };
+
+// Non-null only on --platform ios; every device-touching helper below branches
+// on it first, so the Android code path is byte-for-byte what it always was.
+let drv = null;
 
 const SECRETS = {
   "{{QA_EMAIL}}": process.env.QA_TEST_EMAIL || "",
@@ -66,6 +75,7 @@ function adb(args, opts2 = {}) {
 }
 
 function screenshotPng() {
+  if (drv) return drv.screenshotPng();
   return adb(["exec-out", "screencap", "-p"], { encoding: "buffer" });
 }
 
@@ -89,7 +99,8 @@ function uiNodes() {
   return nodes;
 }
 
-function dumpUi() {
+async function dumpUi() {
+  if (drv) return drv.dumpUi();
   // Raw uiautomator XML for a busy screen is ~60KB of mostly-useless
   // attributes, and long dumps in context measurably degrade M3's output
   // format (the forward-message batch run drowned in malformed replies right
@@ -152,7 +163,8 @@ function tapTextResolve(wanted) {
 // escape. Reject shell metacharacters outright instead of trying to quote
 // through two shells — acceptance inputs (emails, passwords, search words)
 // don't need them, and a typo here would execute on the device.
-function inputText(value) {
+async function inputText(value) {
+  if (drv) return drv.text(value);
   if (/[\\'"`$&|;<>(){}\[\]!*?~#]/.test(value)) throw new Error("input text contains unsupported shell metacharacters");
   adb(["shell", "input", "text", value.replace(/ /g, "%s")]);
 }
@@ -162,7 +174,8 @@ const KEYCODES = { back: "4", home: "3", enter: "66", tab: "61", del: "67", esc:
 // Clear the focused text field: jump to end, then a single adb call with a
 // burst of DEL keycodes (input keyevent accepts many codes per invocation —
 // one process spawn instead of N, and no per-key model turns).
-function clearField() {
+async function clearField() {
+  if (drv) return drv.clear();
   adb(["shell", "input", "keyevent", "123"]); // MOVE_END
   adb(["shell", "input", "keyevent", ...Array(60).fill("67")]);
 }
@@ -170,7 +183,8 @@ function clearField() {
 // After a text action, tell the model where the text actually landed: the
 // focused node's text/bounds from a fresh uiautomator dump. Passwords render
 // masked by the field itself; the runner additionally redacts secrets.
-function focusedFieldReport() {
+async function focusedFieldReport() {
+  if (drv) return drv.focusedFieldReport();
   try {
     adb(["shell", "uiautomator", "dump", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
     const xml = adb(["exec-out", "cat", "/sdcard/qa_window_dump.xml"], { encoding: "utf8" });
@@ -185,6 +199,7 @@ function focusedFieldReport() {
 }
 
 function screenSize() {
+  if (drv) return drv.screenSize();
   const out = adb(["shell", "wm", "size"], { encoding: "utf8" });
   const m = /(\d+)x(\d+)/.exec(out.split("\n").filter((l) => l.includes("size")).pop() || out);
   return m ? { w: Number(m[1]), h: Number(m[2]) } : { w: 0, h: 0 };
@@ -220,6 +235,13 @@ function preamble(size) {
     '   "annotations":[{"step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"<short>"}]}',
     "",
     "Rules:",
+    ...(opts.platform === "ios"
+      ? [
+          "- PLATFORM: iOS Simulator. key back = the left-edge back-swipe gesture; home/app_switch",
+          "  do not exist — navigate with on-screen controls. Typing goes to the current first",
+          "  responder; tap a field and confirm the cursor before text.",
+        ]
+      : []),
     "- PREFER tap_text for anything with a visible label: it re-resolves the element's bounds at",
     "  the moment of the tap, so it survives dialog/keyboard/selection layout shifts that make",
     "  earlier dump coordinates stale. Use coordinate tap only for unlabelled targets.",
@@ -439,6 +461,13 @@ async function main() {
   if (!opts.goal) { console.error("no --goal / QA_GOAL"); process.exit(2); }
   if (!piKey()) { console.error("no PI_API_KEY/MINIMAX_API_KEY"); process.exit(2); }
   fs.mkdirSync(opts.out, { recursive: true });
+  if (opts.platform === "ios") {
+    if (!opts.iosIoDir) { console.error("--platform ios requires --ios-io-dir / QA_LOOP_IO_DIR"); process.exit(2); }
+    const { createIosDriver } = await import("./ios_driver.mjs");
+    drv = createIosDriver({ ioDir: opts.iosIoDir, udid: opts.iosUdid, bundle: opts.appPackage });
+    console.error("waiting for the iOS loop harness (xcodebuild test) to launch the app...");
+    await drv.waitReady();
+  }
   const stepsPath = path.join(opts.out, "steps.jsonl");
   const started = Date.now();
   const deadline = started + opts.maxMinutes * 60000;
@@ -515,7 +544,8 @@ async function main() {
     try {
       switch (action.action) {
         case "tap":
-          adb(["shell", "input", "tap", String(Math.round(action.x)), String(Math.round(action.y))]);
+          if (drv) await drv.tap(Math.round(action.x), Math.round(action.y));
+          else adb(["shell", "input", "tap", String(Math.round(action.x)), String(Math.round(action.y))]);
           // The agent decided this tap while looking at the PREVIOUS turn's
           // screenshot — that's the frame the crosshair belongs on.
           tapAnnotations.push({ step: turns - 1, x: Math.round(action.x), y: Math.round(action.y) });
@@ -523,10 +553,13 @@ async function main() {
         case "tap_text": {
           const wanted = String(action.text ?? "").trim();
           if (!wanted) { feedback = "tap_text requires text"; break; }
-          const r = tapTextResolve(wanted);
+          // Same fresh-bounds/match-ladder policy on both platforms; the iOS
+          // driver resolves via the harness describe protocol host-side.
+          const r = drv ? await drv.tapText(wanted) : tapTextResolve(wanted);
           feedback = r.feedback;
           if (r.x !== undefined) {
-            adb(["shell", "input", "tap", String(r.x), String(r.y)]);
+            if (drv) await drv.tap(r.x, r.y);
+            else adb(["shell", "input", "tap", String(r.x), String(r.y)]);
             // Crosshair on the CURRENT frame: bounds came from a fresh dump,
             // not the previous screenshot.
             tapAnnotations.push({ step: turns, x: r.x, y: r.y });
@@ -534,14 +567,16 @@ async function main() {
           break;
         }
         case "swipe": {
+          if (drv) { await drv.swipe(["up", "down", "left", "right"].includes(action.direction) ? action.direction : "up"); break; }
           const { w, h } = size;
           const c = { up: [w / 2, h * 0.7, w / 2, h * 0.3], down: [w / 2, h * 0.3, w / 2, h * 0.7], left: [w * 0.8, h / 2, w * 0.2, h / 2], right: [w * 0.2, h / 2, w * 0.8, h / 2] }[action.direction] || [w / 2, h * 0.7, w / 2, h * 0.3];
           adb(["shell", "input", "swipe", ...c.map((n) => String(Math.round(n))), "300"]);
           break;
         }
         case "long_press":
+          if (drv) await drv.longPress(Math.round(action.x), Math.round(action.y));
           // Same-point swipe with a long duration is the adb long-press idiom.
-          adb(["shell", "input", "swipe",
+          else adb(["shell", "input", "swipe",
             String(Math.round(action.x)), String(Math.round(action.y)),
             String(Math.round(action.x)), String(Math.round(action.y)), "800"]);
           tapAnnotations.push({ step: turns - 1, x: Math.round(action.x), y: Math.round(action.y) });
@@ -549,25 +584,32 @@ async function main() {
         case "open_link": {
           const url = String(action.url ?? "");
           if (!/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(url)) { feedback = "open_link needs a scheme://... url"; break; }
-          adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url]);
+          if (drv) drv.openLink(url);
+          else adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url]);
           break;
         }
         case "text": {
           let v = String(action.value ?? "");
           for (const [ph, real] of Object.entries(SECRETS)) v = v.split(ph).join(real);
-          inputText(v);
+          await inputText(v);
           // The recurring login failure mode is text landing in the wrong
           // field because a tap didn't move focus. Report the focused node's
           // content back mechanically so the model sees the landing spot
           // without spending a turn on dump_ui (batch round finding ③).
-          feedback = redact(focusedFieldReport());
+          feedback = redact(await focusedFieldReport());
           break;
         }
-        case "key": adb(["shell", "input", "keyevent", KEYCODES[action.name] || String(action.name)]); break;
-        case "clear": clearField(); break;
-        case "dump_ui": feedback = dumpUi(); break;
+        case "key":
+          if (drv) await drv.key(String(action.name));
+          else adb(["shell", "input", "keyevent", KEYCODES[action.name] || String(action.name)]);
+          break;
+        case "clear": await clearField(); break;
+        case "dump_ui": feedback = await dumpUi(); break;
         case "wait": await new Promise((r) => setTimeout(r, Math.min(10, Math.max(1, Number(action.seconds) || 2)) * 1000)); break;
-        case "launch": adb(["shell", "am", "start", "-n", `${opts.appPackage}/.MainActivity`]); break;
+        case "launch":
+          if (drv) drv.launch();
+          else adb(["shell", "am", "start", "-n", `${opts.appPackage}/.MainActivity`]);
+          break;
         case "note": {
           const milestone = String(action.milestone ?? "").trim();
           if (!milestone) { feedback = "note needs a non-empty milestone"; break; }
@@ -645,6 +687,7 @@ async function main() {
   fs.writeFileSync(path.join(opts.out, "verdict.json"), JSON.stringify(result, null, 2));
   stampCheckpoint(turns, "auto:verdict", `${verdict}: ${reason}`);
   await Promise.allSettled(stampPending);
+  if (drv) await drv.finish();
   console.log(JSON.stringify(result, null, 2));
   process.exit(verdict === "pass" ? 0 : verdict === "fail" ? 1 : 2);
 }
