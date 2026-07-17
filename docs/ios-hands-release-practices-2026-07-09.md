@@ -124,9 +124,9 @@ status through the Hands CLI and agent manifest. Until that contract is
 available, an authorized Hands app admin must trigger submission; CI must not
 work around the gap by exporting the ASC credential.
 
-`publish_hands=true` is the supported way to register the signed IPA and dSYM
-before server-side submission. The mobile workflow must not add a parallel
-client-side TestFlight upload path.
+`publish_hands=true` registers the signed IPA and dSYM before server-side
+submission. Hands remains the sole TestFlight delivery boundary after CI has
+published those artifacts.
 
 ## Required Secrets
 
@@ -148,10 +148,9 @@ Optional:
 - `QUIVER_BEARER_TOKEN`: required only when `publish_hands=true`. This is the
   current configured Hands bearer token secret for the mobile release lane.
 
-Do not add `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, or
-`ASC_API_KEY_P8_BASE64` to GitHub Actions. Do not export the `.p8` from Hands or
-upload with `xcrun altool`. Hands is the single source of truth for the ASC
-credential and performs the Apple upload server-side.
+The ASC credential is managed only in Hands. GitHub Actions needs the Apple
+signing material listed above and the Hands publishing token, but it does not
+need the ASC upload credential.
 
 ## Validation
 
