@@ -17,6 +17,12 @@ class IosAttachmentPickerSourceContractTest {
                     "compose/shared/src/commonMain/kotlin/build/raft/app/data/ConversationRepositoryDataSource.kt",
                 )
                 .readText()
+        val parserSource =
+            File(
+                    findRepoRoot(),
+                    "compose/shared/src/commonMain/kotlin/build/raft/app/data/ThreadMessagesParser.kt",
+                )
+                .readText()
 
         assertTrue(iosSource.contains("PHPickerViewController *pickerController"))
         assertTrue(iosSource.contains("PHPickerFilter.imagesFilter"))
@@ -34,6 +40,10 @@ class IosAttachmentPickerSourceContractTest {
         assertTrue(iosSource.contains("@\"files\" : files"))
         assertTrue(iosSource.contains("@\"source\" : @\"platform_picker\""))
         assertTrue(uploadSource.contains("name = \"files\""))
+        assertTrue(parserSource.contains("fileJson.optString(\"fileRef\")"))
+        assertTrue(parserSource.contains("fileJson.optString(\"fileName\")"))
+        assertTrue(parserSource.contains("fileJson.optString(\"mimeType\")"))
+        assertTrue(parserSource.contains("fileJson.optLong(\"sizeBytes\""))
         assertFalse(iosSource.contains("Attachment picker unavailable on iOS P0 host bridge"))
     }
 
