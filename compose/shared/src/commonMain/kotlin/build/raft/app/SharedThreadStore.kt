@@ -1118,7 +1118,7 @@ internal class SharedThreadDataSource(
         return basePayload.copy(
             originMessage = parent.toKuiklyThreadMessageItem(session.user.id),
             originParentMessageId = parentMessageId,
-            originStatus = "loading",
+            originStatus = "loaded",
             originErrorCode = null
         )
     }
