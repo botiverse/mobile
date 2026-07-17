@@ -347,8 +347,12 @@ jobs:
             echo '{"gate":"require_markers","verdict":"invalid","note":"no logcat.txt captured"}' > qa-evidence/coverage-require-markers.json
             echo 3 > qa-evidence/coverage-require-markers.rc
           else
-            node scripts/qa/check_require_markers.mjs --log qa-evidence/logcat.txt --markers "$REQUIRE_MARKERS" > qa-evidence/coverage-require-markers.json
-            echo "$?" > qa-evidence/coverage-require-markers.rc
+            # `|| rc=$?` — without it `bash -e` kills the step on exit 3
+            # before the rc file is written; a marker violation is a VERDICT
+            # (applied in Report verdict), not an infra error of this step.
+            rc=0
+            node scripts/qa/check_require_markers.mjs --log qa-evidence/logcat.txt --markers "$REQUIRE_MARKERS" > qa-evidence/coverage-require-markers.json || rc=$?
+            echo "$rc" > qa-evidence/coverage-require-markers.rc
           fi
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
           cat qa-evidence/coverage-require-markers.json >> "$GITHUB_STEP_SUMMARY"
