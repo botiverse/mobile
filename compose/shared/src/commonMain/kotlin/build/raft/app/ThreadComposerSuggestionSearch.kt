@@ -28,6 +28,56 @@ internal fun <T> immediateThreadComposerSuggestions(
 ): List<T> =
     if (query.isBlank()) suggestions.take(ThreadComposerSuggestionMaxResults) else emptyList()
 
+internal fun immediateThreadComposerMemberSuggestions(
+    query: String,
+    suggestions: List<KuiklyComposerMemberItem>
+): List<KuiklyComposerMemberItem> {
+    if (query.isNotBlank()) return emptyList()
+    if (suggestions.size <= ThreadComposerSuggestionMaxResults) return suggestions
+
+    val groups = LinkedHashMap<String, ArrayDeque<KuiklyComposerMemberItem>>()
+    suggestions.forEach { suggestion ->
+        groups.getOrPut(suggestion.threadComposerSuggestionSourceKey()) { ArrayDeque() }.addLast(suggestion)
+    }
+    if (groups.size <= 1) return suggestions.take(ThreadComposerSuggestionMaxResults)
+
+    val localKey = suggestions.firstOrNull { it.isLocalServer }?.threadComposerSuggestionSourceKey()
+        ?: groups.keys.first()
+    val local = groups.remove(localKey) ?: ArrayDeque()
+    val remoteGroups = groups.values.toList()
+    var remoteGroupIndex = 0
+    return buildList(ThreadComposerSuggestionMaxResults) {
+        while (size < ThreadComposerSuggestionMaxResults) {
+            var added = false
+            repeat(2) {
+                if (size < ThreadComposerSuggestionMaxResults && local.isNotEmpty()) {
+                    add(local.removeFirst())
+                    added = true
+                }
+            }
+            if (size < ThreadComposerSuggestionMaxResults && remoteGroups.any { it.isNotEmpty() }) {
+                var attempts = 0
+                while (attempts < remoteGroups.size) {
+                    val group = remoteGroups[remoteGroupIndex]
+                    remoteGroupIndex = (remoteGroupIndex + 1) % remoteGroups.size
+                    attempts += 1
+                    if (group.isNotEmpty()) {
+                        add(group.removeFirst())
+                        added = true
+                        break
+                    }
+                }
+            }
+            if (!added) break
+        }
+    }
+}
+
+private fun KuiklyComposerMemberItem.threadComposerSuggestionSourceKey(): String =
+    sourceServerId?.trim()?.takeIf { it.isNotBlank() }
+        ?: sourceServerLabel?.trim()?.takeIf { it.isNotBlank() }
+        ?: "local"
+
 internal fun filterThreadComposerMemberSuggestions(
     query: String,
     suggestions: List<KuiklyComposerMemberItem>
