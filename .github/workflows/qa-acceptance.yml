@@ -190,31 +190,57 @@ jobs:
             gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n qa-acceptance-apk -D apks 2>/dev/null \
               || gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -D apks
             if ! find apks -name build-info.json | grep -q .; then
-              head=$(gh run view "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
+              # A foreign run's headSha is its WORKFLOW-DEFINITION ref, not the
+              # build source (the Android Alpha Validation run 29546326028
+              # reports headSha=main while building release-1.5.0) — so record
+              # it as dispatch_ref, NOT source_commit (林舟). The authoritative
+              # binding is apk_sha256 + package/version from the binary itself.
+              ref=$(gh run view "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)
               apk=$(find apks -name '*.apk' | head -1)
-              APK="$apk" SRC="$head" PIN="$APK_RUN_ID" python3 - <<'EOF2'
+              bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+              badging=$("$bt/aapt" dump badging "$apk" 2>/dev/null || true)
+              pkg=$(printf '%s' "$badging" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)
+              vn=$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+              vc=$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+              APK="$apk" REF="$ref" PIN="$APK_RUN_ID" PKG="$pkg" VN="$vn" VC="$vc" python3 - <<'EOF2'
           import hashlib, json, os
           apk = os.environ["APK"]
           info = {
               "platform": "android",
-              "source_commit": os.environ.get("SRC", ""),
               "pinned_from_run": os.environ.get("PIN", ""),
+              # dispatch_ref: the pinned run's workflow-definition ref, NOT a
+              # verified build source. Do not treat as source_commit.
+              "dispatch_ref": os.environ.get("REF", ""),
+              "source_commit_verified": False,
               "apk_sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+              "package": os.environ.get("PKG", ""),
+              "app_version": os.environ.get("VN", ""),
+              "version_code": os.environ.get("VC", ""),
           }
           json.dump(info, open("apks/build-info.json", "w"), indent=1)
           print(json.dumps(info))
           EOF2
             fi
           else
+            # A downloaded APK (e.g. a Hands signed package): the binary is the
+            # only ground truth — package/version/sha256 from aapt, no commit.
             curl -sfL -o apks/pinned.apk "$APK_URL"
-            APK=apks/pinned.apk SRC="external-apk" python3 - <<'EOF'
+            bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+            badging=$("$bt/aapt" dump badging apks/pinned.apk 2>/dev/null || true)
+            pkg=$(printf '%s' "$badging" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)
+            vn=$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+            vc=$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+            APK=apks/pinned.apk PKG="$pkg" VN="$vn" VC="$vc" python3 - <<'EOF'
           import hashlib, json, os
           apk = os.environ["APK"]
           info = {
               "platform": "android",
-              "source_commit": os.environ.get("SRC", ""),
               "apk_url": os.environ.get("APK_URL", ""),
+              "source_commit_verified": False,
               "apk_sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+              "package": os.environ.get("PKG", ""),
+              "app_version": os.environ.get("VN", ""),
+              "version_code": os.environ.get("VC", ""),
           }
           json.dump(info, open("apks/build-info.json", "w"), indent=1)
           print(json.dumps(info))
