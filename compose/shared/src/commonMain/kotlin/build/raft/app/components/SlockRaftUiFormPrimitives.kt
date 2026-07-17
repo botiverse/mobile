@@ -303,7 +303,12 @@ internal fun SlockSlugInput(
             Box(
                 modifier =
                     Modifier
-                        .width(32.dp)
+                        // react's w-8 (32px) span sits INSIDE the outer border-2;
+                        // Kuikly draws the Row border as a FOREGROUND over this
+                        // child's left 2dp, so 34dp is what leaves react's 30px
+                        // visible tile + 2px divider (#1038: the 32dp box shifted
+                        // the divider and all downstream text 2dp left).
+                        .width(34.dp)
                         // structural mirror of react's items-stretch span
                         .fillMaxHeight()
                         .background(if (enabled) SlockSlugInputPrefixBackground else SlockSlugInputDisabledPrefixBackground)
