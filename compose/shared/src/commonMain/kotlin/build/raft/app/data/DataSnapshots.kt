@@ -1363,3 +1363,7 @@ data class ThreadActionResult(
 data class TaskActionResult(
     val task: TaskSummary
 )
+
+data class TaskConvertResult(
+    val task: TaskSummary?
+)

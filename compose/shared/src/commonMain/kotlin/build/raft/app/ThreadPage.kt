@@ -113,6 +113,7 @@ import build.raft.app.data.isAuthSessionErrorCode
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
+import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -6699,9 +6700,17 @@ internal fun SharedThreadRouteContent(
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds + itemId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.convertMessageToTask(itemId)) {
+                            when (
+                                val result =
+                                    convertMessageToCanonicalTask(
+                                        serverId = currentServerId?.let(::ServerId),
+                                        messageId = MessageId(itemId),
+                                        tasksDataSource = tasksDataSource,
+                                        tasksDataStore = tasksDataStore,
+                                        diagnosticsLogger = { bridge.log(it) }
+                                    )
+                            ) {
                                 is DataResult.Content -> {
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(result.data))
                                     bridge.toast(taskCreatedLabel)
                                 }
                                 is DataResult.Empty,

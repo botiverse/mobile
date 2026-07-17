@@ -32,6 +32,7 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.DataResult
 import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.InboxItem
 import build.raft.app.data.HomeSnapshot
@@ -67,6 +68,7 @@ import build.raft.app.data.WireThreadSummary
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
+import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.parseSharedThreadUploadedAttachments
 import build.raft.app.data.parseSharedMessageContext
@@ -7102,6 +7104,189 @@ class ThreadPayloadTest {
         assertEquals("task-new", projected.messages.single().taskId)
         assertEquals(288, projected.messages.single().taskNumber)
         assertEquals("in_review", projected.messages.single().taskStatus)
+    }
+
+    @Test
+    fun convertMessageWithoutTaskBodyRefreshesCanonicalServerProjectionOnce() = runBlocking {
+        val convertedTask =
+            TaskSummary(
+                id = TaskId("message-convert"),
+                title = "convert me",
+                status = TaskStatus.Todo,
+                taskNumber = 291,
+                channelId = ChannelId("channel-1"),
+                messageId = MessageId("message-convert"),
+                updatedAtLabel = ""
+            )
+        var convertCalls = 0
+        var serverLoadCalls = 0
+        val dataSource =
+            SharedTasksDataSource(
+                api =
+                    object : SlockTasksApi {
+                        override suspend fun serverTasks(
+                            serverId: ServerId,
+                            priority: DataRequestPriority
+                        ): HomeNetworkResponse {
+                            serverLoadCalls += 1
+                            return HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """{"tasks":[{"id":"message-convert","channelId":"channel-1","taskNumber":291,"title":"convert me","status":"todo","createdByType":"user","createdById":"user-1"}]}"""
+                            )
+                        }
+
+                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse {
+                            convertCalls += 1
+                            return HomeNetworkResponse(code = 204, bodyText = null)
+                        }
+
+                        override suspend fun updateTaskStatus(
+                            taskId: TaskId,
+                            status: TaskStatus
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+                    }
+            )
+        val store = SharedTasksDataStore()
+
+        val result =
+            convertMessageToCanonicalTask(
+                serverId = ServerId("server-1"),
+                messageId = MessageId("message-convert"),
+                tasksDataSource = dataSource,
+                tasksDataStore = store
+            )
+
+        assertEquals(convertedTask.id, assertIs<DataResult.Content<TaskSummary>>(result).data.id)
+        assertEquals(1, convertCalls)
+        assertEquals(1, serverLoadCalls)
+        assertEquals(
+            listOf("message-convert"),
+            store.projection("server-1", SharedTasksScope.Server).tasks.map { task -> task.id.value }
+        )
+    }
+
+    @Test
+    fun convertMessageWithTaskBodyUpsertsCanonicalProjectionWithoutRefresh() = runBlocking {
+        var serverLoadCalls = 0
+        val dataSource =
+            SharedTasksDataSource(
+                api =
+                    object : SlockTasksApi {
+                        override suspend fun serverTasks(
+                            serverId: ServerId,
+                            priority: DataRequestPriority
+                        ): HomeNetworkResponse {
+                            serverLoadCalls += 1
+                            return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
+                        }
+
+                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText =
+                                    """{"task":{"id":"message-convert","channelId":"channel-1","taskNumber":291,"title":"convert me","status":"todo","createdByType":"user","createdById":"user-1"}}"""
+                            )
+
+                        override suspend fun updateTaskStatus(
+                            taskId: TaskId,
+                            status: TaskStatus
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+                    }
+            )
+        val store = SharedTasksDataStore()
+
+        val result =
+            convertMessageToCanonicalTask(
+                serverId = ServerId("server-1"),
+                messageId = MessageId("message-convert"),
+                tasksDataSource = dataSource,
+                tasksDataStore = store
+            )
+
+        assertEquals("message-convert", assertIs<DataResult.Content<TaskSummary>>(result).data.id.value)
+        assertEquals(0, serverLoadCalls)
+        assertEquals(
+            listOf("message-convert"),
+            store.projection("server-1", SharedTasksScope.Server).tasks.map { task -> task.id.value }
+        )
+    }
+
+    @Test
+    fun convertMessageWithoutTaskBodyFailsWhenCanonicalProjectionOmitsMessage() = runBlocking {
+        var serverLoadCalls = 0
+        val dataSource =
+            SharedTasksDataSource(
+                api =
+                    object : SlockTasksApi {
+                        override suspend fun serverTasks(
+                            serverId: ServerId,
+                            priority: DataRequestPriority
+                        ): HomeNetworkResponse {
+                            serverLoadCalls += 1
+                            return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
+                        }
+
+                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+                            HomeNetworkResponse(code = 204, bodyText = null)
+
+                        override suspend fun updateTaskStatus(
+                            taskId: TaskId,
+                            status: TaskStatus
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+                    }
+            )
+
+        val result =
+            convertMessageToCanonicalTask(
+                serverId = ServerId("server-1"),
+                messageId = MessageId("message-convert"),
+                tasksDataSource = dataSource,
+                tasksDataStore = SharedTasksDataStore()
+            )
+
+        assertEquals(
+            "tasks_convert_message_projection_missing",
+            assertIs<DataResult.Error>(result).error.code
+        )
+        assertEquals(1, serverLoadCalls)
+    }
+
+    @Test
+    fun convertMessageFailureDoesNotRefreshCanonicalProjection() = runBlocking {
+        var serverLoadCalls = 0
+        val dataSource =
+            SharedTasksDataSource(
+                api =
+                    object : SlockTasksApi {
+                        override suspend fun serverTasks(
+                            serverId: ServerId,
+                            priority: DataRequestPriority
+                        ): HomeNetworkResponse {
+                            serverLoadCalls += 1
+                            return HomeNetworkResponse(code = 200, bodyText = """{"tasks":[]}""")
+                        }
+
+                        override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+                            HomeNetworkResponse(code = 500, bodyText = null)
+
+                        override suspend fun updateTaskStatus(
+                            taskId: TaskId,
+                            status: TaskStatus
+                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
+                    }
+            )
+
+        val result =
+            convertMessageToCanonicalTask(
+                serverId = ServerId("server-1"),
+                messageId = MessageId("message-convert"),
+                tasksDataSource = dataSource,
+                tasksDataStore = SharedTasksDataStore()
+            )
+
+        assertEquals("tasks_500", assertIs<DataResult.Error>(result).error.code)
+        assertEquals(0, serverLoadCalls)
     }
 
     @Test
