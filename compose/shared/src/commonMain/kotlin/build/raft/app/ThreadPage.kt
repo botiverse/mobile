@@ -11113,6 +11113,8 @@ private fun ThreadComposerContentWithSuggestions(
                         handle = suggestion.handle,
                         inMentionChannel = suggestion.inMentionChannel,
                         inThread = suggestion.isThreadMentionParticipant(threadParticipantRanks),
+                        sourceServerId = suggestion.sourceServerId,
+                        isLocalServer = suggestion.isLocalServer,
                         sourceServerLabel = suggestion.sourceServerLabel,
                         kind = suggestion.kind,
                         description = suggestion.description,

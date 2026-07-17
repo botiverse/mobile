@@ -159,6 +159,59 @@ class ThreadComposerSuggestionSearchTest {
     }
 
     @Test
+    fun blankMemberQueryKeepsSingleServerOrderAndLimit() {
+        val suggestions =
+            (0 until 100).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Member $index",
+                    handle = "member-$index",
+                    sourceServerId = "server-local",
+                    isLocalServer = true
+                )
+            }
+
+        assertEquals(
+            (0 until 30).map { index -> "member-$index" },
+            immediateThreadComposerMemberSuggestions("", suggestions).map { it.handle }
+        )
+        assertEquals(emptyList(), immediateThreadComposerMemberSuggestions("member", suggestions))
+    }
+
+    @Test
+    fun blankMemberQueryInterleavesJointServerCandidatesBeforeLimit() {
+        val local =
+            (0 until 35).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Local $index",
+                    handle = "local-$index",
+                    sourceServerId = "server-local",
+                    isLocalServer = true
+                )
+            }
+        val remote =
+            (0 until 20).map { index ->
+                KuiklyComposerMemberItem(
+                    displayName = "Remote $index",
+                    handle = "remote-$index",
+                    sourceServerId = "server-remote",
+                    isLocalServer = false,
+                    sourceServerLabel = "Remote Lab"
+                )
+            }
+
+        val result = immediateThreadComposerMemberSuggestions("", local + remote)
+
+        assertEquals(30, result.size)
+        assertEquals(
+            listOf("local-0", "local-1", "remote-0", "local-2", "local-3", "remote-1"),
+            result.take(6).map { it.handle }
+        )
+        assertEquals(20, result.count { it.isLocalServer })
+        assertEquals(10, result.count { !it.isLocalServer })
+        assertEquals(setOf("server-local", "server-remote"), result.mapNotNull { it.sourceServerId }.toSet())
+    }
+
+    @Test
     fun tenThousandCandidateRankingKeepsBoundedTopThirtyWithinBudget() {
         val suggestions =
             (0 until 10_000).map { index ->

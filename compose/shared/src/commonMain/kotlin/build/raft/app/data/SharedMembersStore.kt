@@ -24,6 +24,8 @@ data class SharedMembersMemberSuggestion(
     val displayName: String,
     val handle: String,
     val inMentionChannel: Boolean = true,
+    val sourceServerId: String? = null,
+    val isLocalServer: Boolean = true,
     val sourceServerLabel: String? = null,
     val kind: MemberKind = MemberKind.Human,
     val description: String? = null,

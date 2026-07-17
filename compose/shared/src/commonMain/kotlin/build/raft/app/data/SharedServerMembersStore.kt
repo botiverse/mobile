@@ -1729,11 +1729,14 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
         val memberId = member.id.value.trim().takeIf { it.isNotBlank() } ?: continue
         val handle = member.serverMembersSuggestionHandle() ?: continue
         val avatar = member.avatarSlotResolution()
+        val sourceServerId = member.serverId?.value?.trim()?.takeIf { it.isNotBlank() } ?: localServerId
         val suggestion =
             SharedMembersMemberSuggestion(
                 displayName = member.displayName.trim().ifBlank { handle },
                 handle = handle,
                 inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel,
+                sourceServerId = sourceServerId,
+                isLocalServer = localServerId == null || sourceServerId == null || sourceServerId == localServerId,
                 sourceServerLabel = member.serverMembersSourceServerLabel(localServerId),
                 kind = member.kind,
                 description = member.description?.trim()?.takeIf { it.isNotBlank() },
@@ -1851,6 +1854,8 @@ private fun SharedMembersMemberSuggestion.mergePatchedSuggestion(
         displayName = patch.displayName.ifBlank { displayName },
         handle = patch.handle.ifBlank { handle },
         inMentionChannel = patch.inMentionChannel,
+        sourceServerId = sourceServerId ?: patch.sourceServerId,
+        isLocalServer = if (sourceServerId == null) patch.isLocalServer else isLocalServer,
         sourceServerLabel = sourceServerLabel ?: patch.sourceServerLabel,
         kind = patch.kind,
         description = description ?: patch.description,

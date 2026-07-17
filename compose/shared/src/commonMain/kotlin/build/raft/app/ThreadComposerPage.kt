@@ -444,6 +444,8 @@ internal data class KuiklyComposerMemberItem(
     val handle: String,
     val inMentionChannel: Boolean = true,
     val inThread: Boolean = false,
+    val sourceServerId: String? = null,
+    val isLocalServer: Boolean = true,
     val sourceServerLabel: String? = null,
     val kind: MemberKind = MemberKind.Human,
     val description: String? = null,
@@ -1169,7 +1171,7 @@ internal fun ThreadComposerContent(
         channelRankingRequest != null && channelRankingResult?.request === channelRankingRequest
     val immediateMemberSuggestions =
         (suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger)
-            ?.let { trigger -> immediateThreadComposerSuggestions(trigger.query, state.memberSuggestions) }
+            ?.let { trigger -> immediateThreadComposerMemberSuggestions(trigger.query, state.memberSuggestions) }
             .orEmpty()
     val immediateChannelSuggestions =
         (suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger)

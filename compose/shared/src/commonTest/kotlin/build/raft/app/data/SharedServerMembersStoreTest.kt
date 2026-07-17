@@ -1471,6 +1471,8 @@ class SharedServerMembersStoreTest {
                 memberScopedMentions = true
             ).suggestions
         assertEquals(listOf("local-agent", "remote-agent"), suggestions.map { it.memberId })
+        assertEquals(listOf("server-1", "server-2"), suggestions.map { it.sourceServerId })
+        assertEquals(listOf(true, false), suggestions.map { it.isLocalServer })
         assertEquals(listOf(null, "Remote Lab"), suggestions.map { it.sourceServerLabel })
         assertEquals(listOf("builder", "builder"), suggestions.map { it.handle })
         assertEquals(listOf(true, true), suggestions.map { it.inMentionChannel })
