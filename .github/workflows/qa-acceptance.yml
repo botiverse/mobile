@@ -34,6 +34,15 @@ on:
         description: "Direct APK download URL to test (skips build)"
         required: false
         default: ""
+      # Required-marker coverage gate (task #6): comma-separated
+      # `marker|min|max` entries checked against qa-evidence/logcat.txt after
+      # the run. Any missing/out-of-bounds marker overrides the agent's visual
+      # verdict to coverage-invalid/no-verdict (exit 3, NOT a product FAIL) —
+      # a visual PASS on an unexercised seam must not count (case-18 lesson).
+      require_markers:
+        description: "Post-run logcat marker gate, e.g. 'thread_header_scroll_to_top|1|,slock_perf_launch|1|1'"
+        required: false
+        default: ""
 # Minimal token scopes: contents to check out, actions to read ANOTHER run's
 # artifacts for the pinned-bits path (403 'Resource not accessible by
 # integration' on the first --apk-run use, run 29546757069). No write scopes.
@@ -324,6 +333,27 @@ jobs:
             adb shell ls /sdcard/qa-rec-*.mp4 2>/dev/null | tr -d '\r' | while read f; do adb pull "$f" qa-evidence/ || true; done
             bash scripts/qa/stamp_report.sh report qa-evidence
 
+      # Required-marker gate: when the case declares production markers that
+      # must appear in logcat, a violation overrides the agent verdict to
+      # coverage-invalid (3) — never a product FAIL. Runs after logcat.txt is
+      # captured and before upload so the report lands in the artifact.
+      - name: Required-marker gate
+        if: ${{ always() && inputs.require_markers != '' }}
+        env:
+          REQUIRE_MARKERS: ${{ inputs.require_markers }}
+        run: |
+          echo "## Required-marker gate" >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -s qa-evidence/logcat.txt ]; then
+            echo '{"gate":"require_markers","verdict":"invalid","note":"no logcat.txt captured"}' > qa-evidence/coverage-require-markers.json
+            echo 3 > qa-evidence/coverage-require-markers.rc
+          else
+            node scripts/qa/check_require_markers.mjs --log qa-evidence/logcat.txt --markers "$REQUIRE_MARKERS" > qa-evidence/coverage-require-markers.json
+            echo "$?" > qa-evidence/coverage-require-markers.rc
+          fi
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat qa-evidence/coverage-require-markers.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -346,4 +376,11 @@ jobs:
             echo "no verdict.json produced (agent rc=$rc)" >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "Evidence: qa-acceptance-evidence artifact (per-step screenshots + steps.jsonl)." >> "$GITHUB_STEP_SUMMARY"
+          # A required-marker gate, when run, OVERRIDES the agent verdict: a
+          # visual pass on an unexercised seam must not count as product PASS.
+          mrc="$(cat qa-evidence/coverage-require-markers.rc 2>/dev/null || echo '')"
+          if [ -n "$mrc" ] && [ "$mrc" != "0" ]; then
+            echo "Required-marker gate overrides agent verdict: rc=$mrc (3=coverage-invalid/no-verdict, NOT a product FAIL)." >> "$GITHUB_STEP_SUMMARY"
+            rc="$mrc"
+          fi
           exit "$rc"
