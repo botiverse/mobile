@@ -679,17 +679,9 @@ private fun SharedActivityList(
                 onIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(markers))
             }
     }
-    LaunchedEffect(snapshot.server.id, snapshot.items) {
-        val orderedMarkers =
-            snapshot.items.mapNotNull { item ->
-                item.toReplyThreadPrewarmMarker(snapshot.server.id.value)
-            }
-        onIntent(SharedActivityIntent.PrewarmActivityTail(orderedMarkers))
-    }
     DisposableEffect(listState) {
         onDispose {
-            latestOnIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(emptySet()))
-            latestOnIntent(SharedActivityIntent.PrewarmActivityTail(emptyList()))
+            latestOnIntent(SharedActivityIntent.DetachPrewarmViewport)
         }
     }
     val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
@@ -719,6 +711,15 @@ private fun SharedActivityList(
                     captureMenuAnchor = !listState.isScrollInProgress,
                     onOpen = {
                         selectedItemKey = item.key
+                        onIntent(
+                            SharedActivityIntent.PrewarmActivityTail(
+                                activityReplyThreadPrewarmTailAfterClick(
+                                    items = snapshot.items,
+                                    clickedIndex = index,
+                                    serverId = snapshot.server.id.value
+                                )
+                            )
+                        )
                         if (item.unreadCount > 0) {
                             onIntent(SharedActivityIntent.MarkRead(item))
                         }
@@ -816,6 +817,22 @@ private fun SharedActivityList(
             )
         }
     }
+}
+
+/**
+ * Activity prewarm is click-progressive: consuming row N arms the canonical tail
+ * from N+1 onward. The store owns the serialized chain, so opening the selected
+ * Thread can detach this viewport without cancelling the outer warm work.
+ */
+internal fun activityReplyThreadPrewarmTailAfterClick(
+    items: List<InboxItem>,
+    clickedIndex: Int,
+    serverId: String
+): List<ActivityReplyThreadPrewarmMarker> {
+    if (clickedIndex !in items.indices) return emptyList()
+    return items
+        .drop(clickedIndex + 1)
+        .mapNotNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
 }
 
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
