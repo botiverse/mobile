@@ -928,15 +928,19 @@ private fun SharedActivityRow(
                 // message content; the android layout is the desired product
                 // behavior and react should adopt it (declared react-adopts-later).
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Channel tag fills the row so the timestamp is pushed to the
+                    // right edge (artin #1171, 2026-07-17): timestamp right-aligned
+                    // on the tag row; the title and the rows below do not move.
                     Text(
                         text = item.channelLabel(),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.52f),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 10.dp)
                     )
                     Text(
                         text = item.activityTimeLabel(timeContext),
