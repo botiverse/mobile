@@ -213,8 +213,10 @@ const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
-private val MemberAvatarSize = 34.dp
-private val MemberRowMinHeight = 48.dp
+internal val MembersListAvatarSize = 28.dp
+internal val MembersListRowMinHeight = 40.dp
+internal val MembersListNameTextStyle =
+    SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 20.sp)
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 private val MembersAgentActivityTimeColumnWidth = 74.dp
@@ -9581,7 +9583,7 @@ private fun MembersListRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = MemberRowMinHeight)
+            .heightIn(min = MembersListRowMinHeight)
             .clickable(onClick = onClick)
             .padding(vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
@@ -9600,7 +9602,7 @@ private fun MembersListRow(
         ) {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp),
+                style = MembersListNameTextStyle,
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -9628,7 +9630,7 @@ private fun MembersListRow(
 @Composable
 private fun MembersAvatar(
     member: MemberProfile,
-    avatarSize: Dp = MemberAvatarSize,
+    avatarSize: Dp = MembersListAvatarSize,
     statusSize: Dp = MemberStatusDotSize,
     statusDisplayState: MembersAgentStatusDisplayState = member.membersAgentStatusDisplayState(),
     statusIndicatorState: SlockAgentStatusIndicatorState? = null,
