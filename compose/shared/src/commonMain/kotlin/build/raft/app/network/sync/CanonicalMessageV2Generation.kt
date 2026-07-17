@@ -115,6 +115,14 @@ class CanonicalMessageV2GenerationEngine(
                 snapshotCommitObserver.onSnapshotCommitted(scope)
             }
         }
+
+    fun rebaselineFailed(scope: SyncScopeKey) {
+        coordinator.onRebaselineFailed(scope)
+    }
+
+    fun invalidate(scope: SyncScopeKey) {
+        coordinator.invalidate(scope)
+    }
 }
 
 class CanonicalMessageV2ScopePoisoned(
