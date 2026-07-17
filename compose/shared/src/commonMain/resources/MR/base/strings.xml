@@ -1160,6 +1160,14 @@
     <string name="home_notification_center_item_count_many">%1$d items</string>
     <string name="home_notification_app_update_title">App update available</string>
     <string name="home_notification_app_update_body">Current version %1$s. Latest version %2$s.</string>
+    <string name="app_update_view">View</string>
+    <string name="app_update_retry">Retry</string>
+    <string name="app_update_working">Working...</string>
+    <string name="app_update_download">Download</string>
+    <string name="app_update_downloading">Downloading</string>
+    <string name="app_update_install">Install</string>
+    <string name="app_update_unavailable">Update information is temporarily unavailable.</string>
+    <string name="app_update_version_summary">%1$s → %2$s</string>
     <string name="home_notification_action_download">Download</string>
     <string name="home_notification_action_downloading">Downloading</string>
     <string name="home_notification_action_install">Install</string>

@@ -4356,29 +4356,8 @@ internal fun SlockAppShellContent(
                                 onNotificationDismiss = { id ->
                                     homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
                                 },
-                                onAppUpdateInstall = {
-                                    appShellCoroutineScope.launch {
-                                        when (val result = settingsCapabilities.installQuiverUpdate()) {
-                                            is DataResult.Content -> {
-                                                val update = result.data
-                                                update.toSharedHomeAppUpdateNotification()?.let { notification ->
-                                                    homeShellStore.dispatch(
-                                                        SharedHomeShellIntent.Home(
-                                                            SharedHomeIntent.UpsertNotification(notification)
-                                                        )
-                                                    )
-                                                }
-                                                update.detail.takeIf { it.isNotBlank() }?.let(bridge::log)
-                                                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
-                                            }
-                                            is DataResult.Empty ->
-                                                bridge.toast("App update is unavailable")
-                                            is DataResult.Error ->
-                                                bridge.toast(result.error.settingsUserFacingMessage())
-                                            is DataResult.NoPermission ->
-                                                bridge.toast(result.blocker.settingsUserFacingMessage())
-                                        }
-                                    }
+                                onAppUpdateOpen = {
+                                    pager.openAppUpdatePage(storeScope)
                                 },
                                 externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
@@ -14079,7 +14058,7 @@ private fun SharedHomeScreen(
     prefersChineseCommunity: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
-    onAppUpdateInstall: (() -> Unit)? = null,
+    onAppUpdateOpen: (() -> Unit)? = null,
     externalFocusLossDismissEpoch: Int = 0,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
@@ -14390,8 +14369,8 @@ private fun SharedHomeScreen(
                 },
                 onNotificationView = { notification ->
                     when {
-                        notification.id.isAppUpdateHomeNotificationId() && onAppUpdateInstall != null ->
-                            onAppUpdateInstall()
+                        notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
+                            onAppUpdateOpen()
                         notification.id.isMachineHomeNotificationId() ->
                             onOpenComputers()
                         notification.targetId?.startsWith("http://") == true ||
