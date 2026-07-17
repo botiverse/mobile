@@ -26,6 +26,8 @@
         <string>$(APS_ENVIRONMENT)</string>
         <key>LSRequiresIPhoneOS</key>
         <true />
+        <key>NSPhotoLibraryUsageDescription</key>
+        <string>Raft uses photo library access when you choose images to attach to messages.</string>
         <key>UIAppFonts</key>
         <array>
             <string>space_grotesk_regular.ttf</string>
