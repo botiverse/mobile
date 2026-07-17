@@ -32,7 +32,13 @@ final class QaAcceptanceLoopTests: XCTestCase {
     }
 
     override func setUpWithError() throws {
-        continueAfterFailure = false
+        // This is a PERSISTENT server loop: one XCTest method serves many
+        // actions for a whole acceptance run. A single failing interaction
+        // (e.g. XCUIApplication.typeText hitting Kuikly's non-native text
+        // field, which reports no native keyboard focus) must NOT abort the
+        // method — that would strand the loop and time out every later action.
+        // Keep going; each action reports its own ok/error result instead.
+        continueAfterFailure = true
     }
 
     func testRunQaAcceptanceLoop() throws {
@@ -102,11 +108,21 @@ final class QaAcceptanceLoopTests: XCTestCase {
             }
         case "text":
             guard let text = action.text, !text.isEmpty else { throw HarnessError.bad("text requires text") }
-            app.typeText(text)
+            try typeString(text, in: app)
         case "key":
             switch action.text {
-            case "enter": app.typeText("\n")
-            case "del": app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: max(action.count ?? 1, 1)))
+            case "enter":
+                _ = tapKeyboardReturn(app.keyboards.firstMatch)
+            case "del":
+                // Tap the on-screen delete key, NOT app.typeText (which retries
+                // the native keyboard-focus assertion ~1s each on Kuikly fields
+                // and hangs the loop — the case-02 `clear` failure). Bounded so a
+                // missing key or over-count can't run long.
+                let n = min(max(action.count ?? 1, 1), 80)
+                let kb = app.keyboards.firstMatch
+                for _ in 0..<n {
+                    if !tapKey(kb, ["delete", "Delete", "Backspace", "backspace"]) { break }
+                }
             case "back":
                 // iOS has no BACK key; the platform idiom is the left-edge swipe.
                 let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
@@ -127,6 +143,86 @@ final class QaAcceptanceLoopTests: XCTestCase {
             throw HarnessError.bad("unsupported action type \(action.type)")
         }
         return nil
+    }
+
+    // Kuikly's iOS text field is not a native UITextField, so
+    // XCUIApplication.typeText fails its "keyboard focus" assertion even with
+    // the keyboard visibly up (see case-02/case-06). We post real key events by
+    // tapping on-screen keyboard keys instead. There is NO typeText fallback:
+    // it retries the focus assertion ~1s per char and would blow the host's 90s
+    // per-action budget, hanging the whole loop. If any character could not be
+    // tapped, the action FAILS with the skipped chars listed (never silently
+    // types a partial string and lets a case go green on it).
+    private func typeString(_ s: String, in app: XCUIApplication) throws {
+        let kb = app.keyboards.firstMatch
+        guard kb.waitForExistence(timeout: 3.0) else {
+            throw HarnessError.bad("text: no keyboard on screen — tap the input field to focus it first")
+        }
+        var typed = 0
+        var skipped: [String] = []
+        for ch in s {
+            if typeChar(ch, kb: kb) { typed += 1 } else { skipped.append(String(ch)) }
+        }
+        if typed != s.count {
+            throw HarnessError.bad("text: typed \(typed)/\(s.count); no keyboard key for [\(skipped.joined())]")
+        }
+    }
+
+    @discardableResult
+    private func typeChar(_ ch: Character, kb: XCUIElement) -> Bool {
+        if ch == "\n" { return tapKeyboardReturn(kb) }
+        if ch == " " { return tapKey(kb, ["space"]) }
+        // Letters: tap the key with the EXACT desired case. iOS auto-capitalizes
+        // the first letter of a sentence, so a lowercase char may only be present
+        // as its uppercase label (and vice-versa). If the desired-case key is
+        // absent but the other case exists, toggle shift and retry — never accept
+        // the wrong-case key (that would type the wrong letter).
+        if ch.isLetter {
+            let want = String(ch)
+            let other = ch.isUppercase ? want.lowercased() : want.uppercased()
+            if tapExactKey(kb, want) { return true }
+            if keyExists(kb, other) {
+                _ = tapKey(kb, ["shift", "Shift", "capital letters", "Capital letters", "shift key"])
+                if tapExactKey(kb, want) { return true }
+            }
+            return false
+        }
+        // Digits / symbols live on the numbers plane behind the "more" toggle.
+        let switched = tapKey(kb, ["more", "numbers", "More", "Numbers"])
+        let hit = tapExactKey(kb, String(ch))
+        if switched { _ = tapKey(kb, ["letters", "ABC", "more", "Letters"]) }
+        return hit
+    }
+
+    private func keyExists(_ kb: XCUIElement, _ id: String) -> Bool {
+        return kb.keys[id].exists || kb.buttons[id].exists
+    }
+
+    @discardableResult
+    private func tapExactKey(_ kb: XCUIElement, _ id: String) -> Bool {
+        let k = kb.keys[id]
+        if k.exists { k.tap(); return true }
+        let b = kb.buttons[id]
+        if b.exists { b.tap(); return true }
+        return false
+    }
+
+    // Tap the first existing key/button among the identifiers. Uses .exists
+    // (fast, no retry) + .tap(); NO .isHittable gate (it reads false on some
+    // Kuikly-hosted keys that are still tappable) and NO typeText (slow).
+    @discardableResult
+    private func tapKey(_ kb: XCUIElement, _ ids: [String]) -> Bool {
+        for id in ids {
+            let k = kb.keys[id]
+            if k.exists { k.tap(); return true }
+            let b = kb.buttons[id]
+            if b.exists { b.tap(); return true }
+        }
+        return false
+    }
+
+    private func tapKeyboardReturn(_ kb: XCUIElement) -> Bool {
+        return tapKey(kb, ["Return", "return", "Go", "Send", "Search", "Done", "Next", "next", "\n"])
     }
 
     private func normalized(_ action: Action, in app: XCUIApplication) throws -> XCUICoordinate {
