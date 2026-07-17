@@ -146,24 +146,6 @@ internal class ComposeThreadReactionAtlasVisualPage : BasePager() {
     }
 }
 
-@Page("compose_channel_members_panel_visual", supportInLocal = true)
-internal class ComposeChannelMembersPanelVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ChannelMembersPanelVisualScreen() }
-    }
-}
-
-// Joint-channel roster variant split from the default members panel case
-// (task #370): components.channel.members.panel.joint-channel.
-@Page("compose_channel_members_panel_joint_channel_visual", supportInLocal = true)
-internal class ComposeChannelMembersPanelJointChannelVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ChannelMembersPanelJointChannelVisualScreen() }
-    }
-}
-
 @Page("compose_channel_settings_panel_visual", supportInLocal = true)
 internal class ComposeChannelSettingsPanelVisualPage : BasePager() {
     override fun willInit() {

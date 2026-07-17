@@ -69,17 +69,17 @@ Tailwind `disabled:opacity-*` modifiers.
 
 | Rank | Case | Pixel mismatch | RGB similarity | Readout | Root cause |
 |---:|---|---:|---:|---|---|
-| 1 | `components.channel.members.panel` | 78.03% | 74.9% | Real panel exists on both sides; overlay shade, modal placement, row data, badges, avatar/status, and add-member button differ. | Shared modal/list-row/avatar-row/action-button tokens. |
-| 2 | `components.channel.members.add-panel` | 71.97% | 71.9% | Real panel exists; modal is lower/larger on Android, input/list rows differ, member data differs. | Shared modal + form field + avatar/list row tokens. |
-| 3 | `components.home.create-channel.dialog` | 55.58% | 77.2% | Structure is close, but modal placement/size, field heights, member rows, and fixture data differ. | Unified dialog + form field + selected row/avatar row. |
-| 4 | `components.home.search.channel-dropdown` | 60.42% | 88.5% | Search data/content differs heavily, but dropdown/list row chrome and filter chips also differ. | Selection popover/list row/filter chip tokens. |
-| 5 | `components.thread.composer.channel-suggestions` | 39.78% | 80.2% | Suggestion popup is above composer on both sides; Android vertical placement and row/input chrome differ. | Selection popover/list row/composer chrome. |
-| 6 | `components.thread.composer.file-previews` | 27.95% | 84.2% | Android includes upload progress/error states not present in React baseline, plus preview sizing differences. | Fixture state alignment first; then file preview card tokens. |
-| 7 | `components.settings.connected-apps.page` | 36.94% | 82.9% | Page uses repeated surface/list rows; row token fixes should improve this without a page-only rewrite. | Surface/list item selected and disabled states. |
-| 8 | `components.settings.administration.*` | 31.46% | 85.5% | Repeated same page shell/content pattern across tabs. | Counted segmented controls plus section/list row tokens. |
+| 1 | `components.channel.members.add-panel` | 71.97% | 71.9% | Real panel exists; modal is lower/larger on Android, input/list rows differ, member data differs. | Shared modal + form field + avatar/list row tokens. |
+| 2 | `components.home.create-channel.dialog` | 55.58% | 77.2% | Structure is close, but modal placement/size, field heights, member rows, and fixture data differ. | Unified dialog + form field + selected row/avatar row. |
+| 3 | `components.home.search.channel-dropdown` | 60.42% | 88.5% | Search data/content differs heavily, but dropdown/list row chrome and filter chips also differ. | Selection popover/list row/filter chip tokens. |
+| 4 | `components.thread.composer.channel-suggestions` | 39.78% | 80.2% | Suggestion popup is above composer on both sides; Android vertical placement and row/input chrome differ. | Selection popover/list row/composer chrome. |
+| 5 | `components.thread.composer.file-previews` | 27.95% | 84.2% | Android includes upload progress/error states not present in React baseline, plus preview sizing differences. | Fixture state alignment first; then file preview card tokens. |
+| 6 | `components.settings.connected-apps.page` | 36.94% | 82.9% | Page uses repeated surface/list rows; row token fixes should improve this without a page-only rewrite. | Surface/list item selected and disabled states. |
+| 7 | `components.settings.administration.*` | 31.46% | 85.5% | Repeated same page shell/content pattern across tabs. | Counted segmented controls plus section/list row tokens. |
 
 Excluded or low-confidence product cases:
 
+- `components.channel.members.panel` and `.joint-channel` were retired on 2026-07-18 because the modal has no production caller after channel members moved to the standalone `compose_thread_members` page. Keep `components.channel.members.add-panel`, which renders the production Add Members dialog.
 - `components.channel.settings.panel` is invalid for this priority pass. React captured composer chrome while Android captured the edit-channel modal.
 - `components.members.agent-lifecycle-actions` has 96.69% pixel mismatch, but the side-by-side shows a scroll/vertical-position mismatch and different active tab/dropdown placement. It should be stabilized before using it to drive component token work.
 - Full `screens.*` cases are useful for final acceptance, but too broad for first component-style prioritization.
