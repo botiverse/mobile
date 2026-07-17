@@ -53,6 +53,15 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.zIndex
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
@@ -100,6 +109,70 @@ internal data class SlockForegroundMessageBanner(
     val avatarWireValue: String?,
     val avatarLabel: String
 )
+
+/** One banner model, route owner and expiry clock for one AppShell/window. */
+internal class SharedForegroundBannerStore(
+    private val scope: CoroutineScope,
+    private val awaitAutoDismiss: suspend () -> Unit = { delay(ForegroundBannerAutoDismissMs) }
+) {
+    private val lock = SynchronizedObject()
+    private val mutableBanner = MutableStateFlow<SlockForegroundMessageBanner?>(null)
+    private var autoDismissJob: Job? = null
+    private var visibleRouteOwnerId: String? = null
+    private var visibleRoute: ThreadRouteIdentity? = null
+
+    val banner: StateFlow<SlockForegroundMessageBanner?> = mutableBanner.asStateFlow()
+
+    fun show(next: SlockForegroundMessageBanner) {
+        synchronized(lock) {
+            if (mutableBanner.value?.id == next.id) return
+            autoDismissJob?.cancel()
+            mutableBanner.value = next
+            autoDismissJob =
+                scope.launch {
+                    awaitAutoDismiss()
+                    dismiss(next.id)
+                }
+        }
+    }
+
+    fun dismiss(expectedId: String? = null) {
+        synchronized(lock) {
+            val current = mutableBanner.value ?: return
+            if (expectedId != null && current.id != expectedId) return
+            autoDismissJob?.cancel()
+            autoDismissJob = null
+            mutableBanner.value = null
+        }
+    }
+
+    fun clear() {
+        synchronized(lock) {
+            autoDismissJob?.cancel()
+            autoDismissJob = null
+            mutableBanner.value = null
+            visibleRouteOwnerId = null
+            visibleRoute = null
+        }
+    }
+
+    fun setVisibleRoute(ownerId: String, route: ThreadRouteIdentity) {
+        synchronized(lock) {
+            visibleRouteOwnerId = ownerId
+            visibleRoute = route
+        }
+    }
+
+    fun clearVisibleRoute(ownerId: String) {
+        synchronized(lock) {
+            if (visibleRouteOwnerId != ownerId) return
+            visibleRouteOwnerId = null
+            visibleRoute = null
+        }
+    }
+
+    fun visibleRouteIdentity(): ThreadRouteIdentity? = synchronized(lock) { visibleRoute }
+}
 
 @Composable
 internal fun SlockForegroundBannerHost(
@@ -752,6 +825,7 @@ internal fun slockNotificationPushBannerOrNull(
     event: build.raft.app.model.NotificationPushReceived,
     currentServerId: String?,
     visibleConversationKey: String?,
+    visibleRouteIdentity: ThreadRouteIdentity? = null,
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
     onSuppressed: (String) -> Unit = {}
 ): SlockForegroundMessageBanner? {
@@ -782,7 +856,7 @@ internal fun slockNotificationPushBannerOrNull(
             ?.request
             ?: return null.also { onSuppressed("identity_incomplete") }
     val conversation = openRequest.conversationIdentity
-    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity = null)) {
+    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
         onSuppressed("visible_conversation")
         return null
     }

@@ -1674,7 +1674,7 @@ private class MemberDetailRouteProvider(
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
-                serverMembersStore.applyAgentDetailSnapshot(detailResult.data)
+                serverMembersStore.applyAgentDetailSnapshot(server.id, detailResult.data)
                 MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
@@ -1755,7 +1755,7 @@ private class MemberDetailRouteProvider(
             }
         }
 
-    suspend fun refreshAgentActivity(agentId: MemberId) {
+    suspend fun refreshAgentActivity(serverId: build.raft.app.model.ServerId?, agentId: MemberId) {
         when (val activityResult = memberRepository.getAgentActivity(DataRequestPriority.Visible, agentId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(
@@ -1764,7 +1764,9 @@ private class MemberDetailRouteProvider(
                         activity = activityResult.data.activity
                     )
                 )
-                serverMembersStore.applyAgentActivitySnapshot(agentId, activityResult.data.activity)
+                if (serverId != null) {
+                    serverMembersStore.applyAgentActivitySnapshot(serverId, agentId, activityResult.data.activity)
+                }
             }
             is DataResult.Empty -> Unit
             is DataResult.Error ->
@@ -2191,7 +2193,10 @@ private fun MemberDetailPageContent() {
         routeState = cached ?: MemberDetailRouteState.Loading
         if (cached != null && cached.accessMode.allowsPrivateAgentSurfaces && selectedMemberId != null) {
             launch {
-                provider.refreshAgentActivity(selectedMemberId)
+                provider.refreshAgentActivity(
+                    statusLookupServerId?.trim()?.takeIf { it.isNotBlank() }?.let { build.raft.app.model.ServerId(it) },
+                    selectedMemberId
+                )
             }
         }
         routeState = provider.loadMember(memberIdentity)
@@ -2816,7 +2821,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
         is DataResult.Content -> {
             val launchPayload =
                 buildMembersDirectMessageThreadLaunchPayload(
-                    memberId = member.id,
+                    member = member,
                     conversation = data.conversation,
                     timeContext = timeContext
                 )
@@ -2840,7 +2845,7 @@ private fun DataResult<OpenDirectMessageResult>.openMembersDirectMessageResult(
 }
 
 internal fun buildMembersDirectMessageThreadLaunchPayload(
-    memberId: MemberId,
+    member: MemberProfile,
     conversation: HomeDirectMessageRow,
     timeContext: SlockTimeContext
 ): WireThreadLaunchPayload? {
@@ -2854,10 +2859,16 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
                 threadId = ThreadId(threadId),
                 channelId = ChannelId(threadId),
                 channelType = KuiklyThreadSurfaceKind.DirectMessage,
-                kind = ConversationKind.DirectMessage
+                kind = ConversationKind.DirectMessage,
+                dmPeerIdentity =
+                    memberDetailIdentity(
+                        memberId = member.id.value,
+                        kind = member.kind,
+                        sourceServerId = member.serverId?.value
+                    )
             ),
         timeContext = timeContext,
-        instanceIdOverride = "members-message-${memberId.value}-$threadId"
+        instanceIdOverride = "members-message-${member.id.value}-$threadId"
     )
 }
 

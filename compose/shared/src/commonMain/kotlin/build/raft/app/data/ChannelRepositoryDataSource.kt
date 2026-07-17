@@ -1,9 +1,12 @@
 package build.raft.app.data
 
+import build.raft.app.MemberKindWireContract
+import build.raft.app.strictMemberKindOrNull
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -112,16 +115,26 @@ class RealChannelRepository(
     }
 
     override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> =
-        openDirectMessage(memberId = agentId, bodyText = buildOpenAgentDirectMessageBody(agentId), source = "dm_open_agent")
+        openDirectMessage(
+            memberId = agentId,
+            expectedPeerKind = MemberKind.Agent,
+            bodyText = buildOpenAgentDirectMessageBody(agentId),
+            source = "dm_open_agent"
+        )
 
     override suspend fun openUserDirectMessage(userId: MemberId): DataResult<OpenDirectMessageResult> =
-        openDirectMessage(memberId = userId, bodyText = buildOpenUserDirectMessageBody(userId), source = "dm_open_user")
+        openDirectMessage(
+            memberId = userId,
+            expectedPeerKind = MemberKind.Human,
+            bodyText = buildOpenUserDirectMessageBody(userId),
+            source = "dm_open_user"
+        )
 
     override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> {
         currentContext() ?: return authRequired()
         val name = request.name.trim()
         if (name.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        if (!name.isValidChannelName()) {
+        if (!name.isSubmittableChannelName()) {
             return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
         }
         return executeChannel(
@@ -213,7 +226,7 @@ class RealChannelRepository(
         val channelId = request.channelId
         val name = request.name.trim()
         if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
-        if (!name.isValidChannelName()) {
+        if (!name.isSubmittableChannelName()) {
             return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
         }
         val canonicalRequest = request.copy(name = name, description = request.description.trim())
@@ -301,6 +314,7 @@ class RealChannelRepository(
 
     private suspend fun openDirectMessage(
         memberId: MemberId,
+        expectedPeerKind: MemberKind,
         bodyText: String,
         source: String
     ): DataResult<OpenDirectMessageResult> {
@@ -311,8 +325,32 @@ class RealChannelRepository(
             block = { networkClient.openDirectMessage(DataRequestPriority.Foreground, bodyText) },
             source = source,
             mapper = { responseBody ->
-                parseSharedOpenDirectMessageResult(responseBody)
-                    ?: throw IllegalStateException("Open DM response missing channel")
+                val result =
+                    parseSharedOpenDirectMessageResult(responseBody)
+                        ?: throw IllegalStateException("Open DM response missing channel")
+                val requestedPeerId = memberId.value.trim()
+                val actualPeerId = result.conversation.presenceMemberId?.value?.trim()
+                val actualPeerKind =
+                    result.conversation.directMessagePeerType.strictMemberKindOrNull(
+                        source = source,
+                        diagnostics = warningLogger,
+                        contract = MemberKindWireContract.InternalActor
+                    )
+                val channelId = result.conversation.channelId.value.trim()
+                if (
+                    channelId.isBlank() ||
+                    actualPeerId != requestedPeerId ||
+                    actualPeerKind != expectedPeerKind
+                ) {
+                    warningLogger(
+                        "dm_open_identity_mismatch source=$source " +
+                            "requestedPeerId=$requestedPeerId requestedPeerKind=${expectedPeerKind.name} " +
+                            "actualPeerId=${actualPeerId ?: "none"} actualPeerKind=${actualPeerKind?.name ?: "none"} " +
+                            "channelId=${channelId.ifBlank { "none" }}"
+                    )
+                    throw IllegalStateException("Open DM response peer identity mismatch")
+                }
+                result
             }
         )
     }

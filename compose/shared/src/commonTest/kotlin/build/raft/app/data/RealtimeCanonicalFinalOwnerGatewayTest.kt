@@ -361,6 +361,7 @@ internal class CanonicalFinalGatewayFixture(
         )
     val provider =
         createSharedRealtimeAuthorityProvider(
+            onAuthRevisionAdvanced = {},
             registry = registry,
             authStore = auth,
             authEvents = auth,

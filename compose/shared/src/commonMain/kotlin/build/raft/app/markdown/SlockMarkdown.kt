@@ -151,6 +151,8 @@ internal data class MarkdownInlineToken(
     val kind: MarkdownInlineTokenKind,
     val range: IntRange,
     val label: String,
+    // Presentation-only. Click identity remains the source tag below.
+    val resolvedLabel: String? = null,
     val tag: ThreadMarkdownTag? = null,
     val highlighted: Boolean = false
 )
@@ -165,7 +167,8 @@ internal data class MarkdownInlineTokenPlan(
 
     val signature: String =
         tokens.joinToString(separator = "|") { token ->
-            "${token.id}:${token.kind}:${token.range.first}-${token.range.last}:${token.label}:${token.highlighted}"
+            "${token.id}:${token.kind}:${token.range.first}-${token.range.last}:" +
+                "${token.label}:${token.resolvedLabel.orEmpty()}:${token.highlighted}"
         }
 
     fun tagTokens(): List<MarkdownInlineToken> =
@@ -230,42 +233,159 @@ internal data class MarkdownInlineTokenPlan(
         inlineCodeMatches
 }
 
-internal object SlockMarkdownInlineTokenRegistry {
+private data class MarkdownInlineScanCacheKey(
+    val content: String,
+    val inlineContentScope: String?,
+    val baseOffset: Int
+)
+
+private data class MarkdownInlineTokenState(
+    val valid: Boolean,
+    val highlighted: Boolean,
+    val resolvedLabel: String?
+)
+
+private data class MarkdownInlineTokenPlanCacheKey(
+    val scanKey: MarkdownInlineScanCacheKey,
+    val tokenStates: List<MarkdownInlineTokenState>
+)
+
+/**
+ * Keeps Markdown scanning and token construction stable across unrelated
+ * directory hydration. The validator can be replaced when members/candidates
+ * arrive, but a body only receives a new plan when one of its own tags changes
+ * validity, highlight state, or resolved presentation label.
+ */
+internal class SlockMarkdownInlineTokenPlanner(
+    private val maxEntries: Int = 512
+) {
+    private val lock = SynchronizedObject()
+    private val scanEntries = LinkedHashMap<MarkdownInlineScanCacheKey, ThreadMarkdownInlineScan>()
+    private val planEntries = LinkedHashMap<MarkdownInlineTokenPlanCacheKey, MarkdownInlineTokenPlan>()
+
+    internal var planBuildCount: Int = 0
+        private set
+
     fun plan(
         content: String,
         highlightedMentions: Set<String> = emptySet(),
         isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
+        resolveTagLabel: ((ThreadMarkdownTag) -> String?)? = null,
         inlineContentScope: String? = null,
         baseOffset: Int = 0
     ): MarkdownInlineTokenPlan {
-        val highlightedMentionKeys =
-            highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
+        val scanKey =
+            MarkdownInlineScanCacheKey(
+                content = content,
+                inlineContentScope = inlineContentScope,
+                baseOffset = baseOffset
+            )
         val inlineScan =
-            content.threadMarkdownInlineScan(
+            synchronized(lock) {
+                scanEntries.remove(scanKey)?.also { cached -> scanEntries[scanKey] = cached }
+            } ?: content.threadMarkdownInlineScan(
                 baseOffset = baseOffset,
                 inlineContentScope = inlineContentScope
-            )
+            ).also { computed ->
+                synchronized(lock) {
+                    scanEntries.remove(scanKey)?.let { cached ->
+                        scanEntries[scanKey] = cached
+                    } ?: run {
+                        scanEntries[scanKey] = computed
+                        scanEntries.trimMarkdownCacheTo(maxEntries)
+                    }
+                }
+            }
+        val highlightedMentionKeys =
+            highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
+        val tokenStates =
+            inlineScan.tagMatches.map { match ->
+                val valid = isTagValid(match.tag)
+                MarkdownInlineTokenState(
+                    valid = valid,
+                    highlighted =
+                        valid &&
+                            match.tag.kind == ThreadMarkdownTagKind.UserMention &&
+                            highlightedMentionKeys.containsThreadMention(match.tag.label),
+                    resolvedLabel =
+                        if (valid) {
+                            resolveTagLabel
+                                ?.invoke(match.tag)
+                                ?.trim()
+                                ?.takeIf { it.isNotBlank() }
+                                ?: threadMarkdownTagDisplayLabel(match.tag.label)
+                        } else {
+                            null
+                        }
+                )
+            }
+        val planKey = MarkdownInlineTokenPlanCacheKey(scanKey = scanKey, tokenStates = tokenStates)
+        synchronized(lock) {
+            planEntries.remove(planKey)?.let { cached ->
+                planEntries[planKey] = cached
+                return cached
+            }
+        }
         val tagTokens =
             inlineScan.tagMatches
-                .filter { match -> isTagValid(match.tag) }
-                .map { match ->
+                .zip(tokenStates)
+                .mapNotNull { (match, state) ->
+                    if (!state.valid) return@mapNotNull null
                     MarkdownInlineToken(
                         id = match.id,
                         kind = match.tag.kind.toMarkdownInlineTokenKind(),
                         range = match.range,
                         label = match.tag.label,
+                        resolvedLabel = state.resolvedLabel,
                         tag = match.tag,
-                        highlighted =
-                            match.tag.kind == ThreadMarkdownTagKind.UserMention &&
-                                highlightedMentionKeys.containsThreadMention(match.tag.label)
+                        highlighted = state.highlighted
                     )
                 }
-        return MarkdownInlineTokenPlan(
-            content = content,
-            tokens = tagTokens.sortedBy { it.range.first },
-            inlineCodeMatches = inlineScan.inlineCodeMatches
-        )
+        val plan =
+            MarkdownInlineTokenPlan(
+                content = content,
+                tokens = tagTokens.sortedBy { it.range.first },
+                inlineCodeMatches = inlineScan.inlineCodeMatches
+            )
+        return synchronized(lock) {
+            planEntries.remove(planKey)?.let { cached ->
+                planEntries[planKey] = cached
+                cached
+            } ?: plan.also {
+                planEntries[planKey] = it
+                planEntries.trimMarkdownCacheTo(maxEntries)
+                planBuildCount += 1
+            }
+        }
     }
+
+    private fun <K, V> LinkedHashMap<K, V>.trimMarkdownCacheTo(limit: Int) {
+        val safeLimit = limit.coerceAtLeast(1)
+        while (size > safeLimit) {
+            keys.firstOrNull()?.let(::remove) ?: return
+        }
+    }
+}
+
+internal object SlockMarkdownInlineTokenRegistry {
+    private val planner = SlockMarkdownInlineTokenPlanner()
+
+    fun plan(
+        content: String,
+        highlightedMentions: Set<String> = emptySet(),
+        isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultSlockMarkdownTagValidity,
+        resolveTagLabel: ((ThreadMarkdownTag) -> String?)? = null,
+        inlineContentScope: String? = null,
+        baseOffset: Int = 0
+    ): MarkdownInlineTokenPlan =
+        planner.plan(
+            content = content,
+            highlightedMentions = highlightedMentions,
+            isTagValid = isTagValid,
+            resolveTagLabel = resolveTagLabel,
+            inlineContentScope = inlineContentScope,
+            baseOffset = baseOffset
+        )
 }
 
 fun defaultSlockMarkdownTagValidity(tag: ThreadMarkdownTag): Boolean =
@@ -697,6 +817,7 @@ internal fun slockMarkdownAnnotator(
             content,
             highlightedMentions,
             isTagValid,
+            resolveTagLabel = resolveTagLabel,
             inlineContentScope = inlineContentScope
         )
 ): MarkdownAnnotator {
@@ -1659,6 +1780,11 @@ fun SlockMarkdownBody(
     LaunchedEffect(Unit) {
         println(slockRichTextCapsLine())
     }
+    SlockMarkdownBodyRecomposeMarker(
+        performanceKey = performanceKey,
+        bodyLength = body.length,
+        performanceLogger = performanceLogger
+    )
     val content = remember(body, performanceKey) {
         val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
         val (prepared, cacheHit) =
@@ -1710,20 +1836,36 @@ fun SlockMarkdownBody(
         MarkdownParserContent.from(content)
     }
     val parserContent = markdownParserContent.parserContent
-    val tokenPlan = remember(markdownParserContent, highlightedMentions, isTagValid, inlineContentScope) {
-        SlockMarkdownInlineTokenRegistry.plan(
-            parserContent,
+    val tokenPlan =
+        remember(
+            markdownParserContent,
             highlightedMentions,
             isTagValid,
-            inlineContentScope = inlineContentScope
-        )
-    }
-    val richTextDocument: SlockRichTextDocument = remember(body, parserContent, tokenPlan, activeTagKey) {
+            resolveTagLabel,
+            inlineContentScope
+        ) {
+            SlockMarkdownInlineTokenRegistry.plan(
+                parserContent,
+                highlightedMentions,
+                isTagValid,
+                resolveTagLabel = resolveTagLabel,
+                inlineContentScope = inlineContentScope
+            )
+        }
+    val bodyActiveTagKey =
+        remember(tokenPlan, activeTagKey) {
+            activeTagKey?.takeIf { targetKey ->
+                tokenPlan.tagTokens().any { token ->
+                    token.tag?.let(::threadMarkdownTagActivationKey) == targetKey
+                }
+            }
+        }
+    val richTextDocument: SlockRichTextDocument = remember(body, parserContent, tokenPlan, bodyActiveTagKey) {
         buildSlockRichTextDocumentFromMarkdownPlan(
             source = body,
             content = parserContent,
             tokenPlan = tokenPlan,
-            activeTagKey = activeTagKey
+            activeTagKey = bodyActiveTagKey
         )
     }
     if (performanceKey != null) {

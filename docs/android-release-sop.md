@@ -5,6 +5,11 @@ release lane is intentionally draft-first: CI may build, sign, upload, and
 share a **draft**, but it must not activate a public release. Activation is a
 separate, explicit, owner-approved command after reviewed notes and smoke.
 
+Each release is stabilized on a dedicated `release-X.Y.Z` branch. Product work
+may continue on `main`, while only explicitly selected release fixes enter the
+release branch. The release branch is merged back into `main` only after the
+Hands release has been activated and verified successfully.
+
 The versioning formula and user-facing changelog rules are defined in
 [Android Quiver Release Practices](android-quiver-release-practices-2026-07-02.md).
 This document defines the order of operations and the scripts that enforce it.
@@ -16,9 +21,9 @@ This document defines the order of operations and the scripts that enforce it.
 - **Release operator** runs the preflight, dispatches the draft workflow,
   records artifacts and smoke evidence, and runs the final publish command
   only after the owner's go.
-- **Feature owners** ensure each selected PR is merged, its dependencies are
-  already on `main`, and its intended user-visible behavior is represented in
-  the notes.
+- **Fix owners** branch from the current release branch, target their PR back
+  to that release branch, keep changes narrowly scoped to an accepted release
+  blocker, and provide source, hosted, and targeted regression evidence.
 
 ## 1. Freeze The Candidate
 
@@ -26,6 +31,34 @@ Write down the intended version, versionCode build component, channel, and the
 specific PRs selected for this release. Do not use "all open PRs" as a release
 criterion: unrelated in-progress PRs must not block a candidate, while a PR
 that is selected must be explicitly accounted for.
+
+After the selected candidate head has passed its exact-head source and hosted
+gates, create a remote branch named `release-X.Y.Z` at that exact commit. The
+branch is a stabilization boundary, not a snapshot that follows `main`.
+
+```bash
+scripts/create_android_release_branch.sh \
+  --version 1.5.0 \
+  --candidate <reviewed-exact-main-commit>
+```
+
+Fail if the remote branch already exists at a different commit. Moving an
+existing release branch backwards or force-pushing it destroys release audit
+history and is prohibited. The helper is idempotent only when the existing
+remote branch already points at the requested exact commit.
+
+Once frozen:
+
+1. New product work continues on `main` and does not enter the release.
+2. A release-blocker fix branches from `origin/release-X.Y.Z` and its PR base
+   is `release-X.Y.Z`, not `main`.
+3. Do not merge `main` into the release branch to pick up unrelated changes.
+   Bring in only reviewed blocker fixes and their strictly required
+   dependencies through explicit PRs.
+4. Every merged fix creates a new candidate head. Previous Alpha, RC,
+   preflight, checksum, smoke, and approval evidence becomes stale.
+5. Keep each independent blocker in its own PR so it can be reviewed, reverted,
+   and validated without coupling unrelated fixes.
 
 For example, version `1.2.2` build `0` has versionCode `1020200`:
 
@@ -38,13 +71,16 @@ that may already have build `0` installed.
 
 ## 2. Run The Preflight
 
-Start from a clean local checkout of `main` that exactly equals `origin/main`.
-Do not run the release from a feature branch, detached worktree, or a local
-main that has not been fast-forwarded.
+Start from a clean local checkout of the release branch that exactly equals
+its remote. Do not run the release from `main`, a feature branch, a detached
+worktree, or a local release branch that is ahead of or behind its remote.
 
 ```bash
-git switch main
-git pull --ff-only origin main
+export SLOCK_RELEASE_BRANCH=release-1.2.2
+
+git fetch origin "${SLOCK_RELEASE_BRANCH}" --prune
+git switch "${SLOCK_RELEASE_BRANCH}"
+git pull --ff-only origin "${SLOCK_RELEASE_BRANCH}"
 
 scripts/release_android_preflight.sh \
   --version 1.2.2 \
@@ -57,7 +93,8 @@ scripts/release_android_preflight.sh \
 
 The preflight fails closed when any of these facts is false:
 
-1. The checkout is clean `main` and exactly matches `origin/main`.
+1. The checkout is the configured clean release branch and exactly matches
+   `origin/release-X.Y.Z`.
 2. Every `--required-pr` is merged and its merge commit is an ancestor of the
    release head.
 3. The release head has a successful `Commit Sign-off` workflow. The Android
@@ -93,6 +130,8 @@ For a diagnosis that must prove preflight before a workflow is dispatched, pass
 `--preflight-first`. The wrapper has no active-publish mode.
 
 ```bash
+export SLOCK_RELEASE_BRANCH=release-1.2.2
+
 scripts/release_android_quiver_github.sh \
   --version 1.2.2 \
   --build 0 \
@@ -219,12 +258,43 @@ if the release owner wants a git audit tag. The tag must point at the verified
 source commit and must never be used to re-trigger the Android release
 workflow.
 
+## 7. Merge The Released Branch Back Into Main
+
+Do not merge the release branch into `main` before publication. The successful
+Hands release is the gate that turns the stabilization branch into shipped
+history.
+
+After activation and public endpoint verification:
+
+1. Record the released source commit, versionCode, Hands release id, APK
+   SHA-256, approved notes, smoke evidence, and optional audit tag.
+2. Open a PR from `release-X.Y.Z` to `main`. Do not push directly to `main`.
+3. Review the complete merge diff. `main` may have advanced during
+   stabilization, so resolve conflicts by preserving both the shipped fixes
+   and intentional newer product work. Never resolve by replacing `main` with
+   the older release tree.
+4. Run the normal required hosted gates on the merge PR. Merge only after the
+   PR is reviewed, green, and cleanly mergeable.
+5. Verify the released source commit is an ancestor of `origin/main`, then
+   close release-only tasks and Hands feedback using the shipped evidence.
+6. Delete `release-X.Y.Z` only after the merge-back is verified and no release
+   audit or rollback operation still needs the branch.
+
+If publication is abandoned, do not merge the release branch merely to recover
+its fixes. Re-triage each fix for `main` and use explicit PRs with current-main
+validation.
+
 ## Abort And Rebuild Rules
 
-- If the candidate changes after the preflight, start again from step 1.
+- If the release-branch head changes after preflight, invalidate all evidence
+  bound to the previous head and restart from step 2. Do not move the branch
+  back to an older candidate.
 - If a draft is malformed, cancel/supersede the draft and build a new version
   code; do not overwrite the active main release to test visibility.
 - If the versionCode is not greater than the active Hands version, increase the
   build component or select a new semantic version before dispatching.
 - If a dependency gate, notes, or smoke result is uncertain, keep the release
   draft-only. No active package is preferable to an unexplained package.
+- If a fix PR accidentally targets `main`, do not merge it and then merge
+  `main` into the release branch. Retarget or recreate the PR from the release
+  branch so the stabilization diff remains explicit.

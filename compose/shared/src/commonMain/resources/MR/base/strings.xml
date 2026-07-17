@@ -1124,8 +1124,8 @@
     <string name="channel_create_title">CREATE CHANNEL</string>
     <string name="channel_create_label_name">Name</string>
     <string name="channel_create_placeholder_name">e.g. ai-research</string>
-    <string name="channel_create_hint_name_format">Start with a letter. Use letters, numbers, hyphens, or underscores.</string>
-    <string name="channel_create_error_name_format">Start with a letter and use only letters, numbers, hyphens, or underscores.</string>
+    <string name="channel_create_hint_name_format">Start with a letter. Use letters from any language, numbers, hyphens, or underscores (32 characters max).</string>
+    <string name="channel_create_error_name_format">Start with a letter and use only letters from any language, numbers, hyphens, or underscores (32 characters max).</string>
     <string name="channel_create_label_description">Description</string>
     <string name="channel_create_placeholder_description">What is this channel about?</string>
     <string name="channel_create_label_visibility">Visibility</string>

@@ -89,7 +89,7 @@ class RealtimeCanonicalFinalProductionLifecycleCallsiteRedTest {
     }
 
     @Test
-    fun threadFeatureMountsOnlyInResolvedContentAndKeepsBannerDelivery() {
+    fun threadFeatureMountsOnlyInResolvedContentAndCannotPublishBanners() {
         val source = commonMainSource("build/raft/app/ThreadPage.kt")
         assertEquals(
             1,
@@ -99,9 +99,29 @@ class RealtimeCanonicalFinalProductionLifecycleCallsiteRedTest {
         val loadingReturnIndex = source.indexOf("if (routeMountPlan == ThreadRouteMountPlan.LoadingShell)")
         val featureIndex = source.indexOf("RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature(threadInstanceKey)")
         assertTrue(featureIndex > loadingReturnIndex, "ThreadFeature must not mount in LoadingShell.")
-        val featureWindow = source.substring((featureIndex - 2_000).coerceAtLeast(0), (featureIndex + 2_000).coerceAtMost(source.length))
+        val deliveryIndex = source.indexOf("suspend fun deliverThreadFeatureRealtimeEvent")
+        assertTrue(deliveryIndex in (loadingReturnIndex + 1)..<featureIndex)
+        val featureWindow = source.substring(deliveryIndex, featureIndex)
         assertTrue("latestThreadFeatureRealtimeEventHandler" in featureWindow)
-        assertTrue("foregroundMessageBanner" in featureWindow, "ThreadFeature final delivery must retain MessageNew banner mutation.")
+        assertFalse(
+            "foregroundMessageBanner" in featureWindow,
+            "ThreadFeature delivery must not own a route-local banner model.",
+        )
+        assertFalse(
+            "NotificationPushReceived" in featureWindow,
+            "AppShell is the sole notification:push banner producer.",
+        )
+        assertFalse(
+            "event is MessageNew" in featureWindow,
+            "ThreadFeature must not create a second route-local banner from message:new.",
+        )
+        val appShellSource = commonMainSource("build/raft/app/SettingsHomePage.kt")
+        assertTrue("event is NotificationPushReceived" in appShellSource)
+        assertEquals(
+            1,
+            appShellSource.occurrences("foregroundBannerStore.show("),
+            "AppShell must contain the single foreground-banner publication codepoint.",
+        )
         assertFixtureCannotMintAuthorityOrSurfaces()
     }
 

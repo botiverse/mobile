@@ -14,6 +14,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.Presence
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
@@ -97,6 +98,29 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class ThreadPayloadTest {
+    @Test
+    fun firstContentPerformanceBudgetLocksPayloadLayoutAndDrawThresholds() {
+        assertFalse(evaluateThreadFirstContentPerformanceBudget().passed)
+        assertTrue(
+            evaluateThreadFirstContentPerformanceBudget(
+                payloadReadyMs = ThreadPayloadReadyBudgetMs,
+                layoutMs = ThreadFirstLayoutBudgetMs,
+                drawMs = ThreadFirstDrawBudgetMs
+            ).passed
+        )
+
+        val overBudget =
+            evaluateThreadFirstContentPerformanceBudget(
+                payloadReadyMs = ThreadPayloadReadyBudgetMs + 1,
+                layoutMs = ThreadFirstLayoutBudgetMs + 1,
+                drawMs = ThreadFirstDrawBudgetMs + 1
+            )
+        assertFalse(overBudget.passed)
+        assertFalse(overBudget.payloadReadyWithinBudget ?: true)
+        assertFalse(overBudget.layoutWithinBudget ?: true)
+        assertFalse(overBudget.drawWithinBudget ?: true)
+    }
+
     private val launchJson = Json { ignoreUnknownKeys = true }
 
     @Test
@@ -1015,9 +1039,13 @@ class ThreadPayloadTest {
                         )
                     )
             )
-        val serverMembersState =
-            SharedServerMembersState(
-                presenceByMemberId =
+        val serverMembersState = SharedServerMembersState()
+
+        val lookup =
+            ThreadAgentStatusLookup.from(
+                serverMembersState = serverMembersState,
+                serverId = "server-1",
+                presenceFacts =
                     mapOf(
                         "agent-1" to
                             MemberPresenceUpdated(
@@ -1029,14 +1057,75 @@ class ThreadPayloadTest {
                     )
             )
 
+        assertEquals(AgentStatus.Working, lookup.indicatorStateForMemberId(payload.messages[0].authorId)?.status)
+        assertEquals(AgentStatus.Online.name, payload.messages[0].authorAgentStatus)
+    }
+
+    @Test
+    fun agentStatusLookupConsumesOwnerFactsOnBothBranches() {
+        // task #136 gate (Cindy): executable proof that BOTH branches of
+        // recordThreadAgentStatuses consume the passed owner-partitioned
+        // facts — the direct facts loop AND the roster loop (fact overrides
+        // the member's wire status; members without a fact keep wire truth).
+        val serverMembersState =
+            SharedServerMembersState(
+                entriesByServerId =
+                    mapOf(
+                        "server-1" to
+                            SharedServerMembersEntry(
+                                serverId = "server-1",
+                                members =
+                                    listOf(
+                                        MemberProfile(
+                                            id = MemberId("agent-overridden"),
+                                            displayName = "Overridden",
+                                            handle = "overridden",
+                                            kind = MemberKind.Agent,
+                                            presence = Presence.Active,
+                                            agentStatus = AgentStatus.Online
+                                        ),
+                                        MemberProfile(
+                                            id = MemberId("agent-wire"),
+                                            displayName = "Wire",
+                                            handle = "wire",
+                                            kind = MemberKind.Agent,
+                                            presence = Presence.Active,
+                                            agentStatus = AgentStatus.Idle
+                                        )
+                                    )
+                            )
+                    )
+            )
+
         val lookup =
             ThreadAgentStatusLookup.from(
                 serverMembersState = serverMembersState,
-                serverId = "server-1"
+                serverId = "server-1",
+                presenceFacts =
+                    mapOf(
+                        "agent-overridden" to
+                            MemberPresenceUpdated(
+                                memberId = MemberId("agent-overridden"),
+                                presence = Presence.Offline,
+                                kind = MemberKind.Agent,
+                                agentStatus = AgentStatus.Offline
+                            ),
+                        "agent-facts-only" to
+                            MemberPresenceUpdated(
+                                memberId = MemberId("agent-facts-only"),
+                                presence = Presence.Active,
+                                kind = MemberKind.Agent,
+                                agentStatus = AgentStatus.Working
+                            )
+                    )
             )
 
-        assertEquals(AgentStatus.Working, lookup.indicatorStateForMemberId(payload.messages[0].authorId)?.status)
-        assertEquals(AgentStatus.Online.name, payload.messages[0].authorAgentStatus)
+        // Branch 1 (facts loop): fact-only member resolved from the partition.
+        assertEquals(AgentStatus.Working, lookup.indicatorStateForMemberId("agent-facts-only")?.status)
+        // Branch 2 (roster loop): the fact OVERRIDES the member's wire status…
+        assertEquals(AgentStatus.Offline, lookup.indicatorStateForMemberId("agent-overridden")?.status)
+        // …and a member without a fact keeps wire truth.
+        assertEquals(AgentStatus.Idle, lookup.indicatorStateForMemberId("agent-wire")?.status)
     }
 
     @Test
@@ -7437,14 +7526,15 @@ class ThreadPayloadTest {
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
-        assertEquals(8, threadMessagesBeyondBoundsItemCount(80))
-        assertEquals(12, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 720f))
-        assertEquals(24, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 10_000f))
+        assertEquals(3, threadMessagesBeyondBoundsItemCount(3))
+        assertEquals(4, threadMessagesBeyondBoundsItemCount(80))
+        assertEquals(8, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 720f))
+        assertEquals(8, threadMessagesBeyondBoundsItemCount(80, viewportHeightDp = 10_000f))
         assertEquals(
             ThreadLazyWindowConsumerCounts(
-                listBeyondBoundsItems = 12,
-                markdownPreparseOverscanItems = 12,
-                diagnosticsBeyondBoundsItems = 12
+                listBeyondBoundsItems = 8,
+                markdownPreparseOverscanItems = 8,
+                diagnosticsBeyondBoundsItems = 8
             ),
             threadLazyWindowConsumerCounts(
                 itemCount = 80,

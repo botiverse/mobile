@@ -193,7 +193,7 @@ import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
-import build.raft.app.data.isValidChannelName
+import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
@@ -3076,7 +3076,11 @@ internal fun SlockAppShellContent(
     var membersListRefreshKey by remember { mutableStateOf(0) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
-    var foregroundMessageBanner by remember { mutableStateOf<SlockForegroundMessageBanner?>(null) }
+    val foregroundBannerStore =
+        remember(sharedStores, navigationStoreScope) {
+            sharedStores.foregroundBannerStore(navigationStoreScope)
+        }
+    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
     val visibleRefreshGate = remember { AppShellVisibleRefreshGate() }
 
     fun refreshVisibleAppShellRoute(
@@ -3152,7 +3156,7 @@ internal fun SlockAppShellContent(
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
-        foregroundMessageBanner = null
+        foregroundBannerStore.clear()
         sharedStores.homeSavedStateCache.clear()
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
@@ -3773,7 +3777,7 @@ internal fun SlockAppShellContent(
         userMemberIds: List<String>
     ) {
         val trimmedName = name.trim()
-        if (!trimmedName.isValidChannelName() || createChannelSubmitting) {
+        if (!trimmedName.isSubmittableChannelName() || createChannelSubmitting) {
             return
         }
         createChannelSubmitting = true
@@ -3917,10 +3921,12 @@ internal fun SlockAppShellContent(
                     }
                 },
                 applyAgentActivity = { event ->
+                    // task #136: members-store applyPresence moved to the
+                    // provider-installed presence sink (store lifetime, SSOT);
+                    // only the page-scoped agent-detail dispatch stays here.
                     appShellAgentDetailStore.dispatch(
                         SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
                     )
-                    appShellServerMembersStore.applyPresence(event)
                 },
                 requestMemberDetailRefresh = {
                     membersAgentDetailRefreshKey += 1
@@ -4135,6 +4141,7 @@ internal fun SlockAppShellContent(
                                             selectedHomeDestination = latestSelectedHomeDestination,
                                             selectedConversationId = latestSelectedHomeConversationId
                                         ),
+                                    visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
                                     conversationDirectory = latestAppShellConversationDirectory,
                                     onSuppressed = { reason ->
                                         bridge.log(
@@ -4148,10 +4155,10 @@ internal fun SlockAppShellContent(
                                         "notification_push_banner_shown serverId=${event.serverId.value} " +
                                             "messageId=${event.messageId.value} kind=${event.kind.name}"
                                     )
-                                    foregroundMessageBanner = it
+                                    foregroundBannerStore.show(it)
                                 }
                             } else {
-                                foregroundMessageBanner = null
+                                foregroundBannerStore.dismiss()
                             }
                         }
                     }
@@ -4186,14 +4193,6 @@ internal fun SlockAppShellContent(
         )
     }
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
-    LaunchedEffect(foregroundMessageBanner?.id) {
-        val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect
-        delay(slockForegroundBannerAutoDismissMs())
-        if (foregroundMessageBanner?.id == bannerId) {
-            foregroundMessageBanner = null
-        }
-    }
-
     val homeReadyForChildPagePrewarm =
         readyServerId != null && homeState.content is SharedHomeContentState.Content
     LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId) {
@@ -4430,6 +4429,7 @@ internal fun SlockAppShellContent(
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(
                             bridge = bridge,
+                            storeScope = navigationStoreScope,
                             session = readySession,
                             memberRepository = memberRepository,
                             settingsRepository = settingsRepository,
@@ -4499,7 +4499,7 @@ internal fun SlockAppShellContent(
                             onForegroundMessageBannersSelected = {
                                 foregroundMessageBannersEnabled = it
                                 if (!it) {
-                                    foregroundMessageBanner = null
+                                    foregroundBannerStore.dismiss()
                                 }
                             },
                             onActivityTaskStatusBadgesSelected = {
@@ -4677,16 +4677,14 @@ internal fun SlockAppShellContent(
             currentServerStore = sharedStores.localDataStore,
             currentServerIdOverride = readySession?.currentServerId?.let(::ServerId),
             onBannerClick = { target ->
-                foregroundMessageBanner = null
+                foregroundBannerStore.dismiss(target.id)
                 openHomeMessageRequest(
                     request = target.openRequest,
                     source = "foreground_banner",
                     fallbackAnchorMessageId = target.focusedMessageId
                 )
             },
-            onBannerDismiss = {
-                foregroundMessageBanner = null
-            }
+            onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
         ) {
             key("route-main") { mainRouteContent() }
         }
@@ -13608,6 +13606,7 @@ private fun AppShellEmailVerificationGateContent(
 @Composable
 private fun SharedMembersScreen(
     bridge: build.raft.app.base.BridgeModule,
+    storeScope: SlockShellStoreScope,
     session: StoredAuthSession?,
     memberRepository: MemberRepository,
     settingsRepository: SettingsRepository,
@@ -13940,6 +13939,7 @@ private fun SharedMembersScreen(
                             pager.openSlockPage(
                                 pageName = MEMBER_DETAIL_PAGE,
                                 pageData = pageData,
+                                storeScopeOverride = storeScope,
                                 onMissingScope = {
                                     bridge.toast("Unable to open profile")
                                     bridge.log("members_detail_open_skip reason=missing_shell_scope source=app_shell")
@@ -14850,12 +14850,12 @@ private fun SharedCreateChannelDialog(
     }
     val trimmedName = name.trim()
     val nameError =
-        if (trimmedName.isNotEmpty() && !trimmedName.isValidChannelName()) {
+        if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
             stringResource(MR.strings.channel_create_error_name_format)
         } else {
             null
         }
-    val canSubmit = trimmedName.isValidChannelName() && !submitting
+    val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
     val filteredMembers =
         filterPeopleSuggestions(

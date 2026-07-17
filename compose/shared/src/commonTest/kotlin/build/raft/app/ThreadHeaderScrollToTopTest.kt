@@ -28,4 +28,16 @@ class ThreadHeaderScrollToTopTest {
         assertEquals(0, threadHeaderScrollToTopTargetIndex(1))
         assertEquals(0, threadHeaderScrollToTopTargetIndex(42))
     }
+
+    @Test
+    fun headerScrollToTopRequestRunsOnceAcrossThreadPagination() {
+        val fence = AppShellScrollToTopRequestFence(initialRequest = 1)
+
+        assertFalse(consumeThreadHeaderScrollToTopRequest(request = 2, lazyItemCount = 0, fence = fence))
+        assertTrue(consumeThreadHeaderScrollToTopRequest(request = 2, lazyItemCount = 1, fence = fence))
+        assertFalse(consumeThreadHeaderScrollToTopRequest(request = 2, lazyItemCount = 51, fence = fence))
+        assertFalse(consumeThreadHeaderScrollToTopRequest(request = 2, lazyItemCount = 101, fence = fence))
+        assertTrue(consumeThreadHeaderScrollToTopRequest(request = 3, lazyItemCount = 101, fence = fence))
+        assertFalse(consumeThreadHeaderScrollToTopRequest(request = 3, lazyItemCount = 151, fence = fence))
+    }
 }
