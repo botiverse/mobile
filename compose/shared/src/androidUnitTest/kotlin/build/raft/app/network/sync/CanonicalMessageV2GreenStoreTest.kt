@@ -3,6 +3,10 @@ package build.raft.app.network.sync
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.data.SlockSqlDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -164,7 +168,13 @@ class CanonicalMessageV2GreenStoreTest {
     fun generationEngineHoldsPrebaselineIncrementalsAndRequestsOneSingleFlightSnapshot() = runBlocking {
         val scope = v2Scope()
         val fake = RecordingV2Store()
-        val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), fake)
+        val cache = AttachmentCommentsReadCacheV2()
+        val engine =
+            CanonicalMessageV2GenerationEngine(
+                CanonicalMessageV2BaselineCoordinator(),
+                fake,
+                cache::invalidateParent,
+            )
         val incremental = CanonicalMessageV2IncrementalFrame(scope, emptyList(), PersistedCursor(1, 1, 1))
 
         assertEquals(CanonicalMessageV2CommitResult.BaselineRequired(true), engine.applyIncremental(incremental))
@@ -178,6 +188,52 @@ class CanonicalMessageV2GreenStoreTest {
         assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applyIncremental(incremental))
         assertEquals(1, fake.snapshotWrites)
         assertEquals(1, fake.incrementalWrites)
+    }
+
+    @Test
+    fun concurrentFirstIncrementalsRequestExactlyOneRebaseline() = runBlocking {
+        val coordinator = CanonicalMessageV2BaselineCoordinator()
+        val scope = v2Scope()
+
+        val decisions = coroutineScope {
+            List(64) {
+                async(Dispatchers.Default) { coordinator.onIncremental(scope) }
+            }.awaitAll()
+        }
+
+        assertEquals(1, decisions.count { (it as CanonicalMessageV2IncrementalDecision.Hold).requestRebaseline })
+        assertEquals(63, decisions.count { !(it as CanonicalMessageV2IncrementalDecision.Hold).requestRebaseline })
+    }
+
+    @Test
+    fun successfulSnapshotInvalidatesOnlyExactParentAttachmentCommentsCache(): Unit = runBlocking {
+        val partition = v2Partition()
+        val scopeA = SyncScopeKey(partition, "channel-a", "channel")
+        val scopeB = SyncScopeKey(partition, "channel-b", "channel")
+        val keyA = AttachmentCommentsReadKeyV2(partition, "channel", "channel-a", "message-a", "attachment-a")
+        val keyB = AttachmentCommentsReadKeyV2(partition, "channel", "channel-b", "message-b", "attachment-b")
+        val cache = AttachmentCommentsReadCacheV2().also {
+            it.put(keyA, scopeA, listOf("comment-a"))
+            it.put(keyB, scopeB, listOf("comment-b"))
+        }
+        val engine =
+            CanonicalMessageV2GenerationEngine(
+                CanonicalMessageV2BaselineCoordinator(),
+                RecordingV2Store(),
+                cache::invalidateParent,
+            )
+
+        engine.applySnapshot(
+            CanonicalMessageV2SnapshotFrame(
+                scope = scopeA,
+                envelopes = emptyList(),
+                cursor = PersistedCursor(0, 0, 0, epoch = "snapshot-a"),
+            ),
+        )
+
+        assertEquals(AttachmentCommentsCacheLookupV2.Unknown, cache.get(keyA))
+        assertIs<AttachmentCommentsCacheLookupV2.Loaded>(cache.get(keyB))
+        Unit
     }
 
     private fun withFreshDatabase(block: (SlockSqlDatabase) -> Unit) {

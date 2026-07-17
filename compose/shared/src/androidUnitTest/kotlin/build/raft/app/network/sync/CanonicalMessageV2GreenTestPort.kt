@@ -1,6 +1,12 @@
 package build.raft.app.network.sync
 
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.data.SlockSqlDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -39,11 +45,10 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             invocation.requirementId == "R13" -> illegalRelation(invocation.input.jsonObject)
             invocation.requirementId.startsWith("R14") -> partitionMismatch(invocation.input.jsonObject)
             invocation.requirementId == "R15" -> targetedReadCacheInvalidation()
-            invocation.requirementId == "R16" -> CanonicalV2RedResult.State(
-                "replyCount=${invocation.input.jsonObject.long("serverReplyCount")}",
-            )
+            invocation.requirementId == "R16" -> childPageCannotRewriteParentAggregate(invocation.input.jsonObject)
             invocation.requirementId == "R17" -> oneOverlayGate(invocation.input.jsonObject)
-            invocation.requirementId in setOf("R18", "R19", "R20", "R23") -> overlayVersion(invocation.input.jsonObject)
+            invocation.requirementId in setOf("R18", "R19", "R20") -> overlayVersion(invocation.input.jsonObject)
+            invocation.requirementId == "R23" -> overlaySqlTransaction(invocation.input.jsonObject)
             invocation.requirementId == "R21" -> missingOverlay()
             invocation.requirementId == "R22" -> overlayKeyIsolation()
             invocation.requirementId == "R24" -> overlayLongBoundary(invocation.input.jsonObject)
@@ -77,11 +82,40 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
             SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID.endsWith(".v2")
         ) CanonicalV2RedResult.State("closed") else CanonicalV2RedResult.GreenPending
 
-    private fun ownershipClosure(): CanonicalV2RedResult =
+    private fun ownershipClosure(): CanonicalV2RedResult = withFreshDatabase { database ->
+        val envelope = acceptedEnvelope(minimalEnvelope()) ?: return@withFreshDatabase CanonicalV2RedResult.GreenPending
+        val scope = v2Scope()
+        val cursor = PersistedCursor(1, 1, 1, epoch = "ownership")
+        val sharedStore = SqlDelightCanonicalMessageV2Store(database, now = { 1L })
+        val overlayStore = SqlDelightViewerOverlayStore(database)
+        runBlocking {
+            sharedStore.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(envelope), cursor))
+            overlayStore.compareAndWrite(overlayKey(), overlay(1, "heart"))
+        }
+        val sharedBytes = database.queries.selectServerBackedMessagesForChannel(
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            channelId = scope.scopeId,
+        ).executeAsList().singleOrNull()?.canonicalFactJson.orEmpty()
+        val overlayRows = database.queries.selectMessageViewerOverlay(
+            serverId = overlayKey().partition.serverId,
+            principalId = overlayKey().partition.principalId,
+            consumerId = overlayKey().partition.consumerId,
+            scopeKind = overlayKey().scopeKind,
+            scopeId = overlayKey().scopeId,
+            subjectKind = overlayKey().subjectKind,
+            subjectId = overlayKey().subjectId,
+            overlayKind = overlayKey().overlayKind,
+        ).executeAsOneOrNull()
         if (
-            ViewerOverlayPayloadV1.Reactions(emptyList()) is ViewerOverlayPayloadV1 &&
-            AttachmentCommentsReadKeyV2::class != ReactionActorsReadKeyV2::class
+            sharedBytes.isNotBlank() &&
+            !sharedBytes.contains("reactedByMe") &&
+            !sharedBytes.contains("viewerVersion") &&
+            overlayRows != null
         ) CanonicalV2RedResult.State("single-owner") else CanonicalV2RedResult.GreenPending
+    }
 
     private fun golden(input: JsonElement): CanonicalV2RedResult =
         when (val decoded = decodeCanonicalMessageV2(input, "server-a")) {
@@ -144,7 +178,7 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         }
     }
 
-    private fun targetedReadCacheInvalidation(): CanonicalV2RedResult {
+    private fun targetedReadCacheInvalidation(): CanonicalV2RedResult = runBlocking {
         val partition = v2Partition()
         val cache = AttachmentCommentsReadCacheV2()
         val scopeA = SyncScopeKey(partition, "channel-a", "channel")
@@ -153,11 +187,44 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         val keyB = AttachmentCommentsReadKeyV2(partition, "channel", "channel-b", "m-b", "a-b")
         cache.put(keyA, scopeA, listOf("comment-a"))
         cache.put(keyB, scopeB, listOf("comment-b"))
-        cache.invalidateParent(scopeA)
-        return if (
+        val engine =
+            CanonicalMessageV2GenerationEngine(
+                CanonicalMessageV2BaselineCoordinator(),
+                RecordingV2Store(),
+                cache::invalidateParent,
+            )
+        engine.applySnapshot(
+            CanonicalMessageV2SnapshotFrame(
+                scopeA,
+                emptyList(),
+                PersistedCursor(0, 0, 0, epoch = "rebaseline-a"),
+            ),
+        )
+        if (
             cache.get(keyA) == AttachmentCommentsCacheLookupV2.Unknown &&
             cache.get(keyB) is AttachmentCommentsCacheLookupV2.Loaded
         ) CanonicalV2RedResult.State("channel-a=Unknown,channel-b=Loaded") else CanonicalV2RedResult.GreenPending
+    }
+
+    private fun childPageCannotRewriteParentAggregate(input: JsonObject): CanonicalV2RedResult {
+        val serverReplyCount = input.long("serverReplyCount").toInt()
+        val loadedChildren = input.long("loadedChildren").toInt()
+        val baseEnvelope = acceptedEnvelope(minimalEnvelope())
+            ?: return CanonicalV2RedResult.GreenPending
+        val envelope = baseEnvelope.copy(fact = baseEnvelope.fact.copy(replyCount = serverReplyCount))
+        val cache = AttachmentCommentsReadCacheV2()
+        val scope = v2Scope()
+        val key = AttachmentCommentsReadKeyV2(scope.partition, scope.scopeKind, scope.scopeId, envelope.fact.id, "attachment-a")
+        cache.put(key, scope, List(loadedChildren) { index -> "comment-$index" })
+        val roundTripped =
+            (decodeCanonicalMessageV2(encodeCanonicalMessageV2(envelope, scope.serverId), scope.serverId)
+                as? CanonicalMessageV2DecodeResult.Accepted)
+                ?.envelope
+                ?: return CanonicalV2RedResult.GreenPending
+        return if (
+            cache.get(key) is AttachmentCommentsCacheLookupV2.Loaded &&
+            roundTripped.fact.replyCount == serverReplyCount
+        ) CanonicalV2RedResult.State("replyCount=$serverReplyCount") else CanonicalV2RedResult.GreenPending
     }
 
     private fun oneOverlayGate(input: JsonObject): CanonicalV2RedResult = runBlocking {
@@ -200,6 +267,23 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         } catch (_: ViewerOverlayVersionConflict) {
             CanonicalV2RedResult.Rejected(VIEWER_OVERLAY_VERSION_CONFLICT_DIAGNOSTIC)
         }
+    }
+
+    private fun overlaySqlTransaction(input: JsonObject): CanonicalV2RedResult = withFreshDatabase { database ->
+        val key = overlayKey()
+        val recording = RecordingOverlayStore(SqlDelightViewerOverlayStore(database))
+        runBlocking {
+            recording.compareAndWrite(key, overlay(input.long("storedVersion"), "stored"))
+            recording.resetCounts()
+            recording.compareAndWrite(key, overlay(input.long("incomingVersion"), input.string("payload")))
+        }
+        val stored = runBlocking { recording.read(key) }
+        if (
+            stored?.version == input.long("incomingVersion") &&
+            recording.transactionCount == 1 &&
+            recording.writeCount == 1
+        ) CanonicalV2RedResult.State("committed", transactionCount = 1, overlayWriteCount = 1)
+        else CanonicalV2RedResult.GreenPending
     }
 
     private fun invocationStateIsCommitted(input: JsonObject): Boolean = input.string("payload") == "+1"
@@ -259,39 +343,106 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         return CanonicalV2RedResult.State("v2-only", v1ReadCount = 0)
     }
 
-    private fun firstIncrementalRequiresBaseline(input: JsonObject): CanonicalV2RedResult {
+    private fun firstIncrementalRequiresBaseline(input: JsonObject): CanonicalV2RedResult = runBlocking {
         val coordinator = CanonicalMessageV2BaselineCoordinator()
         val scope = v2Scope()
-        val decisions = List(input.long("frames").toInt()) { coordinator.onIncremental(scope) }
+        val decisions = coroutineScope {
+            List(input.long("frames").toInt()) {
+                async(Dispatchers.Default) { coordinator.onIncremental(scope) }
+            }.awaitAll()
+        }
         val requests = decisions.count { (it as CanonicalMessageV2IncrementalDecision.Hold).requestRebaseline }
-        return CanonicalV2RedResult.State(
+        CanonicalV2RedResult.State(
             CANONICAL_MESSAGE_V2_BASELINE_REQUIRED,
             transactionCount = 0,
             rebaselineRequestCount = requests,
         )
     }
 
-    private fun snapshotCommit(input: JsonObject): CanonicalV2RedResult {
-        val decoded = decodeContextFragment(input)
-        return if (decoded is CanonicalMessageV2DecodeResult.Accepted) {
-            CanonicalV2RedResult.State("snapshot-committed", transactionCount = 1)
-        } else CanonicalV2RedResult.Rejected(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
+    private fun snapshotCommit(input: JsonObject): CanonicalV2RedResult = withFreshDatabase { database ->
+        val decoded = decodeContextFragment(input) as? CanonicalMessageV2DecodeResult.Accepted
+            ?: return@withFreshDatabase CanonicalV2RedResult.Rejected(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
+        val scope = v2Scope().copy(scopeId = "thread-root", scopeKind = "thread")
+        val delegate = SqlDelightCanonicalMessageV2Store(database, now = { 1L })
+        val recording = RecordingV2Store(delegate)
+        val cache = AttachmentCommentsReadCacheV2()
+        val engine = CanonicalMessageV2GenerationEngine(CanonicalMessageV2BaselineCoordinator(), recording, cache::invalidateParent)
+        val cursor = PersistedCursor(decoded.envelope.fact.seq, 1, decoded.envelope.fact.seq, epoch = "snapshot")
+        runBlocking {
+            engine.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(decoded.envelope), cursor))
+        }
+        val restored = runBlocking { delegate.restore(scope) }
+        if (
+            recording.snapshotWrites == 1 &&
+            restored.cursor == cursor &&
+            restored.envelopes.singleOrNull()?.context == decoded.envelope.context &&
+            restored.envelopes.singleOrNull()?.replyMembership == decoded.envelope.replyMembership
+        ) CanonicalV2RedResult.State("snapshot-committed", transactionCount = 1)
+        else CanonicalV2RedResult.GreenPending
     }
 
-    private fun poisonedRestore(input: JsonObject): CanonicalV2RedResult {
-        val rows = input.getValue("rows").jsonArray.map { it.jsonPrimitive.content }
-        val hasPoison = rows.any { marker ->
-            marker != "v6" || decodeCanonicalMessageV2(minimalEnvelope()) !is CanonicalMessageV2DecodeResult.Accepted
+    private fun poisonedRestore(input: JsonObject): CanonicalV2RedResult = withFreshDatabase { database ->
+        val scope = v2Scope()
+        val markers = input.getValue("rows").jsonArray.map { it.jsonPrimitive.content }
+        markers.forEachIndexed { index, marker ->
+            val bytes = when (marker) {
+                "v6" -> encodeCanonicalMessageV2(requireNotNull(acceptedEnvelope(minimalEnvelope())), scope.serverId)
+                "v5" -> "{\"schemaVersion\":5,\"kind\":\"normalized-message-v2\",\"fact\":{\"reactions\":[]}}"
+                else -> "malformed"
+            }
+            database.queries.insertCanonicalFactIfAbsent(
+                serverId = scope.serverId,
+                principalId = scope.principalId,
+                consumerId = scope.consumerId,
+                id = "row-$index",
+                channelId = scope.scopeId,
+                scopeKind = scope.scopeKind,
+                seq = index.toLong() + 1L,
+                createdAt = "t-$index",
+                canonicalFactJson = bytes,
+            )
         }
-        return if (hasPoison) CanonicalV2RedResult.Rejected(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
+        database.queries.upsertSyncCursor(
+            scopeId = scope.scopeId,
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            scopeKind = scope.scopeKind,
+            latestSeq = markers.size.toLong(),
+            oldestLoadedSeq = 1,
+            newestLoadedSeq = markers.size.toLong(),
+            hasLoadedOldest = 1,
+            hasLoadedNewest = 1,
+            updatedAtMs = 1,
+            epoch = "poison",
+        )
+        val store = SqlDelightCanonicalMessageV2Store(database, now = { 1L })
+        val poisoned = runCatching { runBlocking { store.restore(scope) } }.exceptionOrNull() is CanonicalMessageV2ScopePoisoned
+        if (poisoned) CanonicalV2RedResult.Rejected(CANONICAL_MESSAGE_V2_SCOPE_POISONED)
         else CanonicalV2RedResult.State("restored")
     }
 
-    private fun crashAtomicity(input: JsonObject): CanonicalV2RedResult {
+    private fun crashAtomicity(input: JsonObject): CanonicalV2RedResult = withFreshDatabase { database ->
         val faults = input.getValue("faults").jsonArray.map { it.jsonPrimitive.content }
-        return if (faults == listOf("before-commit", "after-commit")) {
-            CanonicalV2RedResult.State("before=old-complete,after=new-complete", transactionCount = 1)
-        } else CanonicalV2RedResult.GreenPending
+        if (faults != listOf("before-commit", "after-commit")) return@withFreshDatabase CanonicalV2RedResult.GreenPending
+        val scope = v2Scope()
+        val oldEnvelope = requireNotNull(acceptedEnvelope(minimalEnvelope()))
+        val newEnvelope = oldEnvelope.copy(fact = oldEnvelope.fact.copy(content = "new-complete", seq = 2))
+        val oldCursor = PersistedCursor(1, 1, 1, epoch = "old")
+        val newCursor = PersistedCursor(2, 2, 2, epoch = "new")
+        val normal = SqlDelightCanonicalMessageV2Store(database, now = { 1L })
+        runBlocking { normal.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(oldEnvelope), oldCursor)) }
+        val before = SqlDelightCanonicalMessageV2Store(database, now = { 2L }, faultHook = PersistFaultHook { it == PersistFaultPoint.BeforeCommit })
+        runCatching { runBlocking { before.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(newEnvelope), newCursor)) } }
+        val beforeRestored = runBlocking { normal.restore(scope) }
+        val after = SqlDelightCanonicalMessageV2Store(database, now = { 3L }, faultHook = PersistFaultHook { it == PersistFaultPoint.AfterCommit })
+        runCatching { runBlocking { after.applySnapshot(CanonicalMessageV2SnapshotFrame(scope, listOf(newEnvelope), newCursor)) } }
+        val afterRestored = runBlocking { normal.restore(scope) }
+        if (
+            beforeRestored == RestoredCanonicalMessageV2Scope(listOf(oldEnvelope), oldCursor) &&
+            afterRestored == RestoredCanonicalMessageV2Scope(listOf(newEnvelope), newCursor)
+        ) CanonicalV2RedResult.State("before=old-complete,after=new-complete", transactionCount = 1)
+        else CanonicalV2RedResult.GreenPending
     }
 
     private fun normalizeProducerContext(input: JsonObject): CanonicalV2RedResult {
@@ -398,6 +549,67 @@ internal object CanonicalMessageV2GreenTestPort : CanonicalMessageV2GreenPort {
         OverlayCompleteness.Complete,
         ViewerOverlayPayloadV1.Reactions(listOf(emoji)),
     )
+
+    private fun acceptedEnvelope(input: JsonElement): CanonicalMessageEnvelopeV2? =
+        (decodeCanonicalMessageV2(input, "server-a") as? CanonicalMessageV2DecodeResult.Accepted)?.envelope
+
+    private fun <T> withFreshDatabase(block: (SlockSqlDatabase) -> T): T {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        return try {
+            SlockSqlDatabase.Schema.create(driver).value
+            block(SlockSqlDatabase(driver))
+        } finally {
+            driver.close()
+        }
+    }
+
+    private class RecordingV2Store(
+        private val delegate: CanonicalMessageV2Store? = null,
+    ) : CanonicalMessageV2Store {
+        var snapshotWrites: Int = 0
+            private set
+        var incrementalWrites: Int = 0
+            private set
+
+        override suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame) {
+            snapshotWrites += 1
+            delegate?.applySnapshot(frame)
+        }
+
+        override suspend fun applyIncremental(frame: CanonicalMessageV2IncrementalFrame) {
+            incrementalWrites += 1
+            delegate?.applyIncremental(frame)
+        }
+
+        override suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
+            delegate?.restore(scope) ?: RestoredCanonicalMessageV2Scope(emptyList(), null)
+    }
+
+    private class RecordingOverlayStore(
+        private val delegate: ViewerOverlayStore,
+    ) : ViewerOverlayStore {
+        var transactionCount: Int = 0
+            private set
+        var writeCount: Int = 0
+            private set
+
+        override suspend fun read(key: ViewerOverlayKey): VersionedViewerOverlayV1? = delegate.read(key)
+
+        override suspend fun compareAndWrite(
+            key: ViewerOverlayKey,
+            overlay: VersionedViewerOverlayV1,
+        ): ViewerOverlayWriteResult {
+            transactionCount += 1
+            return delegate.compareAndWrite(key, overlay).also { result ->
+                if (result is ViewerOverlayWriteResult.Applied) writeCount += 1
+            }
+        }
+
+        fun resetCounts() {
+            transactionCount = 0
+            writeCount = 0
+        }
+    }
 
     private class RecordingViewerOverlayStore(
         initial: Map<ViewerOverlayKey, VersionedViewerOverlayV1> = emptyMap(),

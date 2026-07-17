@@ -1,6 +1,8 @@
 package build.raft.app.network.sync
 
 import build.raft.app.data.SlockSqlDatabase
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 sealed interface CanonicalMessageV2IncrementalDecision {
     data object Apply : CanonicalMessageV2IncrementalDecision
@@ -18,31 +20,37 @@ class CanonicalMessageV2BaselineCoordinator {
     )
 
     private val states = mutableMapOf<SyncScopeKey, ScopeState>()
+    private val lock = SynchronizedObject()
 
-    fun onIncremental(scope: SyncScopeKey): CanonicalMessageV2IncrementalDecision {
+    fun onIncremental(scope: SyncScopeKey): CanonicalMessageV2IncrementalDecision = synchronized(lock) {
         requireV2Scope(scope)
         val state = states[scope] ?: ScopeState()
-        if (state.baselined) return CanonicalMessageV2IncrementalDecision.Apply
+        if (state.baselined) return@synchronized CanonicalMessageV2IncrementalDecision.Apply
         states[scope] = state.copy(rebaselineInFlight = true)
-        return CanonicalMessageV2IncrementalDecision.Hold(requestRebaseline = !state.rebaselineInFlight)
+        CanonicalMessageV2IncrementalDecision.Hold(requestRebaseline = !state.rebaselineInFlight)
     }
 
-    fun onSnapshotCommitted(scope: SyncScopeKey) {
+    fun onSnapshotCommitted(scope: SyncScopeKey): Unit = synchronized(lock) {
         requireV2Scope(scope)
         states[scope] = ScopeState(baselined = true, rebaselineInFlight = false)
+        Unit
     }
 
-    fun onRebaselineFailed(scope: SyncScopeKey) {
+    fun onRebaselineFailed(scope: SyncScopeKey): Unit = synchronized(lock) {
         requireV2Scope(scope)
         states[scope] = ScopeState(baselined = false, rebaselineInFlight = false)
+        Unit
     }
 
-    fun invalidate(scope: SyncScopeKey) {
+    fun invalidate(scope: SyncScopeKey): Unit = synchronized(lock) {
         requireV2Scope(scope)
         states.remove(scope)
+        Unit
     }
 
-    fun isBaselined(scope: SyncScopeKey): Boolean = states[scope]?.baselined == true
+    fun isBaselined(scope: SyncScopeKey): Boolean = synchronized(lock) {
+        states[scope]?.baselined == true
+    }
 }
 
 data class CanonicalMessageV2SnapshotFrame(
@@ -68,6 +76,10 @@ interface CanonicalMessageV2Store {
     suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope
 }
 
+fun interface CanonicalMessageV2SnapshotCommitObserver {
+    fun onSnapshotCommitted(scope: SyncScopeKey)
+}
+
 sealed interface CanonicalMessageV2CommitResult {
     data object Committed : CanonicalMessageV2CommitResult
     data class BaselineRequired(val requestRebaseline: Boolean) : CanonicalMessageV2CommitResult
@@ -77,10 +89,12 @@ sealed interface CanonicalMessageV2CommitResult {
 class CanonicalMessageV2GenerationEngine(
     private val coordinator: CanonicalMessageV2BaselineCoordinator,
     private val store: CanonicalMessageV2Store,
+    private val snapshotCommitObserver: CanonicalMessageV2SnapshotCommitObserver,
 ) {
     suspend fun applySnapshot(frame: CanonicalMessageV2SnapshotFrame): CanonicalMessageV2CommitResult {
         store.applySnapshot(frame)
         coordinator.onSnapshotCommitted(frame.scope)
+        snapshotCommitObserver.onSnapshotCommitted(frame.scope)
         return CanonicalMessageV2CommitResult.Committed
     }
 
@@ -96,7 +110,10 @@ class CanonicalMessageV2GenerationEngine(
 
     suspend fun restore(scope: SyncScopeKey): RestoredCanonicalMessageV2Scope =
         store.restore(scope).also { restored ->
-            if (restored.cursor != null) coordinator.onSnapshotCommitted(scope)
+            if (restored.cursor != null) {
+                coordinator.onSnapshotCommitted(scope)
+                snapshotCommitObserver.onSnapshotCommitted(scope)
+            }
         }
 }
 
