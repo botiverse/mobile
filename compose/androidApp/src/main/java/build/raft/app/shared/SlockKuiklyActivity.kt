@@ -1352,6 +1352,19 @@ open class SlockKuiklyActivity :
         )
     }
 
+    internal fun requestRealtimeCursorAdvance(
+        serverId: String,
+        appliedSeq: Long,
+        witness: RealtimeConnectionWitnessToken,
+    ) {
+        val targetServerId = serverId.trim().takeIf(String::isNotEmpty) ?: return
+        AndroidAppScopeRealtimeOwner.advanceResumeCursorFromSharedRequest(
+            serverId = ServerId(targetServerId),
+            appliedSeq = appliedSeq,
+            witness = witness,
+        )
+    }
+
     companion object {
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
@@ -2587,6 +2600,18 @@ internal class SlockKuiklyBridgeModule(
                             shellInstanceId = request.optString("shellInstanceId"),
                             lastSeq = request.optLong("lastSeq", 0L),
                             forceReconnect = request.optBoolean("forceReconnect", false),
+                            witness =
+                                RealtimeConnectionWitnessToken(
+                                    scopeLeaseId = request.optString("authorityScopeLeaseId"),
+                                    principalId = request.optString("authorityPrincipalId"),
+                                    authGeneration = request.optLong("authorityAuthGeneration", 0L),
+                                    connectionFamilyId = request.optString("authorityConnectionFamilyId"),
+                                )
+                    )
+            "cursorAdvance" ->
+                    (activity as? SlockKuiklyActivity)?.requestRealtimeCursorAdvance(
+                            serverId = request.optString("serverId"),
+                            appliedSeq = request.optLong("appliedSeq", 0L),
                             witness =
                                 RealtimeConnectionWitnessToken(
                                     scopeLeaseId = request.optString("authorityScopeLeaseId"),

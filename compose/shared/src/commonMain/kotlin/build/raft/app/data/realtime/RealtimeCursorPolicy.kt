@@ -69,6 +69,9 @@ object RealtimeCursorPolicy {
     fun updateAppliedSeq(lastSeq: Long, event: RealtimeEvent): Long =
         updateFromEvent(fromAppliedSeq(lastSeq), event).state.appliedLastSeq
 
+    fun appliedSeqForEvent(event: RealtimeEvent): Long =
+        updateAppliedSeq(0L, event)
+
     fun advanceGlobal(
         state: RealtimeCursorState,
         event: RealtimeEvent

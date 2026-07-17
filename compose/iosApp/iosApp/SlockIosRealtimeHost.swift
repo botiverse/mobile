@@ -43,6 +43,7 @@ final class SlockIosRealtimeHost: NSObject {
         var joinedChannels: Set<String> = []
         var authRefreshInFlight = false
         var generation: UInt64 = 0
+        var resumeLastSeq: Int64 = 0
 
         init(serverId: String) {
             self.serverId = serverId
@@ -110,6 +111,15 @@ final class SlockIosRealtimeHost: NSObject {
                         "success=\(self.boolValue(command["success"]))"
                 )
             }
+        case "cursorAdvance":
+            advanceResumeCursor(
+                serverId: stringValue(command["serverId"]),
+                appliedSeq: int64Value(command["appliedSeq"]),
+                authorityScopeLeaseId: stringValue(command["authorityScopeLeaseId"]),
+                authorityPrincipalId: stringValue(command["authorityPrincipalId"]),
+                authorityAuthGeneration: int64Value(command["authorityAuthGeneration"]),
+                authorityConnectionFamilyId: stringValue(command["authorityConnectionFamilyId"])
+            )
         default:
             log("unsupported_action action=\(action)")
         }
@@ -174,7 +184,7 @@ final class SlockIosRealtimeHost: NSObject {
                     serverId: serverId,
                     accessToken: cleanToken,
                     socketUrl: cleanSocketUrl,
-                    lastSeq: self.runtimes[serverId]?.connectParams?.lastSeq ?? 0,
+                    lastSeq: self.runtimes[serverId]?.resumeLastSeq ?? 0,
                     authorityScopeLeaseId: authorityScopeLeaseId,
                     authorityPrincipalId: principalId,
                     authorityAuthGeneration: authorityAuthGeneration,
@@ -224,7 +234,7 @@ final class SlockIosRealtimeHost: NSObject {
     private func connectRuntimeLocked(params: ConnectParams, forceReconnect: Bool) {
         let runtime = runtimes[params.serverId] ?? Runtime(serverId: params.serverId)
         runtimes[params.serverId] = runtime
-        let sameSession = runtime.connectParams == params
+        let sameSession = runtime.connectParams.map { sameSessionIdentity($0, params) } ?? false
         if sameSession && !forceReconnect && runtime.state != .disconnected {
             log("connect_skip reason=same_session state=\(stateLabel(runtime.state)) serverId=\(params.serverId)")
             return
@@ -232,6 +242,9 @@ final class SlockIosRealtimeHost: NSObject {
         if !sameSession {
             runtime.joinedChannels.removeAll()
             runtime.roomEngine.resetRoomStateForHost()
+            runtime.resumeLastSeq = max(0, params.lastSeq)
+        } else {
+            runtime.resumeLastSeq = max(runtime.resumeLastSeq, params.lastSeq)
         }
         runtime.connectParams = params
         runtime.authRefreshInFlight = false
@@ -315,10 +328,14 @@ final class SlockIosRealtimeHost: NSObject {
         if eventName == GeneratedRealtimeContract.SocketEvent.roomsJoined {
             log(
                 "rooms_joined serverId=\(runtime.serverId) joinedRooms=\(runtime.joinedChannels.count) " +
-                    "lastSeq=\(runtime.connectParams?.lastSeq ?? 0)"
+                    "lastSeq=\(runtime.resumeLastSeq)"
             )
-            if let lastSeq = runtime.connectParams?.lastSeq, lastSeq > 0 {
-                emit(runtime: runtime, eventName: GeneratedRealtimeContract.SocketEvent.syncResume, payload: ["lastSeq": lastSeq])
+            if runtime.resumeLastSeq > 0 {
+                emit(
+                    runtime: runtime,
+                    eventName: GeneratedRealtimeContract.SocketEvent.syncResume,
+                    payload: ["lastSeq": runtime.resumeLastSeq]
+                )
             }
             return
         }
@@ -465,9 +482,50 @@ final class SlockIosRealtimeHost: NSObject {
         )
     }
 
+    private func advanceResumeCursor(
+        serverId: String,
+        appliedSeq: Int64,
+        authorityScopeLeaseId: String,
+        authorityPrincipalId: String,
+        authorityAuthGeneration: Int64,
+        authorityConnectionFamilyId: String
+    ) {
+        let cleanServerId = clean(serverId)
+        guard !cleanServerId.isEmpty, appliedSeq > 0 else { return }
+        queue.async { [weak self] in
+            guard
+                let self,
+                let runtime = self.runtimes[cleanServerId],
+                let params = runtime.connectParams,
+                params.authorityScopeLeaseId == authorityScopeLeaseId,
+                params.authorityPrincipalId == authorityPrincipalId,
+                params.authorityAuthGeneration == authorityAuthGeneration,
+                params.authorityConnectionFamilyId == authorityConnectionFamilyId
+            else {
+                self?.log("cursor_advance_skip reason=stale_witness serverId=\(cleanServerId) appliedSeq=\(appliedSeq)")
+                return
+            }
+            runtime.resumeLastSeq = max(runtime.resumeLastSeq, appliedSeq)
+            self.log(
+                "cursor_advance result=applied serverId=\(cleanServerId) " +
+                    "requestedSeq=\(appliedSeq) resumeSeq=\(runtime.resumeLastSeq)"
+            )
+        }
+    }
+
     private func currentRuntime(serverId: String, generation: UInt64) -> Runtime? {
         guard let runtime = runtimes[serverId], runtime.generation == generation else { return nil }
         return runtime
+    }
+
+    private func sameSessionIdentity(_ left: ConnectParams, _ right: ConnectParams) -> Bool {
+        left.serverId == right.serverId &&
+            left.accessToken == right.accessToken &&
+            left.socketUrl == right.socketUrl &&
+            left.authorityScopeLeaseId == right.authorityScopeLeaseId &&
+            left.authorityPrincipalId == right.authorityPrincipalId &&
+            left.authorityAuthGeneration == right.authorityAuthGeneration &&
+            left.authorityConnectionFamilyId == right.authorityConnectionFamilyId
     }
 
     private func installObserversIfNeeded() {

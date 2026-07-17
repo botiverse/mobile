@@ -755,6 +755,26 @@ internal class BridgeModule : Module() {
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
+    fun realtimeCursorAdvance(
+        serverId: String,
+        appliedSeq: Long,
+        authorityScopeLeaseId: String,
+        authorityPrincipalId: String,
+        authorityAuthGeneration: Long,
+        authorityConnectionFamilyId: String,
+    ) {
+        if (serverId.isBlank() || appliedSeq <= 0L) return
+        val methodArgs = JSONObject()
+        methodArgs.put("action", "cursorAdvance")
+        methodArgs.put("serverId", serverId)
+        methodArgs.put("appliedSeq", appliedSeq)
+        methodArgs.put("authorityScopeLeaseId", authorityScopeLeaseId)
+        methodArgs.put("authorityPrincipalId", authorityPrincipalId)
+        methodArgs.put("authorityAuthGeneration", authorityAuthGeneration)
+        methodArgs.put("authorityConnectionFamilyId", authorityConnectionFamilyId)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
     // 页面首屏（有内容，来自缓存）耗时上报
     fun reportPageCostTimeForCache() {
         callNativeMethod(REPORT_PAGE_COST_TIME_FOR_CACHE, null, null)

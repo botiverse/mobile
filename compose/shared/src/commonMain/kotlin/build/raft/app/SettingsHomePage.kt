@@ -4051,6 +4051,18 @@ internal fun SlockAppShellContent(
                             source = "process_realtime"
                         )
                     if (!processAccepted) return@launch
+                    RealtimeCursorPolicy.appliedSeqForEvent(event)
+                        .takeIf { appliedSeq -> appliedSeq > 0L }
+                        ?.let { appliedSeq ->
+                            bridge.realtimeCursorAdvance(
+                                serverId = serverId,
+                                appliedSeq = appliedSeq,
+                                authorityScopeLeaseId = grant.scopeLeaseId,
+                                authorityPrincipalId = grant.principalId,
+                                authorityAuthGeneration = grant.authGeneration,
+                                authorityConnectionFamilyId = grant.connectionFamilyId,
+                            )
+                        }
                     if (event is ServerMembershipRemoved && !selectedServerStore.isSelected(serverId)) {
                         bridge.realtimeDisconnect(
                             reason = GeneratedRealtimeContract.DisconnectReason.ServerMembershipRemoved,

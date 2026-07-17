@@ -60,7 +60,7 @@ class SlockOhosRealtimeRuntime {
   }
 
   currentLastSeq(): number {
-    return this.connectParams?.lastSeq ?? 0;
+    return slockOhosRealtimeKnoiBridge.currentResumeSeq(this.runtimeId);
   }
 
   connect(params: RealtimeConnectParams, forceReconnect: boolean): void {
@@ -139,6 +139,41 @@ class SlockOhosRealtimeRuntime {
   authRefreshFinished(reason: string, success: boolean): void {
     this.authRefreshInFlight = false;
     console.info(`[SlockOhosRealtime] auth_refresh_finished serverId=${this.serverId} reason=${reason} success=${success}`);
+  }
+
+  advanceResumeCursor(
+    appliedSeq: number,
+    authorityScopeLeaseId: string,
+    authorityPrincipalId: string,
+    authorityAuthGeneration: number,
+    authorityConnectionFamilyId: string
+  ): boolean {
+    const params = this.connectParams;
+    if (params === undefined) {
+      console.info(`[SlockOhosRealtime] cursor_advance_skip reason=missing_runtime_identity serverId=${this.serverId} appliedSeq=${appliedSeq}`);
+      return false;
+    }
+    const decision = slockOhosRealtimeKnoiBridge.advanceAppliedSeq(
+      this.runtimeId,
+      params.serverId,
+      params.authorityScopeLeaseId,
+      params.authorityPrincipalId,
+      params.authorityAuthGeneration,
+      params.authorityConnectionFamilyId,
+      this.serverId,
+      authorityScopeLeaseId,
+      authorityPrincipalId,
+      authorityAuthGeneration,
+      authorityConnectionFamilyId,
+      appliedSeq
+    );
+    if (!decision.shouldAdvance) {
+      console.info(`[SlockOhosRealtime] cursor_advance_skip reason=${decision.reason} serverId=${this.serverId} appliedSeq=${appliedSeq}`);
+      return false;
+    }
+    params.lastSeq = decision.resumeSeq;
+    console.info(`[SlockOhosRealtime] cursor_advance result=applied serverId=${this.serverId} requestedSeq=${appliedSeq} resumeSeq=${decision.resumeSeq}`);
+    return true;
   }
 
   handleRoomCommand(action: string, channelId: string, source: string): void {
@@ -235,7 +270,7 @@ class SlockOhosRealtimeRuntime {
   }
 
   private onRoomsJoined(): void {
-    const lastSeq = this.connectParams?.lastSeq ?? 0;
+    const lastSeq = this.currentLastSeq();
     console.info(`[SlockOhosRealtime] rooms_joined serverId=${this.serverId} joinedRooms=${this.joinedChannels.size} lastSeq=${lastSeq}`);
     if (lastSeq > 0) {
       this.emitSocketEvent(GeneratedRealtimeContract.SocketEvent.SyncResume, { 'lastSeq': lastSeq });
@@ -393,6 +428,22 @@ export class SlockOhosRealtimeHostContext {
           params['success'] === true
         ));
         break;
+      case 'cursorAdvance': {
+        const serverId = ((params['serverId'] as string) ?? '').trim();
+        const runtime = this.runtimes.get(serverId);
+        if (runtime === undefined) {
+          console.info(`[SlockOhosRealtime] cursor_advance_skip reason=missing_runtime serverId=${serverId}`);
+          break;
+        }
+        runtime.advanceResumeCursor(
+          Number(params['appliedSeq'] ?? 0),
+          ((params['authorityScopeLeaseId'] as string) ?? '').trim(),
+          ((params['authorityPrincipalId'] as string) ?? '').trim(),
+          Number(params['authorityAuthGeneration'] ?? 0),
+          ((params['authorityConnectionFamilyId'] as string) ?? '').trim()
+        );
+        break;
+      }
       default:
         console.warn(`[SlockOhosRealtime] unsupported action=${action}`);
         break;

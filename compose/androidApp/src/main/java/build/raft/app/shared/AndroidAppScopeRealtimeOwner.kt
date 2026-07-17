@@ -21,9 +21,11 @@ import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
+import build.raft.app.data.realtime.RealtimeRuntimeCursorIdentity
 import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
 import build.raft.app.data.realtime.bootstrapRealtime
+import build.raft.app.data.realtime.realtimeRuntimeCursorAdvanceDecision
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.ServerId
@@ -379,6 +381,52 @@ internal object AndroidAppScopeRealtimeOwner {
             "process_reconcile result=applied serverCount=${desiredServerIds.size} " +
                 "identityChanged=$identityChanged forceReconnect=$forceReconnect"
         )
+    }
+
+    fun advanceResumeCursorFromSharedRequest(
+        serverId: ServerId,
+        appliedSeq: Long,
+        witness: RealtimeConnectionWitnessToken,
+    ): Boolean {
+        if (appliedSeq <= 0L) return false
+        val holder = multiSessionRegistry?.runtime(serverId) ?: return false
+        val currentWitness = holder.witness ?: return false
+        val decision =
+            realtimeRuntimeCursorAdvanceDecision(
+                currentIdentity =
+                    RealtimeRuntimeCursorIdentity(
+                        serverId = serverId.value,
+                        scopeLeaseId = currentWitness.scopeLeaseId,
+                        principalId = currentWitness.principalId,
+                        authGeneration = currentWitness.authGeneration,
+                        connectionFamilyId = currentWitness.connectionFamilyId,
+                    ),
+                requestIdentity =
+                    RealtimeRuntimeCursorIdentity(
+                        serverId = serverId.value,
+                        scopeLeaseId = witness.scopeLeaseId,
+                        principalId = witness.principalId,
+                        authGeneration = witness.authGeneration,
+                        connectionFamilyId = witness.connectionFamilyId,
+                    ),
+                currentSeq = holder.runtime.lastSeq,
+                appliedSeq = appliedSeq,
+            )
+        if (!decision.shouldAdvance) {
+            SlockAppLog.w(
+                LOG_TAG,
+                "cursor_advance_skip reason=${decision.reason} serverId=${serverId.value} appliedSeq=$appliedSeq"
+            )
+            return false
+        }
+        val ownedSession = holder.runtime.ownedSession() ?: return false
+        if (ownedSession.serverId != serverId) return false
+        val nextSeq = holder.runtime.advanceAppliedSeqForHost(decision.resumeSeq)
+        SlockAppLog.d(
+            LOG_TAG,
+            "cursor_advance result=applied serverId=${serverId.value} requestedSeq=$appliedSeq resumeSeq=$nextSeq"
+        )
+        return true
     }
 
     fun onNetworkAvailable(context: Context) {

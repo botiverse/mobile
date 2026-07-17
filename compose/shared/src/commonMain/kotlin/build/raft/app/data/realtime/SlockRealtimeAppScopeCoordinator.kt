@@ -126,6 +126,11 @@ class SlockRealtimeAppScopeEngine {
         appVisibility = SlockRealtimeAppVisibility.Background
     }
 
+    fun advanceAppliedSeqForHost(seq: Long): Long {
+        state.advanceAppliedSeq(seq)
+        return state.lastSeq
+    }
+
     fun connectDecisionForHost(
         serverIdValue: String,
         accessToken: String,
@@ -197,7 +202,11 @@ class SlockRealtimeAppScopeEngine {
                 serverId = serverId,
                 accessToken = accessToken,
                 requestedLastSeq = requestedLastSeq,
-                rebaseline = forceReconnect
+                // A transport reconnect must resume the same authority
+                // session. Environment/account/auth-family replacement
+                // creates a new runtime/session and resets through
+                // sessionChanged instead.
+                rebaseline = false
             )
         return SlockRealtimeAppScopeConnectDecision(
             shouldConnect = true,
@@ -448,6 +457,9 @@ class SlockRealtimeAppScopeCoordinator(
     val serverId: ServerId?
         get() = engine.serverId
 
+    fun advanceAppliedSeqForHost(seq: Long): Long =
+        engine.advanceAppliedSeqForHost(seq)
+
     val isAppInForeground: Boolean
         get() = engine.isAppInForeground
 
@@ -639,6 +651,9 @@ class SlockRealtimeAppScopeRuntime(
 
     val serverId: ServerId?
         get() = coordinator.serverId
+
+    fun advanceAppliedSeqForHost(seq: Long): Long =
+        coordinator.advanceAppliedSeqForHost(seq)
 
     val isAppInForeground: Boolean
         get() = coordinator.isAppInForeground

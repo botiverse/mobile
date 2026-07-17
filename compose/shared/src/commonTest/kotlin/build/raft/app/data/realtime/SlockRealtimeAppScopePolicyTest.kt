@@ -7,6 +7,7 @@ import build.raft.app.data.SlockEnhancedNotifyEventBus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
+import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -106,7 +107,7 @@ class SlockRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun coordinatorSkipsSameConnectedSessionAndRebaselinesForcedReconnect() = runBlocking {
+    fun coordinatorSkipsSameConnectedSessionAndResumesForcedReconnect() = runBlocking {
         val connection = FakeAppScopeConnection()
         val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
 
@@ -115,7 +116,7 @@ class SlockRealtimeAppScopePolicyTest {
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = false, witness = witness())
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = true, witness = witness())
 
-        assertEquals(listOf(7L, 0L), connection.connectedLastSeqs)
+        assertEquals(listOf(7L, 42L), connection.connectedLastSeqs)
     }
 
     @Test
@@ -239,7 +240,69 @@ class SlockRealtimeAppScopePolicyTest {
         assertFalse(sameConnected.shouldConnect)
         assertEquals(42L, sameConnected.resumeSeq)
         assertTrue(forced.shouldConnect)
-        assertEquals(0L, forced.resumeSeq)
+        assertEquals(42L, forced.resumeSeq)
+    }
+
+    @Test
+    fun perServerHostCursorsAdvanceMonotonicallyResumeIndependentlyAndResetOnIdentityReplacement() {
+        val serverA = SlockRealtimeAppScopeEngine()
+        val serverB = SlockRealtimeAppScopeEngine()
+        serverA.connectDecisionForHost(
+            serverIdValue = "server-a",
+            accessToken = "token-1",
+            requestedLastSeq = 0,
+            forceReconnect = false,
+            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+        )
+        serverB.connectDecisionForHost(
+            serverIdValue = "server-b",
+            accessToken = "token-1",
+            requestedLastSeq = 0,
+            forceReconnect = false,
+            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+        )
+
+        assertEquals(11L, serverA.advanceAppliedSeqForHost(11L))
+        assertEquals(11L, serverA.advanceAppliedSeqForHost(7L))
+        assertEquals(29L, serverB.advanceAppliedSeqForHost(29L))
+
+        val reconnectA =
+            serverA.connectDecisionForHost(
+                serverIdValue = "server-a",
+                accessToken = "token-1",
+                requestedLastSeq = 0,
+                forceReconnect = true,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+            )
+        val reconnectB =
+            serverB.connectDecisionForHost(
+                serverIdValue = "server-b",
+                accessToken = "token-1",
+                requestedLastSeq = 0,
+                forceReconnect = true,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+            )
+        val replacedA =
+            serverA.connectDecisionForHost(
+                serverIdValue = "server-a",
+                accessToken = "token-2",
+                requestedLastSeq = 99,
+                forceReconnect = false,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+            )
+
+        assertEquals(11L, reconnectA.resumeSeq)
+        assertEquals(29L, reconnectB.resumeSeq)
+        assertEquals(0L, replacedA.resumeSeq)
+        assertEquals(0L, serverA.lastSeq)
+        assertEquals(29L, serverB.lastSeq)
+    }
+
+    @Test
+    fun onlyAppliedDomainEventsProduceNativeResumeCursorAdvances() {
+        assertEquals(42L, RealtimeCursorPolicy.appliedSeqForEvent(MessageNew(message(seq = 42L))))
+        assertEquals(0L, RealtimeCursorPolicy.appliedSeqForEvent(Heartbeat(seq = 99L)))
+        assertEquals(0L, RealtimeCursorPolicy.appliedSeqForEvent(DirectMessageCreated(ChannelId("channel-1"))))
     }
 
     @Test

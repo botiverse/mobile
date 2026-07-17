@@ -20,7 +20,9 @@ class MultiServerRealtimeArchitectureSourceContractTest {
         assertTrue(provider.contains("fun processRealtimeAuthority()"))
         assertTrue(settings.contains("sharedStores.processRealtimeAuthority()"))
         assertTrue(settings.contains("bridge.realtimeReconcile("))
+        assertTrue(settings.contains("bridge.realtimeCursorAdvance("))
         assertTrue(android.contains("fun reconcileFromSharedRequest("))
+        assertTrue(android.contains("fun advanceResumeCursorFromSharedRequest("))
         assertTrue(android.contains("private fun multiServerRealtimeEnabled(): Boolean = true"))
         assertFalse(android.contains("releaseOwnerFromOtherServers("))
     }
@@ -31,12 +33,21 @@ class MultiServerRealtimeArchitectureSourceContractTest {
         val ios = File(root, "compose/iosApp/iosApp/SlockIosRealtimeHost.swift").readText()
         val ohos =
             File(root, "compose/ohosApp/entry/src/main/ets/kuikly/SlockOhosRealtimeHostContext.ets").readText()
+        val ohosKnoi =
+            File(
+                root,
+                "compose/shared/src/ohosArm64Main/kotlin/build/raft/app/data/realtime/SlockOhosRealtimeKnoiBridge.kt",
+            ).readText()
         val ohosSocket =
             File(root, "compose/ohosApp/entry/src/main/ets/kuikly/OhosSocketIoClient.ets").readText()
 
         assertTrue(ios.contains("private var runtimes: [String: Runtime] = [:]"))
         assertTrue(ios.contains("currentRuntime(serverId: serverId, generation: generation)"))
         assertTrue(ios.contains("payloadServerGate(connectionServerId: params.serverId"))
+        assertTrue(ios.contains("var resumeLastSeq: Int64 = 0"))
+        assertTrue(ios.contains("private func advanceResumeCursor("))
+        assertTrue(ios.contains("runtime.resumeLastSeq = max(runtime.resumeLastSeq, appliedSeq)"))
+        assertTrue(ios.contains("params.authorityAuthGeneration == authorityAuthGeneration"))
         assertTrue(ios.contains("\"authorityConnectionFamilyId\": params.authorityConnectionFamilyId"))
         assertTrue(ios.contains("\"notification:push\""))
         assertTrue(ios.contains("\"read_state:updated\""))
@@ -45,6 +56,11 @@ class MultiServerRealtimeArchitectureSourceContractTest {
         assertTrue(ohos.contains("if (!this.isCurrent(capturedGeneration)) return"))
         assertTrue(ohos.contains("rawDecision("))
         assertTrue(ohos.contains("this.runtimeId,"))
+        assertTrue(ohos.contains("advanceResumeCursor("))
+        assertTrue(ohos.contains("currentResumeSeq(this.runtimeId)"))
+        assertTrue(ohos.contains("if (!decision.shouldAdvance)"))
+        assertTrue(ohosKnoi.contains("realtimeRuntimeCursorAdvanceDecision("))
+        assertTrue(ohosKnoi.contains("requestAuthGeneration"))
         assertTrue(ohosSocket.contains("if (this.socket !== socket)"))
         assertTrue(ohos.contains("ambiguous_or_missing_server"))
     }

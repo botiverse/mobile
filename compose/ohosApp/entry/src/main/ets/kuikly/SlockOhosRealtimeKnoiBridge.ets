@@ -32,6 +32,12 @@ export interface SlockRealtimeRawDecision {
   logMessage: string;
 }
 
+export interface SlockRealtimeCursorAdvanceDecision {
+  shouldAdvance: boolean;
+  resumeSeq: number;
+  reason: string;
+}
+
 class SlockOhosRealtimeKnoiBridge {
   connectDecision(
     runtimeId: string,
@@ -87,6 +93,41 @@ class SlockOhosRealtimeKnoiBridge {
       eventName,
       rawPayload
     );
+  }
+
+  advanceAppliedSeq(
+    runtimeId: string,
+    currentServerId: string,
+    currentScopeLeaseId: string,
+    currentPrincipalId: string,
+    currentAuthGeneration: number,
+    currentConnectionFamilyId: string,
+    requestServerId: string,
+    requestScopeLeaseId: string,
+    requestPrincipalId: string,
+    requestAuthGeneration: number,
+    requestConnectionFamilyId: string,
+    appliedSeq: number
+  ): SlockRealtimeCursorAdvanceDecision {
+    return this.invokeValue<SlockRealtimeCursorAdvanceDecision>(
+      'slockRealtimeKnoiAdvanceAppliedSeq',
+      runtimeId,
+      currentServerId,
+      currentScopeLeaseId,
+      currentPrincipalId,
+      currentAuthGeneration,
+      currentConnectionFamilyId,
+      requestServerId,
+      requestScopeLeaseId,
+      requestPrincipalId,
+      requestAuthGeneration,
+      requestConnectionFamilyId,
+      appliedSeq
+    );
+  }
+
+  currentResumeSeq(runtimeId: string): number {
+    return this.invokeValue<number>('slockRealtimeKnoiCurrentResumeSeq', runtimeId);
   }
 
   onAppShown(runtimeId: string): void {

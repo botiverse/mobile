@@ -73,6 +73,60 @@ fun slockRealtimeKnoiRawDecision(
 }
 
 @KNExport
+fun slockRealtimeKnoiAdvanceAppliedSeq(
+    runtimeId: String,
+    currentServerId: String,
+    currentScopeLeaseId: String,
+    currentPrincipalId: String,
+    currentAuthGeneration: Long,
+    currentConnectionFamilyId: String,
+    requestServerId: String,
+    requestScopeLeaseId: String,
+    requestPrincipalId: String,
+    requestAuthGeneration: Long,
+    requestConnectionFamilyId: String,
+    appliedSeq: Long,
+): Map<String, Any?> {
+    val engine = slockOhosRealtimeKnoiEngine(runtimeId)
+    val decision =
+        realtimeRuntimeCursorAdvanceDecision(
+            currentIdentity =
+                RealtimeRuntimeCursorIdentity(
+                    serverId = currentServerId,
+                    scopeLeaseId = currentScopeLeaseId,
+                    principalId = currentPrincipalId,
+                    authGeneration = currentAuthGeneration,
+                    connectionFamilyId = currentConnectionFamilyId,
+                ),
+            requestIdentity =
+                RealtimeRuntimeCursorIdentity(
+                    serverId = requestServerId,
+                    scopeLeaseId = requestScopeLeaseId,
+                    principalId = requestPrincipalId,
+                    authGeneration = requestAuthGeneration,
+                    connectionFamilyId = requestConnectionFamilyId,
+                ),
+            currentSeq = engine.lastSeq,
+            appliedSeq = appliedSeq,
+        )
+    val resumeSeq =
+        if (decision.shouldAdvance) {
+            engine.advanceAppliedSeqForHost(decision.resumeSeq)
+        } else {
+            decision.resumeSeq
+        }
+    return mapOf(
+        "shouldAdvance" to decision.shouldAdvance,
+        "resumeSeq" to resumeSeq,
+        "reason" to decision.reason,
+    )
+}
+
+@KNExport
+fun slockRealtimeKnoiCurrentResumeSeq(runtimeId: String): Long =
+    slockOhosRealtimeKnoiEngine(runtimeId).lastSeq
+
+@KNExport
 fun slockRealtimeKnoiOnAppShown(runtimeId: String) {
     slockOhosRealtimeKnoiEngine(runtimeId).onAppShown()
     updateSlockHostVisibility(

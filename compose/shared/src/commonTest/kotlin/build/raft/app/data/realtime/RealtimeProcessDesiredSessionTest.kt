@@ -71,6 +71,65 @@ class RealtimeProcessDesiredSessionTest {
         assertTrue(plan.forceReconnect)
     }
 
+    @Test
+    fun runtimeCursorAdvanceIsMonotonicServerScopedAndRejectsLateGeneration() {
+        val serverA = cursorIdentity(serverId = "server-a", generation = 7L)
+        val serverB = cursorIdentity(serverId = "server-b", generation = 7L)
+        val runtimeA = SlockRealtimeAppScopeEngine()
+        runtimeA.connectDecisionForHost(
+            serverIdValue = "server-a",
+            accessToken = "token-7",
+            requestedLastSeq = 11L,
+            forceReconnect = false,
+            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+        )
+
+        val advanceA =
+            realtimeRuntimeCursorAdvanceDecision(
+                serverA,
+                serverA,
+                currentSeq = runtimeA.lastSeq,
+                appliedSeq = 19L,
+            )
+        if (advanceA.shouldAdvance) runtimeA.advanceAppliedSeqForHost(advanceA.resumeSeq)
+        val lowerA =
+            realtimeRuntimeCursorAdvanceDecision(
+                serverA,
+                serverA,
+                currentSeq = runtimeA.lastSeq,
+                appliedSeq = 13L,
+            )
+        if (lowerA.shouldAdvance) runtimeA.advanceAppliedSeqForHost(lowerA.resumeSeq)
+        val crossServer =
+            realtimeRuntimeCursorAdvanceDecision(
+                serverA,
+                serverB,
+                currentSeq = runtimeA.lastSeq,
+                appliedSeq = 31L,
+            )
+        if (crossServer.shouldAdvance) runtimeA.advanceAppliedSeqForHost(crossServer.resumeSeq)
+        val lateGeneration =
+            realtimeRuntimeCursorAdvanceDecision(
+                currentIdentity = serverA.copy(authGeneration = 8L, connectionFamilyId = "family-8"),
+                requestIdentity = serverA,
+                currentSeq = runtimeA.lastSeq,
+                appliedSeq = 99L,
+            )
+        if (lateGeneration.shouldAdvance) runtimeA.advanceAppliedSeqForHost(lateGeneration.resumeSeq)
+
+        assertTrue(advanceA.shouldAdvance)
+        assertEquals(19L, advanceA.resumeSeq)
+        assertTrue(lowerA.shouldAdvance)
+        assertEquals(19L, lowerA.resumeSeq)
+        assertFalse(crossServer.shouldAdvance)
+        assertEquals("stale_witness", crossServer.reason)
+        assertEquals(19L, crossServer.resumeSeq)
+        assertFalse(lateGeneration.shouldAdvance)
+        assertEquals("stale_witness", lateGeneration.reason)
+        assertEquals(19L, lateGeneration.resumeSeq)
+        assertEquals(19L, runtimeA.lastSeq)
+    }
+
     private fun desired(
         environmentId: String = "https://api.example",
         socketUrl: String = "https://socket.example",
@@ -88,5 +147,17 @@ class RealtimeProcessDesiredSessionTest {
             connectionFamilyId = connectionFamilyId,
             accessToken = accessToken,
             serverIds = serverIds,
+        )
+
+    private fun cursorIdentity(
+        serverId: String,
+        generation: Long,
+    ): RealtimeRuntimeCursorIdentity =
+        RealtimeRuntimeCursorIdentity(
+            serverId = serverId,
+            scopeLeaseId = "process-lease",
+            principalId = "account-1",
+            authGeneration = generation,
+            connectionFamilyId = "family-$generation",
         )
 }

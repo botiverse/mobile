@@ -137,6 +137,65 @@ data class RealtimePayloadServerGateDecision(
     val reason: String,
 )
 
+data class RealtimeRuntimeCursorIdentity(
+    val serverId: String,
+    val scopeLeaseId: String,
+    val principalId: String,
+    val authGeneration: Long,
+    val connectionFamilyId: String,
+)
+
+data class RealtimeRuntimeCursorAdvanceDecision(
+    val shouldAdvance: Boolean,
+    val resumeSeq: Long,
+    val reason: String,
+)
+
+fun realtimeRuntimeCursorAdvanceDecision(
+    currentIdentity: RealtimeRuntimeCursorIdentity,
+    requestIdentity: RealtimeRuntimeCursorIdentity,
+    currentSeq: Long,
+    appliedSeq: Long,
+): RealtimeRuntimeCursorAdvanceDecision {
+    val normalizedCurrent = currentIdentity.normalizedOrNull()
+        ?: return RealtimeRuntimeCursorAdvanceDecision(false, currentSeq.coerceAtLeast(0L), "invalid_current_identity")
+    val normalizedRequest = requestIdentity.normalizedOrNull()
+        ?: return RealtimeRuntimeCursorAdvanceDecision(false, currentSeq.coerceAtLeast(0L), "invalid_request_identity")
+    if (normalizedCurrent != normalizedRequest) {
+        return RealtimeRuntimeCursorAdvanceDecision(false, currentSeq.coerceAtLeast(0L), "stale_witness")
+    }
+    if (appliedSeq <= 0L) {
+        return RealtimeRuntimeCursorAdvanceDecision(false, currentSeq.coerceAtLeast(0L), "invalid_seq")
+    }
+    return RealtimeRuntimeCursorAdvanceDecision(
+        shouldAdvance = true,
+        resumeSeq = maxOf(currentSeq.coerceAtLeast(0L), appliedSeq),
+        reason = "applied",
+    )
+}
+
+private fun RealtimeRuntimeCursorIdentity.normalizedOrNull(): RealtimeRuntimeCursorIdentity? {
+    val cleanServerId = serverId.trim()
+    val cleanScopeLeaseId = scopeLeaseId.trim()
+    val cleanPrincipalId = principalId.trim()
+    val cleanFamilyId = connectionFamilyId.trim()
+    if (
+        cleanServerId.isEmpty() ||
+        cleanScopeLeaseId.isEmpty() ||
+        cleanPrincipalId.isEmpty() ||
+        authGeneration <= 0L ||
+        cleanFamilyId.isEmpty()
+    ) {
+        return null
+    }
+    return copy(
+        serverId = cleanServerId,
+        scopeLeaseId = cleanScopeLeaseId,
+        principalId = cleanPrincipalId,
+        connectionFamilyId = cleanFamilyId,
+    )
+}
+
 /**
  * Generic raw-ingress integrity gate shared by every platform host.
  * Only an exact top-level camelCase `serverId` participates; nested aliases
