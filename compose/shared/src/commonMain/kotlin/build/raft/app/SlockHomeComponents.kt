@@ -222,6 +222,17 @@ internal fun homeConversationTitleColor(
         else -> SlockColor.TextBlack.copy(alpha = 0.46f)
     }
 
+internal fun homeChannelTitleTextStyle(
+    selected: Boolean,
+    hasUnread: Boolean,
+    badgeTone: HomeSidebarBadgeTone,
+): TextStyle =
+    if (selected || (hasUnread && badgeTone == HomeSidebarBadgeTone.Loud)) {
+        SlockType.ButtonBold
+    } else {
+        SlockType.Button
+    }
+
 internal fun homeConversationMutedIndicatorIcon(muted: Boolean): SlockLucideIconName? =
     if (muted) SlockLucideIconName.BellOff else null
 
@@ -3916,7 +3927,12 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
             ) {
                 Text(
                     name,
-                    style = SlockType.Button,
+                    style =
+                        homeChannelTitleTextStyle(
+                            selected = selected,
+                            hasUnread = badge != null,
+                            badgeTone = badgeTone,
+                        ),
                     color = titleColor,
                     modifier = Modifier.weight(1f, fill = false),
                     maxLines = 1,

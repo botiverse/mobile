@@ -607,6 +607,50 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeChannelTitleMatchesReactSelectedAndUnreadWeightRules() {
+        assertEquals(
+            SlockType.Button,
+            homeChannelTitleTextStyle(
+                selected = false,
+                hasUnread = false,
+                badgeTone = HomeSidebarBadgeTone.Loud,
+            ),
+        )
+        assertEquals(
+            SlockType.ButtonBold,
+            homeChannelTitleTextStyle(
+                selected = true,
+                hasUnread = false,
+                badgeTone = HomeSidebarBadgeTone.Loud,
+            ),
+        )
+        assertEquals(
+            SlockType.ButtonBold,
+            homeChannelTitleTextStyle(
+                selected = false,
+                hasUnread = true,
+                badgeTone = HomeSidebarBadgeTone.Loud,
+            ),
+        )
+        assertEquals(
+            SlockType.Button,
+            homeChannelTitleTextStyle(
+                selected = false,
+                hasUnread = true,
+                badgeTone = HomeSidebarBadgeTone.Quiet,
+            ),
+        )
+        assertEquals(
+            SlockType.ButtonBold,
+            homeChannelTitleTextStyle(
+                selected = true,
+                hasUnread = true,
+                badgeTone = HomeSidebarBadgeTone.Quiet,
+            ),
+        )
+    }
+
+    @Test
     fun homeConversationItemRecognizesLegacyDirectMessageKind() {
         val item = SlockHomeConversationItem(id = "dm-cindy", name = "Cindy", kind = "directmessage")
 
