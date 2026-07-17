@@ -151,6 +151,7 @@ export const SlockLucidePathIconNames: string[] = [
   'mail-plus',
   'message-circle',
   'message-circle-off',
+  'message-circle-plus',
   'message-square',
   'message-square-plus',
   'monitor',
@@ -6282,6 +6283,45 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 8.35 2.69 A 10 10 0 0 1 21.3 15.65',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'message-circle-plus':
+      return [
+    {
+      commands: 'M 2.992 16.342 a 2 2 0 0 1 0.094 1.167 l -1.065 3.29 a 1 1 0 0 0 1.236 1.168 l 3.413 -0.998 a 2 2 0 0 1 1.099 0.092 10 10 0 1 0 -4.777 -4.719',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 12 h 8',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 12 8 v 8',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

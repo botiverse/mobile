@@ -923,6 +923,21 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageMenuFollowed() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-menu.followed",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-menu-followed")
+                    .put("visualFixture", "default")
+                    .put("menuVariant", "followed"),
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true
+        )
+    }
+
+    @Test
     fun captureThreadMessageMenuTask() {
         captureKmpComponentCase(
             caseId = "components.thread.message-menu.task",
