@@ -540,6 +540,80 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun staleAgentActivitySnapshotDoesNotDisplaceFresherSnapshot() {
+        // task #137(b): two racing same-account REST snapshots — the
+        // late-arriving STALE one (older server trajectory timestamp) must
+        // not roll back the fresher projection.
+        val repository = FakeMemberRepository()
+        val registry = ProcessMemberPresenceRegistry()
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
+        val owner = ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1")
+        fun statusEntry(id: String, activity: String, detail: String, timestamp: String?) =
+            AgentActivityEntry(
+                id = id,
+                type = "status",
+                title = activity,
+                statusActivity = activity,
+                statusDetail = detail,
+                timestamp = timestamp
+            )
+
+        store.applyAgentActivitySnapshot(
+            ServerId("server-1"),
+            MemberId("agent-1"),
+            listOf(statusEntry("activity-new", "working", "Building", "200"))
+        )
+        store.applyAgentActivitySnapshot(
+            ServerId("server-1"),
+            MemberId("agent-1"),
+            listOf(statusEntry("activity-old", "offline", "Stopped", "100"))
+        )
+
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "agent-1")?.agentStatus)
+    }
+
+    @Test
+    fun untimestampedActivityFallbackDoesNotDisplaceTimestampedSnapshot() {
+        // task #137(b): the evidence-less current-activity fallback may fill
+        // an empty slot, but once timestamped trajectory evidence exists it
+        // can no longer displace it.
+        val repository = FakeMemberRepository()
+        val registry = ProcessMemberPresenceRegistry()
+        val store = SharedServerMembersStore(repository, presenceRegistry = registry)
+        val owner = ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = "server-1")
+
+        store.applyAgentActivitySnapshot(
+            ServerId("server-1"),
+            MemberId("agent-1"),
+            listOf(
+                AgentActivityEntry(
+                    id = "activity-1",
+                    type = "status",
+                    title = "Working",
+                    statusActivity = "working",
+                    statusDetail = "Building",
+                    timestamp = "200"
+                )
+            )
+        )
+        store.applyAgentActivitySnapshot(
+            ServerId("server-1"),
+            MemberId("agent-1"),
+            listOf(
+                AgentActivityEntry(
+                    id = "current:agent-1:offline:Stopped",
+                    type = "status",
+                    title = "Offline",
+                    statusActivity = "offline",
+                    statusDetail = "Stopped"
+                )
+            )
+        )
+
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "agent-1")?.agentStatus)
+    }
+
+    @Test
     fun mountedStatusFlowBindsAfterLaterLoginAndRebindsAcrossAccounts() = runBlocking {
         // Review blockers ①/②/③: a flow mounted BEFORE auth must bind once
         // login happens; after switching A→B the SAME mounted flow must serve

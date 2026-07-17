@@ -26,8 +26,10 @@ import kotlinx.coroutines.flow.map
  *
  * Replacement rules (moved verbatim from the store): serverSeq never goes
  * backwards; an equal visible presence keeps the stored fact (emission
- * thrift); seq-less projection fallbacks never displace a seq-carrying
- * realtime fact.
+ * thrift); a seq-less write — realtime OR projection — never displaces a
+ * seq-carrying fact (task #137(a): the wire contract is "realtime presence
+ * always carries serverSeq", so a seq-less realtime event is demoted to
+ * projection semantics instead of the legacy else→true displacement).
  */
 /**
  * Observable atomic auth binding for presence: which (environment, account)
@@ -202,7 +204,19 @@ internal class ProcessMemberPresenceRegistry {
 
     private data class Snapshot(
         val writeGeneration: Long,
-        val partitions: Map<ProcessServerMembersOwner, Map<String, MemberPresenceUpdated>>
+        val partitions: Map<ProcessServerMembersOwner, Map<String, MemberPresenceUpdated>>,
+        /**
+         * task #137(b): per-owner/member freshness watermark for projection
+         * writes — the newest REST snapshot evidence (server-assigned
+         * trajectory timestamp, epoch millis) seen so far. Lives in the same
+         * CAS domain as the facts so the watermark check and the fact write
+         * are one atomic decision. NOT reset by [clearAll]: the evidence is
+         * epoch-millis monotone, so keeping it across an auth transition
+         * still rejects a pre-clear in-flight snapshot that lands afterwards
+         * (same-account stale window); owner-keyed, so different accounts /
+         * environments / servers never share a watermark.
+         */
+        val projectionEvidence: Map<ProcessServerMembersOwner, Map<String, Long>> = emptyMap()
     )
 
     private val snapshot = MutableStateFlow(Snapshot(writeGeneration = 0L, partitions = emptyMap()))
@@ -251,16 +265,68 @@ internal class ProcessMemberPresenceRegistry {
      * Seq-less projection fallback (e.g. trajectory snapshots): fills gaps
      * only — never displaces a seq-carrying realtime fact. Generation-gated
      * exactly like [apply].
+     *
+     * task #137(b): projections additionally carry freshness evidence — the
+     * server-assigned trajectory timestamp of the entry they were projected
+     * from. Within an owner/member the newest evidence seen is kept as a
+     * watermark (same CAS domain as the facts): a projection with OLDER
+     * evidence (a late, stale REST snapshot) is rejected, and a projection
+     * with NO evidence never displaces an evidenced one — the REST-edge
+     * mirror of the realtime seq gate. Equal evidence re-applies (>= rule,
+     * same as serverSeq).
      */
-    fun applyProjection(owner: ProcessServerMembersOwner, event: MemberPresenceUpdated, writeGeneration: Long) {
+    fun applyProjection(
+        owner: ProcessServerMembersOwner,
+        event: MemberPresenceUpdated,
+        writeGeneration: Long,
+        evidenceTimestamp: Long? = null
+    ) {
         val memberId = event.memberId.value.trim()
         if (memberId.isBlank()) return
-        updateOwner(owner, writeGeneration) { facts ->
-            val previous = facts[memberId]
-            if (previous?.serverSeq != null) return@updateOwner facts
-            if (!event.shouldReplaceRegisteredPresenceFact(previous)) return@updateOwner facts
-            if (previous != null && event.hasSameVisibleRegisteredPresenceAs(previous)) return@updateOwner facts
-            facts + (memberId to event)
+        while (true) {
+            val current = snapshot.value
+            // The generation gate lives inside the CAS loop, same as
+            // updateOwner: a retry after losing the race to clearAll
+            // re-evaluates against the post-clear snapshot.
+            if (writeGeneration != current.writeGeneration) return
+            val ownerFacts = current.partitions[owner].orEmpty()
+            val previous = ownerFacts[memberId]
+            val watermark = current.projectionEvidence[owner]?.get(memberId)
+            if (evidenceTimestamp == null && watermark != null) return
+            if (evidenceTimestamp != null && watermark != null && evidenceTimestamp < watermark) return
+            val nextOwnerFacts =
+                when {
+                    // A seq-carrying realtime fact is projection-proof. The
+                    // evidence watermark STILL advances below: it records
+                    // what the REST edge has seen, so a stale snapshot cannot
+                    // refill the slot if the fact is later evicted.
+                    previous?.serverSeq != null -> ownerFacts
+                    !event.shouldReplaceRegisteredPresenceFact(previous) -> ownerFacts
+                    previous != null && event.hasSameVisibleRegisteredPresenceAs(previous) -> ownerFacts
+                    else -> ownerFacts + (memberId to event)
+                }
+            // The watermark advances on every accepted newer evidence even
+            // when the visible fact did not change — same doctrine as the
+            // seq watermark advance (a stale snapshot must not pass later
+            // just because the fresher one looked identical).
+            val advanceEvidence =
+                evidenceTimestamp != null && (watermark == null || evidenceTimestamp > watermark)
+            if (nextOwnerFacts === ownerFacts && !advanceEvidence) return
+            val nextPartitions =
+                if (nextOwnerFacts.isEmpty()) current.partitions - owner
+                else current.partitions + (owner to nextOwnerFacts)
+            val nextEvidence =
+                if (!advanceEvidence) current.projectionEvidence
+                else current.projectionEvidence +
+                    (owner to (current.projectionEvidence[owner].orEmpty() + (memberId to evidenceTimestamp!!)))
+            if (
+                snapshot.compareAndSet(
+                    current,
+                    Snapshot(current.writeGeneration, nextPartitions, nextEvidence)
+                )
+            ) {
+                return
+            }
         }
     }
 
@@ -280,11 +346,21 @@ internal class ProcessMemberPresenceRegistry {
      * swap: any concurrent apply that loses the CAS race re-reads the new
      * generation on retry and rejects itself. Returns the new generation for
      * the caller to freeze into the next auth binding.
+     *
+     * The projection evidence watermarks SURVIVE the clear (task #137(b)):
+     * they are epoch-millis server timestamps, so a stale pre-clear snapshot
+     * landing after the clear is still recognized as stale for a recurring
+     * owner instead of being accepted as a fresh gap-fill.
      */
     fun clearAll(reason: String): Long {
         while (true) {
             val current = snapshot.value
-            val next = Snapshot(writeGeneration = current.writeGeneration + 1L, partitions = emptyMap())
+            val next =
+                Snapshot(
+                    writeGeneration = current.writeGeneration + 1L,
+                    partitions = emptyMap(),
+                    projectionEvidence = current.projectionEvidence
+                )
             if (snapshot.compareAndSet(current, next)) {
                 return next.writeGeneration
             }
@@ -320,7 +396,14 @@ internal fun MemberPresenceUpdated.shouldReplaceRegisteredPresenceFact(
         previous == null -> true
         serverSeq != null && previous.serverSeq != null -> serverSeq >= previous.serverSeq
         serverSeq != null && previous.serverSeq == null -> true
-        else -> true
+        // task #137(a): the wire contract is "realtime presence always
+        // carries serverSeq" (the server's only agent:activity emit site
+        // stamps a per-agent monotonic serverSeq on every broadcast). A
+        // seq-less write is therefore demoted to projection semantics: it
+        // may fill a seq-less slot but NEVER displaces a seq-carrying fact
+        // (the legacy else→true rule let a stale seq-less event roll a
+        // newer seq-carrying fact backwards).
+        else -> previous.serverSeq == null
     }
 
 internal fun MemberPresenceUpdated.hasSameVisibleRegisteredPresenceAs(
