@@ -138,6 +138,7 @@ import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
@@ -4067,9 +4068,12 @@ internal fun SharedThreadRouteContent(
         remember(directoryConversationProjections) {
             slockConversationDirectoryStateFromProjections(directoryConversationProjections.values)
         }
-    var foregroundMessageBanner by remember(initialThreadInstanceKey) {
-        mutableStateOf<SlockForegroundMessageBanner?>(null)
-    }
+    val foregroundMessageBannerStore = remember(sharedStores) { sharedStores.foregroundMessageBannerStore }
+    val foregroundMessageBanner =
+        sharedForegroundMessageBanner(
+            store = foregroundMessageBannerStore,
+            currentServerId = currentSession?.currentServerId
+        )
     val latestPayloadRouteIdentity by rememberUpdatedState(payloadRouteIdentity)
     val latestForegroundConversationDirectory by rememberUpdatedState(foregroundConversationDirectory)
     var pendingReactionKeys by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
@@ -4589,22 +4593,38 @@ internal fun SharedThreadRouteContent(
     )
     suspend fun deliverThreadFeatureRealtimeEvent(serverId: String, event: RealtimeEvent) {
         latestThreadFeatureRealtimeEventHandler(event)
-        if (event is MessageNew) {
+        if (event is NotificationPushReceived) {
             val session = latestCurrentSession
-            foregroundMessageBanner =
-                if (foregroundMessageBannersEnabled()) {
-                    slockForegroundMessageBannerProjection(
-                        serverId = serverId,
+            if (foregroundMessageBannersEnabled()) {
+                val banner =
+                    slockNotificationPushBannerOrNull(
+                        event = event,
                         currentServerId = session?.currentServerId ?: currentServerId,
-                        message = event.message,
-                        currentMemberId = session?.user?.id,
                         visibleConversationKey = null,
-                        visibleRouteIdentity = latestPayloadRouteIdentity,
-                        conversationDirectory = latestForegroundConversationDirectory,
-                    ) ?: foregroundMessageBanner
-                } else {
-                    null
+                        conversationDirectory =
+                            notificationPushConversationDirectory(
+                                event = event,
+                                provider = conversationIdentityProvider,
+                                fallback = latestForegroundConversationDirectory
+                            ),
+                        onSuppressed = { reason ->
+                            bridge.log(
+                                "notification_push_banner_suppressed reason=$reason " +
+                                    "serverId=${event.serverId.value} messageId=${event.messageId.value} " +
+                                    "kind=${event.kind.name} surface=thread"
+                            )
+                        }
+                    )
+                banner?.let {
+                    bridge.log(
+                        "notification_push_banner_shown serverId=${event.serverId.value} " +
+                            "messageId=${event.messageId.value} kind=${event.kind.name} surface=thread"
+                    )
+                    foregroundMessageBannerStore.publish(it)
                 }
+            } else {
+                foregroundMessageBannerStore.dismiss()
+            }
         }
     }
     DisposableEffect(
@@ -4637,13 +4657,6 @@ internal fun SharedThreadRouteContent(
             }
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
-    }
-    LaunchedEffect(foregroundMessageBanner?.id) {
-        val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect
-        delay(slockForegroundBannerAutoDismissMs())
-        if (foregroundMessageBanner?.id == bannerId) {
-            foregroundMessageBanner = null
-        }
     }
     var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
@@ -5764,7 +5777,7 @@ internal fun SharedThreadRouteContent(
         currentServerStore = foregroundBannerCurrentServerStore,
         currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
         onBannerClick = { target ->
-            foregroundMessageBanner = null
+            foregroundMessageBannerStore.dismiss(target.id)
             val request = target.openRequest
             val bannerPayload =
                 buildAppShellThreadPayload(
@@ -5788,7 +5801,7 @@ internal fun SharedThreadRouteContent(
             }
         },
         onBannerDismiss = {
-            foregroundMessageBanner = null
+            foregroundMessageBannerStore.dismiss(it.id)
         }
     ) {
         CompositionLocalProvider(

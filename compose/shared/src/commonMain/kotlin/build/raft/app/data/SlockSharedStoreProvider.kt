@@ -7,6 +7,7 @@ import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
+import build.raft.app.SharedForegroundMessageBannerStore
 import build.raft.app.SlockPixelAvatarRuntime
 import build.raft.app.SlockPlatformLogHint
 import build.raft.app.data.realtime.MessageSeqEnvelope
@@ -312,6 +313,7 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
+    val foregroundMessageBannerStore = SharedForegroundMessageBannerStore()
 
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()

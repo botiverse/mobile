@@ -99,9 +99,20 @@ class RealtimeCanonicalFinalProductionLifecycleCallsiteRedTest {
         val loadingReturnIndex = source.indexOf("if (routeMountPlan == ThreadRouteMountPlan.LoadingShell)")
         val featureIndex = source.indexOf("RealtimeCanonicalFinalSinkSurfaceKey.ThreadFeature(threadInstanceKey)")
         assertTrue(featureIndex > loadingReturnIndex, "ThreadFeature must not mount in LoadingShell.")
-        val featureWindow = source.substring((featureIndex - 2_000).coerceAtLeast(0), (featureIndex + 2_000).coerceAtMost(source.length))
+        val featureWindow = source.substring((featureIndex - 4_000).coerceAtLeast(0), (featureIndex + 2_000).coerceAtMost(source.length))
         assertTrue("latestThreadFeatureRealtimeEventHandler" in featureWindow)
-        assertTrue("foregroundMessageBanner" in featureWindow, "ThreadFeature final delivery must retain MessageNew banner mutation.")
+        assertTrue(
+            "event is NotificationPushReceived" in featureWindow,
+            "ThreadFeature attention must consume the typed notification:push stream, not reconstruct eligibility from MessageNew.",
+        )
+        assertTrue(
+            "foregroundMessageBannerStore.publish" in featureWindow,
+            "ThreadFeature must publish into the process-level banner owner so route replacement preserves the banner.",
+        )
+        assertFalse(
+            "if (event is MessageNew)" in featureWindow,
+            "MessageNew is data synchronization, not the foreground-attention authority.",
+        )
         assertFixtureCannotMintAuthorityOrSurfaces()
     }
 

@@ -2,8 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -12,6 +14,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageType
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
@@ -19,6 +22,7 @@ import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +57,10 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.zIndex
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
@@ -100,6 +108,85 @@ internal data class SlockForegroundMessageBanner(
     val avatarWireValue: String?,
     val avatarLabel: String
 )
+
+internal data class SharedForegroundMessageBannerState(
+    val banner: SlockForegroundMessageBanner? = null,
+    val expiresAtMillis: Long? = null
+)
+
+internal class SharedForegroundMessageBannerStore(
+    private val nowMillis: () -> Long = ::defaultNowMillis,
+    private val autoDismissMs: Long = slockForegroundBannerAutoDismissMs()
+) {
+    private val mutableState = MutableStateFlow(SharedForegroundMessageBannerState())
+    val state: StateFlow<SharedForegroundMessageBannerState> = mutableState.asStateFlow()
+
+    fun publish(banner: SlockForegroundMessageBanner): Boolean {
+        while (true) {
+            val current = mutableState.value
+            if (current.banner?.id == banner.id && current.expiresAtMillis != null) {
+                return false
+            }
+            val next =
+                SharedForegroundMessageBannerState(
+                    banner = banner,
+                    expiresAtMillis = nowMillis() + autoDismissMs
+                )
+            if (mutableState.compareAndSet(current, next)) {
+                return true
+            }
+        }
+    }
+
+    fun dismiss(bannerId: String? = null): Boolean {
+        while (true) {
+            val current = mutableState.value
+            if (current.banner == null || (bannerId != null && current.banner.id != bannerId)) {
+                return false
+            }
+            if (mutableState.compareAndSet(current, SharedForegroundMessageBannerState())) {
+                return true
+            }
+        }
+    }
+
+    fun expireIfDue(bannerId: String, expiresAtMillis: Long): Boolean {
+        if (nowMillis() < expiresAtMillis) return false
+        while (true) {
+            val current = mutableState.value
+            if (current.banner?.id != bannerId || current.expiresAtMillis != expiresAtMillis) {
+                return false
+            }
+            if (mutableState.compareAndSet(current, SharedForegroundMessageBannerState())) {
+                return true
+            }
+        }
+    }
+}
+
+@Composable
+internal fun sharedForegroundMessageBanner(
+    store: SharedForegroundMessageBannerStore,
+    currentServerId: String?
+): SlockForegroundMessageBanner? {
+    val state by store.state.collectAsState()
+    val banner = state.banner
+    val expiresAtMillis = state.expiresAtMillis
+    LaunchedEffect(banner?.id, expiresAtMillis) {
+        val bannerId = banner?.id ?: return@LaunchedEffect
+        val deadline = expiresAtMillis ?: return@LaunchedEffect
+        val remaining = deadline - defaultNowMillis()
+        if (remaining > 0L) delay(remaining)
+        store.expireIfDue(bannerId, deadline)
+    }
+    LaunchedEffect(currentServerId, banner?.serverId) {
+        val selectedServerId = currentServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (banner != null && banner.serverId != selectedServerId) {
+            store.dismiss(banner.id)
+        }
+    }
+    return banner?.takeIf { currentServerId.isNullOrBlank() || it.serverId == currentServerId }
+}
 
 @Composable
 internal fun SlockForegroundBannerHost(
@@ -739,6 +826,26 @@ private fun String.toForegroundBannerPreview(maxLength: Int = ForegroundBannerPr
             }
         }
 
+internal fun notificationPushConversationDirectory(
+    event: NotificationPushReceived,
+    provider: SharedConversationIdentityProvider?,
+    fallback: SharedConversationDirectoryState = SharedConversationDirectoryState()
+): SharedConversationDirectoryState {
+    val resolved =
+        listOfNotNull(
+            event.channelId?.value,
+            event.threadId?.value,
+            event.parentChannelId?.value,
+            event.parentMessageId?.value
+        ).distinct().mapNotNull { id -> provider?.resolveProjection(event.serverId, id) }
+    if (resolved.isEmpty()) return fallback
+    return slockConversationDirectoryStateFromProjections(
+        (fallback.projectionsByCanonicalId.values + resolved)
+            .associateBy(SharedConversationDirectoryProjection::canonicalChannelId)
+            .values
+    )
+}
+
 /**
  * task #459: foreground banner from the server-qualified notification stream
  * (`notification:push`, server PR #4233). The server has already decided this
@@ -749,7 +856,7 @@ private fun String.toForegroundBannerPreview(maxLength: Int = ForegroundBannerPr
  * retry machinery of the message-driven path does not apply here.
  */
 internal fun slockNotificationPushBannerOrNull(
-    event: build.raft.app.model.NotificationPushReceived,
+    event: NotificationPushReceived,
     currentServerId: String?,
     visibleConversationKey: String?,
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
