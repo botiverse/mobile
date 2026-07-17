@@ -192,23 +192,23 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityReplyPrewarmTailStartsAfterTheClickedRowAndContinuesTopFirst() {
+    fun activityReplyPrewarmStartsOnlyTheNextEligibleRowAfterClick() {
         val previous = replyActivityItem("previous")
         val clicked = activityItem(key = "clicked")
         val next = replyActivityItem("next")
         val ineligibleRead = replyActivityItem("read").copy(unreadCount = 0)
         val later = replyActivityItem("later")
 
-        val tail =
-            activityReplyThreadPrewarmTailAfterClick(
+        val selectedPrewarm =
+            activityReplyThreadPrewarmNextAfterClick(
                 items = listOf(previous, clicked, next, ineligibleRead, later),
                 clickedIndex = 1,
                 serverId = "server-1"
             )
 
         assertEquals(
-            listOf("reply-next", "reply-later"),
-            tail.map { marker -> marker.key.threadChannelId }
+            listOf("reply-next"),
+            selectedPrewarm.map { marker -> marker.key.threadChannelId }
         )
     }
 
@@ -218,11 +218,11 @@ class SharedInboxPanelTest {
 
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmTailAfterClick(items, clickedIndex = -1, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = -1, serverId = "server-1")
         )
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmTailAfterClick(items, clickedIndex = items.size, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = items.size, serverId = "server-1")
         )
     }
 
