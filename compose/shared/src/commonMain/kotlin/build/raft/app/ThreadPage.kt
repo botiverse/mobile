@@ -86,6 +86,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksDataStoreStatus
+import build.raft.app.data.SharedTasksEvent
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
@@ -1406,11 +1407,6 @@ private fun <T> DataResult<T>.threadActionErrorCode(fallback: String): String =
         is DataResult.Error -> error.code
         is DataResult.NoPermission -> blocker.code
     }
-
-private fun KuiklyThreadScreenPayload.taskStatusLabel(taskId: String): String? =
-    messages.firstOrNull { it.taskId == taskId }?.taskStatus
-        ?: originMessage?.takeIf { it.taskId == taskId }?.taskStatus
-        ?: tasks.firstOrNull { it.id == taskId }?.status
 
 internal data class SlockThreadWebLinkTarget(
     val channelId: String,
@@ -4195,7 +4191,6 @@ internal fun SharedThreadRouteContent(
     val unableToConvertMessageLabel = stringResource(MR.strings.thread_error_convert_message)
     val taskCreatedLabel = stringResource(MR.strings.thread_feedback_task_created)
     val unsupportedTaskStatusLabel = stringResource(MR.strings.thread_error_task_status_unsupported)
-    val taskUpdatedLabel = stringResource(MR.strings.thread_feedback_task_updated)
     val unableToUpdateTaskLabel = stringResource(MR.strings.thread_error_update_task)
     val unableToJoinChannelLabel = stringResource(MR.strings.thread_error_join_channel)
     val joinedChannelLabel = stringResource(MR.strings.thread_feedback_joined_channel)
@@ -4289,7 +4284,7 @@ internal fun SharedThreadRouteContent(
     }
     val taskChannelId = payload.resolvedTaskLookupChannelId()?.let(::ChannelId)
     val tasksViewModel: SharedTasksViewModel? =
-        taskChannelId?.takeIf { featureOwnerMountPlan.mountTasksOwner }?.let { resolvedTaskChannelId ->
+        taskChannelId?.let { resolvedTaskChannelId ->
             viewModel(key = "shared-thread-tasks-${resolvedTaskChannelId.value}") {
                 SharedTasksViewModel(
                     authStore = authStore,
@@ -4537,6 +4532,18 @@ internal fun SharedThreadRouteContent(
         } else {
             false
         }
+
+    LaunchedEffect(tasksViewModel, unableToUpdateTaskLabel) {
+        tasksViewModel?.uiEvents?.collect { event ->
+            when (event) {
+                is SharedTasksEvent.OperationFailed -> {
+                    if (event.code.startsWith("tasks_status") && !routeAuthRequired(event.code)) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(composerDraftViewModel, threadInstanceKey, resolvedAuxiliaryThreadId) {
         val composer =
@@ -6668,91 +6675,28 @@ internal fun SharedThreadRouteContent(
                         bridge.toast(unsupportedTaskStatusLabel)
                         return@ThreadPageContent
                     }
-                    val previousPayload = renderedThread
-                    val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
-                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, status))
-                    coroutineScope.launch {
-                        when (val result = dataSource.updateTaskStatus(itemId, status)) {
-                            is DataResult.Content -> {
-                                result.data?.let { task ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
-                                }
-                                bridge.toast(taskUpdatedLabel)
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
-                                }
-                                bridge.toast(unableToUpdateTaskLabel)
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
-                                }
-                                bridge.toast(unableToUpdateTaskLabel)
-                            }
-                        }
+                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, status)
+                    if (tasksViewModel == null || intent == null) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
                     }
+                    tasksViewModel.dispatch(intent)
                 }
                 action == "markTaskDone" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedThread
-                    val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
-                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, TaskStatus.Done))
-                    coroutineScope.launch {
-                        when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Done)) {
-                            is DataResult.Content -> {
-                                result.data?.let { task ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
-                                }
-                                bridge.toast(taskUpdatedLabel)
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
-                                }
-                                bridge.toast(unableToUpdateTaskLabel)
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
-                                }
-                                bridge.toast(unableToUpdateTaskLabel)
-                            }
-                        }
+                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, TaskStatus.Done)
+                    if (tasksViewModel == null || intent == null) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
                     }
+                    tasksViewModel.dispatch(intent)
                 }
                 action == "reopenTask" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedThread
-                    val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
-                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, TaskStatus.Todo))
-                    coroutineScope.launch {
-                        when (val result = dataSource.updateTaskStatus(itemId, TaskStatus.Todo)) {
-                            is DataResult.Content -> {
-                                result.data?.let { task ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
-                                }
-                                bridge.toast(taskUpdatedLabel)
-                            }
-                            is DataResult.Empty,
-                            is DataResult.Error -> {
-                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
-                                }
-                                bridge.toast(unableToUpdateTaskLabel)
-                            }
-                            is DataResult.NoPermission -> {
-                                if (routeAuthRequired(result)) return@launch
-                                previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
-                                    tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
-                                }
-                                bridge.toast(unableToUpdateTaskLabel)
-                            }
-                        }
+                    val intent = linkedTasksProjection.statusUpdateIntent(itemId, TaskStatus.Todo)
+                    if (tasksViewModel == null || intent == null) {
+                        bridge.toast(unableToUpdateTaskLabel)
+                        return@ThreadPageContent
                     }
+                    tasksViewModel.dispatch(intent)
                 }
                 action == "joinChannel" -> {
                     val channelId = renderedThread.joinChannelTargetId()
