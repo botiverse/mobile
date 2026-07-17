@@ -14,4 +14,40 @@ class ThreadMessageLongPressSurfaceTest {
     fun shareSelectionKeepsItsDedicatedSelectionGestures() {
         assertFalse(threadMessageUsesFullRowLongPressActions(shareSelectionActive = true))
     }
+
+    @Test
+    fun ordinaryMessageBodyTapOpensItsThread() {
+        assertTrue(
+            threadMessageTapOpensThread(
+                showReplyAction = true,
+                shareSelectionActive = false,
+                hasLocalSendState = false
+            )
+        )
+    }
+
+    @Test
+    fun bodyTapDoesNotReplaceReplyThreadSelectionOrPendingSendActions() {
+        assertFalse(
+            threadMessageTapOpensThread(
+                showReplyAction = false,
+                shareSelectionActive = false,
+                hasLocalSendState = false
+            )
+        )
+        assertFalse(
+            threadMessageTapOpensThread(
+                showReplyAction = true,
+                shareSelectionActive = true,
+                hasLocalSendState = false
+            )
+        )
+        assertFalse(
+            threadMessageTapOpensThread(
+                showReplyAction = true,
+                shareSelectionActive = false,
+                hasLocalSendState = true
+            )
+        )
+    }
 }

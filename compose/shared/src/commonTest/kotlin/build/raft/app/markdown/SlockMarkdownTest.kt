@@ -50,6 +50,35 @@ class SlockMarkdownTest {
     private val inlineCodePadding = SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING.toString()
 
     @Test
+    fun bodyClickAnnotatesOnlyTextOutsideExistingLinks() {
+        var bodyClicks = 0
+        var tagClicks = 0
+        val source =
+            buildAnnotatedString {
+                append("before ")
+                withLink(
+                    LinkAnnotation.Clickable(
+                        tag = "existing-tag",
+                        linkInteractionListener = LinkInteractionListener { tagClicks++ }
+                    )
+                ) {
+                    append("#product")
+                }
+                append(" after")
+            }
+
+        val resolved = source.withSlockMarkdownBodyClick { bodyClicks++ }
+        val links = resolved.getLinkAnnotations(0, resolved.length).sortedBy { it.start }
+
+        assertEquals(listOf(0 until 7, 7 until 15, 15 until 21), links.map { it.start until it.end })
+        links[0].item.linkInteractionListener?.onClick(links[0].item)
+        links[1].item.linkInteractionListener?.onClick(links[1].item)
+        links[2].item.linkInteractionListener?.onClick(links[2].item)
+        assertEquals(2, bodyClicks)
+        assertEquals(1, tagClicks)
+    }
+
+    @Test
     fun messagePermalinkRenderConfigDefaultsToOrdinaryLink() {
         val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
         val source = buildAnnotatedString {
