@@ -61,11 +61,6 @@ on:
         required: true
         type: boolean
         default: false
-      upload_testflight:
-        description: "If true, upload the signed IPA to App Store Connect/TestFlight from CI"
-        required: true
-        type: boolean
-        default: false
 
 env:
   # Do NOT set -Xmx here: gradle.properties (project + $GRADLE_USER_HOME) takes
@@ -95,7 +90,6 @@ jobs:
       export_method: ${{ steps.p.outputs.export_method }}
       release_mode: ${{ steps.p.outputs.release_mode }}
       publish_hands: ${{ steps.p.outputs.publish_hands }}
-      upload_testflight: ${{ steps.p.outputs.upload_testflight }}
     steps:
       - id: p
         shell: bash
@@ -124,7 +118,6 @@ jobs:
             echo "export_method=${{ inputs.export_method }}"
             echo "release_mode=${{ inputs.release_mode }}"
             echo "publish_hands=${{ inputs.publish_hands }}"
-            echo "upload_testflight=${{ inputs.upload_testflight }}"
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
@@ -428,7 +421,6 @@ jobs:
             echo "| **dSYM sha256** | \`${{ steps.validate.outputs.dsym_sha256 || '(not validated)' }}\` |"
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Publish to Hands** | \`${{ needs.resolve.outputs.publish_hands }}\` |"
-            echo "| **Upload TestFlight** | \`${{ needs.resolve.outputs.upload_testflight }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish_hands:
@@ -539,43 +531,3 @@ jobs:
             echo "| **IPA sha256** | \`${{ needs.build_ios_release.outputs.ipa_sha256 }}\` |"
             echo "| **dSYM sha256** | \`${{ needs.build_ios_release.outputs.dsym_sha256 }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-
-  upload_testflight:
-    name: Upload to TestFlight
-    runs-on: blacksmith-12vcpu-macos-latest
-    timeout-minutes: 30
-    needs: [resolve, build_ios_release, publish_hands]
-    if: |
-      always() &&
-      needs.resolve.outputs.upload_testflight == 'true' &&
-      needs.build_ios_release.result == 'success' &&
-      (needs.publish_hands.result == 'success' || needs.publish_hands.result == 'skipped')
-    env:
-      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
-    steps:
-      - name: Download signed IPA
-        uses: actions/download-artifact@v4
-        with:
-          name: ios-release-ipa
-          path: dist/ios/
-
-      - name: Upload IPA to App Store Connect
-        shell: bash
-        run: |
-          set -euo pipefail
-          [ -n "${ASC_API_KEY_ID}" ] || { echo "::error::Missing ASC_API_KEY_ID"; exit 1; }
-          [ -n "${ASC_API_ISSUER_ID}" ] || { echo "::error::Missing ASC_API_ISSUER_ID"; exit 1; }
-          [ -n "${ASC_API_KEY_P8_BASE64}" ] || { echo "::error::Missing ASC_API_KEY_P8_BASE64"; exit 1; }
-          mkdir -p "${HOME}/.appstoreconnect/private_keys"
-          echo "${ASC_API_KEY_P8_BASE64}" | base64 --decode > "${HOME}/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
-          IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
-          xcrun altool \
-            --upload-app \
-            --type ios \
-            --file "${IPA}" \
-            --apiKey "${ASC_API_KEY_ID}" \
-            --apiIssuer "${ASC_API_ISSUER_ID}" \
-            --output-format xml \
-            | tee testflight-upload.log
