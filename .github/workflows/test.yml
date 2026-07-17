@@ -753,7 +753,7 @@ jobs:
             adb logcat -d -v threadtime > canonical-final-logcat.txt
             adb shell ps -A > canonical-final-process-list.txt
             adb shell pm list instrumentation > canonical-final-instrumentation-list-after.txt
-            grep 'canonical_final_actual_host_trace' canonical-final-logcat-live.txt > canonical-final-trace.txt || true
+            grep 'canonical_final_actual_host_trace' canonical-final-logcat.txt > canonical-final-trace.txt || true
             test -n "$PID_DURING"
             test "$INSTRUMENT_STATUS" = 0
             grep -Fq 'OK (1 test)' canonical-final-instrumentation.txt
