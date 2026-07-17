@@ -105,7 +105,7 @@ internal fun SlockFilterPopover(
     val filtered =
         if (searchText.isBlank()) options
         else options.filter { it.label.contains(searchText, ignoreCase = true) }
-    SlockAnchoredPopover(
+    SlockModalAnchoredPopover(
         anchor = anchor,
         contentSize = popoverSize,
         onDismiss = onDismiss,

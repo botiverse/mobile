@@ -111,7 +111,7 @@ internal fun SlockBrutalDropdownMenu(
     val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
     val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
     val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
-    SlockAnchoredPopover(
+    SlockModalAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
