@@ -61,4 +61,30 @@ class SlockPlatformEventBusIosTest {
         assertEquals(1, deliveryCount)
         subscription.close()
     }
+
+    @Test
+    fun nativeSystemNotificationOpenFlowsIntoSharedEventBus() {
+        val eventBus = createSlockPlatformEventBus()
+        var received: JSONObject? = null
+        val subscription =
+            eventBus.observe(SlockSystemNotificationContract.OpenEventName) {
+                received = it
+            }
+
+        NSNotificationCenter.defaultCenter.postNotificationName(
+            aName = SlockSystemNotificationContract.OpenEventName,
+            `object` = null,
+            userInfo =
+                mapOf(
+                    "slockNotificationServerId" to "server-1",
+                    "slockNotificationThreadId" to "thread-1",
+                    "slockNotificationMessageId" to "message-1"
+                )
+        )
+
+        assertEquals("server-1", received?.optString("slockNotificationServerId"))
+        assertEquals("thread-1", received?.optString("slockNotificationThreadId"))
+        assertEquals("message-1", received?.optString("slockNotificationMessageId"))
+        subscription.close()
+    }
 }

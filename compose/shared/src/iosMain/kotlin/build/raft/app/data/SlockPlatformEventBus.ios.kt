@@ -12,26 +12,47 @@ private const val SlockPlatformEventSourceIosHost = "ios_host"
 
 private object IosSlockPlatformEventDispatcher {
     private var realtimeObserver: NSObjectProtocol? = null
+    private var systemNotificationOpenObserver: NSObjectProtocol? = null
 
     fun ensureNativeIngress() {
-        if (realtimeObserver != null) return
-        realtimeObserver =
-            NSNotificationCenter.defaultCenter.addObserverForName(
-                name = GeneratedRealtimeContract.Notify.EventName,
-                `object` = null,
-                queue = null
-            ) { notification ->
-                notification ?: return@addObserverForName
-                if (notification.userInfo?.get(SlockPlatformEventOriginKey) == SlockPlatformEventOriginShared) {
-                    return@addObserverForName
+        if (realtimeObserver == null) {
+            realtimeObserver =
+                NSNotificationCenter.defaultCenter.addObserverForName(
+                    name = GeneratedRealtimeContract.Notify.EventName,
+                    `object` = null,
+                    queue = null
+                ) { notification ->
+                    notification ?: return@addObserverForName
+                    if (notification.userInfo?.get(SlockPlatformEventOriginKey) == SlockPlatformEventOriginShared) {
+                        return@addObserverForName
+                    }
+                    SlockEnhancedNotifyCenter.post(
+                        eventName = GeneratedRealtimeContract.Notify.EventName,
+                        eventData = notification.toEventData(),
+                        crossProcess = true,
+                        source = SlockPlatformEventSourceIosHost
+                    )
                 }
-                SlockEnhancedNotifyCenter.post(
-                    eventName = GeneratedRealtimeContract.Notify.EventName,
-                    eventData = notification.toEventData(),
-                    crossProcess = true,
-                    source = SlockPlatformEventSourceIosHost
-                )
-            }
+        }
+        if (systemNotificationOpenObserver == null) {
+            systemNotificationOpenObserver =
+                NSNotificationCenter.defaultCenter.addObserverForName(
+                    name = SlockSystemNotificationContract.OpenEventName,
+                    `object` = null,
+                    queue = null
+                ) { notification ->
+                    notification ?: return@addObserverForName
+                    if (notification.userInfo?.get(SlockPlatformEventOriginKey) == SlockPlatformEventOriginShared) {
+                        return@addObserverForName
+                    }
+                    SlockEnhancedNotifyCenter.post(
+                        eventName = SlockSystemNotificationContract.OpenEventName,
+                        eventData = notification.toEventData(),
+                        crossProcess = false,
+                        source = SlockPlatformEventSourceIosHost
+                    )
+                }
+        }
     }
 
     fun dispatch(event: SlockEnhancedNotifyEvent) {
