@@ -574,6 +574,12 @@ private data class NotificationPushDto(
     val body: String = "",
     val tag: String = "",
     val url: String? = null,
+    val serverName: String? = null,
+    val channelName: String? = null,
+    val parentChannelKind: String? = null,
+    val senderName: String? = null,
+    val messagePreview: String? = null,
+    val mentioned: Boolean? = null,
 )
 
 @Serializable
@@ -1219,7 +1225,16 @@ private fun NotificationPushDto.toDomainOrNull(): NotificationPushReceived? {
         messageId = MessageId(cleanMessageId),
         title = title,
         body = body,
-        tag = tag
+        tag = tag,
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        channelName = channelName?.takeIf { it.isNotBlank() },
+        parentChannelKind =
+            parentChannelKind
+                ?.let(::parseConversationKindOrNull)
+                ?.takeIf { it == ConversationKind.Channel || it == ConversationKind.Joint || it == ConversationKind.DirectMessage },
+        senderName = senderName?.takeIf { it.isNotBlank() },
+        messagePreview = messagePreview?.takeIf { it.isNotBlank() },
+        mentioned = mentioned
     )
 }
 

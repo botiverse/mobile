@@ -673,7 +673,13 @@ data class NotificationPushReceived(
     val messageId: MessageId,
     val title: String,
     val body: String,
-    val tag: String
+    val tag: String,
+    val serverName: String? = null,
+    val channelName: String? = null,
+    val parentChannelKind: ConversationKind? = null,
+    val senderName: String? = null,
+    val messagePreview: String? = null,
+    val mentioned: Boolean? = null
 ) : RealtimeEvent
 
 // Settings Models

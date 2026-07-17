@@ -1042,6 +1042,12 @@ class RealtimeEventMapperTest {
                   "title": "Thread in #home-fixes · Raft",
                   "body": "Cindy: hello",
                   "tag": "message:reply-1",
+                  "serverName": "Raft",
+                  "channelName": "home-fixes",
+                  "parentChannelKind": "channel",
+                  "senderName": "Cindy",
+                  "messagePreview": "hello",
+                  "mentioned": false,
                   "url": "https://app.raft.build/s/raft/c/parent-channel"
                 }
                 """.trimIndent()
@@ -1056,6 +1062,12 @@ class RealtimeEventMapperTest {
         assertEquals("reply-1", push.messageId.value)
         assertEquals("Thread in #home-fixes · Raft", push.title)
         assertEquals("Cindy: hello", push.body)
+        assertEquals("Raft", push.serverName)
+        assertEquals("home-fixes", push.channelName)
+        assertEquals(ConversationKind.Channel, push.parentChannelKind)
+        assertEquals("Cindy", push.senderName)
+        assertEquals("hello", push.messagePreview)
+        assertEquals(false, push.mentioned)
     }
 
     @Test

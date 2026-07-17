@@ -2218,9 +2218,15 @@ class SlockAppShellTest {
                         parentChannelId = ChannelId("parent-channel"),
                         parentMessageId = MessageId("parent-message"),
                         messageId = MessageId("reply-1"),
-                        title = "Thread in #home-fixes · Raft",
-                        body = "Cindy: hello",
-                        tag = "message:reply-1"
+                        title = "Legacy notification title",
+                        body = "Legacy notification body",
+                        tag = "message:reply-1",
+                        serverName = "Raft",
+                        channelName = "home-fixes",
+                        parentChannelKind = ConversationKind.Channel,
+                        senderName = "Cindy",
+                        messagePreview = "hello",
+                        mentioned = false
                     ),
                 currentServerId = "server-1",
                 visibleConversationKey = null,
@@ -2236,7 +2242,34 @@ class SlockAppShellTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, resolved.conversation.thread?.parentSurfaceKind)
         assertEquals("reply-1", resolved.openRequest.anchorMessageId)
         assertEquals("Thread in #home-fixes · Raft", resolved.title)
+        assertEquals("", resolved.context)
+        assertEquals("", resolved.inlineContextLabel())
         assertEquals("Cindy: hello", resolved.body)
+    }
+
+    @Test
+    fun notificationPushBannerFallsBackToLegacyTitleAndBodyWhenStructuredDisplayFieldsAreMissing() {
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-1"),
+                        kind = ConversationKind.Channel,
+                        channelId = ChannelId("channel-1"),
+                        messageId = MessageId("message-1"),
+                        title = "#native · Raft Android",
+                        body = "Artin: ping",
+                        tag = "message:message-1"
+                    ),
+                currentServerId = "server-1",
+                visibleConversationKey = null
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("#native · Raft Android", resolved.title)
+        assertEquals("Artin: ping", resolved.body)
+        assertEquals("", resolved.context)
+        assertEquals("", resolved.inlineContextLabel())
     }
 
     @Test
