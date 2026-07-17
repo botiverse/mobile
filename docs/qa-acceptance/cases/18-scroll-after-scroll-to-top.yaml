@@ -1,0 +1,124 @@
+id: scroll-after-scroll-to-top
+title: "滚动-双击回顶后向下滑动不回弹"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Regression case from Hands feedback fd9c0487: after double-tap to scroll
+  to top, scrolling down causes infinite bounce back to top. The scroll
+  position is forcibly pulled back instead of following user input.
+  Tests scroll state ownership after programmatic scroll-to-top.
+tags: [scroll, interaction, regression, P1]
+timeout_seconds: 120
+max_retries: 1
+verdict_before_cleanup: true
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+  - type: channel_has_many_messages
+    params:
+      channel: "#all"
+      min_messages: 30
+      note: "Need enough messages to scroll multiple screens"
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open #all channel with many messages"
+    action_category: navigate
+    hint: "Navigate to #all channel"
+    capture: [screenshot]
+
+  - id: wait-messages-load
+    goal: "Wait for messages to fully load"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: scroll-down
+    goal: "Scroll down several screens to get away from the top"
+    action_category: interact
+    hint: "Swipe up multiple times to scroll down 3-4 screens"
+    capture: [screenshot]
+
+  - id: verify-scrolled-down
+    goal: "Verify we are no longer at the top of the conversation"
+    action_category: verify
+    capture: [screenshot]
+
+  - id: double-tap-top
+    goal: "Double-tap the top bar/header to trigger scroll-to-top"
+    action_category: interact
+    hint: "Double-tap the channel name header at the top of the screen to trigger scroll-to-top"
+    capture: [screenshot]
+
+  - id: wait-scroll-top
+    goal: "Wait for scroll-to-top animation to complete"
+    action_category: wait
+    params:
+      duration_ms: 2000
+
+  - id: verify-at-top
+    goal: "Verify we are back at the top of the conversation"
+    action_category: verify
+    capture: [screenshot]
+
+  - id: scroll-down-after-top
+    goal: "Manually scroll down (swipe up) after scroll-to-top completed"
+    action_category: interact
+    hint: "Swipe up to scroll down. This is the critical step — verify it follows your input"
+    capture: [screenshot]
+
+  - id: scroll-down-more
+    goal: "Continue scrolling down another screen to confirm no bounce-back"
+    action_category: interact
+    hint: "Swipe up 2-3 more times. If the view snaps back to top, that's the bug"
+    capture: [screenshot]
+
+  - id: verify-no-bounce
+    goal: "Capture final state to verify scroll position stayed where user scrolled"
+    action_category: verify
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: scroll-follows-input
+    goal: "After scroll-to-top, manual downward scroll follows user input immediately (scroll ownership transferred)"
+    type: visual_check
+    after_step: verify-no-bounce
+    severity: critical
+    hint: "Compare verify-at-top vs verify-no-bounce — the view should have moved DOWN from top, not bounced back"
+
+  - id: no-infinite-bounce
+    goal: "View does NOT bounce back to top after manual scroll down"
+    type: visual_check
+    after_step: verify-no-bounce
+    severity: critical
+    hint: "If the view is back at the top despite scrolling down, this is the bug (fd9c0487)"
+
+  - id: no-crash-scroll
+    goal: "No crash during scroll interactions"
+    type: no_crash
+    after_step: verify-no-bounce
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    Regression from Hands feedback fd9c0487: double-tap scroll-to-top then
+    scroll down causes infinite bounce back to top. Root cause likely:
+    programmatic scroll owner not released after animation, or scroll-to-top
+    intent continuously replayed. Critical assertion: scroll ownership must
+    transfer to user input after scroll-to-top animation completes.
