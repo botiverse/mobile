@@ -1128,6 +1128,9 @@ private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity
         source = MemberDetailIdentitySource.ThreadMessageAuthor
     )
 
+internal fun KuiklyThreadMessageItem.threadAuthorGestureIdentity(): String =
+    "${id.trim()}|${authorId.trim()}|${authorKind.trim().lowercase()}"
+
 private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSnapshot? {
     if (kind != MemberKind.Agent) return null
     val name = handle.ifBlank { displayName.ifBlank { id.value } }
@@ -14875,6 +14878,23 @@ private fun ThreadMessageCard(
     val avatarWireValue =
         rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
             ?: message.resolvedThreadAvatarWireValue()
+    val authorGestureIdentity =
+        remember(message.id, message.authorId, message.authorKind) {
+            message.threadAuthorGestureIdentity()
+        }
+    val authorProfileIdentity =
+        remember(message.id, message.authorId, message.authorKind) {
+            message.memberDetailIdentity()
+        }
+    fun openAuthorProfile(source: String) {
+        if (!message.canOpenThreadAuthorProfile(shareSelectionActive)) return
+        diagnosticsLogger(
+            "thread_member_profile_tap source=$source messageId=${message.id} " +
+                "authorId=${message.authorId} authorKind=${message.authorKind} " +
+                "targetMemberId=${authorProfileIdentity?.memberId?.value.orEmpty()}"
+        )
+        authorProfileIdentity?.let(onOpenMember)
+    }
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
     val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
@@ -14956,6 +14976,7 @@ private fun ThreadMessageCard(
                 }
                 if (!alignOwnMessageRight) {
                     ThreadMessageAvatarSlot(
+                        interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
                         timestampLabel = localizedCompactTimestampLabel,
@@ -14964,11 +14985,7 @@ private fun ThreadMessageCard(
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
-                        onClick = {
-                            if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
-                                message.memberDetailIdentity()?.let(onOpenMember)
-                            }
-                        },
+                        onClick = { openAuthorProfile("avatar") },
                         onLongPress = { onMentionAuthor(message) }
                     )
                 }
@@ -15018,11 +15035,7 @@ private fun ThreadMessageCard(
                                         modifier =
                                             Modifier
                                                 .widthIn(max = 220.dp)
-                                                .clickable {
-                                                    if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
-                                                        message.memberDetailIdentity()?.let(onOpenMember)
-                                                    }
-                                                }
+                                                .clickable { openAuthorProfile("author_name") }
                                     )
                                     authorBadgeLabel?.let { label ->
                                         ThreadMessageAuthorBadge(label)
@@ -15213,6 +15226,7 @@ private fun ThreadMessageCard(
                 }
                 if (alignOwnMessageRight) {
                     ThreadMessageAvatarSlot(
+                        interactionIdentity = authorGestureIdentity,
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
                         timestampLabel = compactTimestampLabel,
@@ -15221,11 +15235,7 @@ private fun ThreadMessageCard(
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
-                        onClick = {
-                            if (message.canOpenThreadAuthorProfile(shareSelectionActive)) {
-                                message.memberDetailIdentity()?.let(onOpenMember)
-                            }
-                        },
+                        onClick = { openAuthorProfile("avatar") },
                         onLongPress = { onMentionAuthor(message) }
                     )
                 }
@@ -17658,6 +17668,7 @@ private fun localizedThreadTimestampLabel(value: String): String =
 
 @Composable
 private fun ThreadMessageAvatarSlot(
+    interactionIdentity: String,
     showAvatar: Boolean,
     showTimestamp: Boolean,
     timestampLabel: String,
@@ -17685,6 +17696,7 @@ private fun ThreadMessageAvatarSlot(
                 // avatar top optically aligns with the name glyphs.
                 Box(modifier = Modifier.padding(top = 2.dp)) {
                     ThreadMessageAvatar(
+                        interactionIdentity = interactionIdentity,
                         avatarLabel = avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = status,
@@ -17715,6 +17727,7 @@ private fun ThreadMessageAvatarSlot(
 
 @Composable
 private fun ThreadMessageAvatar(
+    interactionIdentity: String,
     avatarLabel: String,
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
@@ -17733,7 +17746,7 @@ private fun ThreadMessageAvatar(
         modifier =
             Modifier
                 .size(36.dp)
-                .pointerInput(Unit) {
+                .pointerInput(interactionIdentity) {
                     detectTapGestures(
                         onTap = { currentOnClick() },
                         onLongPress = { currentOnLongPress() }
