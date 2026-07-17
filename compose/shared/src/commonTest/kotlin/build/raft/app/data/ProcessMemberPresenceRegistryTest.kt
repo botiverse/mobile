@@ -174,4 +174,154 @@ class ProcessMemberPresenceRegistryTest {
         assertNull(registry.factFor(ownerOtherAccount, "agent-1"))
         assertEquals(emptyMap(), registry.factsByOwner)
     }
+
+    // ---- task #137(a): seq-less realtime demoted to projection semantics ----
+
+    @Test
+    fun seqLessRealtimeNeverDisplacesSeqCarryingFact() {
+        // Wire contract: realtime presence always carries serverSeq, so a
+        // seq-less realtime event is non-contract (old server / malformed)
+        // and must NOT roll a newer seq-carrying fact backwards (the legacy
+        // else→true rule allowed exactly that).
+        val registry = ProcessMemberPresenceRegistry()
+        registry.apply(ownerServerA, fact(serverSeq = 5, presence = Presence.Offline, status = AgentStatus.Offline), GEN0)
+        registry.apply(ownerServerA, fact(serverSeq = null, presence = Presence.Active, status = AgentStatus.Working), GEN0)
+
+        val final = registry.factFor(ownerServerA, "agent-1")
+        assertEquals(Presence.Offline, final?.presence)
+        assertEquals(5L, final?.serverSeq)
+    }
+
+    @Test
+    fun seqLessRealtimeStillFillsSeqLessSlots() {
+        // The demotion only protects seq-carrying facts: gap-fill behavior
+        // among seq-less writes is unchanged.
+        val registry = ProcessMemberPresenceRegistry()
+        registry.apply(ownerServerA, fact(serverSeq = null, status = AgentStatus.Working), GEN0)
+        assertEquals(AgentStatus.Working, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+
+        registry.apply(ownerServerA, fact(serverSeq = null, status = AgentStatus.Offline, presence = Presence.Offline), GEN0)
+        assertEquals(AgentStatus.Offline, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+
+        // … and a later seq-carrying event still displaces the seq-less slot,
+        // after which further seq-less events are rejected again.
+        registry.apply(ownerServerA, fact(serverSeq = 9, status = AgentStatus.Online), GEN0)
+        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+        registry.apply(ownerServerA, fact(serverSeq = null, status = AgentStatus.Offline, presence = Presence.Offline), GEN0)
+        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+    }
+
+    // ---- task #137(b): projection freshness-evidence watermark ----
+
+    @Test
+    fun projectionWithOlderEvidenceDoesNotDisplaceNewerEvidence() {
+        // Two racing REST snapshots for the same account: the late-arriving
+        // STALE one (older server timestamp) must not roll back the fresher
+        // projection.
+        val registry = ProcessMemberPresenceRegistry()
+        registry.applyProjection(
+            ownerServerA,
+            fact(serverSeq = null, status = AgentStatus.Working),
+            GEN0,
+            evidenceTimestamp = 200L
+        )
+        registry.applyProjection(
+            ownerServerA,
+            fact(serverSeq = null, status = AgentStatus.Offline, presence = Presence.Offline),
+            GEN0,
+            evidenceTimestamp = 100L
+        )
+
+        assertEquals(AgentStatus.Working, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+    }
+
+    @Test
+    fun projectionWithEqualOrNewerEvidenceAppliesAndAdvancesWatermark() {
+        val registry = ProcessMemberPresenceRegistry()
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0, evidenceTimestamp = 200L)
+        // Equal evidence re-applies (>= rule, same as serverSeq).
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Online), GEN0, evidenceTimestamp = 200L)
+        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+
+        // Watermark is now 200: older evidence is rejected …
+        registry.applyProjection(
+            ownerServerA,
+            fact(status = AgentStatus.Offline, presence = Presence.Offline),
+            GEN0,
+            evidenceTimestamp = 150L
+        )
+        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+
+        // … newer evidence applies.
+        registry.applyProjection(
+            ownerServerA,
+            fact(status = AgentStatus.Offline, presence = Presence.Offline),
+            GEN0,
+            evidenceTimestamp = 300L
+        )
+        assertEquals(AgentStatus.Offline, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+    }
+
+    @Test
+    fun unevidencedProjectionFillsOnlyUntilEvidenceExists() {
+        // Evidence-less fallbacks (detail summary / current-activity entry)
+        // keep their gap-fill role, but once evidenced freshness exists they
+        // can no longer displace it.
+        val registry = ProcessMemberPresenceRegistry()
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0)
+        assertEquals(AgentStatus.Working, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Online), GEN0, evidenceTimestamp = 100L)
+        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Offline, presence = Presence.Offline), GEN0)
+        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+    }
+
+    @Test
+    fun projectionEvidenceSurvivesClearAll() {
+        // The watermark is an epoch-millis server timestamp: a stale
+        // pre-clear in-flight snapshot landing after an auth transition is
+        // still stale for the recurring owner.
+        val registry = ProcessMemberPresenceRegistry()
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0, evidenceTimestamp = 200L)
+
+        val newGeneration = registry.clearAll(reason = "authenticated")
+        assertNull(registry.factFor(ownerServerA, "agent-1"))
+
+        registry.applyProjection(
+            ownerServerA,
+            fact(status = AgentStatus.Offline, presence = Presence.Offline),
+            newGeneration,
+            evidenceTimestamp = 100L
+        )
+        assertNull(registry.factFor(ownerServerA, "agent-1"))
+
+        registry.applyProjection(
+            ownerServerA,
+            fact(status = AgentStatus.Online),
+            newGeneration,
+            evidenceTimestamp = 300L
+        )
+        assertEquals(AgentStatus.Online, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+    }
+
+    @Test
+    fun projectionEvidenceAdvancesWithoutVisibleChurn() {
+        // Same-visible newer evidence must still advance the watermark
+        // (mirrors the seq watermark doctrine): otherwise an older stale
+        // snapshot would pass the gate later.
+        val registry = ProcessMemberPresenceRegistry()
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0, evidenceTimestamp = 100L)
+        registry.applyProjection(ownerServerA, fact(status = AgentStatus.Working), GEN0, evidenceTimestamp = 200L)
+
+        registry.applyProjection(
+            ownerServerA,
+            fact(status = AgentStatus.Offline, presence = Presence.Offline),
+            GEN0,
+            evidenceTimestamp = 150L
+        )
+
+        assertEquals(AgentStatus.Working, registry.factFor(ownerServerA, "agent-1")?.agentStatus)
+    }
 }
