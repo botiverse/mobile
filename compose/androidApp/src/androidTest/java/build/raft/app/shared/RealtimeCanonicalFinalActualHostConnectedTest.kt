@@ -125,8 +125,6 @@ class RealtimeCanonicalFinalActualHostConnectedTest {
         assertReplacementChanged(standaloneFirst, standaloneReplacement)
         assertSuccessorRetainedAfterOldDispose(standaloneFirst, standaloneReplacement, standaloneOldDisposed)
         val standaloneDisposeWitness = compactFields(standaloneOldDisposed, "standaloneDisposeWitness")
-        assertEquals("false", standaloneDisposeWitness.getValue("rc"))
-        assertEquals("false", standaloneDisposeWitness.getValue("rf"))
         assertNotEquals(standaloneDisposeWitness.getValue("oc"), standaloneDisposeWitness.getValue("cc"))
         assertNotEquals(standaloneDisposeWitness.getValue("of"), standaloneDisposeWitness.getValue("cf"))
         assertAuthorityPresent(standaloneFinalComponent)

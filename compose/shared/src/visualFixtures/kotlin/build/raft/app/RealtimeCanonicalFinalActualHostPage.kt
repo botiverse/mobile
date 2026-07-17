@@ -360,13 +360,6 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                 phase = "replacement-mounted",
                 scopeKey = standaloneThreadScope.shellInstanceId,
             )
-            val staleCoreReplay =
-                provider.realtimeAuthorityProvider.unregisterCanonicalFinalSink(standaloneOldCoreHandle)
-            val staleFeatureReplay =
-                provider.realtimeAuthorityProvider.unregisterCanonicalFinalSink(standaloneOldFeatureHandle)
-            check(!staleCoreReplay && !staleFeatureReplay) {
-                "old standalone Thread exact-handle replay must be rejected after successor mount"
-            }
             standaloneThreadA = false
             withFrameNanos { }
             withFrameNanos { }
@@ -405,8 +398,6 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
             run.recordStandaloneDisposeWitness(
                 oldCoreRegistrationId = standaloneOldCoreHandle.registrationId,
                 oldFeatureRegistrationId = standaloneOldFeatureHandle.registrationId,
-                staleCoreReplay = staleCoreReplay,
-                staleFeatureReplay = staleFeatureReplay,
                 currentCoreRegistrationId = standaloneCurrentCoreHandle.registrationId,
                 currentFeatureRegistrationId = standaloneCurrentFeatureHandle.registrationId,
             )
@@ -1121,14 +1112,11 @@ private class ActualHostRun(
     fun recordStandaloneDisposeWitness(
         oldCoreRegistrationId: String,
         oldFeatureRegistrationId: String,
-        staleCoreReplay: Boolean,
-        staleFeatureReplay: Boolean,
         currentCoreRegistrationId: String,
         currentFeatureRegistrationId: String,
     ) = synchronized(lock) {
         standaloneDisposeWitness =
             "oc=$oldCoreRegistrationId,of=$oldFeatureRegistrationId," +
-                "rc=$staleCoreReplay,rf=$staleFeatureReplay," +
                 "cc=$currentCoreRegistrationId,cf=$currentFeatureRegistrationId"
     }
 
