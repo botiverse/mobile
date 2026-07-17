@@ -416,6 +416,44 @@ internal data class SlockHomePayload(
 
 private enum class ChannelRowInteractionState { Default, Selected, Hovered, Focused, Pressed }
 
+private data class ChannelRowContent(
+    val name: String,
+    val positionPrefix: String? = null,
+    val symbol: String = "#",
+    val avatarLabel: String? = null,
+    val avatarUrl: String? = null,
+    val avatarWireValue: String? = avatarUrl,
+    val presence: SlockPresence? = null,
+    val showPresence: Boolean = true,
+    val badge: String? = null,
+    val badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud,
+    val hasDraft: Boolean = false,
+    val muted: Boolean = false,
+    val joined: Boolean = true
+) {
+    fun defaultInteractionIdentity(): String = "channel:$symbol:$name"
+}
+
+private data class ChannelRowInteraction(
+    val identity: String,
+    val state: ChannelRowInteractionState = ChannelRowInteractionState.Default,
+    val captureLongPressAnchor: Boolean = true,
+    val onClick: (() -> Unit)? = null,
+    val onLongPress: ((Offset) -> Unit)? = null,
+    val onPress: (() -> Unit)? = null,
+    val onPressEnd: (() -> Unit)? = null
+)
+
+private data class ChannelRowDrag(
+    val enabled: Boolean = false,
+    val offsetY: Float = 0f,
+    val onStart: (() -> Unit)? = null,
+    val onMove: ((Float) -> Unit)? = null,
+    val onEnd: (() -> Unit)? = null,
+    val onCancel: (() -> Unit)? = null,
+    val rowEnabled: Boolean = false
+)
+
 private val homeConversationOpenBarrier = HomeConversationOpenBarrier()
 
 private const val HomePullToRefreshEnabled = true
@@ -1508,21 +1546,27 @@ internal fun SlockStructuralHomeShell(
                                         } else if (pinned != null) {
                                             val badgeProjection = pinned.homeConversationBadgeProjection()
                                             ChannelRow(
-                                                interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
-                                                name = pinned.name,
-                                                symbol = pinned.homeChannelSymbol(),
-                                                joined = pinned.joined,
-                                                hasDraft = pinned.hasDraft,
-                                                muted = pinned.activityMuted,
-                                                badge = badgeProjection.label,
-                                                badgeTone = badgeProjection.tone,
+                                                content =
+                                                    ChannelRowContent(
+                                                        name = pinned.name,
+                                                        symbol = pinned.homeChannelSymbol(),
+                                                        joined = pinned.joined,
+                                                        hasDraft = pinned.hasDraft,
+                                                        muted = pinned.activityMuted,
+                                                        badge = badgeProjection.label,
+                                                        badgeTone = badgeProjection.tone
+                                                    ),
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                interactionState = rowInteractionState,
-                                                captureLongPressAnchor = captureRowAnchors,
-                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
-                                                onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
-                                                onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                                interaction =
+                                                    ChannelRowInteraction(
+                                                        identity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
+                                                        state = rowInteractionState,
+                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
+                                                        onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
+                                                        onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                                    )
                                             )
                                         }
                                     }
@@ -1552,27 +1596,33 @@ internal fun SlockStructuralHomeShell(
                                                 else -> ChannelRowInteractionState.Default
                                             }
                                             ChannelRow(
-                                                interactionIdentity = homeSidebarInteractionIdentity("joint", channel.id),
-                                                name = channel.name,
-                                                symbol = channel.homeChannelSymbol(),
-                                                joined = channel.joined,
-                                                hasDraft = channel.hasDraft,
-                                                muted = channel.activityMuted,
-                                                badge = badgeProjection.label,
-                                                badgeTone = badgeProjection.tone,
+                                                content =
+                                                    ChannelRowContent(
+                                                        name = channel.name,
+                                                        symbol = channel.homeChannelSymbol(),
+                                                        joined = channel.joined,
+                                                        hasDraft = channel.hasDraft,
+                                                        muted = channel.activityMuted,
+                                                        badge = badgeProjection.label,
+                                                        badgeTone = badgeProjection.tone
+                                                    ),
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                interactionState = jointInteractionState,
-                                                captureLongPressAnchor = captureRowAnchors,
-                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
-                                                onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                                    onChannelLongPressWithDismiss(channel.id, anchor)
-                                                    activePinMenuConversationId = channel.id
-                                                    activeMenuSection = SlockHomeSortSection.JointChannels
-                                                    pinMenuAnchor = anchor
-                                                    pressedRowKey = null
-                                                }) else null,
-                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
-                                                onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                                interaction =
+                                                    ChannelRowInteraction(
+                                                        identity = homeSidebarInteractionIdentity("joint", channel.id),
+                                                        state = jointInteractionState,
+                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
+                                                        onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                            onChannelLongPressWithDismiss(channel.id, anchor)
+                                                            activePinMenuConversationId = channel.id
+                                                            activeMenuSection = SlockHomeSortSection.JointChannels
+                                                            pinMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }) else null,
+                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                                        onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                                    )
                                             )
                                         }
                                     }
@@ -1610,27 +1660,33 @@ internal fun SlockStructuralHomeShell(
                                                 else -> ChannelRowInteractionState.Default
                                             }
                                             ChannelRow(
-                                                interactionIdentity = homeSidebarInteractionIdentity("channel", channel.id),
-                                                name = channel.name,
-                                                symbol = channel.homeChannelSymbol(),
-                                                joined = channel.joined,
-                                                hasDraft = channel.hasDraft,
-                                                muted = channel.activityMuted,
-                                                badge = badgeProjection.label,
-                                                badgeTone = badgeProjection.tone,
+                                                content =
+                                                    ChannelRowContent(
+                                                        name = channel.name,
+                                                        symbol = channel.homeChannelSymbol(),
+                                                        joined = channel.joined,
+                                                        hasDraft = channel.hasDraft,
+                                                        muted = channel.activityMuted,
+                                                        badge = badgeProjection.label,
+                                                        badgeTone = badgeProjection.tone
+                                                    ),
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                                interactionState = channelInteractionState,
-                                                captureLongPressAnchor = captureRowAnchors,
-                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
-                                                onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                                    onChannelLongPressWithDismiss(channel.id, anchor)
-                                                    activePinMenuConversationId = channel.id
-                                                    activeMenuSection = SlockHomeSortSection.Channels
-                                                    pinMenuAnchor = anchor
-                                                    pressedRowKey = null
-                                                }) else null,
-                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
-                                                onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                                interaction =
+                                                    ChannelRowInteraction(
+                                                        identity = homeSidebarInteractionIdentity("channel", channel.id),
+                                                        state = channelInteractionState,
+                                                        captureLongPressAnchor = captureRowAnchors,
+                                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
+                                                        onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                            onChannelLongPressWithDismiss(channel.id, anchor)
+                                                            activePinMenuConversationId = channel.id
+                                                            activeMenuSection = SlockHomeSortSection.Channels
+                                                            pinMenuAnchor = anchor
+                                                            pressedRowKey = null
+                                                        }) else null,
+                                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                                        onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                                    )
                                             )
                                         }
                                     }
@@ -3726,7 +3782,16 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, joined: Boolean = true, interactionIdentity: String = "channel:$symbol:$name", interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
+private fun ChannelRow(
+    content: ChannelRowContent,
+    modifier: Modifier = Modifier,
+    interaction: ChannelRowInteraction =
+        ChannelRowInteraction(identity = content.defaultInteractionIdentity()),
+    drag: ChannelRowDrag = ChannelRowDrag()
+) {
+    val name = content.name
+    val interactionIdentity = interaction.identity
+    val interactionState = interaction.state
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -3756,22 +3821,22 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    val titleColor = homeConversationTitleColor(muted = muted, joined = joined)
-    val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(muted)
+    val titleColor = homeConversationTitleColor(muted = content.muted, joined = content.joined)
+    val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(content.muted)
     val rowTopLeft = remember(interactionIdentity) { SlockMutableOffsetRef() }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
-    val currentOnPress by rememberUpdatedState(onPress)
-    val currentOnPressEnd by rememberUpdatedState(onPressEnd)
-    val currentOnDragStart by rememberUpdatedState(onDragStart)
-    val currentOnDragMove by rememberUpdatedState(onDragMove)
-    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
-    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
+    val currentOnClick by rememberUpdatedState(interaction.onClick)
+    val currentOnLongPress by rememberUpdatedState(interaction.onLongPress)
+    val currentOnPress by rememberUpdatedState(interaction.onPress)
+    val currentOnPressEnd by rememberUpdatedState(interaction.onPressEnd)
+    val currentOnDragStart by rememberUpdatedState(drag.onStart)
+    val currentOnDragMove by rememberUpdatedState(drag.onMove)
+    val currentOnDragEnd by rememberUpdatedState(drag.onEnd)
+    val currentOnDragCancel by rememberUpdatedState(drag.onCancel)
     val rowDragModifier =
-        if (rowDragEnabled && dragEnabled && onDragStart != null && onDragMove != null && onDragEnd != null) {
-            Modifier.pointerInput(interactionIdentity, rowDragEnabled, dragEnabled) {
+        if (drag.rowEnabled && drag.enabled && drag.onStart != null && drag.onMove != null && drag.onEnd != null) {
+            Modifier.pointerInput(interactionIdentity, drag.rowEnabled, drag.enabled) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { currentOnDragStart?.invoke() },
                     onDragEnd = { currentOnDragEnd?.invoke() },
@@ -3785,8 +3850,8 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
             Modifier
         }
     val dragHandleModifier =
-        if (dragEnabled && onDragStart != null && onDragMove != null && onDragEnd != null) {
-            Modifier.pointerInput(interactionIdentity, dragEnabled) {
+        if (drag.enabled && drag.onStart != null && drag.onMove != null && drag.onEnd != null) {
+            Modifier.pointerInput(interactionIdentity, drag.enabled) {
                 // Sort mode is explicit, so the handle drags immediately —
                 // no long-press gate (task #356: the v2 long-press-drag felt stuck).
                 detectDragGestures(
@@ -3802,8 +3867,8 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
             Modifier
         }
     val rowClickIdentity = interactionIdentity
-    val clickModifier = remember(rowClickIdentity, onClick != null, onLongPress != null) {
-        if (onLongPress != null) {
+    val clickModifier = remember(rowClickIdentity, interaction.onClick != null, interaction.onLongPress != null) {
+        if (interaction.onLongPress != null) {
             Modifier.pointerInput(rowClickIdentity, true) {
                 detectTapGestures(
                     onPress = {
@@ -3823,7 +3888,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
                     }
                 )
             }
-        } else if (onClick != null) {
+        } else if (interaction.onClick != null) {
             Modifier.pointerInput(rowClickIdentity, false) {
                 detectTapGestures(
                     onPress = {
@@ -3846,8 +3911,8 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
             modifier =
                 modifier
                     .fillMaxWidth()
-                    .offset { IntOffset(0, dragOffsetY.roundToInt()) }
-                    .homeRowAnchorCapture(captureLongPressAnchor || captureAnchorForPress, rowTopLeft)
+                    .offset { IntOffset(0, drag.offsetY.roundToInt()) }
+                    .homeRowAnchorCapture(interaction.captureLongPressAnchor || captureAnchorForPress, rowTopLeft)
                     .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                     .then(clickModifier)
                     .then(rowDragModifier)
@@ -3873,9 +3938,9 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
                     .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (positionPrefix != null) {
+            if (content.positionPrefix != null) {
                 Text(
-                    positionPrefix,
+                    content.positionPrefix,
                     style = SlockType.Button,
                     color = SlockColor.TextMutedGray,
                     textAlign = TextAlign.End,
@@ -3883,28 +3948,28 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
                 )
             }
             Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
-                if (avatarLabel != null) {
-                    ChannelAvatar(avatarWireValue, avatarLabel, presence, showPresence)
-                } else if (symbol == "#") {
+                if (content.avatarLabel != null) {
+                    ChannelAvatar(content.avatarWireValue, content.avatarLabel, content.presence, content.showPresence)
+                } else if (content.symbol == "#") {
                     SlockLucideIcon(
                         "hash",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = if (joined) SlockColor.TextBlackArgb else "#75000000"
+                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
                     )
-                } else if (symbol == "git-branch") {
+                } else if (content.symbol == "git-branch") {
                     SlockLucideIcon(
                         "git-branch",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = if (joined) SlockColor.TextBlackArgb else "#75000000"
+                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
                     )
-                } else if (symbol == "lock") {
+                } else if (content.symbol == "lock") {
                     SlockLucideIcon(
                         "lock",
                         Modifier.size(ChannelSymbolIconSize),
-                        color = if (joined) SlockColor.TextBlackArgb else "#75000000"
+                        color = if (content.joined) SlockColor.TextBlackArgb else "#75000000"
                     )
                 } else {
-                    Text(symbol, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), textAlign = TextAlign.Center)
+                    Text(content.symbol, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (content.joined) 1f else 0.46f), textAlign = TextAlign.Center)
                 }
             }
             Row(
@@ -3931,16 +3996,16 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
                     )
                 }
             }
-            if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-            if (hasDraft) SlockLucideIcon(SlockLucideIconName.Pencil, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
-            if (badge != null) {
-                if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                when (badgeTone) {
-                    HomeSidebarBadgeTone.Loud -> CountPill(badge, SlockColor.AccentPink)
-                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge)
+            if (content.badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (content.hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
+            if (content.hasDraft) SlockLucideIcon(SlockLucideIconName.Pencil, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+            if (content.badge != null) {
+                if (content.hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
+                when (content.badgeTone) {
+                    HomeSidebarBadgeTone.Loud -> CountPill(content.badge, SlockColor.AccentPink)
+                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(content.badge)
                 }
             }
-            if (dragEnabled) {
+            if (drag.enabled) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
                 Box(
                     modifier =
@@ -4159,14 +4224,21 @@ private fun SlockSidebarSortOverlay(
                         // fixed slot index otherwise.
                         val position = previewPositionById[itemId] ?: (index + 1)
                         ChannelRow(
-                            name = item.name,
-                            positionPrefix = "$position",
-                            symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
-                            avatarLabel = if (isDirectMessage) item.avatarLabel else null,
-                            joined = item.joined || isDirectMessage,
-                            showPresence = false,
-                            interactionState = ChannelRowInteractionState.Default,
-                            captureLongPressAnchor = false,
+                            content =
+                                ChannelRowContent(
+                                    name = item.name,
+                                    positionPrefix = "$position",
+                                    symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
+                                    avatarLabel = if (isDirectMessage) item.avatarLabel else null,
+                                    joined = item.joined || isDirectMessage,
+                                    showPresence = false
+                                ),
+                            interaction =
+                                ChannelRowInteraction(
+                                    identity = "channel:${if (isDirectMessage) "#" else item.homeChannelSymbol()}:${item.name}",
+                                    state = ChannelRowInteractionState.Default,
+                                    captureLongPressAnchor = false
+                                ),
                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                         )
                     }
@@ -4212,14 +4284,21 @@ private fun SlockSidebarSortOverlay(
                     // Held row shows its settled landing position (debounced target).
                     val position = previewPositionById[active] ?: (draggedStartIndex + 1)
                     ChannelRow(
-                        name = item.name,
-                        positionPrefix = "$position",
-                        symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
-                        avatarLabel = if (isDirectMessage) item.avatarLabel else null,
-                        joined = item.joined || isDirectMessage,
-                        showPresence = false,
-                        interactionState = ChannelRowInteractionState.Pressed,
-                        captureLongPressAnchor = false,
+                        content =
+                            ChannelRowContent(
+                                name = item.name,
+                                positionPrefix = "$position",
+                                symbol = if (isDirectMessage) "#" else item.homeChannelSymbol(),
+                                avatarLabel = if (isDirectMessage) item.avatarLabel else null,
+                                joined = item.joined || isDirectMessage,
+                                showPresence = false
+                            ),
+                        interaction =
+                            ChannelRowInteraction(
+                                identity = "channel:${if (isDirectMessage) "#" else item.homeChannelSymbol()}:${item.name}",
+                                state = ChannelRowInteractionState.Pressed,
+                                captureLongPressAnchor = false
+                            ),
                         modifier =
                             Modifier
                                 .fillMaxWidth()
