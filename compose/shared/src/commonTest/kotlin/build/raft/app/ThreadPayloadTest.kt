@@ -7361,6 +7361,23 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadAuthorGestureIdentityChangesWhenVirtualizedRowAuthorChanges() {
+        val authorA =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "agent-a",
+                authorName = "Agent A",
+                authorKind = "agent"
+            )
+        val authorB = authorA.copy(authorId = "agent-b", authorName = "Agent B")
+        val nextMessageFromA = authorA.copy(id = "message-2")
+
+        assertEquals("message-1|agent-a|agent", authorA.threadAuthorGestureIdentity())
+        assertNotEquals(authorA.threadAuthorGestureIdentity(), authorB.threadAuthorGestureIdentity())
+        assertNotEquals(authorA.threadAuthorGestureIdentity(), nextMessageFromA.threadAuthorGestureIdentity())
+    }
+
+    @Test
     fun threadMembersPagerRouteCarriesOnlyScopeAndDisplayContext() {
         val payload =
             KuiklyThreadScreenPayload(
