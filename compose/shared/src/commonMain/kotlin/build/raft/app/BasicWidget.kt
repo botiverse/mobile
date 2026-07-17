@@ -69,6 +69,11 @@ import com.tencent.kuikly.compose.ui.layout.onSizeChanged
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.semantics.Role
+import com.tencent.kuikly.compose.ui.semantics.disabled
+import com.tencent.kuikly.compose.ui.semantics.onClick
+import com.tencent.kuikly.compose.ui.semantics.role
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -554,6 +559,34 @@ private fun Modifier.slockPressedOffset(
 }
 
 /**
+ * Makes Slock's pointer-input button a distinct node in Kuikly's merged semantics tree.
+ *
+ * The custom button intentionally keeps its existing pointer gesture implementation for pressed
+ * offset feedback and coordinate-aware callbacks. Without an explicit merging semantics boundary,
+ * however, dialog-level click barriers absorb the button's descendant text into one giant native
+ * accessibility element. iOS/XCUITest and screen readers then see the whole dialog as a single
+ * button instead of independently focusable actions.
+ */
+internal fun Modifier.slockButtonAccessibility(
+    enabled: Boolean,
+    performClick: () -> Unit
+): Modifier =
+    semantics(mergeDescendants = true) {
+        role = Role.Button
+        onClick {
+            if (enabled) {
+                performClick()
+                true
+            } else {
+                false
+            }
+        }
+        if (!enabled) {
+            disabled()
+        }
+    }
+
+/**
  * 创建一个 Modal 实例。Modal 是一个自定义的模态窗口组件，用于在当前页面上显示一个浮动窗口。
  * 当模态窗口显示时，用户无法与背景页面进行交互，只能与模态窗口内的内容进行交互。
  * 模态窗口可以用于显示表单、提示信息、详细信息等场景。
@@ -572,16 +605,29 @@ fun Modal(
 ) {
     Dialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            scrimColor = Color.Transparent
-        )
+        properties = slockModalDialogProperties()
     ) {
         Box(modifier = modifier.fillMaxSize()) {
             content()
         }
     }
 }
+
+/**
+ * Slock renders and handles its own dismiss scrim inside every modal.
+ *
+ * Kuikly's default `dismissOnClickOutside = true` adds another full-window clickable plus a no-op
+ * clickable around the dialog content. Those framework nodes are harmless on Android's virtual
+ * accessibility tree, but UIKit exposes the full-window native parent as an accessibility leaf and
+ * hides the independent child actions. Disable the framework click wrappers and leave outside-tap
+ * dismissal to [SlockModalDismissBarrier].
+ */
+internal fun slockModalDialogProperties(): DialogProperties =
+    DialogProperties(
+        dismissOnClickOutside = false,
+        usePlatformDefaultWidth = false,
+        scrimColor = Color.Transparent
+    )
 
 @Composable
 fun Modifier.dragEnable(enable: Boolean): Modifier {
@@ -606,6 +652,11 @@ internal fun Button(
     val enabledUpdate = rememberUpdatedState(enabled)
     Box(
         modifier = Modifier
+            .slockButtonAccessibility(enabled = enabled) {
+                if (enabledUpdate.value) {
+                    onClickUpdate.value.invoke()
+                }
+            }
             .then(
                 if (onClick2 != null) {
                     Modifier.onGloballyPositioned {

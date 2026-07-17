@@ -22,6 +22,9 @@ import androidx.compose.runtime.key
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
+import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -41,6 +44,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -49,6 +53,47 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.zIndex
 
 private val SlockUnifiedDialogShadowOffset = 4.dp
+
+/**
+ * Keeps the dialog card on Compose's pointer hit path without advertising the card itself as an
+ * accessibility action.
+ *
+ * A no-op `clickable` used to provide this barrier, but `clickable` also creates a merging
+ * semantics node. UIKit treats an accessible parent view as a leaf, so that wrapper hid every
+ * independently accessible action below it. Merely observing the gesture is sufficient here:
+ * the topmost card stays in the hit path while descendant controls remain free to consume it.
+ */
+internal fun Modifier.slockDialogContentPointerBarrier(): Modifier =
+    pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            while (true) {
+                val event = awaitPointerEvent()
+                if (event.changes.all { !it.pressed }) {
+                    break
+                }
+            }
+        }
+    }
+
+/**
+ * Handles taps on the scrim without creating a full-screen accessibility button.
+ *
+ * The dialog always exposes an explicit close action, so the visual scrim is a pointer affordance,
+ * not a focusable control. Keeping it out of the semantics tree prevents it from shadowing the
+ * dialog's tight child accessibility bounds on iOS.
+ */
+internal fun Modifier.slockModalDismissPointerBarrier(
+    enabled: Boolean,
+    onDismiss: () -> Unit
+): Modifier =
+    pointerInput(enabled) {
+        detectTapGestures {
+            if (enabled) {
+                onDismiss()
+            }
+        }
+    }
 
 internal class SlockUnifiedDialogHostKey
 
@@ -273,7 +318,7 @@ private fun SlockUnifiedDialogSurface(
                     .padding(bottom = hostBottomInset)
                     .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
                     .widthIn(min = minWidth, max = maxWidth)
-                    .clickable(onClick = {})
+                    .slockDialogContentPointerBarrier()
         ) {
             Box(
                 modifier =
@@ -288,7 +333,6 @@ private fun SlockUnifiedDialogSurface(
                         .fillMaxWidth()
                         .background(SlockColor.SurfaceWhite)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .clickable(onClick = {})
                         .padding(contentPadding),
                 verticalArrangement = Arrangement.spacedBy(contentSpacing)
             ) {
