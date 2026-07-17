@@ -99,6 +99,7 @@ import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
+import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.model.MemberKind
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
@@ -1315,6 +1316,27 @@ open class SlockKuiklyActivity :
         )
     }
 
+    internal fun requestRealtimeReconcile(
+        serverIds: Set<String>,
+        accessToken: String,
+        environmentId: String,
+        socketUrl: String,
+        forceReconnect: Boolean,
+        disconnectReason: String,
+        witness: RealtimeConnectionWitnessToken,
+    ) {
+        AndroidAppScopeRealtimeOwner.reconcileFromSharedRequest(
+            context = applicationContext,
+            serverIds = serverIds.map(String::trim).filter(String::isNotEmpty).toSet(),
+            accessToken = accessToken,
+            environmentId = environmentId,
+            socketUrl = socketUrl,
+            forceReconnect = forceReconnect,
+            disconnectReason = disconnectReason,
+            witness = witness,
+        )
+    }
+
     internal fun requestRealtimeDisconnect(
         reason: String,
         serverId: String = "",
@@ -1327,6 +1349,19 @@ open class SlockKuiklyActivity :
             serverId = serverId.takeIf { it.isNotBlank() }?.let(::ServerId),
             shellInstanceId = shellInstanceId,
             explicitClose = explicitClose
+        )
+    }
+
+    internal fun requestRealtimeCursorAdvance(
+        serverId: String,
+        appliedSeq: Long,
+        witness: RealtimeConnectionWitnessToken,
+    ) {
+        val targetServerId = serverId.trim().takeIf(String::isNotEmpty) ?: return
+        AndroidAppScopeRealtimeOwner.advanceResumeCursorFromSharedRequest(
+            serverId = ServerId(targetServerId),
+            appliedSeq = appliedSeq,
+            witness = witness,
         )
     }
 
@@ -2531,6 +2566,33 @@ internal class SlockKuiklyBridgeModule(
     private fun reportRealtime(params: String?) {
         val request = JSONObject(params ?: "{}")
         when (request.optString("action")) {
+            "reconcile" -> {
+                val serverIds = buildSet {
+                    val values = request.optJSONArray("serverIds")
+                    if (values != null) {
+                        for (index in 0 until values.length()) {
+                            values.optString(index).trim().takeIf(String::isNotEmpty)?.let(::add)
+                        }
+                    }
+                }
+                (activity as? SlockKuiklyActivity)?.requestRealtimeReconcile(
+                    serverIds = serverIds,
+                    accessToken = request.optString("accessToken"),
+                    environmentId = request.optString("environmentId"),
+                    socketUrl = request.optString("socketUrl"),
+                    forceReconnect = request.optBoolean("forceReconnect", false),
+                    disconnectReason =
+                        request.optString("disconnectReason")
+                            .ifBlank { GeneratedRealtimeContract.DisconnectReason.AuthInvalid },
+                    witness =
+                        RealtimeConnectionWitnessToken(
+                            scopeLeaseId = request.optString("authorityScopeLeaseId"),
+                            principalId = request.optString("authorityPrincipalId"),
+                            authGeneration = request.optLong("authorityAuthGeneration", 0L),
+                            connectionFamilyId = request.optString("authorityConnectionFamilyId"),
+                        ),
+                )
+            }
             "connect" ->
                     (activity as? SlockKuiklyActivity)?.requestRealtimeConnect(
                             serverId = request.optString("serverId"),
@@ -2538,6 +2600,18 @@ internal class SlockKuiklyBridgeModule(
                             shellInstanceId = request.optString("shellInstanceId"),
                             lastSeq = request.optLong("lastSeq", 0L),
                             forceReconnect = request.optBoolean("forceReconnect", false),
+                            witness =
+                                RealtimeConnectionWitnessToken(
+                                    scopeLeaseId = request.optString("authorityScopeLeaseId"),
+                                    principalId = request.optString("authorityPrincipalId"),
+                                    authGeneration = request.optLong("authorityAuthGeneration", 0L),
+                                    connectionFamilyId = request.optString("authorityConnectionFamilyId"),
+                                )
+                    )
+            "cursorAdvance" ->
+                    (activity as? SlockKuiklyActivity)?.requestRealtimeCursorAdvance(
+                            serverId = request.optString("serverId"),
+                            appliedSeq = request.optLong("appliedSeq", 0L),
                             witness =
                                 RealtimeConnectionWitnessToken(
                                     scopeLeaseId = request.optString("authorityScopeLeaseId"),

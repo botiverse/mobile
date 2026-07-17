@@ -123,17 +123,6 @@ internal class AndroidRealtimeSessionRegistry<RuntimeT>(
     }
 
     @Synchronized
-    fun releaseOwnerFromOtherServers(
-        shellInstanceId: String,
-        exceptServerId: ServerId,
-        mode: AndroidRealtimeOwnerReleaseMode
-    ) {
-        entries.keys.filter { it != exceptServerId }.forEach { serverId ->
-            release(serverId, shellInstanceId, mode)
-        }
-    }
-
-    @Synchronized
     private fun releaseAfterGrace(serverId: ServerId, expectedEntry: Entry<RuntimeT>) {
         val current = entries[serverId]
         if (current !== expectedEntry || current.owners.isNotEmpty()) return

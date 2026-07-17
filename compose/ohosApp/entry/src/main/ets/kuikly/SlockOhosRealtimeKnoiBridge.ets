@@ -32,8 +32,15 @@ export interface SlockRealtimeRawDecision {
   logMessage: string;
 }
 
+export interface SlockRealtimeCursorAdvanceDecision {
+  shouldAdvance: boolean;
+  resumeSeq: number;
+  reason: string;
+}
+
 class SlockOhosRealtimeKnoiBridge {
   connectDecision(
+    runtimeId: string,
     serverId: string,
     accessToken: string,
     requestedLastSeq: number,
@@ -42,6 +49,7 @@ class SlockOhosRealtimeKnoiBridge {
   ): SlockRealtimeConnectDecision {
     return this.invokeValue<SlockRealtimeConnectDecision>(
       'slockRealtimeKnoiConnectDecision',
+      runtimeId,
       serverId,
       accessToken,
       requestedLastSeq,
@@ -50,44 +58,88 @@ class SlockOhosRealtimeKnoiBridge {
     );
   }
 
-  disconnectForSessionEnd(reason: string): boolean {
+  disconnectForSessionEnd(runtimeId: string, reason: string): boolean {
     return this.invokeValue<boolean>(
       'slockRealtimeKnoiDisconnectForSessionEnd',
+      runtimeId,
       reason
     );
   }
 
-  joinChannelDecision(channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
+  joinChannelDecision(runtimeId: string, channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
     return this.invokeValue<SlockRealtimeRoomCommandDecision>(
       'slockRealtimeKnoiJoinChannelDecision',
+      runtimeId,
       channelId,
       reason
     );
   }
 
-  roomCommandDecision(action: string, channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
+  roomCommandDecision(runtimeId: string, action: string, channelId: string, reason: string): SlockRealtimeRoomCommandDecision {
     return this.invokeValue<SlockRealtimeRoomCommandDecision>(
       'slockRealtimeKnoiRoomCommandDecision',
+      runtimeId,
       action,
       channelId,
       reason
     );
   }
 
-  rawDecision(eventName: string, rawPayload: string): SlockRealtimeRawDecision {
+  rawDecision(runtimeId: string, connectionServerId: string, eventName: string, rawPayload: string): SlockRealtimeRawDecision {
     return this.invokeValue<SlockRealtimeRawDecision>(
       'slockRealtimeKnoiRawDecision',
+      runtimeId,
+      connectionServerId,
       eventName,
       rawPayload
     );
   }
 
-  onAppShown(): void {
-    this.invokeVoid('slockRealtimeKnoiOnAppShown');
+  advanceAppliedSeq(
+    runtimeId: string,
+    currentServerId: string,
+    currentScopeLeaseId: string,
+    currentPrincipalId: string,
+    currentAuthGeneration: number,
+    currentConnectionFamilyId: string,
+    requestServerId: string,
+    requestScopeLeaseId: string,
+    requestPrincipalId: string,
+    requestAuthGeneration: number,
+    requestConnectionFamilyId: string,
+    appliedSeq: number
+  ): SlockRealtimeCursorAdvanceDecision {
+    return this.invokeValue<SlockRealtimeCursorAdvanceDecision>(
+      'slockRealtimeKnoiAdvanceAppliedSeq',
+      runtimeId,
+      currentServerId,
+      currentScopeLeaseId,
+      currentPrincipalId,
+      currentAuthGeneration,
+      currentConnectionFamilyId,
+      requestServerId,
+      requestScopeLeaseId,
+      requestPrincipalId,
+      requestAuthGeneration,
+      requestConnectionFamilyId,
+      appliedSeq
+    );
   }
 
-  onAppHidden(): void {
-    this.invokeVoid('slockRealtimeKnoiOnAppHidden');
+  currentResumeSeq(runtimeId: string): number {
+    return this.invokeValue<number>('slockRealtimeKnoiCurrentResumeSeq', runtimeId);
+  }
+
+  onAppShown(runtimeId: string): void {
+    this.invokeVoid('slockRealtimeKnoiOnAppShown', runtimeId);
+  }
+
+  onAppHidden(runtimeId: string): void {
+    this.invokeVoid('slockRealtimeKnoiOnAppHidden', runtimeId);
+  }
+
+  releaseRuntime(runtimeId: string): void {
+    this.invokeVoid('slockRealtimeKnoiReleaseRuntime', runtimeId);
   }
 
   private invokeValue<T>(name: string, ...args: Object[]): T {

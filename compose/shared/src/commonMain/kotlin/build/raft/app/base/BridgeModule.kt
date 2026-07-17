@@ -703,6 +703,35 @@ internal class BridgeModule : Module() {
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
+    fun realtimeReconcile(
+        serverIds: Set<String>,
+        accessToken: String,
+        environmentId: String,
+        socketUrl: String = SLOCK_SOCKET_BASE_URL,
+        forceReconnect: Boolean = false,
+        disconnectReason: String = "auth_invalid",
+        authorityScopeLeaseId: String = "",
+        authorityPrincipalId: String = "",
+        authorityAuthGeneration: Long = 0L,
+        authorityConnectionFamilyId: String = "",
+    ) {
+        val methodArgs = JSONObject()
+        val serverIdArray = JSONArray()
+        serverIds.map(String::trim).filter(String::isNotEmpty).distinct().sorted().forEach(serverIdArray::put)
+        methodArgs.put("action", "reconcile")
+        methodArgs.put("serverIds", serverIdArray)
+        methodArgs.put("accessToken", accessToken)
+        methodArgs.put("environmentId", environmentId)
+        methodArgs.put("socketUrl", socketUrl)
+        methodArgs.put("forceReconnect", forceReconnect)
+        methodArgs.put("disconnectReason", disconnectReason)
+        methodArgs.put("authorityScopeLeaseId", authorityScopeLeaseId)
+        methodArgs.put("authorityPrincipalId", authorityPrincipalId)
+        methodArgs.put("authorityAuthGeneration", authorityAuthGeneration)
+        methodArgs.put("authorityConnectionFamilyId", authorityConnectionFamilyId)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
     fun realtimeDisconnect(
         reason: String = "shared_disconnect",
         serverId: String = "",
@@ -723,6 +752,26 @@ internal class BridgeModule : Module() {
         methodArgs.put("action", "authRefreshFinished")
         methodArgs.put("reason", reason)
         methodArgs.put("success", success)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
+    fun realtimeCursorAdvance(
+        serverId: String,
+        appliedSeq: Long,
+        authorityScopeLeaseId: String,
+        authorityPrincipalId: String,
+        authorityAuthGeneration: Long,
+        authorityConnectionFamilyId: String,
+    ) {
+        if (serverId.isBlank() || appliedSeq <= 0L) return
+        val methodArgs = JSONObject()
+        methodArgs.put("action", "cursorAdvance")
+        methodArgs.put("serverId", serverId)
+        methodArgs.put("appliedSeq", appliedSeq)
+        methodArgs.put("authorityScopeLeaseId", authorityScopeLeaseId)
+        methodArgs.put("authorityPrincipalId", authorityPrincipalId)
+        methodArgs.put("authorityAuthGeneration", authorityAuthGeneration)
+        methodArgs.put("authorityConnectionFamilyId", authorityConnectionFamilyId)
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 

@@ -4,10 +4,14 @@ import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.updateSlockHostVisibility
 import com.tencent.tmm.knoi.annotation.KNExport
 
-private val slockOhosRealtimeKnoiEngine = SlockRealtimeAppScopeEngine()
+private val slockOhosRealtimeKnoiEngines = mutableMapOf<String, SlockRealtimeAppScopeEngine>()
+
+private fun slockOhosRealtimeKnoiEngine(runtimeId: String): SlockRealtimeAppScopeEngine =
+    slockOhosRealtimeKnoiEngines.getOrPut(runtimeId.trim()) { SlockRealtimeAppScopeEngine() }
 
 @KNExport
 fun slockRealtimeKnoiConnectDecision(
+    runtimeId: String,
     serverId: String,
     accessToken: String,
     requestedLastSeq: Long,
@@ -15,7 +19,7 @@ fun slockRealtimeKnoiConnectDecision(
     connectionStateName: String
 ): Map<String, Any?> {
     val decision =
-        slockOhosRealtimeKnoiEngine.connectDecisionForHost(
+        slockOhosRealtimeKnoiEngine(runtimeId).connectDecisionForHost(
             serverIdValue = serverId,
             accessToken = accessToken,
             requestedLastSeq = requestedLastSeq,
@@ -26,13 +30,18 @@ fun slockRealtimeKnoiConnectDecision(
 }
 
 @KNExport
-fun slockRealtimeKnoiDisconnectForSessionEnd(reason: String): Boolean =
-    slockOhosRealtimeKnoiEngine.disconnectForSessionEnd(reason)
+fun slockRealtimeKnoiDisconnectForSessionEnd(runtimeId: String, reason: String): Boolean =
+    slockOhosRealtimeKnoiEngine(runtimeId).disconnectForSessionEnd(reason)
 
 @KNExport
-fun slockRealtimeKnoiRoomCommandDecision(action: String, channelId: String, reason: String): Map<String, Any?> {
+fun slockRealtimeKnoiRoomCommandDecision(
+    runtimeId: String,
+    action: String,
+    channelId: String,
+    reason: String,
+): Map<String, Any?> {
     val decision =
-        slockOhosRealtimeKnoiEngine.roomCommandDecisionForHost(
+        slockOhosRealtimeKnoiEngine(runtimeId).roomCommandDecisionForHost(
             action = action,
             channelIdValue = channelId,
             reason = reason
@@ -41,9 +50,9 @@ fun slockRealtimeKnoiRoomCommandDecision(action: String, channelId: String, reas
 }
 
 @KNExport
-fun slockRealtimeKnoiJoinChannelDecision(channelId: String, reason: String): Map<String, Any?> {
+fun slockRealtimeKnoiJoinChannelDecision(runtimeId: String, channelId: String, reason: String): Map<String, Any?> {
     val decision =
-        slockOhosRealtimeKnoiEngine.joinChannelDecisionForHost(
+        slockOhosRealtimeKnoiEngine(runtimeId).joinChannelDecisionForHost(
             channelIdValue = channelId,
             reason = reason
         )
@@ -51,14 +60,75 @@ fun slockRealtimeKnoiJoinChannelDecision(channelId: String, reason: String): Map
 }
 
 @KNExport
-fun slockRealtimeKnoiRawDecision(eventName: String, rawPayload: String): Map<String, Any?> {
-    val decision = slockOhosRealtimeKnoiEngine.onRawEvent(eventName, rawPayload)
+fun slockRealtimeKnoiRawDecision(
+    runtimeId: String,
+    connectionServerId: String,
+    eventName: String,
+    rawPayload: String,
+): Map<String, Any?> {
+    val decision =
+        slockOhosRealtimeKnoiEngine(runtimeId)
+            .onRawEventForConnection(connectionServerId, eventName, rawPayload)
     return decision.toKnoiMap()
 }
 
 @KNExport
-fun slockRealtimeKnoiOnAppShown() {
-    slockOhosRealtimeKnoiEngine.onAppShown()
+fun slockRealtimeKnoiAdvanceAppliedSeq(
+    runtimeId: String,
+    currentServerId: String,
+    currentScopeLeaseId: String,
+    currentPrincipalId: String,
+    currentAuthGeneration: Long,
+    currentConnectionFamilyId: String,
+    requestServerId: String,
+    requestScopeLeaseId: String,
+    requestPrincipalId: String,
+    requestAuthGeneration: Long,
+    requestConnectionFamilyId: String,
+    appliedSeq: Long,
+): Map<String, Any?> {
+    val engine = slockOhosRealtimeKnoiEngine(runtimeId)
+    val decision =
+        realtimeRuntimeCursorAdvanceDecision(
+            currentIdentity =
+                RealtimeRuntimeCursorIdentity(
+                    serverId = currentServerId,
+                    scopeLeaseId = currentScopeLeaseId,
+                    principalId = currentPrincipalId,
+                    authGeneration = currentAuthGeneration,
+                    connectionFamilyId = currentConnectionFamilyId,
+                ),
+            requestIdentity =
+                RealtimeRuntimeCursorIdentity(
+                    serverId = requestServerId,
+                    scopeLeaseId = requestScopeLeaseId,
+                    principalId = requestPrincipalId,
+                    authGeneration = requestAuthGeneration,
+                    connectionFamilyId = requestConnectionFamilyId,
+                ),
+            currentSeq = engine.lastSeq,
+            appliedSeq = appliedSeq,
+        )
+    val resumeSeq =
+        if (decision.shouldAdvance) {
+            engine.advanceAppliedSeqForHost(decision.resumeSeq)
+        } else {
+            decision.resumeSeq
+        }
+    return mapOf(
+        "shouldAdvance" to decision.shouldAdvance,
+        "resumeSeq" to resumeSeq,
+        "reason" to decision.reason,
+    )
+}
+
+@KNExport
+fun slockRealtimeKnoiCurrentResumeSeq(runtimeId: String): Long =
+    slockOhosRealtimeKnoiEngine(runtimeId).lastSeq
+
+@KNExport
+fun slockRealtimeKnoiOnAppShown(runtimeId: String) {
+    slockOhosRealtimeKnoiEngine(runtimeId).onAppShown()
     updateSlockHostVisibility(
         shellInstanceId = SlockShellStoreScope.Legacy.shellInstanceId,
         visible = true
@@ -66,12 +136,17 @@ fun slockRealtimeKnoiOnAppShown() {
 }
 
 @KNExport
-fun slockRealtimeKnoiOnAppHidden() {
+fun slockRealtimeKnoiOnAppHidden(runtimeId: String) {
     updateSlockHostVisibility(
         shellInstanceId = SlockShellStoreScope.Legacy.shellInstanceId,
         visible = false
     )
-    slockOhosRealtimeKnoiEngine.onAppHidden()
+    slockOhosRealtimeKnoiEngine(runtimeId).onAppHidden()
+}
+
+@KNExport
+fun slockRealtimeKnoiReleaseRuntime(runtimeId: String) {
+    slockOhosRealtimeKnoiEngines.remove(runtimeId.trim())
 }
 
 private fun SlockRealtimeAppScopeConnectDecision.toKnoiMap(): Map<String, Any?> =

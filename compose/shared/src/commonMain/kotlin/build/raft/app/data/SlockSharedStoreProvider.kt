@@ -131,6 +131,9 @@ private fun logNetworkKmmRemoteConfig(message: String) {
     }
 }
 
+private const val ProcessRealtimeAuthorityScopeKey = "process-realtime-host"
+private const val ProcessRealtimeAuthorityRegistrationId = "process-realtime-host-owner"
+
 internal fun createSharedRealtimeAuthorityProvider(
     registry: RealtimeAuthorityRegistry,
     authStore: SlockAuthSessionStore,
@@ -337,6 +340,8 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
+    private val processRealtimeAuthorityFlow =
+        realtimeAuthorityProvider.authorityFlow(ProcessRealtimeAuthorityScopeKey)
 
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()
@@ -382,15 +387,20 @@ internal class SlockSharedStoreProvider private constructor(
      */
     init {
         updateNetworkKmmRecoveryEnvironment()
-        // Attach the flag-gated `sync_core_messages_v0` shadow fold+persist lane to the legacy-scope owner.
-        // (The owner is constructed in create() before this instance exists, so serverFeatureFlags can only
-        // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
+        // Attach canonical/reaction shadow mutation to the dedicated process
+        // owner. Shell owners are projection-only and never repeat this work.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
         realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         realtimeDomainEventOwner.installCanonicalMessageV2OwnerGateway(
             buildCanonicalMessageV2OwnerGateway(authStore, networkClient),
         )
         realtimeAuthorityProvider.start(threadSendScope)
+        threadSendScope.launch {
+            realtimeAuthorityProvider.registerScope(
+                scopeKey = ProcessRealtimeAuthorityScopeKey,
+                registrationId = ProcessRealtimeAuthorityRegistrationId,
+            )
+        }
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
                 clearActiveShellServerSelections()
@@ -399,12 +409,7 @@ internal class SlockSharedStoreProvider private constructor(
         }
     }
 
-    /**
-     * A fresh [SyncCoreMessageShadowFoldLane] per realtime owner (one owner = one shell/server selection), so
-     * each owner's shadow SyncCore state is isolated. Built eagerly but dormant: the owner only invokes it
-     * when the `sync_core_messages_v0` flag is on. Uses the provider's own [sqlDatabase] and the shared wall
-     * clock ([defaultNowMillis]); the persist runs off the accept thread on a dedicated supervised scope.
-     */
+    /** Legacy/unowned shadow lane retained on the process owner. */
     private fun buildMessageShadowFoldLane(): SyncCoreMessageShadowFoldLane =
         SyncCoreMessageShadowFoldLane.create(
             featureFlags = serverFeatureFlags,
@@ -560,28 +565,23 @@ internal class SlockSharedStoreProvider private constructor(
     }
 
     fun realtimeDomainEventOwner(scope: SlockShellStoreScope): SharedRealtimeDomainEventOwner =
-        if (scope == SlockShellStoreScope.Legacy) {
-            realtimeDomainEventOwner
-        } else {
-            shellRealtimeDomainEventOwners.getOrPut(scope) {
-                createSharedRealtimeDomainEventOwner(
-                    tasksDataStore = tasksDataStore,
-                    cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore),
-                    authorityProvider = realtimeAuthorityProvider,
-                    currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
-                ).also {
-                    it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
-                    it.installReactionShadowLane(buildReactionShadowLane())
-                    it.installCanonicalMessageV2OwnerGateway(
-                        buildCanonicalMessageV2OwnerGateway(authStore(scope), networkClient(scope)),
-                    )
-                    // task #136: same owner-lifetime presence intake as the
-                    // legacy owner — straight into the process registry's
-                    // owner partition.
-                    it.installMemberPresenceSink(memberPresenceRealtimeSink)
-                }
+        shellRealtimeDomainEventOwners.getOrPut(scope) {
+            createSharedRealtimeDomainEventOwner(
+                tasksDataStore = null,
+                cursorStore = null,
+                authorityProvider = realtimeAuthorityProvider,
+                currentGrantMessageShadowCommitLane = currentGrantMessageShadowCommitLane,
+            ).also {
+                // Canonical V2 admission remains shell/session bound, while
+                // process-global task/cursor/presence mutation is owned only
+                // by processRealtimeDomainEventOwner().
+                it.installCanonicalMessageV2OwnerGateway(
+                    buildCanonicalMessageV2OwnerGateway(authStore(scope), networkClient(scope)),
+                )
             }
         }
+
+    fun processRealtimeDomainEventOwner(): SharedRealtimeDomainEventOwner = realtimeDomainEventOwner
 
     /**
      * Provider-owned authority flow for one mounted AppShell. Registration is
@@ -599,6 +599,12 @@ internal class SlockSharedStoreProvider private constructor(
         }
         return flow
     }
+
+    /**
+     * Stable process transport authority. Native socket liveness is reconciled
+     * from this lease; AppShell leases remain consumer/canonical-sink scopes.
+     */
+    fun processRealtimeAuthority(): StateFlow<RealtimeScopeAuthority?> = processRealtimeAuthorityFlow
 
     fun agentDetailStore(scope: SlockShellStoreScope): SharedAgentDetailStore =
         if (scope == SlockShellStoreScope.Legacy) {
@@ -1662,6 +1668,19 @@ internal class SharedRealtimeDomainEventOwner(
             acceptGuardedHomeUnreadProjection(serverId, acceptedEvent, acceptedSource)
         }
 
+    suspend fun acceptProcessMutation(
+        grant: RealtimeGrantRecord,
+        event: RealtimeEvent,
+        source: String = "unknown",
+    ): Boolean =
+        runIfCurrentGrant(grant) {
+            // Process transport grants do not own shell canonical-final
+            // registrations. Mutate process-global cursor/tasks/presence once
+            // here; each shell then runs its unchanged canonical/projection
+            // path with its own shell-scoped grant.
+            acceptGuarded(grant.serverId, event, source, grant.presenceAdmission())
+        }
+
     /**
      * T3 owner entry shared by selected-server and background-unread guarded projections. A nullable runner
      * preserves the exact legacy [runIfCurrentGrant] path for standalone/test owners; provider-owned owners
@@ -1956,6 +1975,24 @@ internal class SharedRealtimeDomainEventOwner(
         val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
         if (event is Heartbeat) return
         event.patchSharedTaskProjection(resolvedServerId)
+        deliverGuardedAppShellProjectionFinal(resolvedServerId, event, source, activeSinks)
+        if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
+            if (admission != null) {
+                memberPresenceSink?.invoke(admission, event)
+            } else {
+                activeSinks?.log?.invoke(
+                    "presence_write_dropped source=$source serverId=$resolvedServerId reason=no_admission"
+                )
+            }
+        }
+    }
+
+    private suspend fun deliverGuardedAppShellProjectionFinal(
+        resolvedServerId: String,
+        event: RealtimeEvent,
+        source: String,
+        activeSinks: RealtimeGuardedDomainEventSinks?,
+    ) {
         activeSinks?.applyHomeShell?.invoke(resolvedServerId, event)
         activeSinks?.applySettings?.invoke(resolvedServerId, event)
         if (event is DirectMessageCreated) {
@@ -1967,13 +2004,6 @@ internal class SharedRealtimeDomainEventOwner(
             )
         }
         if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
-            if (admission != null) {
-                memberPresenceSink?.invoke(admission, event)
-            } else {
-                activeSinks?.log?.invoke(
-                    "presence_write_dropped source=$source serverId=$resolvedServerId reason=no_admission"
-                )
-            }
             activeSinks?.applyAgentActivity?.invoke(event)
         } else if (event.refreshesMemberDetail()) {
             if (event is RealtimeRefreshRequired) {

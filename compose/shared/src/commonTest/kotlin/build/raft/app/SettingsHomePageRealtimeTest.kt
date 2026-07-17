@@ -81,6 +81,23 @@ class SettingsHomePageRealtimeTest {
         assertFalse(shouldProjectBackgroundServerUnread(null, "server-1", "server-2"))
     }
 
+    @Test
+    fun realtimeAuthRefreshAcceptsAnyAuthenticatedServerNotOnlySelectedServer() {
+        val session =
+            sampleSession().copy(
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "server-1", name = "Selected"),
+                        StoredAuthServer(id = "server-2", name = "Background"),
+                    )
+            )
+
+        assertTrue(canRefreshRealtimeServer(session, "server-1"))
+        assertTrue(canRefreshRealtimeServer(session, "server-2"))
+        assertFalse(canRefreshRealtimeServer(session, "server-unknown"))
+        assertFalse(canRefreshRealtimeServer(null, "server-1"))
+    }
+
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),

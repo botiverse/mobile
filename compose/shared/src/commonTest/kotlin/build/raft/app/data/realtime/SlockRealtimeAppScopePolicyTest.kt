@@ -7,6 +7,7 @@ import build.raft.app.data.SlockEnhancedNotifyEventBus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
+import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -106,7 +107,7 @@ class SlockRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun coordinatorSkipsSameConnectedSessionAndRebaselinesForcedReconnect() = runBlocking {
+    fun coordinatorSkipsSameConnectedSessionAndResumesForcedReconnect() = runBlocking {
         val connection = FakeAppScopeConnection()
         val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
 
@@ -115,7 +116,7 @@ class SlockRealtimeAppScopePolicyTest {
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = false, witness = witness())
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = true, witness = witness())
 
-        assertEquals(listOf(7L, 0L), connection.connectedLastSeqs)
+        assertEquals(listOf(7L, 42L), connection.connectedLastSeqs)
     }
 
     @Test
@@ -132,6 +133,22 @@ class SlockRealtimeAppScopePolicyTest {
 
         assertEquals(listOf(RealtimeSocketEvents.JoinChannel to "dm-1"), connection.roomCommands)
         assertEquals(listOf(RealtimeSocketEvents.Heartbeat, RealtimeSocketEvents.MessageNew), sink.fanOutEventNames)
+    }
+
+    @Test
+    fun coordinatorGatesAgainstCapturedConnectionServerBeforeFanout() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val sink = FakeAppScopeSink()
+        val coordinator = SlockRealtimeAppScopeCoordinator(connection, sink)
+
+        coordinator.connect(ServerId("server-a"), "token-1", 0, false, witness())
+        coordinator.onRawEvent(
+            RealtimeSocketConnectionContext(ServerId("server-b"), witness()),
+            RealtimeSocketEvents.MessageNew,
+            """{"serverId":"server-a"}""",
+        )
+
+        assertEquals(emptyList(), sink.fanOutEventNames)
     }
 
     @Test
@@ -164,11 +181,13 @@ class SlockRealtimeAppScopePolicyTest {
         )
         enhancedNotifyBus.emitRoomCommand(
             action = SlockRealtimeNotifyContract.ActionLeaveChannel,
-            channelId = "channel-1"
+            channelId = "channel-1",
+            serverId = "server-1"
         )
         enhancedNotifyBus.emitRoomCommand(
             action = SlockRealtimeNotifyContract.ActionLeaveChannel,
-            channelId = "channel-1"
+            channelId = "channel-1",
+            serverId = "server-1"
         )
         enhancedNotifyBus.emit(
             SlockEnhancedNotifyEvent(
@@ -221,7 +240,69 @@ class SlockRealtimeAppScopePolicyTest {
         assertFalse(sameConnected.shouldConnect)
         assertEquals(42L, sameConnected.resumeSeq)
         assertTrue(forced.shouldConnect)
-        assertEquals(0L, forced.resumeSeq)
+        assertEquals(42L, forced.resumeSeq)
+    }
+
+    @Test
+    fun perServerHostCursorsAdvanceMonotonicallyResumeIndependentlyAndResetOnIdentityReplacement() {
+        val serverA = SlockRealtimeAppScopeEngine()
+        val serverB = SlockRealtimeAppScopeEngine()
+        serverA.connectDecisionForHost(
+            serverIdValue = "server-a",
+            accessToken = "token-1",
+            requestedLastSeq = 0,
+            forceReconnect = false,
+            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+        )
+        serverB.connectDecisionForHost(
+            serverIdValue = "server-b",
+            accessToken = "token-1",
+            requestedLastSeq = 0,
+            forceReconnect = false,
+            connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+        )
+
+        assertEquals(11L, serverA.advanceAppliedSeqForHost(11L))
+        assertEquals(11L, serverA.advanceAppliedSeqForHost(7L))
+        assertEquals(29L, serverB.advanceAppliedSeqForHost(29L))
+
+        val reconnectA =
+            serverA.connectDecisionForHost(
+                serverIdValue = "server-a",
+                accessToken = "token-1",
+                requestedLastSeq = 0,
+                forceReconnect = true,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+            )
+        val reconnectB =
+            serverB.connectDecisionForHost(
+                serverIdValue = "server-b",
+                accessToken = "token-1",
+                requestedLastSeq = 0,
+                forceReconnect = true,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+            )
+        val replacedA =
+            serverA.connectDecisionForHost(
+                serverIdValue = "server-a",
+                accessToken = "token-2",
+                requestedLastSeq = 99,
+                forceReconnect = false,
+                connectionStateName = SlockRealtimeAppScopeEngine.StateDisconnected,
+            )
+
+        assertEquals(11L, reconnectA.resumeSeq)
+        assertEquals(29L, reconnectB.resumeSeq)
+        assertEquals(0L, replacedA.resumeSeq)
+        assertEquals(0L, serverA.lastSeq)
+        assertEquals(29L, serverB.lastSeq)
+    }
+
+    @Test
+    fun onlyAppliedDomainEventsProduceNativeResumeCursorAdvances() {
+        assertEquals(42L, RealtimeCursorPolicy.appliedSeqForEvent(MessageNew(message(seq = 42L))))
+        assertEquals(0L, RealtimeCursorPolicy.appliedSeqForEvent(Heartbeat(seq = 99L)))
+        assertEquals(0L, RealtimeCursorPolicy.appliedSeqForEvent(DirectMessageCreated(ChannelId("channel-1"))))
     }
 
     @Test
@@ -282,6 +363,61 @@ class SlockRealtimeAppScopePolicyTest {
         assertEquals(ServerId("server-1"), heartbeat.serverId)
         assertTrue(message.shouldFanOut)
         assertEquals(ServerId("server-1"), message.serverId)
+    }
+
+    @Test
+    fun rawIngressDropsOnlyPresentMismatchedTopLevelServerId() {
+        val matched =
+            realtimePayloadServerGate(
+                connectionServerId = "server-a",
+                rawPayload = """{"serverId":"server-a","nested":{"serverId":"server-b"}}""",
+            )
+        val absent =
+            realtimePayloadServerGate(
+                connectionServerId = "server-a",
+                rawPayload = """{"nested":{"serverId":"server-b"}}""",
+            )
+        val explicitNull =
+            realtimePayloadServerGate(
+                connectionServerId = "server-a",
+                rawPayload = """{"serverId":null}""",
+            )
+        val mismatch =
+            realtimePayloadServerGate(
+                connectionServerId = "server-a",
+                rawPayload = """{"serverId":"server-b"}""",
+            )
+
+        assertTrue(matched.shouldAccept)
+        assertEquals("matched", matched.reason)
+        assertTrue(absent.shouldAccept)
+        assertEquals("absent", absent.reason)
+        assertTrue(explicitNull.shouldAccept)
+        assertEquals("absent", explicitNull.reason)
+        assertFalse(mismatch.shouldAccept)
+        assertEquals("mismatch", mismatch.reason)
+    }
+
+    @Test
+    fun rawIngressFailsClosedForBlankConnectionOrInvalidPresentServerId() {
+        assertFalse(
+            realtimePayloadServerGate(
+                connectionServerId = "",
+                rawPayload = """{"serverId":"server-a"}""",
+            ).shouldAccept
+        )
+        assertFalse(
+            realtimePayloadServerGate(
+                connectionServerId = "server-a",
+                rawPayload = """{"serverId":42}""",
+            ).shouldAccept
+        )
+        assertFalse(
+            realtimePayloadServerGate(
+                connectionServerId = "server-a",
+                rawPayload = """{"serverId":""}""",
+            ).shouldAccept
+        )
     }
 
     private fun message(

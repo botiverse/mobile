@@ -126,6 +126,11 @@ class SlockRealtimeAppScopeEngine {
         appVisibility = SlockRealtimeAppVisibility.Background
     }
 
+    fun advanceAppliedSeqForHost(seq: Long): Long {
+        state.advanceAppliedSeq(seq)
+        return state.lastSeq
+    }
+
     fun connectDecisionForHost(
         serverIdValue: String,
         accessToken: String,
@@ -197,7 +202,11 @@ class SlockRealtimeAppScopeEngine {
                 serverId = serverId,
                 accessToken = accessToken,
                 requestedLastSeq = requestedLastSeq,
-                rebaseline = forceReconnect
+                // A transport reconnect must resume the same authority
+                // session. Environment/account/auth-family replacement
+                // creates a new runtime/session and resets through
+                // sessionChanged instead.
+                rebaseline = false
             )
         return SlockRealtimeAppScopeConnectDecision(
             shouldConnect = true,
@@ -386,12 +395,33 @@ class SlockRealtimeAppScopeEngine {
                     rawPayload = rawPayload,
                     logMessage = "native_raw_event_skip reason=missing_server eventName=$eventName"
                 )
+        return onRawEventForConnection(currentServerId.value, eventName, rawPayload)
+    }
+
+    fun onRawEventForConnection(
+        connectionServerIdValue: String,
+        eventName: String,
+        rawPayload: String,
+    ): SlockRealtimeAppScopeRawDecision {
+        val gate = realtimePayloadServerGate(connectionServerIdValue, rawPayload)
+        if (!gate.shouldAccept) {
+            return SlockRealtimeAppScopeRawDecision(
+                shouldFanOut = false,
+                serverId = null,
+                eventName = eventName,
+                rawPayload = rawPayload,
+                logMessage =
+                    "native_raw_event_skip reason=payload_server_${gate.reason} " +
+                        "connectionServerId=${connectionServerIdValue.trim()} " +
+                        "payloadServerId=${gate.payloadServerId} eventName=$eventName",
+            )
+        }
         return SlockRealtimeAppScopeRawDecision(
             shouldFanOut = true,
-            serverId = currentServerId,
+            serverId = ServerId(connectionServerIdValue.trim()),
             eventName = eventName,
             rawPayload = rawPayload,
-            logMessage = ""
+            logMessage = "",
         )
     }
 
@@ -426,6 +456,9 @@ class SlockRealtimeAppScopeCoordinator(
 
     val serverId: ServerId?
         get() = engine.serverId
+
+    fun advanceAppliedSeqForHost(seq: Long): Long =
+        engine.advanceAppliedSeqForHost(seq)
 
     val isAppInForeground: Boolean
         get() = engine.isAppInForeground
@@ -531,7 +564,11 @@ class SlockRealtimeAppScopeCoordinator(
                 .trim()
                 .takeIf { it.isNotBlank() }
         val ownedServerId = engine.serverId?.value
-        if (targetServerId != null && targetServerId != ownedServerId) {
+        if (targetServerId == null) {
+            sink.log("room_command_skip reason=missing_target_server ownedServerId=${ownedServerId.orEmpty()}")
+            return false
+        }
+        if (targetServerId != ownedServerId) {
             sink.log("room_command_skip reason=server_mismatch targetServerId=$targetServerId ownedServerId=${ownedServerId.orEmpty()}")
             return false
         }
@@ -575,7 +612,7 @@ class SlockRealtimeAppScopeCoordinator(
         eventName: String,
         rawPayload: String,
     ) {
-        val decision = engine.onRawEvent(eventName, rawPayload)
+        val decision = engine.onRawEventForConnection(context.serverId.value, eventName, rawPayload)
         if (decision.shouldFanOut) {
             sink.fanOutRawRealtimeEvent(
                 serverId = context.serverId,
@@ -614,6 +651,9 @@ class SlockRealtimeAppScopeRuntime(
 
     val serverId: ServerId?
         get() = coordinator.serverId
+
+    fun advanceAppliedSeqForHost(seq: Long): Long =
+        coordinator.advanceAppliedSeqForHost(seq)
 
     val isAppInForeground: Boolean
         get() = coordinator.isAppInForeground

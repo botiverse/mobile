@@ -90,24 +90,6 @@ class AndroidRealtimeSessionRegistryTest {
     }
 
     @Test
-    fun movingOneShellDoesNotReleaseAnotherServersOwner() {
-        val fixture = Fixture()
-        fixture.registry.acquire(ServerId("server-a"), "shell-a")
-        val runtimeB = fixture.registry.acquire(ServerId("server-b"), "shell-b")
-
-        fixture.registry.releaseOwnerFromOtherServers(
-            shellInstanceId = "shell-a",
-            exceptServerId = ServerId("server-c"),
-            mode = AndroidRealtimeOwnerReleaseMode.ReplaceGrace
-        )
-
-        assertTrue(fixture.snapshot("server-a").releasePending)
-        assertSame(runtimeB, fixture.registry.runtime(ServerId("server-b")))
-        assertEquals(setOf("shell-b"), fixture.snapshot("server-b").owners)
-        assertTrue(fixture.disconnected.isEmpty())
-    }
-
-    @Test
     fun sharedServerDisconnectsOnlyAfterLastDistinctOwner() {
         val fixture = Fixture()
         fixture.registry.acquire(ServerId("server-a"), "shell-a")

@@ -127,6 +127,11 @@ class SlockRealtimeAppScopeState {
         lastSeq = RealtimeCursorPolicy.updateAppliedSeq(lastSeq, event)
     }
 
+    fun advanceAppliedSeq(seq: Long) {
+        val nextSeq = seq.takeIf { it > 0L } ?: return
+        lastSeq = maxOf(lastSeq, nextSeq)
+    }
+
     fun markChannelJoined(channelId: ChannelId): Boolean {
         if (channelId.value.isBlank()) return false
         return joinedChannels.add(channelId)

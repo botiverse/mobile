@@ -32,6 +32,55 @@ import kotlin.test.assertNull
 
 class SharedRealtimeDomainEventOwnerTest {
     @Test
+    fun oneWireEventMutatesProcessOnceAndProjectsToTwoShells() = runBlocking {
+        val authority =
+            RealtimeAuthorityRegistry(
+                authRevisionStore = KeyValueRealtimeAuthRevisionStore(InMemorySlockKeyValueStore()),
+                processInstanceId = "two-shell-process",
+            )
+        authority.initialize()
+        authority.advanceAuth(
+            RealtimeAuthRevision(
+                generation = 1L,
+                session = RealtimeAuthoritySession("account-1", listOf("server-1")),
+            )
+        )
+        val processLease = authority.register("process-realtime-host")
+        val shellALease = authority.register("shell-a")
+        val shellBLease = authority.register("shell-b")
+        val processGrant = requireNotNull(authority.currentGrant(processLease.id, "server-1"))
+        val shellAGrant = requireNotNull(authority.currentGrant(shellALease.id, "server-1"))
+        val shellBGrant = requireNotNull(authority.currentGrant(shellBLease.id, "server-1"))
+        var processMutations = 0
+        val processOwner =
+            SharedRealtimeDomainEventOwner(runIfCurrentGrant = authority::runIfCurrentGrant).also { owner ->
+                owner.installMemberPresenceSink { _, _ -> processMutations += 1 }
+            }
+        val shellA = SharedRealtimeDomainEventOwner(runIfCurrentGrant = authority::runIfCurrentGrant)
+        val shellB = SharedRealtimeDomainEventOwner(runIfCurrentGrant = authority::runIfCurrentGrant)
+        val projectedA = mutableListOf<MemberPresenceUpdated>()
+        val projectedB = mutableListOf<MemberPresenceUpdated>()
+        shellA.registerGuardedSinks(RealtimeGuardedDomainEventSinks(applyAgentActivity = { projectedA += it }))
+        shellB.registerGuardedSinks(RealtimeGuardedDomainEventSinks(applyAgentActivity = { projectedB += it }))
+        val event =
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                serverSeq = 10L,
+            )
+
+        processOwner.acceptProcessMutation(processGrant, event, source = "shell-a-wire")
+        processOwner.acceptProcessMutation(processGrant, event, source = "shell-b-wire")
+        shellA.accept(shellAGrant, event, source = "shell-a")
+        shellB.accept(shellBGrant, event, source = "shell-b")
+
+        assertEquals(1, processMutations)
+        assertEquals(listOf(event), projectedA)
+        assertEquals(listOf(event), projectedB)
+    }
+
+    @Test
     fun separateShellOwnersDoNotCrossDeliverServerEvents() {
         val ownerA = SharedRealtimeDomainEventOwner()
         val ownerB = SharedRealtimeDomainEventOwner()

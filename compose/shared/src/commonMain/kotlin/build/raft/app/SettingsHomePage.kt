@@ -136,6 +136,7 @@ import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.realtime.RealtimeCursorPolicy
+import build.raft.app.data.realtime.realtimeProcessDesiredSession
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
@@ -2275,6 +2276,9 @@ internal fun SlockAppShellContent(
     val realtimeAuthorityFlow =
         remember(sharedStores, storeScope) { sharedStores.realtimeAuthority(storeScope) }
     val realtimeAuthority by realtimeAuthorityFlow.collectAsState()
+    val processRealtimeAuthorityFlow =
+        remember(sharedStores) { sharedStores.processRealtimeAuthority() }
+    val processRealtimeAuthority by processRealtimeAuthorityFlow.collectAsState()
     val realtimeCallbackGate =
         remember(sharedStores, appShellRealtimeDomainEventOwner) {
             RealtimeShellCallbackGate(
@@ -3090,10 +3094,7 @@ internal fun SlockAppShellContent(
                 messageShadowObserver = sharedStores.messageShadowObserver,
             )
         }
-    var realtimeLastSeq by remember { mutableStateOf(0L) }
-    var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
     var realtimeConnectionFamilyId by remember { mutableStateOf<String?>(null) }
-    var realtimeConnectedServerId by remember { mutableStateOf<String?>(null) }
     var pendingRealtimeAuthRefreshReason by remember { mutableStateOf<String?>(null) }
     var pendingRealtimeAuthRefreshPreviousFamilyId by remember { mutableStateOf<String?>(null) }
     var realtimeAuthorityConnectTick by remember { mutableStateOf(0) }
@@ -3171,10 +3172,7 @@ internal fun SlockAppShellContent(
     }
 
     fun resetAppShellSessionState() {
-        realtimeLastSeq = 0L
-        realtimeSessionKey = null
         realtimeConnectionFamilyId = null
-        realtimeConnectedServerId = null
         pendingRealtimeAuthRefreshReason = null
         pendingRealtimeAuthRefreshPreviousFamilyId = null
         membersListRefreshKey = 0
@@ -3489,56 +3487,35 @@ internal fun SlockAppShellContent(
         }
     }
     LaunchedEffect(
-        selectedServerId,
-        realtimeAuthority?.witness?.connectionFamilyId,
-        realtimeAuthority?.accessToken,
+        processRealtimeAuthority?.witness?.connectionFamilyId,
+        processRealtimeAuthority?.accessToken,
         realtimeAuthorityConnectTick,
     ) {
-        val authority = realtimeAuthority
-        val serverId = selectedServerId
-        val accessToken = authority?.accessToken
-        val familyId = authority?.witness?.connectionFamilyId
-        val grant = if (authority != null && serverId != null) authority.grant(serverId) else null
-        if (serverId.isNullOrBlank() || accessToken.isNullOrBlank() || familyId.isNullOrBlank() || grant == null) {
-            realtimeConnectedServerId?.let { connectedServerId ->
-                bridge.realtimeDisconnect(
-                    reason = GeneratedRealtimeContract.DisconnectReason.ServerRemoved,
-                    serverId = connectedServerId,
-                    shellInstanceId = storeScope.shellInstanceId,
-                    explicitClose = true,
-                )
-            }
-            realtimeConnectionFamilyId = null
-            realtimeConnectedServerId = null
-            realtimeSessionKey = null
-            return@LaunchedEffect
-        }
-        val nextSessionKey =
-            "${authority.witness.principalId}|$serverId"
-        val resumeSeq =
-            if (realtimeSessionKey != null && realtimeSessionKey != nextSessionKey) {
-                realtimeLastSeq = 0L
-                0L
-            } else {
-                realtimeLastSeq
-            }
-        val forceReconnect =
-            realtimeConnectionFamilyId != null && realtimeConnectionFamilyId != familyId
-        realtimeSessionKey = nextSessionKey
-        realtimeConnectionFamilyId = familyId
-        realtimeConnectedServerId = serverId
+        val environment = sharedStores.apiEnvironmentStore.current()
+        val desired =
+            realtimeProcessDesiredSession(
+                authority = processRealtimeAuthority,
+                environmentId = environment.apiBaseUrl,
+                socketUrl = environment.socketBaseUrl,
+            )
+        realtimeConnectionFamilyId = desired?.connectionFamilyId
         appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
-        bridge.realtimeConnect(
-            serverId = serverId,
-            accessToken = accessToken,
-            shellInstanceId = storeScope.shellInstanceId,
-            lastSeq = resumeSeq,
-            forceReconnect = forceReconnect,
-            authorityScopeLeaseId = authority.witness.scopeLeaseId,
-            authorityPrincipalId = authority.witness.principalId,
-            authorityAuthGeneration = authority.witness.authGeneration,
-            authorityConnectionFamilyId = authority.witness.connectionFamilyId,
+        bridge.realtimeReconcile(
+            serverIds = desired?.serverIds.orEmpty(),
+            accessToken = desired?.accessToken.orEmpty(),
+            environmentId = desired?.environmentId.orEmpty(),
+            socketUrl = desired?.socketUrl ?: environment.socketBaseUrl,
+            // Authority generation/family replacement is the reconnect
+            // identity. A refresh tick may arrive before the new durable
+            // authority publishes, so never force an old-token reconnect.
+            forceReconnect = false,
+            disconnectReason = GeneratedRealtimeContract.DisconnectReason.AuthInvalid,
+            authorityScopeLeaseId = processRealtimeAuthority?.witness?.scopeLeaseId.orEmpty(),
+            authorityPrincipalId = processRealtimeAuthority?.witness?.principalId.orEmpty(),
+            authorityAuthGeneration = processRealtimeAuthority?.witness?.authGeneration ?: 0L,
+            authorityConnectionFamilyId = processRealtimeAuthority?.witness?.connectionFamilyId.orEmpty(),
         )
+        val familyId = desired?.connectionFamilyId
         pendingRealtimeAuthRefreshReason?.let { reason ->
             if (
                 pendingRealtimeAuthRefreshPreviousFamilyId == null ||
@@ -3547,7 +3524,10 @@ internal fun SlockAppShellContent(
                 pendingRealtimeAuthRefreshReason = null
                 pendingRealtimeAuthRefreshPreviousFamilyId = null
                 bridge.realtimeAuthRefreshFinished(reason, success = true)
-                bridge.log("shared_realtime_auth_refresh_success reason=$reason serverId=$serverId")
+                bridge.log(
+                    "shared_realtime_auth_refresh_success reason=$reason " +
+                        "serverCount=${desired?.serverIds?.size ?: 0}"
+                )
             }
         }
     }
@@ -3863,10 +3843,10 @@ internal fun SlockAppShellContent(
                     return
                 }
         val currentServerId = selectedServerStore.selectedServerId.value
-        if (!selectedServerStore.isSelected(requestedServerId)) {
+        if (!canRefreshRealtimeServer(currentSession, requestedServerId)) {
             bridge.log(
                 "shared_realtime_auth_refresh_skip reason=$reason requestedServerId=$requestedServerId " +
-                    "currentServerId=${currentServerId.orEmpty()}"
+                    "currentServerId=${currentServerId.orEmpty()} result=server_not_authenticated"
             )
             bridge.realtimeAuthRefreshFinished(reason, success = false)
             return
@@ -3876,8 +3856,7 @@ internal fun SlockAppShellContent(
             when (val result = authDataSource.refreshRealtimeAuth(reason)) {
                 is SharedAuthResult.Success -> {
                     val refreshed = result.data
-                    val refreshedServerId = selectedServerStore.selectedServerId.value
-                    if (!selectedServerStore.isSelected(requestedServerId) || refreshed.accessToken.isBlank()) {
+                    if (!canRefreshRealtimeServer(refreshed, requestedServerId) || refreshed.accessToken.isBlank()) {
                         bridge.log("shared_realtime_auth_refresh_skip reason=$reason result=server_mismatch")
                         bridge.realtimeAuthRefreshFinished(reason, success = false)
                         return@launch
@@ -4065,10 +4044,52 @@ internal fun SlockAppShellContent(
                     val witness = eventData.realtimeConnectionWitnessOrNull() ?: return@launch
                     val grant = realtimeCallbackGate.resolveExistingGrant(witness, serverId) ?: return@launch
                     val activeSelectedServerId = selectedServerStore.selectedServerId.value
+                    val processAccepted =
+                        sharedStores.processRealtimeDomainEventOwner().acceptProcessMutation(
+                            grant,
+                            event,
+                            source = "process_realtime"
+                        )
+                    if (!processAccepted) return@launch
+                    RealtimeCursorPolicy.appliedSeqForEvent(event)
+                        .takeIf { appliedSeq -> appliedSeq > 0L }
+                        ?.let { appliedSeq ->
+                            bridge.realtimeCursorAdvance(
+                                serverId = serverId,
+                                appliedSeq = appliedSeq,
+                                authorityScopeLeaseId = grant.scopeLeaseId,
+                                authorityPrincipalId = grant.principalId,
+                                authorityAuthGeneration = grant.authGeneration,
+                                authorityConnectionFamilyId = grant.connectionFamilyId,
+                            )
+                        }
+                    if (event is ServerMembershipRemoved && !selectedServerStore.isSelected(serverId)) {
+                        bridge.realtimeDisconnect(
+                            reason = GeneratedRealtimeContract.DisconnectReason.ServerMembershipRemoved,
+                            serverId = serverId,
+                            shellInstanceId = "process-realtime-host-owner",
+                            explicitClose = true,
+                        )
+                        bridge.log("shared_realtime_server_membership_removed serverId=$serverId selected=false")
+                        authGateViewModel.accept(SharedAuthGateIntent.Restore)
+                        return@launch
+                    }
+                    if (event is ServerDeleted && !selectedServerStore.isSelected(serverId)) {
+                        bridge.realtimeDisconnect(
+                            reason = GeneratedRealtimeContract.DisconnectReason.ServerDeleted,
+                            serverId = serverId,
+                            shellInstanceId = "process-realtime-host-owner",
+                            explicitClose = true,
+                        )
+                        bridge.log("shared_realtime_server_deleted serverId=$serverId selected=false")
+                        authGateViewModel.accept(SharedAuthGateIntent.Restore)
+                        return@launch
+                    }
+                    val shellGrant = realtimeAuthority?.grant(serverId) ?: return@launch
                     if (!shouldRouteRealtimeEventToShell(activeSelectedServerId, serverId)) {
                         if (shouldProjectBackgroundServerUnread(latestReadySession, activeSelectedServerId, serverId)) {
                             appShellRealtimeDomainEventOwner.acceptHomeUnreadProjection(
-                                grant,
+                                shellGrant,
                                 event,
                                 source = "app_shell_background_server"
                             )
@@ -4136,10 +4157,9 @@ internal fun SlockAppShellContent(
                         )
                         return@launch
                     }
-                    val accepted = appShellRealtimeDomainEventOwner.accept(grant, event, source = "app_shell")
-                    if (!accepted) return@launch
+                    val projected = appShellRealtimeDomainEventOwner.accept(shellGrant, event, source = "app_shell")
+                    if (!projected) return@launch
                     sharedStores.realtimeAuthorityProvider.runIfCurrentGrant(grant) {
-                        realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                         if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Announcements) {
                             // task #226: announcement:new — refetch the latest active
                             // announcement so the modal pops live.
@@ -18485,6 +18505,14 @@ internal fun shouldProjectBackgroundServerUnread(
     val eventServer = eventServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
     if (shellServer == eventServer) return false
     return session?.servers?.any { it.id == eventServer } == true
+}
+
+internal fun canRefreshRealtimeServer(
+    session: StoredAuthSession?,
+    requestedServerId: String?,
+): Boolean {
+    val target = requestedServerId?.trim().takeIf { !it.isNullOrBlank() } ?: return false
+    return session?.servers?.any { server -> server.id.trim() == target } == true
 }
 
 private fun RealtimeEvent.serverIdHint(): ServerId? =

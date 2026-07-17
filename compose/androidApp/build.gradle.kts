@@ -357,11 +357,6 @@ android {
             "SHOW_TEST_BUILD_BADGE",
             slockBuildConfigBoolean("SLOCK_SHOW_TEST_BUILD_BADGE", false).toString()
         )
-        buildConfigField(
-            "Boolean",
-            "ENABLE_MULTI_SERVER_REALTIME_SESSIONS",
-            slockBuildConfigBoolean("SLOCK_ENABLE_MULTI_SERVER_REALTIME_SESSIONS", false).toString()
-        )
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
