@@ -159,7 +159,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           mkdir -p m3 && cd m3
-          npm i @earendil-works/pi-ai@0.80.3 --no-audit --no-fund
+          npm i @earendil-works/pi-ai@0.80.10 --no-audit --no-fund
 
       - name: Start loop harness (background)
         working-directory: compose/iosApp
