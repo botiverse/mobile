@@ -9,6 +9,7 @@ description: |
   (or moves to archived section). Must run in test server only.
 tags: [channels, archive, regression]
 timeout_seconds: 120
+verdict_before_cleanup: true
 max_retries: 1
 
 device:
@@ -42,7 +43,7 @@ steps:
   - id: open-channel-settings
     goal: "Open channel settings/info"
     action_category: interact
-    hint: "Tap the channel name header at the top"
+    hint: "Open the qa-test-archive channel, then tap the gear/settings icon at the top-right of the channel header to open channel settings"
     capture: [screenshot, dump_layout]
 
   - id: find-archive-option

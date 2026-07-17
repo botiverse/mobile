@@ -1,0 +1,97 @@
+id: convert-message-to-task
+title: "Task-将消息转换为Task"
+app: raft-android
+tier: L1
+version: "0.1"
+description: |
+  Verify that converting a message to a task works. User can long-press
+  a message, find 'Convert to Task' option, and the message gets a task
+  badge. UI flow (from code): long-press message → context menu →
+  'Convert to Task' (showConvertToTaskAction, only if menuVariant != "task"
+  and canConvertToTask()).
+tags: [tasks, convert, regression]
+timeout_seconds: 120
+max_retries: 1
+verdict_before_cleanup: true
+
+device:
+  type: emulator
+  api_level: 34
+  locale: en-US
+
+environment:
+  server: staging
+  credentials_ref: qa-account:slock-test
+
+preconditions:
+  - type: app_installed
+    params: { package: build.raft.app }
+  - type: logged_in
+
+cleanup:
+  - action: stop_app
+
+steps:
+  - id: open-channel
+    goal: "Open #all channel with messages"
+    action_category: navigate
+    hint: "Navigate to #all in OranixSlockTest server"
+    capture: [screenshot]
+
+  - id: wait-messages
+    goal: "Wait for messages to load"
+    action_category: wait
+    params: { duration_ms: 2000 }
+
+  - id: long-press-message
+    goal: "Long-press a message that is NOT already a task to open context menu"
+    action_category: interact
+    hint: "Long-press any regular message (not one with a task badge)"
+    capture: [screenshot, dump_layout]
+
+  - id: find-convert-to-task
+    goal: "Find and tap 'Convert to Task' in the context menu"
+    action_category: interact
+    hint: "Look for 'Convert to Task' option in the long-press menu. Use tap_text if available"
+    on_failure: abort
+    capture: [screenshot, dump_layout]
+
+  - id: wait-convert
+    goal: "Wait for task conversion to complete"
+    action_category: wait
+    params: { duration_ms: 2000 }
+
+  - id: verify-task-badge
+    goal: "Verify the message now has a task badge/indicator"
+    action_category: verify
+    hint: "Look for a task number badge or task status indicator on the message"
+    capture: [screenshot, dump_layout]
+
+assertions:
+  - id: task-badge-visible
+    goal: "Message shows a task badge with task number (e.g. 'task #N')"
+    type: visual_check
+    after_step: verify-task-badge
+    severity: critical
+
+  - id: task-status-initial
+    goal: "Newly created task shows initial status (todo or similar)"
+    type: text_absent
+    params:
+      text_match_regex: "(?i)(error|failed|cannot convert)"
+    after_step: verify-task-badge
+    severity: major
+
+  - id: no-crash-convert
+    goal: "No crash during task conversion"
+    type: no_crash
+    after_step: verify-task-badge
+    severity: critical
+
+expected:
+  result: pass
+  notes: |
+    UI path: long-press → context menu → 'Convert to Task'.
+    Code: showConvertToTaskAction when menuVariant != "task" and
+    canConvertToTask(). The convert action creates a task linked to
+    the message.

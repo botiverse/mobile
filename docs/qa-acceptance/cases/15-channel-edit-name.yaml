@@ -9,6 +9,7 @@ description: |
   channel list and header. Must run in test server only.
 tags: [channels, edit, regression]
 timeout_seconds: 120
+verdict_before_cleanup: true
 max_retries: 1
 
 device:
@@ -27,8 +28,8 @@ preconditions:
   - type: in_test_server
   - type: channel_exists
     params:
-      channel_prefix: "qa-test-edit"
-      note: "Create qa-test-edit channel first if not exists"
+      channel_prefix: "qa-test-"
+      note: "Use an existing qa-test- channel (orphan channels from create runs). Non-destructive: rename and rename back."
 
 cleanup:
   - action: stop_app

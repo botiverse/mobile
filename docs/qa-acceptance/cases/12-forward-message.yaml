@@ -2,12 +2,14 @@ id: forward-message
 title: "转发消息-跨频道转发"
 app: raft-android
 tier: L1
-version: "0.2"
+version: "0.3"
 description: |
   Regression case from Hands feedback: forward message issues
   (bb86951c: joint channel reports cross-server error, forwarding
   task reports error). Also covers the fixed "unsupport" error
-  (f96c5708, fixed in PR #588). Verify that forwarding a message
+  (f96c5708, fixed in PR #588).
+  NOTE: Forward is accessed via long-press → Select Message → multi-select
+  → Forward action (NOT a direct long-press menu item). Verify that forwarding a message
   to another channel works.
 tags: [messaging, forward, regression]
 timeout_seconds: 120
@@ -44,21 +46,33 @@ steps:
       duration_ms: 2000
 
   - id: long-press-message
-    goal: "Long-press a message to open context menu"
+    goal: "Long-press a message to open the context menu"
     action_category: interact
-    hint: "Long-press any message"
+    hint: "Long-press any message in the conversation"
     capture: [screenshot, dump_layout]
 
-  - id: select-forward
-    goal: "Tap 'Forward' from the context menu"
+  - id: select-message
+    goal: "Tap 'Select Message' from the context menu to enter multi-select mode"
     action_category: interact
-    hint: "Text says 'Forward' or a forward arrow icon"
+    hint: "Tap 'Select Message' in the long-press menu. This enters multi-select mode"
+    capture: [screenshot, dump_layout]
+
+  - id: select-target-message
+    goal: "Select the message(s) to forward in multi-select mode"
+    action_category: interact
+    hint: "The message should already be selected. If not, tap it to select"
     capture: [screenshot]
+
+  - id: find-forward-action
+    goal: "Find and tap the Forward action in multi-select mode"
+    action_category: interact
+    hint: "Look for a Forward button or icon in the multi-select toolbar/action bar"
+    capture: [screenshot, dump_layout]
 
   - id: select-target-channel
     goal: "Select a target channel to forward to"
     action_category: interact
-    hint: "Choose a different channel from the forward target list"
+    hint: "Choose a different channel from the forward target picker"
     capture: [screenshot, dump_layout]
 
   - id: confirm-forward
@@ -105,8 +119,5 @@ expected:
   notes: |
     Regression from Hands feedback bb86951c (cross-server forward error)
     and f96c5708 (forward "unsupport", fixed in PR #588).
-    STATUS: platform-pending — Android does not yet have a Forward entry
-    point in the long-press menu (send-side flow is being redesigned in
-    #对话流专修). This case will become active once the forward send-side
-    flow lands on Android. The display side (forward bundle cards) is
-    already implemented (PR #650/#683).
+    Forward entry: long-press → Select Message → multi-select → Forward
+    action (not a direct long-press menu item).
