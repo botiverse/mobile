@@ -80,5 +80,5 @@ private fun Modifier.semanticsConfiguration(): SemanticsConfiguration =
 private fun Modifier.semanticsConfigurations(): List<SemanticsConfiguration> =
     foldIn(emptyList<SemanticsConfiguration>()) { current, element ->
         val semantics = (element as? SemanticsModifier)?.semanticsConfiguration
-        if (semantics == null) current else current + semantics
+        if (semantics == null) current else current + listOf(semantics)
     }
