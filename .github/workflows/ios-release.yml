@@ -131,8 +131,6 @@ jobs:
   build_ios_release:
     name: Build + sign IPA
     runs-on: blacksmith-12vcpu-macos-latest
-    environment:
-      name: production
     timeout-minutes: 60
     needs: resolve
     outputs:
@@ -405,136 +403,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # ---- TestFlight path (upload_testflight=true) -------------------------
-      # Runs entirely on THIS runner (cross-job artifact downloads fail
-      # deterministically on Blacksmith macOS). Transaction order is enforced:
-      # the Hands draft registration must succeed BEFORE the App Store Connect
-      # upload, so an ASC-accepted build can never exist without its Hands
-      # audit/release record. The standalone publish_hands job is skipped on
-      # this path.
-      - name: Install Hands CLI (npm)
-        if: needs.resolve.outputs.upload_testflight == 'true'
-        shell: bash
-        run: |
-          npm install -g @botiverse/hands-cli@0.5.1
-          hands --version
-
-      - name: Generate changelog from git history
-        if: needs.resolve.outputs.upload_testflight == 'true'
-        shell: bash
-        env:
-          HANDS_API: https://hands.build
-          HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-        run: |
-          set -euo pipefail
-          HANDS_API_BASE="${HANDS_API:-https://hands.build}"
-          HANDS_TOKEN="${HANDS_BEARER_TOKEN}"
-          APP_ID="$(curl -fsS -H "Authorization: Bearer ${HANDS_TOKEN}" \
-            "${HANDS_API_BASE}/api/apps" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='raft-ios'), ''))" \
-            2>/dev/null || true)"
-          PREV_COMMIT=""
-          if [ -n "${APP_ID}" ]; then
-            PREV_COMMIT="$(curl -fsS -H "Authorization: Bearer ${HANDS_TOKEN}" \
-              "${HANDS_API_BASE}/api/apps/${APP_ID}/builds" \
-              | python3 -c "import json,sys; d=json.load(sys.stdin); bs=d.get('builds') or []; p=(bs[0].get('provenance_json') if bs else None); p=json.loads(p) if isinstance(p,str) else (p or {}); print(p.get('source_commit') or '')" \
-              2>/dev/null || true)"
-          fi
-          if [ -n "${PREV_COMMIT}" ] && git cat-file -e "${PREV_COMMIT}^{commit}" 2>/dev/null; then
-            git log --no-merges --pretty='- %s' --max-count=40 "${PREV_COMMIT}..HEAD" > changelog.txt
-          fi
-          if [ ! -s changelog.txt ]; then
-            git log --no-merges --pretty='- %s' -15 > changelog.txt
-          fi
-          cat changelog.txt
-
-      - name: Register Hands release (draft-first, before any ASC upload)
-        if: needs.resolve.outputs.upload_testflight == 'true'
-        id: inline-hands-release
-        shell: bash
-        env:
-          QUIVER_APP_SLUG: raft-ios
-          HANDS_APP_SLUG: raft-ios
-          HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-          HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-          HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
-          HANDS_API: https://hands.build
-          QUIVER_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-          QUIVER_AUTH_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
-          QUIVER_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
-          RAFT_IOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
-          RAFT_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
-          SLOCK_IOS_EXPORT_METHOD: ${{ needs.resolve.outputs.export_method }}
-          SLOCK_HANDS_RELEASE_TYPE: stable
-          SLOCK_HANDS_DRAFT: ${{ needs.resolve.outputs.release_mode == 'publish' && '0' || '1' }}
-          SLOCK_RELEASE_CHANGELOG_FILE: ${{ github.workspace }}/changelog.txt
-        run: |
-          set -euo pipefail
-          IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
-          DSYM="$(find dist/ios -type f -name '*.dSYM.zip' | sort | head -n 1)"
-          ./scripts/publish_ios_hands_release.sh \
-            --ipa "${IPA}" \
-            --dsym "${DSYM}" \
-            --channel "${HANDS_CHANNEL}" \
-            --release-type "${SLOCK_HANDS_RELEASE_TYPE}" \
-            --export-method "${SLOCK_IOS_EXPORT_METHOD}" \
-            ${{ needs.resolve.outputs.release_mode == 'publish' && '--publish' || '--draft' }} \
-            | tee hands-publish.log
-          RELEASE_ID="$(awk '/^[[:space:]]*release:/ {print $2}' hands-publish.log | tail -n 1)"
-          [ -n "${RELEASE_ID}" ] || { echo "::error::Hands release registration produced no release id — refusing to continue to TestFlight"; exit 1; }
-          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
-
-      - name: Upload IPA to App Store Connect / TestFlight
-        # Only reachable after the Hands registration step above succeeded.
-        if: needs.resolve.outputs.upload_testflight == 'true'
-        id: testflight-upload
-        shell: bash
-        env:
-          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
-        run: |
-          set -euo pipefail
-          [ -n "${ASC_API_KEY_ID}" ] || { echo "::error::Missing ASC_API_KEY_ID"; exit 1; }
-          [ -n "${ASC_API_ISSUER_ID}" ] || { echo "::error::Missing ASC_API_ISSUER_ID"; exit 1; }
-          [ -n "${ASC_API_KEY_P8_BASE64}" ] || { echo "::error::Missing ASC_API_KEY_P8_BASE64"; exit 1; }
-          KEY_DIR="${HOME}/.appstoreconnect/private_keys"
-          KEY_FILE="${KEY_DIR}/AuthKey_${ASC_API_KEY_ID}.p8"
-          trap 'rm -f "${KEY_FILE}"' EXIT
-          mkdir -p "${KEY_DIR}"
-          echo "${ASC_API_KEY_P8_BASE64}" | base64 --decode > "${KEY_FILE}"
-          IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
-          [ -s "$IPA" ] || { echo "::error::No IPA found under dist/ios"; exit 1; }
-          xcrun altool \
-            --upload-app \
-            --type ios \
-            --file "${IPA}" \
-            --apiKey "${ASC_API_KEY_ID}" \
-            --apiIssuer "${ASC_API_ISSUER_ID}" \
-            --output-format xml \
-            | tee testflight-upload.log
-          echo "uploaded=true" >> "$GITHUB_OUTPUT"
-
-      - name: Clean up ASC private key (belt and braces)
-        if: always() && needs.resolve.outputs.upload_testflight == 'true'
-        shell: bash
-        env:
-          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-        run: rm -f "${HOME}/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
-
-      - name: TestFlight path summary
-        if: always() && needs.resolve.outputs.upload_testflight == 'true'
-        shell: bash
-        run: |
-          {
-            echo "### TestFlight path summary"
-            echo
-            echo "| Field | Value |"
-            echo "|---|---|"
-            echo "| **Hands release id** | \`${{ steps.inline-hands-release.outputs.release_id || '(none — registration failed)' }}\` |"
-            echo "| **TestFlight upload** | \`${{ steps.testflight-upload.outputs.uploaded == 'true' && 'uploaded' || 'NOT uploaded' }}\` |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload export diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -568,9 +436,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_ios_release]
-    # Skipped on the TestFlight path: the build job registers the Hands release
-    # inline there (draft-first ordering before the ASC upload).
-    if: needs.resolve.outputs.publish_hands == 'true' && needs.resolve.outputs.upload_testflight != 'true'
+    if: needs.resolve.outputs.publish_hands == 'true'
     environment:
       name: production
     env:
@@ -673,3 +539,43 @@ jobs:
             echo "| **IPA sha256** | \`${{ needs.build_ios_release.outputs.ipa_sha256 }}\` |"
             echo "| **dSYM sha256** | \`${{ needs.build_ios_release.outputs.dsym_sha256 }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  upload_testflight:
+    name: Upload to TestFlight
+    runs-on: blacksmith-12vcpu-macos-latest
+    timeout-minutes: 30
+    needs: [resolve, build_ios_release, publish_hands]
+    if: |
+      always() &&
+      needs.resolve.outputs.upload_testflight == 'true' &&
+      needs.build_ios_release.result == 'success' &&
+      (needs.publish_hands.result == 'success' || needs.publish_hands.result == 'skipped')
+    env:
+      ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+    steps:
+      - name: Download signed IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: dist/ios/
+
+      - name: Upload IPA to App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${ASC_API_KEY_ID}" ] || { echo "::error::Missing ASC_API_KEY_ID"; exit 1; }
+          [ -n "${ASC_API_ISSUER_ID}" ] || { echo "::error::Missing ASC_API_ISSUER_ID"; exit 1; }
+          [ -n "${ASC_API_KEY_P8_BASE64}" ] || { echo "::error::Missing ASC_API_KEY_P8_BASE64"; exit 1; }
+          mkdir -p "${HOME}/.appstoreconnect/private_keys"
+          echo "${ASC_API_KEY_P8_BASE64}" | base64 --decode > "${HOME}/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8"
+          IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "${IPA}" \
+            --apiKey "${ASC_API_KEY_ID}" \
+            --apiIssuer "${ASC_API_ISSUER_ID}" \
+            --output-format xml \
+            | tee testflight-upload.log
