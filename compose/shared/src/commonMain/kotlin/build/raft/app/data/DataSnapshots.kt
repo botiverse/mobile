@@ -1181,10 +1181,10 @@ data class SettingsMobileSnapshot(
         ),
     val composerSendKey: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
-            enabled = true,
+            enabled = false,
             available = true,
-            statusLabel = "Enabled",
-            detail = "Use the keyboard action key to send messages. Turn off to make the keyboard key insert new lines."
+            statusLabel = "New line",
+            detail = "Use the keyboard action key to insert new lines. Turn on Send key to send messages from the keyboard."
         ),
     val multiShellHost: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

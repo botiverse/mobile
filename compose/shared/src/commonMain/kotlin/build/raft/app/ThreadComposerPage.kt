@@ -1009,7 +1009,7 @@ internal fun ThreadComposerContent(
     hostPaddingHorizontal: Dp = 0.dp,
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
-    composerSendKeyEnabled: Boolean = true,
+    composerSendKeyEnabled: Boolean = false,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
@@ -1045,7 +1045,7 @@ internal fun ThreadComposerContent(
     hostPaddingHorizontal: Dp = 0.dp,
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
-    composerSendKeyEnabled: Boolean = true,
+    composerSendKeyEnabled: Boolean = false,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},

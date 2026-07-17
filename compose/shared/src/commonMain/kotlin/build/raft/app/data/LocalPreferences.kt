@@ -242,7 +242,7 @@ data class ChatLayoutPreferenceSnapshot(
     val imageAnnotationEnabled: Boolean = true,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
-    val composerSendKeyEnabled: Boolean = true,
+    val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val supportedTranslationModes: List<TranslationModePreference> =
@@ -367,7 +367,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readComposerSendKeyEnabledSync(): Boolean =
-        store.getBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, true)
+        store.getBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false)
 
     override suspend fun readComposerSendKeyEnabled(): Boolean =
         readComposerSendKeyEnabledSync()

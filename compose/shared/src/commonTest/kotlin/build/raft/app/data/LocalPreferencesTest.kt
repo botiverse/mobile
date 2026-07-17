@@ -107,7 +107,7 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
-        assertEquals(true, snapshot.composerSendKeyEnabled)
+        assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
@@ -121,6 +121,20 @@ class LocalPreferencesTest {
             listOf(ThreadRowAffordancePreference.Reactions),
             snapshot.supportedThreadRowAffordances
         )
+    }
+
+    @Test
+    fun chatLayoutRestoresExplicitSendKeyChoiceAfterDefaultChangesToNewLine() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        store.putBoolean("chatLayout:composer_send_key_enabled", true)
+        val repository =
+            PersistentChatLayoutPreferenceRepository(
+                KeyValueChatLayoutPreferenceStore(store)
+            )
+
+        val snapshot = repository.getChatLayoutPreference()
+
+        assertEquals(true, snapshot.composerSendKeyEnabled)
     }
 
     @Test
