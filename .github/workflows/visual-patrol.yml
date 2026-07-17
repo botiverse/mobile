@@ -150,7 +150,7 @@ jobs:
           # @earendil-works/pi-ai is on the PUBLIC npm registry — no scope override or auth.
           # (The earlier .npmrc pinned the scope to GitHub Packages, which the package is NOT on;
           # that scope-registry override also defeated the public-registry fallback → install failed.)
-          npm i @earendil-works/pi-ai@0.80.3 --no-audit --no-fund
+          npm i @earendil-works/pi-ai@0.80.10 --no-audit --no-fund
       - name: Resolve live/dry-run
         id: mode
         run: |

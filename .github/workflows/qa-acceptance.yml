@@ -259,7 +259,7 @@ jobs:
         run: |
           mkdir -p m3 && cd m3
           # @earendil-works/pi-ai is on the PUBLIC npm registry — no scope override or auth.
-          npm i @earendil-works/pi-ai@0.80.3 --no-audit --no-fund
+          npm i @earendil-works/pi-ai@0.80.10 --no-audit --no-fund
 
       # Evidence annotation (docs/qa-acceptance/annotation-spec.md): sharp draws
       # assertion boxes / tap crosshairs onto copies of the step screenshots.
