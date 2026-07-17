@@ -14,8 +14,12 @@ CI produces:
 - metadata: commit SHA, GitHub run URL, export method, version, and optional
   App Store Connect/TestFlight state
 
-Hands stores, parses, audits, links release state, and later supports publishing
-status. Hands does not sign unsigned IPAs.
+Hands stores, parses, audits, links release state, and uploads the signed IPA to
+App Store Connect/TestFlight. Hands does not sign unsigned IPAs.
+
+The App Store Connect (ASC) API credential is encrypted and stored in Hands.
+It is not a mobile-repository or GitHub Actions secret, and the private `.p8`
+key must never leave the Hands service boundary.
 
 ## App
 
@@ -83,6 +87,47 @@ Xcode export still uses the workflow `export_method` input, for example
 metadata vocabulary when needed, for example `app-store-connect` becomes
 `app-store` for `hands builds publish-ios --export-method`.
 
+## TestFlight Upload
+
+TestFlight delivery is a Hands server-side operation. The supported sequence
+is:
+
+1. macOS CI builds and signs the IPA and dSYM.
+2. `hands builds publish-ios` uploads both assets and creates the Hands build
+   and release records.
+3. Using the returned Hands build id, trigger:
+
+   ```http
+   POST /api/apps/:appId/builds/:buildId/testflight-upload
+   ```
+
+4. Hands reads the IPA asset from R2, uses the app's encrypted ASC credential,
+   and streams the IPA to Apple's Build Upload API.
+5. Poll the returned build upload id until a terminal state:
+
+   ```http
+   GET /api/apps/:appId/testflight-uploads/:buildUploadId
+   ```
+
+   The expected progression is `AWAITING_UPLOAD` to `PROCESSING`, then either
+   `COMPLETE` or `FAILED`.
+
+The Hands build must exist before submission. This preserves a durable build
+and asset record before Apple accepts the upload. Release reporting should
+include the Hands build and release ids, the ASC build upload id, the marketing
+version and build number, and the terminal processing state. Do not include
+credential values or sensitive response bodies.
+
+The submit route is currently app-admin gated, while status is viewer gated.
+The intended automation contract is publisher-gated submit and viewer-gated
+status through the Hands CLI and agent manifest. Until that contract is
+available, an authorized Hands app admin must trigger submission; CI must not
+work around the gap by exporting the ASC credential.
+
+`publish_hands=true` is the supported way to register the signed IPA and dSYM
+before server-side submission. The mobile workflow must not add a parallel
+client-side TestFlight upload path.
+
 ## Required Secrets
 
 Required for build/sign:
@@ -102,8 +147,11 @@ Optional:
   If omitted, CI generates one from the workflow input `export_method`.
 - `QUIVER_BEARER_TOKEN`: required only when `publish_hands=true`. This is the
   current configured Hands bearer token secret for the mobile release lane.
-- `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, `ASC_API_KEY_P8_BASE64`: required only
-  when `upload_testflight=true`.
+
+Do not add `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, or
+`ASC_API_KEY_P8_BASE64` to GitHub Actions. Do not export the `.p8` from Hands or
+upload with `xcrun altool`. Hands is the single source of truth for the ASC
+credential and performs the Apple upload server-side.
 
 ## Validation
 
