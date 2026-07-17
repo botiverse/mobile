@@ -1,5 +1,3 @@
-# Raft Android 1.5.0
-
 ✨ **New**
 
 - Double-tap the current bottom tab or page header to jump to the top of any list
