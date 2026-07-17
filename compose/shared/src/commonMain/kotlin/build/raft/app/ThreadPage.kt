@@ -14590,25 +14590,40 @@ private fun ThreadBackToBottomButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    SlockBrutalActionButton(
-        label = stringResource(MR.strings.thread_action_back_to_bottom),
-        onClick = onClick,
-        modifier = modifier,
-        backgroundColor = SlockColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 30.dp,
-        shadowOffset = 4.dp,
-        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-        trailingContent = {
-            SlockLucideIcon(
-                "chevron-down",
-                modifier = Modifier.size(14.dp),
-                color = "#FF000000"
-            )
-        }
-    )
+    Box(modifier = modifier, propagateMinConstraints = true) {
+        // The button floats above interactive message rows. Kuikly's native
+        // host can otherwise dispatch the same pointer sequence to the row
+        // behind the button, especially when scrolling to bottom removes the
+        // button during the release frame. Keep capture on a sibling behind
+        // the Compose control: capture on the parent would also block the
+        // button's own pointerInput detector on Android.
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(SlockColor.SurfaceWhite.copy(alpha = ThreadBackToBottomTouchGuardAlpha))
+                    .slockNativeDispatchCapture()
+        )
+        SlockBrutalActionButton(
+            label = stringResource(MR.strings.thread_action_back_to_bottom),
+            onClick = onClick,
+            backgroundColor = SlockColor.SurfaceWhite,
+            minWidth = 0.dp,
+            minHeight = 30.dp,
+            shadowOffset = 4.dp,
+            textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+            trailingContent = {
+                SlockLucideIcon(
+                    "chevron-down",
+                    modifier = Modifier.size(14.dp),
+                    color = "#FF000000"
+                )
+            }
+        )
+    }
 }
 
+private const val ThreadBackToBottomTouchGuardAlpha = 0.01f
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
