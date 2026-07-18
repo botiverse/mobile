@@ -283,7 +283,8 @@ Owner 拍 scope（PUX scope is spec only; @Android-Developer-1 / @Cindy 拍是�
 
 ## Out of scope
 
-- OHOS emulator (`docs/ohos-screenshot-capture.md` covers it; sister workflow with `hdc` / `snapshot_display`)
+- OHOS emulator (`docs/ohos-emulator-setup.md` covers lifecycle, HDC, install,
+  capture, layout inspection, and input smoke)
 - iOS simulator (Slock Android only)
 - Lightpanda browser testing (`.agents/skills/lightpanda/scripts/install.sh`)
 - CI / cloud emulators (Farm, Bitrise, BrowserStack) — single-machine only

@@ -5,6 +5,8 @@ This is the cross-platform command-line path for Slock mobile smoke work when an
 Related docs:
 
 - `docs/android-emulator-setup.md` covers Android AVD lifecycle and raw `adb` equivalents.
+- `docs/ohos-emulator-setup.md` covers OHOS emulator image/instance lifecycle,
+  HDC connection, install, layout inspection, and input smoke.
 - `docs/ohos-screenshot-capture.md` covers the older OHOS screenshot-only script.
 - `scripts/slock_android_adb.py` is the Android JSON helper.
 - `scripts/slock_ohos_hdc.py` is the OHOS JSON helper.
@@ -80,6 +82,9 @@ python3 scripts/slock_ohos_hdc.py --target 127.0.0.1:5555 input-help --pretty
 ### OHOS Caveats
 
 - If `hdc list targets` prints `[Empty]`, start/connect an OHOS device or emulator before trying build/install/capture.
+- For the exact DevEco emulator CLI used on the shared Mac, including small
+  instance creation and disk-space/API compatibility failures, follow
+  `docs/ohos-emulator-setup.md`.
 - `uitest uiInput` support can vary by target image. If click/swipe fails, include `input-help` output in the task report.
 - Direction swipes use conservative phone coordinates. For foldables/tablets, pass explicit `--x1 --y1 --x2 --y2`.
 - Hvigor `onDeviceTest` has historically been blocked by the Slock OHOS test-target task name issue around `linktestSharedOhosArm64`; do not classify that as device input failure.

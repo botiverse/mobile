@@ -475,6 +475,10 @@ scripts/sync_kuikly_ai_skills.sh
 
 ## OHOS Kuikly Workflow
 
+- For local HarmonyOS virtual-device lifecycle, HDC connection, signed-HAP
+  install, screenshots/layout dumps, and repeatable input smoke, read
+  `docs/ohos-emulator-setup.md` before starting an emulator.
+
 - The Slock OHOS app bundle/module/ability is `build.raft.mobile` / `entry` /
   `EntryAbility`.
 - `hdc` may not be on `PATH`; the default DevEco path in this workspace is
