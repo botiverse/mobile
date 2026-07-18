@@ -221,33 +221,22 @@ try {
   let after = "";
   try { after = await drv.dumpUi(); } catch (e) { rec(`describe after tap failed: ${String(e).slice(0, 120)}`); }
   const systemPhotoGateLog = recentPhotoGateLog();
-  const gateHit = hasPhotoPickerGate({ appDump: after, systemLog: systemPhotoGateLog })
-    || (after && after.split("\n").length > dump.split("\n").length + 5);
-  if (!gateHit) {
-    writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in app dump or SpringBoard log)");
-    process.exit(1);
-  }
-  const evidenceMode = hasPhotoPickerGate({ systemLog: systemPhotoGateLog })
-    ? "SpringBoard Photos permission alert"
-    : "app dump photo-picker markers or a new large panel";
-  rec(`picker gate evidence: ${evidenceMode}`);
 
   // ── Full chain (task #26) ────────────────────────────────────────────────
-  // Photos access is pre-granted via simctl (deterministic; we never tap
-  // SpringBoard UI). A pre-grant means the tap above must have gone straight
-  // to the real PhotosUI picker — a SpringBoard permission ALERT at this point
-  // contradicts the grant, so fail-closed on it.
-  if (hasPhotoPickerGate({ systemLog: systemPhotoGateLog }) && !hasPhotoPickerGate({ appDump: after })) {
+  // Photos access is pre-granted via simctl, so a SpringBoard Photos
+  // permission ALERT is a contradiction — fail-closed on the system marker
+  // alone, unconditionally (review: no app-dump words may short-circuit this).
+  if (hasPhotoPickerGate({ systemLog: systemPhotoGateLog })) {
     writeVerdict("fail", "SpringBoard Photos permission alert appeared despite the simctl photos pre-grant — refusing to tap system UI");
     process.exit(1);
   }
 
-  // Prove the REAL picker by header+chrome+grid-tile combination (review: no
-  // line-count or lone-word heuristics — those match ordinary app panels).
+  // Prove the REAL picker by header+chrome+grid-tile combination (no
+  // line-count or lone-word heuristics anywhere).
   fs.writeFileSync(path.join(outDir, "picker-dump.txt"), redactEditableValues(after));
   await shot("step-03-picker.png");
   if (!hasRealPhotoPicker(after)) {
-    writeVerdict("fail", "real PhotosUI picker not proven (need exact Recents/All Photos header + Cancel/Select chrome + plausible grid tiles)");
+    writeVerdict("fail", "picker did not open / real PhotosUI picker not proven (need exact Recents/All Photos header + Cancel/Select chrome + plausible grid tiles)");
     process.exit(1);
   }
   rec("real PhotosUI picker proven (header + chrome + tiles)");
