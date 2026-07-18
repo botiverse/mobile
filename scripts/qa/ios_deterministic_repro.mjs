@@ -95,10 +95,33 @@ async function ensureLoggedIn() {
   rec(`password typed at [${p.x},${p.y}]`);
 
   // The Sign In BUTTON shares its label with the page title — tapText's
-  // smallest-area rule resolves the button.
+  // smallest-area rule resolves the button. The keyboard may cover the
+  // button, so dismiss it first and re-read FRESH bounds (r3 lesson: tapping
+  // a stale coordinate landed on the keyboard overlay and never submitted).
   const r = await drv.tapText("Sign In");
   rec(`tapped sign-in: ${r.feedback || ""}`);
+
+  // Dismiss keyboard, re-dump, and submit with FRESH button bounds.
+  await drv.key("esc");
+  await new Promise((r2) => setTimeout(r2, 2500));
+  dump = await drv.dumpUi();
+  const btnLine = dump.split("\n").filter((l) => /"Sign In"/.test(l));
+  if (btnLine.length) {
+    const last = btnLine[btnLine.length - 1]; // the button is the last Sign In label on the page
+    const p2 = parseBounds(last);
+    rec(`submitting via fresh Sign In bounds [${p2.x},${p2.y}]`);
+    await drv.tap(p2.x, p2.y);
+  }
   await new Promise((r2) => setTimeout(r2, 8000));
+
+  dump = await drv.dumpUi();
+  const stillLogin = /"Email"/.test(dump) && /"Password"/.test(dump);
+  if (stillLogin) {
+    // Do NOT screenshot here: the form holds the typed email (secret hygiene —
+    // r3 artifact was flagged for exactly this). Steps carry the failure.
+    writeVerdict("fail", "login did not complete: Sign In page still visible after esc+fresh-bounds submit");
+    process.exit(1);
+  }
 
   dump = await drv.dumpUi();
   if (/Choose server|OranixSlockTest/.test(dump) && !dump.includes('"Message #')) {
