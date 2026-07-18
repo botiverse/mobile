@@ -296,3 +296,22 @@ Report:
 - exact input string, repeat count, and layout assertions;
 - screenshot/layout/HILOG artifact paths;
 - whether the result is emulator-only or satisfies a physical-device gate.
+
+## Perf capture (external-executor, task #14)
+
+After a measured run, assemble the self-describing perf.json from the HILOG
+capture and the step log, then upload it to the Stamp run with `kind=perf`:
+
+```bash
+node scripts/qa/collect_perf_ohos.mjs \
+  --hilog artifacts/raft-ohos-hilog.txt \
+  --steps artifacts/steps.jsonl \
+  --device-json '{"model":"<live model>","os":"<live os>","api":"<live api>","pid":<pid>,"hap_sha256":"<sha>","emulator_only":true}' \
+  --environment OranixSlockTest --started <epoch_ms> --out artifacts/perf.json
+```
+
+Contract (locked with the OHOS lane): zero `ProcessJank`/frame hits is
+`signal_absent/insufficient_evidence`, never a smoothness PASS — attach the
+raw HILOG. A missing `--hilog` file is reported as `capture: "missing"`
+(operator error), distinct from a genuinely quiet capture. Emulator jank is
+not physical-device evidence.
