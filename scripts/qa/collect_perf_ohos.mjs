@@ -37,7 +37,7 @@ const startedMs = Number(arg("--started", "0")) || null;
 let device = {};
 try { device = JSON.parse(arg("--device-json", "{}")); } catch { device = {}; }
 
-const RECORDER = { name: "hilog-steps-ohos-v1", version: "1.0.0", thresholds: "none (advisory record-only)" };
+const RECORDER = { name: "hilog-steps-ohos-v1", version: "1.1.0", thresholds: "none (advisory record-only)" };
 
 const JANK_PATTERNS = {
   process_jank: /ProcessJank/i,
@@ -53,22 +53,33 @@ const INPUT_PATTERNS = {
 const jank = {};
 const inputSignals = {};
 let jankTotal = 0;
+let capture = "empty";
 if (hilogPath && fs.existsSync(hilogPath)) {
-  const lines = fs.readFileSync(hilogPath, "utf8").split("\n");
+  const lines = fs.readFileSync(hilogPath, "utf8").split("\n").filter((l) => l.trim());
+  capture = lines.length ? "present" : "empty";
+  // Per-line first-match: one HILOG line counts once toward jankTotal even if
+  // several jank patterns hit it (LiBai review — double-count inflation).
+  const jankRes = Object.values(JANK_PATTERNS);
   for (const [name, re] of Object.entries(JANK_PATTERNS)) {
     const hits = lines.filter((l) => re.test(l));
     jank[name] = { count: hits.length, firstLines: hits.slice(0, 10).map((l) => l.slice(0, 220)) };
-    jankTotal += hits.length;
   }
+  jankTotal = lines.filter((l) => jankRes.some((re) => re.test(l))).length;
   for (const [name, re] of Object.entries(INPUT_PATTERNS)) {
     inputSignals[name] = { count: lines.filter((l) => re.test(l)).length };
   }
+} else if (hilogPath) {
+  capture = "missing"; // operator error (wrong path) — must not read as a clean capture
 }
 
 // Ark contract: zero jank signal is insufficient_evidence, never a pass.
+// A MISSING file (operator error) is reported with capture="missing" so it
+// cannot masquerade as a genuinely quiet capture window.
 const jankAssessment = jankTotal > 0
   ? { status: "signals_present", note: `${jankTotal} jank-related HILOG lines — review firstLines; NOT auto-fail (emulator jank != physical jank)` }
-  : { status: "signal_absent/insufficient_evidence", note: "no ProcessJank/frame lines in capture window — cannot conclude smoothness; attach raw HILOG to the verdict" };
+  : { status: "signal_absent/insufficient_evidence", note: capture === "missing"
+      ? `hilog file not found at --hilog path (${hilogPath}) — operator error, NOT evidence of a quiet window`
+      : "no ProcessJank/frame lines in capture window — cannot conclude smoothness; attach raw HILOG to the verdict" };
 
 let stepWindows = [];
 if (stepsPath && fs.existsSync(stepsPath)) {
@@ -101,6 +112,8 @@ const report = {
     environment,
   },
   jank_signals: jank,
+  jank_total: jankTotal,
+  capture,
   jank_assessment: jankAssessment,
   input_signals: inputSignals,
   slowest_step_windows: stepWindows,
