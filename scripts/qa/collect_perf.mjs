@@ -31,14 +31,16 @@ const startedMs = Number(arg("--started", "0")) || null;
 let device = {};
 try { device = JSON.parse(arg("--device-json", "{}")); } catch { device = {}; }
 
-const RECORDER = { name: "gfxinfo-logcat-v1", version: "1.0.0", thresholds: "none (advisory record-only)" };
+const RECORDER = { name: "gfxinfo-logcat-v1", version: "1.1.0", thresholds: "none (advisory record-only)" };
 
 // --- gfxinfo aggregate summary ---
 // "Janky frames: 42 (5.31%)" and percentile lines like
 // "50th percentile: 6ms" ... "99th percentile: 28ms"
-let gfx = { jankyFrames: null, jankyPercent: null, totalFrames: null, percentilesMs: {} };
+let gfx = { jankyFrames: null, jankyPercent: null, totalFrames: null, percentilesMs: {}, statsSinceNs: null };
 if (gfxPath && fs.existsSync(gfxPath)) {
   const text = fs.readFileSync(gfxPath, "utf8");
+  const sm = /Stats since:\s*(\d+)ns/.exec(text);
+  if (sm) gfx.statsSinceNs = Number(sm[1]); // monotonic (since-boot) anchor
   const jm = /Janky frames:\s*(\d+)\s*\(([\d.]+)%\)/.exec(text);
   if (jm) { gfx.jankyFrames = Number(jm[1]); gfx.jankyPercent = Number(jm[2]); }
   const tm = /Total frames rendered:\s*(\d+)/.exec(text) || /Number Frames\s+Rendered:\s*(\d+)/.exec(text);
@@ -83,7 +85,14 @@ if (stepsPath && fs.existsSync(stepsPath)) {
 
 const report = {
   recorder: RECORDER,
-  capture_window: { started_ms: startedMs, ended_ms: Date.now() },
+  // Clock domains are explicit (MingQi): wall-clock for human correlation,
+  // monotonic (gfxinfo "Stats since", since-boot ns) for durations.
+  capture_window: {
+    clock_domain: "wall_clock_epoch_ms",
+    started_ms: startedMs,
+    ended_ms: Date.now(),
+    monotonic_anchor_ns: gfx.statsSinceNs,
+  },
   identity: {
     package: pkg,
     device: { model: device.model || "unknown", sdk: device.sdk || "unknown", abi: device.abi || "unknown" },
