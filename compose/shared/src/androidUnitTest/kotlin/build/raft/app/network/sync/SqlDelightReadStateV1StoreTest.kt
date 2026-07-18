@@ -135,6 +135,7 @@ class SqlDelightReadStateV1StoreTest {
             updatedAtMs = 200,
         )
         assertFailsWith<ReadStateV1StoredFactCorrupt> { store.restore(scope) }
+        Unit
     }
 
     private fun fact(version: Long, seq: Long) = ReadStateV1Fact(scope.channelId, version, seq)
