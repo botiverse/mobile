@@ -17,7 +17,7 @@
                 "systemBars": "hidden",
                 "validation": {
                   "uniqueColors": 412,
-                  "dominantRatio": 0.8193259
+                  "dominantRatio": 0.81552315
                 }
               },
               "diagnostics": {
@@ -32,5 +32,5 @@
     "visibleContentLeafViews": 2
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783979747981"
+              "capturedAt": "1784359617052"
             }

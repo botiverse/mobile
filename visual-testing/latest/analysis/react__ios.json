@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-13T22:14:13.950Z",
+  "generatedAt": "2026-07-18T07:37:44.402Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 95,
-    "ready": 83,
-    "pending": 12
+    "total": 84,
+    "ready": 50,
+    "pending": 34
   },
   "cases": [
     {
@@ -75,40 +75,16 @@
     },
     {
       "id": "components.ui.badge.states",
-      "status": "ready",
-      "imageHash": "p1:1ff83fe00000001e0000001e1ffc03fe0000fffe9ffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-07-09T22:21:04.167Z",
-      "severity": "low",
-      "summary": [
-        "Badge text is uppercase in iOS (SHARED, INSTALLED, UPDATE, BUILT IN, INSTALL) but title-case in React (Shared, Installed, Update, Built In, Install)",
-        "iOS badges appear larger/bolder with more letter-spacing than React badges",
-        "iOS 'task #273' badge has lower text contrast (orange/red text) compared to React's dark text on red",
-        "React 'Install' badge sits on a second row alone while iOS places it next to 'task #273' on row 2",
-        "iOS badge corners appear more rounded relative to badge height vs React's sharper corners"
-      ],
-      "likelyCauses": [
-        "iOS component applies uppercase text transform (likely UIFont preferred case or .textCase = .uppercase via Text/swiftUI)",
-        "iOS uses system font with heavier weight (semibold/bold) vs React's monospaced or regular weight",
-        "iOS badge color palette (red/orange task badge) was not mapped 1:1 from the React design token",
-        "Row wrapping/spacing logic differs between React and iOS layouts (flex vs UIStackView distribution)",
-        "Header environment tag is platform-specific and not part of the component bounds contract"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Decide on case treatment: either uppercase both platforms or remove textTransform on iOS to match React title-case",
-        "Align font-weight and letter-spacing tokens across iOS and React badge definitions",
-        "Map iOS task badge colors to the same red/dark-text tokens used in React",
-        "Adjust iOS stack distribution/insets so the row 2 layout (task #273 + Install) matches React wrapping behavior",
-        "Tune iOS corner radius to match React badge radius proportion, or document the intentional difference"
-      ],
-      "intentional": [
-        "Header meta tag (REACT/IOS) is environment-specific by design",
-        "Full-page iOS canvas (1170×2532) vs cropped React element bounds is expected for a mobile baseline"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.01983398819891713
+      "status": "pending",
+      "imageHash": "p1:1ff83ff00000000e0000000e1ffc3ffe0000fffe9ffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-18T07:37:43.045Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.009857414833718159
     },
     {
       "id": "components.ui.form-field.states",
@@ -377,7 +353,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -443,7 +419,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.01821842805255125
+      "metricMismatch": 0.017933527767651003
     },
     {
       "id": "components.ui.section-eyebrow.states",
@@ -682,7 +658,7 @@
       "id": "components.auth.register.inputs",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:12.282Z",
+      "generatedAt": "2026-07-18T07:37:43.276Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -727,7 +703,7 @@
     {
       "id": "components.thread.composer.empty",
       "status": "ready",
-      "imageHash": "p1:000000000001000203f903b20001000200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "imageHash": "p1:000000000001000203f903b20001080200010002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
       "generatedAt": "2026-07-09T22:21:25.567Z",
       "severity": "low",
       "summary": [
@@ -752,12 +728,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.019894073804026413
+      "metricMismatch": 0.01986065540567905
     },
     {
       "id": "components.thread.composer.states",
       "status": "ready",
-      "imageHash": "p1:0000000000010002000100020081080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:0000000000010002000100020081080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff80fff",
       "generatedAt": "2026-07-12T22:10:24.418Z",
       "severity": "low",
       "summary": [
@@ -786,13 +762,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.020963124991561055
+      "metricMismatch": 0.020929706593213693
     },
     {
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:12.369Z",
+      "generatedAt": "2026-07-18T07:37:43.347Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -835,12 +811,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.07665741753419475
+      "metricMismatch": 0.07664121467439
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "ready",
-      "imageHash": "p1:03f807fcfffd0002fffd0002fffd0ffa000100020001000207f90ff200090002000100023009fffe0f91fffe0001fffe700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:03f807fcfffd0002fffd0002fffd0ffa000100020001000207f91ff200090002000100023009fffe0f91fffe0001fffe700dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-07-12T22:10:29.386Z",
       "severity": "medium",
       "summary": [
@@ -871,13 +847,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11758010288815979
+      "metricMismatch": 0.11759022967553778
     },
     {
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:12.408Z",
+      "generatedAt": "2026-07-18T07:37:43.354Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -960,7 +936,7 @@
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:08040004076e1ffe00000002400000024002c0020000c03efffec07efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
+      "imageHash": "p1:08040004076e1ffe00000002400000064002c0020000c03efffec07efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
       "generatedAt": "2026-07-09T22:21:30.492Z",
       "severity": "medium",
       "summary": [
@@ -991,7 +967,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04665579724821434
+      "metricMismatch": 0.04673681154723808
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1030,70 +1006,29 @@
     },
     {
       "id": "components.thread.message-menu.default",
-      "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ce07efc1e001efc0e001efc00009efc1e0fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff009effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
-      "generatedAt": "2026-07-09T14:36:55.551Z",
-      "severity": "high",
-      "summary": [
-        "iOS menu includes an extra 'Select Text' option not present in the React baseline",
-        "iOS groups 'Open Thread', 'Save Message', and 'Follow Thread' in a separate section below a divider, while React keeps them in the main group",
-        "iOS uses an info/info-circle icon for 'Convert to Task' instead of React's clipboard/checkbox icon",
-        "iOS header shows '5 replies · 2 new' and an emoji reaction count '+' affordance, React shows only '3 replies'",
-        "React menu overlays the message bubble in a popover style; iOS renders the menu as a full-width inline block under the message"
-      ],
-      "likelyCauses": [
-        "iOS implementation added a 'Select Text' row not specified in shared component contract",
-        "iOS rearranged menu items into grouped sections with dividers that differ from the React web menu structure",
-        "iOS uses SF Symbols for the 'Convert to Task' icon while React uses a clipboard/checkbox icon from its icon set",
-        "iOS displays a richer thread/reply header with new-reply indicator and reaction affordance missing on React",
-        "Platform-specific menu styling (full-width, inline) on iOS vs. floating popover on React"
-      ],
-      "suggestedOwner": "iOS engineering",
-      "suggestedFixes": [
-        "Remove the 'Select Text' row on iOS or add it to the React menu to align the menu item set",
-        "Reorder/group menu items on iOS to match the React order: Copy Link, Copy Markdown, Select Message, Open Thread, Save Message, Follow Thread, Convert to Task",
-        "Replace the info-circle icon on iOS 'Convert to Task' with the clipboard/checkbox icon used on React",
-        "Simplify iOS thread header to match React's '3 replies' treatment, or update React to include '2 new' and reaction count",
-        "Convert the iOS menu to a popover/sheet anchored to the message bubble, matching React's overlay layout"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09569341488772765
+      "status": "pending",
+      "imageHash": "p1:01fe01fc80007ffe800e07ee800000062000e006803ce07efc1e001efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
+      "generatedAt": "2026-07-18T07:37:43.579Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09699740754243125
     },
     {
       "id": "components.thread.message-menu.task",
-      "status": "ready",
-      "imageHash": "p1:01fe01fc80087ffe802207ee800000022000e0028020e006fc1e001efc0e001efc0c009efc140fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff009effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
-      "generatedAt": "2026-07-09T14:36:55.617Z",
-      "severity": "medium",
-      "summary": [
-        "iOS context menu inserts an extra 'Select Text' item between 'Copy Markdown' and 'Select Message' that is absent in React",
-        "React menu has tighter vertical spacing; iOS menu items use noticeably larger row height and padding",
-        "Reaction emoji row width and item gaps are larger on iOS than React",
-        "iOS menu uses a single full-width container divided by thin dividers, while React uses compact rows with no dividers in the top reaction group",
-        "Menu shadow/elevation offset differs: iOS shadow is softer and larger, giving the menu a wider visual footprint"
-      ],
-      "likelyCauses": [
-        "iOS implementation renders an additional 'Select Text' native menu action via UIMenuController/UIEditMenuInteraction that was not added to the React list",
-        "Row padding and font metrics differ between web (React) and native (UIKit) context menu items",
-        "Reaction row uses fixed-width spacing on iOS vs. compact CSS flex layout on React",
-        "iOS applies default UIKit context-menu styling (dividers, shadow radius) not matched in the React design"
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Remove the 'Select Text' item on iOS or add it to the React menu spec to keep the action list identical",
-        "Normalize vertical padding and font line-height for menu rows so React and iOS use the same dp values",
-        "Match reaction emoji row gap and container width across platforms",
-        "Align shadow/elevation (offset, blur, opacity) between React popover and iOS context menu",
-        "Align divider rendering: either add dividers to React or remove them from iOS for parity"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.107006724186819
+      "status": "pending",
+      "imageHash": "p1:01fe01fc80087ffe802207ee800000062000e0068020e006fc1e001efc0e001efc0c009efc1427defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "generatedAt": "2026-07-18T07:37:43.594Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10814261217104815
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1270,7 +1205,7 @@
     {
       "id": "components.home.search.results",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe85f801fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:1ffe1ffe85f807fc80000000800000008cef0000800310120002dfffffffffffffff80ff80009fff803cc0ff800080ff88035fffe7ffffffc0fe8003c00e8002fffe83ffd8fe87ffd05ec1fedffe9fffffff807effff4bffffff403fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.488Z",
       "severity": "medium",
       "summary": [
@@ -1300,12 +1235,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2657262256788323
+      "metricMismatch": 0.26784204912167
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe1ffe07e701fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c0000c1cc00078000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c0000c1cc00078000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.554Z",
       "severity": "high",
       "summary": [
@@ -1336,7 +1271,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.27080852270425726
+      "metricMismatch": 0.26763141194420814
     },
     {
       "id": "components.home.saved.results",
@@ -1370,45 +1305,25 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11588184064487383
+      "metricMismatch": 0.11590783273247729
     },
     {
       "id": "components.home.activity.results",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc83fc07fe82fc03fe000000020040000200000006cbf13fe680f18026801d003e807d01fef07d07e6c0e10006801100068a1d0ffe8ffd1ffec7a103c683f103e6fffdfffefffdfffefffdfffefffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-12T22:10:30.673Z",
-      "severity": "medium",
-      "summary": [
-        "In the first result card, the '#design' label and 'days ago' timestamp are placed on separate lines in iOS but inline on React.",
-        "In iOS, the first card body text is bolder/heavier weight than React, with tighter line wrapping (e.g., 'Captured the Android visual artifact for #product:f8e569cb…' wraps differently and uses heavier weight).",
-        "iOS renders the first card's flag icon outline in pink/magenta, while React renders it as a neutral gray outline.",
-        "In iOS, the '@ you' pill background is a lighter yellow and the '2 new' / '1 new' pills appear more saturated pink compared to React's softer tones.",
-        "The CJK body text ('201继续推进') appears with a heavier font weight on iOS than on React."
-      ],
-      "likelyCauses": [
-        "Differences in default platform fonts (San Francisco on iOS vs. the React web stack's font).",
-        "Missing or diverging token mappings between React CSS and iOS native theme (font-weight, color, spacing).",
-        "iOS layout wrapping channel labels and timestamps on the same line, while React uses a multi-line header row.",
-        "iOS applies a different padding scale to result cards than the React implementation."
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Unify the relative-date label and channel/handle label placement so they sit on the same line in both platforms, or intentionally align both.",
-        "Reconcile font-weight tokens for card title and body text (e.g., body text semibold on iOS should map to the same weight as React).",
-        "Recolor the flag/notification icon outline to the same neutral gray on iOS, or update the React token if the pink is intentional.",
-        "Normalize pill colors (yellow '@ you', pink 'new') to match between React and iOS theme palettes.",
-        "Align card vertical padding/spacing to a shared spacing token across web and native."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09051052510768154
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc83fc07fe82fc03fe000000020040000200000006cbf13fc680f18026801d001e807d01fef07d81fec0e13fc6801100068a1d00fe8ffd1ffec7a1fe4683f117c6fffda3e6fffdfffefffdfffefffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-07-18T07:37:43.753Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09555332766233238
     },
     {
       "id": "components.tasks.panel.states",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ffc87e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0ffe1a00080019fff9fff9fff9ffdfffc807c803cffe0bff00000ffffffff",
+      "imageHash": "p1:3ffe3ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ffc87e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0b3e1a00080019fff9fff9fff9ffdfffc807c803cbfe0bff00000ffffffff",
       "generatedAt": "2026-07-09T08:43:43.198Z",
       "severity": "low",
       "summary": [
@@ -1434,7 +1349,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18156924697209054
+      "metricMismatch": 0.1819436005454963
     },
     {
       "id": "components.tasks.status-menu",
@@ -1468,38 +1383,16 @@
     },
     {
       "id": "components.home.create-channel.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000000000000000000000000027f47ffc6cf87ffc7ffc7ffe7ffc7ffc7dfc63fc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc6ffe07fc47fe7ffc7ffe7ffc7ffc1ffc7ffc7ffc7ffcffff4ffcffff7ffcffff7ffcffff6ffcffff6bfcffff7f00ffff7c00ddb30000ffff0000ffff0000ffff0000ffffffffffff",
-      "generatedAt": "2026-07-12T22:10:31.793Z",
-      "severity": "high",
-      "summary": [
-        "iOS screenshot shows a keyboard tutorial overlay ('Speed up your typing by sliding your finger across the letters to compose a word.') and 'Continue' button covering the bottom half of the dialog, blocking Cancel/Create Channel actions and member list.",
-        "React baseline shows fully populated AGENTS list (Cindy, Visual QA) and HUMANS list (Designer) with checkmarks; iOS shows empty AGENTS/HUMANS sections.",
-        "React description textarea is a multi-line field showing full wrapped text; iOS renders description as a single-line field clipping 'blockers' to 'blockers'.",
-        "React baseline has no helper text under NAME input; iOS shows helper text 'Start with a letter. Use letters, numbers, hyphens, or…' beneath the name input.",
-        "Label typography differs: React uses bold uppercase for field labels (NAME, DESCRIPTION, VISIBILITY), iOS uses lighter/regular weight and smaller size."
-      ],
-      "likelyCauses": [
-        "iOS test capture triggered a system QuickPath/Continuity Keyboard tutorial overlay during screenshot.",
-        "Native iOS text input renders helper text and single-line description input instead of multi-line textarea.",
-        "iOS design tokens for label typography (font weight/size) differ from React web implementation.",
-        "Member picker not yet loaded/populated at time of iOS capture, leaving AGENTS and HUMANS sections empty."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Dismiss or wait out the iOS keyboard tutorial before capturing screenshots, or suppress QuickPath overlay in UI test environment.",
-        "Ensure iOS description field uses a multi-line UITextView with wrapping that matches React textarea height.",
-        "Remove or gate the 'Start with a letter…' helper text on iOS to match React baseline, or add it to both platforms consistently.",
-        "Align iOS label font weight/size with React design tokens (bold uppercase, larger size).",
-        "Verify AGENTS and HUMANS data loading state in iOS before dialog render and ensure same default selections (Cindy, Designer) as React."
-      ],
-      "intentional": [
-        "Helper text under NAME field could be intentional iOS-only UX guidance."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.5122848057682181
+      "status": "pending",
+      "imageHash": "p1:ffffffff00000000000000000000000000003ff47ffc7cf87ffc7ffc7ffe7ffc7ffc7ffc63fc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe47fc47fe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc8e7f7ffcffff7ffcffff7ffcffff7ffcffff6ffcbffd7f00bffd7f008ff000008ff00000bff900009ff90000ffffffffffff",
+      "generatedAt": "2026-07-18T07:37:43.840Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.44041465818717007
     },
     {
       "id": "components.members.create-agent.dialog",
@@ -1573,7 +1466,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:12.922Z",
+      "generatedAt": "2026-07-18T07:37:43.755Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1584,363 +1477,120 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe80100031801008310000000000120fe481ff0fff8fff001f8fff0bffffff9fff83ffc7ffffffd7ff81fbffff803f80f7ffffffffffffffff8fff0fff8fff0fffc0fff8ff80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80785802ffffffff",
-      "generatedAt": "2026-07-12T22:10:37.587Z",
-      "severity": "medium",
-      "summary": [
-        "Header avatar on React renders as solid cyan square; iOS renders a pixelated/mosaic avatar pattern",
-        "React header subtitle truncated with ellipsis (e.g., 'Turns product feedback, s…'); iOS subtitle wraps to two lines without truncation",
-        "Tab bar on React shows 'Reminders' without an extra icon; iOS shows an additional trailing edit/compose icon at the right edge of the tab bar",
-        "Profile hero block layout differs: React places name, status, and @handle on a single horizontal row beside the avatar; iOS stacks name on top, @handle below, and status ('Working') below that",
-        "Info section rows differ in vertical vs horizontal arrangement: React stacks Computer/Created/Creator as label-over-value rows; iOS uses label-value pairs on the same line with value truncating ('Jiachengs-Mac…')"
-      ],
-      "likelyCauses": [
-        "Different layout systems between platforms (CSS flex on React vs UIKit/SwiftUI stack on iOS) causing divergent wrapping, truncation, and grid behavior",
-        "Platform-specific text rendering and font metrics leading to different line-break and ellipsis behavior",
-        "Avatar component not yet wired to a real image on iOS, falling back to a placeholder/mosaic",
-        "Status indicator component (green/neutral dot) not synchronized between platforms",
-        "Runtime Config and Environment Variables sections use different container components per platform"
-      ],
-      "suggestedOwner": "mobile-frontend",
-      "suggestedFixes": [
-        "Unify avatar rendering across platforms — both should show the same image source or agreed placeholder",
-        "Standardize header subtitle behavior: either truncate with ellipsis on both or allow wrap on both",
-        "Normalize tab bar contents — ensure the trailing edit icon is present on both platforms",
-        "Refactor Profile hero block to use a shared layout spec (name + handle + status arrangement)",
-        "Align Info section to a consistent label-value grid pattern across platforms"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17890927748747654
-    },
-    {
-      "id": "components.channel.members.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff800180018001000180018001800100018001000180010001800100018001800180010001ffff7ffdffff7ffdffff7ffdffff7ffdffff6ffdffff7ffdffff7ffdffff7ffdffff7ffdfc3f7ffdffff6c3580013ffd800100018001000180010001800100018001000180010001800180018001000180018001ffffffff",
-      "generatedAt": "2026-07-09T08:43:59.785Z",
-      "severity": "medium",
-      "summary": [
-        "iOS header reads 'Members (2)' with mixed-case title-case; React uses uppercase 'MEMBERS (2)'",
-        "iOS section labels 'Agents' and 'Humans' are bold/sentence case; React labels are uppercase 'AGENTS' and 'HUMANS'",
-        "React version shows a 'People 2' badge in the top-left corner of the backdrop that is missing on iOS",
-        "iOS agent subtitle 'Capturing visual testing' is not truncated; React version truncates to 'Capturing visual testing base…'",
-        "React members card is taller and uses smaller inner framing; iOS card is more compact with tighter padding around rows"
-      ],
-      "likelyCauses": [
-        "React and iOS implementations are applying different text-transform (uppercase vs. title-case) to the modal title and section headings",
-        "Different padding/margin token used for the members-list container on iOS",
-        "React component emits an additional 'People 2' header badge (likely connected to channel header) that iOS omits in this view",
-        "iOS row width is larger (full panel width vs. constrained React card), removing the need for description truncation",
-        "Viewport normalization is different: baseline cropped to 390×844 element bounds while iOS is full 1170×2532, shifting vertical position"
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Unify text-transform on the channel members panel title and section headers across React and iOS (decide on uppercase or title-case in the shared token)",
-        "Reuse the same padding/horizontal-margin tokens for the members list container so row subtitle widths match",
-        "Make text truncation behavior consistent: either allow wrapping or apply identical max-width and ellipsis on both platforms",
-        "Audit React's channel header for the 'People 2' badge to confirm if it should render in the members panel context; add/remove on iOS to match",
-        "Normalize the compare crop to the same modal viewport bounds so vertical positioning differences don't dominate the diff"
-      ],
-      "intentional": [
-        "Lower modal placement and presence of home indicator on iOS may be intentional iOS chrome",
-        "Different card padding may reflect platform-specific list-density guidelines"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1546934283901109
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe801000318010002100000000001207e281ff0fff8fff001f8fff0bffffff9fff83ffc7ffffffd7ff81fbffff803f80f7ffffffffffffffff8fff0fff8fff0fffc0fff8ff80fff9fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80785802ffffffff",
+      "generatedAt": "2026-07-18T07:37:43.891Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17902809845937806
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff8000000100000000000000000000000000000000000000007ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7f867f807f827fd47ffe7ffc7c3e400060027ffc783e400060027ffc400240007ffe2004000000000000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-12T22:10:38.110Z",
-      "severity": "medium",
-      "summary": [
-        "Make Private, Archive Channel, and Delete Channel buttons span the full panel width on iOS but are narrower (centered with side padding) on React.",
-        "Cancel/Save Changes button row alignment differs: React centers them with a gap, iOS right-aligns them with the same gap.",
-        "Divider line above Make Private is positioned closer to the Save Changes button on iOS than on React.",
-        "Modal panel width occupies a larger fraction of viewport on iOS (1170px canvas) vs React (390px canvas); padding/scale differ.",
-        "Asterisk after NAME appears lighter/muted on iOS compared to React's pink/magenta hue."
-      ],
-      "likelyCauses": [
-        "iOS implementation uses full-width primary/secondary actions per HIG while React uses centered medium-width buttons",
-        "iOS layout uses proportional spacing tokens scaled to larger viewport causing wider component bounds",
-        "Inconsistent design-token mapping for '*' required indicator color between platforms",
-        "Save/Cancel button group uses different flex alignment (flex-end vs center) across platforms"
-      ],
-      "suggestedOwner": "mobile-design-system",
-      "suggestedFixes": [
-        "Normalize button widths to a shared design token (e.g., max-width or percentage of panel width)",
-        "Align Cancel/Save row to a consistent flex alignment across platforms",
-        "Recolor required-field asterisk to match shared semantic token (warning/required)",
-        "Audit spacing scale so Make Private/Archive/Delete stack matches baseline on iOS",
-        "Add a shared Storybook visual test for channel-settings panel to catch regressions"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2046718245770378
+      "status": "pending",
+      "imageHash": "p1:ffffffff8000000100000000000000000000000000000000000000007ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e400060027ffc783e400060027ffc400240007ffe2004000000000000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-18T07:37:43.924Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.21101085591606916
     },
     {
       "id": "components.channel.members.add-panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff8001000100000000000000000000000000000000000000000000000000007ffc7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe3ffe7ffe0000000000000000000000000000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-09T08:44:01.480Z",
-      "severity": "medium",
-      "summary": [
-        "Typography casing differs: React uses uppercase 'ADD MEMBER' / 'SEARCH' / 'AGENTS' / 'HUMANS' labels while iOS uses Title Case 'Add Member' / 'Search' / 'Agents' / 'Humans'",
-        "iOS shows the modal at a different vertical position, anchored lower and larger because the iOS canvas is 1170x2532 vs React 390x844 (modal is upscaled proportionally)",
-        "Agent list ordering differs: React renders Product UX Designer first followed by HUMANS section, while iOS renders Agents section, then Product UX Designer, then Humans section",
-        "iOS omits the secondary description text under agent and human rows ('Turns product feedback, screenshots, an…', 'Owner', 'Product design') that React displays",
-        "Selection highlight (yellow row) targets 'artin' in React but 'Designer' in iOS, indicating different default-selected or currently-focused row"
-      ],
-      "likelyCauses": [
-        "Independent typography spec (uppercase vs sentence-case) applied per platform without a shared design token",
-        "Avatar/icon dimensions or row component used in iOS may omit the secondary subtitle line by default",
-        "Test fixture or seed data sets different selected member between web and iOS captures",
-        "Modal sizing/scaling logic resizes the panel differently at the 1170x2532 canvas vs the React 390x844 reference",
-        "Selection state logic differs between React store and iOS implementation for the member list"
-      ],
-      "suggestedOwner": "design-systems",
-      "suggestedFixes": [
-        "Normalize label casing to a single source of truth (either uppercase or title case) in the shared component library",
-        "Ensure member-list rows render the description/subtitle uniformly on both platforms",
-        "Align default/initial selection state for the member picker across React and iOS",
-        "Add or remove the '2' badge token consistently; if intentional, document it in the snapshot",
-        "Apply consistent modal sizing rules or use a fixed compare canvas so layout differences are not conflated with scaling artifacts"
-      ],
-      "intentional": [
-        "Different raw canvas size (390x844 web vs 1170x2532 iOS) is expected",
-        "iOS home indicator visible only on iOS render is platform-correct"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.15315618206613468
+      "status": "pending",
+      "imageHash": "p1:ffffffff000080010000800100008001000080010000800100008001000080010000fffd7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff7ffeffff3ffcffff0000800100008001000080010000800100008001000080010000800180018001ffffffff",
+      "generatedAt": "2026-07-18T07:37:43.931Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.7122442986187062
     },
     {
       "id": "components.settings.root.page",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe0ffecffe0ffe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe7ffe87fe07fe83fe07fe83fe0ffec3fe03fe83fe43fe87fe03fefffe07fe8ffe3ffe8ffe0ffe83fe03fefffe03fefffe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-11T05:32:49.159Z",
-      "severity": "medium",
-      "summary": [
-        "Header on iOS includes a square settings/gear icon next to the 'Settings' title; React baseline has only the text title.",
-        "iOS list shows additional rows not present in React: 'Mobile' (under Notifications) and 'Storage' (after Mobile).",
-        "iOS has an extra 'Send feedback' row in the ABOUT section, inserted between 'About' and 'Release Notes'.",
-        "Workspace label on iOS reads 'Billing' instead of React's 'Plan & Billing' (shorter string, icon identical).",
-        "Vertical rhythm differs: iOS rows are spaced more tightly with smaller line-height, causing the list to appear more compact than the React baseline."
-      ],
-      "likelyCauses": [
-        "iOS implementation renders a header leading icon (large title accessory) that React baseline omits.",
-        "Feature parity gap: iOS renders 'Mobile' and 'Storage' navigation items that are not yet wired up in the React web build.",
-        "iOS adds a platform-specific 'Send feedback' entry (common iOS affordance) absent from React.",
-        "Label inconsistency: 'Plan & Billing' was renamed/shortened to 'Billing' in iOS without matching change in React baseline.",
-        "List item row height and label font weight diverged between native (iOS) and web component tokens."
-      ],
-      "suggestedOwner": "Design Systems / Cross-platform parity (web React vs iOS native)",
-      "suggestedFixes": [
-        "Remove or hide the leading settings icon in the iOS large-title header to match React, or add it to the React baseline if intentional; confirm with design.",
-        "Add 'Mobile' and 'Storage' rows to the React Settings list, or remove them from iOS until parity is reached.",
-        "Add 'Send feedback' row to the React Settings ABOUT section, or remove from iOS to align platforms.",
-        "Revert iOS label to 'Plan & Billing' or update React copy to 'Billing' so both platforms match.",
-        "Align row height, vertical padding, and label font-weight tokens between React settings list and iOS SettingsRootPage."
-      ],
-      "intentional": [
-        "iOS rendering at higher native resolution (1170×2532) compared to web (390×844) — expected.",
-        "Section grouping order (PERSONAL, WORKSPACE, ABOUT) is consistent across both platforms."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.037656121305410406
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe1ffecffe03fe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe5ffe87fe03fe83fe1ffe83fe03fec3fe43fe83fe03fe87fe07fefffe7ffe8ffe1ffe8ffe07fe83fe03fefffe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-18T07:37:43.962Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.036683949717125075
     },
     {
       "id": "components.settings.page.states",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff787fc7ff783fc07f787fc8ff7bffc0007bffc7e378ffc823787fc83f780000097803441f7be3c530783fc7f0783fc7ff780fc4307a7fc5d07a7fc6ff7bffc61f7c7c08007afc0fff7bfc40ff7e1fc7ff78000000780000002ffffffff",
-      "generatedAt": "2026-07-12T22:10:38.471Z",
-      "severity": "high",
-      "summary": [
-        "React (left) renders a 'Workspace mode' toggle card at the top and a 'Profile'-labeled avatar block; iOS (right) skips Workspace mode and shows 'Profile' header only above the avatar card.",
-        "Field labels differ: React uses sentence-case 'Name', 'Display Name', 'Email', 'Change Password'; iOS uses uppercase 'NAME', 'DISPLAY NAME', 'Email', 'Change password' (mixed case).",
-        "Account card bound differs: React wraps the avatar plus Name/Display Name/Email inside one bordered card; iOS places the avatar in a separate inner card stacked under the 'Profile' header, then a different card for Name/Display Name/Email.",
-        "Connected accounts state mismatch: React shows Google as 'Connected as artin@slock.ai' (no button) and GitHub with a 'Connect' button; iOS shows both Google and GitHub with 'Not connected' and 'Connect' buttons each.",
-        "iOS adds extra sections not present on React: a 'Session' group and a 'Log out' destructive button ('Log out' card with red/coral filled CTA and 'Sign out on this device…' copy)."
-      ],
-      "likelyCauses": [
-        "iOS implementation built against a different component spec than the React baseline (extra 'Session' section and 'Log out' block appear intentional per the states page, but not mirrored on React).",
-        "Token/style map divergence between platforms: label casing, field-grouping, and card backgrounds not aligned in the shared design tokens.",
-        "Connected-accounts logic renders different states because the mock auth state seeded for the iOS preview is unauthenticated whereas the React preview is pre-connected to Google.",
-        "Crop rect for iOS is uncropped (1170×2532) while React is cropped to element bounds (390×844), which exaggerates perceived layout shifts but does not explain the missing/extra sections."
-      ],
-      "suggestedOwner": "ios-settings",
-      "suggestedFixes": [
-        "Reconcile component spec: decide whether 'Workspace mode' and 'Profile' header belong on the Account screen, then implement identically on both platforms.",
-        "Unify field-label style tokens (case, weight, size) across iOS and React so 'Name' / 'Display Name' / 'Email' render the same way.",
-        "Wrap avatar + name + display name + email in a single group/card on iOS to match the React bounded card, instead of two stacked cards under a 'Profile' label.",
-        "Sync connected-accounts mock state (Google pre-connected on iOS) or render the same conditional button label/action.",
-        "Add 'Session → Change password' and 'Log out' sections to the React baseline if they are intended, or remove them from iOS to match baseline."
-      ],
-      "intentional": [
-        "iOS uppercase, letter-spaced field labels may be a platform-specific type style and considered acceptable.",
-        "Extra 'Session' / 'Log out' sections on iOS may be intentional product surface area pending React parity."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3288410904524649
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff781fc7ff781fc07f787fc8ff7fffc000787fc7e3780088237800083f78ffc00978ffc41f79e3c5307823c7f0783fc7ff780fc430781fc5d07a7fc6ff7bffc61f79fe08007c7c0fff7bfe00ff7c0fc7ff78004000780000002ffffffff",
+      "generatedAt": "2026-07-18T07:37:43.977Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.33241550883730975
     },
     {
       "id": "components.settings.account.page",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff787fc7ff783fc07f787fc8ff7bffc0007bffc7e378ffc823787fc83f780000097803441f7be3c530783fc7f0783fc7ff780fc4307a7fc5d07a7fc6ff7bffc61f7c7c08007afc0fff7bfc40ff7e1fc7ff78000000780000002ffffffff",
-      "generatedAt": "2026-07-12T22:10:39.623Z",
-      "severity": "medium",
-      "summary": [
-        "iOS (right) is missing the 'Workspace mode' card/header section present at the top of React (left).",
-        "iOS is missing the 'ACCOUNT' section header label above the profile card (React shows a small icon + 'ACCOUNT' header).",
-        "Google account shows 'Connected as artin@slock.ai' on React but 'Not connected' on iOS — inconsistent connection state for the same user.",
-        "Save Profile button on iOS is full-width and pink/red filled, while on React it is a smaller left-aligned button with a disabled/lighter appearance.",
-        "iOS places 'Sign out' inside its own bordered card and uses device-specific copy ('this device'), while React shows an inline 'Change Password' link row and a separate sign-out area below the profile card."
-      ],
-      "likelyCauses": [
-        "iOS build may not have rendered the 'Workspace mode' component (feature flag or conditional render).",
-        "iOS template uses a different section header structure (Profile/Session) and omits the generic 'ACCOUNT' label.",
-        "Connection state is loaded asynchronously and the iOS snapshot was captured before Google connection hydrated, or iOS is not yet wired to the same connected-account state as React.",
-        "Save Profile button styling is using a platform-default primary button rather than the shared design-system variant used in React."
-      ],
-      "suggestedOwner": "iOS platform team",
-      "suggestedFixes": [
-        "Add the 'Workspace mode' card to the iOS Account page to match React (or hide both if the toggle is web-only, then align absence intentionally).",
-        "Insert the 'ACCOUNT' section header label above the profile card on iOS for parity.",
-        "Investigate why Google connected status diverges ('Connected as ...' vs 'Not connected') — verify iOS uses the same account-state source as React and snapshot at the same lifecycle stage.",
-        "Standardize the Save Profile button to the shared primary style (size, color, disabled state) across platforms.",
-        "Decide whether 'Sign out' and 'Change Password' should be in their own cards on iOS or inline rows like React, and align the structure across both."
-      ],
-      "intentional": [
-        "iOS log-out copy says 'Sign out on this device' while React says 'Sign out of this browser' — intentional platform-difference per task #381 / PR #147."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3288410904524649
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff781fc7ff781fc07f787fc8ff7fffc000787fc7e3780088237800083f78ffc00978ffc41f79e3c5307823c7f0783fc7ff780fc430781fc5d07a7fc6ff7bffc61f79fe08007c7c0fff7bfe00ff7c0fc7ff78004000780000002ffffffff",
+      "generatedAt": "2026-07-18T07:37:44.010Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.33241550883730975
     },
     {
       "id": "components.settings.account.provider-linked",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff787fc7ff783fc07f787fc8ff7bffc0007bffc7e378ffc823787fc83f780000017803441f7be3c530783fc7f9783fc7ff780fc4307a7fc5d07a7fc6ff7bffc61f7c7c08007afc0fff7bfc40ff7e1fc7ff78000000780000002ffffffff",
-      "generatedAt": "2026-07-12T22:10:40.250Z",
-      "severity": "medium",
-      "summary": [
-        "iOS version omits the \"Workspace mode\" banner card present at the top of the React baseline.",
-        "iOS adds an extra \"Log out\" section at the bottom (with a red/orange button) that is not visible in the React baseline view.",
-        "Section headings and input labels are uppercase on iOS (\"PROFILE\", \"ACCOUNT\" → \"PROFILE\", \"NAME\", \"DISPLAY NAME\") vs. sentence case on React (\"Profile\", \"Account\", \"Name\", \"Display Name\").",
-        "Google connection row on iOS shows \"Connected\" badge (teal) plus truncated text \"Connected as ar…\" whereas React shows a plain row with full \"Connected as artin@slock.ai\" and no badge.",
-        "Back arrow icon and \"Account\" header appear larger/heavier on the iOS render relative to the surrounding content than on React."
-      ],
-      "likelyCauses": [
-        "Platform-specific layout differences (iOS using a different navigation/grouping pattern than web).",
-        "iOS render includes additional sections (Log out) within the captured viewport while React's viewport cuts off before it.",
-        "Different typography/token mapping between React (web font, sentence case) and iOS (uppercase system styling or label style override).",
-        "Resolution scaling mismatch (1170×2532 vs 390×844) causing visual size and spacing disparities after normalization.",
-        "Truncation behavior on iOS for the Google \"Connected as\" subtext due to a fixed-width badge crowding the label."
-      ],
-      "suggestedOwner": "iOS settings/account component owner",
-      "suggestedFixes": [
-        "Decide whether the iOS view should include the \"Workspace mode\" promo banner; add it if scope requires parity.",
-        "Standardize section title casing across platforms (pick either sentence case or uppercase) via shared design tokens.",
-        "Constrain the \"Connected\" badge or shorten its label so the \"Connected as …\" subtext is not truncated on iOS.",
-        "Match the \"Save Profile\" button sizing and padding to the React baseline (or update both tokens together).",
-        "Align vertical rhythm between Name / Display Name / Email fields with the React spacing scale."
-      ],
-      "intentional": [
-        "The presence of an extra \"Log out\" section on iOS may be intentional platform behavior (iOS surfaces logout more prominently).",
-        "Use of uppercase section labels may be an iOS HIG-aligned styling choice."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.32957933325231903
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff87ff83ff80007fff81fccfff81fc8ff7820c83f780010ff7ffff5ff781fc7ff781fc07f787fc8ff7fffc000787fc7e3780088237800083f78ffc00178ffc41f79e3c5307823c7f9783fc7ff780fc430781fc5d07a7fc6ff7bffc61f79fe08007c7c0fff7bfe00ff7c0fc7ff78004000780000002ffffffff",
+      "generatedAt": "2026-07-18T07:37:44.019Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3325019240896018
     },
     {
       "id": "components.settings.account.password-expanded",
-      "status": "ready",
-      "imageHash": "p1:2ffe2ffe80009fffde3c83ff823cffff83fccfffc3fc8ff781fc83f7f7fc8ff7e7fcdff7fffc7ff7c7c0c7f7ffc08ff7e8148007e1fcfe37c3fc8237bff883f78000c0f787fce1f780007307c3fc7f0797f87ff78000430780fcff0780006ff7ffff61f7ffff43f78fc0bff7cfc08007a3c097f7801d0007ffff0112ffffffff",
-      "generatedAt": "2026-07-12T22:10:44.690Z",
-      "severity": "medium",
-      "summary": [
-        "iOS includes a Profile section with avatar, display name, and Name/Display Name fields that React does not have",
-        "React shows a 'SESSION' section with 'Log out' block and orange button; iOS omits this entirely",
-        "Google connected-account state differs: React shows 'Connected as artin@slock.ai' with no Connect button; iOS shows 'Not connected' with a Connect button",
-        "GitHub state differs: React shows a single Connect button; iOS shows the icon and 'Not connected' label with Connect button",
-        "Section headers differ in case/styling: React uses 'Change Password' (title case); iOS uses 'Change password' (sentence case) and renders it inline with the chevron"
-      ],
-      "likelyCauses": [
-        "Profile, name, and display-name fields were not implemented or were intentionally hidden in the React build",
-        "Log out / Session section is missing from the iOS build (may be moved to a separate screen)",
-        "Connected-account providers list or connection state is out of sync between web and mobile",
-        "Copy casing conventions differ between web (title case) and iOS (sentence case for headers, ALL CAPS for field labels, native iOS HIG)",
-        "Save Profile disabled state in React not mirrored on iOS (or vice versa)"
-      ],
-      "suggestedOwner": "mobile-design-system",
-      "suggestedFixes": [
-        "Decide whether Profile/Name/Display Name fields should exist on web; align components or intentionally scope them to iOS",
-        "Move Log out to a dedicated iOS screen or add it back to the Account screen to match web coverage",
-        "Sync connected-account provider state (Google as Connected vs Not connected, GitHub copy) across platforms",
-        "Normalize header and label casing to a shared design-token spec (e.g., 'Change password', 'Current password') to remove ad-hoc platform casing",
-        "Match Save Profile enabled/disabled visual state across web and iOS using a shared disabled style token"
-      ],
-      "intentional": [
-        "iOS uses native HIG-style ALL CAPS field labels and sentence-case section headers",
-        "Profile/avatar block may be intentionally iOS-only and live behind a separate screen on web",
-        "Log out may be intentionally placed on a separate iOS screen rather than inline"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2318946544065027
+      "status": "pending",
+      "imageHash": "p1:07fe2ffe87fc9ffffffc83fffe3cffff83fccfff83fc8ff780fc83f7a7fc8ff7e7fcdff7fffc7ff7c7c0c7f7e7c08ff7fffc8007e0fcfe37e3fc8237bff883f78000c0f787fce1f780007307c3fc7f0797f87ff78000430780fcff0780006ff7ffff61f7ffff43f78fc0bff7dfc08007b7c097f7801d0007ffff0112ffffffff",
+      "generatedAt": "2026-07-18T07:37:44.049Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.25728419816097536
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff83fc8ff7860c83f7800107f7ffff001787fc9ff783fc7ff787fc7ff7bffc87f7bffc8007effc401787fc7e37800883f7803c83f7fe3c901780008007800081f783fc73f783fc530781fc7f17a7fc4307b7fc4f07bffc80f7c7c08037bfe04017ff3c61f780fc21f2ffffffff",
-      "generatedAt": "2026-07-12T22:10:44.969Z",
-      "severity": "medium",
-      "summary": [
-        "iOS shows a 'Profile' section header while React shows 'ACCOUNT' (intentional platform naming).",
-        "React displays a 'Workspace mode' promotional/info card at the top; iOS omits it entirely.",
-        "iOS surfaces two additional error states ('Profile save failed: server_unavailable' and 'Provider link failed: oauth_provider_unavailable') that React does not render in the same view.",
-        "iOS 'Save Profile' button label is 'Retry' and is visually prominent (solid pink); React's 'Save Profile' button is rendered in a disabled/greyed style.",
-        "iOS Connected accounts shows Google and GitHub both as 'Not connected'; React shows Google as 'Connected as artin@slock.ai' and GitHub as 'Not connected'."
-      ],
-      "likelyCauses": [
-        "React baseline was captured in a different error state (avatar upload only) than the iOS current, which captures avatar + save + provider errors.",
-        "React component conditionally hides the Workspace mode card on the iOS-equivalent viewport or it is intentionally desktop-only.",
-        "Save Profile CTA switches copy/style based on the active error state (disabled vs retry).",
-        "Connection status differs because the React snapshot predates the Google disconnect or iOS uses a different account fixture.",
-        "Form label capitalization differs by platform design system convention."
-      ],
-      "suggestedOwner": "settings-account-frontend",
-      "suggestedFixes": [
-        "Capture a React baseline that matches the iOS error fixture (avatar + server + provider errors) for a true apples-to-apples comparison.",
-        "Decide whether Workspace mode card should appear on mobile/iOS; if not, suppress in React at the same breakpoint for parity.",
-        "If 'Retry' is the intended button in error state, update React's Save Profile to mirror the copy and styling when submission fails.",
-        "Verify Connected accounts data source so both platforms reflect the same Google connection status for the test user.",
-        "Align form-label casing strategy or document the per-platform typography divergence as intentional."
-      ],
-      "intentional": [
-        "Account section header label: React 'ACCOUNT' vs iOS 'Profile' (platform-difference)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4103870458135861
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff80007fff81fccfff83fc8ff7860c83f7800107f7ffff001781fc9ff781fc7ff787fc7ff7fffc87f787fc80078808401780007e378ffc83f7cffc83f79e3c9017803c8007800001f783fc73f783fc530780fc7f17b7fc4307a7fc4f07bffc80f7c7c08037efc04017bb0461f780fc21f2ffffffff",
+      "generatedAt": "2026-07-18T07:37:44.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.41131094638203647
     },
     {
       "id": "components.settings.server.profile",
@@ -1980,243 +1630,6 @@
       "metricMismatch": 0.21314862073155916
     },
     {
-      "id": "components.settings.administration.admins",
-      "status": "ready",
-      "imageHash": "p1:07fe0ffecdfe07fe800080fe83f41f0683f8001680000012800000068000000280001ff2800003f283fc03f283fc000280000006c00307f6ffff0602ffff0206ffff0202fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-07-12T22:10:47.657Z",
-      "severity": "high",
-      "summary": [
-        "React renders the 'Owners & Admins' admin-management UI with member dropdown, role selector, Update Role button, and admin list item",
-        "iOS renders an entirely different 'Administration' screen with back button, Profile (Name/Slug inputs, Save Profile button), and Danger Zone (Delete Server)",
-        "The two screens are different features/views: iOS does not implement the admin/owners management screen at all",
-        "No visual correspondence exists between the two rendered components — pixel mismatch of ~19% driven by completely different content, not styling drift",
-        "Header text differs: 'Settings Administration Admins' (React) vs 'Administration' (iOS)"
-      ],
-      "likelyCauses": [
-        "iOS target/test routed to the wrong Administration sub-screen (Profile/Danger Zone) instead of the Admins sub-screen",
-        "React baseline captured the Admins sub-tab while iOS captured the parent Administration overview",
-        "Navigation state mismatch: iOS did not navigate into the Admins section before screenshot",
-        "Component id 'components.settings.administration.admins' suggests separate route that iOS implementation may not have wired up",
-        "Missing iOS implementation of the admins management view"
-      ],
-      "suggestedOwner": "Mobile (iOS) team — Settings/Administration feature owner",
-      "suggestedFixes": [
-        "Verify iOS routing: ensure the admins sub-screen is reachable from Administration and is the screen captured for this test id",
-        "If the Admins view is not yet implemented on iOS, either implement it to match React parity or skip this visual test until parity lands",
-        "Align screenshot capture scripts to target the same route on both platforms (Admins sub-screen, not Administration overview)",
-        "Add the missing UI elements on iOS: 'Owners & Admins' section title with count, member-select dropdown, role dropdown, Update Role action, and admin list rows with avatar, name, email, role badge, and 'Last owner' indicator",
-        "Match typography weight and size for section headings, field labels, and button labels between platforms"
-      ],
-      "intentional": [
-        "Different screen captured on iOS may be intentional if Admins is not part of iOS scope — in that case this test should be excluded from cross-platform parity comparisons",
-        "iOS may be using a higher-density layout (1170×2532 vs 390×844) by design for tablet/large-screen treatment"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.19078327324772826
-    },
-    {
-      "id": "components.settings.administration.invites",
-      "status": "ready",
-      "imageHash": "p1:07fc0ffc83fe00fe800000fe01f00f0601f0000607f000020000000280000002fffe1ff2fffe0012fffe03f2fffe0002fffe0006fffe01f2fffe0602fffe0206fffe0002fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-12T22:10:48.575Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows the full Administration page (Profile, Danger Zone/Delete Server) while React baseline only shows the Pending Invites section — content scope differs",
-        "React crop targets the invites component bounds; iOS screenshot is uncropped and renders the entire screen, making the comparison region mismatch",
-        "React has an envelope mail icon next to 'PENDING INVITES 2' header; iOS shows a back-arrow icon next to 'Administration' title — different navigation header",
-        "iOS includes a 'NAME *' label with asterisk (required indicator) above the Name input; React invites list has no equivalent required-field indicator styling",
-        "iOS Profile card has a pink/light-red disabled-looking 'Save Profile' button; React pending invites card has no such action button"
-      ],
-      "likelyCauses": [
-        "Comparison contract and crop region misaligned: baseline cropped to element bounds vs iOS full-screen capture",
-        "Possible navigation mismatch — React test page rendered the Invites component while iOS navigated to a different Administration sub-route",
-        "Different test fixtures: React rendered invites data state, iOS rendered server profile/danger zone state",
-        "Screenshot orchestration not synchronized to the same view path on both platforms"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Align the iOS capture crop with the same component bounds used for the React baseline (e.g., invite list region)",
-        "Ensure both sides render the same screen state (Invites) before snapshotting",
-        "Add a route guard or explicit deep-link to the Invites section on iOS so both platforms capture identical content",
-        "Standardize tolerance contract so full-screen iOS captures are compared against the equivalent full-screen React view, not an element crop",
-        "Verify the fixture/test data matches (same invites, same server config) before capturing"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.12227724443364252
-    },
-    {
-      "id": "components.settings.administration.join-links",
-      "status": "ready",
-      "imageHash": "p1:07fe07fed7fe07fe800080fe8ffc1f0e800000d68000001280f800068000000280043ff280fc0ff2800003f280000002adc08006800007f680010602ffff0206ffff0202ffff0006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-12T22:10:50.225Z",
-      "severity": "high",
-      "summary": [
-        "Two completely different screens are being compared: React shows 'Invite Links' (create/manage join links), iOS shows 'Administration' (server profile + danger zone).",
-        "iOS renders Profile form (Name, Slug, Save Profile) instead of the Max Uses / Expires At / Create Invite Link form.",
-        "iOS renders Danger Zone (Delete Server) card which does not exist in the React view.",
-        "Header/heading differs: React uses 'INVITE LINKS 1' with link icon; iOS uses 'Administration' with a back-arrow icon button.",
-        "Layout structure differs: React has a single bordered card with two sections (form + generated link); iOS has a top header bar plus two separate bordered cards (Profile, Danger Zone)."
-      ],
-      "likelyCauses": [
-        "Wrong iOS route/screen rendered — Administration/Profile is mounted instead of Settings > Join Links.",
-        "Feature parity gap: iOS implementation of join links is missing or not wired up; a placeholder/parent screen is shown.",
-        "iOS deep-link or navigation state pointed to the wrong tab/sub-view.",
-        "Crop mismatch: element-bounds crop on React vs. no crop on iOS leads to different content being framed, but the screen identity difference is real."
-      ],
-      "suggestedOwner": "iOS engineering (settings/administration feature owner)",
-      "suggestedFixes": [
-        "Verify the iOS navigation route for Settings > Administration > Join Links; ensure the Join Links screen is mounted, not the parent Administration profile screen.",
-        "If Join Links is not yet implemented on iOS, either implement it to match React (Max Uses, Expires At, Create Invite Link, list with copy/delete) or explicitly show a 'Not implemented' placeholder.",
-        "Align page header: on iOS, replace generic 'Administration' header with 'Invite Links' (and the count badge) when on this route, and ensure a back button is present on both.",
-        "Unify card/styling tokens across platforms (border weight, card padding, button color palette for primary/destructive actions).",
-        "Add a visual regression test that pins this exact route on iOS to prevent the Administration screen from regressing into this view."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1445160070752488
-    },
-    {
-      "id": "components.settings.administration.pre-join-agreement",
-      "status": "ready",
-      "imageHash": "p1:03fe03fef1fe13fe80f080ff800c1fffa00c0bf7bffc00129ffc00068008000280003ff280000ff2800803f287f80002bff88007bff807f780000606bffc02068ffc0202800c8007805cffffbffcffffbdfcffff87fcffff87fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
-      "generatedAt": "2026-07-12T22:10:52.956Z",
-      "severity": "high",
-      "summary": [
-        "iOS screenshot renders the Administration/Profile/Delete Server view instead of the Pre-Join Agreement screen targeted by the test ID",
-        "React shows the Pre-Join Agreement form (checkbox, Title, Body textarea, Preview, Save); iOS shows the wrong screen entirely",
-        "Page titles differ: React uses 'PRE-JOIN AGREEMENT' with a document icon; iOS uses 'Administration' with a back chevron in a square container",
-        "iOS Name input shows 'Visual Server' and the Save Profile button is disabled-styled (muted/pink with reduced opacity), while React Save is a solid pink CTA at full opacity",
-        "iOS has a Danger Zone with a red 'Delete Server' button; React has no danger zone and no delete control on this screen"
-      ],
-      "likelyCauses": [
-        "iOS target route is wrong — app navigated to /Administration/Profile instead of /Administration/Pre-Join-Agreement",
-        "Pre-Join Agreement component not implemented or not wired in the iOS build",
-        "Screen-to-component mapping in the iOS visual-test harness is incorrect for this ID",
-        "Possible stale or wrong deep-link used during the iOS screenshot capture",
-        "Discrepancy in disabled-state styling tokens (opacity/saturation) between platforms"
-      ],
-      "suggestedOwner": "iOS Administration settings engineer (with visual-testing harness owner)",
-      "suggestedFixes": [
-        "Verify iOS app routing from the Administration landing to the Pre-Join Agreement screen; confirm tab/section state matches React default",
-        "Implement Pre-Join Agreement component in iOS: requirement checkbox, Title input, Body textarea (with 5000 char counter), Preview block, Save CTA, and version-audit helper text",
-        "Re-map the screenshot test harness so ID 'components.settings.administration.pre-join-agreement' targets the agreement screen, not the profile screen",
-        "Align disabled-state styling tokens (Save button opacity, border/shadow stack) with the React design spec",
-        "Unify label casing policy and required-field indicator (red asterisk) across both platforms"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.25602307557283865
-    },
-    {
-      "id": "components.settings.administration.onboarding",
-      "status": "ready",
-      "imageHash": "p1:07fe07fec7fe07fe838080fe807c1f0e807c00d6806800128000000680fc000280bc3ff280040ff29ff803f28000000287fc8006800007f687c00602a1c0020680000202ffff0006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-13T22:12:03.442Z",
-      "severity": "high",
-      "summary": [
-        "React shows the Onboarding settings panel (Human Onboarding Agent dropdown, New Agent Greeting dropdown, Save button, Server setup card with 'Finish setup' button); iOS shows an entirely different Administration/Profile/Danger Zone screen (Name, Slug, Save Profile, Delete Server).",
-        "iOS header reads 'Administration' with a back arrow; React header reads 'ONBOARDING' with a briefcase icon — different title and different navigation affordance.",
-        "React contains an active 'Save' button (pink/filled) and a 'Finish setup' outlined CTA; iOS shows a disabled-looking pink 'Save Profile' button and a red filled 'Delete Server' button — different primary actions and color semantics.",
-        "React renders two select/dropdown controls with chevron caret icons; iOS renders two text input fields with a required-asterisk indicator — different form control types entirely."
-      ],
-      "likelyCauses": [
-        "iOS navigation landed on the wrong sibling screen (Administration/Profile) instead of the Onboarding settings route.",
-        "Route/navigation stack mismatch in the iOS app: tapping Administration → Profile rather than Administration → Onboarding.",
-        "Component reuse or screen mapping error between web and mobile during refactor of Administration settings."
-      ],
-      "suggestedOwner": "iOS / mobile settings-navigation owner",
-      "suggestedFixes": [
-        "Verify iOS routing: tapping 'Administration' should open the Onboarding subsection (Human Onboarding Agent, New Agent Greeting), not the Profile subsection.",
-        "Confirm the crop/target for iOS is `components.settings.administration.onboarding` and not `…administration.profile`; re-capture if needed.",
-        "Ensure shared form components (select vs text input, Save vs Save Profile, primary CTA color/state) match the React baseline on iOS.",
-        "Update Slock baseline contract if the iOS screen intentionally diverges, or fix the iOS screen to mirror the React Onboarding layout.",
-        "Recompare after fix with pixelRatio tolerance ≥0.02 to confirm alignment and missing-element issues are resolved."
-      ],
-      "intentional": [
-        "If iOS intentionally uses a separate Administration/Profile flow, mark this baseline-target pair as intentionally different and update the test mapping."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.15567370140829861
-    },
-    {
-      "id": "components.settings.administration.member-permissions",
-      "status": "ready",
-      "imageHash": "p1:03fc03fcc0fe01fe800000fe80000f0623f40006200c000287fc00028000000280001ff2fffe0012fffe03f2fffe0002fffe0006fffe03f2fffe0602fffe0206fffe0002fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-12T22:10:54.911Z",
-      "severity": "high",
-      "summary": [
-        "Wrong screen rendered on iOS: shows 'Administration' with Profile (Name/Slug) and Danger Zone (Delete Server), while React baseline shows 'Member Permissions' with a 'Hide human directory and counts from members' toggle.",
-        "iOS is missing the 'Member Permissions' section entirely, including the people icon header, checkbox control, descriptive body text, and pink 'Save' button present in React.",
-        "iOS shows an unexpected back-arrow button next to the 'Administration' header, which has no counterpart on the React baseline.",
-        "Both buttons on iOS appear disabled (washed-out pink 'Save Profile' and low-contrast coral 'Delete Server'), whereas React's 'Save' button is rendered in a solid pink/rose fill.",
-        "Typography differs: iOS 'Administration' header is noticeably larger and uses a different font weight/family than React's 'MEMBER PERMISSIONS' uppercase tracking header."
-      ],
-      "likelyCauses": [
-        "iOS view is bound to the wrong route/screen identifier (rendering Administration instead of Member Permissions).",
-        "Component was not registered or conditionally rendered for the iOS target screen.",
-        "iOS button state is stuck in disabled/loading due to missing form validation context or API hydration that React provides.",
-        "Inconsistent design-token mapping between platforms (colors, type scale, spacing)."
-      ],
-      "suggestedOwner": "iOS engineering — route/render mapping for Member Permissions screen",
-      "suggestedFixes": [
-        "Verify iOS navigation/route configuration so the 'Member Permissions' route renders this view instead of 'Administration'.",
-        "Ensure the people-icon section header, checkbox, descriptive text, and Save button are wired into the iOS Member Permissions view.",
-        "Restore enabled state for Save Profile and Delete Server buttons, or align disabled style with React's solid pink primary CTA.",
-        "Reconcile typography and spacing tokens (header size/weight, card padding, form field height) across iOS and React baselines.",
-        "Add visual-regression coverage for the Member Permissions iOS route so future mismatches are caught."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1331490258030542
-    },
-    {
-      "id": "components.settings.administration.translation",
-      "status": "ready",
-      "imageHash": "p1:07fc07fcc7fe01fe800000fe80040f0627fc00062004000207ec000287fc000280001ff2fffe0012fffe03f2fffe0002fffe0006fffe03f2fffe0602fffe0206fffe0002fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-12T22:10:55.249Z",
-      "severity": "high",
-      "summary": [
-        "The iOS screenshot shows an entirely different screen (Administration/Profile/Delete Server) instead of the Translation settings panel shown in the React baseline.",
-        "React baseline renders a 'TRANSLATION' section header with an 'Enable message translation for this server' checkbox card and a 'Save' button.",
-        "iOS renders a full 'Administration' view with a back arrow, 'Profile' section (Name, Slug inputs, Save Profile button), and a 'Danger Zone' with a red 'Delete Server' button.",
-        "The Translation toggle and its descriptive text are completely missing from the iOS render."
-      ],
-      "likelyCauses": [
-        "iOS test captured the wrong screen/route (showing Administration instead of the Translation sub-screen).",
-        "Navigation state mismatch: iOS may not have navigated into the Translation settings before screenshotting.",
-        "Component key/config drift: the iOS build may not include or may render a different route under the 'components.settings.administration.translation' ID.",
-        "Possible deep-link or back-button default landing on the Administration parent screen."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Verify the iOS test harness navigates into the Translation settings view (not the parent Administration screen) before capture.",
-        "Confirm the iOS route mapping for 'settings.administration.translation' is wired to the Translation component, not the Administration parent.",
-        "Add explicit wait/assertion for 'TRANSLATION' header or 'Enable message translation' copy before snapshotting on iOS.",
-        "Align iOS visual regression screenshot naming and crop contract to the component-bounds used in the React baseline so the same region is compared.",
-        "If the iOS app intentionally lacks this screen, gate the visual test rather than letting it mismatch the parent screen."
-      ],
-      "intentional": [
-        "If the Translation feature is intentionally Web-only, mark this component as mobile-not-supported and exclude from cross-platform visual diffs."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1319027558364051
-    },
-    {
       "id": "components.settings.billing.page",
       "status": "ready",
       "imageHash": "p1:1ffe1ffe9bff9bff81fe80ff9ffe1fff81ff01f79ffc1ff78ff41ef7a0fc001780040ff78ffc6ff7a1fc6ff7a03c6837a87c6bf7adfc41f7a1fc60f7bf7c60779ffc6ff7800027f780fc40f7bffc6077800c7bf7800c4057801c4ff780007ff7efff0ff7807c7ff7bffc6007800c000787fc83ff99fc0ff701fc1ff2ffffffff",
@@ -2251,37 +1664,16 @@
     },
     {
       "id": "components.settings.language-region.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff807f803f9ffe3fff87ff027781fc7ff3817c007383fc000383fc80078ffc03f7840403f380013c13f7ff003387fc00078ffc003380387ff3800000f78284080781fc000781fc07f387fc800787fc87ff80000ff3ffff7ff3ffff0ff7ffff0007ffff07f7ffff00f3ffff00f3ffff0ff3fffe07f2ffffffff",
-      "generatedAt": "2026-07-11T22:11:26.010Z",
-      "severity": "high",
-      "summary": [
-        "iOS adds a missing 'App language' section with System/English/简体中文 selector that does not exist in React",
-        "iOS has 3 translation mode options (Automatic/Manual/Original) vs React's 2 options (Auto/Off)",
-        "iOS adds a 'Preferred translation language' dropdown (English) absent from React",
-        "iOS uses uppercase label typography style ('TRANSLATION MODE', 'TIMEZONE', 'TIME FORMAT') while React uses Title Case ('Translation mode', 'Timezone', 'Time format')",
-        "iOS section header icons are placed inline next to title (e.g., '🕐 Date & Time') while React uses standalone icon labels with different spacing"
-      ],
-      "likelyCauses": [
-        "iOS implemented additional app-language selector feature not ported to React",
-        "Translation mode options were expanded in iOS (added Manual and Original) but React was not updated",
-        "Component design system divergence between iOS and React label typography conventions",
-        "Save button disabled state in iOS may indicate unsaved-changes detection logic not present in React",
-        "Different section grouping: iOS splits Language into two sections (App language + Language) while React has one Language section with Translation mode nested"
-      ],
-      "suggestedOwner": "frontend-platform",
-      "suggestedFixes": [
-        "Port the 'App language' System/English/简体中文 selector from iOS to React, or remove it from iOS to match",
-        "Add Manual and Original translation mode options to React, or align iOS to Auto/Off only",
-        "Add 'Preferred translation language' dropdown to React or remove from iOS",
-        "Normalize section title casing to be consistent across platforms (pick one convention)",
-        "Enable Save button consistently across both platforms when changes are present"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18600613008195943
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-18T07:37:44.012Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     },
     {
       "id": "components.settings.appearance.page",
@@ -2313,7 +1705,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18000938415630363
+      "metricMismatch": 0.1799773159962733
     },
     {
       "id": "components.settings.notifications.page",
@@ -2354,37 +1746,16 @@
     },
     {
       "id": "components.settings.connected-apps.page",
-      "status": "ready",
-      "imageHash": "p1:fffe7ffeffffdfff80ff807ffe01ffffdc00b3f7ffc18207c03ece07fffefff7fffefff7c00efff7800e87f78001bb378ffcbb37800c8007807c8007807cbfff87fc8017bff89ff7bfe0ff078001ff0787fdff1780008007800487178001bff780fe80078ffea7f7fffe8007fff087d787e1ff078001dff780fc8707ffffffff",
-      "generatedAt": "2026-07-09T22:22:06.841Z",
-      "severity": "high",
-      "summary": [
-        "iOS uses stacked vertical card layout for Marketplace/Installed/My apps with large numeric stats (3, 2, 1), while React shows them as inline tab-like buttons in a single row.",
-        "iOS places 'EXPERIMENTAL' badge below the description text inside the card; React positions it inline in the header row next to 'CONNECTED APPS'.",
-        "iOS renders the GitHub app description as a wrapped multi-line block including 'github.com', whereas React uses a single short line 'Built-in source control integration.'",
-        "iOS shows app category meta as inline dot-separated list ('Productivity · Raft Labs · Messages and channel metadata'); React uses a dedicated 'PRODUCTIVITY' pill badge.",
-        "Action button differs: React uses 'Install' (pink) for Slack Bridge while iOS uses 'Details' (white/outlined) with an eye icon."
-      ],
-      "likelyCauses": [
-        "Independent redesign of the iOS settings page rather than a direct port of the React layout.",
-        "Different component primitives used on iOS (stat cards vs. tab buttons) for marketplace counts.",
-        "Component-level differences in how app metadata (category, publisher, description) is aggregated into a single meta line vs. separate fields.",
-        "Action button mapping changed (Install → Details) possibly reflecting navigation pattern differences on iOS.",
-        "Iconography tokens differ between React web and iOS implementations (link, eye, magnifier, cube/store icons)."
-      ],
-      "suggestedOwner": "iOS settings / connected-apps feature owner (cross-platform design system liaison)",
-      "suggestedFixes": [
-        "Align iOS Marketplace/Installed/My apps presentation with React's inline tab-style buttons, or document the divergence as intentional if stat cards are preferred.",
-        "Move the 'EXPERIMENTAL' badge to a consistent position (header row) on both platforms.",
-        "Unify the GitHub app description content and line wrapping across platforms.",
-        "Standardize the action button per app state: 'Install' for uninstalled apps and 'Open' for installed, matching React behavior.",
-        "Add the magnifier icon to the React search field (or remove it on iOS) to keep input affordance consistent."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.32530650409797324
+      "status": "pending",
+      "imageHash": "p1:fffe7ffeffffdfff80ff807fffc1ffffffc0b3f7ffc18207c03ece07fffefff7fffefff7c00efff7800e87f78001bb37b7fcbb378001800783fc80078001bfff8ffe8017800c9ff7807cff07867cff07affcff17bfe08007802087178001bff780fe80078ffea7f78ffe8007fff087d787f1ff078001dff780fc8707ffffffff",
+      "generatedAt": "2026-07-18T07:37:44.179Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.358830896153171
     },
     {
       "id": "screens.auth.login.signing",
@@ -2417,13 +1788,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25293946881624607
+      "metricMismatch": 0.2529566843547886
     },
     {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.491Z",
+      "generatedAt": "2026-07-18T07:37:44.098Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2436,7 +1807,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.491Z",
+      "generatedAt": "2026-07-18T07:37:44.098Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2449,7 +1820,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.491Z",
+      "generatedAt": "2026-07-18T07:37:44.098Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2462,7 +1833,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.491Z",
+      "generatedAt": "2026-07-18T07:37:44.098Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2475,7 +1846,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.491Z",
+      "generatedAt": "2026-07-18T07:37:44.098Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2488,7 +1859,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.491Z",
+      "generatedAt": "2026-07-18T07:37:44.098Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2500,7 +1871,7 @@
     {
       "id": "screens.members.human.profile",
       "status": "ready",
-      "imageHash": "p1:03fe07fc03f803fe01f803fe0000000003fe7ffe0ffe7ffe8ffe7ffe87fe7ffe9ffe7ffefffe7ffebffe7ffe8ffe7ffe8ffe7ffe87fe7ffe8bfe7ffe93fe7e7ed7fe7e7e83fe700ec3fe7afefffe7ffedffe7ffe80007ffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "imageHash": "p1:07fe07fc03f803fe01f803fe0000000003fe7ffe0bfe7ffe8ffe7ffe87fe7ffe9ffe7ffefffe7ffebffe7ffe8ffe7ffe8ffe7ffe87fe7ffe8bfe7ffe93fe7e7ed7fe7e7e83fe700ec3fe7afefffe7ffedffe7ffe80007ffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
       "generatedAt": "2026-07-13T22:12:10.271Z",
       "severity": "high",
       "summary": [
@@ -2526,49 +1897,25 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09265504111475675
+      "metricMismatch": 0.09336391623121476
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe8010003180100031000c238000843fa48000803f8fff001f8fff0fffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff0fff8fff0fffc0fff8ff81fff1fffffff3ffd47fffffffffffffdfff0c3f80010c3f80010c7f80ff0027807f0003807ff7ffffff97ffdfff97ff80f85c02ffffffff",
-      "generatedAt": "2026-07-12T22:12:11.194Z",
-      "severity": "medium",
-      "summary": [
-        "Header layout differs: iOS uses a single inline row with avatar square followed by title and buttons, whereas React shows an extra standalone avatar square plus a back button above the title row.",
-        "Primary tabs bar content mismatch: React shows 'Profile | Activity' tab labels, iOS shows 'Profile | Reminders' tab labels.",
-        "The 'Stop Agent / Restart / Reset' context-menu overlay is positioned differently: in React it is anchored to the right action-button area; in iOS it appears wider, left-aligned, and partially overlaps the title/avatar.",
-        "iOS adds a 'Working' status row with a yellow status indicator next to the display name, which is absent in React.",
-        "INFO section layout: React stacks Computer, Connected, and Created/Creator in distinct rows; iOS flattens Created/Creator into a single row with Creator block inline and uses a different value for Computer ('Jiachengs-Mac...') with 'Connected · daemon v0.61,1' inline rather than 'computer v0.0.48'."
-      ],
-      "likelyCauses": [
-        "Tab label strings (Activity vs Reminders) hard-coded differently between React and iOS implementations.",
-        "Layout component used a single-row container on React but a wrapping grid on iOS for Runtime Config chips and environment variables.",
-        "Status indicator ('Working') implemented only on the iOS client.",
-        "Information density rules differ per platform: iOS reduces vertical space by inlining Created/Creator.",
-        "Context-menu / popover positioning logic differs between React (window-based) and iOS (native overlay anchored to touch point)."
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Unify tab labels so both platforms show the same set (decide canonical label: Activity or Reminders).",
-        "Match the Runtime Config and Environment Variables chip layout across platforms (either both single-row or both wrapping).",
-        "Add a 'Working'/agent status indicator to the React view to match iOS, or remove from iOS for parity.",
-        "Consolidate the Computer/Connected version string and Created/Creator row ordering to match across platforms.",
-        "Verify the agent-lifecycle actions popover anchors consistently relative to the action button on both platforms."
-      ],
-      "intentional": [
-        "Platform-specific status indicator may be intentional UX (Working badge added on iOS for clarity).",
-        "Different chip wrapping on iOS may be a deliberate responsive adaptation for the 1170×2532 canvas."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20225422287033656
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe8010003180100021000c238000843fae8000803f8fff001f8fff0fffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff0fff8fff0fffc0fff8ff81fff9fffffff1ffd47fffffffffffffdfff0c3f80010c3f80010c7f80ff0027807f0003807ff7ffffff97ffdfff97ff80f85c02ffffffff",
+      "generatedAt": "2026-07-18T07:37:44.227Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20240848759806107
     },
     {
       "id": "components.members.avatar-management",
       "status": "ready",
-      "imageHash": "p1:bffe7ffec03b823386b10a31000000008ffe001e81ff0b3f8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffff81ffc03bffffffffffffffffdfffffff0fff8fffffffdffff9ffc0fff3fffffffffffefffffffeff8c3fffff8c3fdbdb9c7f800189ffffffffff",
+      "imageHash": "p1:bffe7ffec03b823386b10a31000000008ffe001f81ff0b3f8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffff81ffc03bffffffffffffffffdfffffff0fff8fffffffdffff9ffc0fff3fffffffffffefffffffeff8c3fffff8c3fdbdb9c7f800189ffffffffff",
       "generatedAt": "2026-07-12T22:11:00.594Z",
       "severity": "high",
       "summary": [
@@ -2597,151 +1944,38 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2540632046556217
-    },
-    {
-      "id": "screens.settings.computers",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffc87fc03f883f801f800000000801c001c8004000000000000807c00fc80fc000080000000fffe00fcfffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-09T22:22:10.459Z",
-      "severity": "high",
-      "summary": [
-        "iOS renders a third list item (\"Legacy daemon\") that is missing from the React baseline",
-        "Jiachengs-MacBook-Pro version label differs: React shows \"v0.0.48 → v0.0.50\" with the target version in orange, iOS shows only \"v0.0.48\"",
-        "Studio Test Rig subtitle differs: React displays \"Design QA and preview capture\" with \"computer offline\" beneath, iOS displays \"computer offline -> v0.0.50\"",
-        "Studio Test Rig status indicator differs: React shows a filled gray dot, iOS shows an empty/outlined circle",
-        "Notification badge placement differs: React has a pink notification dot on the monitor icon's top-right for Jiachengs-MacBook-Pro; iOS places the pink dot on Studio Test Rig instead"
-      ],
-      "likelyCauses": [
-        "Different underlying data set or sort order on iOS, surfacing an extra device",
-        "Version-update affordance string not implemented on iOS (no \"→ v0.0.50\" upgrade indicator)",
-        "iOS renders a different secondary line for offline devices (upgrade link vs. description)",
-        "Status indicator component diverges between platforms (filled vs. outlined dot)",
-        "Notification/alert binding logic differs per platform, placing the badge on a different item"
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Align data source between React and iOS so the same device list (including Legacy daemon) is rendered or intentionally hidden",
-        "Implement the \"current → available version\" upgrade indicator on iOS, matching the React \"v0.0.48 → v0.0.50\" treatment",
-        "Standardize the secondary line for offline computers across platforms (pick description + \"computer offline\" or \"computer offline -> vX.Y.Z\")",
-        "Unify the status dot styling (filled gray for offline) between iOS and React implementations",
-        "Align notification badge binding so the pink dot consistently targets the same device record"
-      ],
-      "intentional": [
-        "Higher iOS canvas resolution (1170×2532 vs 390×844) produces larger absolute pixel sizes but identical logical layout"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.07078320573581232
-    },
-    {
-      "id": "screens.settings.computer-detail",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe873f07be800e000600020d028007000780ff0dfe8fff0ffeffffffff81ff81fffffefffe87ffdffffffffffffffffffeffffffff9fff9fffdfff9fffffff9fff81ffdfff807f00ff807f0003807f8001807f0003803f00038003c00f80038fff83ffeffeffffffffd7ff00ffffff00ff80fe807e00fe0060ffffffff",
-      "generatedAt": "2026-07-09T08:44:48.885Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows 7 runtime tags while React only shows 5 runtime tags, with iOS displaying Antigravity CLI and Kimi Code in a two-column grid layout versus React's single-column stack",
-        "React shows 'v0.0.48 (update available)' in orange/highlighted text while iOS shows 'v0.0.48' in plain black text - missing the update indicator",
-        "React displays 'No description' in italic placeholder style while iOS shows it in normal roman text",
-        "React uses a monospace/code font for 'Jiachengs-MacBook-Pro.local', the v0.0.48 version number, and the 'Jun 18, 2026' date; iOS uses a standard sans-serif font for the same values",
-        "iOS lays out runtime chips in a 2-column wrap grid; React stacks them vertically in a single column"
-      ],
-      "likelyCauses": [
-        "iOS SwiftUI implementation is using a 2-column LazyVGrid for runtime chips while the React web view uses a single-column wrap/flow",
-        "The 'update available' badge logic (orange highlight on v0.0.48) was not ported from the React baseline to the iOS build",
-        "iOS TextField/SwiftUI font default (.body) is being applied to monospaced fields like hostname, version, and date where the React version uses a mono font token",
-        "The 'No description' placeholder is rendered as a real Text view in iOS rather than a placeholder/italic style as in React",
-        "Cropping contract difference: baseline crop is element-based (390×844) while current iOS uses null crop, causing vertical scaling and content shift"
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Wrap detected-runtime chips in a 2-column grid on iOS to match React layout, or alternatively align React to iOS — confirm with design which is the source of truth",
-        "Port the 'update available' state styling: render 'v0.0.48' in the warning/orange color token and append ' (update available)' suffix when the version is outdated",
-        "Apply the monospace font token (e.g. '.monospacedSystemFont' or design-system mono) to hostname, version, and date fields on iOS",
-        "Render 'No description' as italic placeholder-styled text on iOS to match React's empty-state pattern",
-        "Unify the safe-area / nav-bar height between React and iOS routes so header bounding boxes align"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24353067066337208
+      "metricMismatch": 0.25410438692429216
     },
     {
       "id": "screens.settings.server-danger-modal",
-      "status": "ready",
-      "imageHash": "p1:ffffffff800180018000000180000001800100018000000180000001800000018000fffd8000fffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffdfffe0001800000018001000180010001800100018001000180010001800100018000000180018001ffffffff",
-      "generatedAt": "2026-07-11T22:11:30.239Z",
-      "severity": "high",
-      "summary": [
-        "Modal on iOS is positioned higher (top-aligned, near the page header) vs React modal centered/lower in viewport",
-        "iOS modal overlays and partially clips the underlying Profile content (PROFILE label and Name field are visible behind/above modal); React modal sits below the profile card with no overlap",
-        "iOS Cancel/Delete Server buttons are right-aligned at modal bottom; React buttons are also right-aligned but visually appear larger relative to modal width",
-        "Delete Server button on iOS appears narrower/more compact and its disabled pink fill looks lighter; React version is wider with darker disabled fill",
-        "Warning banner (pink box) on iOS has tighter padding and shorter line breaks ('Visual Server' wraps differently); React version has more generous internal padding and wider text wrapping"
-      ],
-      "likelyCauses": [
-        "iOS modal uses sheet-style top-anchored presentation instead of centered overlay",
-        "iOS uses native modal sizing/padding defaults rather than React's modal container styles",
-        "Different button sizing tokens between platforms (compact iOS touch targets)",
-        "Disabled state styling for destructive button differs (lighter pink on iOS vs darker red on React)",
-        "Typography line-height or container width differs, causing warning text to reflow differently"
-      ],
-      "suggestedOwner": "mobile-design",
-      "suggestedFixes": [
-        "Center the iOS modal vertically (or align to React's vertical position) and increase modal max-height to avoid compressing content",
-        "Increase iOS modal horizontal padding to match React so warning text wraps the same way",
-        "Unify destructive button disabled style across platforms (same pink/red shade, same width rules)",
-        "Match scrim/dim opacity between iOS and React modal backdrops",
-        "Ensure iOS modal z-order/inset prevents underlying Profile/Name fields from showing through behind the modal"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.8542431239113704
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-18T07:37:44.146Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffec7fe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffec1ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
-      "generatedAt": "2026-07-13T22:12:11.391Z",
-      "severity": "high",
-      "summary": [
-        "iOS render is missing the full bottom tab bar container — labels and icons overlap with the viewport edge instead of sitting inside a contained bar with the yellow active highlight.",
-        "iOS is missing the entire middle scroll content: 'PINNED' section with 'Drag channels or DMs here to pin' empty state and 'JOINT CHANNELS' section with skeleton rows are absent.",
-        "iOS CHANNELS list is vertically offset upward (starts much higher on screen) than the React baseline, reducing top spacing under the header and compressing vertical rhythm.",
-        "Bottom tab labels on iOS ('Home','Tasks','Members','Settings') are rendered very faintly in light gray and overlap the icons, whereas React shows bold black labels separated cleanly below the icons.",
-        "Header 'Visual Server' dropdown caret/label and yellow banner have slightly different proportions on iOS (taller banner, smaller black pill) versus the React baseline."
-      ],
-      "likelyCauses": [
-        "iOS template renders the home view without the 'Pinned' and 'Joint Channels' sections (likely gated by a feature flag or empty-state condition not triggered on iOS).",
-        "Bottom tab bar implementation on iOS lacks the segmented container background and active-state yellow highlight; labels are styled with insufficient contrast/opacity.",
-        "Vertical layout/section spacing constants differ between React and iOS implementations, causing channels list to start at a different Y offset.",
-        "Label typography weight on iOS is too light (or color too close to background) and baseline alignment relative to icons is off."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Add the Pinned and Joint Channels sections to the iOS Home view, matching React's structure and spacing.",
-        "Wrap the iOS tab bar items in a contained bar with the same yellow active-state background used in React, and separate labels from icons with proper vertical spacing.",
-        "Increase iOS tab label font weight (e.g., semibold) and color to near-black so labels read clearly and do not overlap icons.",
-        "Align the iOS Channels section top padding with the React baseline (add the equivalent top inset under the header).",
-        "Verify the header 'Visual Server' banner height and dropdown pill dimensions against the React spec to ensure consistent proportions."
-      ],
-      "intentional": [
-        "Raw pixel dimensions differ (390x844 vs 1170x2532) so absolute sizes will not match 1:1; comparisons are relative."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1930739525526255
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffec7ff8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffec1ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffefffefffefffeffff0000000000010109000000007ffefffe3fff",
+      "generatedAt": "2026-07-18T07:37:44.279Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16607863787958577
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c006e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-07-09T22:22:14.971Z",
       "severity": "medium",
       "summary": [
@@ -2770,119 +2004,51 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10204932420572232
+      "metricMismatch": 0.10218468559700788
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "ready",
-      "imageHash": "p1:fffeffff1fffffff07ff9fffffff9d5feffff3ffefffe2efec3fe3ffe001e01fe0cfefffc039fc07e1ffe00febffe03fe07fe67fefffe01fe3ffffffe163e7ffe007e003e003e0ffe003e0ffe003e003e003e001e007e001e003e001e003e001efffe003e01fe1ffe003e001e001e001e001e001e001e001e03fe00fffffffff",
-      "generatedAt": "2026-07-09T22:24:10.654Z",
-      "severity": "medium",
-      "summary": [
-        "iOS (right) renders body text noticeably larger and with wider line-height than React (left), causing the same content to consume more vertical space and clip/truncate earlier in the available width.",
-        "Inline-code chip backgrounds on iOS (e.g., the long path, the ./gradlew command, raft.build.markdown.inlineCode) wrap differently — iOS preserves the trailing glyph before the closing chip border while React consistently shows a closing black frame after each wrapped segment; several iOS chips appear to be missing their right-side frame on wrap.",
-        "The yellow inline-code fill on iOS bleeds across whitespace between adjacent code spans (e.g., 'inlineCode' and 'go test ./...' and 'git commit -s' appear to share a single continuous yellow box), whereas React keeps each code span as a separate bordered chip.",
-        "Header metadata row differs: iOS shows the avatar, name, and a truncated 'Keeps visual testing…' subtitle on one line with the timestamp appended, while React stacks the avatar/name line and uses a more compact, two-line header with 'Keeps vis…' truncation and the timestamp on its own sub-line; vertical alignment of the avatar relative to the name differs slightly between the two.",
-        "Body text wrapping on iOS causes the long inline-code path to overflow the right edge of the container (final glyphs clip at the container border) instead of breaking cleanly inside the chip like React does."
-      ],
-      "likelyCauses": [
-        "iOS text engine uses a larger default body font size or line-height multiplier than the React baseline.",
-        "iOS TextKit/UIKit wraps inline-code chips on a per-glyph basis and omits the trailing border on continuation lines, and may merge backgrounds of adjacent inline spans separated by spaces.",
-        "Missing or different `word-break`/`overflow-wrap` settings for inline code in iOS markdown renderer, allowing tokens to exceed container width instead of soft-wrapping mid-token.",
-        "iOS message row header layout uses a single-line HStack rather than the multi-line header layout in React, changing avatar/name/timestamp stacking."
-      ],
-      "suggestedOwner": "ios-markdown",
-      "suggestedFixes": [
-        "Set iOS body font size and line-height to match React's MessageItem body metrics (verify against the 390×844 baseline).",
-        "Fix inline-code chip rendering on iOS to (a) preserve the black right/bottom border on each wrap line and (b) not merge backgrounds across whitespace-separated spans.",
-        "Add `overflow-wrap: anywhere` (or equivalent `lineBreakMode`/hyphenation setting) to inline-code runs so long tokens wrap inside the chip rather than clipping at the container edge.",
-        "Align the message-row header layout between platforms so avatar/name and timestamp/subtitle stack consistently.",
-        "Consider a follow-up to verify React does not regress after iOS fixes; revisit the known intentional divergences list if any of the chip-merge / border fixes affect bare #number or @mention rendering."
-      ],
-      "intentional": [
-        "Bare #520 and unknown @KMP-专家 render as plain text on React but as a styled/underlined mention on iOS — intentional platform difference per task #416 (keep iOS 'tag everything' behavior)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.37037745912153497
+      "status": "pending",
+      "imageHash": "p1:fffeffff1fffffff07ff9fffffff983fefffe3ffefffe3fbec3fffffe001e01fe0cfffffc039e0cfe1ffe03febffe03fe07fe47fefffe01fe3ffefffe163e7ffe007e001e003e00fe003e001e003e001e003e001e007e001e003e007e003e003efffe001e01fe001e003e001e001e00fe001f00fe001fe7fe03fe001ffffffff",
+      "generatedAt": "2026-07-18T07:37:44.310Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4015308326919701
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
-      "status": "ready",
-      "imageHash": "p1:65f02ffe87f7ffff800c1fffe07401ffe0df83fff00780fff00780fff007807ff01f80fff41f80fff00f89fff07f83fff017c1fff01788fff03780fff07780fff00f85fff00f81fff03780fff01f80fff6df80fff01fc0fff00f88fff3079ffff6d780fff01780fff01f80fff17f8fffe03780ffe01f83ffe017c4feffffffff",
-      "generatedAt": "2026-07-13T22:12:11.520Z",
-      "severity": "medium",
-      "summary": [
-        "Body text wrapping differs: iOS wraps Chinese/English text on different line breaks than React, producing shorter/wider lines on iOS (e.g., '已合入 main' vs '已合入 main — —', and 'runtimeReadStatePreservesPartialSummaryAndReconcilesAcceptedRewind' splits at different points).",
-        "Highlight/pill styling differs: React renders @-mention and code pills with a single-line solid amber/orange background, while iOS renders them with a softer, more transparent yellow tint and slightly rounded/softer edges.",
-        "Different relative canvas resolution (React 260×844 vs iOS 1170×2532) causes the iOS render to appear scaled up, so line-heights and bullet spacing look proportionally larger compared to React's tighter vertical rhythm.",
-        "Date/timestamp format differs: React shows '05:55 AM', iOS shows 'Kee… 07/13 05:55' — iOS includes a date and a truncated source label ('Kee…') absent on the React side.",
-        "Bullet markers and list indentation differ slightly: React uses a denser bullet list with tighter left indent, iOS has more leading whitespace and the bullets appear visually smaller relative to the text."
-      ],
-      "likelyCauses": [
-        "Native iOS TextKit wrapping algorithm vs web CSS line-break rules treat CJK/Latin word boundaries differently, changing wrap points.",
-        "Markdown renderers apply different default font metrics (system font on iOS vs web font on React), shifting line wrap and baseline.",
-        "iOS timestamp formatter includes date + abbreviated source; React formatter shows time-only.",
-        "Platform-specific styling of inline code/mention pills (background opacity, corner radius) not normalized in shared style tokens.",
-        "No shared design-token mapping for spacing scale, causing component-bounds crop and per-platform padding to diverge."
-      ],
-      "suggestedOwner": "Design System / Thread Message component owner (cross-platform markdown rendering)",
-      "suggestedFixes": [
-        "Normalize font, font-size, and line-height tokens for the markdown body across React and iOS so wrap points match.",
-        "Unify inline-code and @-mention pill styles (background color, opacity, padding, border-radius) in a shared token set.",
-        "Align timestamp format and metadata label (e.g., always show date + truncated source, or hide on both platforms).",
-        "Standardize bullet/list indentation and list-item spacing in the shared markdown style sheet.",
-        "Apply consistent horizontal/vertical padding inside the component-bounds crop so element bounds match after scaling."
-      ],
-      "intentional": [
-        "Date prefix and truncated source 'Kee…' on iOS may be an intentional iOS-specific header affordance."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2003051538596562
+      "status": "pending",
+      "imageHash": "p1:65f02ffe87f7ffff800c1fffe07401ffe0df83fff00780fff007807ff007807ff01f80fff41f81fff00f81fff07f81fff01781fff01780fff03780fff07789fff00f81fff00f80fff03780fff01fc1fff6df81fff01f80fff00f97fff30794fff6d780fff01780fff01f8ffff17f80ffe037807fe01f88ffe0179ffeffffffff",
+      "generatedAt": "2026-07-18T07:37:44.333Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19932926911599902
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
-      "status": "ready",
-      "imageHash": "p1:00e007fc07f3fffe001410fee11400fee003047ee01700fee00703fee00781fee01700fee00701fee00700fee01300fee00703fee02701fe001700feffff00feffff03fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
-      "generatedAt": "2026-07-13T22:12:11.558Z",
-      "severity": "medium",
-      "summary": [
-        "iOS shows additional timestamp text 'Kee… 07/13 05:56' beside the author name, while React only shows '05:56 AM' as a separate timestamp below the name row.",
-        "iOS timestamp uses a lighter/dimmer gray color compared to React's medium-gray timestamp text, reducing emphasis contrast.",
-        "Author name 'Cindy' appears slightly larger and/or heavier weight on iOS versus React.",
-        "iOS message body text uses a slightly different font weight/family giving a lighter appearance than React's body text.",
-        "Code/inline-code pills (#31, #521, message:new) have similar yellow background but the iOS version renders them with subtly different padding and border radius."
-      ],
-      "likelyCauses": [
-        "iOS and React implement the message-row header (author + timestamp) with different metadata layouts and timestamp formatting (date+time vs. time-only AM/PM).",
-        "Different default body font (e.g., San Francisco vs. system/web font) and weight scale between platforms.",
-        "Independent styling of inline code/pill components without a shared design token, leading to divergent padding/radius.",
-        "Avatar component sized via platform-specific dimensions rather than a shared spec."
-      ],
-      "suggestedOwner": "design-system / message-row component owner",
-      "suggestedFixes": [
-        "Unify the message header layout: choose a single timestamp format and placement (either inline next to author or on its own line) and apply consistently across platforms.",
-        "Centralize timestamp text style (color/weight/size) via shared design tokens so both platforms render with the same emphasis.",
-        "Pin body font family and weight to shared tokens; audit iOS to use the matching weight as React.",
-        "Extract inline code/pill styles into shared tokens for background color, padding, and border radius.",
-        "Define avatar diameter via a shared token and verify iOS implementation matches."
-      ],
-      "intentional": [
-        "Avatar pixel-art rendering differences between platforms may be acceptable.",
-        "Slight font-hinting/antialiasing differences between web and iOS rendering engines are expected and can be ignored via antialiasing tolerance."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09431549668516492
+      "status": "pending",
+      "imageHash": "p1:00e007fc07f3fffe001410fee13400fee00300fee01700fee00703fee00782fee01700fee00701fee00700fee01300fee00703fee02701fe001701feffff007effff07fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
+      "generatedAt": "2026-07-18T07:37:44.354Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09427195149943968
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:0124000400ce4ffe001e00024006001e4006400200006402fffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:0024000401ce4ffe001e00024006001e4006400200006002fffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-13T22:12:13.716Z",
       "severity": "low",
       "summary": [
@@ -2912,12 +2078,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04233300927613726
+      "metricMismatch": 0.04218144502504695
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "ready",
-      "imageHash": "p1:03fe03fc07fe7ffe00010032c03e0006c0006000c0006001c0066000c01e6000c0066006e0026002e0066002c086680a0078fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
+      "imageHash": "p1:03fe03fc07fe7ffe00010026c03e0006c0006000c0006001c0066002c01e6002c0066006e0026002e0066002c086680a0078fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
       "generatedAt": "2026-07-13T22:12:14.773Z",
       "severity": "medium",
       "summary": [
@@ -2946,62 +2112,26 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.13000972171588288
+      "metricMismatch": 0.12784562725321014
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
-      "status": "ready",
-      "imageHash": "p1:00e007fc03f3fffe00340dfee00400fee003007ee0033ffee01300fee00300fee003007ee00300fee6f300fe000700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
-      "generatedAt": "2026-07-13T22:12:17.396Z",
-      "severity": "medium",
-      "summary": [
-        "iOS timestamp format differs: shows 'Kee… 07/13 05:57' with weekday abbreviation truncated, React shows '05:57 AM' inline next to name",
-        "iOS message body has significantly larger font size and increased line-height, causing text to wrap to more lines per paragraph",
-        "iOS uses noticeably wider spacing between paragraphs (larger vertical gaps between blocks) versus React's tight line wrapping",
-        "iOS removes the orange presence/status dot on the avatar and shrinks avatar; React avatar is larger with status indicator",
-        "iOS pill/badge styling is more muted — '@artin', '#607', '#对话流专修' backgrounds are paler/thinner-bordered than React's saturated yellow/pink fills"
-      ],
-      "likelyCauses": [
-        "iOS native text rendering uses UIFont metrics (Dynamic Type / larger lineHeightMultiple) compared to web line-height",
-        "iOS cell applies platform-default paragraph styles (NSParagraphStyle) instead of mirroring web typography tokens",
-        "Avatar and presence-dot rendered via different component on iOS with size tokens not mapped from web design system",
-        "Mention/hashtag pill color tokens not shared across platforms; iOS uses system tint with reduced opacity"
-      ],
-      "suggestedOwner": "iOS",
-      "suggestedFixes": [
-        "Match timestamp to a single token: render full date '07/13 05:57' without truncation on iOS or align with React's '05:57 AM' format",
-        "Reduce body font size and line-height on iOS to match React (~14–15px body, 1.4 line-height) and tighten paragraph spacing",
-        "Increase avatar size on iOS and render the presence dot overlay at the same offset as React",
-        "Align mention/hashtag pill background colors and border radii to the React design tokens (saturated yellow / pink fills)",
-        "Share typography/spacing/color tokens between web and iOS via a single design-system source (e.g., Style Dictionary or Figma tokens)"
-      ],
-      "intentional": [
-        "Platform-specific timestamp locale formatting may be intentional but should be confirmed",
-        "Larger touch targets / text size on iOS may be a deliberate accessibility choice"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.06717030555893111
-    },
-    {
-      "id": "screens.settings.administration.full-height",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.812Z",
+      "imageHash": "p1:00e007fc03f3fffe00340ffee00400fee00300fee00300fee01300fee00300fee00300fee00301fee6f300fe000700feffff95fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff80fff",
+      "generatedAt": "2026-07-18T07:37:44.400Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06677839888740367
     },
     {
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:14:13.812Z",
+      "generatedAt": "2026-07-18T07:37:44.312Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

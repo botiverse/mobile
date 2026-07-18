@@ -22,7 +22,7 @@
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2342,
+    "displayHeightPx": 2460,
     "densityDpi": 480,
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
@@ -32,5 +32,5 @@
     "visibleContentLeafViews": 3
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783979694153"
+              "capturedAt": "1784359602860"
             }

@@ -22,15 +22,15 @@
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2342,
+    "displayHeightPx": 2460,
     "densityDpi": 480,
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 86,
-    "laidOutViews": 85,
+    "totalViews": 85,
+    "laidOutViews": 84,
     "visibleContentLeafViews": 1
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783979673921"
+              "capturedAt": "1784359569287"
             }
