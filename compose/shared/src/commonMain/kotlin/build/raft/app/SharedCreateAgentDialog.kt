@@ -56,7 +56,10 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -117,7 +120,6 @@ internal fun CreateAgentDialogVisualContent() {
             initialReasoningEffort = params.optString("reasoningEffort").takeIf { it.isNotBlank() },
             initialCommand = params.optString("command"),
             initialAdvancedOpen = params.optBoolean("advancedOpen"),
-            suggestedComputer = "computer-mbp",
             machines =
                 listOf(
                     SharedCreateAgentMachineOption(
@@ -141,8 +143,12 @@ internal fun CreateAgentDialogVisualContent() {
                             defaultModel = getDefaultModel(runtime)
                         )
                 ),
-            currentAgentCount = 4,
-            maxAgents = 12,
+            // React's deterministic visual fixture seeds the Free plan at its
+            // 2-agent capacity, so both providers must render the same warning
+            // state instead of comparing React's banner with Android's normal form.
+            currentAgentCount = 2,
+            maxAgents = 2,
+            limitPlanLabel = "Free",
             onDismiss = {},
             onSubmit = {}
         )
@@ -492,6 +498,7 @@ internal fun SharedCreateAgentDialog(
     onRuntimeModelsRequest: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
+    limitPlanLabel: String? = null,
     external: Boolean = false,
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
@@ -651,11 +658,14 @@ internal fun SharedCreateAgentDialog(
         // cap); the dialog itself no longer reads it.
         Column(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                // React's normal dialog form uses space-y-4. Keep each field
+                // group at the same 16dp rhythm; field-internal helper/count
+                // spacing stays inside the group below.
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
@@ -675,7 +685,13 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 if (atLimit) {
-                    item(key = "plan-limit") { PlanLimitBanner(currentAgentCount = currentAgentCount, maxAgents = maxAgents) }
+                    item(key = "plan-limit") {
+                        PlanLimitBanner(
+                            currentAgentCount = currentAgentCount,
+                            maxAgents = maxAgents,
+                            planLabel = limitPlanLabel
+                        )
+                    }
                 }
                 errorMessage?.takeIf { !atLimit && it.isNotBlank() }?.let { error ->
                     item(key = "submit-error") {
@@ -727,39 +743,39 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 item(key = "description") {
-                    SlockBrutalTextField(
-                        label = stringResource(MR.strings.agent_create_label_description),
-                        optional = true,
-                        value = description,
-                        onValueChange = {
-                            if (it.length <= DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH) {
-                                description = it
-                            }
-                        },
-                        placeholder = stringResource(MR.strings.agent_create_placeholder_description),
-                        enabled = !submitting,
-                        maxLines = 3,
-                        fieldMinHeight = 82.dp
-                    )
-                }
-                item(key = "description-count") {
-                    if (descriptionTooLong) {
-                        Text(
-                            text =
-                                MR.strings.agent_create_error_description_length
-                                    .format(listOf(DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
-                                    .localized(),
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                            color = SlockColor.AccentRed
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SlockBrutalTextField(
+                            label = stringResource(MR.strings.agent_create_label_description),
+                            optional = true,
+                            value = description,
+                            onValueChange = {
+                                if (it.length <= DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH) {
+                                    description = it
+                                }
+                            },
+                            placeholder = stringResource(MR.strings.agent_create_placeholder_description),
+                            enabled = !submitting,
+                            maxLines = 3,
+                            fieldMinHeight = 82.dp
                         )
-                    } else {
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            Spacer(Modifier.weight(1f))
+                        if (descriptionTooLong) {
                             Text(
-                                text = "${description.length}/$DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
-                                style = SlockType.Caption,
-                                color = SlockColor.TextMutedGray
+                                text =
+                                    MR.strings.agent_create_error_description_length
+                                        .format(listOf(DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
+                                        .localized(),
+                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                                color = SlockColor.AccentRed
                             )
+                        } else {
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    text = "${description.length}/$DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
+                                    style = SlockType.Caption,
+                                    color = SlockColor.TextMutedGray
+                                )
+                            }
                         }
                     }
                 }
@@ -886,20 +902,42 @@ private fun onDismissOnce() {
 }
 
 @Composable
-private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(SlockStroke.Thin, SlockColor.AccentOrange)
-            .background(SlockColor.SurfaceWhite)
-            .padding(SlockSpacing.Sm)
-    ) {
-        Text(
-            text =
+private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?) {
+    if (planLabel.isNullOrBlank()) {
+        SlockRaftUiBanner(
+            status = SlockRaftUiBannerStatus.Warning,
+            description =
                 MR.strings.agent_create_error_limit
                     .format(listOf(currentAgentCount, maxAgents))
                     .localized(),
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+            size = SlockRaftUiBannerSize.Medium
+        )
+        return
+    }
+
+    val summary =
+        MR.strings.agent_create_error_limit_plan
+            .format(listOf(currentAgentCount, maxAgents, planLabel))
+            .localized()
+    val action = stringResource(MR.strings.agent_create_action_upgrade_for_more)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockRaftUiBannerStatus.Warning.background)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockRaftUiBannerSize.Medium.padding)
+    ) {
+        Text(
+            text =
+                buildAnnotatedString {
+                    append(summary)
+                    append(" ")
+                    pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
+                    append(action)
+                    pop()
+                },
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
             color = SlockColor.TextBlack
         )
     }
