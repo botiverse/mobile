@@ -168,24 +168,43 @@ export function hasRealPhotoPicker(dump) {
 }
 
 function classifyPhotoPicker(nodes) {
-  const hasExact = (re) => nodes.some((node) => re.test(node.label.trim()));
-  if (
-    hasExact(/^cancel$/i)
-    && hasExact(/^done$/i)
-    && hasExact(/^photos$/i)
-    && hasExact(/^collections$/i)
-    && hasExact(/^select photos$/i)
-  ) {
+  if (nodes.length === 0) return null;
+  if (hasIos26PickerChrome(nodes)) {
     const cells = independentPhotoCells(nodes);
     if (cells.length > 0) return { variant: "ios26", cells };
   }
 
+  const hasExact = (re) => nodes.some((node) => re.test(node.label.trim()));
   const header = nodes.find((node) => /^(recents|all photos)$/i.test(node.label.trim()));
   if (header && hasExact(/^(cancel|select)$/i)) {
     const tiles = nodes.filter((node) => isPlausiblePhotoTile(node, header));
     if (tiles.length > 0) return { variant: "legacy", header, cells: tiles };
   }
   return null;
+}
+
+// iOS 26 picker chrome must be proven by INDEPENDENT SMALL NODES, never by a
+// same-named fullscreen/aggregate ancestor (task #26 static review): exact
+// Cancel and Done are small TOP nodes; exact Photos + Collections are a small
+// same-row tab pair of similar height (the fullscreen "Photos" window node
+// does NOT count); exact Select Photos is a small BOTTOM node.
+function hasIos26PickerChrome(nodes) {
+  const maxW = Math.max(...nodes.map((n) => n.x2));
+  const maxH = Math.max(...nodes.map((n) => n.y2));
+  const small = (n) => (n.x2 - n.x1) <= maxW * 0.5 && (n.y2 - n.y1) <= maxH * 0.25;
+  const smallTop = (n) => small(n) && n.y2 <= maxH * 0.25;
+  const smallBottom = (n) => small(n) && n.y1 >= maxH * 0.75;
+  const exact = (re) => nodes.filter((n) => re.test(n.label.trim()));
+
+  if (!exact(/^cancel$/i).some(smallTop)) return false;
+  if (!exact(/^done$/i).some(smallTop)) return false;
+  if (!exact(/^select photos$/i).some(smallBottom)) return false;
+  const photosTabs = exact(/^photos$/i).filter(smallTop);
+  const collectionsTabs = exact(/^collections$/i).filter(smallTop);
+  return photosTabs.some((p) => collectionsTabs.some((c) => (
+    Math.abs(p.y1 - c.y1) <= 24
+    && Math.abs((p.y2 - p.y1) - (c.y2 - c.y1)) <= 24
+  )));
 }
 
 // iOS 26 per-asset cells carry a single "Photo, <date>" label. The aggregate
@@ -216,7 +235,9 @@ function isPlausiblePhotoTile(node, header) {
 // Locate the first photo cell in a REAL PhotosUI picker dump (task #26). The
 // whole picker variant must be proven first (no whole-dump fallback); the
 // staged fixture is the most recent photo, i.e. the top-left cell of the grid
-// by (y, x). An ambiguous top-left (two overlapping candidates) fails closed.
+// by (y, x). Ambiguity fails closed: the top-left candidate must not conflict
+// with ANY other candidate — duplicate nodes (identical bounds) and any
+// positive-area bounds overlap both reject the target.
 export function findPhotoCellTarget(dump) {
   const picker = classifyPhotoPicker(parseDumpNodes(dump));
   if (!picker) {
@@ -225,12 +246,20 @@ export function findPhotoCellTarget(dump) {
 
   const tiles = [...picker.cells].sort((a, b) => (a.y1 - b.y1) || (a.x1 - b.x1));
   const first = tiles[0];
-  const overlapping = tiles.filter((t) => t !== first
-    && Math.abs(t.x - first.x) < 12 && Math.abs(t.y - first.y) < 12);
-  if (overlapping.length) {
-    throw new Error(`ambiguous top-left photo tile: ${overlapping.length + 1} overlapping candidates`);
+  const conflicting = tiles.filter((t) => t !== first && cellsConflict(first, t));
+  if (conflicting.length) {
+    throw new Error(`ambiguous top-left photo tile: ${conflicting.length + 1} duplicate/overlapping candidates`);
   }
   return { x: first.x, y: first.y, line: first.line, variant: picker.variant };
+}
+
+// Two candidate cells conflict when their rectangles intersect with positive
+// area (task #26 static review: real bounds intersection, not a center-
+// distance approximation). Duplicate nodes with identical bounds are caught
+// by the same test; adjacent grid tiles share at most an edge — zero area,
+// never a conflict.
+function cellsConflict(a, b) {
+  return Math.max(a.x1, b.x1) < Math.min(a.x2, b.x2) && Math.max(a.y1, b.y1) < Math.min(a.y2, b.y2);
 }
 
 // Composer preview proof: a NEW plausible node inside the composer rectangle
@@ -283,4 +312,53 @@ export function countThreadImageNodes(dump) {
     const h = node.y2 - node.y1;
     return node.y2 < composer.y1 && w > 150 && h > 150;
   }).length;
+}
+
+// Structured selection-state diff for the cell-sampling head (task #26 static
+// review). Nodes are keyed by a stable signature — the verbatim identifier
+// when present, else type+label+bounds — then label/value/enabled/selected
+// are compared FIELD BY FIELD. A whole-line Set diff cannot see "same node,
+// enabled flipped" or "same cell, selected flipped"; this can.
+export function uiNodeSignature(node) {
+  const id = String(node?.identifier ?? "").trim();
+  if (id) return `id:${id}`;
+  const bounds = Array.isArray(node?.bounds) ? node.bounds.join(",") : "";
+  return `anon:${node?.type ?? "?"}|${node?.label ?? ""}|${bounds}`;
+}
+
+export function diffUiNodeStates(beforeNodes, afterNodes) {
+  const index = (list) => {
+    const map = new Map();
+    for (const node of list || []) map.set(uiNodeSignature(node), node); // duplicate signatures: last wins
+    return map;
+  };
+  const before = index(beforeNodes);
+  const after = index(afterNodes);
+  const added = [];
+  const removed = [];
+  const stateChanged = [];
+  for (const [signature, node] of after) {
+    const prev = before.get(signature);
+    if (!prev) { added.push(signature); continue; }
+    const changed = ["label", "value", "enabled", "selected"]
+      .filter((field) => (prev[field] ?? null) !== (node[field] ?? null));
+    if (changed.length) {
+      stateChanged.push({
+        signature,
+        changed,
+        before: pickFields(prev, changed),
+        after: pickFields(node, changed),
+      });
+    }
+  }
+  for (const signature of before.keys()) {
+    if (!after.has(signature)) removed.push(signature);
+  }
+  return { added, removed, stateChanged };
+}
+
+function pickFields(node, fields) {
+  const out = {};
+  for (const field of fields) out[field] = node[field] ?? null;
+  return out;
 }
