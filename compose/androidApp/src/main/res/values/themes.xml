@@ -17,4 +17,6 @@
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
         <item name="postSplashScreenTheme">@style/Theme.Slock</item>
     </style>
+
+    <style name="Theme.Slock.AppShellStarting" parent="Theme.Slock.Starting" />
 </resources>

@@ -50,7 +50,7 @@
             android:documentLaunchMode="never"
             android:exported="false"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.Slock.Starting"
+            android:theme="@style/Theme.Slock.AppShellStarting"
             android:windowSoftInputMode="adjustNothing" />
         <activity
             android:name=".shared.SlockDocumentShellActivity"

@@ -11,4 +11,13 @@
         <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
         <item name="postSplashScreenTheme">@style/Theme.Slock</item>
     </style>
+
+    <!-- Android 12 only supplies the icon-bearing system splash to the
+         desktop-launched MainActivity. The app-shell Activity therefore uses
+         a regular cream handoff window; SlockKuiklyActivity installs the
+         centered native hold before Kuikly attach. -->
+    <style name="Theme.Slock.AppShellStarting" parent="Theme.Slock">
+        <item name="android:windowBackground">@color/slock_surface_cream</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
 </resources>
