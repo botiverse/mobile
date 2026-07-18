@@ -111,6 +111,7 @@ import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -6258,6 +6259,110 @@ class SharedThreadStoreTest {
             }
         )
         scope.cancel()
+    }
+
+    @Test
+    fun replyThreadStartPromotesQueuedActivityPrewarmToForeground() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore =
+            SharedThreadPayloadStore(
+                scope = appScope,
+                maxConcurrentPrewarms = 1,
+                prewarmStartIntervalMillis = 0L
+            )
+        val blockerStarted = CompletableDeferred<Unit>()
+        val releaseBlocker = CompletableDeferred<Unit>()
+        val blocker =
+            async {
+                payloadStore.prewarm("server-1", "thread-blocker") {
+                    blockerStarted.complete(Unit)
+                    releaseBlocker.await()
+                    DataResult.Content(
+                        contentPayloadForRoute(
+                            base = replyPayload(parentMessageId = "blocker", threadId = "thread-blocker"),
+                            body = "blocker body",
+                            id = "blocker-reply",
+                            channelId = "thread-blocker"
+                        )
+                    )
+                }
+            }
+        blockerStarted.await()
+
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-promote", "server-1")),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        val marker =
+            ActivityReplyThreadPrewarmMarker(
+                key =
+                    ActivityReplyThreadPrewarmKey(
+                        serverId = "server-1",
+                        parentChannelId = "channel-1",
+                        parentMessageId = "m1",
+                        threadChannelId = "thread-m1"
+                    )
+            )
+        val queuedPrewarm =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    dataSource.prewarmReplyThread(marker)
+                } catch (_: CancellationException) {
+                    // A visible open owns the replacement foreground request.
+                }
+            }
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
+
+        val visibleScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = visibleScope
+            )
+        withTimeout(1_000L) {
+            store.accept(
+                SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1"))
+            )
+        }
+
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("m1")),
+            repository.getReplyThreadRequests
+        )
+        assertEquals(listOf(DataRequestPriority.Foreground), repository.getReplyThreadPriorities)
+        assertEquals("reply body", store.state.value.payload.messages.single().body)
+        queuedPrewarm.join()
+        releaseBlocker.complete(Unit)
+        blocker.await()
+        visibleScope.cancel()
+        appScope.cancel()
     }
 
     @Test
