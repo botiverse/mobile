@@ -195,20 +195,29 @@ export function findPhotoCellTarget(dump) {
   return { x: first.x, y: first.y, line: first.line };
 }
 
-// Composer preview proof: a NEW node strictly inside the composer bounds that
-// did not exist before the selection (task #26 review: a closed picker alone
-// is NOT a preview — that is exactly the no-attachment product path we must
-// catch). Compare node sets inside the composer rectangle.
-export function composerHasNewPreview(beforeDump, afterDump, composerLine) {
-  const line = composerLine || '"Message #all"';
-  const before = new Set(nodesInside(beforeDump, line).map((n) => `${n.label}@${n.x},${n.y}`));
-  return nodesInside(afterDump, line).some((n) => !before.has(`${n.label}@${n.x},${n.y}`));
+// Composer preview proof: a NEW plausible node inside the composer rectangle
+// FROZEN FROM THE BEFORE DUMP (task #26 review: the rect must never widen —
+// a missing composer in the after dump is not a free pass). The before dump
+// must contain exactly one composer or this returns false. The composer node
+// itself never counts, and a candidate must have preview-plausible size.
+export function composerHasNewPreview(beforeDump, afterDump) {
+  const beforeComposers = parseDumpNodes(beforeDump).filter((node) => node.label.trim() === "Message #all");
+  if (beforeComposers.length !== 1) return false;
+  const rect = beforeComposers[0];
+  const beforeInside = new Set(insideRect(parseDumpNodes(beforeDump), rect)
+    .filter((node) => node.label.trim() !== "Message #all")
+    .map((n) => `${n.label}@${n.x},${n.y}`));
+  return insideRect(parseDumpNodes(afterDump), rect).some((node) => {
+    if (node.label.trim() === "Message #all") return false;
+    const w = node.x2 - node.x1;
+    const h = node.y2 - node.y1;
+    if (w < 40 || h < 40) return false; // a preview is a substantial element
+    return !beforeInside.has(`${node.label}@${node.x},${node.y}`);
+  });
 }
 
-function nodesInside(dump, composerLine) {
-  const nodes = parseDumpNodes(dump);
-  const composer = nodes.find((node) => node.label.trim() === "Message #all") || { line: composerLine, x1: 0, y1: 0, x2: 99999, y2: 99999 };
-  return nodes.filter((node) => node.x1 >= composer.x1 && node.x2 <= composer.x2 && node.y1 >= composer.y1 && node.y2 <= composer.y2);
+function insideRect(nodes, rect) {
+  return nodes.filter((node) => node.x1 >= rect.x1 && node.x2 <= rect.x2 && node.y1 >= rect.y1 && node.y2 <= rect.y2);
 }
 
 // Readback proof by before/after diff: count large image-ish nodes in the

@@ -203,3 +203,24 @@ test("countThreadImageNodes counts only large nodes above the composer", () => {
   ].join("\n");
   assert.equal(countThreadImageNodes(dump), 1);
 });
+
+test("composerHasNewPreview uses the before-frozen composer rect only", () => {
+  const before = '"Message #all" [24,2161][1140,2382]';
+  // after has no composer at all + a new node far outside the frozen rect
+  const afterOutside = '"" [24,100][300,376]';
+  assert.equal(composerHasNewPreview(before, afterOutside), false);
+  // after has composer removed but a new node inside the frozen rect
+  const afterInside = '"" [40,2180][260,2320]';
+  assert.equal(composerHasNewPreview(before, afterInside), true);
+  // only the composer's own bounds changed
+  const afterComposerOnly = '"Message #all" [24,2100][1140,2382]';
+  assert.equal(composerHasNewPreview(before, afterComposerOnly), false);
+  // no unique composer in before dump
+  assert.equal(composerHasNewPreview('"Message #all" [24,2161][1140,2382]\n"Message #all" [24,100][1140,300]', afterInside), false);
+});
+
+test("composerHasNewPreview ignores tiny new nodes", () => {
+  const before = '"Message #all" [24,2161][1140,2382]';
+  const afterTiny = '"." [40,2180][60,2200]';
+  assert.equal(composerHasNewPreview(before, afterTiny), false);
+});
