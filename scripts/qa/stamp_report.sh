@@ -29,10 +29,12 @@ fi
 # report phase: upload evidence files, then the verdict
 seq=0
 upload() { # file kind
-  local f="$1" kind="$2" sha
+  local f="$1" kind="$2" sha mt
   sha=$(sha256sum "$f" | cut -d' ' -f1)
+  # capture time = file mtime (ms); GNU stat on Linux, BSD stat on macOS.
+  mt=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "")
   seq=$((seq+1))
-  curl -sf -X POST "$BASE/evidence?kind=$kind&seq=$seq&sha256=$sha" -H "$AUTH" \
+  curl -sf -X POST "$BASE/evidence?kind=$kind&seq=$seq&sha256=$sha${mt:+&captured_at=${mt}000}" -H "$AUTH" \
     --data-binary @"$f" >/dev/null && echo "stamp: uploaded $(basename "$f")" \
     || echo "stamp: upload failed $(basename "$f") (continuing)"
 }
