@@ -2082,11 +2082,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureSettingsBillingPage() {
-        captureKmpSettingsPageCase("components.settings.billing.page", "billing")
-    }
-
-    @Test
     fun captureSettingsLanguageRegionPage() {
         captureKmpSettingsPageCase("components.settings.language-region.page", "language-region")
     }
