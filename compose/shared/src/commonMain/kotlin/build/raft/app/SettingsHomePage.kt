@@ -1713,8 +1713,8 @@ private val settingsPageVisualPayload: KuiklySharedSettingsPayload
     }
 
 private val bottomTabBarSmokeItems = listOf(
-    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House),
-    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = true),
+    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = true),
+    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig),
     SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users),
     SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
 )
