@@ -28,6 +28,7 @@ import { createIosDriver } from "./ios_driver.mjs";
 import {
   findAllChannelTarget,
   findComposerImageTarget,
+  hasPhotoPickerGate,
   redactEditableValues,
 } from "./ios_navigation_matcher.mjs";
 
@@ -58,7 +59,23 @@ const processAlive = () => {
   } catch { return null; } // spawn failed — unknown, treat as unknown not dead
 };
 
-const PICKER_MARKERS = /photos|recents|photo library|选择|照片|允许|allow|cancel|取消|select/i;
+// SpringBoard owns the initial Photos permission alert, so drv.dumpUi() (which
+// is scoped to the app under test) can remain unchanged even though the gate is
+// visibly open. Query only the short post-tap unified-log window and pass the
+// text through the same pure marker detector used for app dumps.
+const recentPhotoGateLog = () => {
+  try {
+    return execFileSync("xcrun", [
+      "simctl", "spawn", udid, "log", "show",
+      "--last", "30s",
+      "--style", "compact",
+      "--predicate", 'eventMessage CONTAINS[c] "Photo Library"',
+    ], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024, timeout: 30000 });
+  } catch (error) {
+    rec(`photo gate log query failed: ${String(error).slice(0, 120)}`);
+    return "";
+  }
+};
 
 function parseBounds(line) {
   const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
@@ -199,11 +216,17 @@ try {
   }
   let after = "";
   try { after = await drv.dumpUi(); } catch (e) { rec(`describe after tap failed: ${String(e).slice(0, 120)}`); }
-  if (after && (PICKER_MARKERS.test(after) || after.split("\n").length > dump.split("\n").length + 5)) {
-    writeVerdict("pass", "picker gate reached after single deterministic tap (dump shows photo-picker markers or a new large panel). Scope note: select/preview/send NOT asserted.");
+  const systemPhotoGateLog = recentPhotoGateLog();
+  if (hasPhotoPickerGate({ appDump: after, systemLog: systemPhotoGateLog })
+      || (after && after.split("\n").length > dump.split("\n").length + 5)) {
+    const evidenceMode = hasPhotoPickerGate({ systemLog: systemPhotoGateLog })
+      ? "SpringBoard Photos permission alert"
+      : "app dump photo-picker markers or a new large panel";
+    rec(`picker gate evidence: ${evidenceMode}`);
+    writeVerdict("pass", `picker gate reached after single deterministic tap (${evidenceMode}). Scope note: select/preview/send NOT asserted.`);
     process.exit(0);
   }
-  writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in dump)");
+  writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in app dump or SpringBoard log)");
   process.exit(1);
 } catch (e) {
   writeVerdict("error", `harness/script error: ${String(e).slice(0, 300)}`);

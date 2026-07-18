@@ -45,6 +45,17 @@ export function redactEditableValues(dump) {
     .join("\n");
 }
 
+// The first image-button tap on a clean simulator can present the system-owned
+// Photos permission alert. XCUITest's app-scoped accessibility dump does not
+// include that SpringBoard alert, so accept either app dump markers (picker or
+// permission UI) or the corresponding post-tap unified-log title. Keep this
+// pure so the evidence parser is covered by offline fixtures.
+export function hasPhotoPickerGate({ appDump = "", systemLog = "" } = {}) {
+  const dumpMarkers = /photos|recents|photo library|选择|照片|允许|allow|cancel|取消|select/i;
+  const systemMarkers = /(?:would like|request(?:ed)?|controllerTitle).*photo library|photo library.*(?:access|permission)/i;
+  return dumpMarkers.test(String(appDump)) || systemMarkers.test(String(systemLog));
+}
+
 // Locate the #all row only inside the first channel-row band beneath the
 // CHANNELS heading. iOS may expose it as one "#all" node or split the icon and
 // text into adjacent "#" + "all" nodes. Exact labels and uniqueness are

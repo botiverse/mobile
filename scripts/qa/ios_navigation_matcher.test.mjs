@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   findAllChannelTarget,
   findComposerImageTarget,
+  hasPhotoPickerGate,
   redactEditableValues,
 } from "./ios_navigation_matcher.mjs";
 
@@ -65,6 +66,24 @@ test("redacts plain and secure editable values while preserving flags and geomet
     '[INPUT] [FOCUSED] "[REDACTED]" [138,1044][1008,1122]',
     '"Saved" [100,100][200,150]',
   ].join("\n"));
+});
+
+test("recognizes an app-scoped photo picker dump", () => {
+  assert.equal(hasPhotoPickerGate({ appDump: '"Recents" [0,0][1170,200]' }), true);
+});
+
+test("recognizes the system-owned Photos permission alert from unified log", () => {
+  assert.equal(hasPhotoPickerGate({
+    appDump: '"Message #all" [24,2161][1140,2382]',
+    systemLog: 'controllerTitle = “Raft” would like full access to your Photo Library.;',
+  }), true);
+});
+
+test("does not treat an unchanged composer dump or unrelated log as a picker gate", () => {
+  assert.equal(hasPhotoPickerGate({
+    appDump: '"Message #all" [24,2161][1140,2382]',
+    systemLog: "network request completed",
+  }), false);
 });
 
 test("derives the image target from real composer bounds when icon nodes are absent", () => {
