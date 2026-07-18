@@ -43,6 +43,12 @@ on:
         description: "Post-run logcat marker gate, e.g. 'thread_header_scroll_to_top|1|,slock_perf_launch|1|1'"
         required: false
         default: ""
+      # Identity of the server environment under test, recorded in perf.json
+      # (task #14 self-describing header). Free-form label, e.g. OranixSlockTest.
+      environment:
+        description: "Server environment label for the perf.json identity header"
+        required: false
+        default: "unspecified-ci"
 # Minimal token scopes: contents to check out, actions to read ANOTHER run's
 # artifacts for the pinned-bits path (403 'Resource not accessible by
 # integration' on the first --apk-run use, run 29546757069). No write scopes.
@@ -324,10 +330,17 @@ jobs:
             cp "$(find apks -name build-info.json | head -1)" qa-evidence/build-info.json 2>/dev/null || true
             bash scripts/qa/stamp_report.sh claim
             adb logcat -c
+            # task #14 perf v1: reset gfxinfo counters and stamp the capture
+            # window start before the agent drives the app (record-only,
+            # advisory — no thresholds).
+            adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" reset || true
+            date +%s%3N > qa-evidence/perf-started.txt
             adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
             export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
             adb logcat -d > qa-evidence/logcat.txt 2>&1 || true
             adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true
+            adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" > qa-evidence/gfxinfo.txt 2>&1 || true
+            node scripts/qa/collect_perf.mjs --gfx qa-evidence/gfxinfo.txt --log qa-evidence/logcat.txt --steps qa-evidence/steps.jsonl --pkg "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --environment "${{ inputs.environment }}" --device-json "{\"model\":\"$(adb shell getprop ro.product.model | tr -d '\r')\",\"sdk\":\"$(adb shell getprop ro.build.version.sdk | tr -d '\r')\",\"abi\":\"$(adb shell getprop ro.product.cpu.abi | tr -d '\r')\"}" --started "$(cat qa-evidence/perf-started.txt 2>/dev/null || echo 0)" --out qa-evidence/perf.json || true
             adb shell pkill -INT screenrecord 2>/dev/null || true
             sleep 3
             adb shell ls /sdcard/qa-rec-*.mp4 2>/dev/null | tr -d '\r' | while read f; do adb pull "$f" qa-evidence/ || true; done
