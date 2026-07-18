@@ -24,7 +24,12 @@ Outputs:
 Usage:
   python3 scripts/perf/atrace_summary.py \
       --input artifacts/perf-send-2026-06-26/atrace.txt \
-      --out-dir artifacts/perf-send-2026-06-26/
+      --out-dir artifacts/perf-send-2026-06-26/ \
+      --package build.raft.app
+
+  --package restricts frame-pacing (Choreographer#doFrame) to the target app
+  process; atrace also records systemui/launcher frames whose pacing is not
+  the app's. Without --package all processes are counted (legacy behavior).
 """
 
 from __future__ import annotations
@@ -61,7 +66,7 @@ EVENTS_OF_INTEREST = {
 }
 
 
-def parse(input_path: Path) -> dict[str, Any]:
+def parse(input_path: Path, package: str | None = None) -> dict[str, Any]:
     counters: dict[str, int] = {
         "total_lines": 0,
         "doframe": 0,
@@ -114,6 +119,11 @@ def parse(input_path: Path) -> dict[str, Any]:
             mm = re.match(pat, payload)
             if not mm:
                 continue
+            if key == "doframe" and package and m.group("task") != package:
+                # atrace records Choreographer#doFrame for every process on the
+                # device (systemui, nexuslauncher, ...). When --package is
+                # given, only pace the app under test.
+                break
             counters[key] += 1
             if key == "heap_size":
                 # Heap events have format "Heap size (KB)|<int>"; capture the int.
@@ -158,10 +168,12 @@ def parse(input_path: Path) -> dict[str, Any]:
 
     # Skipped frames: doFrame interval >16.67ms (>60Hz budget) is "jank";
     # >33.33ms is "long frame"; >50ms is "very long".
+    # atrace timestamps are SECONDS (e.g. 13322.897869); convert deltas to ms
+    # before comparing against the millisecond thresholds below.
     doframe_deltas: list[float] = []
     if len(doframe_times) > 1:
         s = sorted(doframe_times)
-        doframe_deltas = [s[i + 1] - s[i] for i in range(len(s) - 1)]
+        doframe_deltas = [(s[i + 1] - s[i]) * 1000.0 for i in range(len(s) - 1)]
 
     jank_threshold = 16.67
     long_threshold = 33.33
@@ -181,7 +193,8 @@ def parse(input_path: Path) -> dict[str, Any]:
         "counters": counters,
         "jank": {
             "threshold_ms": jank_threshold,
-            "frame_count": len(doframe_deltas),
+            "doframe_scope": package or "all-processes",
+            "frame_count": len(doframe_times),
             "jank_count": jank_count,
             "long_count": long_count,
             "very_long_count": very_long_count,
@@ -226,6 +239,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"- total matched lines: **{c['total_lines']:,}**",
         "",
         "## Frame pacing",
+        "",
+        f"- doFrame scope: **{j['doframe_scope']}**",
         "",
         table([
             ("frame count", f"{j['frame_count']:,}"),
@@ -293,6 +308,9 @@ def main() -> int:
     p.add_argument("--input", required=True, help="Path to full-text atrace dump.")
     p.add_argument("--out-dir", default=None,
                    help="Where to write summary.json + summary.md. Default: <input>.dir")
+    p.add_argument("--package", default=None,
+                   help="Restrict Choreographer#doFrame pacing to this app package "
+                        "(e.g. build.raft.app). Default: count all processes.")
     args = p.parse_args()
 
     in_path = Path(args.input)
@@ -302,7 +320,7 @@ def main() -> int:
     out_dir = Path(args.out_dir) if args.out_dir else in_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    summary = parse(in_path)
+    summary = parse(in_path, package=args.package)
     (out_dir / f"{in_path.stem}.summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8",
     )
