@@ -131,7 +131,9 @@ final class QaAcceptanceLoopTests: XCTestCase {
         case "key":
             switch action.text {
             case "enter":
-                _ = tapKeyboardReturn(app.keyboards.firstMatch)
+                guard tapKeyboardReturn(app.keyboards.firstMatch) else {
+                    throw HarnessError.bad("key enter: no Return/Done key is available")
+                }
             case "del":
                 // Tap the on-screen delete key, NOT app.typeText (which retries
                 // the native keyboard-focus assertion ~1s each on Kuikly fields

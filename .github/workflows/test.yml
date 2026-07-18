@@ -932,18 +932,18 @@ jobs:
         working-directory: compose/iosApp
         run: pod install
 
-      - name: Build iOS host app (simulator)
+      - name: Build iOS host app and UI-test harness (simulator)
         working-directory: compose/iosApp
         run: |
           set -o pipefail
           xcodebuild \
             -workspace iosApp.xcworkspace \
-            -scheme iosApp \
+            -scheme iosAppUITests \
             -configuration Debug \
-            -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ios-build" \
             CODE_SIGNING_ALLOWED=NO \
-            build | tail -200
+            build-for-testing | tail -200
 
   ohos:
     name: OHOS shared compile

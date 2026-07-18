@@ -230,11 +230,16 @@ ios-use interact --workspace compose/iosApp/iosApp.xcworkspace --actions '[{"typ
 ```
 
 `tap` uses normalized XCTest coordinates (`0.0` to `1.0`). `interact` accepts
-an action array with `tapText`, `tap`, `swipe`, and `wait` entries; pass
-`--actions-file` for longer sequences. The command builds the UI-test bundle
-for testing, patches the generated `.xctestrun` with the action JSON, then runs
-`test-without-building` so each invocation can pass different actions without
-editing the scheme.
+an action array with `tapText`, `tap`, `swipe`, `text`, `key`, and `wait` entries; pass
+`--actions-file` for longer sequences. A swipe may use a semantic `direction`,
+or explicit `x/y/x2/y2` endpoints with `coordinateSpace` set to `normalized`
+or `points`. The command builds the UI-test bundle for testing, patches the
+generated `.xctestrun` with the action JSON, then runs only the bounded
+`IosUseInteractionTests` method through `test-without-building`. If the app is
+already running, the test activates that process instead of relaunching it so
+sequential invocations preserve app state. `text` and `key` (`enter`, `del`,
+or `esc`) tap the software keyboard through XCUITest; there is no host-key
+fallback.
 
 Capture/analyze logs:
 

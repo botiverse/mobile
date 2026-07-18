@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Small simctl helper for Slock iOS simulator control.
+"""Small simctl/XCUITest helper for Slock iOS simulator control.
 
-simctl covers simulator lifecycle, install, launch, and screenshots. Coordinate
-taps are routed through macOS accessibility so they work without adding an
-XCUITest target, but semantic/reliable multi-step flows should still move to
-XCUITest when the iOS host is mature enough.
+simctl covers simulator lifecycle, install, launch, and screenshots. UI input
+is executed inside the checked-in XCUITest target so this helper never sends
+host-global mouse or keyboard events and never foregrounds Simulator.app.
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -27,6 +25,9 @@ DEFAULT_OUT = Path(os.environ.get("TMPDIR", "/tmp")) / "slock-ios-automation" / 
 DEFAULT_BUNDLE_ID = "build.raft.app"
 DEFAULT_SCHEME = "iosApp"
 DEFAULT_WORKSPACE = IOS_DIR / "iosApp.xcworkspace"
+DEFAULT_INTERACTION_SCHEME = "iosAppUITests"
+DEFAULT_DERIVED_DATA = Path(os.environ.get("IOS_USE_DERIVED_DATA", "/tmp/ios-use-derived-data"))
+MOBILE_USE_SRC = REPO_ROOT / "tools" / "mobile-use" / "src"
 
 
 class CliError(RuntimeError):
@@ -97,18 +98,20 @@ def build_parser() -> argparse.ArgumentParser:
     add_out_args(screenshot)
     screenshot.set_defaults(func=cmd_screenshot)
 
-    tap = sub.add_parser("tap", help="Tap simulator coordinates through macOS accessibility")
-    tap.add_argument("x", type=int)
-    tap.add_argument("y", type=int)
-    tap.add_argument("--coordinate-space", choices=("window", "global"), default="window")
+    tap = sub.add_parser("tap", help="Tap simulator coordinates through XCUITest")
+    tap.add_argument("x", type=float)
+    tap.add_argument("y", type=float)
+    tap.add_argument("--coordinate-space", choices=("window", "normalized", "global"), default="window")
+    add_xcuitest_args(tap)
     tap.set_defaults(func=cmd_tap)
 
-    swipe = sub.add_parser("swipe", help="Swipe through cliclick when installed")
-    swipe.add_argument("x1", type=int)
-    swipe.add_argument("y1", type=int)
-    swipe.add_argument("x2", type=int)
-    swipe.add_argument("y2", type=int)
-    swipe.add_argument("--coordinate-space", choices=("window", "global"), default="window")
+    swipe = sub.add_parser("swipe", help="Swipe between simulator coordinates through XCUITest")
+    swipe.add_argument("x1", type=float)
+    swipe.add_argument("y1", type=float)
+    swipe.add_argument("x2", type=float)
+    swipe.add_argument("y2", type=float)
+    swipe.add_argument("--coordinate-space", choices=("window", "normalized", "global"), default="window")
+    add_xcuitest_args(swipe)
     swipe.set_defaults(func=cmd_swipe)
 
     open_url = sub.add_parser("open-url", aliases=["open_url"], help="Open a URL on the simulator")
@@ -121,6 +124,14 @@ def build_parser() -> argparse.ArgumentParser:
 def add_out_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--out", default=str(DEFAULT_OUT), help=f"Artifact directory. Default: {DEFAULT_OUT}")
     parser.add_argument("--prefix", default="state", help="Artifact filename prefix")
+
+
+def add_xcuitest_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE), help="Xcode workspace containing the UI test target")
+    parser.add_argument("--interaction-scheme", default=DEFAULT_INTERACTION_SCHEME, help="XCUITest scheme")
+    parser.add_argument("--configuration", default="Debug")
+    parser.add_argument("--derived-data-path", default=str(DEFAULT_DERIVED_DATA))
+    parser.add_argument("--bundle-id", default=DEFAULT_BUNDLE_ID)
 
 
 def cmd_devices(args: argparse.Namespace) -> dict[str, Any]:
@@ -217,29 +228,30 @@ def cmd_screenshot(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_tap(args: argparse.Namespace) -> dict[str, Any]:
-    x, y = resolve_point(args.x, args.y, args.coordinate_space)
-    script = f'tell application "System Events" to click at {{{x}, {y}}}'
-    run_osascript(script)
-    return {"device": args.device, "x": args.x, "y": args.y, "coordinate_space": args.coordinate_space, "global_x": x, "global_y": y}
+    coordinate_space = xcuitest_coordinate_space(args.coordinate_space)
+    action = {"type": "tap", "x": args.x, "y": args.y, "coordinateSpace": coordinate_space}
+    result = run_xcuitest_actions(args, [action])
+    return {**result, "x": args.x, "y": args.y, "coordinate_space": args.coordinate_space, "input_backend": "XCUITest"}
 
 
 def cmd_swipe(args: argparse.Namespace) -> dict[str, Any]:
-    cliclick = shutil.which("cliclick")
-    if not cliclick:
-        raise CliError(
-            "swipe requires `cliclick` for coordinate drags. Install it or use an XCUITest target for semantic swipes."
-        )
-    x1, y1 = resolve_point(args.x1, args.y1, args.coordinate_space)
-    x2, y2 = resolve_point(args.x2, args.y2, args.coordinate_space)
-    result = subprocess.run(
-        [cliclick, f"dd:{x1},{y1}", f"du:{x2},{y2}"],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if result.returncode != 0:
-        raise CliError(f"cliclick swipe failed ({result.returncode}): {result.stdout}{result.stderr}".strip())
-    return {"device": args.device, "coordinate_space": args.coordinate_space, "global_start": [x1, y1], "global_end": [x2, y2]}
+    coordinate_space = xcuitest_coordinate_space(args.coordinate_space)
+    action = {
+        "type": "swipe",
+        "x": args.x1,
+        "y": args.y1,
+        "x2": args.x2,
+        "y2": args.y2,
+        "coordinateSpace": coordinate_space,
+    }
+    result = run_xcuitest_actions(args, [action])
+    return {
+        **result,
+        "coordinate_space": args.coordinate_space,
+        "start": [args.x1, args.y1],
+        "end": [args.x2, args.y2],
+        "input_backend": "XCUITest",
+    }
 
 
 def cmd_open_url(args: argparse.Namespace) -> dict[str, Any]:
@@ -247,39 +259,63 @@ def cmd_open_url(args: argparse.Namespace) -> dict[str, Any]:
     return {"device": args.device, "url": args.url, "stdout": result.stdout.strip()}
 
 
-def resolve_point(x: int, y: int, coordinate_space: str) -> tuple[int, int]:
+def xcuitest_coordinate_space(coordinate_space: str) -> str:
     if coordinate_space == "global":
-        return x, y
-    position = simulator_window_position()
-    return position[0] + x, position[1] + y
-
-
-def simulator_window_position() -> tuple[int, int]:
-    script = (
-        'tell application "System Events"\n'
-        '  tell process "Simulator"\n'
-        '    set frontmost to true\n'
-        '    set p to position of window 1\n'
-        '    return (item 1 of p as text) & "," & (item 2 of p as text)\n'
-        '  end tell\n'
-        'end tell'
-    )
-    output = run_osascript(script).strip()
-    try:
-        x_str, y_str = output.split(",", 1)
-        return int(float(x_str)), int(float(y_str))
-    except ValueError as exc:
-        raise CliError(f"unable to parse Simulator window position: {output}") from exc
-
-
-def run_osascript(script: str) -> str:
-    result = subprocess.run(["osascript", "-e", script], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if result.returncode != 0:
         raise CliError(
-            "macOS accessibility click failed. Grant Terminal/iTerm Accessibility permission, "
-            f"ensure Simulator is open, then retry: {result.stderr or result.stdout}".strip()
+            "global coordinates address the macOS desktop and are intentionally unsupported. "
+            "Use --coordinate-space window (app points) or normalized (0.0 to 1.0); UI input runs only inside XCUITest."
         )
-    return result.stdout
+    return "points" if coordinate_space == "window" else "normalized"
+
+
+def run_xcuitest_actions(args: argparse.Namespace, actions: list[dict[str, Any]]) -> dict[str, Any]:
+    if str(MOBILE_USE_SRC) not in sys.path:
+        sys.path.insert(0, str(MOBILE_USE_SRC))
+    try:
+        from ios_use.config import IosConfig
+        from ios_use.simctl import IosSimulator, IosUseError
+    except ImportError as exc:
+        raise CliError(f"unable to load the checked-in ios-use XCUITest harness: {exc}") from exc
+
+    device = resolve_xcuitest_device(args)
+    config = IosConfig.from_defaults(
+        device=device,
+        bundle=args.bundle_id,
+        workspace=args.workspace,
+        configuration=args.configuration,
+        derived_data=args.derived_data_path,
+    )
+    try:
+        return IosSimulator(config).interact(
+            actions,
+            workspace=Path(args.workspace).expanduser(),
+            interaction_scheme=args.interaction_scheme,
+            configuration=args.configuration,
+            derived_data=Path(args.derived_data_path).expanduser(),
+            bundle=args.bundle_id,
+            device=device,
+        )
+    except IosUseError as exc:
+        raise CliError(f"XCUITest input failed: {exc}") from exc
+
+
+def resolve_xcuitest_device(args: argparse.Namespace) -> str:
+    if args.device != "booted":
+        return args.device
+    result = run_simctl(args, ["list", "devices", "booted", "--json"], device=False)
+    payload = json.loads(result.stdout)
+    booted = [
+        entry.get("udid")
+        for entries in payload.get("devices", {}).values()
+        for entry in entries
+        if entry.get("state") == "Booted" and entry.get("isAvailable", True) and entry.get("udid")
+    ]
+    if len(booted) != 1:
+        raise CliError(
+            f"XCUITest input requires one concrete booted simulator UDID; found {len(booted)}. "
+            "Pass --device <UDID>."
+        )
+    return str(booted[0])
 
 
 def run_simctl(
