@@ -61,27 +61,38 @@ function parseBounds(line) {
 }
 
 // Deterministic login for a cold simulator: Sign In screen → email/password →
-// Sign In → (optional) server picker → home. The M3 agent did this by
-// wandering; here it is fixed and auditable.
+// Sign In → (optional) server picker → home. NOTE: Kuikly's iOS text fields
+// are NOT native UITextFields, so describeTree never emits [INPUT] markers
+// for them — resolve fields by the label-relative position (field sits
+// directly under its "Email"/"Password" label).
 async function ensureLoggedIn() {
   let dump = await drv.dumpUi();
+  fs.writeFileSync(path.join(outDir, "sign-in-dump.txt"), dump);
   if (!/Sign In|Email|Password/.test(dump)) { rec("already past sign-in screen"); return; }
   const email = process.env.QA_TEST_EMAIL;
   const password = process.env.QA_TEST_PASSWORD;
   if (!email || !password) throw new Error("QA_TEST_EMAIL/QA_TEST_PASSWORD not set for login step");
   rec("sign-in screen detected, logging in deterministically");
 
-  const emailLine = dump.split("\n").find((l) => l.includes("[INPUT]") && /"Email"/.test(l));
-  const passLine = dump.split("\n").find((l) => l.includes("[INPUT]") && /"Password"/.test(l));
-  if (!emailLine || !passLine) throw new Error("email/password INPUT fields not found in sign-in dump");
-  let p = parseBounds(emailLine);
+  const fieldUnder = (label) => {
+    const line = dump.split("\n").find((l) => {
+      const t = /"([^"]*)"/.exec(l)?.[1] ?? "";
+      return t.trim() === label;
+    });
+    if (!line) throw new Error(`"${label}" label not found in sign-in dump`);
+    const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
+    // tap the field below the label: label center-x, label bottom + ~45px
+    return { x: Math.round((Number(m[1]) + Number(m[3])) / 2), y: Number(m[4]) + 45 };
+  };
+
+  let p = fieldUnder("Email");
   await drv.tap(p.x, p.y);
   await drv.text(email);
-  rec("email typed");
-  p = parseBounds(passLine);
+  rec(`email typed at [${p.x},${p.y}]`);
+  p = fieldUnder("Password");
   await drv.tap(p.x, p.y);
   await drv.text(password);
-  rec("password typed");
+  rec(`password typed at [${p.x},${p.y}]`);
 
   // The Sign In BUTTON shares its label with the page title — tapText's
   // smallest-area rule resolves the button.
