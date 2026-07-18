@@ -1144,6 +1144,7 @@ data class SettingsMobileSnapshot(
                     )
                 }
         ),
+    val http3: SettingsHttp3Snapshot = SettingsHttp3Snapshot(),
     val compactConsecutiveMessages: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = true,
@@ -1224,6 +1225,21 @@ data class SettingsMobileSnapshot(
                     )
                 )
         )
+)
+
+/**
+ * Device-local HTTP/3 preference. Requested state, effective eligibility and
+ * curl selection policy stay separate from any request's negotiated protocol.
+ */
+data class SettingsHttp3Snapshot(
+    val requestedEnabled: Boolean = false,
+    val effectiveEnabled: Boolean = false,
+    val curlRequestedForNewCalls: Boolean = false,
+    val canEnable: Boolean = false,
+    val statusLabel: String = "Unavailable",
+    val detail: String =
+        "Prefer HTTP/3 for new requests. The actual protocol can fall back to HTTP/2 or HTTP/1.1.",
+    val generation: Long = 0L
 )
 
 data class SettingsMobileToggleSnapshot(

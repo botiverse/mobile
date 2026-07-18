@@ -4,5 +4,6 @@
 #include "napi/native_api.h"
 
 void RegisterSlockOhosImageAdapter(napi_env env);
+bool SetSlockOhosImageHttp3Enabled(bool enabled);
 
 #endif  // SLOCK_OHOS_IMAGE_ADAPTER_H

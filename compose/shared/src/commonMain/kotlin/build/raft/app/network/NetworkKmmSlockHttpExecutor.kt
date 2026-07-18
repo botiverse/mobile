@@ -11,7 +11,6 @@ import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.export.IVBPBLog
 import com.tencent.kmm.network.export.VBTransportInitConfig
 import com.tencent.kmm.network.service.NetworkClient
-import com.tencent.kmm.network.service.NetworkClientConfig
 import com.tencent.kmm.network.service.VBTransportInitHelper
 import kotlinx.coroutines.CancellationException
 import kotlin.concurrent.Volatile
@@ -69,8 +68,9 @@ internal class NetworkKmmSlockHttpExecutor(
     private val client: NetworkClient by lazy {
         ensureNetworkKmmInitialized(warningLogger)
         NetworkClient(
-            NetworkClientConfig(
-                defaultPolicy = NetworkRequestPolicy(timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS)
+            slockNetworkClientConfig(
+                defaultPolicy = NetworkRequestPolicy(timeoutMillis = SLOCK_REQUEST_TIMEOUT_MILLIS),
+                diagnosticsLogger = warningLogger
             )
         )
     }
@@ -344,6 +344,7 @@ internal fun NetworkResponse.networkKmmDiagnostics(): String {
             ?: "none"
     return "engine=networkkmm status=${statusCode ?: "none"} " +
         "kind=${error?.kind ?: "none"} rawCode=$rawCodeLabel detail=$detail " +
+        "http3Requested=${request.curlHttp3EnabledOverride ?: "none"} " +
         "bodyBytes=${body.bytes?.size ?: 0} errorStatus=${error?.statusCode ?: "none"} " +
         "transportId=${timing.transportRequestId ?: "none"} protocol=${timing.protocol ?: "none"} " +
         "reusedConnection=${timing.reusedConnection ?: "none"} " +

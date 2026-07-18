@@ -431,6 +431,7 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
         listOf(
             "com.tencent.kuiklybase:network",
             "com.tencent.kuiklybase:network-android",
+            "com.tencent.kuiklybase:network-android-curl-runtime",
             "com.tencent.kuiklybase:resource-core",
             "com.tencent.kuiklybase:resource-core-android",
             "com.tencent.kuikly-open:compose",
@@ -477,6 +478,7 @@ configurations
 dependencies {
     // Kuikly Compose shared module
     implementation(project(":shared"))
+    runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.28")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.media3.exoplayer)

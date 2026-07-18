@@ -12,7 +12,16 @@ class SettingsStandaloneLaunchPayloadTest {
     fun settingsLaunchWireSchemasExcludeContentFields() {
         assertDescriptorExcludes(
             descriptor = WireSettingsHomeLaunchPayload.serializer().descriptor,
-            fields = listOf("title", "subtitle", "items", "showSelection")
+            fields =
+                listOf(
+                    "title",
+                    "subtitle",
+                    "items",
+                    "showSelection",
+                    "http3Enabled",
+                    "curlEnabled",
+                    "networkEngine"
+                )
         )
         assertDescriptorExcludes(
             descriptor = WireSettingsAccountLaunchPayload.serializer().descriptor,

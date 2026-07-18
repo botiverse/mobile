@@ -5,7 +5,6 @@ import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkRequestPolicy
 import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.service.NetworkClient
-import com.tencent.kmm.network.service.NetworkClientConfig
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -44,8 +43,11 @@ object SharedBinaryDownloader {
             recordDiagnostics("operation=networkkmm_init status=warning message=${warning.toSafeDiagnosticsToken()}")
         }
         NetworkClient(
-            NetworkClientConfig(
-                defaultPolicy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
+            slockNetworkClientConfig(
+                defaultPolicy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS),
+                diagnosticsLogger = { message ->
+                    recordDiagnostics("operation=engine_diagnostics $message")
+                }
             )
         )
     }

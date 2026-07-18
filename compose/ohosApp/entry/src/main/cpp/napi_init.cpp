@@ -127,10 +127,28 @@ static napi_value InitKuikly(napi_env env, napi_callback_info /*info*/) {
     return result;
 }
 
+static napi_value SetImageHttp3Enabled(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value argv[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+    bool enabled = false;
+    const bool valid =
+        argc == 1 &&
+        argv[0] != nullptr &&
+        napi_get_value_bool(env, argv[0], &enabled) == napi_ok;
+    napi_value result;
+    napi_get_boolean(
+        env,
+        valid && SetSlockOhosImageHttp3Enabled(enabled),
+        &result);
+    return result;
+}
+
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {
     napi_property_descriptor desc[] = {
-        {"initKuikly", nullptr, InitKuikly, nullptr, nullptr, nullptr, napi_default, nullptr}
+        {"initKuikly", nullptr, InitKuikly, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"setImageHttp3Enabled", nullptr, SetImageHttp3Enabled, nullptr, nullptr, nullptr, napi_default, nullptr}
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

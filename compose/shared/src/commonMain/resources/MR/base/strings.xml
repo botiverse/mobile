@@ -1321,6 +1321,12 @@
     <string name="settings_mobile_link_open_mode_detail">Choose whether web links open in the default browser or inside Raft.</string>
     <string name="settings_mobile_link_open_mode_system_browser">Default browser</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">In-app browser</string>
+    <string name="settings_mobile_http3_title">Enable HTTP/3</string>
+    <string name="settings_mobile_http3_detail">Prefer HTTP/3 for new requests. Curl can transparently fall back to HTTP/2 or HTTP/1.1 when QUIC is unavailable.</string>
+    <string name="settings_mobile_http3_preferred">HTTP/3 preferred</string>
+    <string name="settings_mobile_http3_enabled">New requests use the curl lane and request HTTP/3.</string>
+    <string name="settings_mobile_http3_disabled">New requests keep the platform transport without requesting HTTP/3.</string>
+    <string name="settings_mobile_http3_unavailable">HTTP/3 unavailable</string>
     <string name="in_app_browser_title">Browser</string>
     <string name="in_app_browser_forward">Forward</string>
     <string name="in_app_browser_reload">Reload</string>

@@ -1321,6 +1321,12 @@
     <string name="settings_mobile_link_open_mode_detail">选择网页链接使用默认浏览器打开，还是在 Raft 内打开。</string>
     <string name="settings_mobile_link_open_mode_system_browser">默认浏览器</string>
     <string name="settings_mobile_link_open_mode_in_app_browser">内置浏览器</string>
+    <string name="settings_mobile_http3_title">启用 HTTP/3</string>
+    <string name="settings_mobile_http3_detail">让新请求优先尝试 HTTP/3；QUIC 不可用时，curl 仍可自动回退到 HTTP/2 或 HTTP/1.1。</string>
+    <string name="settings_mobile_http3_preferred">优先使用 HTTP/3</string>
+    <string name="settings_mobile_http3_enabled">新请求会走 curl 通道并请求 HTTP/3。</string>
+    <string name="settings_mobile_http3_disabled">新请求继续使用平台传输，并且不请求 HTTP/3。</string>
+    <string name="settings_mobile_http3_unavailable">HTTP/3 当前不可用</string>
     <string name="in_app_browser_title">浏览器</string>
     <string name="in_app_browser_forward">前进</string>
     <string name="in_app_browser_reload">重新加载</string>
