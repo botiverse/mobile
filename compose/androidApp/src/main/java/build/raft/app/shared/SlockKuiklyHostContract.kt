@@ -17,8 +17,6 @@ internal object SlockKuiklyPages {
     const val MEMBERS = "compose_members"
     const val SETTINGS_HOME = "compose_settings_home"
     const val SETTINGS_ACCOUNT = "compose_settings_account"
-    const val SETTINGS_COMPUTERS = "compose_settings_computers"
-    const val SETTINGS_COMPUTER_DETAIL = "compose_settings_computer_detail"
     const val SETTINGS_STORAGE = "compose_settings_storage"
     const val SETTINGS_BILLING = "compose_settings_billing"
     const val ICON_GALLERY = "compose_icon_gallery"

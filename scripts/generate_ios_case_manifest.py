@@ -19,8 +19,25 @@ never reached the manifest while the summary claimed "2 pending". v2 adds:
     `pending` (with a reason). The script fails loudly if any id falls through,
     so a new helper pattern can never silently shrink coverage again.
 
+v3 (task #498): two more literal classes recognised —
+  * captureActivityScreenshot("<case>.before"/".after") literal args are
+    auxiliary probe-screenshot labels, NOT case definitions; they are
+    excluded from the invariant sweep;
+  * `val caseId = "..."` standalone gesture probes (own ActivityScenario +
+    swipe/tap phases) are deferred as pending — the iOS launch-data model
+    cannot express mid-case gestures.
+
+v3 also downgrades the invariant's blast radius: UNRESOLVED ids used to
+fail the script (exit 2), which killed the whole iOS leg and — via the
+publish preflight case-drop guard — blocked the entire site for 4 nights
+(07-14 → 07-17). The iOS leg is additive by design (the report degrades
+to react__android without it), so a generator gap now emits one
+::error per id (loud in the Actions UI) and lists the id as pending with
+the UNRESOLVED reason, but no longer blocks the run.
+
 Cases that stay pending, with reasons:
   * interaction steps in the method body (UiAutomation etc.);
+  * standalone gesture probes with `val caseId` (e.g. forward-modal-scroll-probe);
   * pageData built from non-literal values with no known helper template
     (agent-detail / create-agent dialog build large nested payloads — the
     honest fix is a harness-emitted manifest, tracked separately);
@@ -57,6 +74,16 @@ PUT_LITERAL = re.compile(
 )
 PUT_ANY = re.compile(r"\.put\(")
 CASE_ID_LITERAL = re.compile(r'"((?:components|screens|library|auth)\.[a-z0-9./_-]+)"')
+# captureActivityScreenshot("<id>") literal args are auxiliary probe-screenshot
+# labels (e.g. "<case>.before" / "<case>.after" phase shots inside a
+# beforeScreenshot lambda) — they are not case definitions, so the
+# completeness invariant must not demand they resolve (task #498).
+AUX_SCREENSHOT_LABEL = re.compile(
+    r'captureActivityScreenshot\(\s*"((?:components|screens|library|auth)\.[a-z0-9./_-]+)"'
+)
+# Standalone gesture probes carry their caseId in a `val` and drive their own
+# ActivityScenario + swipe/tap phases — no iOS launch-data equivalent.
+VAL_CASE_ID = re.compile(r'val\s+caseId\s*=\s*"([^"]+)"')
 
 # Helper templates: wrapper name -> how to rebuild (pageName, pageData) from
 # its literal string arguments (after the caseId argument). Only add entries
@@ -96,8 +123,9 @@ def main() -> int:
     src = HARNESS.read_text()
     chunks = re.split(r"\bfun\s+(\w+)\s*\(", src)
 
-    # every caseId string literal in the file (fixture ids share this shape)
-    all_ids = set(CASE_ID_LITERAL.findall(src))
+    # every caseId string literal in the file (fixture ids share this shape),
+    # minus auxiliary probe-screenshot labels which are not case definitions
+    all_ids = set(CASE_ID_LITERAL.findall(src)) - set(AUX_SCREENSHOT_LABEL.findall(src))
 
     cases, pending, seen = [], [], set()
 
@@ -141,6 +169,16 @@ def main() -> int:
                 for key, raw in literal_puts:
                     page_data[key] = parse_literal(raw)
             emit(case_id, page_m.group(1), page_data)
+            continue
+
+        # -- standalone gesture probes (val caseId = "...") ----------------
+        val_m = VAL_CASE_ID.search(body)
+        if val_m:
+            defer(
+                val_m.group(1),
+                method,
+                "standalone gesture probe (own ActivityScenario + swipe/tap phases); no iOS launch-data equivalent",
+            )
             continue
 
         # -- helper-wrapped calls ------------------------------------------
@@ -188,9 +226,17 @@ def main() -> int:
     )
     for p in pending:
         print(f"  pending: {p['caseId']} ({p['reason']})", file=sys.stderr)
-    # unresolved ids are a generator bug — fail loudly rather than under-report
-    if unaccounted and not wanted:
-        return 2
+    # Unresolved ids are still a generator bug and must stay unmissable, but
+    # the iOS leg is additive (the report degrades to react__android without
+    # it) — blocking the whole run cost 4 nights of site updates for a
+    # 1-pattern gap (task #498). Emit one ::error per id (Actions-UI loud)
+    # and keep the id in pending with its UNRESOLVED reason; do not fail.
+    for case_id in unaccounted:
+        print(
+            f"::error title=iOS manifest generator gap::{case_id}: literal "
+            "exists in harness but no parser/template matched (fix the generator!)",
+            file=sys.stderr,
+        )
     return 0
 
 

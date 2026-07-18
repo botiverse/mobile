@@ -1388,8 +1388,6 @@ open class SlockKuiklyActivity :
         const val PAGE_MEMBERS = SlockKuiklyPages.MEMBERS
         const val PAGE_SETTINGS_HOME = SlockKuiklyPages.SETTINGS_HOME
         const val PAGE_SETTINGS_ACCOUNT = SlockKuiklyPages.SETTINGS_ACCOUNT
-        const val PAGE_SETTINGS_COMPUTERS = SlockKuiklyPages.SETTINGS_COMPUTERS
-        const val PAGE_SETTINGS_COMPUTER_DETAIL = SlockKuiklyPages.SETTINGS_COMPUTER_DETAIL
         const val PAGE_SETTINGS_STORAGE = SlockKuiklyPages.SETTINGS_STORAGE
         const val PAGE_SETTINGS_BILLING = SlockKuiklyPages.SETTINGS_BILLING
         const val PAGE_ICON_GALLERY = SlockKuiklyPages.ICON_GALLERY
