@@ -25,7 +25,11 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
-import { findAllChannelTarget, redactEditableValues } from "./ios_navigation_matcher.mjs";
+import {
+  findAllChannelTarget,
+  findComposerImageTarget,
+  redactEditableValues,
+} from "./ios_navigation_matcher.mjs";
 
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
 const ioDir = arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || "");
@@ -129,26 +133,6 @@ async function ensureLoggedIn() {
   }
 }
 
-function findComposerImageBtn(dump) {
-  // dump lines: `[BTN] "label" [x1,y1][x2,y2]` — the composer input is the
-  // `"Message #..."` node; the image button is the unlabeled [BTN] in the same
-  // row band, left of the input field.
-  const lines = dump.split("\n");
-  const composer = lines.find((l) => l.includes('"Message #'));
-  if (!composer) return null;
-  const cy = Number(/\[\d+,(\d+)\]\[\d+,\d+\]/.exec(composer)?.[1] ?? -1);
-  let best = null;
-  for (const l of lines) {
-    if (!l.includes("[BTN]")) continue;
-    const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(l);
-    if (!m) continue;
-    const [x1, y1, x2, y2] = m.slice(1).map(Number);
-    if (cy > 0 && Math.abs(y1 - cy) > 80) continue; // same row band as composer
-    if (!best || x1 < best.x1) best = { x1, y1, x2, y2 };
-  }
-  return best ? { x: Math.round((best.x1 + best.x2) / 2), y: Math.round((best.y1 + best.y2) / 2) } : null;
-}
-
 const verdict = { verdict: "error", reason: "", steps };
 const writeVerdict = (v, reason) => {
   verdict.verdict = v;
@@ -190,10 +174,15 @@ try {
   await shot("step-01-channel.png");
 
   // Assert the image button and mark the process state before the single tap.
-  const btn = findComposerImageBtn(dump);
-  if (!btn) { writeVerdict("fail", "composer image button not found in dump (icon-only BTN resolution)"); process.exit(1); }
+  let btn;
+  try {
+    btn = findComposerImageTarget(dump);
+  } catch (error) {
+    writeVerdict("fail", `composer image-button precondition failed: ${String(error)}`);
+    process.exit(1);
+  }
   const aliveBefore = processAlive();
-  rec(`image button at [${btn.x},${btn.y}]; process alive before tap: ${aliveBefore}`);
+  rec(`image button via ${btn.mode} at [${btn.x},${btn.y}]; process alive before tap: ${aliveBefore}`);
 
   // The single deterministic tap.
   await drv.tap(btn.x, btn.y);
