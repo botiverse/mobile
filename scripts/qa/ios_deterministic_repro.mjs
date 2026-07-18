@@ -26,10 +26,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
 import {
+  composerHasNewPreview,
+  countThreadImageNodes,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
   hasPhotoPickerGate,
+  hasRealPhotoPicker,
   redactEditableValues,
 } from "./ios_navigation_matcher.mjs";
 
@@ -239,18 +242,18 @@ try {
     process.exit(1);
   }
 
-  // Assert the REAL picker (not just the gate): PhotosUI content in the app dump.
+  // Prove the REAL picker by header+chrome+grid-tile combination (review: no
+  // line-count or lone-word heuristics — those match ordinary app panels).
+  fs.writeFileSync(path.join(outDir, "picker-dump.txt"), redactEditableValues(after));
   await shot("step-03-picker.png");
-  const PICKER_REAL = /recents|all photos|photo library|select|cancel/i;
-  if (!PICKER_REAL.test(after)) {
-    writeVerdict("fail", `gate marker seen but real PhotosUI picker not in app dump (markers: ${evidenceMode})`);
+  if (!hasRealPhotoPicker(after)) {
+    writeVerdict("fail", "real PhotosUI picker not proven (need exact Recents/All Photos header + Cancel/Select chrome + plausible grid tiles)");
     process.exit(1);
   }
-  rec("real PhotosUI picker confirmed in app dump");
+  rec("real PhotosUI picker proven (header + chrome + tiles)");
 
-  // Select the staged image: the most recent photo is the first cell in the
-  // Recents grid. Native picker cells are real accessibility nodes (unlike
-  // Kuikly icons); the matcher throws when no plausible tile exists.
+  // Select the staged image (most recent photo = top-left Recents tile;
+  // matcher is header-gated, tile-size-bounded, ambiguity fail-closed).
   let cellTarget;
   try {
     cellTarget = findPhotoCellTarget(after);
@@ -263,16 +266,21 @@ try {
   await new Promise((r) => setTimeout(r, 4000));
   await shot("step-04-selected.png");
 
-  // Preview assertion: composer shows an attachment/preview where the plain
-  // composer was before (new node inside composer bounds, or picker closed
-  // with a visible thumbnail).
+  // Preview proof: a NEW node inside the composer bounds that the plain
+  // composer (pre-tap `dump`) did not contain. pickerClosed alone is NOT a
+  // preview (that is exactly the no-attachment path we must catch).
   const afterSelect = await drv.dumpUi();
   fs.writeFileSync(path.join(outDir, "after-select-dump.txt"), redactEditableValues(afterSelect));
-  const pickerClosed = !PICKER_REAL.test(afterSelect);
-  const previewHit = afterSelect !== after && (pickerClosed || /preview|attachment|image/i.test(afterSelect));
-  if (!previewHit) { writeVerdict("fail", "photo selected but no composer preview appeared (picker state unchanged)"); process.exit(1); }
-  rec("composer preview confirmed");
+  if (!composerHasNewPreview(dump, afterSelect)) {
+    writeVerdict("fail", "photo selected but no NEW preview/attachment node inside composer bounds — possible no-attachment product path");
+    process.exit(1);
+  }
+  rec("composer preview proven (new node inside composer bounds)");
   await shot("step-05-preview.png");
+
+  // Readback baseline: image nodes already in the thread before send.
+  const imagesBefore = countThreadImageNodes(dump);
+  rec(`thread image nodes before send: ${imagesBefore}`);
 
   // Send via the keyboard send/return key — the composer send button is a
   // known Kuikly icon-only control; the keyboard path is the deterministic
@@ -281,21 +289,19 @@ try {
   rec("send issued via keyboard return");
   await new Promise((r) => setTimeout(r, 6000));
 
-  // Readback: the image message must appear in the #all conversation (a new
-  // large node in the thread area, and the composer returns to placeholder).
+  // Readback: thread image-node count must INCREASE by exactly one, and the
+  // composer returns to its placeholder.
   const readback = await drv.dumpUi();
   fs.writeFileSync(path.join(outDir, "readback-dump.txt"), redactEditableValues(readback));
   const composerBack = readback.includes('"Message #all"');
-  const newImageNode = readback.split("\n").some((l) => {
-    const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(l);
-    return m && (+m[3] - +m[1] > 150) && (+m[4] - +m[2] > 150) && !/Message #all|Send feedback|Settings/.test(l);
-  });
+  const imagesAfter = countThreadImageNodes(readback);
   await shot("step-06-readback.png");
-  if (composerBack && newImageNode) {
-    writeVerdict("pass", "full chain verified: resolver tap → real PhotosUI picker → photo cell select → composer preview → keyboard send → image message read back in #all");
+  rec(`thread image nodes after send: ${imagesAfter} (composer back: ${composerBack})`);
+  if (composerBack && imagesAfter === imagesBefore + 1) {
+    writeVerdict("pass", `full chain verified: resolver tap → real PhotosUI picker → photo cell select → new composer preview → keyboard send → image message read back in #all (thread images ${imagesBefore}→${imagesAfter})`);
     process.exit(0);
   }
-  writeVerdict("fail", `readback incomplete: composerBack=${composerBack} newImageNode=${newImageNode}`);
+  writeVerdict("fail", `readback incomplete: composerBack=${composerBack} threadImages ${imagesBefore}→${imagesAfter} (expected +1)`);
   process.exit(1);
 } catch (e) {
   writeVerdict("error", `harness/script error: ${String(e).slice(0, 300)}`);
