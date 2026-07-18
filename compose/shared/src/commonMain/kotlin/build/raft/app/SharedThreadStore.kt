@@ -1370,12 +1370,23 @@ internal class SharedThreadDataSource(
         sentPage: ThreadMessagesPage
     ): KuiklyThreadScreenPayload {
         if (sentPage.messages.isEmpty()) return basePayload
-        val pendingPayload = basePayload.withLocalSendStarted(localMessage)
+        val session = readSession()
+        val threadId = basePayload.resolveThreadRouteIdentity().timelineChannelId
+        val latestCachedPayload =
+            threadId
+                ?.let(::cachedPayload)
+                ?.takeIf { cached -> cached.isUsableCachedPayloadForRoute(basePayload) }
+                ?.withRouteContext(basePayload)
+        // Concurrent sends complete independently. Always fold the next
+        // canonical response into the latest cached timeline instead of the
+        // send-start snapshot, otherwise the later cache write can erase a
+        // sibling send that completed while this request was in flight.
+        val pendingPayload = (latestCachedPayload ?: basePayload).withLocalSendStarted(localMessage)
         val appended =
             appendSharedThreadSentMessageFromPage(
                 basePayload = pendingPayload,
                 page = sentPage,
-                session = readSession(),
+                session = session,
                 trustedReplyThreadChannelId = localMessage.pendingSendContext?.streamChannelId,
                 diagnostics = diagnosticsLogger,
             )
@@ -5562,31 +5573,28 @@ internal class SharedThreadStore(
 
     private suspend fun appendSentPage(page: ThreadMessagesPage) {
         if (page.messages.isEmpty()) return
-        val currentPayload = _state.value.payload
-        val appended =
-            appendSharedThreadSentMessageFromPage(
-                basePayload = currentPayload,
-                page = page,
-                session = dataSource.readSession(),
-                diagnostics = diagnosticsLogger ?: strictProjectionDiagnosticsLogger,
-            )
-        val appendedCanonicalMessages =
-            appended.messages.filter { appendedMessage ->
-                currentPayload.messages.none { currentMessage -> currentMessage.id == appendedMessage.id }
+        val routePayload = _state.value.payload
+        val session = dataSource.readSession()
+        reducePayloadPatchAndCache(cachePayload = true) { payload ->
+            if (!routeStillCurrent(routePayload, "thread_send", "append_apply", payload)) {
+                return@reducePayloadPatchAndCache payload
             }
-        val deduped =
-            appended
-                .copy(messages = appended.messages.absorbingCanonicalSendEchoes(appendedCanonicalMessages))
-                .preserveStableTimelineFrom(currentPayload)
-        val selected =
-            dataSource
-                .cacheCanonicalPayload(deduped)
-                .withRouteContext(currentPayload)
-                .preserveStableTimelineFrom(currentPayload)
-        reducePayloadPatch { payload ->
-            if (!routeStillCurrent(currentPayload, "thread_send", "append_apply", payload)) {
-                return@reducePayloadPatch payload
-            }
+            val appended =
+                appendSharedThreadSentMessageFromPage(
+                    basePayload = payload,
+                    page = page,
+                    session = session,
+                    diagnostics = diagnosticsLogger ?: strictProjectionDiagnosticsLogger,
+                )
+            val appendedCanonicalMessages =
+                appended.messages.filter { appendedMessage ->
+                    payload.messages.none { currentMessage -> currentMessage.id == appendedMessage.id }
+                }
+            val selected =
+                appended
+                    .copy(messages = appended.messages.absorbingCanonicalSendEchoes(appendedCanonicalMessages))
+                    .withRouteContext(payload)
+                    .preserveStableTimelineFrom(payload)
             payload.withThreadContentProjectionFrom(selected)
         }
     }
@@ -5617,33 +5625,35 @@ internal class SharedThreadStore(
 
     private suspend fun replaceLocalSendWithSentPage(messageId: String, page: ThreadMessagesPage) {
         if (page.messages.isEmpty()) return
-        val currentPayload = _state.value.payload
-        val appended =
-            appendSharedThreadSentMessageFromPage(
-                basePayload = currentPayload,
-                page = page,
-                session = dataSource.readSession(),
-                trustedReplyThreadChannelId =
-                    currentPayload
-                        .messages
-                        .firstOrNull { it.id == messageId }
-                        ?.pendingSendContext
-                        ?.streamChannelId,
-                diagnostics = diagnosticsLogger ?: strictProjectionDiagnosticsLogger,
-            )
-        val replaced =
-            appended
-                .withoutLocalSendMessage(messageId)
-                .preserveStableTimelineFrom(currentPayload)
-        val selected =
-            dataSource
-                .cacheCanonicalPayload(replaced)
-                .withRouteContext(currentPayload)
-                .preserveStableTimelineFrom(currentPayload)
-        reducePayloadPatch { payload ->
-            if (!routeStillCurrent(currentPayload, "thread_send", "replace_apply", payload)) {
-                return@reducePayloadPatch payload
+        val routePayload = _state.value.payload
+        val session = dataSource.readSession()
+        // Build the replacement from the latest payload inside the reducer.
+        // Two send responses and a realtime agent reply may interleave while
+        // readSession/network/cache work is suspended; projecting a snapshot
+        // captured before that suspension would make the last completion win
+        // and temporarily hide the other canonical message until reload.
+        reducePayloadPatchAndCache(cachePayload = true) { payload ->
+            if (!routeStillCurrent(routePayload, "thread_send", "replace_apply", payload)) {
+                return@reducePayloadPatchAndCache payload
             }
+            val appended =
+                appendSharedThreadSentMessageFromPage(
+                    basePayload = payload,
+                    page = page,
+                    session = session,
+                    trustedReplyThreadChannelId =
+                        payload
+                            .messages
+                            .firstOrNull { it.id == messageId }
+                            ?.pendingSendContext
+                            ?.streamChannelId,
+                    diagnostics = diagnosticsLogger ?: strictProjectionDiagnosticsLogger,
+                )
+            val selected =
+                appended
+                    .withoutLocalSendMessage(messageId)
+                    .withRouteContext(payload)
+                    .preserveStableTimelineFrom(payload)
             payload.withThreadContentProjectionFrom(selected)
         }
     }

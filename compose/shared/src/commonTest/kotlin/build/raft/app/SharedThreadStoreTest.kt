@@ -4136,6 +4136,65 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun concurrentSendCompletionPreservesSiblingSendAndInterleavedAgentReply() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = ParkableReadSessionStore(sampleSession())
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = sessionStore,
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "first")))
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-2", "second")))
+
+        sessionStore.parkNextRead()
+        val firstCompletion =
+            async {
+                store.accept(
+                    SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                        "local-1",
+                        sentPage("server-1", "first")
+                    )
+                )
+            }
+        sessionStore.nextReadStarted.await()
+
+        store.accept(
+            SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                "local-2",
+                sentPage("server-2", "second")
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("agent-1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("agent-1", "Agent"),
+                        timestampLabel = "2026-07-19T00:47:00Z",
+                        body = "agent reply",
+                        seq = 12,
+                    )
+                )
+            )
+        )
+
+        sessionStore.releaseNextRead.complete(Unit)
+        firstCompletion.await()
+
+        val visibleIds = store.state.value.payload.messages.map { it.id }.toSet()
+        assertEquals(setOf("m1", "server-1", "server-2", "agent-1"), visibleIds)
+        assertFalse(store.state.value.payload.messages.any { it.id.startsWith("local-") })
+        val cachedIds = dataSource.cachedPayload("channel-1")?.messages.orEmpty().map { it.id }.toSet()
+        assertEquals(setOf("m1", "server-1", "server-2", "agent-1"), cachedIds)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeOwnMessageEchoReplacesTransientLocalSendingBubble() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
