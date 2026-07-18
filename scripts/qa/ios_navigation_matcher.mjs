@@ -146,3 +146,21 @@ export function findComposerImageTarget(dump) {
   }
   return { x, y, mode: "composer-relative", line: null, composerLine: composer.line };
 }
+
+// Locate the first photo cell in a REAL PhotosUI picker dump (task #26).
+// Native picker cells are large tiles; the staged fixture is the most recent
+// photo, i.e. the top-left cell in the Recents grid. Require at least one
+// plausible tile — never fall back to coordinate probing.
+export function findPhotoCellTarget(dump) {
+  const lines = String(dump || "").split("\n");
+  const headerIdx = lines.findIndex((l) => /recents|all photos/i.test(l));
+  const cells = lines.slice(headerIdx < 0 ? 0 : headerIdx)
+    .map((line) => ({ line, node: BOUNDS_RE.exec(line) }))
+    .filter((c) => c.node)
+    .map((c) => ({ line: c.line, x1: +c.node[1], y1: +c.node[2], x2: +c.node[3], y2: +c.node[4] }))
+    .filter((c) => c.x2 - c.x1 > 60 && c.y2 - c.y1 > 60)
+    .sort((a, b) => (a.y1 - b.y1) || (a.x1 - b.x1));
+  if (!cells.length) throw new Error("no photo cell target found in the picker dump");
+  const first = cells[0];
+  return { x: Math.round((first.x1 + first.x2) / 2), y: Math.round((first.y1 + first.y2) / 2), line: first.line };
+}
