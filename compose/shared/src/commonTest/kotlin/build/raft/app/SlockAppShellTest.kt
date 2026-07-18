@@ -456,6 +456,12 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun sharedBottomTabBarKeepsChildPageSeamSquare() {
+        assertNull(appShellChildPageGlassStyle(bottomTabBarOverlaysContent = false))
+        assertEquals("liquid", appShellChildPageGlassStyle(bottomTabBarOverlaysContent = true))
+    }
+
+    @Test
     fun notificationLaunchWaitsForTargetServerHomeContentAfterServerSwitch() {
         fun content(snapshotServerId: String, sessionServerId: String): SharedHomeContentState.Content =
             SharedHomeContentState.Content(

@@ -600,6 +600,10 @@ private const val AppShellNotificationParentMessageIdKey = "slockNotificationPar
 private const val AppShellNotificationKindKey = "slockNotificationKind"
 private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
 private const val AppShellChildPageGlassStyleLiquid = "liquid"
+
+internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): String? =
+    AppShellChildPageGlassStyleLiquid.takeIf { bottomTabBarOverlaysContent }
+
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
@@ -2184,6 +2188,7 @@ private fun SlockAppShellChildTabHost(
     tab: String,
     active: Boolean
 ) {
+    val glassStyle = appShellChildPageGlassStyle(slockAppBottomTabBarOverlaysContent())
     val pageData =
         remember(shellId, tab) {
             JSONObject().apply {
@@ -2199,7 +2204,7 @@ private fun SlockAppShellChildTabHost(
                 Modifier
                     .fillMaxSize(),
             active = active,
-            glassStyle = AppShellChildPageGlassStyleLiquid
+            glassStyle = glassStyle
         )
     }
 }
