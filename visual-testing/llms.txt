@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-18 07:37:49 UTC
+Generated: 2026-07-18 07:43:20 UTC
 Latest run: 5149272-20260718073555
 Latest commit: 5149272-20260718073555
 Commit subject: ci(visual): wire degraded-provider publish tolerance + allow_case_drop input (task #498) (#1239)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 84, same 0, pass 0, basic-pass 1, different 76, missing 7
-AI analysis: ready 48 / total 84, pending 36
+AI analysis: ready 77 / total 84, pending 7
 Visual coverage matrix: active 93 / total 112, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
