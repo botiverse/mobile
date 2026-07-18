@@ -186,6 +186,7 @@ try {
   }
   if (!dump.includes('"Message #all"')) { writeVerdict("fail", "#all composer placeholder not visible after open"); process.exit(1); }
   rec("#all open, composer visible");
+  fs.writeFileSync(path.join(outDir, "channel-dump.txt"), redactEditableValues(dump));
   await shot("step-01-channel.png");
 
   // Assert the image button and mark the process state before the single tap.
