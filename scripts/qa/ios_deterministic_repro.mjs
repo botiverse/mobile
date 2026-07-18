@@ -55,6 +55,51 @@ const processAlive = () => {
 
 const PICKER_MARKERS = /photos|recents|photo library|选择|照片|允许|allow|cancel|取消|select/i;
 
+function parseBounds(line) {
+  const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
+  return m ? { x: Math.round((Number(m[1]) + Number(m[3])) / 2), y: Math.round((Number(m[2]) + Number(m[4])) / 2) } : null;
+}
+
+// Deterministic login for a cold simulator: Sign In screen → email/password →
+// Sign In → (optional) server picker → home. The M3 agent did this by
+// wandering; here it is fixed and auditable.
+async function ensureLoggedIn() {
+  let dump = await drv.dumpUi();
+  if (!/Sign In|Email|Password/.test(dump)) { rec("already past sign-in screen"); return; }
+  const email = process.env.QA_TEST_EMAIL;
+  const password = process.env.QA_TEST_PASSWORD;
+  if (!email || !password) throw new Error("QA_TEST_EMAIL/QA_TEST_PASSWORD not set for login step");
+  rec("sign-in screen detected, logging in deterministically");
+
+  const emailLine = dump.split("\n").find((l) => l.includes("[INPUT]") && /"Email"/.test(l));
+  const passLine = dump.split("\n").find((l) => l.includes("[INPUT]") && /"Password"/.test(l));
+  if (!emailLine || !passLine) throw new Error("email/password INPUT fields not found in sign-in dump");
+  let p = parseBounds(emailLine);
+  await drv.tap(p.x, p.y);
+  await drv.text(email);
+  rec("email typed");
+  p = parseBounds(passLine);
+  await drv.tap(p.x, p.y);
+  await drv.text(password);
+  rec("password typed");
+
+  // The Sign In BUTTON shares its label with the page title — tapText's
+  // smallest-area rule resolves the button.
+  const r = await drv.tapText("Sign In");
+  rec(`tapped sign-in: ${r.feedback || ""}`);
+  await new Promise((r2) => setTimeout(r2, 8000));
+
+  dump = await drv.dumpUi();
+  if (/Choose server|OranixSlockTest/.test(dump) && !dump.includes('"Message #')) {
+    const rowLine = dump.split("\n").find((l) => /OranixSlockTest/.test(l));
+    if (!rowLine) throw new Error("server picker shown but OranixSlockTest row not found");
+    p = parseBounds(rowLine);
+    await drv.tap(p.x, p.y);
+    rec("server OranixSlockTest selected");
+    await new Promise((r2) => setTimeout(r2, 6000));
+  }
+}
+
 function findComposerImageBtn(dump) {
   // dump lines: `[BTN] "label" [x1,y1][x2,y2]` — the composer input is the
   // `"Message #..."` node; the image button is the unlabeled [BTN] in the same
@@ -88,6 +133,9 @@ try {
   await drv.waitReady();
   rec("harness ready");
   await shot("step-00-launch.png");
+
+  await ensureLoggedIn();
+  await shot("step-01-loggedin.png");
 
   // Open #all deterministically: find the channel row whose label (space-
   // stripped) is "#all" and tap it. If we are already inside #all (composer
