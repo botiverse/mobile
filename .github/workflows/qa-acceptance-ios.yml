@@ -248,7 +248,9 @@ jobs:
         if: always()
         run: |
           UDID="${UDID:-booted}"
-          IOS_VER="$(xcrun simctl spawn "$UDID" sw_vers --productVersion 2>/dev/null | head -1 || true)"; IOS_VER="${IOS_VER:-unknown}"
+          # sw_vers does not exist INSIDE an iOS simulator — read the runtime
+          # version from the host-side device record instead (e.g. iOS-17-5 → 17.5).
+          IOS_VER="$(xcrun simctl list devices -j 2>/dev/null | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices']; rt=next((k for k,devs in d.items() for dev in devs if dev['udid']==os.environ.get('UDID','')), ''); import re; m=re.search(r'iOS-([0-9-]+)', rt); print(m.group(1).replace('-','.') if m else 'unknown')" || echo unknown)"
           node scripts/qa/collect_perf_ios.mjs \
             --slog qa-evidence/system-log-raft.txt \
             --steps qa-evidence/steps.jsonl \
