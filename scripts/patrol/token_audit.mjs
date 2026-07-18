@@ -93,8 +93,8 @@ const findings = [...byFile.entries()].map(([file, hits]) => {
     "- Verify stage (3×M3) will close false positives; fixes follow the usual fix→capture-verify→merge loop.",
   ].join("\n");
   return {
-    key: `${file}#${snippetHash}`,
-    fingerprint: null,
+    key: file,
+    fingerprint: snippetHash,
     rank: maxRank * 100 + hits.length,
     title: `[token-audit] ${short}: ${hits.length} semantic-color alpha usage${hits.length > 1 ? "s" : ""} to triage`,
     body,

@@ -44,7 +44,8 @@ internal enum class SlockFormFieldSize {
     Compact
 }
 
-internal val SlockSlugInputPrefixBackground = SlockColor.BrandYellow.copy(alpha = 0.30f)
+internal val SlockSlugInputPrefixBackground =
+    SlockColor.BrandYellow.copy(alpha = 0.30f) // react-parity: intentional bg-soft-signal/30 wash
 // react disabled tile flattened over white: BrandYellow @ (0.30 tile x 0.60
 // control opacity) = opaque #FFF7DD. Opaque on purpose - see the disabled
 // color block in SlockSlugInput for why per-part alpha can't match CSS group
