@@ -17379,9 +17379,36 @@ internal data class ThreadMessageMenuAction(
 )
 
 private val ThreadMessageMenuWidth = 240.dp
-private val ThreadMessageMenuFallbackHeight = 250.dp
+private val ThreadMessageMenuRowHeight = 44.dp
+private val ThreadMessageMenuReactionRowHeight = 36.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
+private val ThreadMessageMenuShadowOffset = 4.dp
+
+internal fun threadMessageMenuContentHeightDp(
+    actionGroups: List<String>,
+    showReactionActions: Boolean
+): Float {
+    // The popover chooses above/below before drawing its content. Feeding it a
+    // generic first-frame estimate and replacing that with onGloballyPositioned
+    // later makes an edge-adjacent menu visibly jump between placements. This
+    // surface has fixed row/header/divider metrics, so compute the final height
+    // up front and keep the first rendered position authoritative.
+    val effectiveRowCount = actionGroups.size.coerceAtLeast(1)
+    val groupDividerCount =
+        actionGroups.zipWithNext().count { (previous, next) -> previous != next }
+    val reactionHeaderHeight =
+        if (showReactionActions) {
+            ThreadMessageMenuReactionRowHeight.value + SlockStroke.Default.value
+        } else {
+            0f
+        }
+    return effectiveRowCount * ThreadMessageMenuRowHeight.value +
+        groupDividerCount * SlockStroke.Thin.value +
+        reactionHeaderHeight +
+        SlockStroke.Default.value * 2 +
+        ThreadMessageMenuShadowOffset.value
+}
 
 internal fun shouldShowThreadFollowAction(
     message: KuiklyThreadMessageItem,
@@ -17629,16 +17656,21 @@ private fun ThreadMessageActionMenu(
                 onTranslate = onTranslate
             )
         }
-    var menuSize by remember { mutableStateOf(Size.Zero) }
     val density = LocalDensity.current
-    val menuWidth = menuSize.width.takeIf { it > 0f } ?: with(density) { ThreadMessageMenuWidth.toPx() }
-    val menuHeight = menuSize.height.takeIf { it > 0f } ?: with(density) { ThreadMessageMenuFallbackHeight.toPx() }
+    val menuWidth = with(density) { ThreadMessageMenuWidth.toPx() }
+    val menuHeight =
+        with(density) {
+            threadMessageMenuContentHeightDp(
+                actionGroups = actions.map { it.group },
+                showReactionActions = showReactionActions
+            ).dp.toPx()
+        }
     val anchorGapPx = with(density) { ThreadMessageMenuAnchorGap.toPx() }
     val horizontalNudgePx = with(density) { ThreadMessageMenuHorizontalNudge.toPx() }
-    val shadowOffsetPx = with(density) { 4.dp.toPx() }
+    val shadowOffsetPx = with(density) { ThreadMessageMenuShadowOffset.toPx() }
     val contentSize = Size(
         width = menuWidth + shadowOffsetPx,
-        height = menuHeight + shadowOffsetPx
+        height = menuHeight
     )
     SlockModalAnchoredPopover(
         anchor = anchor,
@@ -17650,7 +17682,7 @@ private fun ThreadMessageActionMenu(
         horizontalAutoFlip = true,
         verticalPlacement = SlockFloatingVerticalPlacement.Auto
     ) { popoverModifier, position ->
-        LaunchedEffect(message.id, anchor, position, menuSize) {
+        LaunchedEffect(message.id, anchor, position) {
             diagnosticsLogger(
                 "thread_message_menu_position messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y} " +
                     "overlayX=${position.overlayLayout.origin.x} overlayY=${position.overlayLayout.origin.y} " +
@@ -17664,11 +17696,7 @@ private fun ThreadMessageActionMenu(
             showReactionActions = showReactionActions,
             reactionAtlasImage = reactionAtlasImage,
             onReact = onReact,
-            modifier =
-                popoverModifier
-                    .onGloballyPositioned { coordinates ->
-                        menuSize = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
-                    }
+            modifier = popoverModifier
         )
     }
 }
@@ -17782,8 +17810,8 @@ private fun ThreadMessageMenuChrome(
         width = ThreadMessageMenuWidth,
         // Keep the message menu's 44dp mobile tap target; visual language
         // (press wash, icon box, label style) is the shared row's.
-        rowHeight = 44.dp,
-        shadowOffset = 4.dp,
+        rowHeight = ThreadMessageMenuRowHeight,
+        shadowOffset = ThreadMessageMenuShadowOffset,
         showDividers = false,
         dividerBeforeIds = groupDividerIds,
         headerContent =
@@ -17808,7 +17836,7 @@ private fun ThreadMessageReactionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(36.dp)
+            .height(ThreadMessageMenuReactionRowHeight)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
