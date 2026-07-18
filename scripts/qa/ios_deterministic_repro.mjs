@@ -48,7 +48,7 @@ import {
   hasPhotoPickerGate,
   hasRealPhotoPicker,
   redactEditableValues,
-  uiNodeSignature,
+  targetTrackingCandidates,
 } from "./ios_navigation_matcher.mjs";
 
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
@@ -351,19 +351,15 @@ try {
       identifier: n.identifier, type: n.type, label: n.label,
       bounds: n.bounds, enabled: n.enabled, selected: n.selected,
     } : null);
-    const sameBounds = (a, b) => Array.isArray(a) && Array.isArray(b)
-      && a.length === 4 && b.length === 4 && a.every((v, i) => v === b[i]);
     const containsTap = (n) => n.bounds[0] <= sampleTarget.x && sampleTarget.x <= n.bounds[2]
       && n.bounds[1] <= sampleTarget.y && sampleTarget.y <= n.bounds[3];
-    // After-tap tracking: the exact before-signature OR exact-bounds
-    // candidates (the union covers a label flip on an anonymous cell). Zero
-    // candidates means the cell is gone; MORE THAN ONE is recorded as an
-    // explicit ambiguity — never a silent pick.
-    const targetSignature = uiNodeSignature(targetCellBeforeNode);
-    const trackingPool = [...new Map([
-      ...afterNodes.filter((n) => uiNodeSignature(n) === targetSignature),
-      ...afterNodes.filter((n) => sameBounds(n.bounds, targetCellBeforeNode.bounds)),
-    ].map((n) => [uiNodeSignature(n), n])).values()];
+    // After-tap tracking: a single filter over the raw after-nodes (never a
+    // signature-keyed Map — that would fold duplicated nodes back into one
+    // and bypass the ambiguity gate). A node qualifies by the exact
+    // before-signature OR exact bounds (the union covers an anonymous-cell
+    // label flip). Zero candidates means the cell is gone; MORE THAN ONE is
+    // recorded as an explicit ambiguity — never a silent pick.
+    const trackingPool = targetTrackingCandidates(afterNodes, targetCellBeforeNode);
     const targetTrackingAmbiguous = trackingPool.length > 1;
     const targetCellAfterNode = trackingPool.length === 1 ? trackingPool[0] : null;
     const doneNodes = (list) => list
@@ -379,7 +375,7 @@ try {
       targetCellBefore: nodeState(targetCellBeforeNode),
       targetCellAfter: nodeState(targetCellAfterNode),
       targetTrackingAmbiguous,
-      targetTrackingCandidates: trackingPool.map(uiNodeSignature),
+      targetTrackingCandidates: trackingPool.map(nodeState),
       nodesAtTapBefore: beforeNodes.filter(containsTap).map(nodeState),
       nodesAtTapAfter: afterNodes.filter(containsTap).map(nodeState),
       doneNodesBefore: doneNodes(beforeNodes),
