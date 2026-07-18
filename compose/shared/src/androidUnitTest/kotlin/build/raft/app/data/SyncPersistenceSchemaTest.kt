@@ -55,7 +55,21 @@ class SyncPersistenceSchemaTest {
         assertNotNull(cols.firstOrNull { it.name == "scopeKind" }, "scopeKind column missing")
         assertEquals(1L, cols.first { it.name == "seq" }.notNull, "seq must be NOT NULL (no pending rows)")
 
-        // 4) restore ordering via the GENERATED selectServerBackedMessagesForChannel query (proves the .sq
+        // 4) owner read state is a disjoint durable fact family, not a message partition or presentation row.
+        assertEquals(
+            listOf(
+                "serverId",
+                "principalId",
+                "consumerId",
+                "channelId",
+                "readStateVersion",
+                "maxReadSeq",
+                "updatedAtMs",
+            ),
+            driver.columnInfo("syncReadStateFactEntity").map { it.name },
+        )
+
+        // 5) restore ordering via the GENERATED selectServerBackedMessagesForChannel query (proves the .sq
         //    query, not raw SQL): same seq tie-breaks by id (m1 before m2). No seq-null filter needed.
         driver.insertMessage(id = "m2", seq = 7)
         driver.insertMessage(id = "m1", seq = 7)

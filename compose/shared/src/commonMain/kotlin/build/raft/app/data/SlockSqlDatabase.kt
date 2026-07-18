@@ -74,9 +74,9 @@ internal class SlockSqlDatabase(
 
     companion object {
         // The v4 filename is stable. SQLDelight schema v1 is the checked-in compatibility baseline, v2
-        // migrates only the canonical message/cursor core into the durable S/P/C partition, and v3 adds the
-        // independent receiver-private viewer-overlay table. Both migrations preserve outbox and every
-        // unrelated definition.
+        // migrates only the canonical message/cursor core into the durable S/P/C partition, v3 adds the
+        // independent receiver-private viewer-overlay table, and v4 adds the independent owner read-state
+        // fact family. Every migration preserves outbox and every unrelated definition.
         const val DatabaseName: String = "slock_cache_v4.db"
 
         val Schema = SlockDatabase.Schema

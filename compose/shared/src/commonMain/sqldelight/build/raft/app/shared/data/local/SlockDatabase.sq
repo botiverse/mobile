@@ -139,6 +139,19 @@ CREATE TABLE messageViewerOverlayEntity (
   )
 );
 
+-- Independent authoritative owner read-state fact family. This table is intentionally disjoint from both
+-- messageEntity (sync-core.messages.v2) and channelReadStateEntity (presentation/inbox projection).
+CREATE TABLE syncReadStateFactEntity (
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  channelId TEXT NOT NULL,
+  readStateVersion INTEGER NOT NULL,
+  maxReadSeq INTEGER NOT NULL,
+  updatedAtMs INTEGER NOT NULL,
+  PRIMARY KEY (serverId, principalId, consumerId, channelId)
+);
+
 -- attachmentEntity / messageReactionEntity / savedMessageEntity were removed with the canonical-native
 -- rebuild: all three had zero live consumers, and the canonical fact (attachments, reactions) is stored
 -- losslessly in messageEntity.canonicalFactJson. Maintaining them would be a second materialized projection
@@ -233,6 +246,32 @@ FROM channelEntity
 WHERE serverId = ?
   AND channelId = ?
 LIMIT 1;
+
+selectSyncReadStateFact:
+SELECT *
+FROM syncReadStateFactEntity
+WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?
+  AND channelId = ?
+LIMIT 1;
+
+upsertSyncReadStateFact:
+INSERT OR REPLACE INTO syncReadStateFactEntity(
+  serverId,
+  principalId,
+  consumerId,
+  channelId,
+  readStateVersion,
+  maxReadSeq,
+  updatedAtMs
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteSyncReadStateFactsForPartition:
+DELETE FROM syncReadStateFactEntity
+WHERE serverId = ?
+  AND principalId = ?
+  AND consumerId = ?;
 
 selectChannelServerId:
 SELECT serverId

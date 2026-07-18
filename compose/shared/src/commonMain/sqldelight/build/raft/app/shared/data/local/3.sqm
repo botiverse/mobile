@@ -1,0 +1,10 @@
+CREATE TABLE syncReadStateFactEntity (
+  serverId TEXT NOT NULL,
+  principalId TEXT NOT NULL,
+  consumerId TEXT NOT NULL,
+  channelId TEXT NOT NULL,
+  readStateVersion INTEGER NOT NULL,
+  maxReadSeq INTEGER NOT NULL,
+  updatedAtMs INTEGER NOT NULL,
+  PRIMARY KEY (serverId, principalId, consumerId, channelId)
+);

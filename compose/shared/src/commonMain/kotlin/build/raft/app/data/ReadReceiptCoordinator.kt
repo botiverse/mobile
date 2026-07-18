@@ -51,6 +51,7 @@ class ReadReceiptCoordinator(
     private val ownerValidator: suspend (ReadReceiptOwner) -> Boolean = { true },
     private val onOptimisticRead: (ChannelId) -> Unit = {},
     private val onPrediction: (ReadReceiptPrediction) -> Unit = {},
+    private val onOwnerRevoked: (ReadReceiptOwner) -> Unit = {},
     private val onResult: (ReadReceiptRequest, DataResult<ReadReceiptResult>) -> Unit = { _, _ -> },
     private val onFailure: (ReadReceiptRequest, DataResult<ReadReceiptResult>) -> Unit = { _, _ -> }
 ) {
@@ -63,6 +64,8 @@ class ReadReceiptCoordinator(
     val predictions = _predictions.asSharedFlow()
     private val _failures = MutableSharedFlow<ReadReceiptFailure>(extraBufferCapacity = 64)
     val failures = _failures.asSharedFlow()
+    private val _ownerRevocations = MutableSharedFlow<ReadReceiptOwnerRevocation>(extraBufferCapacity = 16)
+    val ownerRevocations = _ownerRevocations.asSharedFlow()
 
     fun markReadToSeq(channelId: ChannelId, seq: Long) {
         enqueue(ReadReceiptOwner.Legacy, channelId, ReadReceiptTarget.ToSeq(seq.coerceAtLeast(0L)))
@@ -114,6 +117,27 @@ class ReadReceiptCoordinator(
                 active
             }
         jobs.forEach(Job::cancel)
+    }
+
+    /**
+     * Revokes only one verified owner. Its queued/in-flight commands and optimistic overlay are discarded,
+     * while other environments/accounts/servers continue independently.
+     */
+    fun revoke(owner: ReadReceiptOwner) {
+        val jobs =
+            synchronized(lock) {
+                val revoked = channels.filterKeys { key -> key.owner == owner }
+                revoked.values.forEach { queue ->
+                    queue.pending?.waiters?.forEach { waiter -> waiter.cancel() }
+                    queue.inFlight?.waiters?.forEach { waiter -> waiter.cancel() }
+                }
+                revoked.keys.forEach { key -> channels.remove(key) }
+                acknowledgedSeqs.keys.removeAll { key -> key.owner == owner }
+                revoked.values.mapNotNull(ChannelQueue::job)
+            }
+        jobs.forEach(Job::cancel)
+        onOwnerRevoked(owner)
+        _ownerRevocations.tryEmit(ReadReceiptOwnerRevocation(owner))
     }
 
     private fun enqueue(
@@ -313,6 +337,8 @@ data class ReadReceiptFailure(
     val request: ReadReceiptRequest,
     val result: DataResult<ReadReceiptResult>
 )
+
+data class ReadReceiptOwnerRevocation(val owner: ReadReceiptOwner)
 
 sealed interface ReadReceiptRequest {
     val owner: ReadReceiptOwner

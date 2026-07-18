@@ -298,6 +298,34 @@ class ReadReceiptCoordinatorTest {
         scope.cancel()
     }
 
+    @Test
+    fun revokeClearsOnlyOneOwnersPendingOverlayAndSuppressesItsLateCompletion() = runBlocking {
+        val repository = FakeReadReceiptRepository(ignoreCancellation = true)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val results = mutableListOf<ReadReceiptRequest>()
+        val revoked = mutableListOf<ReadReceiptOwner>()
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = repository,
+                onOwnerRevoked = { revoked += it },
+                onResult = { request, _ -> results += request },
+            )
+        val ownerA = ReadReceiptOwner("production", "user-a", "server-1")
+        val ownerB = ReadReceiptOwner("production", "user-b", "server-1")
+        val channelId = ChannelId("channel-scoped-revoke")
+
+        coordinator.markReadAll(ownerA, channelId)
+        coordinator.markReadAll(ownerB, channelId)
+        coordinator.revoke(ownerA)
+        repository.completeNext()
+        repository.completeNext()
+
+        assertEquals(listOf(ownerA), revoked)
+        assertEquals(listOf(ownerB), results.map { it.owner })
+        scope.cancel()
+    }
+
     private class FakeReadReceiptRepository(
         private val nextResult: DataResult<ReadReceiptResult> =
             DataResult.Content(ReadReceiptResult()),
