@@ -15,6 +15,8 @@ VERSION_BUILD="${SLOCK_ANDROID_VERSION_BUILD:-0}"
 VERSION_SUFFIX="${SLOCK_ANDROID_VERSION_SUFFIX:-}"
 SKIP_GRADLE_BUILD="${SLOCK_SKIP_GRADLE_BUILD:-0}"
 COLLECT_SYMBOLS="${SLOCK_COLLECT_ANDROID_SYMBOLS:-1}"
+REQUIRE_SYMBOLS="${SLOCK_REQUIRE_ANDROID_SYMBOLS:-0}"
+EXTERNAL_SYMBOL_ARCHIVE="${SLOCK_ANDROID_SYMBOL_ARCHIVE:-}"
 DRY_RUN="${SLOCK_HANDS_DRY_RUN:-${SLOCK_QUIVER_DRY_RUN:-0}}"
 
 die() {
@@ -115,6 +117,8 @@ Environment overrides:
   SLOCK_ANDROID_ARCH=arm64-v8a
   SLOCK_SKIP_GRADLE_BUILD=1
   SLOCK_COLLECT_ANDROID_SYMBOLS=0
+  SLOCK_REQUIRE_ANDROID_SYMBOLS=1
+  SLOCK_ANDROID_SYMBOL_ARCHIVE=/path/to/exact-native-symbols.zip
   SLOCK_QUIVER_DRY_RUN=1
 
 Options:
@@ -209,7 +213,13 @@ mkdir -p "${ARTIFACT_DIR}"
 
 SYMBOL_ARCHIVE=""
 MAPPING_PATH="${ROOT_DIR}/compose/androidApp/build/outputs/mapping/${VARIANT}/mapping.txt"
-if [ "${COLLECT_SYMBOLS}" = "1" ]; then
+if [ -n "${EXTERNAL_SYMBOL_ARCHIVE}" ]; then
+  [ -f "${EXTERNAL_SYMBOL_ARCHIVE}" ] || die "native symbol archive not found: ${EXTERNAL_SYMBOL_ARCHIVE}"
+  SYMBOL_ARCHIVE="$(abs_path "${EXTERNAL_SYMBOL_ARCHIVE}")"
+  "${ROOT_DIR}/scripts/verify_android_native_symbols.sh" \
+    --apk "${APK_PATH}" \
+    --symbols "${SYMBOL_ARCHIVE}"
+elif [ "${COLLECT_SYMBOLS}" = "1" ]; then
   if "${ROOT_DIR}/scripts/prepare_android_quiver_symbols.sh" \
       --variant "${VARIANT}" \
       --version "${VERSION_NAME}" \
@@ -220,6 +230,9 @@ if [ "${COLLECT_SYMBOLS}" = "1" ]; then
   else
     echo "warning: symbol collection skipped; see /tmp/slock-quiver-symbols.log" >&2
   fi
+fi
+if [ "${REQUIRE_SYMBOLS}" = "1" ] && { [ -z "${SYMBOL_ARCHIVE}" ] || [ ! -f "${SYMBOL_ARCHIVE}" ]; }; then
+  die "required exact native symbols are missing"
 fi
 
 {
