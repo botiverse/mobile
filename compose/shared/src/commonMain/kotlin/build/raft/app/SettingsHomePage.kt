@@ -16,6 +16,7 @@ import build.raft.app.components.SlockBrutalSectionLabel
 import build.raft.app.components.SlockBrutalSelectField
 import build.raft.app.components.SlockBrutalSelectOption
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SlockFormFieldSize
 import build.raft.app.components.SlockDisabledActionBorder
 import build.raft.app.components.SlockDisabledActionContent
 import build.raft.app.components.SlockDisabledActionContentArgb
@@ -6430,7 +6431,8 @@ private fun SettingsLanguagePreferenceCard(
         }
         if (selectedDisplay != "original") {
             SlockBrutalSectionLabel(
-                label = stringResource(MR.strings.settings_preferred_translation_language_title)
+                label = stringResource(MR.strings.settings_preferred_translation_language_title),
+                size = SlockFormFieldSize.Compact
             )
             SettingsFormDetailText(
                 stringResource(MR.strings.settings_preferred_translation_language_detail)
@@ -6471,7 +6473,10 @@ private fun SettingsDateTimePreferenceCard(
     val canSave = dirty && !busy && (snapshot.timezone.available || snapshot.timeFormat.available)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS)
     SettingsFormSectionCard(iconName = SlockLucideIconName.Clock, title = stringResource(MR.strings.settings_date_time_title)) {
-        SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_timezone))
+        SlockBrutalSectionLabel(
+            label = stringResource(MR.strings.settings_timezone),
+            size = SlockFormFieldSize.Compact
+        )
         SettingsFormDetailText(stringResource(MR.strings.settings_timezone_detail))
         SlockBrutalSelectField(
             options = snapshot.timezone.toSelectOptions(),
@@ -8178,7 +8183,10 @@ private fun SettingsConnectedAppLogoEditor(
     val editing = editingClient != null
     val displayName = fallbackName.ifBlank { editingClient?.name.orEmpty().ifBlank { stringResource(MR.strings.settings_connected_apps_default_app) } }
     val seed = fallbackClientId.ifBlank { editingClient?.clientId.orEmpty().ifBlank { displayName } }
-    SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_connected_apps_label_logo))
+    SlockBrutalSectionLabel(
+        label = stringResource(MR.strings.settings_connected_apps_label_logo),
+        size = SlockFormFieldSize.Compact
+    )
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         SettingsConnectedAppLogoBox(
             name = displayName,
@@ -8332,6 +8340,7 @@ private fun SettingsConnectedAppEditorCard(
         SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_register_detail))
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_app_name),
+            labelSize = SlockFormFieldSize.Compact,
             value = name,
             placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_app_name),
             onValueChange = onNameChange,
@@ -8340,6 +8349,7 @@ private fun SettingsConnectedAppEditorCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_client_id),
+            labelSize = SlockFormFieldSize.Compact,
             value = clientId,
             placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_client_id),
             onValueChange = onClientIdChange,
@@ -8348,6 +8358,7 @@ private fun SettingsConnectedAppEditorCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.agent_create_label_description),
+            labelSize = SlockFormFieldSize.Compact,
             value = description,
             placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_description),
             onValueChange = onDescriptionChange,
@@ -8358,6 +8369,7 @@ private fun SettingsConnectedAppEditorCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_homepage_url),
+            labelSize = SlockFormFieldSize.Compact,
             value = homepageUrl,
             placeholder = "https://example.com",
             onValueChange = onHomepageUrlChange,
@@ -8366,6 +8378,7 @@ private fun SettingsConnectedAppEditorCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_return_url),
+            labelSize = SlockFormFieldSize.Compact,
             value = returnUrl,
             placeholder = "https://example.com/oauth/callback",
             onValueChange = onReturnUrlChange,
@@ -8374,6 +8387,7 @@ private fun SettingsConnectedAppEditorCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_connected_apps_label_manifest_url),
+            labelSize = SlockFormFieldSize.Compact,
             value = manifestUrl,
             placeholder = "https://example.com/.well-known/slock-agent.json",
             onValueChange = onManifestUrlChange,
@@ -8393,6 +8407,7 @@ private fun SettingsConnectedAppEditorCard(
         if (editing && canRequestPublish) {
             SlockBrutalTextField(
                 label = stringResource(MR.strings.settings_connected_apps_label_publish_category),
+                labelSize = SlockFormFieldSize.Compact,
                 value = publishCategory,
                 placeholder = "productivity",
                 onValueChange = onPublishCategoryChange,
@@ -8401,6 +8416,7 @@ private fun SettingsConnectedAppEditorCard(
             )
             SlockBrutalTextField(
                 label = stringResource(MR.strings.settings_connected_apps_label_data_access_summary),
+                labelSize = SlockFormFieldSize.Compact,
                 value = publishDataAccess,
                 placeholder = "Profile and workspace metadata",
                 onValueChange = onPublishDataAccessChange,
@@ -8610,6 +8626,7 @@ private fun SettingsServerProfileFormCard(
     SettingsFormSectionCard(iconName = SlockLucideIconName.Building2, title = stringResource(MR.strings.settings_profile_title)) {
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_name),
+            labelSize = SlockFormFieldSize.Compact,
             value = if (canSave) draftName else currentName,
             placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) },
             onValueChange = onNameChange,
@@ -9014,7 +9031,9 @@ private fun SettingsSegmentedControlField(
     enabled: Boolean = true
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        label?.takeIf { it.isNotBlank() }?.let { SlockBrutalSectionLabel(label = it) }
+        label?.takeIf { it.isNotBlank() }?.let {
+            SlockBrutalSectionLabel(label = it, size = SlockFormFieldSize.Compact)
+        }
         detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SegmentedControl(
             selectedValue = selectedValue,
@@ -9261,6 +9280,7 @@ private fun SettingsServerJoinLinksCard(
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_max_uses),
+            labelSize = SlockFormFieldSize.Compact,
             value = maxUses,
             placeholder = stringResource(MR.strings.settings_server_placeholder_unlimited),
             onValueChange = onMaxUsesChange,
@@ -9269,6 +9289,7 @@ private fun SettingsServerJoinLinksCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_expires_at),
+            labelSize = SlockFormFieldSize.Compact,
             value = expiresAt,
             placeholder = "2026-06-01T09:00:00Z",
             onValueChange = onExpiresAtChange,
@@ -9353,6 +9374,7 @@ private fun SettingsServerAgreementCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_title),
+            labelSize = SlockFormFieldSize.Compact,
             value = title,
             placeholder = stringResource(MR.strings.settings_server_placeholder_agreement_title),
             onValueChange = { onTitleChange(it.take(180)) },
@@ -9361,6 +9383,7 @@ private fun SettingsServerAgreementCard(
         )
         SlockBrutalTextField(
             label = stringResource(MR.strings.settings_server_label_body_markdown),
+            labelSize = SlockFormFieldSize.Compact,
             value = bodyMarkdown,
             placeholder = stringResource(MR.strings.settings_server_placeholder_agreement_body),
             onValueChange = onBodyChange,
@@ -9976,6 +9999,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                 SettingsFormDetailText(stringResource(MR.strings.settings_developer_environment_save_detail))
                 SlockBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_label),
+                    labelSize = SlockFormFieldSize.Compact,
                     value = label,
                     placeholder = customLabel,
                     onValueChange = {
@@ -9986,6 +10010,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                 )
                 SlockBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_api_base_url),
+                    labelSize = SlockFormFieldSize.Compact,
                     value = apiBaseUrl,
                     placeholder = "https://api.example.com/api/",
                     onValueChange = {
@@ -9997,6 +10022,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                 )
                 SlockBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_socket_base_url),
+                    labelSize = SlockFormFieldSize.Compact,
                     value = socketBaseUrl,
                     placeholder = "https://api.example.com",
                     onValueChange = {
@@ -10008,6 +10034,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                 )
                 SlockBrutalTextField(
                     label = stringResource(MR.strings.settings_developer_web_url),
+                    labelSize = SlockFormFieldSize.Compact,
                     value = webUrl,
                     placeholder = "https://app.raft.build",
                     onValueChange = {
@@ -15060,7 +15087,10 @@ private fun SharedDiagnosticsFeedbackChannelPage(
                 }
             }
             else -> {
-                SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_diagnostics_feedback_channel_recent))
+                SlockBrutalSectionLabel(
+                    label = stringResource(MR.strings.settings_diagnostics_feedback_channel_recent),
+                    size = SlockFormFieldSize.Compact
+                )
                 LazyColumn(
                     modifier =
                         Modifier
