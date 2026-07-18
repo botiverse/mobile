@@ -45,6 +45,17 @@ export function redactEditableValues(dump) {
     .join("\n");
 }
 
+// The first image-button tap on a clean simulator can present the system-owned
+// Photos permission alert. XCUITest's app-scoped accessibility dump does not
+// include that SpringBoard alert, so accept either app dump markers (picker or
+// permission UI) or the corresponding post-tap unified-log title. Keep this
+// pure so the evidence parser is covered by offline fixtures.
+export function hasPhotoPickerGate({ appDump = "", systemLog = "" } = {}) {
+  const dumpMarkers = /photos|recents|photo library|选择|照片|允许|allow|cancel|取消|select/i;
+  const systemMarkers = /(?:would like|request(?:ed)?|controllerTitle).*photo library|photo library.*(?:access|permission)/i;
+  return dumpMarkers.test(String(appDump)) || systemMarkers.test(String(systemLog));
+}
+
 // Locate the #all row only inside the first channel-row band beneath the
 // CHANNELS heading. iOS may expose it as one "#all" node or split the icon and
 // text into adjacent "#" + "all" nodes. Exact labels and uniqueness are
@@ -86,4 +97,52 @@ export function findAllChannelTarget(dump, { channelBandPx = 360, rowTolerancePx
     splitHashLine: target.splitHashLine ?? null,
     channelsHeadingLine: heading.line,
   };
+}
+
+// The Kuikly composer currently exposes its whole input surface as one
+// "Message #all" node while the image/paperclip icons may have no independent
+// accessibility nodes. Prefer a real contained button when one exists. When it
+// does not, derive the first (image) square from the composer bounds rather
+// than hard-coding a device coordinate. The image action is the leftmost icon
+// in the composer's bottom row; the paperclip is immediately to its right.
+export function findComposerImageTarget(dump) {
+  const nodes = parseDumpNodes(dump);
+  const composers = nodes.filter((node) => node.label.trim() === "Message #all");
+  if (composers.length !== 1) {
+    throw new Error(`expected exactly one Message #all composer, found ${composers.length}`);
+  }
+
+  const composer = composers[0];
+  const width = composer.x2 - composer.x1;
+  const height = composer.y2 - composer.y1;
+  if (width < 600 || height < 120) {
+    throw new Error(`Message #all composer bounds are implausible: ${composer.line}`);
+  }
+
+  const containedButtons = nodes
+    .filter((node) => (
+      node.line.includes("[BTN]")
+      && node.x1 >= composer.x1
+      && node.x2 <= composer.x2
+      && node.y1 >= composer.y1
+      && node.y2 <= composer.y2
+      && node.x <= composer.x1 + Math.min(260, width * 0.3)
+    ))
+    .sort((a, b) => a.x - b.x);
+
+  if (containedButtons.length > 0) {
+    if (containedButtons.length > 1 && Math.abs(containedButtons[0].x - containedButtons[1].x) < 12) {
+      throw new Error("composer image target is ambiguous: leftmost buttons overlap");
+    }
+    const target = containedButtons[0];
+    return { x: target.x, y: target.y, mode: "semantic-button", line: target.line, composerLine: composer.line };
+  }
+
+  const inset = Math.round(Math.min(72, Math.max(54, height * 0.32)));
+  const x = composer.x1 + inset;
+  const y = composer.y2 - inset;
+  if (x <= composer.x1 || x >= composer.x2 || y <= composer.y1 || y >= composer.y2) {
+    throw new Error("composer-relative image target fell outside composer bounds");
+  }
+  return { x, y, mode: "composer-relative", line: null, composerLine: composer.line };
 }

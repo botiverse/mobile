@@ -25,7 +25,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
-import { findAllChannelTarget, redactEditableValues } from "./ios_navigation_matcher.mjs";
+import {
+  findAllChannelTarget,
+  findComposerImageTarget,
+  hasPhotoPickerGate,
+  redactEditableValues,
+} from "./ios_navigation_matcher.mjs";
 
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
 const ioDir = arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || "");
@@ -54,7 +59,23 @@ const processAlive = () => {
   } catch { return null; } // spawn failed — unknown, treat as unknown not dead
 };
 
-const PICKER_MARKERS = /photos|recents|photo library|选择|照片|允许|allow|cancel|取消|select/i;
+// SpringBoard owns the initial Photos permission alert, so drv.dumpUi() (which
+// is scoped to the app under test) can remain unchanged even though the gate is
+// visibly open. Query only the short post-tap unified-log window and pass the
+// text through the same pure marker detector used for app dumps.
+const recentPhotoGateLog = () => {
+  try {
+    return execFileSync("xcrun", [
+      "simctl", "spawn", udid, "log", "show",
+      "--last", "30s",
+      "--style", "compact",
+      "--predicate", 'eventMessage CONTAINS[c] "Photo Library"',
+    ], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024, timeout: 30000 });
+  } catch (error) {
+    rec(`photo gate log query failed: ${String(error).slice(0, 120)}`);
+    return "";
+  }
+};
 
 function parseBounds(line) {
   const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(line);
@@ -129,26 +150,6 @@ async function ensureLoggedIn() {
   }
 }
 
-function findComposerImageBtn(dump) {
-  // dump lines: `[BTN] "label" [x1,y1][x2,y2]` — the composer input is the
-  // `"Message #..."` node; the image button is the unlabeled [BTN] in the same
-  // row band, left of the input field.
-  const lines = dump.split("\n");
-  const composer = lines.find((l) => l.includes('"Message #'));
-  if (!composer) return null;
-  const cy = Number(/\[\d+,(\d+)\]\[\d+,\d+\]/.exec(composer)?.[1] ?? -1);
-  let best = null;
-  for (const l of lines) {
-    if (!l.includes("[BTN]")) continue;
-    const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(l);
-    if (!m) continue;
-    const [x1, y1, x2, y2] = m.slice(1).map(Number);
-    if (cy > 0 && Math.abs(y1 - cy) > 80) continue; // same row band as composer
-    if (!best || x1 < best.x1) best = { x1, y1, x2, y2 };
-  }
-  return best ? { x: Math.round((best.x1 + best.x2) / 2), y: Math.round((best.y1 + best.y2) / 2) } : null;
-}
-
 const verdict = { verdict: "error", reason: "", steps };
 const writeVerdict = (v, reason) => {
   verdict.verdict = v;
@@ -186,13 +187,19 @@ try {
   }
   if (!dump.includes('"Message #all"')) { writeVerdict("fail", "#all composer placeholder not visible after open"); process.exit(1); }
   rec("#all open, composer visible");
+  fs.writeFileSync(path.join(outDir, "channel-dump.txt"), redactEditableValues(dump));
   await shot("step-01-channel.png");
 
   // Assert the image button and mark the process state before the single tap.
-  const btn = findComposerImageBtn(dump);
-  if (!btn) { writeVerdict("fail", "composer image button not found in dump (icon-only BTN resolution)"); process.exit(1); }
+  let btn;
+  try {
+    btn = findComposerImageTarget(dump);
+  } catch (error) {
+    writeVerdict("fail", `composer image-button precondition failed: ${String(error)}`);
+    process.exit(1);
+  }
   const aliveBefore = processAlive();
-  rec(`image button at [${btn.x},${btn.y}]; process alive before tap: ${aliveBefore}`);
+  rec(`image button via ${btn.mode} at [${btn.x},${btn.y}]; process alive before tap: ${aliveBefore}`);
 
   // The single deterministic tap.
   await drv.tap(btn.x, btn.y);
@@ -209,11 +216,17 @@ try {
   }
   let after = "";
   try { after = await drv.dumpUi(); } catch (e) { rec(`describe after tap failed: ${String(e).slice(0, 120)}`); }
-  if (after && (PICKER_MARKERS.test(after) || after.split("\n").length > dump.split("\n").length + 5)) {
-    writeVerdict("pass", "picker gate reached after single deterministic tap (dump shows photo-picker markers or a new large panel). Scope note: select/preview/send NOT asserted.");
+  const systemPhotoGateLog = recentPhotoGateLog();
+  if (hasPhotoPickerGate({ appDump: after, systemLog: systemPhotoGateLog })
+      || (after && after.split("\n").length > dump.split("\n").length + 5)) {
+    const evidenceMode = hasPhotoPickerGate({ systemLog: systemPhotoGateLog })
+      ? "SpringBoard Photos permission alert"
+      : "app dump photo-picker markers or a new large panel";
+    rec(`picker gate evidence: ${evidenceMode}`);
+    writeVerdict("pass", `picker gate reached after single deterministic tap (${evidenceMode}). Scope note: select/preview/send NOT asserted.`);
     process.exit(0);
   }
-  writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in dump)");
+  writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in app dump or SpringBoard log)");
   process.exit(1);
 } catch (e) {
   writeVerdict("error", `harness/script error: ${String(e).slice(0, 300)}`);

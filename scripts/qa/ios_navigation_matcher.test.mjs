@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findAllChannelTarget, redactEditableValues } from "./ios_navigation_matcher.mjs";
+import {
+  findAllChannelTarget,
+  findComposerImageTarget,
+  hasPhotoPickerGate,
+  redactEditableValues,
+} from "./ios_navigation_matcher.mjs";
 
 const header = '"CHANNELS" [90,600][270,650]';
 
@@ -61,4 +66,66 @@ test("redacts plain and secure editable values while preserving flags and geomet
     '[INPUT] [FOCUSED] "[REDACTED]" [138,1044][1008,1122]',
     '"Saved" [100,100][200,150]',
   ].join("\n"));
+});
+
+test("recognizes an app-scoped photo picker dump", () => {
+  assert.equal(hasPhotoPickerGate({ appDump: '"Recents" [0,0][1170,200]' }), true);
+});
+
+test("recognizes the system-owned Photos permission alert from unified log", () => {
+  assert.equal(hasPhotoPickerGate({
+    appDump: '"Message #all" [24,2161][1140,2382]',
+    systemLog: 'controllerTitle = “Raft” would like full access to your Photo Library.;',
+  }), true);
+});
+
+test("does not treat an unchanged composer dump or unrelated log as a picker gate", () => {
+  assert.equal(hasPhotoPickerGate({
+    appDump: '"Message #all" [24,2161][1140,2382]',
+    systemLog: "network request completed",
+  }), false);
+});
+
+test("derives the image target from real composer bounds when icon nodes are absent", () => {
+  const target = findComposerImageTarget([
+    '[BTN] "" [0,2071][1170,2119]',
+    '"Message #all" [24,2161][1140,2382]',
+  ].join("\n"));
+  assert.equal(target.mode, "composer-relative");
+  assert.deepEqual({ x: target.x, y: target.y }, { x: 95, y: 2311 });
+});
+
+test("prefers the leftmost contained semantic button over geometry fallback", () => {
+  const target = findComposerImageTarget([
+    '"Message #all" [24,2161][1140,2382]',
+    '[BTN] "" [48,2268][138,2358]',
+    '[BTN] "" [150,2268][240,2358]',
+  ].join("\n"));
+  assert.equal(target.mode, "semantic-button");
+  assert.deepEqual({ x: target.x, y: target.y }, { x: 93, y: 2313 });
+});
+
+test("ignores an unrelated button outside the composer", () => {
+  const target = findComposerImageTarget([
+    '[BTN] "" [48,183][138,273]',
+    '"Message #all" [24,2161][1140,2382]',
+  ].join("\n"));
+  assert.equal(target.mode, "composer-relative");
+});
+
+test("fails closed for duplicate composer nodes", () => {
+  assert.throws(
+    () => findComposerImageTarget([
+      '"Message #all" [24,2161][1140,2382]',
+      '"Message #all" [24,1900][1140,2100]',
+    ].join("\n")),
+    /found 2/,
+  );
+});
+
+test("fails closed for implausibly small composer bounds", () => {
+  assert.throws(
+    () => findComposerImageTarget('"Message #all" [24,2161][300,2220]'),
+    /implausible/,
+  );
 });
