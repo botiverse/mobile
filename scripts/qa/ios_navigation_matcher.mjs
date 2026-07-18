@@ -220,6 +220,18 @@ function insideRect(nodes, rect) {
   return nodes.filter((node) => node.x1 >= rect.x1 && node.x2 <= rect.x2 && node.y1 >= rect.y1 && node.y2 <= rect.y2);
 }
 
+// Offline mirror of the Swift system_alert_allow_photos_full_access contract
+// (task #26): given the facts gathered about the SpringBoard Photos alert,
+// decide allow vs fail-closed. The loop enforces the same rules natively;
+// these fixtures keep the contract executable in CI.
+export function photosFullAccessAlertDecision({ alertCount, alertTitle = "", allowFullAccessCount = 0, alertDismissedAfterTap = true } = {}) {
+  if (alertCount !== 1) return { ok: false, reason: `expected exactly one SpringBoard alert, found ${alertCount}` };
+  if (!/photo library/i.test(String(alertTitle))) return { ok: false, reason: `not a Photos permission alert (title: ${alertTitle})` };
+  if (allowFullAccessCount !== 1) return { ok: false, reason: `expected exactly one 'Allow Full Access' button, found ${allowFullAccessCount}` };
+  if (!alertDismissedAfterTap) return { ok: false, reason: "Photos alert still present after tapping Allow Full Access" };
+  return { ok: true };
+}
+
 // Readback proof by before/after diff: count large image-ish nodes in the
 // thread area ABOVE the composer before send and after send; the new image
 // message must increase that count (task #26 review: any historical large

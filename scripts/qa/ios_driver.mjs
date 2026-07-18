@@ -116,6 +116,15 @@ export function createIosDriver({ ioDir, udid = "booted", bundle = "build.raft.a
       return send({ type: "launch" }, 120000);
     },
 
+    // Deterministic Photos permission bootstrap (task #26): resolves the
+    // SpringBoard Photos consent alert through XCUITest (never coordinates,
+    // never osascript). The loop enforces the fail-closed contract: exactly
+    // one alert, Photos-titled, exactly one "Allow Full Access" button, and
+    // the alert must be gone afterwards.
+    async systemAlertAllowPhotosFullAccess() {
+      return send({ type: "system_alert_allow_photos_full_access" }, 60000);
+    },
+
     // Same semantic compression as the Android uiautomator dump: editable
     // nodes always survive (login fields), clickable icon-only nodes get [BTN],
     // bounds are pixel-space "[x1,y1][x2,y2]" so tap math is identical.
