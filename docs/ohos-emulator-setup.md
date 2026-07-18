@@ -265,6 +265,27 @@ Review at least:
 - Emulator input smoke is supplemental. Keep named physical-device gates open
   until the named hardware passes.
 
+## CI virtualization boundary
+
+The HarmonyOS macOS emulator uses `Hypervisor.framework`/HVF. Installing the
+command-line SDK and emulator binaries is not sufficient when the macOS runner
+is itself a VM and the provider does not expose nested virtualization.
+
+Blacksmith run `29629122591` verified this boundary on
+`blacksmith-6vcpu-macos-15`:
+
+- the runner was `Apple Virtual Machine 1` / `VirtualMac2,1` on a virtual M4
+  Pro;
+- `kern.hv_vmm_present` was `1`, while `kern.hv_support` was unavailable;
+- the pinned arm64 command-line tools installed and executed successfully;
+- the workflow reported `hvf_unavailable` and skipped the API 23 image
+  download because the nested emulator could not be started.
+
+Use this runner for SDK/Hvigor/HDC build tooling, not as an
+`OHOS-emulator-api23` execution source. Keep emulator UI execution on a
+bare-metal Mac or an external executor that exposes HVF. The reproducible probe
+is `.github/workflows/ohos-macos-hvf-probe.yml`.
+
 ## Reporting contract
 
 Report:
@@ -275,4 +296,3 @@ Report:
 - exact input string, repeat count, and layout assertions;
 - screenshot/layout/HILOG artifact paths;
 - whether the result is emulator-only or satisfies a physical-device gate.
-
