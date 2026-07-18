@@ -49,6 +49,7 @@ import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
+import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
@@ -2775,7 +2776,12 @@ internal fun SlockAppShellContent(
             )
         }
     val settingsDataSource =
-        remember(shellAuthStore, appShellComputersStore, linkOpenPreferenceRepository) {
+        remember(
+            shellAuthStore,
+            appShellComputersStore,
+            linkOpenPreferenceRepository,
+            sharedStores.networkTransportPreferenceRepository
+        ) {
             SharedSettingsDataSource(
                 sessionStore = shellAuthStore,
                 settingsRepository = settingsRepository,
@@ -2785,6 +2791,7 @@ internal fun SlockAppShellContent(
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
                 linkOpenPreferenceRepository = linkOpenPreferenceRepository,
+                networkTransportPreferenceRepository = sharedStores.networkTransportPreferenceRepository,
                 recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
@@ -5539,6 +5546,9 @@ private fun SettingsAppShellContent(
                             )
                         )
                     },
+                    onHttp3Change = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetHttp3Enabled(enabled))
+                    },
                     onCompactConsecutiveMessagesChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
                         onCompactConsecutiveMessagesSelected(enabled)
@@ -6649,6 +6659,7 @@ private fun SettingsMobileContent(
     bottomContentPadding: Dp,
     onAlignmentChange: (String?) -> Unit,
     onLinkOpenModeChange: (String?) -> Unit,
+    onHttp3Change: (Boolean) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
@@ -6667,6 +6678,13 @@ private fun SettingsMobileContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {
+            item {
+                SettingsHttp3Card(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onHttp3Change = onHttp3Change
+                )
+            }
             item {
                 SettingsMessageAlignmentCard(
                     snapshot = snapshot,
@@ -6734,6 +6752,76 @@ private fun SettingsMobileContent(
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsHttp3Card(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onHttp3Change: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_HTTP3 && actionState.inProgress
+    val preference = snapshot.http3
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Globe,
+        title = stringResource(MR.strings.settings_mobile_http3_title)
+    ) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_http3_detail))
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = (preference.canEnable || preference.requestedEnabled) && !busy) {
+                        onHttp3Change(!preference.requestedEnabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text =
+                        if (preference.effectiveEnabled) {
+                            stringResource(MR.strings.settings_mobile_http3_preferred)
+                        } else if (preference.requestedEnabled) {
+                            stringResource(MR.strings.settings_mobile_http3_unavailable)
+                        } else {
+                            stringResource(MR.strings.settings_state_off)
+                        },
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text =
+                        if (preference.canEnable) {
+                            listOf(
+                                if (preference.effectiveEnabled) {
+                                    stringResource(MR.strings.settings_mobile_http3_enabled)
+                                } else {
+                                    stringResource(MR.strings.settings_mobile_http3_disabled)
+                                },
+                                preference.detail
+                            ).filter { it.isNotBlank() }.joinToString(" ")
+                        } else {
+                            preference.detail
+                        },
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.requestedEnabled,
+                enabled = (preference.canEnable || preference.requestedEnabled) && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_HTTP3 && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
     }
 }
 
@@ -11631,6 +11719,28 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
             },
         sections =
             listOf(
+                KuiklySharedSettingsSection(
+                    title = "Network",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = MOBILE_ACTION_HTTP3,
+                                iconName = SlockLucideIconName.Globe,
+                                title = "Enable HTTP/3",
+                                detail = mobile.http3.detail,
+                                value = (!mobile.http3.requestedEnabled).toString(),
+                                status =
+                                    actionState.statusFor(
+                                        MOBILE_ACTION_HTTP3,
+                                        mobile.http3.statusLabel
+                                    ),
+                                enabled =
+                                    (mobile.http3.canEnable || mobile.http3.requestedEnabled) &&
+                                        actionState?.inProgress != true,
+                                toggleValue = mobile.http3.requestedEnabled
+                            )
+                        )
+                ),
                 KuiklySharedSettingsSection(
                     title = "Conversation display",
                     rows =
@@ -19425,6 +19535,15 @@ private fun settingsVisualAppearanceSnapshot(): SettingsAppearanceSnapshot =
 
 private fun settingsVisualMobileSnapshot(): SettingsMobileSnapshot =
     SettingsMobileSnapshot(
+        http3 =
+            build.raft.app.data.SettingsHttp3Snapshot(
+                requestedEnabled = false,
+                effectiveEnabled = false,
+                curlRequestedForNewCalls = false,
+                canEnable = true,
+                statusLabel = "Off",
+                detail = "Curl and the pinned CA bundle are ready."
+            ),
         pushNotifications =
             build.raft.app.data.SettingsMobileToggleSnapshot(
                 enabled = true,

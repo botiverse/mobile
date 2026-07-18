@@ -41,6 +41,8 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.SlockNetworkTransportController
+import build.raft.app.network.installSlockNetworkTransportController
 import build.raft.app.network.SlockNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.slockNetworkKmmRecoveryEnvironmentId
 import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
@@ -289,6 +291,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authDataSource: SharedAuthDataSource,
     val authLossFunnel: SharedAuthLossFunnel,
     val networkClient: SlockNetworkClient,
+    val networkTransportPreferenceRepository: NetworkTransportPreferenceRepository,
     private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     private val ownerScopedNetworkClientFactory: (SlockAuthSessionStore, String) -> SlockNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
@@ -1003,6 +1006,20 @@ internal class SlockSharedStoreProvider private constructor(
                     "namespace=${SlockLocalPreferenceStore.KuiklyNamespace} " +
                     "scope=${sharedPreferenceStoreBinding.scope}"
             )
+            val networkTransportController =
+                SlockNetworkTransportController(
+                    KeyValueNetworkTransportPreferenceStore(sharedPreferenceStore)
+                )
+            installSlockNetworkTransportController(networkTransportController)
+            networkTransportController.getPreferenceSync().let { snapshot ->
+                bridge.logSharedAuthDiagnostic(
+                    "shared_network_transport",
+                    "requestedHttp3=${snapshot.requestedHttp3Enabled} " +
+                        "effectiveHttp3=${snapshot.effectiveHttp3Enabled} " +
+                        "curlRequested=${snapshot.curlRequestedForNewCalls} " +
+                        "availability=${snapshot.availability} generation=${snapshot.generation}"
+                )
+            }
             val apiEnvironmentKeyValueStoreBinding =
                 SlockSharedKeyValueStoreProvider.create(
                     namespace = SharedApiEnvironmentStore.Namespace,
@@ -1355,6 +1372,7 @@ internal class SlockSharedStoreProvider private constructor(
                 authDataSource = authDataSource,
                 authLossFunnel = authLossFunnel,
                 networkClient = networkClient,
+                networkTransportPreferenceRepository = networkTransportController,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,

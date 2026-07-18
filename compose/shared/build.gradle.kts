@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     kotlin("multiplatform")
     kotlin("native.cocoapods")
@@ -16,6 +18,10 @@ val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
 val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
+val pinnedNetworkCurlCaBundle =
+    layout.projectDirectory.file("src/commonMain/assets/network/cacert-2026-05-14.pem")
+val pinnedNetworkCurlCaSha256 =
+    "86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c"
 val slockVisualFixturesEnabled =
     providers.gradleProperty("slockVisualFixtures")
         .orElse(providers.environmentVariable("SLOCK_VISUAL_FIXTURES"))
@@ -95,7 +101,7 @@ kotlin {
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.3")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
-                implementation("com.tencent.kuiklybase:network:0.1.0-raft.27")
+                implementation("com.tencent.kuiklybase:network:0.1.0-raft.28")
             }
         }
         val commonTest by getting {
@@ -340,6 +346,51 @@ val verifyNoProductionVisualPages by tasks.registering {
 
 tasks.named("check").configure {
     dependsOn(verifyNoProductionVisualPages)
+}
+
+val verifyNetworkCurlCaBundle by tasks.registering {
+    inputs.file(pinnedNetworkCurlCaBundle)
+    doLast {
+        val file = pinnedNetworkCurlCaBundle.asFile
+        check(file.isFile) { "Missing pinned NetworkKMM CA bundle: ${file.path}" }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val actual = digest.digest(file.readBytes()).joinToString("") { byte: Byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
+        check(actual == pinnedNetworkCurlCaSha256) {
+            "Pinned NetworkKMM CA bundle hash mismatch: expected=$pinnedNetworkCurlCaSha256 actual=$actual"
+        }
+    }
+}
+
+val verifyNetworkTransportClientWiring by tasks.registering {
+    val clientSources =
+        listOf(
+            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/NetworkKmmSlockHttpExecutor.kt"),
+            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/SharedBinaryDownloader.kt"),
+            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt")
+        )
+    inputs.files(clientSources)
+    doLast {
+        clientSources.forEach { source ->
+            val text = source.asFile.readText()
+            check("slockNetworkClientConfig(" in text) {
+                "${source.asFile.name} must use the app-global NetworkKMM selector/diagnostics helper"
+            }
+        }
+    }
+}
+
+tasks.named("check").configure {
+    dependsOn(verifyNetworkCurlCaBundle, verifyNetworkTransportClientWiring)
+}
+
+tasks.matching { task ->
+    task.name == "preBuild" ||
+        task.name.startsWith("compileKotlinIos") ||
+        task.name == "compileKotlinOhosArm64"
+}.configureEach {
+    dependsOn(verifyNetworkCurlCaBundle)
 }
 
 fun getPageName(): String {

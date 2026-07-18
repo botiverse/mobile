@@ -84,6 +84,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                     PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)),
                 linkOpenPreferenceRepository =
                     PersistentLinkOpenPreferenceRepository(KeyValueLinkOpenPreferenceStore(sharedPreferenceStore)),
+                networkTransportPreferenceRepository = sharedStores.networkTransportPreferenceRepository,
                 recompositionProfilerPreferenceRepository =
                     PersistentRecompositionProfilerPreferenceRepository(
                         KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)

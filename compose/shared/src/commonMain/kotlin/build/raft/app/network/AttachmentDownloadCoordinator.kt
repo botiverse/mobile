@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.slockLogInfo
 import com.tencent.kmm.network.export.NetworkBody
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkRequestPolicy
@@ -8,7 +9,6 @@ import com.tencent.kmm.network.export.NetworkStreamTimeoutPolicy
 import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.service.NetworkCall
 import com.tencent.kmm.network.service.NetworkClient
-import com.tencent.kmm.network.service.NetworkClientConfig
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -359,7 +359,13 @@ internal class AttachmentDownloadCoordinatorEngine(
 private object NetworkKmmAttachmentDownloadTransport : AttachmentDownloadTransport {
     private val client: NetworkClient by lazy {
         ensureNetworkKmmInitialized { }
-        NetworkClient(NetworkClientConfig())
+        NetworkClient(
+            slockNetworkClientConfig(
+                diagnosticsLogger = { message ->
+                    slockLogInfo("SlockAttachmentDownload", message)
+                }
+            )
+        )
     }
 
     override fun start(

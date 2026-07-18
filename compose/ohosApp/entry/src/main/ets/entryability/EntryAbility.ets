@@ -1,4 +1,4 @@
-import 'libentry.so';
+import Napi from 'libentry.so';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { bundleManager } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
@@ -52,6 +52,13 @@ const SLOCK_FONTS: SlockFontResource[] = [
 const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
 const SLOCK_SHARED_LOG_SINK_SERVICE = 'slockOhosSharedLogSink';
+const SLOCK_IMAGE_TRANSPORT_POLICY_SERVICE = 'slockOhosImageTransportPolicy';
+
+class SlockOhosImageTransportPolicySink {
+  setHttp3Enabled(enabled: boolean): boolean {
+    return Napi.setImageHttp3Enabled(enabled);
+  }
+}
 
 class SlockOhosSharedLogSink {
   record(level: string, tag: string, message: string): void {
@@ -222,6 +229,10 @@ export default class EntryAbility extends UIAbility {
     registerSingleServiceProvider(
       SLOCK_OHOS_ATTACHMENT_DOWNLOAD_OBSERVER_SERVICE,
       slockOhosAttachmentDownloadSink
+    );
+    registerSingleServiceProvider(
+      SLOCK_IMAGE_TRANSPORT_POLICY_SERVICE,
+      new SlockOhosImageTransportPolicySink()
     );
     // KmmResource contract: must complete after KNOI setup()/init() and
     // before any Kuikly/shared page exists — the first shared

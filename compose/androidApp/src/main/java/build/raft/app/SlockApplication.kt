@@ -13,12 +13,25 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
+import build.raft.app.network.installAndroidSlockNetworkTransportAtStartup
 import kotlinx.coroutines.runBlocking
 
 class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         SlockAndroidLocalDiagnostics.init(this)
+        runCatching {
+            installAndroidSlockNetworkTransportAtStartup(this)
+        }.onSuccess { diagnostics ->
+            SlockAndroidLocalDiagnostics.recordLog("info", "SlockNetworkKmm", diagnostics)
+        }.onFailure { error ->
+            SlockAndroidLocalDiagnostics.recordCriticalLog(
+                "error",
+                "SlockNetworkKmm",
+                "networkkmm_curl_bootstrap platform=android configured=false " +
+                    "errorType=${error::class.simpleName ?: "unknown"}"
+            )
+        }
         runCatching {
             installAndroidNetworkKmmReusedHttp2RecoveryAtStartup(
                 store = androidMMKVNetworkRecoveryKeyValueStore(this),

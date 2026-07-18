@@ -431,6 +431,28 @@ private enum SlockIosSharedLogBridge {
     }
 }
 
+private func slockCurlCaBundlePath() -> String {
+    var bundles = [Bundle.main] + Bundle.allBundles + Bundle.allFrameworks
+    let nested = Bundle.main.urls(forResourcesWithExtension: "bundle", subdirectory: nil) ?? []
+    bundles.append(contentsOf: nested.compactMap { Bundle(url: $0) })
+    for bundle in bundles {
+        if let url = bundle.url(
+            forResource: "cacert-2026-05-14",
+            withExtension: "pem",
+            subdirectory: "network"
+        ) {
+            return url.path
+        }
+        if let url = bundle.url(
+            forResource: "cacert-2026-05-14",
+            withExtension: "pem"
+        ) {
+            return url.path
+        }
+    }
+    return ""
+}
+
 @main
 struct iOSApp: App {
     @UIApplicationDelegateAdaptor(SlockIosAppDelegate.self) private var appDelegate
@@ -446,6 +468,10 @@ struct iOSApp: App {
         // render blank on iOS (UIImage has no native SVG support).
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAppScopeMMKV.install()
+        let curlCaPath = slockCurlCaBundlePath()
+        let curlBootstrap = SlockIosNetworkTransportBootstrapKt
+            .installIosSlockNetworkTransportAtStartup(caBundlePath: curlCaPath)
+        SlockIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
         SlockIosPushHost.install()
         SlockIosSharedLogBridge.install()
         SlockIosInstallHandsReporting()

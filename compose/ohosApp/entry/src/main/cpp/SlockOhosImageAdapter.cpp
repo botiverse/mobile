@@ -9,6 +9,7 @@
 #include <multimedia/image_framework/image/pixelmap_native.h>
 
 #include <cstdint>
+#include <atomic>
 #include <exception>
 #include <iomanip>
 #include <list>
@@ -28,6 +29,11 @@ constexpr int64_t kRequestTimeoutMs = 30'000;
 constexpr size_t kPixelMapCacheBytes = 12 * 1024 * 1024;
 constexpr size_t kMaxSinglePixelMapCacheBytes = 2 * 1024 * 1024;
 
+static_assert(CURL_WRAPPER_ABI_VERSION == 27,
+              "SlockOhosImageAdapter requires the NetworkKMM ABI-v27 entrypoints");
+static_assert(sizeof(CurlRequest) == 80,
+              "NetworkKMM ABI-v27 CurlRequest must remain 80 bytes on OHOS arm64");
+
 struct ImageSubscriber final {
     const void *context;
     std::string src;
@@ -40,6 +46,7 @@ using SharedPixelMap = std::shared_ptr<OH_PixelmapNative>;
 ImageSingleFlight g_image_flights;
 napi_threadsafe_function g_image_callback_dispatcher = nullptr;
 std::once_flag g_image_adapter_once;
+std::atomic<bool> g_image_http3_enabled{true};
 
 uint64_t HashUrl(const std::string &value) {
     uint64_t hash = 1469598103934665603ULL;
@@ -217,6 +224,8 @@ struct CurlResponseState final {
     int curlCode = -1;
     long httpCode = 0;
     double totalTimeMs = 0;
+    bool http3Requested = false;
+    std::string negotiatedProtocol = "unknown";
 };
 
 void OnCurlResponse(void *callback_ref, CurlResponse *response) {
@@ -234,21 +243,46 @@ void OnCurlResponse(void *callback_ref, CurlResponse *response) {
 
 void RunImageProducer(std::string key, uint64_t flight_id) {
     CurlResponseState response_state;
+    response_state.http3Requested = g_image_http3_enabled.load(std::memory_order_acquire);
     CurClientHandle client = CreateCurlClient("SlockImageFlight");
     if (client != nullptr) {
-        const std::string method = "GET";
-        StringDic empty_headers{};
-        CurlRequest request{};
-        request.url = key.c_str();
-        request.method = method.c_str();
-        // NetworkKMM's buffered wrapper treats the dictionary itself as required
-        // even when the request has no headers; only stringPairs may be null.
-        request.headers = &empty_headers;
-        request.timeout = kRequestTimeoutMs;
-        request.postBodyLen = 0;
-        request.postBody = nullptr;
-        CurlCallback callback{&response_state, &OnCurlResponse};
-        StartRequest(client, request, &callback);
+        const int runtime_abi = CurlWrapperAbiVersion();
+        if (runtime_abi != CURL_WRAPPER_ABI_VERSION) {
+            response_state.curlCode = -2;
+            OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, "SlockImageFlight",
+                         "abi_mismatch expected=%{public}d actual=%{public}d",
+                         CURL_WRAPPER_ABI_VERSION, runtime_abi);
+        } else if (SetCurlHttp3Enabled(client, response_state.http3Requested ? 1 : 0) == 0) {
+            response_state.curlCode = -2;
+            OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, "SlockImageFlight",
+                         "http3_policy_rejected requested=%{public}d",
+                         response_state.http3Requested ? 1 : 0);
+        } else {
+            const std::string method = "GET";
+            StringDic empty_headers{};
+            CurlRequest request{};
+            request.url = key.c_str();
+            request.method = method.c_str();
+            // NetworkKMM's buffered wrapper treats the dictionary itself as required
+            // even when the request has no headers; only stringPairs may be null.
+            request.headers = &empty_headers;
+            request.timeout = kRequestTimeoutMs;
+            request.postBodyLen = 0;
+            request.postBody = nullptr;
+            CurlCallback callback{&response_state, &OnCurlResponse};
+            if (StartRequestV27(
+                    client,
+                    &request,
+                    sizeof(request),
+                    CURL_WRAPPER_ABI_VERSION,
+                    &callback) == 0) {
+                response_state.curlCode = -2;
+                OH_LOG_Print(LOG_APP, LOG_ERROR, kLogDomain, "SlockImageFlight",
+                             "request_rejected expectedAbi=%{public}d requestSize=%{public}zu",
+                             CURL_WRAPPER_ABI_VERSION, sizeof(request));
+            }
+            response_state.negotiatedProtocol = GetCurlNegotiatedProtocol(client);
+        }
         DeleteCurlClient(client);
     }
 
@@ -264,14 +298,20 @@ void RunImageProducer(std::string key, uint64_t flight_id) {
     const std::string url_hash = UrlHash(key);
     if (response_state.pixelMap) {
         OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, "SlockImageFlight",
-                     "flight_success urlHash=%{public}s consumers=%{public}zu durationMs=%{public}.1f",
-                     url_hash.c_str(), subscribers.size(), response_state.totalTimeMs);
+                     "flight_success urlHash=%{public}s consumers=%{public}zu durationMs=%{public}.1f "
+                     "http3Requested=%{public}d negotiatedProtocol=%{public}s",
+                     url_hash.c_str(), subscribers.size(), response_state.totalTimeMs,
+                     response_state.http3Requested ? 1 : 0,
+                     response_state.negotiatedProtocol.c_str());
     } else {
         OH_LOG_Print(LOG_APP, LOG_WARN, kLogDomain, "SlockImageFlight",
                      "flight_failure urlHash=%{public}s consumers=%{public}zu curlCode=%{public}d "
-                     "httpCode=%{public}ld durationMs=%{public}.1f",
+                     "httpCode=%{public}ld durationMs=%{public}.1f http3Requested=%{public}d "
+                     "negotiatedProtocol=%{public}s",
                      url_hash.c_str(), subscribers.size(), response_state.curlCode,
-                     response_state.httpCode, response_state.totalTimeMs);
+                     response_state.httpCode, response_state.totalTimeMs,
+                     response_state.http3Requested ? 1 : 0,
+                     response_state.negotiatedProtocol.c_str());
     }
     DispatchFanout(std::move(subscribers), std::move(response_state.pixelMap));
 }
@@ -319,6 +359,13 @@ int32_t SlockImageAdapterV3(const void *context,
 }
 
 }  // namespace
+
+bool SetSlockOhosImageHttp3Enabled(bool enabled) {
+    g_image_http3_enabled.store(enabled, std::memory_order_release);
+    OH_LOG_Print(LOG_APP, LOG_INFO, kLogDomain, "SlockImageFlight",
+                 "http3_policy_updated enabled=%{public}d", enabled ? 1 : 0);
+    return true;
+}
 
 void RegisterSlockOhosImageAdapter(napi_env env) {
     if (g_image_callback_dispatcher == nullptr) {
