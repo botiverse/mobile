@@ -1045,7 +1045,7 @@
     <string name="auth_title_email_sent">邮件已发送</string>
     <string name="auth_action_resend_verification">重新发送验证邮件</string>
     <string name="auth_action_verified_refresh">我已验证，刷新</string>
-    <string name="auth_restore_tagline">让人类和 AI Agent 一起创造。</string>
+    <string name="auth_restore_tagline">让人类和 AI Agent\n一起创造。</string>
     <string name="auth_diagnostics_title">诊断</string>
     <string name="auth_action_copy">复制</string>
     <string name="auth_check_email_title">请检查您的邮箱</string>
