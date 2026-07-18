@@ -140,7 +140,7 @@ class ReadStateV1ContractTest {
             authority = authority,
             store = store,
             projectionObserver = ReadStateV1ProjectionObserver { _, _ -> },
-            rebaselineRequester = ReadStateV1RebaselineRequester { requests += it },
+            rebaselineRequester = ReadStateV1RebaselineRequester { requests += it.scope },
         )
         assertEquals(
             ReadStateV1GenerationResult.Committed,
@@ -165,12 +165,48 @@ class ReadStateV1ContractTest {
             authority = authority,
             store = CorruptRestoreStore(),
             projectionObserver = ReadStateV1ProjectionObserver { _, _ -> error("corrupt restore must not project") },
-            rebaselineRequester = ReadStateV1RebaselineRequester { requests += it },
+            rebaselineRequester = ReadStateV1RebaselineRequester { requests += it.scope },
         )
 
         assertEquals(ReadStateV1GenerationResult.BaselineRequired(true), engine.restore(witness))
         assertEquals(ReadStateV1GenerationResult.BaselineRequired(false), engine.restore(witness))
         assertEquals(listOf(scope), requests)
+    }
+
+    @Test
+    fun revokeBeforeConflictOrCorruptRestoreRequestEmitsNothingForStaleGrant() = runBlocking {
+        val conflictAuthority = ReadStateV1GrantAuthority()
+        val conflictWitness = conflictAuthority.issue(scope)
+        val conflictRequests = mutableListOf<ReadStateV1Scope>()
+        val conflictProjections = mutableListOf<ReadStateV1Fact>()
+        val conflictEngine = ReadStateV1GenerationEngine(
+            authority = conflictAuthority,
+            store = RevokingStore(conflictAuthority, conflictWitness, corruptOnRestore = false),
+            projectionObserver = ReadStateV1ProjectionObserver { _, fact -> conflictProjections += fact },
+            rebaselineRequester = ReadStateV1RebaselineRequester { conflictRequests += it.scope },
+        )
+        assertEquals(
+            ReadStateV1GenerationResult.Committed,
+            conflictEngine.applySnapshot(conflictWitness, candidate(ReadStateV1FactSource.Hydrate, 7, 70)),
+        )
+        assertEquals(
+            ReadStateV1GenerationResult.RejectedCurrentGrant,
+            conflictEngine.applyIncremental(conflictWitness, candidate(ReadStateV1FactSource.OwnerRealtime, 7, 71)),
+        )
+        assertEquals(emptyList(), conflictRequests)
+        assertEquals(listOf(ReadStateV1Fact(scope.channelId, 7, 70)), conflictProjections)
+
+        val corruptAuthority = ReadStateV1GrantAuthority()
+        val corruptWitness = corruptAuthority.issue(scope)
+        val corruptRequests = mutableListOf<ReadStateV1Scope>()
+        val corruptEngine = ReadStateV1GenerationEngine(
+            authority = corruptAuthority,
+            store = RevokingStore(corruptAuthority, corruptWitness, corruptOnRestore = true),
+            projectionObserver = ReadStateV1ProjectionObserver { _, _ -> error("revoked corrupt restore must not project") },
+            rebaselineRequester = ReadStateV1RebaselineRequester { corruptRequests += it.scope },
+        )
+        assertEquals(ReadStateV1GenerationResult.RejectedCurrentGrant, corruptEngine.restore(corruptWitness))
+        assertEquals(emptyList(), corruptRequests)
     }
 
     private fun engine(
@@ -182,7 +218,7 @@ class ReadStateV1ContractTest {
         authority = authority,
         store = store,
         projectionObserver = ReadStateV1ProjectionObserver { _, fact -> events += "project:${fact.readStateVersion}" },
-        rebaselineRequester = ReadStateV1RebaselineRequester { requests += it },
+        rebaselineRequester = ReadStateV1RebaselineRequester { requests += it.scope },
     )
 
     private fun candidate(source: ReadStateV1FactSource, version: Long, seq: Long) =
@@ -239,6 +275,29 @@ class ReadStateV1ContractTest {
         ): ReadStateV1StoreResult = error("not used")
 
         override suspend fun restore(scope: ReadStateV1Scope): ReadStateV1Fact? {
+            throw ReadStateV1StoredFactCorrupt(scope)
+        }
+    }
+
+    private class RevokingStore(
+        private val authority: ReadStateV1GrantAuthority,
+        private val witness: ReadStateV1GrantWitness,
+        private val corruptOnRestore: Boolean,
+    ) : ReadStateV1Store {
+        override suspend fun commit(
+            scope: ReadStateV1Scope,
+            fact: ReadStateV1Fact,
+            mode: ReadStateV1CommitMode,
+            guard: ReadStateV1CommitGuard,
+        ): ReadStateV1StoreResult {
+            if (mode == ReadStateV1CommitMode.Snapshot) return ReadStateV1StoreResult.Accepted
+            authority.revoke(witness)
+            return ReadStateV1StoreResult.Conflict
+        }
+
+        override suspend fun restore(scope: ReadStateV1Scope): ReadStateV1Fact? {
+            check(corruptOnRestore)
+            authority.revoke(witness)
             throw ReadStateV1StoredFactCorrupt(scope)
         }
     }

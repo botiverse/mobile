@@ -146,6 +146,47 @@ class SqlDelightReadStateV1StoreTest {
         Unit
     }
 
+    @Test
+    fun corruptRestoreRequestsVerifiedSnapshotWhichHealsAndRestores() = runBlocking {
+        val (database, _) = freshDatabase()
+        database.queries.upsertSyncReadStateFact(
+            serverId = scope.serverId,
+            principalId = scope.principalId,
+            consumerId = scope.consumerId,
+            channelId = scope.channelId,
+            readStateVersion = 0,
+            maxReadSeq = -1,
+            updatedAtMs = 100,
+        )
+        val authority = ReadStateV1GrantAuthority()
+        val witness = authority.issue(scope)
+        val requests = mutableListOf<ReadStateV1GrantWitness>()
+        val projections = mutableListOf<ReadStateV1Fact>()
+        val engine = ReadStateV1GenerationEngine(
+            authority = authority,
+            store = SqlDelightReadStateV1Store(database, now = { 200L }),
+            projectionObserver = ReadStateV1ProjectionObserver { _, fact -> projections += fact },
+            rebaselineRequester = ReadStateV1RebaselineRequester { requests += it },
+        )
+
+        assertEquals(ReadStateV1GenerationResult.BaselineRequired(true), engine.restore(witness))
+        assertEquals(listOf(witness), requests)
+        assertEquals(
+            ReadStateV1GenerationResult.Committed,
+            engine.applySnapshot(
+                witness,
+                ReadStateV1WireCandidate(
+                    channelId = scope.channelId,
+                    readStateVersion = 5,
+                    maxReadSeq = 50,
+                    source = ReadStateV1FactSource.Hydrate,
+                ),
+            ),
+        )
+        assertEquals(fact(5, 50), SqlDelightReadStateV1Store(database, now = { 300L }).restore(scope))
+        assertEquals(listOf(fact(5, 50)), projections)
+    }
+
     private fun fact(version: Long, seq: Long) = ReadStateV1Fact(scope.channelId, version, seq)
 
     private fun freshDatabase(): Pair<SlockSqlDatabase, CountingDriver> {

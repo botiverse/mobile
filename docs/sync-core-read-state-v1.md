@@ -51,7 +51,9 @@ ordering: a lower hydrate is stale, while a verified equal-version/different-pai
 conflict adjudicator and may replace that disputed pair. Incremental compare and write occur in one SQL
 transaction. Restore accepts only a complete, valid row from the exact partition; corrupt rows fail closed,
 invalidate the baseline, and coalesce a clean hydrate request. A current-grant check is made inside the
-transaction before mutation and again immediately before commit.
+transaction before mutation and again immediately before commit. Rebaseline requests carry the opaque grant
+witness, and current-check + request-state installation + request emission share one grant-authority critical
+section, so revoke cannot publish a hydrate request for an old owner.
 
 ## HOLD boundary
 

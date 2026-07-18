@@ -64,17 +64,23 @@ internal class SqlDelightReadStateV1Store(
                             result = ReadStateV1ApplyResult.Accepted,
                         )
                     } else {
-                        validateStored(scope, stored.readStateVersion, stored.maxReadSeq)
-                        val reduced = reduceReadStateV1(
-                            current = ReadStateV1Fact(scope.channelId, stored.readStateVersion, stored.maxReadSeq),
-                            incoming = fact,
-                        )
-                        if (mode == ReadStateV1CommitMode.Snapshot && reduced.result == ReadStateV1ApplyResult.Conflict) {
-                            // A verified hydrate is the authoritative equal-version conflict adjudicator.
-                            // Lower snapshots remain stale; only the disputed equal pair may be replaced.
+                        val storedIsValid = isStoredValid(stored.readStateVersion, stored.maxReadSeq)
+                        if (!storedIsValid && mode == ReadStateV1CommitMode.Snapshot) {
+                            // Verified hydrate is the only input allowed to heal one exact corrupt durable row.
                             ReadStateV1Transition(fact, ReadStateV1ApplyResult.Accepted)
                         } else {
-                            reduced
+                            if (!storedIsValid) throw ReadStateV1StoredFactCorrupt(scope)
+                            val reduced = reduceReadStateV1(
+                                current = ReadStateV1Fact(scope.channelId, stored.readStateVersion, stored.maxReadSeq),
+                                incoming = fact,
+                            )
+                            if (mode == ReadStateV1CommitMode.Snapshot && reduced.result == ReadStateV1ApplyResult.Conflict) {
+                                // A verified hydrate is the authoritative equal-version conflict adjudicator.
+                                // Lower snapshots remain stale; only the disputed equal pair may be replaced.
+                                ReadStateV1Transition(fact, ReadStateV1ApplyResult.Accepted)
+                            } else {
+                                reduced
+                            }
                         }
                     }
                 result = transition.result.toStoreResult()
@@ -115,8 +121,10 @@ internal class SqlDelightReadStateV1Store(
         }
 
     private fun validateStored(scope: ReadStateV1Scope, version: Long, maxReadSeq: Long) {
-        if (version <= 0L || maxReadSeq < 0L) throw ReadStateV1StoredFactCorrupt(scope)
+        if (!isStoredValid(version, maxReadSeq)) throw ReadStateV1StoredFactCorrupt(scope)
     }
+
+    private fun isStoredValid(version: Long, maxReadSeq: Long): Boolean = version > 0L && maxReadSeq >= 0L
 }
 
 private fun ReadStateV1ApplyResult.toStoreResult(): ReadStateV1StoreResult =
