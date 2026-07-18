@@ -6,6 +6,14 @@ import kotlin.test.assertContains
 
 class AppShellPrewarmProductionWiringTest {
     @Test
+    fun iosPrewarmRolloutRemainsDemandMountedUntilFocusAcceptance() {
+        assertContains(
+            iosPlatformCapabilitiesSource(),
+            "AppShellChildPagePrewarmMode.Disabled"
+        )
+    }
+
+    @Test
     fun everyForegroundAppShellTabInvalidatesTheSharedPrewarmGate() {
         val source = settingsHomePageSource()
 
@@ -29,6 +37,17 @@ class AppShellPrewarmProductionWiringTest {
                     .firstOrNull(File::isDirectory)
             ) { "Unable to locate shared commonMain source" }
         return File(commonMain, "build/raft/app/SettingsHomePage.kt")
+            .readText()
+            .replace("\r\n", "\n")
+    }
+
+    private fun iosPlatformCapabilitiesSource(): String {
+        val iosMain =
+            requireNotNull(
+                listOf(File("src/iosMain/kotlin"), File("shared/src/iosMain/kotlin"))
+                    .firstOrNull(File::isDirectory)
+            ) { "Unable to locate shared iosMain source" }
+        return File(iosMain, "build/raft/app/SlockKuiklyPlatformCapabilities.ios.kt")
             .readText()
             .replace("\r\n", "\n")
     }

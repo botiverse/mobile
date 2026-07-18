@@ -5,6 +5,14 @@ import kotlin.test.assertEquals
 
 class SlockKuiklyPlatformCapabilitiesIosTest {
     @Test
+    fun childPagePrewarmStaysDisabledUntilIosFocusLifecycleIsDeviceValidated() {
+        assertEquals(
+            AppShellChildPagePrewarmMode.Disabled,
+            slockPlatformAppShellChildPagePrewarmMode()
+        )
+    }
+
+    @Test
     fun liquidGlassDefaultIsRuntimeGatedAcrossRouteRebuilds() {
         assertEquals("sharedCompose", slockIosAppTabBarRendererForMajorVersion(18L))
         assertEquals("sharedCompose", slockIosAppTabBarRendererForMajorVersion(25L))

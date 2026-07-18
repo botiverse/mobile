@@ -9,7 +9,7 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = false
 
 internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
-    AppShellChildPagePrewarmMode.Canary
+    AppShellChildPagePrewarmMode.Disabled
 
 internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
 
