@@ -41,6 +41,7 @@ import {
   composerHasNewPreview,
   countThreadImageNodes,
   diffUiNodeStates,
+  exactCellCandidates,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
@@ -324,6 +325,18 @@ try {
       process.exit(1);
     }
     const aliveBeforeCellTap = processAlive();
+    // Bind the target cell in the STRUCTURED before-snapshot by EXACT
+    // label+bounds and require uniqueness BEFORE issuing the tap (XiShi
+    // static review): the smallest node containing the tap point must never
+    // impersonate the target cell — a nested image/checkmark child may sit
+    // inside it. Anything but exactly one exact candidate fails the sampling
+    // precondition fail-closed.
+    const exactBefore = exactCellCandidates(beforeNodes, sampleTarget);
+    if (exactBefore.length !== 1) {
+      writeVerdict("fail", `target cell identity precondition failed: expected exactly one structured node with exact label+bounds for "${sampleTarget.label}" ${JSON.stringify(sampleTarget.bounds)}, found ${exactBefore.length}`);
+      process.exit(1);
+    }
+    const targetCellBeforeNode = exactBefore[0];
     rec(`cell-sampling: single tap on ${sampleTarget.variant} top-left photo cell at [${sampleTarget.x},${sampleTarget.y}] (alive before: ${aliveBeforeCellTap})`);
     await drv.tap(sampleTarget.x, sampleTarget.y);
     await new Promise((r) => setTimeout(r, 3000));
@@ -338,16 +351,21 @@ try {
       identifier: n.identifier, type: n.type, label: n.label,
       bounds: n.bounds, enabled: n.enabled, selected: n.selected,
     } : null);
-    // The tapped cell's before/after state, located by the tap point inside
-    // its bounds (smallest containing node wins), then tracked by signature.
-    const tappedBefore = beforeNodes
-      .filter((n) => n.bounds[0] <= sampleTarget.x && sampleTarget.x <= n.bounds[2]
-        && n.bounds[1] <= sampleTarget.y && sampleTarget.y <= n.bounds[3])
-      .sort((a, b) => ((a.bounds[2] - a.bounds[0]) * (a.bounds[3] - a.bounds[1]))
-        - ((b.bounds[2] - b.bounds[0]) * (b.bounds[3] - b.bounds[1])))[0] ?? null;
-    const tappedAfter = tappedBefore
-      ? afterNodes.find((n) => uiNodeSignature(n) === uiNodeSignature(tappedBefore)) ?? null
-      : null;
+    const sameBounds = (a, b) => Array.isArray(a) && Array.isArray(b)
+      && a.length === 4 && b.length === 4 && a.every((v, i) => v === b[i]);
+    const containsTap = (n) => n.bounds[0] <= sampleTarget.x && sampleTarget.x <= n.bounds[2]
+      && n.bounds[1] <= sampleTarget.y && sampleTarget.y <= n.bounds[3];
+    // After-tap tracking: the exact before-signature OR exact-bounds
+    // candidates (the union covers a label flip on an anonymous cell). Zero
+    // candidates means the cell is gone; MORE THAN ONE is recorded as an
+    // explicit ambiguity — never a silent pick.
+    const targetSignature = uiNodeSignature(targetCellBeforeNode);
+    const trackingPool = [...new Map([
+      ...afterNodes.filter((n) => uiNodeSignature(n) === targetSignature),
+      ...afterNodes.filter((n) => sameBounds(n.bounds, targetCellBeforeNode.bounds)),
+    ].map((n) => [uiNodeSignature(n), n])).values()];
+    const targetTrackingAmbiguous = trackingPool.length > 1;
+    const targetCellAfterNode = trackingPool.length === 1 ? trackingPool[0] : null;
     const doneNodes = (list) => list
       .filter((n) => n.label.trim().toLowerCase() === "done")
       .map(nodeState);
@@ -358,8 +376,12 @@ try {
       aliveAfterCellTap,
       cellTarget: sampleTarget,
       pickerVariant: sampleTarget.variant,
-      tappedNodeBefore: nodeState(tappedBefore),
-      tappedNodeAfter: nodeState(tappedAfter),
+      targetCellBefore: nodeState(targetCellBeforeNode),
+      targetCellAfter: nodeState(targetCellAfterNode),
+      targetTrackingAmbiguous,
+      targetTrackingCandidates: trackingPool.map(uiNodeSignature),
+      nodesAtTapBefore: beforeNodes.filter(containsTap).map(nodeState),
+      nodesAtTapAfter: afterNodes.filter(containsTap).map(nodeState),
       doneNodesBefore: doneNodes(beforeNodes),
       doneNodesAfter: doneNodes(afterNodes),
       stateDiff: diffUiNodeStates(beforeNodes, afterNodes),

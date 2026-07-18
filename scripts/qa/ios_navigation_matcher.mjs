@@ -250,7 +250,14 @@ export function findPhotoCellTarget(dump) {
   if (conflicting.length) {
     throw new Error(`ambiguous top-left photo tile: ${conflicting.length + 1} duplicate/overlapping candidates`);
   }
-  return { x: first.x, y: first.y, line: first.line, variant: picker.variant };
+  return {
+    x: first.x,
+    y: first.y,
+    label: first.label,
+    bounds: [first.x1, first.y1, first.x2, first.y2],
+    line: first.line,
+    variant: picker.variant,
+  };
 }
 
 // Two candidate cells conflict when their rectangles intersect with positive
@@ -315,31 +322,46 @@ export function countThreadImageNodes(dump) {
 }
 
 // Structured selection-state diff for the cell-sampling head (task #26 static
-// review). Nodes are keyed by a stable signature — the verbatim identifier
-// when present, else type+label+bounds — then label/value/enabled/selected
-// are compared FIELD BY FIELD. A whole-line Set diff cannot see "same node,
-// enabled flipped" or "same cell, selected flipped"; this can.
+// review). Identity is signature-keyed — identifier+type+bounds when an
+// identifier exists (label is then a STATE field, so label flips stay
+// detectable), else type+label+bounds for anonymous nodes. A whole-line Set
+// diff cannot see "same node, enabled flipped" or "same cell, selected
+// flipped"; and repeated signatures are NEVER merged last-wins (XCUI trees
+// can repeat identifiers) — duplicates land in ambiguousBefore/
+// ambiguousAfter and yield no state conclusion at all.
 export function uiNodeSignature(node) {
-  const id = String(node?.identifier ?? "").trim();
-  if (id) return `id:${id}`;
   const bounds = Array.isArray(node?.bounds) ? node.bounds.join(",") : "";
-  return `anon:${node?.type ?? "?"}|${node?.label ?? ""}|${bounds}`;
+  const type = node?.type ?? "?";
+  const id = String(node?.identifier ?? "").trim();
+  if (id) return `id:${id}|${type}|${bounds}`;
+  return `anon:${type}|${node?.label ?? ""}|${bounds}`;
 }
 
 export function diffUiNodeStates(beforeNodes, afterNodes) {
   const index = (list) => {
     const map = new Map();
-    for (const node of list || []) map.set(uiNodeSignature(node), node); // duplicate signatures: last wins
+    for (const node of list || []) {
+      const signature = uiNodeSignature(node);
+      if (!map.has(signature)) map.set(signature, []);
+      map.get(signature).push(node);
+    }
     return map;
   };
   const before = index(beforeNodes);
   const after = index(afterNodes);
+  const ambiguousBefore = [...before].filter(([, nodes]) => nodes.length > 1).map(([signature]) => signature);
+  const ambiguousAfter = [...after].filter(([, nodes]) => nodes.length > 1).map(([signature]) => signature);
+  const ambiguous = new Set([...ambiguousBefore, ...ambiguousAfter]);
+
   const added = [];
   const removed = [];
   const stateChanged = [];
-  for (const [signature, node] of after) {
-    const prev = before.get(signature);
-    if (!prev) { added.push(signature); continue; }
+  for (const [signature, nodes] of after) {
+    if (ambiguous.has(signature)) continue; // no state conclusion on ambiguous identity
+    const prevList = before.get(signature);
+    if (!prevList) { added.push(signature); continue; }
+    const prev = prevList[0];
+    const node = nodes[0];
     const changed = ["label", "value", "enabled", "selected"]
       .filter((field) => (prev[field] ?? null) !== (node[field] ?? null));
     if (changed.length) {
@@ -352,13 +374,31 @@ export function diffUiNodeStates(beforeNodes, afterNodes) {
     }
   }
   for (const signature of before.keys()) {
+    if (ambiguous.has(signature)) continue;
     if (!after.has(signature)) removed.push(signature);
   }
-  return { added, removed, stateChanged };
+  return { added, removed, stateChanged, ambiguousBefore, ambiguousAfter };
 }
 
 function pickFields(node, fields) {
   const out = {};
   for (const field of fields) out[field] = node[field] ?? null;
   return out;
+}
+
+// Bind the matcher's tapped cell to the STRUCTURED snapshot by exact
+// label+bounds (task #26 static review): the smallest node containing the
+// tap point must never impersonate the target cell — a nested image or
+// checkmark child may sit inside it. The caller enforces uniqueness;
+// anything other than exactly one candidate is a precondition failure.
+export function exactCellCandidates(nodes, target) {
+  const label = String(target?.label ?? "").trim();
+  const bounds = Array.isArray(target?.bounds) ? target.bounds : [];
+  return (nodes || []).filter((node) => (
+    String(node?.label ?? "").trim() === label
+    && Array.isArray(node?.bounds)
+    && node.bounds.length === 4
+    && bounds.length === 4
+    && node.bounds.every((v, i) => v === bounds[i])
+  ));
 }

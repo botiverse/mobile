@@ -4,6 +4,7 @@ import {
   composerHasNewPreview,
   countThreadImageNodes,
   diffUiNodeStates,
+  exactCellCandidates,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
@@ -231,6 +232,8 @@ test("iOS 26 variant: real picker dump recomputes to picker=true with top-left c
   const target = findPhotoCellTarget(ios26RealPickerDump);
   assert.equal(target.variant, "ios26");
   assert.deepEqual({ x: target.x, y: target.y }, { x: 194, y: 599 });
+  assert.equal(target.label, "Photo, March 30, 2018, 7:14 PM");
+  assert.deepEqual(target.bounds, [0, 405, 387, 792]);
   assert.match(target.line, /^"Photo, March 30, 2018, 7:14 PM" \[0,405\]\[387,792\]$/);
 });
 
@@ -331,8 +334,8 @@ test("findPhotoCellTarget accepts edge-adjacent cells (zero-area shared border)"
   assert.deepEqual({ x: target.x, y: target.y }, { x: 194, y: 599 });
 });
 
-test("uiNodeSignature prefers the verbatim identifier, falls back to type+label+bounds", () => {
-  assert.equal(uiNodeSignature({ identifier: "abc", type: "button", label: "X", bounds: [1, 2, 3, 4] }), "id:abc");
+test("uiNodeSignature keys identifier+type+bounds, falls back to type+label+bounds", () => {
+  assert.equal(uiNodeSignature({ identifier: "abc", type: "button", label: "X", bounds: [1, 2, 3, 4] }), "id:abc|button|1,2,3,4");
   assert.equal(uiNodeSignature({ identifier: "  ", type: "cell", label: "P", bounds: [1, 2, 3, 4] }), "anon:cell|P|1,2,3,4");
 });
 
@@ -343,7 +346,7 @@ test("diffUiNodeStates detects an enabled flip on the same node", () => {
   assert.equal(diff.added.length, 0);
   assert.equal(diff.removed.length, 0);
   assert.equal(diff.stateChanged.length, 1);
-  assert.equal(diff.stateChanged[0].signature, "id:done-btn");
+  assert.equal(diff.stateChanged[0].signature, "id:done-btn|button|1002,231,1110,339");
   assert.deepEqual(diff.stateChanged[0].changed, ["enabled"]);
   assert.equal(diff.stateChanged[0].before.enabled, false);
   assert.equal(diff.stateChanged[0].after.enabled, true);
@@ -361,14 +364,53 @@ test("diffUiNodeStates reports added and removed signatures", () => {
   const a = { identifier: "a", type: "image", label: "", bounds: [0, 0, 10, 10], enabled: true, selected: false, value: "" };
   const b = { identifier: "b", type: "image", label: "", bounds: [0, 0, 10, 10], enabled: true, selected: false, value: "" };
   const diff = diffUiNodeStates([a], [b]);
-  assert.deepEqual(diff.added, ["id:b"]);
-  assert.deepEqual(diff.removed, ["id:a"]);
+  assert.deepEqual(diff.added, ["id:b|image|0,0,10,10"]);
+  assert.deepEqual(diff.removed, ["id:a|image|0,0,10,10"]);
   assert.equal(diff.stateChanged.length, 0);
 });
 
 test("diffUiNodeStates stays silent on identical snapshots", () => {
   const nodes = [{ identifier: "x", type: "button", label: "Cancel", bounds: [60, 231, 168, 339], enabled: true, selected: false, value: "" }];
-  assert.deepEqual(diffUiNodeStates(nodes, nodes.map((n) => ({ ...n }))), { added: [], removed: [], stateChanged: [] });
+  assert.deepEqual(diffUiNodeStates(nodes, nodes.map((n) => ({ ...n }))), {
+    added: [], removed: [], stateChanged: [], ambiguousBefore: [], ambiguousAfter: [],
+  });
+});
+
+test("diffUiNodeStates does not collapse same-identifier nodes with different bounds", () => {
+  const c1 = { identifier: "x", type: "cell", label: "A", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
+  const c2 = { identifier: "x", type: "cell", label: "B", bounds: [392, 405, 778, 792], enabled: true, selected: false, value: "" };
+  const diff = diffUiNodeStates([c1, c2], [{ ...c1 }, { ...c2, selected: true }]);
+  assert.deepEqual(diff.ambiguousBefore, []);
+  assert.deepEqual(diff.ambiguousAfter, []);
+  assert.equal(diff.stateChanged.length, 1);
+  assert.equal(diff.stateChanged[0].signature, "id:x|cell|392,405,778,792");
+  assert.deepEqual(diff.stateChanged[0].changed, ["selected"]);
+});
+
+test("diffUiNodeStates routes fully duplicated signatures to ambiguous with no state conclusion", () => {
+  const dup = { identifier: "d", type: "button", label: "Done", bounds: [1002, 231, 1110, 339], enabled: false, selected: false, value: "" };
+  const diff = diffUiNodeStates([dup, { ...dup }], [{ ...dup, enabled: true }]);
+  assert.deepEqual(diff.ambiguousBefore, ["id:d|button|1002,231,1110,339"]);
+  assert.deepEqual(diff.ambiguousAfter, []);
+  assert.equal(diff.stateChanged.length, 0); // the enabled flip must NOT be concluded
+  assert.equal(diff.added.length, 0);
+  assert.equal(diff.removed.length, 0);
+});
+
+test("exactCellCandidates binds by exact label+bounds only", () => {
+  const cell = { identifier: "", type: "cell", label: "Photo, March 30, 2018, 7:14 PM", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
+  // a smaller child INSIDE the cell (image/checkmark) must never impersonate it
+  const child = { identifier: "", type: "image", label: "Photo, March 30, 2018, 7:14 PM", bounds: [20, 425, 120, 525], enabled: true, selected: false, value: "" };
+  const target = { label: "Photo, March 30, 2018, 7:14 PM", bounds: [0, 405, 387, 792] };
+  const found = exactCellCandidates([cell, child], target);
+  assert.equal(found.length, 1);
+  assert.equal(found[0], cell);
+});
+
+test("exactCellCandidates returns zero on a 1px bounds drift and two on duplicates", () => {
+  const cell = { identifier: "", type: "cell", label: "P", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
+  assert.equal(exactCellCandidates([cell], { label: "P", bounds: [0, 405, 387, 793] }).length, 0);
+  assert.equal(exactCellCandidates([cell, { ...cell }], { label: "P", bounds: [0, 405, 387, 792] }).length, 2);
 });
 
 test("composerHasNewPreview only accepts a NEW node inside the composer", () => {
