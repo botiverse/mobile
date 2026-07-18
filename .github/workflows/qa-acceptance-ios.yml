@@ -590,11 +590,11 @@ jobs:
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
           date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
-          # Pre-grant Photos access (task #26): the SpringBoard permission alert
-          # is outside the app accessibility tree, so tapping it would mean
-          # driving system UI — instead we grant deterministically up front and
-          # the single image tap goes straight to the real PhotosUI picker.
-          xcrun simctl privacy "$UDID" grant photos "$BUNDLE_ID"
+          # NOTE: `simctl privacy grant photos` does NOT suppress iOS 26's
+          # PhotosTCCNotificationExtension consent flow (sampling-run evidence),
+          # so there is deliberately no pre-grant here — the deterministic
+          # driver bootstraps the permission through the loop's XCUITest-native
+          # system_alert_allow_photos_full_access action instead.
           set +e
           node scripts/qa/ios_deterministic_repro.mjs \
             --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence

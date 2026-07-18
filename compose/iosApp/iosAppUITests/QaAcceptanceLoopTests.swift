@@ -134,6 +134,46 @@ final class QaAcceptanceLoopTests: XCTestCase {
                 throw HarnessError.bad("launch: app did not reach foreground (state=\(app.state.rawValue))")
             }
             return ["state": "runningForeground"]
+        case "system_alert_allow_photos_full_access":
+            // Deterministic permission bootstrap (task #26, iOS 26 consent
+            // extension): the SpringBoard Photos alert is outside the app's
+            // accessibility tree, so it is resolved through XCUITest against
+            // com.apple.springboard — native element taps only, never
+            // coordinates. Fail-closed on every contract violation: no alert,
+            // multiple alerts, no exact "Allow Full Access" button, duplicate
+            // buttons, or the alert surviving the tap.
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let alerts = springboard.alerts
+            guard alerts.count == 1 else {
+                throw HarnessError.bad("system_alert: expected exactly one SpringBoard alert, found \(alerts.count)")
+            }
+            let alert = alerts.element(boundBy: 0)
+            let title = alert.label
+            guard title.localizedCaseInsensitiveContains("Photo Library") else {
+                throw HarnessError.bad("system_alert: the only alert is not a Photos permission alert (title: \(title))")
+            }
+            let allow = alert.buttons["Allow Full Access"]
+            let allButtons = alert.buttons.allElementsBoundByIndex.map { $0.label }
+            guard allow.exists else {
+                throw HarnessError.bad("system_alert: no exact 'Allow Full Access' button (buttons: \(allButtons))")
+            }
+            let allowCount = alert.buttons.allElementsBoundByIndex.filter { $0.label == "Allow Full Access" }.count
+            guard allowCount == 1 else {
+                throw HarnessError.bad("system_alert: duplicate 'Allow Full Access' buttons (\(allowCount))")
+            }
+            let bounds = allow.frame
+            allow.tap()
+            Thread.sleep(forTimeInterval: 2.0)
+            guard !alert.exists else {
+                throw HarnessError.bad("system_alert: Photos alert still present after tapping Allow Full Access")
+            }
+            return [
+                "alertTitle": title,
+                "button": "Allow Full Access",
+                "buttonBounds": "[\(Int(bounds.minX)),\(Int(bounds.minY))][\(Int(bounds.maxX)),\(Int(bounds.maxY))]",
+                "allButtons": allButtons.joined(separator: "|"),
+                "dismissed": true,
+            ]
         case "wait":
             Thread.sleep(forTimeInterval: min(max(action.seconds ?? 1.0, 0.0), 10.0))
         case "tap":

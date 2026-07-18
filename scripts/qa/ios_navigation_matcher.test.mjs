@@ -8,6 +8,7 @@ import {
   findPhotoCellTarget,
   hasPhotoPickerGate,
   hasRealPhotoPicker,
+  photosFullAccessAlertDecision,
   redactEditableValues,
 } from "./ios_navigation_matcher.mjs";
 
@@ -223,4 +224,22 @@ test("composerHasNewPreview ignores tiny new nodes", () => {
   const before = '"Message #all" [24,2161][1140,2382]';
   const afterTiny = '"." [40,2180][60,2200]';
   assert.equal(composerHasNewPreview(before, afterTiny), false);
+});
+
+test("photosFullAccessAlertDecision accepts the exact happy path", () => {
+  assert.deepEqual(photosFullAccessAlertDecision({
+    alertCount: 1,
+    alertTitle: "“Raft” would like full access to your Photo Library.",
+    allowFullAccessCount: 1,
+    alertDismissedAfterTap: true,
+  }), { ok: true });
+});
+
+test("photosFullAccessAlertDecision fails closed on every contract violation", () => {
+  assert.equal(photosFullAccessAlertDecision({ alertCount: 0 }).ok, false); // no alert
+  assert.equal(photosFullAccessAlertDecision({ alertCount: 2, alertTitle: "Photo Library", allowFullAccessCount: 1 }).ok, false); // duplicate alerts
+  assert.equal(photosFullAccessAlertDecision({ alertCount: 1, alertTitle: "“Raft” would like to access Contacts", allowFullAccessCount: 1 }).ok, false); // not Photos
+  assert.equal(photosFullAccessAlertDecision({ alertCount: 1, alertTitle: "Photo Library", allowFullAccessCount: 0 }).ok, false); // only Limit/Don't Allow
+  assert.equal(photosFullAccessAlertDecision({ alertCount: 1, alertTitle: "Photo Library", allowFullAccessCount: 2 }).ok, false); // duplicate Allow
+  assert.equal(photosFullAccessAlertDecision({ alertCount: 1, alertTitle: "Photo Library", allowFullAccessCount: 1, alertDismissedAfterTap: false }).ok, false); // alert survives
 });

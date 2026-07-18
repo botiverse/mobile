@@ -223,12 +223,38 @@ try {
   const systemPhotoGateLog = recentPhotoGateLog();
 
   // ── Full chain (task #26) ────────────────────────────────────────────────
-  // Photos access is pre-granted via simctl, so a SpringBoard Photos
-  // permission ALERT is a contradiction — fail-closed on the system marker
-  // alone, unconditionally (review: no app-dump words may short-circuit this).
+  // iOS 26's PhotosTCCNotificationExtension consent flow ignores
+  // `simctl privacy grant photos` (sampling-run evidence), so a SpringBoard
+  // Photos alert is EXPECTED on a first-run simulator. Handle it through the
+  // loop's XCUITest-native contract action — never coordinates/osascript —
+  // and count it separately (systemPermissionTap=1, never mixed with the
+  // composer tap).
   if (hasPhotoPickerGate({ systemLog: systemPhotoGateLog })) {
-    writeVerdict("fail", "SpringBoard Photos permission alert appeared despite the simctl photos pre-grant — refusing to tap system UI");
-    process.exit(1);
+    rec("SpringBoard Photos permission alert detected — invoking system_alert_allow_photos_full_access");
+    await shot("step-02b-permission-alert.png");
+    let alertResult;
+    try {
+      alertResult = await drv.systemAlertAllowPhotosFullAccess();
+    } catch (error) {
+      writeVerdict("fail", `system permission bootstrap failed (fail-closed contract): ${String(error).slice(0, 250)}`);
+      process.exit(1);
+    }
+    rec(`systemPermissionTap=1: allowed via "${alertResult.button}" ${alertResult.buttonBounds}; alert dismissed=${alertResult.dismissed}; alertTitle="${alertResult.alertTitle}"`);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // After Allow, the picker must AUTO-open for the chain to continue with
+    // exactly one composer tap. If we are simply back at the composer with no
+    // picker, this run is a permission-bootstrap SAMPLE only — no silent
+    // second tap (reviewer gate; the two-phase setup/acceptance split is a
+    // product-contract decision for QA-Tester).
+    after = await drv.dumpUi();
+    if (!hasRealPhotoPicker(after)) {
+      fs.writeFileSync(path.join(outDir, "post-allow-dump.txt"), redactEditableValues(after));
+      await shot("step-02c-post-allow.png");
+      writeVerdict("fail", "permission bootstrap completed (alert allowed + dismissed, systemPermissionTap=1) but the picker did NOT auto-open afterwards — recorded as permission-bootstrap sample; no silent second composer tap per contract");
+      process.exit(1);
+    }
+    rec("picker auto-opened after Allow — continuing chain with composerTap=1 preserved");
   }
 
   // Prove the REAL picker by header+chrome+grid-tile combination (no
