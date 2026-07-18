@@ -227,70 +227,63 @@ try {
   try { after = await drv.dumpUi(); } catch (e) { rec(`describe after tap failed: ${String(e).slice(0, 120)}`); }
   const systemPhotoGateLog = recentPhotoGateLog();
 
-  // ── Full chain (task #26) ────────────────────────────────────────────────
+  // ── Permission handling + chain (task #26) ──────────────────────────────
   // iOS 26's PhotosTCCNotificationExtension consent flow ignores
   // `simctl privacy grant photos` (sampling-run evidence), so a SpringBoard
   // Photos alert is EXPECTED on a first-run simulator. Handle it through the
-  // loop's XCUITest-native contract action — never coordinates/osascript —
-  // and count it separately (systemPermissionTap=1, never mixed with the
-  // composer tap).
-  if (hasPhotoPickerGate({ systemLog: systemPhotoGateLog })) {
+  // loop's XCUITest-native contract action — never coordinates/osascript.
+  const alertSeen = hasPhotoPickerGate({ systemLog: systemPhotoGateLog });
+  let alertResult = null;
+  if (alertSeen) {
     rec("SpringBoard Photos permission alert detected — invoking system_alert_allow_photos_full_access");
     await shot("step-02b-permission-alert.png");
-    let alertResult;
     try {
       alertResult = await drv.systemAlertAllowPhotosFullAccess();
     } catch (error) {
       writeVerdict("fail", `system permission bootstrap failed (fail-closed contract): ${String(error).slice(0, 250)}`);
       process.exit(1);
     }
-    // Structured action evidence (reviewer gate: not just steps text).
+    // Structured action evidence straight from the action result.
     fs.writeFileSync(path.join(outDir, "alert-result.json"), JSON.stringify({
       systemPermissionTap: 1,
-      alertCount: 1,
-      alertTitle: alertResult.alertTitle,
-      button: alertResult.button,
-      buttonBounds: alertResult.buttonBounds,
-      allButtons: alertResult.allButtons,
-      dismissed: alertResult.dismissed,
+      ...alertResult,
     }, null, 2));
-    rec(`systemPermissionTap=1: allowed via "${alertResult.button}" ${alertResult.buttonBounds}; alert dismissed=${alertResult.dismissed}; alertTitle="${alertResult.alertTitle}"`);
+    rec(`systemPermissionTap=1: allowed via "${alertResult.button}" ${alertResult.buttonBounds}; alertCount=${alertResult.alertCount}; dismissed=${alertResult.dismissed}; alertTitle="${alertResult.alertTitle}"`);
     await new Promise((r) => setTimeout(r, 4000));
-
-    // After Allow, the picker must AUTO-open for the chain to continue with
-    // exactly one composer tap. If we are simply back at the composer with no
-    // picker, this run is a permission-bootstrap SAMPLE only — no silent
-    // second tap (reviewer gate; the two-phase setup/acceptance split is a
-    // product-contract decision for QA-Tester).
     after = await drv.dumpUi();
-    const autoOpened = hasRealPhotoPicker(after);
-    if (!autoOpened) {
-      fs.writeFileSync(path.join(outDir, "post-allow-dump.txt"), redactEditableValues(after));
-      await shot("step-02c-post-allow.png");
-      writeVerdict("fail", "permission bootstrap completed (alert allowed + dismissed, systemPermissionTap=1) but the picker did NOT auto-open afterwards — recorded as permission-bootstrap sample; no silent second composer tap per contract");
-      process.exit(1);
-    }
-    rec("picker auto-opened after Allow — continuing chain with composerTap=1 preserved");
-    if (sampling) {
-      // Sampling phase: answer postAllowAutoOpened and STOP. The unfinished
-      // preview/readback identity contracts must never emit a chain PASS from
-      // this head (XiShi/QA-Tester static review gate).
-      fs.writeFileSync(path.join(outDir, "post-allow-dump.txt"), redactEditableValues(after));
-      await shot("step-02c-post-allow.png");
-      writeVerdict("sample", "postAllowAutoOpened=true — picker auto-opened after the XCUITest-native Allow; sampling phase ends here by contract (no chain verdict from a sampling head)");
-      process.exit(0);
-    }
   }
 
-  // Prove the REAL picker by header+chrome+grid-tile combination (no
-  // line-count or lone-word heuristics anywhere).
-  fs.writeFileSync(path.join(outDir, "picker-dump.txt"), redactEditableValues(after));
-  await shot("step-03-picker.png");
-  if (!hasRealPhotoPicker(after)) {
-    writeVerdict("fail", "picker did not open / real PhotosUI picker not proven (need exact Recents/All Photos header + Cancel/Select chrome + plausible grid tiles)");
+  // Picker presence is proven by header+chrome+tile combination only.
+  const pickerOpen = hasRealPhotoPicker(after);
+
+  // The sampling stop lives OUTSIDE the alert block (XiShi review): in
+  // sampling mode the run must terminate here regardless of alertSeen —
+  // otherwise a pre-authorized runner (no alert) would fall through into the
+  // unfinished chain and could emit a misleading PASS.
+  if (sampling) {
+    fs.writeFileSync(path.join(outDir, "post-tap-dump.txt"), redactEditableValues(after));
+    await shot("step-02c-post-tap.png");
+    if (alertSeen) fs.writeFileSync(path.join(outDir, "post-allow-dump.txt"), redactEditableValues(after));
+    fs.writeFileSync(path.join(outDir, "permission-sample.json"), JSON.stringify({
+      alertSeen,
+      systemPermissionTap: alertSeen ? 1 : 0,
+      postAllowAutoOpened: pickerOpen,
+      alertResult, // Swift action result verbatim: alertCount/alertTitle/button/buttonBounds/allButtons(array)/dismissed
+      evidenceRefs: ["permission-sample.json", "post-tap-dump.txt", "step-02c-post-tap.png", ...(alertSeen ? ["alert-result.json", "post-allow-dump.txt", "step-02b-permission-alert.png"] : [])],
+    }, null, 2));
+    writeVerdict("sample", `alertSeen=${alertSeen} postAllowAutoOpened=${pickerOpen} — permission-bootstrap sampling ends here by contract (no chain verdict from a sampling head)`);
+    process.exit(0);
+  }
+
+  if (!pickerOpen) {
+    writeVerdict("fail", alertSeen
+      ? "permission bootstrap completed (alert allowed + dismissed, systemPermissionTap=1) but the picker did NOT auto-open afterwards — no silent second composer tap per contract"
+      : "picker did not open / real PhotosUI picker not proven (need exact Recents/All Photos header + Cancel/Select chrome + plausible grid tiles)");
     process.exit(1);
   }
-  rec("real PhotosUI picker proven (header + chrome + tiles)");
+  rec(alertSeen
+    ? "picker auto-opened after Allow — continuing chain with composerTap=1 preserved"
+    : "real PhotosUI picker proven without an alert (pre-authorized)");
 
   // Select the staged image (most recent photo = top-left Recents tile;
   // matcher is header-gated, tile-size-bounded, ambiguity fail-closed).

@@ -144,8 +144,9 @@ final class QaAcceptanceLoopTests: XCTestCase {
             // buttons, or the alert surviving the tap.
             let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
             let alerts = springboard.alerts
-            guard alerts.count == 1 else {
-                throw HarnessError.bad("system_alert: expected exactly one SpringBoard alert, found \(alerts.count)")
+            let alertCount = alerts.count
+            guard alertCount == 1 else {
+                throw HarnessError.bad("system_alert: expected exactly one SpringBoard alert, found \(alertCount)")
             }
             let alert = alerts.element(boundBy: 0)
             let title = alert.label
@@ -168,10 +169,11 @@ final class QaAcceptanceLoopTests: XCTestCase {
                 throw HarnessError.bad("system_alert: Photos alert still present after tapping Allow Full Access")
             }
             return [
+                "alertCount": alertCount,
                 "alertTitle": title,
                 "button": "Allow Full Access",
                 "buttonBounds": "[\(Int(bounds.minX)),\(Int(bounds.minY))][\(Int(bounds.maxX)),\(Int(bounds.maxY))]",
-                "allButtons": allButtons.joined(separator: "|"),
+                "allButtons": allButtons,
                 "dismissed": true,
             ]
         case "wait":
