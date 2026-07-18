@@ -4,7 +4,8 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
 
-internal actual fun slockPlatformPrewarmsAppShellChildPages(): Boolean = true
+internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
+    AppShellChildPagePrewarmMode.Enabled
 
 internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
 

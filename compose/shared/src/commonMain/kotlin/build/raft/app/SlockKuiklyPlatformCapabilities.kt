@@ -4,10 +4,10 @@ internal expect fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean
 
 internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 
-// OHOS child Kuikly pages pay a measurable per-controller cold-start cost.
-// The shell may precreate hidden placeholder controllers after Home is ready;
-// Android/iOS keep demand mounting until their own device evidence needs it.
-internal expect fun slockPlatformPrewarmsAppShellChildPages(): Boolean
+// The common idle pipeline is shared by every platform. OHOS enables the full
+// measured prewarm set; Android/iOS run a one-controller canary until their
+// cold-tab CPU/frame/memory evidence justifies enabling the complete set.
+internal expect fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode
 
 internal expect fun slockPlatformSupportsMultiShellHost(): Boolean
 
