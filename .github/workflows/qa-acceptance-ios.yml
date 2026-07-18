@@ -595,9 +595,11 @@ jobs:
           # so there is deliberately no pre-grant here — the deterministic
           # driver bootstraps the permission through the loop's XCUITest-native
           # system_alert_allow_photos_full_access action instead.
+          # --sampling keeps this head in the permission-bootstrap phase: it
+          # can never emit a full-chain PASS (identity contracts pending).
           set +e
           node scripts/qa/ios_deterministic_repro.mjs \
-            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence
+            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence --sampling
           echo "$?" > qa-evidence/agent-rc.txt
           echo "deterministic repro exit code $(cat qa-evidence/agent-rc.txt)"
 
