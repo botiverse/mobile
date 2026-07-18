@@ -147,52 +147,90 @@ export function findComposerImageTarget(dump) {
   return { x, y, mode: "composer-relative", line: null, composerLine: composer.line };
 }
 
-// A REAL PhotosUI picker is proven by the COMBINATION of (a) an exact picker
-// header (Recents or All Photos), (b) picker chrome (Cancel/Select), and (c)
-// at least one plausible grid cell below the header (task #26 review: a line-
-// count heuristic or a lone generic word like "select" is NOT sufficient —
-// those match ordinary app panels). The system permission marker must never
-// be used as picker evidence (it only proves the ALERT).
+// A REAL PhotosUI picker is proven by a COMBINATION of chrome + grid cells —
+// never by a lone generic word like "select" (task #26 review). Two versioned
+// variants, because iOS 26 replaced the picker chrome:
+//
+//   ios26:  iOS 26 multi-select picker — exact "Cancel" + exact "Done" +
+//           "Photos"/"Collections" tabs + exact "Select Photos" + at least one
+//           INDEPENDENT "/^Photo, /" near-square cell. The aggregate container
+//           (one label concatenating many "Photo, <date>" assets across the
+//           full grid width) is explicitly excluded by both its multi-asset
+//           label and the cell size bounds.
+//   legacy: pre-iOS-26 picker — exact picker header ("Recents"/"All Photos")
+//           + Cancel/Select chrome + at least one plausible near-square tile
+//           below the header (header-gated).
+//
+// The system permission marker must never be used as picker evidence (it only
+// proves the ALERT).
 export function hasRealPhotoPicker(dump) {
-  const nodes = parseDumpNodes(dump);
+  return classifyPhotoPicker(parseDumpNodes(dump)) !== null;
+}
+
+function classifyPhotoPicker(nodes) {
+  const hasExact = (re) => nodes.some((node) => re.test(node.label.trim()));
+  if (
+    hasExact(/^cancel$/i)
+    && hasExact(/^done$/i)
+    && hasExact(/^photos$/i)
+    && hasExact(/^collections$/i)
+    && hasExact(/^select photos$/i)
+  ) {
+    const cells = independentPhotoCells(nodes);
+    if (cells.length > 0) return { variant: "ios26", cells };
+  }
+
   const header = nodes.find((node) => /^(recents|all photos)$/i.test(node.label.trim()));
-  if (!header) return false;
-  const chrome = nodes.some((node) => /^(cancel|select)$/i.test(node.label.trim()));
-  if (!chrome) return false;
-  return nodes.some((node) => isPlausiblePhotoTile(node, header));
+  if (header && hasExact(/^(cancel|select)$/i)) {
+    const tiles = nodes.filter((node) => isPlausiblePhotoTile(node, header));
+    if (tiles.length > 0) return { variant: "legacy", header, cells: tiles };
+  }
+  return null;
+}
+
+// iOS 26 per-asset cells carry a single "Photo, <date>" label. The aggregate
+// container's label concatenates many assets (", Photo, " inside the label)
+// and spans the full grid width — both traits exclude it here.
+function independentPhotoCells(nodes) {
+  return nodes.filter((node) => {
+    const label = node.label.trim();
+    if (!/^photo, /i.test(label)) return false;
+    if (/, photo, /i.test(label)) return false;
+    return isNearSquareCell(node);
+  });
+}
+
+function isNearSquareCell(node) {
+  const w = node.x2 - node.x1;
+  const h = node.y2 - node.y1;
+  if (w < 60 || h < 60 || w > 400 || h > 400) return false;
+  const aspect = w / h;
+  return aspect >= 0.7 && aspect <= 1.4;             // photo tiles are near-square
 }
 
 function isPlausiblePhotoTile(node, header) {
-  const w = node.x2 - node.x1;
-  const h = node.y2 - node.y1;
-  if (node.y1 < header.y2) return false;          // grid lives below the header
-  if (w < 60 || h < 60 || w > 400 || h > 400) return false;
-  const aspect = w / h;
-  return aspect >= 0.7 && aspect <= 1.4;           // photo tiles are near-square
+  if (node.y1 < header.y2) return false;             // grid lives below the header
+  return isNearSquareCell(node);
 }
 
-// Locate the first photo cell in a REAL PhotosUI picker dump (task #26).
-// The staged fixture is the most recent photo, i.e. the top-left tile in the
-// Recents grid. Hard rules from review: the picker header must exist (no
-// whole-dump fallback), tiles only count below it, and an ambiguous top-left
-// (two overlapping candidates) fails closed.
+// Locate the first photo cell in a REAL PhotosUI picker dump (task #26). The
+// whole picker variant must be proven first (no whole-dump fallback); the
+// staged fixture is the most recent photo, i.e. the top-left cell of the grid
+// by (y, x). An ambiguous top-left (two overlapping candidates) fails closed.
 export function findPhotoCellTarget(dump) {
-  const nodes = parseDumpNodes(dump);
-  const header = nodes.find((node) => /^(recents|all photos)$/i.test(node.label.trim()));
-  if (!header) throw new Error("picker header (Recents/All Photos) not found — not a proven PhotosUI picker");
+  const picker = classifyPhotoPicker(parseDumpNodes(dump));
+  if (!picker) {
+    throw new Error("no proven PhotosUI picker variant — need iOS 26 chrome (exact Cancel/Done + Photos/Collections tabs + Select Photos + independent Photo cells) or legacy picker header (Recents/All Photos) + chrome + tiles");
+  }
 
-  const tiles = nodes
-    .filter((node) => isPlausiblePhotoTile(node, header))
-    .sort((a, b) => (a.y1 - b.y1) || (a.x1 - b.x1));
-  if (!tiles.length) throw new Error("no plausible photo tile below the picker header");
-
+  const tiles = [...picker.cells].sort((a, b) => (a.y1 - b.y1) || (a.x1 - b.x1));
   const first = tiles[0];
   const overlapping = tiles.filter((t) => t !== first
     && Math.abs(t.x - first.x) < 12 && Math.abs(t.y - first.y) < 12);
   if (overlapping.length) {
     throw new Error(`ambiguous top-left photo tile: ${overlapping.length + 1} overlapping candidates`);
   }
-  return { x: first.x, y: first.y, line: first.line };
+  return { x: first.x, y: first.y, line: first.line, variant: picker.variant };
 }
 
 // Composer preview proof: a NEW plausible node inside the composer rectangle
