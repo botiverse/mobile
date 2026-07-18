@@ -11,6 +11,10 @@ physical-device gate when the task is about real keyboard/touch timing,
 device-specific rendering, radio/network behavior, or a named device such as
 HOP-AL10.
 
+For the bare-metal GitHub Actions runner, fixed HDC endpoint, slot identity
+guard, lock, and cache/workspace boundaries, see
+`docs/ohos-self-hosted-runner.md`.
+
 ## Tool and app identifiers
 
 ```bash
