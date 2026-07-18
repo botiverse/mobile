@@ -99,6 +99,32 @@ jobs:
           git submodule sync third_party/kuikly-ui
           git submodule update --init third_party/kuikly-ui
 
+      # Reused blacksmith macOS runners can carry a stale KSP incremental cache in
+      # compose/shared/build from a prior job on a DIFFERENT commit. That stale state
+      # intermittently corrupts :shared:kspKotlinIosSimulatorArm64 FIR resolution
+      # (KotlinIllegalArgumentExceptionWithAttachments: FirRegularClassImpl RAW_FIR ->
+      # STATUS, "BUILD FAILED in ~7s", xcodebuild exit 65) — same source builds green on
+      # a clean runner. Preflight diagnoses the residue (existence + mtime only, no
+      # content) to prove the cross-job mechanism, then clears only the KSP/Kotlin
+      # incremental dirs so this build regenerates them fresh.
+      - name: Preflight — KSP incremental cache hygiene (iOS FIR RAW_FIR->STATUS guard)
+        shell: bash
+        run: |
+          ksp_dir="$GITHUB_WORKSPACE/compose/shared/build/generated/ksp"
+          inc_dir="$GITHUB_WORKSPACE/compose/shared/build/kotlin"
+          echo "===== KSP preflight residue check (this build sha=$GITHUB_SHA, run=$GITHUB_RUN_ID) ====="
+          for d in "$ksp_dir" "$inc_dir"; do
+            if [ -e "$d" ]; then
+              mt=$(stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$d" 2>/dev/null || date -u -r "$d" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+              echo "PRESENT  $d  mtime=$mt  (stale-from-prior-job if older than this job's checkout)"
+            else
+              echo "ABSENT   $d"
+            fi
+          done
+          echo "===== clearing KSP/Kotlin incremental state (targeted, per A/B design) ====="
+          rm -rf "$ksp_dir" "$inc_dir"
+          echo "cleaned; :shared:kspKotlinIosSimulatorArm64 will regenerate fresh."
+
       - name: Generate shared framework placeholder
         working-directory: compose
         run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain
