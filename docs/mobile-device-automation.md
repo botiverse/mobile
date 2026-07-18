@@ -91,7 +91,7 @@ python3 scripts/slock_ohos_hdc.py --target 127.0.0.1:5555 input-help --pretty
 
 ## iOS
 
-iOS uses Simulator + `xcrun simctl`. `simctl` can boot, install, launch, open URLs, and capture screenshots. It cannot perform public coordinate taps by itself, so the helper uses macOS Accessibility for taps and `cliclick` for optional drag/swipe. For durable semantic flows, add an XCUITest target and drive UI by accessibility identifiers.
+iOS uses Simulator + `xcrun simctl`. `simctl` can boot, install, launch, open URLs, and capture screenshots, but it has no public input API. The helper therefore routes every tap and swipe through the checked-in `iosAppUITests` XCUITest target. It never sends macOS-global mouse/keyboard events or activates Simulator.app.
 
 Current Slock iOS facts:
 
@@ -129,30 +129,31 @@ python3 scripts/slock_ios_simctl.py --device booted get-app-state --prefix home 
 
 ### iOS Taps and Swipes
 
-Bring Simulator to the foreground and grant Accessibility permission to the terminal app running the helper. Window-relative tap:
+Window-relative coordinates are app points and run inside XCUITest:
 
 ```bash
 python3 scripts/slock_ios_simctl.py --device booted tap 180 760 --coordinate-space window --pretty
 ```
 
-Global-coordinate tap:
+Normalized coordinates (`0.0` to `1.0`) are also supported:
 
 ```bash
-python3 scripts/slock_ios_simctl.py --device booted tap 620 980 --coordinate-space global --pretty
+python3 scripts/slock_ios_simctl.py --device booted tap 0.5 0.8 --coordinate-space normalized --pretty
 ```
 
-Swipe requires `cliclick` because AppleScript's public click primitive does not provide a reliable drag:
+Arbitrary start/end swipes use the same coordinate-space contract:
 
 ```bash
-brew install cliclick
 python3 scripts/slock_ios_simctl.py --device booted swipe 200 760 200 320 --coordinate-space window --pretty
 ```
 
+The first interaction builds the `iosAppUITests` scheme into `/tmp/ios-use-derived-data` by default, then runs only `IosUseInteractionTests`. Reusing the same derived-data path makes later interactions incremental. If the app is already running, the harness activates the existing process instead of relaunching it, preserving multi-step state.
+
 ### iOS Caveats
 
-- Coordinate taps are a smoke/debug path, not the final regression-test layer. Prefer XCUITest for stable flows such as login, open Thread, send message, and attachment preview.
-- Window-relative coordinates start at the Simulator window top-left, not a semantic app node. Capture a screenshot immediately before tapping.
-- If macOS denies Accessibility, the helper fails before clicking. Grant permission to Terminal/iTerm/Codex host and rerun.
+- Coordinate taps are a smoke/debug path, not the final regression-test layer. Prefer accessibility labels and durable XCUITest cases for stable flows such as login, open Thread, send message, and attachment preview.
+- Window-relative coordinates start at the app's top-left in XCTest points, not a semantic app node. Capture a screenshot immediately before tapping.
+- `--coordinate-space global` is intentionally rejected: host-desktop coordinates cannot be mapped safely without host-global input.
 - If multiple simulators are booted, avoid `--device booted`; pass a UDID from `devices`.
 
 ## Minimum Cross-Platform Smoke Shape
@@ -161,6 +162,6 @@ For a task that claims "mobile screen X works on all platforms", the minimum evi
 
 - Android: `slock_android_adb.py get-app-state`, plus any tap/scroll commands.
 - OHOS: `slock_ohos_hdc.py get-app-state`, plus explicit `click`/`swipe` if navigation is part of the claim.
-- iOS: `slock_ios_simctl.py get-app-state`; if coordinate interaction was used, include the Accessibility/click backend and exact coordinates.
+- iOS: `slock_ios_simctl.py get-app-state`; if coordinate interaction was used, include the XCUITest backend, coordinate space, and exact coordinates.
 
 Do not treat screenshot-only proof as enough for send, reply, mark-read, attachment download, or realtime recovery. Those paths need a reducer/store test plus at least one platform automation path that performs the user action.

@@ -173,6 +173,7 @@ class IosSimulator:
                 "-derivedDataPath",
                 str(resolved_derived_data),
                 "-quiet",
+                "-only-testing:iosAppUITests/IosUseInteractionTests/testRunIosUseActions",
                 "test-without-building",
             ]
         )
