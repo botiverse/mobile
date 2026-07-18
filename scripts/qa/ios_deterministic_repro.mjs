@@ -41,6 +41,11 @@ const ioDir = arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || "");
 const udid = arg("--ios-udid", "booted");
 const bundle = arg("--package", "build.raft.app");
 const outDir = arg("--out", "qa-evidence");
+// --sampling: permission-bootstrap phase only. After the post-Allow auto-open
+// check, record the branch + dumps/screenshots and stop with verdict
+// "sample" — the unfinished preview/readback identity contracts must never
+// emit a chain PASS from this head (XiShi static review).
+const sampling = process.argv.includes("--sampling");
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -239,6 +244,16 @@ try {
       writeVerdict("fail", `system permission bootstrap failed (fail-closed contract): ${String(error).slice(0, 250)}`);
       process.exit(1);
     }
+    // Structured action evidence (reviewer gate: not just steps text).
+    fs.writeFileSync(path.join(outDir, "alert-result.json"), JSON.stringify({
+      systemPermissionTap: 1,
+      alertCount: 1,
+      alertTitle: alertResult.alertTitle,
+      button: alertResult.button,
+      buttonBounds: alertResult.buttonBounds,
+      allButtons: alertResult.allButtons,
+      dismissed: alertResult.dismissed,
+    }, null, 2));
     rec(`systemPermissionTap=1: allowed via "${alertResult.button}" ${alertResult.buttonBounds}; alert dismissed=${alertResult.dismissed}; alertTitle="${alertResult.alertTitle}"`);
     await new Promise((r) => setTimeout(r, 4000));
 
@@ -248,13 +263,23 @@ try {
     // second tap (reviewer gate; the two-phase setup/acceptance split is a
     // product-contract decision for QA-Tester).
     after = await drv.dumpUi();
-    if (!hasRealPhotoPicker(after)) {
+    const autoOpened = hasRealPhotoPicker(after);
+    if (!autoOpened) {
       fs.writeFileSync(path.join(outDir, "post-allow-dump.txt"), redactEditableValues(after));
       await shot("step-02c-post-allow.png");
       writeVerdict("fail", "permission bootstrap completed (alert allowed + dismissed, systemPermissionTap=1) but the picker did NOT auto-open afterwards — recorded as permission-bootstrap sample; no silent second composer tap per contract");
       process.exit(1);
     }
     rec("picker auto-opened after Allow — continuing chain with composerTap=1 preserved");
+    if (sampling) {
+      // Sampling phase: answer postAllowAutoOpened and STOP. The unfinished
+      // preview/readback identity contracts must never emit a chain PASS from
+      // this head (XiShi/QA-Tester static review gate).
+      fs.writeFileSync(path.join(outDir, "post-allow-dump.txt"), redactEditableValues(after));
+      await shot("step-02c-post-allow.png");
+      writeVerdict("sample", "postAllowAutoOpened=true — picker auto-opened after the XCUITest-native Allow; sampling phase ends here by contract (no chain verdict from a sampling head)");
+      process.exit(0);
+    }
   }
 
   // Prove the REAL picker by header+chrome+grid-tile combination (no
