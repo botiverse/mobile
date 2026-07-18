@@ -49,6 +49,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
@@ -1064,6 +1065,7 @@ internal fun ThreadComposerContent(
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
+    val softwareKeyboardController = LocalSoftwareKeyboardController.current
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
         fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
@@ -1291,6 +1293,10 @@ internal fun ThreadComposerContent(
         val request = insertMentionRequest ?: return@LaunchedEffect
         if (insertMentionAtCursor(request.handle)) {
             composerFocusRequester.requestFocus()
+            // Android Back can dismiss the IME while the editor remains focused. A repeated
+            // avatar mention is an explicit input intent, so reassert both logical focus and the
+            // software keyboard instead of relying on a focus transition that may be a no-op.
+            softwareKeyboardController?.show()
         }
         onInsertMentionConsumed(request)
     }
