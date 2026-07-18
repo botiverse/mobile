@@ -227,6 +227,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
@@ -299,6 +300,9 @@ private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
+
+internal fun shouldDismissThreadComposerOnTimelineTouch(type: TouchType): Boolean =
+    type == TouchType.Down
 
 internal enum class ThreadPickedAttachmentComposerAction {
     None,
@@ -12155,6 +12159,7 @@ private fun ThreadMessagesList(
         }
         return
     }
+    val focusManager = LocalFocusManager.current
     val translationState =
         translationStore?.state?.collectAsState()?.value ?: SharedMessageTranslationState()
     if (translationStore != null) {
@@ -13201,6 +13206,9 @@ private fun ThreadMessagesList(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
                     .touchListener { type, _ ->
+                        if (shouldDismissThreadComposerOnTimelineTouch(type)) {
+                            focusManager.clearFocus(force = true)
+                        }
                         if (type == TouchType.Move) {
                             // Count every direct pointer move, not inertial/programmatic
                             // scrolling. Older-page completion may safely cancel the
