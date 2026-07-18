@@ -12,6 +12,7 @@ import {
   hasRealPhotoPicker,
   photosFullAccessAlertDecision,
   redactEditableValues,
+  targetTrackingCandidates,
   uiNodeSignature,
 } from "./ios_navigation_matcher.mjs";
 
@@ -411,6 +412,28 @@ test("exactCellCandidates returns zero on a 1px bounds drift and two on duplicat
   const cell = { identifier: "", type: "cell", label: "P", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
   assert.equal(exactCellCandidates([cell], { label: "P", bounds: [0, 405, 387, 793] }).length, 0);
   assert.equal(exactCellCandidates([cell, { ...cell }], { label: "P", bounds: [0, 405, 387, 792] }).length, 2);
+});
+
+test("targetTrackingCandidates keeps fully duplicated after-nodes as an explicit ambiguity", () => {
+  const target = { identifier: "", type: "cell", label: "Photo, A", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
+  // two raw nodes with the same signature AND the same bounds must survive as
+  // candidates=2 (the script then sets ambiguous=true, targetCellAfter=null)
+  const found = targetTrackingCandidates([target, { ...target }], target);
+  assert.equal(found.length, 2);
+});
+
+test("targetTrackingCandidates counts a node matching BOTH signature and bounds only once", () => {
+  const target = { identifier: "c", type: "cell", label: "A", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
+  const sameNode = { ...target, selected: true }; // same signature AND same bounds
+  assert.equal(targetTrackingCandidates([sameNode], target).length, 1);
+});
+
+test("targetTrackingCandidates tracks an anonymous cell through a label flip via exact bounds", () => {
+  const before = { identifier: "", type: "cell", label: "Photo, A", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
+  const after = { ...before, label: "Photo, A (selected)" }; // anon signature changes with the label
+  const found = targetTrackingCandidates([after], before);
+  assert.equal(found.length, 1);
+  assert.equal(found[0], after);
 });
 
 test("composerHasNewPreview only accepts a NEW node inside the composer", () => {

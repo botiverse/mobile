@@ -402,3 +402,21 @@ export function exactCellCandidates(nodes, target) {
     && node.bounds.every((v, i) => v === bounds[i])
   ));
 }
+
+// After-tap target tracking for the cell-sampling head (task #26 static
+// review): a SINGLE filter over the raw after-nodes — never a signature-
+// keyed Map, which would fold fully duplicated nodes back into one and
+// smuggle a last-wins pick past the ambiguity gate. A node qualifies by
+// matching the target's exact before-signature OR its exact bounds (the
+// union covers an anonymous-cell label flip). Each raw node is counted once
+// by construction; duplicated nodes survive as length 2, i.e. an explicit
+// ambiguity for the caller.
+export function targetTrackingCandidates(afterNodes, targetNode) {
+  const signature = uiNodeSignature(targetNode);
+  const bounds = Array.isArray(targetNode?.bounds) ? targetNode.bounds : [];
+  return (afterNodes || []).filter((node) => (
+    uiNodeSignature(node) === signature
+    || (Array.isArray(node?.bounds) && node.bounds.length === 4
+      && bounds.length === 4 && node.bounds.every((v, i) => v === bounds[i]))
+  ));
+}
