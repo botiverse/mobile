@@ -202,7 +202,8 @@ jobs:
           bash scripts/qa/stamp_report.sh claim
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
-          date +%s%3N > qa-evidence/perf-started.txt
+          # BSD date (macOS) has no %3N — compose ms from seconds instead.
+          echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
           export MINIMAX_API_KEY="$PI_API_KEY"
           set +e
           node scripts/qa/acceptance_agent.mjs \
@@ -246,7 +247,8 @@ jobs:
       - name: Collect perf summary
         if: always()
         run: |
-          IOS_VER="$(xcrun simctl spawn "${UDID:-booted}" sw_vers -productVersion 2>/dev/null || echo unknown)"
+          UDID="${UDID:-booted}"
+          IOS_VER="$(xcrun simctl spawn "$UDID" sw_vers --productVersion 2>/dev/null | head -1 || true)"; IOS_VER="${IOS_VER:-unknown}"
           node scripts/qa/collect_perf_ios.mjs \
             --slog qa-evidence/system-log-raft.txt \
             --steps qa-evidence/steps.jsonl \
