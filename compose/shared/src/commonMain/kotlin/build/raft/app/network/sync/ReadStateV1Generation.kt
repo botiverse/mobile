@@ -1,0 +1,175 @@
+package build.raft.app.network.sync
+
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+
+class ReadStateV1GrantWitness internal constructor(
+    val scope: ReadStateV1Scope,
+)
+
+class ReadStateV1GrantAuthority {
+    private val lock = SynchronizedObject()
+    private val current = mutableMapOf<ReadStateV1Scope, ReadStateV1GrantWitness>()
+
+    fun issue(scope: ReadStateV1Scope): ReadStateV1GrantWitness = synchronized(lock) {
+        ReadStateV1GrantWitness(scope).also { current[scope] = it }
+    }
+
+    fun revoke(witness: ReadStateV1GrantWitness) = synchronized(lock) {
+        if (current[witness.scope] === witness) current.remove(witness.scope)
+        Unit
+    }
+
+    fun isCurrent(witness: ReadStateV1GrantWitness): Boolean = synchronized(lock) {
+        current[witness.scope] === witness
+    }
+
+    fun publishIfCurrent(witness: ReadStateV1GrantWitness, block: () -> Unit): Boolean = synchronized(lock) {
+        if (current[witness.scope] !== witness) return@synchronized false
+        block()
+        true
+    }
+}
+
+fun interface ReadStateV1ProjectionObserver {
+    fun onCommitted(scope: ReadStateV1Scope, fact: ReadStateV1Fact)
+}
+
+fun interface ReadStateV1RebaselineRequester {
+    fun request(scope: ReadStateV1Scope)
+}
+
+sealed interface ReadStateV1GenerationResult {
+    data object Committed : ReadStateV1GenerationResult
+    data object Current : ReadStateV1GenerationResult
+    data object Stale : ReadStateV1GenerationResult
+    data object Conflict : ReadStateV1GenerationResult
+    data object RejectedCandidate : ReadStateV1GenerationResult
+    data object RejectedCurrentGrant : ReadStateV1GenerationResult
+    data class BaselineRequired(val requested: Boolean) : ReadStateV1GenerationResult
+}
+
+class ReadStateV1GenerationEngine(
+    private val authority: ReadStateV1GrantAuthority,
+    private val store: ReadStateV1Store,
+    private val projectionObserver: ReadStateV1ProjectionObserver,
+    private val rebaselineRequester: ReadStateV1RebaselineRequester,
+) {
+    private data class BaselineState(val witness: ReadStateV1GrantWitness, val requestInFlight: Boolean)
+    private val lock = SynchronizedObject()
+    private val baselines = mutableMapOf<ReadStateV1Scope, BaselineState>()
+
+    suspend fun applySnapshot(
+        witness: ReadStateV1GrantWitness,
+        candidate: ReadStateV1WireCandidate,
+    ): ReadStateV1GenerationResult {
+        if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        if (candidate.source != ReadStateV1FactSource.Hydrate) return ReadStateV1GenerationResult.RejectedCandidate
+        val fact = acceptedFact(witness, candidate) ?: return ReadStateV1GenerationResult.RejectedCandidate
+        val committed = store.commit(
+            witness.scope,
+            fact,
+            ReadStateV1CommitMode.Snapshot,
+            ReadStateV1CommitGuard { authority.isCurrent(witness) },
+        )
+        if (committed != ReadStateV1StoreResult.Accepted) {
+            return committed.toGenerationResult()
+        }
+        if (!authority.publishIfCurrent(witness) {
+                synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
+                projectionObserver.onCommitted(witness.scope, fact)
+            }
+        ) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        return ReadStateV1GenerationResult.Committed
+    }
+
+    suspend fun applyIncremental(
+        witness: ReadStateV1GrantWitness,
+        candidate: ReadStateV1WireCandidate,
+    ): ReadStateV1GenerationResult {
+        if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        if (candidate.source !in setOf(ReadStateV1FactSource.MutationAck, ReadStateV1FactSource.OwnerRealtime)) {
+            return ReadStateV1GenerationResult.RejectedCandidate
+        }
+        val fact = acceptedFact(witness, candidate) ?: return ReadStateV1GenerationResult.RejectedCandidate
+        val hold = synchronized(lock) {
+            val state = baselines[witness.scope]
+            if (state?.witness === witness && !state.requestInFlight) return@synchronized null
+            val requested = state?.witness !== witness || !state.requestInFlight
+            baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
+            requested
+        }
+        if (hold != null) {
+            if (hold) rebaselineRequester.request(witness.scope)
+            return ReadStateV1GenerationResult.BaselineRequired(hold)
+        }
+        val committed = store.commit(
+            witness.scope,
+            fact,
+            ReadStateV1CommitMode.Incremental,
+            ReadStateV1CommitGuard { authority.isCurrent(witness) },
+        )
+        when (committed) {
+            ReadStateV1StoreResult.Accepted -> if (!authority.publishIfCurrent(witness) {
+                    projectionObserver.onCommitted(witness.scope, fact)
+                }
+            ) {
+                return ReadStateV1GenerationResult.RejectedCurrentGrant
+            }
+            ReadStateV1StoreResult.Conflict -> invalidateAndRequest(witness)
+            ReadStateV1StoreResult.RejectedCurrentGrant -> synchronized(lock) { baselines.remove(witness.scope) }
+            else -> Unit
+        }
+        return committed.toGenerationResult()
+    }
+
+    suspend fun restore(witness: ReadStateV1GrantWitness): ReadStateV1GenerationResult {
+        if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        val fact = store.restore(witness.scope) ?: return requestBaseline(witness)
+        if (!authority.publishIfCurrent(witness) {
+                synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
+                projectionObserver.onCommitted(witness.scope, fact)
+            }
+        ) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        return ReadStateV1GenerationResult.Committed
+    }
+
+    fun revoke(witness: ReadStateV1GrantWitness) {
+        authority.revoke(witness)
+        synchronized(lock) {
+            if (baselines[witness.scope]?.witness === witness) baselines.remove(witness.scope)
+        }
+    }
+
+    private fun acceptedFact(
+        witness: ReadStateV1GrantWitness,
+        candidate: ReadStateV1WireCandidate,
+    ): ReadStateV1Fact? {
+        if (!authority.isCurrent(witness)) return null
+        return (normalizeReadStateV1Candidate(witness.scope, candidate) as? ReadStateV1CandidateResult.Accepted)?.fact
+    }
+
+    private fun invalidateAndRequest(witness: ReadStateV1GrantWitness) {
+        synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = true) }
+        rebaselineRequester.request(witness.scope)
+    }
+
+    private fun requestBaseline(witness: ReadStateV1GrantWitness): ReadStateV1GenerationResult {
+        val requested = synchronized(lock) {
+            val old = baselines[witness.scope]
+            baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
+            old?.witness !== witness || !old.requestInFlight
+        }
+        if (requested) rebaselineRequester.request(witness.scope)
+        return ReadStateV1GenerationResult.BaselineRequired(requested)
+    }
+}
+
+private fun ReadStateV1StoreResult.toGenerationResult(): ReadStateV1GenerationResult =
+    when (this) {
+        ReadStateV1StoreResult.Accepted -> ReadStateV1GenerationResult.Committed
+        ReadStateV1StoreResult.Current -> ReadStateV1GenerationResult.Current
+        ReadStateV1StoreResult.Stale -> ReadStateV1GenerationResult.Stale
+        ReadStateV1StoreResult.Conflict -> ReadStateV1GenerationResult.Conflict
+        ReadStateV1StoreResult.RejectedCurrentGrant -> ReadStateV1GenerationResult.RejectedCurrentGrant
+    }
