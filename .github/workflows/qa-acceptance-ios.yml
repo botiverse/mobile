@@ -21,6 +21,12 @@ on:
         description: "Stamp run_case id — when set, evidence + verdict report back to Stamp"
         required: false
         default: ""
+      # Identity of the server environment under test, recorded in perf.json
+      # (task #14 self-describing header). Free-form label, e.g. OranixSlockTest.
+      environment:
+        description: "Server environment label for the perf.json identity header"
+        required: false
+        default: "unspecified-ci"
   push:
     branches: [xishi/qa-ios-executor]
 
@@ -196,6 +202,7 @@ jobs:
           bash scripts/qa/stamp_report.sh claim
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
+          date +%s%3N > qa-evidence/perf-started.txt
           export MINIMAX_API_KEY="$PI_API_KEY"
           set +e
           node scripts/qa/acceptance_agent.mjs \
@@ -231,6 +238,23 @@ jobs:
           find compose/iosApp/build/DerivedData/Logs/Test -maxdepth 1 -name '*.xcresult' \
             -exec cp -R {} qa-evidence/ \; 2>/dev/null || true
           echo "iOS evidence: system-log-raft.txt=$(wc -l < qa-evidence/system-log-raft.txt 2>/dev/null || echo 0) lines, crashes=$(ls qa-evidence/crashes 2>/dev/null | wc -l | tr -d ' ') .ips, xcresult=$(ls -d qa-evidence/*.xcresult 2>/dev/null | wc -l | tr -d ' ')"
+
+      # task #14 iOS v1: self-describing perf.json every run (record-only,
+      # advisory). Step timing windows + system-log lifecycle signals; the
+      # app-level frame-metric gap (SlockPerformanceDiagnostics is Android-only)
+      # is recorded explicitly in the file's known_gap field.
+      - name: Collect perf summary
+        if: always()
+        run: |
+          IOS_VER="$(xcrun simctl spawn "${UDID:-booted}" sw_vers -productVersion 2>/dev/null || echo unknown)"
+          node scripts/qa/collect_perf_ios.mjs \
+            --slog qa-evidence/system-log-raft.txt \
+            --steps qa-evidence/steps.jsonl \
+            --bundle "${BUNDLE_ID:-build.raft.app}" \
+            --device-json "{\"model\":\"${SIM_DEVICE:-iPhone 14}\",\"os\":\"${IOS_VER}\"}" \
+            --environment "${{ inputs.environment }}" \
+            --started "$(cat qa-evidence/perf-started.txt 2>/dev/null || echo 0)" \
+            --out qa-evidence/perf.json || true
 
       - name: Report to Stamp
         if: always()

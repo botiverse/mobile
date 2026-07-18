@@ -481,7 +481,9 @@ async function main() {
     fs.writeFileSync(path.join(opts.out, `step-${String(turn).padStart(2, "0")}.png`), png);
     return { type: "image", data: png.toString("base64"), mimeType: "image/png" };
   };
-  const logStep = (rec) => fs.appendFileSync(stepsPath, redact(JSON.stringify(rec)) + "\n");
+  // ts per step lets the perf collectors (collect_perf*.mjs) derive per-step
+  // timing windows for the perf.json slowest-steps section.
+  const logStep = (rec) => fs.appendFileSync(stepsPath, redact(JSON.stringify({ ts: Date.now(), ...rec })) + "\n");
 
   const messages = [{
     role: "user",
