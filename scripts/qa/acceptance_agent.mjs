@@ -607,7 +607,7 @@ async function main() {
         case "dump_ui": feedback = await dumpUi(); break;
         case "wait": await new Promise((r) => setTimeout(r, Math.min(10, Math.max(1, Number(action.seconds) || 2)) * 1000)); break;
         case "launch":
-          if (drv) drv.launch();
+          if (drv) await drv.launch();
           else adb(["shell", "am", "start", "-n", `${opts.appPackage}/.MainActivity`]);
           break;
         case "note": {

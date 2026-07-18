@@ -51,7 +51,7 @@ final class QaAcceptanceLoopTests: XCTestCase {
         // simulator forever; the host polls results far faster than this.
         let idleTimeout = Double(env["QA_LOOP_IDLE_TIMEOUT"] ?? "300") ?? 300
 
-        let app = XCUIApplication(bundleIdentifier: bundleIdentifier)
+        var app = XCUIApplication(bundleIdentifier: bundleIdentifier)
         app.launch()
         writeReady(ioDir)
 
@@ -77,7 +77,7 @@ final class QaAcceptanceLoopTests: XCTestCase {
                     writeResult(ioDir, step: step, payload: ["ok": true])
                     return
                 }
-                let data = try perform(action, in: app)
+                let data = try perform(action, in: &app, bundleId: bundleIdentifier)
                 payload = ["ok": true]
                 if let data { payload["data"] = data }
             } catch {
@@ -88,8 +88,27 @@ final class QaAcceptanceLoopTests: XCTestCase {
         }
     }
 
-    private func perform(_ action: Action, in app: XCUIApplication) throws -> Any? {
+    private func perform(_ action: Action, in app: inout XCUIApplication, bundleId: String) throws -> Any? {
         switch action.type {
+        case "launch":
+            // (Re)launch THROUGH XCTest so the XCUIApplication handle rebinds
+            // to the new process. An external `xcrun simctl launch` starts the
+            // process but leaves this handle pointing at the dead one — every
+            // later action then fails "Application <bundle> is not running"
+            // (task #8, case-06 feedback submit termination).
+            if app.state == .runningForeground || app.state == .runningBackground {
+                app.terminate()
+            }
+            app = XCUIApplication(bundleIdentifier: bundleId)
+            app.launch()
+            let deadline = Date().addingTimeInterval(30)
+            while app.state != .runningForeground && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            guard app.state == .runningForeground else {
+                throw HarnessError.bad("launch: app did not reach foreground (state=\(app.state.rawValue))")
+            }
+            return ["state": "runningForeground"]
         case "wait":
             Thread.sleep(forTimeInterval: min(max(action.seconds ?? 1.0, 0.0), 10.0))
         case "tap":
