@@ -145,6 +145,10 @@ jobs:
           echo "UDID=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
+          # Marker for attributed .ips capture: any crash report newer than this
+          # (touched before the app runs) belongs to this run, avoiding time-window
+          # parsing ambiguity when harvesting the simulator's CrashReporter later.
+          touch "$GITHUB_WORKSPACE/qa-ips-marker"
 
       # One build produces BOTH the app and the UITest runner (the test target
       # depends on the app), pinned to the booted udid.
@@ -257,10 +261,38 @@ jobs:
           xcrun simctl spawn "$UDID" log show --last 12m --style syslog 2>/dev/null \
             | grep -iE 'raft|iosApp|SpringBoard|launchd|assertiond|runningboardd|jetsam|crash|terminat|signal|exception|watchdog' \
             | tail -4000 > qa-evidence/system-log-raft.txt || true
-          # 2) Crash reports: simulator app crashes write .ips to the host's
-          #    DiagnosticReports. Copy any present (fresh runner => this run's).
+          # 2) Crash reports (.ips): simulator app crashes land in the SIMULATOR's
+          #    own data dir, NOT the host ~/Library/Logs/DiagnosticReports (which is
+          #    empty for sim app crashes — the old `cp host/*.ips || true` silently
+          #    captured nothing, losing attribution on `crashed in <external symbol>`
+          #    terminations). Harvest per-UDID CrashReporter/DiagnosticReports for
+          #    reports NEWER than the boot marker, keep only those naming our process
+          #    /bundle, and record identity (path + sha256). Never silent: log the
+          #    searched roots and count even when zero.
           mkdir -p qa-evidence/crashes
-          cp ~/Library/Logs/DiagnosticReports/*.ips qa-evidence/crashes/ 2>/dev/null || true
+          marker="$GITHUB_WORKSPACE/qa-ips-marker"
+          simlogs="$HOME/Library/Developer/CoreSimulator/Devices/$UDID/data/Library/Logs"
+          {
+            echo "udid=$UDID"
+            echo "marker=$([ -e "$marker" ] && stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$marker" 2>/dev/null || echo MISSING)"
+          } > qa-evidence/crashes/ips-manifest.txt
+          ips_found=0
+          for root in "$simlogs/CrashReporter" "$simlogs/DiagnosticReports"; do
+            exists=absent; [ -d "$root" ] && exists=exists
+            echo "searched_root=$root ($exists)" >> qa-evidence/crashes/ips-manifest.txt
+            [ -d "$root" ] || continue
+            while IFS= read -r ips; do
+              [ -n "$ips" ] || continue
+              if grep -qE 'iosApp|build\.raft\.app' "$ips" 2>/dev/null; then
+                sha=$(shasum -a 256 "$ips" 2>/dev/null | awk '{print $1}')
+                cp "$ips" "qa-evidence/crashes/$(basename "$ips")" 2>/dev/null
+                echo "captured=$(basename "$ips") path=$ips sha256=$sha" >> qa-evidence/crashes/ips-manifest.txt
+                ips_found=$((ips_found+1))
+              fi
+            done < <(find "$root" -name '*.ips' -newer "$marker" 2>/dev/null)
+          done
+          echo "attributed_ips_count=$ips_found" >> qa-evidence/crashes/ips-manifest.txt
+          echo "attributed .ips captured: $ips_found (see qa-evidence/crashes/ips-manifest.txt)"
           # 3) The XCUITest .xcresult bundle (definitive per-run test result).
           find compose/iosApp/build/DerivedData/Logs/Test -maxdepth 1 -name '*.xcresult' \
             -exec cp -R {} qa-evidence/ \; 2>/dev/null || true
