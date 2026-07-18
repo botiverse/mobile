@@ -147,24 +147,24 @@ test("findPhotoCellTarget picks the top-left tile below the Recents header", () 
   assert.equal(target.y, 338);
 });
 
-test("findPhotoCellTarget fails closed when the picker header is absent", () => {
+test("findPhotoCellTarget fails closed when no picker variant is proven", () => {
   assert.throws(
     () => findPhotoCellTarget('"Cancel" [1000,100][1140,150]\n"" [24,200][300,476]'),
-    /header .* not found/,
+    /no proven PhotosUI picker variant/,
   );
 });
 
-test("findPhotoCellTarget rejects tiles above the header", () => {
+test("findPhotoCellTarget rejects tiles above the legacy header", () => {
   assert.throws(
     () => findPhotoCellTarget('"Recents" [24,400][200,450]\n"Cancel" [1000,400][1140,450]\n"" [24,100][300,376]'),
-    /no plausible photo tile/,
+    /no proven PhotosUI picker variant/,
   );
 });
 
 test("findPhotoCellTarget rejects oversized container tiles", () => {
   assert.throws(
     () => findPhotoCellTarget('"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]\n"" [24,200][900,900]'),
-    /no plausible photo tile/,
+    /no proven PhotosUI picker variant/,
   );
 });
 
@@ -185,6 +185,84 @@ test("hasRealPhotoPicker requires header + chrome + tile combination", () => {
 
 test("hasRealPhotoPicker rejects ordinary app panels with generic words", () => {
   assert.equal(hasRealPhotoPicker('"Select Plan" [24,100][300,180]\n"Cancel" [1000,100][1140,150]'), false);
+});
+
+// Verbatim app dump of the real iOS 26 picker (run 29660133478
+// post-tap-dump.txt) — the offline-recompute baseline for task #26: the
+// pre-fix matcher judged this "no picker" because it only knew the legacy
+// Recents/All Photos header vocabulary.
+const ios26RealPickerDump = [
+  '"Raft" [0,0][1170,2532]',
+  '"Cancel" [60,231][168,339]',
+  '"Photos" [300,213][870,357]',
+  '"Photos" [300,213][585,357]',
+  '"Collections" [585,213][870,357]',
+  '"Done" [1002,231][1110,339]',
+  '"Photos" [0,171][1170,2532]',
+  '"Photo, March 30, 2018, 7:14 PM, Photo, August 08, 2012, 9:55 PM, Photo, August 08, 2012, 9:29 PM, Photo, August 08, 2012, 6:52 PM, Photo, March 13, 2011, 12:17 AM, Photo, October 09, 2009, 9:09 PM" [0,405][1170,1184]',
+  '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+  '"Photo, August 08, 2012, 9:55 PM" [392,405][778,792]',
+  '"Photo, August 08, 2012, 9:29 PM" [783,405][1170,792]',
+  '"Photo, August 08, 2012, 6:52 PM" [0,797][387,1184]',
+  '"Photo, March 13, 2011, 12:17 AM" [392,797][778,1184]',
+  '"Photo, October 09, 2009, 9:09 PM" [783,797][1170,1184]',
+  '"Vertical scroll bar, 1 page" [1071,405][1161,2274]',
+  '"Horizontal scroll bar, 1 page" [124,2175][1045,2265]',
+  '"Vertical scroll bar, 1 page" [1071,405][1161,2274]',
+  '"Horizontal scroll bar, 1 page" [124,2175][1045,2265]',
+  '"Toolbar" [0,2274][1170,2532]',
+  '"Sort and Filter" [99,2319][213,2433]',
+  '"Search" [957,2319][1071,2433]',
+  '"Select Photos" [437,2349][734,2403]',
+].join("\n");
+
+const ios26Chrome = [
+  '"Cancel" [60,231][168,339]',
+  '"Done" [1002,231][1110,339]',
+  '"Photos" [300,213][585,357]',
+  '"Collections" [585,213][870,357]',
+  '"Select Photos" [437,2349][734,2403]',
+].join("\n");
+
+test("iOS 26 variant: real picker dump recomputes to picker=true with top-left cell target", () => {
+  assert.equal(hasRealPhotoPicker(ios26RealPickerDump), true);
+  const target = findPhotoCellTarget(ios26RealPickerDump);
+  assert.equal(target.variant, "ios26");
+  assert.deepEqual({ x: target.x, y: target.y }, { x: 194, y: 599 });
+  assert.match(target.line, /^"Photo, March 30, 2018, 7:14 PM" \[0,405\]\[387,792\]$/);
+});
+
+test("iOS 26 variant: full chrome with only the aggregate container is NOT a picker", () => {
+  const dump = `${ios26Chrome}\n"Photo, March 30, 2018, 7:14 PM, Photo, August 08, 2012, 9:55 PM" [0,405][1170,1184]`;
+  assert.equal(hasRealPhotoPicker(dump), false);
+  assert.throws(() => findPhotoCellTarget(dump), /no proven PhotosUI picker variant/);
+});
+
+test("iOS 26 variant: independent cells without the full chrome set are NOT a picker", () => {
+  // a page merely mentioning Photos, plus a photo-ish tile, proves nothing
+  assert.equal(hasRealPhotoPicker('"Photos" [0,171][1170,2532]\n"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]'), false);
+  // partial chrome (Cancel/Done but no tabs/Select Photos) still fails
+  assert.equal(hasRealPhotoPicker('"Cancel" [60,231][168,339]\n"Done" [1002,231][1110,339]\n"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]'), false);
+});
+
+test("iOS 26 variant: full chrome without any independent cell is NOT a picker", () => {
+  assert.equal(hasRealPhotoPicker(ios26Chrome), false);
+});
+
+test("iOS 26 variant: ambiguous top-left cells fail closed", () => {
+  const dump = [
+    ios26Chrome,
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+    '"Photo, August 08, 2012, 9:55 PM" [4,409][391,796]',
+  ].join("\n");
+  assert.equal(hasRealPhotoPicker(dump), true);
+  assert.throws(() => findPhotoCellTarget(dump), /ambiguous top-left/);
+});
+
+test("legacy variant still classifies with its header-gated rules", () => {
+  const dump = '"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]\n"" [24,200][300,476]';
+  assert.equal(hasRealPhotoPicker(dump), true);
+  assert.equal(findPhotoCellTarget(dump).variant, "legacy");
 });
 
 test("composerHasNewPreview only accepts a NEW node inside the composer", () => {

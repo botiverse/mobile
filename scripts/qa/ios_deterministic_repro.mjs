@@ -16,6 +16,16 @@
 //     asserted here; that is the case's remaining scope)
 //   - app alive but no picker → verdict fail "picker did not open"
 //
+// Sampling modes (task #26; a sampling head NEVER emits a chain PASS):
+//   --sampling       permission-bootstrap phase only: after the post-Allow
+//                    auto-open check, record branch + dumps and stop.
+//   --sampling-cell  cell-selection phase: on a PROVEN picker, issue exactly
+//                    one cell tap, capture before/after-cell dumps + screenshot
+//                    + selection-sample.json, stop. Never taps Done, never
+//                    judges the composer preview (iOS 26's picker is
+//                    multi-select style; the selection-state contract must be
+//                    reviewable before Done/preview is attempted).
+//
 // Usage:
 //   node scripts/qa/ios_deterministic_repro.mjs \
 //     --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" \
@@ -46,6 +56,10 @@ const outDir = arg("--out", "qa-evidence");
 // "sample" — the unfinished preview/readback identity contracts must never
 // emit a chain PASS from this head (XiShi static review).
 const sampling = process.argv.includes("--sampling");
+// --sampling-cell: cell-selection phase (task #26). Stops right after exactly
+// one picker-cell tap with selection-state evidence; no Done tap, no preview
+// judgment, no chain verdict.
+const cellSampling = process.argv.includes("--sampling-cell");
 if (!ioDir) { console.error("--ios-io-dir / QA_LOOP_IO_DIR required"); process.exit(2); }
 
 fs.mkdirSync(outDir, { recursive: true });
@@ -253,7 +267,7 @@ try {
     after = await drv.dumpUi();
   }
 
-  // Picker presence is proven by header+chrome+tile combination only.
+  // Picker presence is proven by the versioned chrome+cell combination only.
   const pickerOpen = hasRealPhotoPicker(after);
 
   // The sampling stop lives OUTSIDE the alert block (XiShi review): in
@@ -278,15 +292,55 @@ try {
   if (!pickerOpen) {
     writeVerdict("fail", alertSeen
       ? "permission bootstrap completed (alert allowed + dismissed, systemPermissionTap=1) but the picker did NOT auto-open afterwards — no silent second composer tap per contract"
-      : "picker did not open / real PhotosUI picker not proven (need exact Recents/All Photos header + Cancel/Select chrome + plausible grid tiles)");
+      : "picker did not open / real PhotosUI picker not proven (need the iOS 26 chrome set + independent Photo cells, or legacy Recents/All Photos header + chrome + tiles)");
     process.exit(1);
   }
   rec(alertSeen
     ? "picker auto-opened after Allow — continuing chain with composerTap=1 preserved"
     : "real PhotosUI picker proven without an alert (pre-authorized)");
 
-  // Select the staged image (most recent photo = top-left Recents tile;
-  // matcher is header-gated, tile-size-bounded, ambiguity fail-closed).
+  // ── Cell-selection sampling (task #26) ──────────────────────────────────
+  // iOS 26's picker is multi-select style: a cell tap forms a SELECTION state
+  // and does NOT close the picker (exact "Done" commits it). This head issues
+  // exactly one cell tap on the proven picker and stops with the observable
+  // selection-state facts — it never taps Done, never judges the composer
+  // preview, and never emits a chain PASS (selection-state contract pending).
+  if (cellSampling) {
+    const beforeCell = redactEditableValues(after);
+    fs.writeFileSync(path.join(outDir, "before-cell-dump.txt"), beforeCell);
+    let sampleTarget;
+    try {
+      sampleTarget = findPhotoCellTarget(after);
+    } catch (error) {
+      writeVerdict("fail", `photo cell selection precondition failed: ${String(error)}`);
+      process.exit(1);
+    }
+    rec(`cell-sampling: single tap on ${sampleTarget.variant} top-left photo cell at [${sampleTarget.x},${sampleTarget.y}]`);
+    await drv.tap(sampleTarget.x, sampleTarget.y);
+    await new Promise((r) => setTimeout(r, 3000));
+    const afterCellSan = redactEditableValues(await drv.dumpUi());
+    fs.writeFileSync(path.join(outDir, "after-cell-dump.txt"), afterCellSan);
+    await shot("step-04-after-cell.png");
+    const exactLabelLines = (dumpText, re) => dumpText.split("\n")
+      .filter((l) => re.test((/"([^"]*)"/.exec(l)?.[1] ?? "").trim()));
+    const beforeLines = new Set(beforeCell.split("\n"));
+    const afterLines = new Set(afterCellSan.split("\n"));
+    fs.writeFileSync(path.join(outDir, "selection-sample.json"), JSON.stringify({
+      cellTarget: sampleTarget,
+      pickerVariant: sampleTarget.variant,
+      pickerStillOpenAfterCellTap: hasRealPhotoPicker(afterCellSan),
+      doneNodesBefore: exactLabelLines(beforeCell, /^done$/i),
+      doneNodesAfter: exactLabelLines(afterCellSan, /^done$/i),
+      newNodesAfterCellTap: [...afterLines].filter((l) => l && !beforeLines.has(l)),
+      removedNodesAfterCellTap: [...beforeLines].filter((l) => l && !afterLines.has(l)),
+      evidenceRefs: ["selection-sample.json", "before-cell-dump.txt", "after-cell-dump.txt", "step-04-after-cell.png"],
+    }, null, 2));
+    writeVerdict("sample", `single cell tap issued on proven ${sampleTarget.variant} picker at [${sampleTarget.x},${sampleTarget.y}] — cell-selection sampling ends here by contract (no Done tap, no preview judgment, no chain verdict)`);
+    process.exit(0);
+  }
+
+  // Select the staged image (most recent photo = top-left grid cell; matcher
+  // is variant-gated, tile-size-bounded, ambiguity fail-closed).
   let cellTarget;
   try {
     cellTarget = findPhotoCellTarget(after);
