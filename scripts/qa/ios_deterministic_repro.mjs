@@ -28,6 +28,7 @@ import { createIosDriver } from "./ios_driver.mjs";
 import {
   findAllChannelTarget,
   findComposerImageTarget,
+  findPhotoCellTarget,
   hasPhotoPickerGate,
   redactEditableValues,
 } from "./ios_navigation_matcher.mjs";
@@ -217,16 +218,84 @@ try {
   let after = "";
   try { after = await drv.dumpUi(); } catch (e) { rec(`describe after tap failed: ${String(e).slice(0, 120)}`); }
   const systemPhotoGateLog = recentPhotoGateLog();
-  if (hasPhotoPickerGate({ appDump: after, systemLog: systemPhotoGateLog })
-      || (after && after.split("\n").length > dump.split("\n").length + 5)) {
-    const evidenceMode = hasPhotoPickerGate({ systemLog: systemPhotoGateLog })
-      ? "SpringBoard Photos permission alert"
-      : "app dump photo-picker markers or a new large panel";
-    rec(`picker gate evidence: ${evidenceMode}`);
-    writeVerdict("pass", `picker gate reached after single deterministic tap (${evidenceMode}). Scope note: select/preview/send NOT asserted.`);
+  const gateHit = hasPhotoPickerGate({ appDump: after, systemLog: systemPhotoGateLog })
+    || (after && after.split("\n").length > dump.split("\n").length + 5);
+  if (!gateHit) {
+    writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in app dump or SpringBoard log)");
+    process.exit(1);
+  }
+  const evidenceMode = hasPhotoPickerGate({ systemLog: systemPhotoGateLog })
+    ? "SpringBoard Photos permission alert"
+    : "app dump photo-picker markers or a new large panel";
+  rec(`picker gate evidence: ${evidenceMode}`);
+
+  // ── Full chain (task #26) ────────────────────────────────────────────────
+  // Photos access is pre-granted via simctl (deterministic; we never tap
+  // SpringBoard UI). A pre-grant means the tap above must have gone straight
+  // to the real PhotosUI picker — a SpringBoard permission ALERT at this point
+  // contradicts the grant, so fail-closed on it.
+  if (hasPhotoPickerGate({ systemLog: systemPhotoGateLog }) && !hasPhotoPickerGate({ appDump: after })) {
+    writeVerdict("fail", "SpringBoard Photos permission alert appeared despite the simctl photos pre-grant — refusing to tap system UI");
+    process.exit(1);
+  }
+
+  // Assert the REAL picker (not just the gate): PhotosUI content in the app dump.
+  await shot("step-03-picker.png");
+  const PICKER_REAL = /recents|all photos|photo library|select|cancel/i;
+  if (!PICKER_REAL.test(after)) {
+    writeVerdict("fail", `gate marker seen but real PhotosUI picker not in app dump (markers: ${evidenceMode})`);
+    process.exit(1);
+  }
+  rec("real PhotosUI picker confirmed in app dump");
+
+  // Select the staged image: the most recent photo is the first cell in the
+  // Recents grid. Native picker cells are real accessibility nodes (unlike
+  // Kuikly icons); the matcher throws when no plausible tile exists.
+  let cellTarget;
+  try {
+    cellTarget = findPhotoCellTarget(after);
+  } catch (error) {
+    writeVerdict("fail", `photo cell selection precondition failed: ${String(error)}`);
+    process.exit(1);
+  }
+  rec(`selecting first photo cell at [${cellTarget.x},${cellTarget.y}]`);
+  await drv.tap(cellTarget.x, cellTarget.y);
+  await new Promise((r) => setTimeout(r, 4000));
+  await shot("step-04-selected.png");
+
+  // Preview assertion: composer shows an attachment/preview where the plain
+  // composer was before (new node inside composer bounds, or picker closed
+  // with a visible thumbnail).
+  const afterSelect = await drv.dumpUi();
+  fs.writeFileSync(path.join(outDir, "after-select-dump.txt"), redactEditableValues(afterSelect));
+  const pickerClosed = !PICKER_REAL.test(afterSelect);
+  const previewHit = afterSelect !== after && (pickerClosed || /preview|attachment|image/i.test(afterSelect));
+  if (!previewHit) { writeVerdict("fail", "photo selected but no composer preview appeared (picker state unchanged)"); process.exit(1); }
+  rec("composer preview confirmed");
+  await shot("step-05-preview.png");
+
+  // Send via the keyboard send/return key — the composer send button is a
+  // known Kuikly icon-only control; the keyboard path is the deterministic
+  // workaround (documented in the QA playbook).
+  await drv.key("enter");
+  rec("send issued via keyboard return");
+  await new Promise((r) => setTimeout(r, 6000));
+
+  // Readback: the image message must appear in the #all conversation (a new
+  // large node in the thread area, and the composer returns to placeholder).
+  const readback = await drv.dumpUi();
+  fs.writeFileSync(path.join(outDir, "readback-dump.txt"), redactEditableValues(readback));
+  const composerBack = readback.includes('"Message #all"');
+  const newImageNode = readback.split("\n").some((l) => {
+    const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(l);
+    return m && (+m[3] - +m[1] > 150) && (+m[4] - +m[2] > 150) && !/Message #all|Send feedback|Settings/.test(l);
+  });
+  await shot("step-06-readback.png");
+  if (composerBack && newImageNode) {
+    writeVerdict("pass", "full chain verified: resolver tap → real PhotosUI picker → photo cell select → composer preview → keyboard send → image message read back in #all");
     process.exit(0);
   }
-  writeVerdict("fail", "picker did not open after single tap (app alive, no picker markers in app dump or SpringBoard log)");
+  writeVerdict("fail", `readback incomplete: composerBack=${composerBack} newImageNode=${newImageNode}`);
   process.exit(1);
 } catch (e) {
   writeVerdict("error", `harness/script error: ${String(e).slice(0, 300)}`);

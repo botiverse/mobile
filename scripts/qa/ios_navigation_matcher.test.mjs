@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   findAllChannelTarget,
   findComposerImageTarget,
+  findPhotoCellTarget,
   hasPhotoPickerGate,
   redactEditableValues,
 } from "./ios_navigation_matcher.mjs";
@@ -128,4 +129,33 @@ test("fails closed for implausibly small composer bounds", () => {
     () => findComposerImageTarget('"Message #all" [24,2161][300,2220]'),
     /implausible/,
   );
+});
+
+test("findPhotoCellTarget picks the top-left tile below the Recents header", () => {
+  const target = findPhotoCellTarget([
+    '"Recents" [24,100][200,150]',
+    '"Cancel" [1000,100][1140,150]',
+    '"" [24,200][300,476]',
+    '"" [320,200][596,476]',
+    '"Photo, March 12" [24,200][300,476]',
+  ].join("\n"));
+  assert.equal(target.x, 162);
+  assert.equal(target.y, 338);
+});
+
+test("findPhotoCellTarget fails closed on an empty picker", () => {
+  assert.throws(
+    () => findPhotoCellTarget('"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]'),
+    /no photo cell/,
+  );
+});
+
+test("findPhotoCellTarget ignores small non-tile nodes", () => {
+  const target = findPhotoCellTarget([
+    '"Recents" [24,100][200,150]',
+    '"Cancel" [1000,100][1140,150]',
+    '"" [24,180][84,220]',
+    '"" [24,260][300,536]',
+  ].join("\n"));
+  assert.equal(target.y, 398);
 });
