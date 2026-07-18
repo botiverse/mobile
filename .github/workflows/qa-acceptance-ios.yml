@@ -27,6 +27,13 @@ on:
         description: "Server environment label for the perf.json identity header"
         required: false
         default: "unspecified-ci"
+      # agent = M3 acceptance agent (default); deterministic = no-model scripted
+      # drive (ios_deterministic_repro.mjs) for precise crash-repro where agent
+      # navigation keeps getting lost.
+      mode:
+        description: "Execution mode: agent (M3) or deterministic (scripted, no model)"
+        required: false
+        default: "agent"
   push:
     branches: [xishi/qa-ios-executor]
 
@@ -218,6 +225,7 @@ jobs:
           echo "loop harness started (pid $!)"
 
       - name: Run acceptance agent
+        if: ${{ inputs.mode != 'deterministic' }}
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
@@ -241,6 +249,29 @@ jobs:
             --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --out qa-evidence
           echo "$?" > qa-evidence/agent-rc.txt
           echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
+
+      # Deterministic mode: no-model scripted drive for precise crash-repro —
+      # the M3 agent keeps getting lost on navigation (permission dialogs,
+      # back-gesture exits). Fixed step sequence, auditable; same loop harness
+      # and evidence collectors downstream.
+      - name: Test deterministic navigation matcher
+        if: ${{ inputs.mode == 'deterministic' }}
+        run: node --test scripts/qa/ios_navigation_matcher.test.mjs
+
+      - name: Run deterministic repro
+        if: ${{ inputs.mode == 'deterministic' }}
+        env:
+          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
+          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}
+        run: |
+          mkdir -p qa-evidence
+          cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
+          echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
+          set +e
+          node scripts/qa/ios_deterministic_repro.mjs \
+            --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence
+          echo "$?" > qa-evidence/agent-rc.txt
+          echo "deterministic repro exit code $(cat qa-evidence/agent-rc.txt)"
 
       - name: Collect harness log + system log + crashes + xcresult
         if: always()
