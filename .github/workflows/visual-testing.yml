@@ -34,6 +34,10 @@ on:
         description: "UI-only fast republish: skip ALL capture jobs, rebuild the site HTML from the images/data already on gh-pages with the latest CLI, and publish (minutes instead of a full run)"
         type: boolean
         default: false
+      allow_case_drop:
+        description: "Allow the publish guard to accept a reduced case count (intentional retirement only, e.g. slock #4792/#4995) — never set for ordinary runs"
+        type: boolean
+        default: false
 
 concurrency:
   group: visual-testing-${{ github.ref }}
@@ -845,6 +849,12 @@ jobs:
           PAIRS="react__android"
           if [ -d visual-testing-results/ios ] && [ -n "$(ls visual-testing-results/ios/*.png 2>/dev/null)" ]; then
             PAIRS="react__android,react__ios,android__ios"
+          else
+            # ios leg loudly absent (capture job red/skipped) — declare it
+            # degraded so the publish guard tolerates its pairs vanishing
+            # while still holding react__android to its previous total
+            # (slock PR #5008, task #498).
+            echo "DEGRADED_PROVIDERS=ios" >> "$GITHUB_ENV"
           fi
           echo "diff pairs: $PAIRS"
           node scripts/slock-visual-testing.mjs diff --pairs "$PAIRS"
@@ -878,8 +888,11 @@ jobs:
           git config user.name "raft-visual-bot"
           git config user.email "visual-testing@raft.build"
           git fetch origin gh-pages:refs/remotes/origin/gh-pages || echo "no existing gh-pages branch"
-          node scripts/slock-visual-testing.mjs publish-gh-pages --pairs "${PAIRS:-react__android}" --repo-dir . --run-id "$RUN_ID" --dry-run
-          node scripts/slock-visual-testing.mjs publish-gh-pages --pairs "${PAIRS:-react__android}" --repo-dir . --run-id "$RUN_ID"
+          EXTRA_FLAGS=()
+          if [ -n "${DEGRADED_PROVIDERS:-}" ]; then EXTRA_FLAGS+=(--allow-degraded-providers "$DEGRADED_PROVIDERS"); fi
+          if [ "${{ inputs.allow_case_drop || false }}" = "true" ]; then EXTRA_FLAGS+=(--allow-case-drop); fi
+          node scripts/slock-visual-testing.mjs publish-gh-pages --pairs "${PAIRS:-react__android}" --repo-dir . --run-id "$RUN_ID" --dry-run "${EXTRA_FLAGS[@]}"
+          node scripts/slock-visual-testing.mjs publish-gh-pages --pairs "${PAIRS:-react__android}" --repo-dir . --run-id "$RUN_ID" "${EXTRA_FLAGS[@]}"
 
   # AI diff analysis, decoupled from the image publish (artin 2026-07-09:
   # "图先出来，AI 并行异步"). Runs after the site is live, re-analyzes only
