@@ -206,6 +206,7 @@ jobs:
           GRADLE_ARGS=(
             :shared:generateSqlDelightInterface
             :androidApp:assemble${{ needs.resolve.outputs.android_variant == 'debug' && 'Debug' || 'Release' }}
+            :androidApp:copyHandsNativeSymbols
             "-PversionX=${{ needs.resolve.outputs.version_major }}"
             "-PversionY=${{ needs.resolve.outputs.version_minor }}"
             "-PversionZ=${{ needs.resolve.outputs.version_patch }}"
@@ -295,6 +296,21 @@ jobs:
           # downstream job can pick it up via the apk_path output.
           cp "${SIGNED}" "${UNSIGNED}"
 
+      - name: Verify exact Hands native symbols
+        id: native-symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$(find compose/androidApp/build/outputs/hands-native-symbols -maxdepth 1 -type f -name '*-native-symbols.zip' | sort | head -n 1)"
+          if [ -z "${ARCHIVE}" ]; then
+            echo "Hands native symbols classifier was not resolved" >&2
+            exit 1
+          fi
+          scripts/verify_android_native_symbols.sh \
+            --apk "${{ steps.locate.outputs.apk_path }}" \
+            --symbols "${ARCHIVE}"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+
       - name: Verify APK
         id: verify
         shell: bash
@@ -325,6 +341,14 @@ jobs:
           name: android-release-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/mapping.txt
           if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload exact native symbols as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-native-symbols
+          path: ${{ steps.native-symbols.outputs.archive }}
+          if-no-files-found: error
           retention-days: 14
 
       - name: Step summary
@@ -375,8 +399,8 @@ jobs:
       SLOCK_ANDROID_VERSION_SUFFIX: ${{ needs.resolve.outputs.version_suffix }}
       SLOCK_SKIP_GRADLE_BUILD: "1"
       SLOCK_QUIVER_DRAFT: "1"
-      # KMP follow-up: when helper gains sign/zipalign, flip this on.
-      SLOCK_COLLECT_ANDROID_SYMBOLS: "0"
+      SLOCK_COLLECT_ANDROID_SYMBOLS: "1"
+      SLOCK_REQUIRE_ANDROID_SYMBOLS: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -397,6 +421,12 @@ jobs:
         with:
           name: android-release-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/
+
+      - name: Download exact native symbols
+        uses: actions/download-artifact@v4
+        with:
+          name: android-release-native-symbols
+          path: dist/native-symbols/
 
       - name: Install Hands CLI (npm)
         shell: bash
@@ -459,6 +489,12 @@ jobs:
           fi
           mkdir -p compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}
           cp "${APK}" "compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}/androidApp-${{ needs.resolve.outputs.android_variant }}.apk"
+          SYMBOLS="$(find dist/native-symbols -maxdepth 1 -type f -name '*-native-symbols.zip' | sort | head -n 1)"
+          if [ -z "${SYMBOLS}" ]; then
+            echo "No downloaded native symbol archive found" >&2
+            exit 1
+          fi
+          export SLOCK_ANDROID_SYMBOL_ARCHIVE="${SYMBOLS}"
           ls -la compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}/
           # Helper does the rest (build-metadata, build, asset, release, sign
           # skipped because APK is already on disk; depends on KMP follow-up

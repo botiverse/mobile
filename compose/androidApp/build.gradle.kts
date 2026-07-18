@@ -30,6 +30,18 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val handsAndroidSdkVersion = "0.11.2"
+val handsNativeSymbols by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+
+val copyHandsNativeSymbols by tasks.registering(Sync::class) {
+    from(handsNativeSymbols)
+    into(layout.buildDirectory.dir("outputs/hands-native-symbols"))
+}
+
 val googleServicesConfigFiles =
     listOf(
         file("google-services.json"),
@@ -499,7 +511,8 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
-    implementation("build.hands:hands-android-sdk:0.10.1")
+    implementation("build.hands:hands-android-sdk:$handsAndroidSdkVersion")
+    add(handsNativeSymbols.name, "build.hands:hands-android-sdk:$handsAndroidSdkVersion:native-symbols@zip")
     implementation(libs.socket.io.client)
     implementation(libs.androidsvg)
     implementation(libs.mmkv)
