@@ -7,6 +7,8 @@ Related docs:
 - `docs/android-emulator-setup.md` covers Android AVD lifecycle and raw `adb` equivalents.
 - `docs/ohos-emulator-setup.md` covers OHOS emulator image/instance lifecycle,
   HDC connection, install, layout inspection, and input smoke.
+- `docs/ohos-self-hosted-runner.md` covers the bare-metal self-hosted runner,
+  fixed emulator endpoint, identity guard, and per-slot cache/workspace rules.
 - `docs/ohos-screenshot-capture.md` covers the older OHOS screenshot-only script.
 - `scripts/slock_android_adb.py` is the Android JSON helper.
 - `scripts/slock_ohos_hdc.py` is the OHOS JSON helper.
