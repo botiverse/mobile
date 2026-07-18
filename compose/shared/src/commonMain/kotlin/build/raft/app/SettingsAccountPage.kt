@@ -7,6 +7,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalReadOnlyField
 import build.raft.app.components.SlockBrutalTextField
+import build.raft.app.components.SlockFormFieldSize
 import build.raft.app.SlockCachedImage
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProfileUpdateRequest
@@ -396,6 +397,7 @@ private fun SettingsAccountProfileCard(
         )
         SlockBrutalTextField(
             label = payload.displayNameLabel,
+            labelSize = SlockFormFieldSize.Compact,
             value = displayName,
             placeholder = payload.displayNamePlaceholder,
             onValueChange = { displayNameState.value = it },
@@ -605,6 +607,7 @@ private fun SettingsPasswordForm(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SlockBrutalTextField(
             label = payload.currentPasswordLabel,
+            labelSize = SlockFormFieldSize.Compact,
             value = currentPassword,
             placeholder = "",
             onValueChange = onCurrentPasswordChange,
@@ -614,6 +617,7 @@ private fun SettingsPasswordForm(
         )
         SlockBrutalTextField(
             label = payload.newPasswordLabel,
+            labelSize = SlockFormFieldSize.Compact,
             value = newPassword,
             placeholder = payload.newPasswordPlaceholder,
             onValueChange = onNewPasswordChange,
@@ -623,6 +627,7 @@ private fun SettingsPasswordForm(
         )
         SlockBrutalTextField(
             label = payload.confirmPasswordLabel,
+            labelSize = SlockFormFieldSize.Compact,
             value = confirmPassword,
             placeholder = "",
             onValueChange = onConfirmPasswordChange,

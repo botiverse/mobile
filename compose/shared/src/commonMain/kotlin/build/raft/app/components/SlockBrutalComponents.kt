@@ -221,8 +221,12 @@ internal fun SlockBrutalSectionLabel(
     label: String,
     required: Boolean = false,
     optional: Boolean = false,
+    size: SlockFormFieldSize = SlockFormFieldSize.Default,
     modifier: Modifier = Modifier
 ) {
+    val compact = size == SlockFormFieldSize.Compact
+    val labelFontSize = if (compact) 11.sp else 14.sp
+    val labelLineHeight = if (compact) 14.sp else 18.sp
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -230,14 +234,14 @@ internal fun SlockBrutalSectionLabel(
     ) {
         Text(
             text = label.uppercase(),
-            style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.1.sp),
+            style = SlockType.SectionLabel.copy(fontSize = labelFontSize, lineHeight = labelLineHeight, letterSpacing = 1.1.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
         )
         if (required) {
             Text(
                 text = "*",
-                style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                style = SlockType.SectionLabel.copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
                 color = SlockColor.AccentPink,
                 maxLines = 1
             )
@@ -245,8 +249,11 @@ internal fun SlockBrutalSectionLabel(
         if (optional) {
             Text(
                 text = stringResource(MR.strings.common_optional_suffix),
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray,
+                style =
+                    SlockType.Caption
+                        .copy(fontSize = if (compact) 11.sp else 12.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(if (compact) FontWeight.Bold else FontWeight.Normal),
+                color = if (compact) SlockColor.TextMutedGray else SlockColor.TextBlack.copy(alpha = 0.40f),
                 maxLines = 1
             )
         }
@@ -402,6 +409,7 @@ internal fun SlockBrutalTextField(
     modifier: Modifier = Modifier,
     required: Boolean = false,
     optional: Boolean = false,
+    labelSize: SlockFormFieldSize = SlockFormFieldSize.Default,
     enabled: Boolean = true,
     hint: String? = null,
     error: String? = null,
@@ -427,7 +435,7 @@ internal fun SlockBrutalTextField(
         optional = optional,
         hint = hint,
         error = error,
-        size = SlockFormFieldSize.Compact
+        size = labelSize
     ) {
         SlockBrutalInputField(
             value = value,
