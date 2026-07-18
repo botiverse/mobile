@@ -25,6 +25,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createIosDriver } from "./ios_driver.mjs";
+import { findAllChannelTarget, redactEditableValues } from "./ios_navigation_matcher.mjs";
 
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
 const ioDir = arg("--ios-io-dir", process.env.QA_LOOP_IO_DIR || "");
@@ -61,13 +62,12 @@ function parseBounds(line) {
 }
 
 // Deterministic login for a cold simulator: Sign In screen → email/password →
-// Sign In → (optional) server picker → home. NOTE: Kuikly's iOS text fields
-// are NOT native UITextFields, so describeTree never emits [INPUT] markers
-// for them — resolve fields by the label-relative position (field sits
-// directly under its "Email"/"Password" label).
+// Sign In → (optional) server picker → home. Kuikly fields do not expose
+// native editability consistently at the first snapshot, so resolve them by
+// the stable label-relative position (field sits below Email/Password).
 async function ensureLoggedIn() {
   let dump = await drv.dumpUi();
-  fs.writeFileSync(path.join(outDir, "sign-in-dump.txt"), dump);
+  fs.writeFileSync(path.join(outDir, "sign-in-dump.txt"), redactEditableValues(dump));
   if (!/Sign In|Email|Password/.test(dump)) { rec("already past sign-in screen"); return; }
   const email = process.env.QA_TEST_EMAIL;
   const password = process.env.QA_TEST_PASSWORD;
@@ -94,14 +94,9 @@ async function ensureLoggedIn() {
   await drv.text(password);
   rec(`password typed at [${p.x},${p.y}]`);
 
-  // The Sign In BUTTON shares its label with the page title — tapText's
-  // smallest-area rule resolves the button. The keyboard may cover the
-  // button, so dismiss it first and re-read FRESH bounds (r3 lesson: tapping
-  // a stale coordinate landed on the keyboard overlay and never submitted).
-  const r = await drv.tapText("Sign In");
-  rec(`tapped sign-in: ${r.feedback || ""}`);
-
-  // Dismiss keyboard, re-dump, and submit with FRESH button bounds.
+  // Dismiss keyboard, re-dump, and submit with FRESH button bounds. Tapping
+  // while the keyboard is visible targets the overlay instead of the shifted
+  // app content (r3 evidence).
   await drv.key("esc");
   await new Promise((r2) => setTimeout(r2, 2500));
   dump = await drv.dumpUi();
@@ -175,17 +170,17 @@ try {
   // stripped) is "#all" and tap it. If we are already inside #all (composer
   // placeholder "Message #all"), skip navigation.
   let dump = await drv.dumpUi();
+  fs.writeFileSync(path.join(outDir, "home-dump.txt"), redactEditableValues(dump));
   if (!dump.includes('"Message #all"')) {
-    const rowLine = dump.split("\n").find((l) => {
-      const label = /"([^"]*)"/.exec(l)?.[1] ?? "";
-      return label.replace(/\s/g, "").toLowerCase() === "#all";
-    });
-    if (!rowLine) { writeVerdict("fail", "#all channel row not found in home dump"); process.exit(1); }
-    const m = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(rowLine);
-    const x = Math.round((Number(m[1]) + Number(m[3])) / 2);
-    const y = Math.round((Number(m[2]) + Number(m[4])) / 2);
-    rec(`opening #all at [${x},${y}]`);
-    await drv.tap(x, y);
+    let target;
+    try {
+      target = findAllChannelTarget(dump);
+    } catch (error) {
+      writeVerdict("fail", `#all navigation precondition failed: ${String(error)}`);
+      process.exit(1);
+    }
+    rec(`opening #all via ${target.mode} target at [${target.x},${target.y}]`);
+    await drv.tap(target.x, target.y);
     await new Promise((r) => setTimeout(r, 4000));
     dump = await drv.dumpUi();
   }

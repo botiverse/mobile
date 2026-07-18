@@ -254,6 +254,10 @@ jobs:
       # the M3 agent keeps getting lost on navigation (permission dialogs,
       # back-gesture exits). Fixed step sequence, auditable; same loop harness
       # and evidence collectors downstream.
+      - name: Test deterministic navigation matcher
+        if: ${{ inputs.mode == 'deterministic' }}
+        run: node --test scripts/qa/ios_navigation_matcher.test.mjs
+
       - name: Run deterministic repro
         if: ${{ inputs.mode == 'deterministic' }}
         env:
