@@ -45,6 +45,7 @@ const EXCLUDE_LINE = [
   /"→ v\$/,                        // computers upgrade hint — web renders the same text arrow
   /"•"\.repeat/,                   // masking dots
   /body\s*=/,                      // fixture/sample message bodies
+  /activity_updates_(one|many)/,  // localized content prefix, not an icon affordance
 ];
 
 function* walk(dir, exts) {
@@ -75,7 +76,7 @@ for (const root of KOTLIN_ROOTS) {
 for (const file of RESOURCE_GLOBS) {
   if (!fs.existsSync(file)) continue;
   fs.readFileSync(file, "utf8").split("\n").forEach((line, i) => {
-    if (GLYPHS.test(line) && /<string /.test(line)) record(file, i, line);
+    if (GLYPHS.test(line) && /<string /.test(line) && !EXCLUDE_LINE.some((re) => re.test(line))) record(file, i, line);
   });
 }
 for (const { dir, exts } of HOST_ROOTS) {
@@ -90,8 +91,8 @@ for (const { dir, exts } of HOST_ROOTS) {
 const findings = [...byFile.entries()].map(([file, hits]) => {
   const hash = crypto.createHash("sha256").update(hits.map((h) => h.text).join("\n")).digest("hex").slice(0, 16);
   return {
-    key: `${file}#${hash}`,
-    fingerprint: null,
+    key: file,
+    fingerprint: hash,
     rank: hits.length,
     title: `[glyph-audit] ${path.basename(file)}: ${hits.length} text glyph${hits.length > 1 ? "s" : ""} that should be Lucide icons`,
     body: [

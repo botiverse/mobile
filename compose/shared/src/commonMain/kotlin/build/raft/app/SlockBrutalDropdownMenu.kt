@@ -217,7 +217,7 @@ private fun SlockBrutalDropdownMenuRow(
         // deliberate react-parity wash (menu destructive row / press soft-signal, web bg-*/N); triaged token-audit #1062
         SlockColor.AccentRed.copy(alpha = 0.08f)
     } else if (pressed && item.enabled) {
-        SlockColor.SoftSignal.copy(alpha = 0.30f)
+        SlockColor.SoftSignal.copy(alpha = 0.30f) // react-parity: intentional bg-soft-signal/30 wash
     } else {
         SlockColor.SurfaceWhite
     }

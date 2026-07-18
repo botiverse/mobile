@@ -75,8 +75,8 @@ for (const file of walk(ROOT)) {
 const findings = [...byFile.entries()].map(([file, hits]) => {
   const hash = crypto.createHash("sha256").update(hits.map((h) => h.text).join("\n")).digest("hex").slice(0, 16);
   return {
-    key: `${file}#${hash}`,
-    fingerprint: null,
+    key: file,
+    fingerprint: hash,
     rank: hits.length,
     title: `[font-audit] ${path.basename(file)}: ${hits.length} typography contract suspect${hits.length > 1 ? "s" : ""}`,
     body: [

@@ -4,7 +4,7 @@
 // Reads the nightly visual-testing analysis (per-case react/android/ios divergences),
 // keeps only NEW, real drifts (severity >= threshold; excludes declared/intentional
 // cross-platform differences and analysis errors), dedupes against already-open patrol
-// issues by caseId + perceptual fingerprint (Hamming <= 4), and files ONE GitHub issue
+// issues by stable caseId + comparison identity, and files ONE GitHub issue
 // per surviving drift with evidence. Runs after the nightly capture+analysis; the
 // judgment work (triage, fix) happens in the morning off the issue queue.
 //
@@ -24,9 +24,9 @@
 
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
+import { hasOpenVisualIdentity } from "./patrol/identity.mjs";
 
 const SEV_ORDER = { low: 1, medium: 2, high: 3, critical: 4 };
-const HAMMING_DEDUP = 4;         // same perceptual fingerprint tolerance as the analysis cache
 const MARKER_RE = /<!--\s*patrol:caseId=([^;]+);comparison=([^;]+);hash=(\S+)\s*-->/;
 
 const argv = process.argv.slice(2);
@@ -50,19 +50,6 @@ function loadAnalysis() {
     return JSON.parse(out);
   }
   return JSON.parse(fs.readFileSync(opts.analysis, "utf8"));
-}
-
-// Hamming distance between two hex perceptual hashes (tolerant of the 'p1:' prefix).
-function hamming(a, b) {
-  const ha = String(a || "").replace(/^p1:/, "");
-  const hb = String(b || "").replace(/^p1:/, "");
-  if (!ha || !hb || ha.length !== hb.length) return Infinity;
-  let d = 0;
-  for (let i = 0; i < ha.length; i++) {
-    let x = (parseInt(ha[i], 16) || 0) ^ (parseInt(hb[i], 16) || 0);
-    while (x) { d += x & 1; x >>= 1; }
-  }
-  return d;
 }
 
 // A drift is a real regression candidate when: analysis is ready, no analysis error,
@@ -93,7 +80,7 @@ function fetchOpenPatrolMarkers() {
 }
 
 function alreadyFiled(c, markers) {
-  return markers.some((m) => m.caseId === c.id && m.comparison === opts.comparison && hamming(m.hash, c.imageHash) <= HAMMING_DEDUP);
+  return hasOpenVisualIdentity(markers, c.id, opts.comparison);
 }
 
 function issueTitle(c) {

@@ -24,16 +24,19 @@ scan.
    - **excludes declared/intentional divergences** (`intentional` non-empty) — known
      cross-platform differences are never treated as regressions
    - has an actual divergence `summary`
-3. **Dedupe** against already-open patrol issues by `caseId + comparison + perceptual
-   fingerprint` (the analysis `imageHash`, Hamming distance ≤ 4 — the same tolerance the
-   analysis cache uses). An open issue for the same drift is left alone, not re-filed.
+3. **Dedupe** against already-open patrol issues by stable `caseId + comparison` identity.
+   The analysis `imageHash` remains evidence metadata, not identity: a nightly pixel/hash
+   change must not create a second open issue for the same case and comparison. Other patrol
+   lenses likewise use stable `lens + key` identity (normally the source path), while their
+   fingerprint records the current finding set.
 4. **Rank** worst-first (severity, then metric mismatch) and **cap** per run (default 10).
    Overflow is **logged, never silently dropped** — a first run with a backlog files the
    10 worst and reports the rest; steady-state daily runs file only the day's new drifts.
 5. **File** one issue per surviving drift: title `[visual-drift] <caseId>: <summary>`,
    body with severity / metrics / likely-causes / suggested-fixes / owner + side-by-side
    and metrics links, labels `visual-drift`, `auto-triage`, `severity:<level>`. A hidden
-   `<!-- patrol:caseId=…;comparison=…;hash=… -->` marker carries the dedup fingerprint.
+   `<!-- patrol:caseId=…;comparison=…;hash=… -->` marker carries stable identity plus the
+   current evidence fingerprint.
 
 ## Safety (why merging this is harmless)
 

@@ -7,8 +7,8 @@
 //
 // A finding:
 //   {
-//     key: "stable-dedup-key",        // required; identity across runs (e.g. caseId, file|string)
-//     fingerprint: "p1:...",          // optional; enables fuzzy dedup (Hamming <= 4)
+//     key: "stable-dedup-key",        // required; identity across runs (e.g. caseId, source path)
+//     fingerprint: "p1:...",          // optional evidence fingerprint; never changes issue identity
 //     rank: <number>,                 // higher = more severe; used for worst-first + cap
 //     title: "...",                   // issue title
 //     body: "...",                    // issue body (marker is appended by this module)
@@ -16,20 +16,7 @@
 //   }
 
 import { execFileSync } from "node:child_process";
-
-export const HAMMING_DEDUP = 4;
-
-export function hamming(a, b) {
-  const ha = String(a || "").replace(/^p1:/, "");
-  const hb = String(b || "").replace(/^p1:/, "");
-  if (!ha || !hb || ha.length !== hb.length) return Infinity;
-  let d = 0;
-  for (let i = 0; i < ha.length; i++) {
-    let x = (parseInt(ha[i], 16) || 0) ^ (parseInt(hb[i], 16) || 0);
-    while (x) { d += x & 1; x >>= 1; }
-  }
-  return d;
-}
+import { hasOpenLensIdentity, stableLensKey } from "./identity.mjs";
 
 const MARKER_RE = /<!--\s*patrol:lens=([^;]+);key=([^;]+);fp=(\S+)\s*-->/;
 
@@ -45,7 +32,7 @@ export function fetchOpenMarkers(repo, label) {
       { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     return JSON.parse(out).map((i) => {
       const m = MARKER_RE.exec(i.body || "");
-      return m ? { number: i.number, lens: m[1], key: m[2], fp: m[3] } : null;
+      return m ? { number: i.number, lens: m[1], key: stableLensKey(m[2]), fp: m[3] } : null;
     }).filter(Boolean);
   } catch (e) {
     console.error(`[patrol] could not list existing issues (${String(e.message).slice(0, 120)}); dedup skipped`);
@@ -54,9 +41,7 @@ export function fetchOpenMarkers(repo, label) {
 }
 
 function alreadyFiled(finding, lens, markers) {
-  return markers.some((m) =>
-    m.lens === lens && m.key === finding.key &&
-    (finding.fingerprint ? hamming(m.fp, finding.fingerprint) <= HAMMING_DEDUP : true));
+  return hasOpenLensIdentity(markers, lens, finding.key);
 }
 
 const LABEL_COLORS = {

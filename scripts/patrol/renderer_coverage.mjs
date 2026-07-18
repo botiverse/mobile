@@ -75,8 +75,8 @@ for (const [ns, names] of Object.entries(TYPE_UNIVERSE)) {
 }
 
 const findings = missing.length === 0 ? [] : [{
-  key: `renderer-coverage#${crypto.createHash("sha256").update(missing.join(",")).digest("hex").slice(0, 16)}`,
-  fingerprint: null,
+  key: "renderer-coverage",
+  fingerprint: crypto.createHash("sha256").update(missing.join(",")).digest("hex").slice(0, 16),
   rank: missing.length,
   title: `[renderer-coverage] ${missing.length} markdown type(s) with no annotator branch (silent-drop candidates)`,
   body: [
