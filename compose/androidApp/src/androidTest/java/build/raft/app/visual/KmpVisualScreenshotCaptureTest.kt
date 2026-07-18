@@ -2027,41 +2027,11 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpSettingsPageCase("screens.settings.server-danger-modal", "server-danger-modal")
     }
 
-    @Test
-    fun captureSettingsComputersScreen() {
-        captureKmpComponentCase(
-            caseId = "screens.settings.computers",
-            pageName = "compose_settings_computers",
-            pageData = JSONObject().put("visualFixture", "computers"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureSettingsComputersLoadingScreen() {
-        captureKmpComponentCase(
-            caseId = "screens.settings.computers.loading",
-            pageName = "compose_settings_computers",
-            pageData = JSONObject().put("visualFixture", "computers-loading"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureSettingsComputerDetailScreen() {
-        captureKmpComponentCase(
-            caseId = "screens.settings.computer-detail",
-            pageName = "compose_settings_computer_detail",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-settings-computer-detail")
-                    .put("visualFixture", "computer_detail"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
+    // NOTE (task #498): the native Settings Computers list/detail routes were
+    // removed by #920 (settings now embeds the canonical web surface), so the
+    // former screens.settings.computers{,.loading} / computer-detail cases were
+    // deleted — they only captured the Kuikly route-error page on Android and
+    // timed out the iOS leg awaiting a route that no longer exists.
 
     // Full-route Settings captures (task #398 / #388). These drive the real
     // Settings destination switch (SettingsAppShellContent) through the
