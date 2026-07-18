@@ -2317,30 +2317,32 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
         }
         dispatch_group_enter(group);
         [provider loadFileRepresentationForTypeIdentifier:typeIdentifier completionHandler:^(NSURL *url, NSError *loadError) {
-            dispatch_async(worker, ^{
-                NSError *cacheError = loadError;
-                NSDictionary *file = nil;
-                if (url && !cacheError) {
-                    file = [self slock_cachePickedAttachmentURL:url
-                                                 suggestedName:provider.suggestedName
-                                                      mimeType:nil
-                                                         error:&cacheError];
+            // PHPicker's file-representation URL is temporary and is only valid
+            // for the lifetime of this completion handler. Cache it before the
+            // handler returns; dispatching the copy to another queue leaves that
+            // queue racing the provider's cleanup and produces ENOENT.
+            NSError *cacheError = loadError;
+            NSDictionary *file = nil;
+            if (url && !cacheError) {
+                file = [self slock_cachePickedAttachmentURL:url
+                                             suggestedName:provider.suggestedName
+                                                  mimeType:nil
+                                                     error:&cacheError];
+            }
+            if (file) {
+                @synchronized (orderedFiles) {
+                    orderedFiles[index] = file;
                 }
-                if (file) {
-                    @synchronized (orderedFiles) {
-                        orderedFiles[index] = file;
-                    }
-                } else {
-                    @synchronized (errors) {
-                        [errors addObject:@{
-                            @"index" : @(index),
-                            @"errorCode" : @"attachment_read_failed",
-                            @"message" : cacheError.localizedDescription ?: @"Unable to read attachment"
-                        }];
-                    }
+            } else {
+                @synchronized (errors) {
+                    [errors addObject:@{
+                        @"index" : @(index),
+                        @"errorCode" : @"attachment_read_failed",
+                        @"message" : cacheError.localizedDescription ?: @"Unable to read attachment"
+                    }];
                 }
-                dispatch_group_leave(group);
-            });
+            }
+            dispatch_group_leave(group);
         }];
     }];
     dispatch_group_notify(group, worker, ^{
