@@ -753,6 +753,49 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellChildPagePrewarmPolicyLimitsCanaryToOneController() {
+        assertEquals(
+            0,
+            appShellChildPagePrewarmPolicy(AppShellChildPagePrewarmMode.Disabled).maxControllers
+        )
+        assertEquals(
+            1,
+            appShellChildPagePrewarmPolicy(AppShellChildPagePrewarmMode.Canary).maxControllers
+        )
+        assertEquals(
+            3,
+            appShellChildPagePrewarmPolicy(AppShellChildPagePrewarmMode.Enabled).maxControllers
+        )
+    }
+
+    @Test
+    fun appShellPrewarmLeaseCannotCommitAfterForegroundInvalidation() {
+        val gate = PrewarmAdmissionGate()
+        val lease = assertNotNull(gate.tryAcquire(gate.generation()))
+        var committed = false
+
+        gate.invalidate("input")
+
+        assertFalse(lease.commit { committed = true })
+        assertFalse(committed)
+        lease.release()
+        assertEquals("input", gate.latestInvalidationReason())
+    }
+
+    @Test
+    fun appShellPrewarmGateAllowsOnlyOneSpeculativeLease() {
+        val gate = PrewarmAdmissionGate()
+        val generation = gate.generation()
+        val first = assertNotNull(gate.tryAcquire(generation))
+
+        assertNull(gate.tryAcquire(generation))
+        assertTrue(first.commit { })
+        assertFalse(first.commit { error("a lease must commit at most once") })
+        first.release()
+        assertNotNull(gate.tryAcquire(generation))
+    }
+
+    @Test
     fun retainedHomeSecondaryDestinationKeepsOnlyActiveKnownDestination() {
         assertEquals(null, retainedHomeSecondaryDestination(null))
         assertEquals("search", retainedHomeSecondaryDestination("search"))

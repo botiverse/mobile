@@ -401,6 +401,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.coroutines.withKuiklyIdleContext
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -610,8 +611,6 @@ private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 
 private val AppShellChildPageTabKeys = listOf("home", "tasks", "members", "settings")
 private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
-private const val AppShellChildPagePrewarmInitialDelayMs = 600L
-private const val AppShellChildPagePrewarmIntervalMs = 500L
 
 internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
@@ -2235,6 +2234,9 @@ internal fun SlockAppShellContent(
         mutableStateOf(setOf("home", launchSelection.selectedTab))
     }
     var prewarmedAppShellTabs by remember { mutableStateOf(emptySet<String>()) }
+    val prewarmAdmissionGate = remember { sharedPrewarmAdmissionGate() }
+    val childPagePrewarmPolicy =
+        remember { appShellChildPagePrewarmPolicy(slockPlatformAppShellChildPagePrewarmMode()) }
     var selectedSettingsDestination by remember {
         mutableStateOf(launchSelection.selectedSettingsDestination)
     }
@@ -3077,6 +3079,7 @@ internal fun SlockAppShellContent(
             hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
         }
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
+        prewarmAdmissionGate.invalidate("tab_select:$nextTab")
         val retainedTab = retainedAppShellSelectedTab(nextTab)
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
         val direct = directChildSwitch && retainedTab in AppShellChildPageTabKeys
@@ -4271,29 +4274,53 @@ internal fun SlockAppShellContent(
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
     val homeReadyForChildPagePrewarm =
         readyServerId != null && homeState.content is SharedHomeContentState.Content
-    LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId) {
-        if (!homeReadyForChildPagePrewarm || !slockPlatformPrewarmsAppShellChildPages()) {
+    LaunchedEffect(
+        selectedTab,
+        pageVisibleTick,
+        readyServerId,
+        homeState.content,
+        homeState.homeRealtimeDirty
+    ) {
+        prewarmAdmissionGate.invalidate("foreground_shell_state")
+    }
+    LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId, childPagePrewarmPolicy) {
+        if (!homeReadyForChildPagePrewarm || childPagePrewarmPolicy.maxControllers <= 0) {
             return@LaunchedEffect
         }
-        delay(AppShellChildPagePrewarmInitialDelayMs)
-        appShellChildPagePrewarmOrder(
-            activeChildTab = appShellActiveChildPagerTab(selectedTab),
-            retainedTabs = retainedAppShellTabs,
-            prewarmedTabs = prewarmedAppShellTabs
-        ).forEach { tab ->
-            if (
-                tab == appShellActiveChildPagerTab(selectedTab) ||
-                tab in retainedAppShellTabs ||
-                tab in prewarmedAppShellTabs
-            ) {
-                return@forEach
+        while (prewarmedAppShellTabs.size < childPagePrewarmPolicy.maxControllers) {
+            val tab =
+                appShellChildPagePrewarmOrder(
+                    activeChildTab = appShellActiveChildPagerTab(selectedTab),
+                    retainedTabs = retainedAppShellTabs,
+                    prewarmedTabs = prewarmedAppShellTabs
+                ).firstOrNull() ?: return@LaunchedEffect
+            val waitStart = TimeSource.Monotonic.markNow()
+            val stableGeneration = awaitStablePrewarmGeneration(prewarmAdmissionGate)
+            var committed = false
+            withKuiklyIdleContext(pager.pagerId) {
+                val lease = prewarmAdmissionGate.tryAcquire(stableGeneration)
+                    ?: return@withKuiklyIdleContext
+                try {
+                    if (
+                        tab != appShellActiveChildPagerTab(selectedTab) &&
+                        tab !in retainedAppShellTabs &&
+                        tab !in prewarmedAppShellTabs
+                    ) {
+                        committed = lease.commit {
+                            prewarmedAppShellTabs = prewarmedAppShellTabs + tab
+                        }
+                    }
+                } finally {
+                    lease.release()
+                }
             }
-            prewarmedAppShellTabs = prewarmedAppShellTabs + tab
-            bridge.log(
-                "app_shell_child_tab_prewarm tab=$tab selectedTab=$selectedTab " +
-                    "retained=$retainedAppShellTabs prewarmed=$prewarmedAppShellTabs"
-            )
-            delay(AppShellChildPagePrewarmIntervalMs)
+            if (committed) {
+                bridge.log(
+                    "app_shell_child_tab_idle_prewarm tab=$tab mode=${childPagePrewarmPolicy.mode} " +
+                        "waitMs=${waitStart.elapsedNow().inWholeMilliseconds} selectedTab=$selectedTab " +
+                        "retained=$retainedAppShellTabs prewarmed=$prewarmedAppShellTabs"
+                )
+            }
         }
     }
 
@@ -4302,6 +4329,7 @@ internal fun SlockAppShellContent(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
             onBottomTabSelected = onBottomTabSelected@{
+                prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
                 val nextTab = retainedAppShellSelectedTab(it)
                 when (
                     bottomTabTapTracker.onTap(
@@ -4358,14 +4386,21 @@ internal fun SlockAppShellContent(
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
                         SharedTasksScreen(
                             state = tasksState,
-                            onIntent = tasksViewModel::dispatch,
+                            onIntent = { intent ->
+                                prewarmAdmissionGate.invalidate("tasks_intent:${intent::class.simpleName}")
+                                tasksViewModel.dispatch(intent)
+                            },
                             scrollToTopRequest = tabScrollToTopRequests.tasks,
                             bottomContentPadding = appShellBottomContentInset,
                             draftProjection = draftProjection,
                             initialListPosition = tasksListPosition,
-                            onListPositionSnapshot = { tasksListPosition = it },
+                            onListPositionSnapshot = {
+                                prewarmAdmissionGate.invalidate("tasks_scroll")
+                                tasksListPosition = it
+                            },
                             timeContext = threadTimeContext,
                             onOpenTask = { task ->
+                                prewarmAdmissionGate.invalidate("tasks_open_task")
                                 pager.openStandaloneTaskThreadPage(
                                     task = task,
                                     serverId = readyServerId.orEmpty(),
@@ -4402,6 +4437,7 @@ internal fun SlockAppShellContent(
                                 savedCount = homeSearchSavedState.saved.totalCount,
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 onIntent = { intent ->
+                                    prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
                                         pendingHomeServerSwitchId =
                                             intent.serverId.takeIf { it != homeListServerId }
@@ -4484,6 +4520,7 @@ internal fun SlockAppShellContent(
                                         savedPositions = homeListPositions
                                     ),
                                 onListPositionSnapshot = { serverId, position ->
+                                    prewarmAdmissionGate.invalidate("home_scroll")
                                     homeListPositions = homeListPositions.withPosition(serverId, position)
                                 },
                                 onContentComposeCommitted = { serverId ->
@@ -4519,12 +4556,21 @@ internal fun SlockAppShellContent(
                             initialContent =
                                 sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
                             onContentLoaded = { membersListCachedContent = it },
-                            onRetry = { membersListRefreshKey += 1 },
+                            onRetry = {
+                                prewarmAdmissionGate.invalidate("members_retry")
+                                membersListRefreshKey += 1
+                            },
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.members,
                             initialListState = membersListState,
-                            onListStateSnapshot = { membersListState = it }
+                            onListStateSnapshot = {
+                                prewarmAdmissionGate.invalidate("members_scroll")
+                                membersListState = it
+                            },
+                            onForegroundActivity = { reason ->
+                                prewarmAdmissionGate.invalidate("members_$reason")
+                            }
                         )
                     }
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
@@ -4535,18 +4581,24 @@ internal fun SlockAppShellContent(
                             settingsState = settingsState,
                             notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                             onToggleNotificationPreference = {
+                                prewarmAdmissionGate.invalidate("settings_toggle_notification")
                                 notificationPreferenceScope.launch {
                                     notificationPreferenceSnapshot =
                                         notificationPreferenceRepository.setNotificationEnabled(!notificationPreferenceSnapshot.enabled)
                                 }
                             },
-                            onSettingsIntent = settingsViewModel::dispatch,
+                            onSettingsIntent = { intent ->
+                                prewarmAdmissionGate.invalidate("settings_intent:${intent::class.simpleName}")
+                                settingsViewModel.dispatch(intent)
+                            },
                             selectedDestination = selectedSettingsDestination,
                             onDestinationChange = {
+                                prewarmAdmissionGate.invalidate("settings_destination:$it")
                                 settingsHeaderTapCount = 0
                                 selectedSettingsDestination = it
                             },
                             onSettingsHeaderClick = {
+                                prewarmAdmissionGate.invalidate("settings_header")
                                 val nextTapCount = settingsHeaderTapCount + 1
                                 if (nextTapCount >= SettingsDeveloperUnlockTapCount) {
                                     settingsHeaderTapCount = 0
@@ -4555,8 +4607,12 @@ internal fun SlockAppShellContent(
                                     settingsHeaderTapCount = nextTapCount
                                 }
                             },
-                            onOpenRouter = { jumpPage(pager, "router") },
+                            onOpenRouter = {
+                                prewarmAdmissionGate.invalidate("settings_open_router")
+                                jumpPage(pager, "router")
+                            },
                             onOpenReleaseNotes = {
+                                prewarmAdmissionGate.invalidate("settings_open_release_notes")
                                 val releaseNotesVersionCode =
                                     (settingsState.about as? ScreenLoadState.Content)
                                         ?.data
@@ -4564,25 +4620,39 @@ internal fun SlockAppShellContent(
                                         .orEmpty()
                                 pager.openReleaseNotesPage(releaseNotesVersionCode, storeScope)
                             },
-                            onOpenBilling = { pager.openSettingsBillingPage(storeScope) },
-                            onOpenAdministration = { pager.openSettingsAdministrationPage(storeScope) },
-                            onOpenConnectedApps = { pager.openSettingsMarketplacePage(storeScope) },
+                            onOpenBilling = {
+                                prewarmAdmissionGate.invalidate("settings_open_billing")
+                                pager.openSettingsBillingPage(storeScope)
+                            },
+                            onOpenAdministration = {
+                                prewarmAdmissionGate.invalidate("settings_open_administration")
+                                pager.openSettingsAdministrationPage(storeScope)
+                            },
+                            onOpenConnectedApps = {
+                                prewarmAdmissionGate.invalidate("settings_open_connected_apps")
+                                pager.openSettingsMarketplacePage(storeScope)
+                            },
                             onMessageAlignmentSelected = {
+                                prewarmAdmissionGate.invalidate("settings_message_alignment")
                                 myMessageAlignment = it
                             },
                             onCompactConsecutiveMessagesSelected = {
+                                prewarmAdmissionGate.invalidate("settings_compact_messages")
                                 compactConsecutiveMessages = it
                             },
                             onForegroundMessageBannersSelected = {
+                                prewarmAdmissionGate.invalidate("settings_foreground_banners")
                                 foregroundMessageBannersEnabled = it
                                 if (!it) {
                                     foregroundBannerStore.dismiss()
                                 }
                             },
                             onActivityTaskStatusBadgesSelected = {
+                                prewarmAdmissionGate.invalidate("settings_activity_badges")
                                 activityTaskStatusBadgesEnabled = it
                             },
                             onThreadRowAffordanceSelected = { affordance, enabled ->
+                                prewarmAdmissionGate.invalidate("settings_thread_affordance")
                                 threadRowAffordances =
                                     if (enabled) {
                                         threadRowAffordances + affordance
@@ -4591,9 +4661,11 @@ internal fun SlockAppShellContent(
                                     }
                             },
                             onSettingsAction = { action, itemId ->
+                                prewarmAdmissionGate.invalidate("settings_action:$action")
                                 bridge.log("settings_shell_unsupported_action action=$action itemId=${itemId.orEmpty()}")
                             },
                             onDiagnosticsFeedbackPrepared = { draft ->
+                                prewarmAdmissionGate.invalidate("settings_diagnostics_prepare")
                                 pendingDiagnosticsFeedbackReturnDestination =
                                     selectedSettingsDestination
                                         .takeIf { it != SettingsDestinationDiagnosticsFeedbackChannel }
@@ -4608,14 +4680,17 @@ internal fun SlockAppShellContent(
                             diagnosticsFeedbackDraft = pendingDiagnosticsFeedback,
                             diagnosticsFeedbackHomeState = homeState,
                             onDiagnosticsFeedbackBack = {
+                                prewarmAdmissionGate.invalidate("settings_diagnostics_back")
                                 selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
                                 pendingDiagnosticsFeedback = null
                                 pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                             },
                             onDiagnosticsFeedbackRefresh = {
+                                prewarmAdmissionGate.invalidate("settings_diagnostics_refresh")
                                 homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
                             },
                             onDiagnosticsFeedbackChannelSelected = { conversation ->
+                                prewarmAdmissionGate.invalidate("settings_diagnostics_channel")
                                 pendingDiagnosticsFeedback?.let { draft ->
                                     openDiagnosticsFeedbackChannel(
                                         draft = draft,
@@ -4633,12 +4708,14 @@ internal fun SlockAppShellContent(
                             bottomContentPadding = appShellBottomContentInset,
                             timeContext = threadTimeContext,
                             onSessionCleared = { clearedSession ->
+                                prewarmAdmissionGate.invalidate("settings_session_cleared")
                                 authSessionEvents.postSessionCleared(
                                     reason = "local",
                                     previousSessionFingerprint = clearedSession.authSessionClearFingerprint()
                                 )
                             },
                             onLogout = {
+                                prewarmAdmissionGate.invalidate("settings_logout")
                                 authGateMessage = null
                                 bridge.realtimeDisconnect("logout")
                                 authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
@@ -13782,7 +13859,8 @@ private fun SharedMembersScreen(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     scrollToTopRequest: Int = 0,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
-    onListStateSnapshot: (AppShellMembersListState) -> Unit = {}
+    onListStateSnapshot: (AppShellMembersListState) -> Unit = {},
+    onForegroundActivity: (String) -> Unit = {}
 ) {
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var state by remember(currentServerId) {
@@ -13920,6 +13998,7 @@ private fun SharedMembersScreen(
                 .computerPickerSliceFlow(serverId)
                 .collectAsState(SharedComputersPickerSlice())
             val loadMachines: () -> Unit = {
+                onForegroundActivity("load_machines")
                 if (serverId.isNotBlank()) {
                     computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
                 }
@@ -13932,6 +14011,7 @@ private fun SharedMembersScreen(
                 mutableStateOf<Set<Pair<String, String>>>(emptySet())
             }
             val loadRuntimeModels: (String, String, Boolean) -> Unit = { machineId, runtime, force ->
+                onForegroundActivity("load_runtime_models")
                 val key = machineId.trim() to runtime.trim()
                 if (serverId.isBlank() || key.first.isBlank() || key.second.isBlank()) {
                     // no-op: the dialog keeps using the static runtime catalog fallback
@@ -13995,6 +14075,7 @@ private fun SharedMembersScreen(
             val inviteHumanSubmitHandler: suspend (List<String>) -> DataResult<Unit> =
                 remember(settingsMembersDataSource, serverId) {
                     { emails ->
+                        onForegroundActivity("invite_submit")
                         if (serverId.isBlank()) {
                             DataResult.Error(ScreenError(code = "server_id_missing", retryable = false))
                         } else {
@@ -14027,6 +14108,7 @@ private fun SharedMembersScreen(
             val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
                 inviteHumanSubmitHandler.takeIf { membersPayload.canInviteHumans }
             val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
+                onForegroundActivity("create_agent_submit")
                 val result = createAgentCoordinator.createAgent(submit.toCreateAgentRequest())
                 if (result is DataResult.Content) {
                     val profile = MemberProfile(
@@ -14060,9 +14142,13 @@ private fun SharedMembersScreen(
             MembersRouteContent(
                 payload = renderMembersPayload,
                 refreshing = refreshing,
-                onAddHuman = { loadInviteJoinLink() },
+                onAddHuman = {
+                    onForegroundActivity("add_human")
+                    loadInviteJoinLink()
+                },
                 agentStatusResolver = agentStatusResolver,
                 onOpenMemberDetail = { member ->
+                    onForegroundActivity("open_member")
                     routeScope.launch {
                         val identity = MemberDetailIdentity(member.id, member.kind, member.serverId)
                         val accessMode = identity.memberDetailAccessMode(serverId)
@@ -14121,14 +14207,22 @@ private fun SharedMembersScreen(
                 inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
                 inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
                 inviteHumanJoinLinkCopy = { url ->
+                    onForegroundActivity("copy_invite_link")
                     bridge.copyToPasteboard(url)
                     inviteJoinLinkCopied = true
                 },
-                inviteHumanLoadJoinLink = { loadInviteJoinLink() },
+                inviteHumanLoadJoinLink = {
+                    onForegroundActivity("load_invite_link")
+                    loadInviteJoinLink()
+                },
                 bottomContentPadding = bottomContentPadding,
                 scrollToTopRequest = scrollToTopRequest,
                 initialListState = initialListState,
-                onListStateSnapshot = onListStateSnapshot
+                onListStateSnapshot = onListStateSnapshot,
+                onRefresh = {
+                    onForegroundActivity("refresh")
+                    onRetry()
+                }
             )
         }
     }
