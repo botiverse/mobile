@@ -1091,6 +1091,8 @@
     <string name="agent_create_action_create">创建智能体</string>
     <string name="agent_create_action_creating">正在创建...</string>
     <string name="agent_create_error_limit">已达到智能体数量上限（此服务器为 %1$d/%2$d）。升级后可创建更多。</string>
+    <string name="agent_create_error_limit_plan">已达到智能体数量上限（%3$s 套餐为 %1$d/%2$d）。</string>
+    <string name="agent_create_action_upgrade_for_more">升级后可创建更多</string>
     <string name="agent_create_state_computers_loading">正在加载电脑...</string>
     <string name="agent_create_state_computers_empty">暂无电脑，请先连接一台电脑。</string>
     <string name="agent_create_hint_required_computer">必须使用的电脑：%1$s</string>

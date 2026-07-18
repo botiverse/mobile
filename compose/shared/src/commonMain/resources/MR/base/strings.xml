@@ -1093,6 +1093,8 @@
     <string name="agent_create_action_create">Create Agent</string>
     <string name="agent_create_action_creating">Creating...</string>
     <string name="agent_create_error_limit">Agent limit reached (%1$d/%2$d on this server). Upgrade for more.</string>
+    <string name="agent_create_error_limit_plan">Agent limit reached (%1$d/%2$d on %3$s plan).</string>
+    <string name="agent_create_action_upgrade_for_more">Upgrade for more</string>
     <string name="agent_create_state_computers_loading">Loading computers...</string>
     <string name="agent_create_state_computers_empty">No computers. Connect a computer first.</string>
     <string name="agent_create_hint_required_computer">Required computer: %1$s</string>
