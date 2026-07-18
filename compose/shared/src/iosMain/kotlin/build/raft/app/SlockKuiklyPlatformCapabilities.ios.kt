@@ -1,5 +1,9 @@
 package build.raft.app
 
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
+import platform.Foundation.NSProcessInfo
+
 internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = true
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = false
@@ -9,10 +13,18 @@ internal actual fun slockPlatformAppShellChildPagePrewarmMode(): AppShellChildPa
 
 internal actual fun slockPlatformSupportsMultiShellHost(): Boolean = false
 
-// Keep the platform default conservative. The Swift host explicitly opts into
-// Liquid Glass only when the runtime is iOS 26+; alternate launch surfaces that
-// omit the renderer must retain the normal shared tab bar.
-internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = "sharedCompose"
+// Auth/server route rebuilds do not retain the Swift root's pageData. Keep the
+// runtime gate in the platform default as well as ContentView so those rebuilt
+// app-shell routes preserve Liquid Glass on iOS 26+ while older iOS versions
+// still receive the shared fallback.
+@OptIn(ExperimentalForeignApi::class)
+internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? =
+    slockIosAppTabBarRendererForMajorVersion(
+        NSProcessInfo.processInfo.operatingSystemVersion.useContents { majorVersion }
+    )
+
+internal fun slockIosAppTabBarRendererForMajorVersion(majorVersion: Long): String =
+    if (majorVersion >= 26L) "iosLiquidGlass" else "sharedCompose"
 
 // task #11: the iOS video host embeds AVPlayerViewController — the system's
 // mature controller (scrub, ±15s, fullscreen) owns the surface, so the
