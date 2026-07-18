@@ -177,6 +177,31 @@ export function createIosDriver({ ioDir, udid = "booted", bundle = "build.raft.a
       return compact.length > 20000 ? compact.slice(0, 20000) + "\n[truncated]" : compact;
     },
 
+    // Read-only structured snapshot for evidence-grade state diffs (task #26
+    // static review): verbatim identifier, readable + raw elementType,
+    // enabled/selected, bounds in pixel space (same conversion as dumpUi).
+    // Editable values are redacted here so structured artifacts carry the same
+    // secret hygiene as the text dump.
+    async describeUiNodes() {
+      const nodes = await describeNodes();
+      return nodes.map((n) => {
+        const [fx, fy, fw, fh] = n.frame || [0, 0, 0, 0];
+        return {
+          identifier: n.id || "",
+          type: n.type || "other",
+          typeRaw: n.typeRaw ?? null,
+          label: n.label || "",
+          value: n.editable && n.value ? "[REDACTED]" : (n.value || ""),
+          bounds: [px(fx), px(fy), px(fx + fw), px(fy + fh)],
+          enabled: !!n.enabled,
+          selected: !!n.selected,
+          editable: !!n.editable,
+          clickable: !!n.clickable,
+          focused: !!n.focused,
+        };
+      });
+    },
+
     // Same policy as the Android tapTextResolve ladder (#1113/#1116):
     // case-sensitive exact -> ci exact -> ci substring; ties by smallest
     // area. Bounds come fresh from a describe at call time.

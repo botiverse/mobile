@@ -352,6 +352,12 @@ final class QaAcceptanceLoopTests: XCTestCase {
     // The host-side dump_ui twin: one snapshot IPC, then a plain walk emitting
     // labelled/interactive nodes with frames in points. The node runner applies
     // the same semantic compression as the Android uiautomator dump.
+    // The host-side dump_ui twin: one snapshot IPC, then a plain walk emitting
+    // labelled/interactive nodes with frames in points. The node runner applies
+    // the same semantic compression as the Android uiautomator dump. Task #26
+    // static review: also carry the verbatim identifier, elementType (raw +
+    // readable), isEnabled and isSelected, and keep selected-but-unlabelled
+    // nodes — the cell-selection contract is defined on exactly those fields.
     private func describeTree(_ app: XCUIApplication) throws -> [[String: Any]] {
         let snapshot = try app.snapshot()
         var nodes: [[String: Any]] = []
@@ -362,11 +368,15 @@ final class QaAcceptanceLoopTests: XCTestCase {
             let editable = type == .textField || type == .secureTextField || type == .textView || type == .searchField
             let clickable = type == .button || type == .cell || type == .link || type == .segmentedControl
                 || type == .switch || type == .checkBox || type == .menuItem || type == .tabBar
-            if editable || clickable || !label.isEmpty || !value.isEmpty || s.hasFocus {
+            if editable || clickable || !label.isEmpty || !value.isEmpty || s.hasFocus || s.isSelected {
                 nodes.append([
                     "label": label,
                     "value": value,
                     "id": s.identifier,
+                    "type": readableType(type),
+                    "typeRaw": Int(type.rawValue),
+                    "enabled": s.isEnabled,
+                    "selected": s.isSelected,
                     "editable": editable,
                     "clickable": clickable,
                     "focused": s.hasFocus,
@@ -377,6 +387,29 @@ final class QaAcceptanceLoopTests: XCTestCase {
         }
         walk(snapshot)
         return nodes
+    }
+
+    private func readableType(_ type: XCUIElement.ElementType) -> String {
+        switch type {
+        case .button: return "button"
+        case .cell: return "cell"
+        case .image: return "image"
+        case .staticText: return "staticText"
+        case .textField: return "textField"
+        case .secureTextField: return "secureTextField"
+        case .textView: return "textView"
+        case .searchField: return "searchField"
+        case .link: return "link"
+        case .segmentedControl: return "segmentedControl"
+        case .switch: return "switch"
+        case .checkBox: return "checkBox"
+        case .menuItem: return "menuItem"
+        case .tabBar: return "tabBar"
+        case .window: return "window"
+        case .scrollBar: return "scrollBar"
+        case .toolbar: return "toolbar"
+        default: return "other"
+        }
     }
 
     private func writeReady(_ ioDir: String) {

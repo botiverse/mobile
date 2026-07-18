@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   composerHasNewPreview,
   countThreadImageNodes,
+  diffUiNodeStates,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
@@ -10,6 +11,7 @@ import {
   hasRealPhotoPicker,
   photosFullAccessAlertDecision,
   redactEditableValues,
+  uiNodeSignature,
 } from "./ios_navigation_matcher.mjs";
 
 const header = '"CHANNELS" [90,600][270,650]';
@@ -263,6 +265,110 @@ test("legacy variant still classifies with its header-gated rules", () => {
   const dump = '"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]\n"" [24,200][300,476]';
   assert.equal(hasRealPhotoPicker(dump), true);
   assert.equal(findPhotoCellTarget(dump).variant, "legacy");
+});
+
+test("iOS 26 chrome: a fullscreen Photos ancestor alone does not satisfy the tab pair", () => {
+  const dump = [
+    '"Cancel" [60,231][168,339]',
+    '"Done" [1002,231][1110,339]',
+    '"Photos" [0,171][1170,2532]', // fullscreen ancestor — must NOT count as a tab
+    '"Collections" [585,213][870,357]',
+    '"Select Photos" [437,2349][734,2403]',
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+  ].join("\n");
+  assert.equal(hasRealPhotoPicker(dump), false);
+});
+
+test("iOS 26 chrome: Cancel/Done must be small TOP nodes", () => {
+  const dump = [
+    '"Cancel" [60,2200][168,2308]', // bottom node — must NOT count
+    '"Done" [1002,231][1110,339]',
+    '"Photos" [300,213][585,357]',
+    '"Collections" [585,213][870,357]',
+    '"Select Photos" [437,2349][734,2403]',
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+  ].join("\n");
+  assert.equal(hasRealPhotoPicker(dump), false);
+});
+
+test("iOS 26 chrome: Photos/Collections tabs must share a row with similar height", () => {
+  const dump = [
+    '"Cancel" [60,231][168,339]',
+    '"Done" [1002,231][1110,339]',
+    '"Photos" [300,213][585,357]',
+    '"Collections" [585,500][870,644]', // different row — must NOT pair
+    '"Select Photos" [437,2349][734,2403]',
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+  ].join("\n");
+  assert.equal(hasRealPhotoPicker(dump), false);
+});
+
+test("findPhotoCellTarget rejects large bounds overlap even when centers are >12px apart", () => {
+  const dump = [
+    ios26Chrome,
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+    '"Photo, August 08, 2012, 9:55 PM" [100,405][487,792]', // center 100px away, 74% shared width
+  ].join("\n");
+  assert.throws(() => findPhotoCellTarget(dump), /ambiguous top-left/);
+});
+
+test("findPhotoCellTarget rejects duplicate nodes with identical bounds", () => {
+  const dump = [
+    ios26Chrome,
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+  ].join("\n");
+  assert.throws(() => findPhotoCellTarget(dump), /ambiguous top-left/);
+});
+
+test("findPhotoCellTarget accepts edge-adjacent cells (zero-area shared border)", () => {
+  const dump = [
+    ios26Chrome,
+    '"Photo, March 30, 2018, 7:14 PM" [0,405][387,792]',
+    '"Photo, August 08, 2012, 9:55 PM" [387,405][774,792]', // shares only the x=387 edge
+  ].join("\n");
+  const target = findPhotoCellTarget(dump);
+  assert.deepEqual({ x: target.x, y: target.y }, { x: 194, y: 599 });
+});
+
+test("uiNodeSignature prefers the verbatim identifier, falls back to type+label+bounds", () => {
+  assert.equal(uiNodeSignature({ identifier: "abc", type: "button", label: "X", bounds: [1, 2, 3, 4] }), "id:abc");
+  assert.equal(uiNodeSignature({ identifier: "  ", type: "cell", label: "P", bounds: [1, 2, 3, 4] }), "anon:cell|P|1,2,3,4");
+});
+
+test("diffUiNodeStates detects an enabled flip on the same node", () => {
+  const before = [{ identifier: "done-btn", type: "button", label: "Done", bounds: [1002, 231, 1110, 339], enabled: false, selected: false, value: "" }];
+  const after = [{ ...before[0], enabled: true }];
+  const diff = diffUiNodeStates(before, after);
+  assert.equal(diff.added.length, 0);
+  assert.equal(diff.removed.length, 0);
+  assert.equal(diff.stateChanged.length, 1);
+  assert.equal(diff.stateChanged[0].signature, "id:done-btn");
+  assert.deepEqual(diff.stateChanged[0].changed, ["enabled"]);
+  assert.equal(diff.stateChanged[0].before.enabled, false);
+  assert.equal(diff.stateChanged[0].after.enabled, true);
+});
+
+test("diffUiNodeStates detects a selected flip on a cell", () => {
+  const cell = { identifier: "", type: "cell", label: "Photo, March 30, 2018, 7:14 PM", bounds: [0, 405, 387, 792], enabled: true, selected: false, value: "" };
+  const diff = diffUiNodeStates([cell], [{ ...cell, selected: true }]);
+  assert.equal(diff.stateChanged.length, 1);
+  assert.equal(diff.stateChanged[0].signature, "anon:cell|Photo, March 30, 2018, 7:14 PM|0,405,387,792");
+  assert.deepEqual(diff.stateChanged[0].changed, ["selected"]);
+});
+
+test("diffUiNodeStates reports added and removed signatures", () => {
+  const a = { identifier: "a", type: "image", label: "", bounds: [0, 0, 10, 10], enabled: true, selected: false, value: "" };
+  const b = { identifier: "b", type: "image", label: "", bounds: [0, 0, 10, 10], enabled: true, selected: false, value: "" };
+  const diff = diffUiNodeStates([a], [b]);
+  assert.deepEqual(diff.added, ["id:b"]);
+  assert.deepEqual(diff.removed, ["id:a"]);
+  assert.equal(diff.stateChanged.length, 0);
+});
+
+test("diffUiNodeStates stays silent on identical snapshots", () => {
+  const nodes = [{ identifier: "x", type: "button", label: "Cancel", bounds: [60, 231, 168, 339], enabled: true, selected: false, value: "" }];
+  assert.deepEqual(diffUiNodeStates(nodes, nodes.map((n) => ({ ...n }))), { added: [], removed: [], stateChanged: [] });
 });
 
 test("composerHasNewPreview only accepts a NEW node inside the composer", () => {

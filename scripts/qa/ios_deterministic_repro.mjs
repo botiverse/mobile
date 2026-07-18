@@ -20,11 +20,13 @@
 //   --sampling       permission-bootstrap phase only: after the post-Allow
 //                    auto-open check, record branch + dumps and stop.
 //   --sampling-cell  cell-selection phase: on a PROVEN picker, issue exactly
-//                    one cell tap, capture before/after-cell dumps + screenshot
-//                    + selection-sample.json, stop. Never taps Done, never
-//                    judges the composer preview (iOS 26's picker is
-//                    multi-select style; the selection-state contract must be
-//                    reviewable before Done/preview is attempted).
+//                    one cell tap, capture before/after STRUCTURED node
+//                    snapshots (identifier/type/enabled/selected) + text dumps
+//                    + screenshot + selection-sample.json with a field-level
+//                    state diff, stop. Never taps Done, never judges the
+//                    composer preview (iOS 26's picker is multi-select style;
+//                    the selection-state contract must be reviewable before
+//                    Done/preview is attempted).
 //
 // Usage:
 //   node scripts/qa/ios_deterministic_repro.mjs \
@@ -38,12 +40,14 @@ import { createIosDriver } from "./ios_driver.mjs";
 import {
   composerHasNewPreview,
   countThreadImageNodes,
+  diffUiNodeStates,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
   hasPhotoPickerGate,
   hasRealPhotoPicker,
   redactEditableValues,
+  uiNodeSignature,
 } from "./ios_navigation_matcher.mjs";
 
 const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; };
@@ -302,12 +306,16 @@ try {
   // ── Cell-selection sampling (task #26) ──────────────────────────────────
   // iOS 26's picker is multi-select style: a cell tap forms a SELECTION state
   // and does NOT close the picker (exact "Done" commits it). This head issues
-  // exactly one cell tap on the proven picker and stops with the observable
-  // selection-state facts — it never taps Done, never judges the composer
+  // exactly one cell tap on the proven picker and stops with STRUCTURED
+  // selection-state evidence (identifier/type/enabled/selected before vs
+  // after, field-level state diff — XiShi static review) plus human-review
+  // text dumps + screenshot. It never taps Done, never judges the composer
   // preview, and never emits a chain PASS (selection-state contract pending).
   if (cellSampling) {
-    const beforeCell = redactEditableValues(after);
-    fs.writeFileSync(path.join(outDir, "before-cell-dump.txt"), beforeCell);
+    const beforeCellText = redactEditableValues(after);
+    fs.writeFileSync(path.join(outDir, "before-cell-dump.txt"), beforeCellText);
+    const beforeNodes = await drv.describeUiNodes();
+    fs.writeFileSync(path.join(outDir, "before-cell-nodes.json"), JSON.stringify(beforeNodes, null, 2));
     let sampleTarget;
     try {
       sampleTarget = findPhotoCellTarget(after);
@@ -315,25 +323,57 @@ try {
       writeVerdict("fail", `photo cell selection precondition failed: ${String(error)}`);
       process.exit(1);
     }
-    rec(`cell-sampling: single tap on ${sampleTarget.variant} top-left photo cell at [${sampleTarget.x},${sampleTarget.y}]`);
+    const aliveBeforeCellTap = processAlive();
+    rec(`cell-sampling: single tap on ${sampleTarget.variant} top-left photo cell at [${sampleTarget.x},${sampleTarget.y}] (alive before: ${aliveBeforeCellTap})`);
     await drv.tap(sampleTarget.x, sampleTarget.y);
     await new Promise((r) => setTimeout(r, 3000));
-    const afterCellSan = redactEditableValues(await drv.dumpUi());
-    fs.writeFileSync(path.join(outDir, "after-cell-dump.txt"), afterCellSan);
+    const aliveAfterCellTap = processAlive();
+    const afterNodes = await drv.describeUiNodes();
+    fs.writeFileSync(path.join(outDir, "after-cell-nodes.json"), JSON.stringify(afterNodes, null, 2));
+    const afterCellText = redactEditableValues(await drv.dumpUi());
+    fs.writeFileSync(path.join(outDir, "after-cell-dump.txt"), afterCellText);
     await shot("step-04-after-cell.png");
-    const exactLabelLines = (dumpText, re) => dumpText.split("\n")
-      .filter((l) => re.test((/"([^"]*)"/.exec(l)?.[1] ?? "").trim()));
-    const beforeLines = new Set(beforeCell.split("\n"));
-    const afterLines = new Set(afterCellSan.split("\n"));
+
+    const nodeState = (n) => (n ? {
+      identifier: n.identifier, type: n.type, label: n.label,
+      bounds: n.bounds, enabled: n.enabled, selected: n.selected,
+    } : null);
+    // The tapped cell's before/after state, located by the tap point inside
+    // its bounds (smallest containing node wins), then tracked by signature.
+    const tappedBefore = beforeNodes
+      .filter((n) => n.bounds[0] <= sampleTarget.x && sampleTarget.x <= n.bounds[2]
+        && n.bounds[1] <= sampleTarget.y && sampleTarget.y <= n.bounds[3])
+      .sort((a, b) => ((a.bounds[2] - a.bounds[0]) * (a.bounds[3] - a.bounds[1]))
+        - ((b.bounds[2] - b.bounds[0]) * (b.bounds[3] - b.bounds[1])))[0] ?? null;
+    const tappedAfter = tappedBefore
+      ? afterNodes.find((n) => uiNodeSignature(n) === uiNodeSignature(tappedBefore)) ?? null
+      : null;
+    const doneNodes = (list) => list
+      .filter((n) => n.label.trim().toLowerCase() === "done")
+      .map(nodeState);
+
     fs.writeFileSync(path.join(outDir, "selection-sample.json"), JSON.stringify({
+      cellTap: 1,
+      aliveBeforeCellTap,
+      aliveAfterCellTap,
       cellTarget: sampleTarget,
       pickerVariant: sampleTarget.variant,
-      pickerStillOpenAfterCellTap: hasRealPhotoPicker(afterCellSan),
-      doneNodesBefore: exactLabelLines(beforeCell, /^done$/i),
-      doneNodesAfter: exactLabelLines(afterCellSan, /^done$/i),
-      newNodesAfterCellTap: [...afterLines].filter((l) => l && !beforeLines.has(l)),
-      removedNodesAfterCellTap: [...beforeLines].filter((l) => l && !afterLines.has(l)),
-      evidenceRefs: ["selection-sample.json", "before-cell-dump.txt", "after-cell-dump.txt", "step-04-after-cell.png"],
+      tappedNodeBefore: nodeState(tappedBefore),
+      tappedNodeAfter: nodeState(tappedAfter),
+      doneNodesBefore: doneNodes(beforeNodes),
+      doneNodesAfter: doneNodes(afterNodes),
+      stateDiff: diffUiNodeStates(beforeNodes, afterNodes),
+      // Whether the full picker matcher still matches the after-tap TEXT dump.
+      // This is a detector statement, NOT proof the picker UI is still
+      // visible — visibility is judged by a human from the screenshot/chrome
+      // dump/liveness above (a detector false is not a UI false).
+      pickerContractStillMatchesAfterCellTap: hasRealPhotoPicker(afterCellText),
+      evidenceRefs: [
+        "selection-sample.json",
+        "before-cell-nodes.json", "after-cell-nodes.json",
+        "before-cell-dump.txt", "after-cell-dump.txt",
+        "step-04-after-cell.png",
+      ],
     }, null, 2));
     writeVerdict("sample", `single cell tap issued on proven ${sampleTarget.variant} picker at [${sampleTarget.x},${sampleTarget.y}] — cell-selection sampling ends here by contract (no Done tap, no preview judgment, no chain verdict)`);
     process.exit(0);
