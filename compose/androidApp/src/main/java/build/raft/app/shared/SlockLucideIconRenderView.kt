@@ -1,7 +1,10 @@
 package build.raft.app.shared
 
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color as AndroidColor
+import android.view.View
+import android.view.animation.LinearInterpolator
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -32,6 +35,9 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
     private var renderedVector: ImageVector? by mutableStateOf<ImageVector?>(null)
     private var renderedTint: Color by mutableStateOf(Color.Black)
     private var renderedVerticalOffsetPx: Float by mutableStateOf(0f)
+    private var spinning: Boolean = false
+    private var rotationDegrees: Float = 0f
+    private var spinAnimator: ObjectAnimator? = null
 
     init {
         clipChildren = false
@@ -57,6 +63,8 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                     PROP_FILL -> updateFillTint(parseOptionalColor(propValue))
                     PROP_STROKE_WIDTH -> updateStrokeWidth(parseStrokeWidth(propValue))
                     PROP_VERTICAL_OFFSET_DP -> updateVerticalOffset(parseVerticalOffset(propValue))
+                    PROP_SPINNING -> updateSpinning(parseBoolean(propValue))
+                    PROP_ROTATION_DEGREES -> updateRotationDegrees(parseRotationDegrees(propValue))
                     else -> return super.setProp(propKey, propValue)
                 }
         if (changed) {
@@ -73,6 +81,8 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                     PROP_FILL -> updateFillTint(null)
                     PROP_STROKE_WIDTH -> updateStrokeWidth(null)
                     PROP_VERTICAL_OFFSET_DP -> updateVerticalOffset(0f)
+                    PROP_SPINNING -> updateSpinning(false)
+                    PROP_ROTATION_DEGREES -> updateRotationDegrees(0f)
                     else -> return super.resetProp(propKey)
                 }
         if (changed) {
@@ -123,7 +133,46 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         return true
     }
 
+    private fun updateSpinning(next: Boolean): Boolean {
+        if (spinning == next) {
+            return false
+        }
+        spinning = next
+        applyRotationState()
+        return false
+    }
+
+    private fun updateRotationDegrees(next: Float): Boolean {
+        if (rotationDegrees == next) {
+            return false
+        }
+        rotationDegrees = next
+        applyRotationState()
+        return false
+    }
+
+    private fun applyRotationState() {
+        if (spinning) {
+            if (spinAnimator == null) {
+                spinAnimator =
+                        ObjectAnimator.ofFloat(composeView, View.ROTATION, 0f, 360f).apply {
+                            duration = SPIN_DURATION_MS
+                            repeatCount = ObjectAnimator.INFINITE
+                            repeatMode = ObjectAnimator.RESTART
+                            interpolator = LinearInterpolator()
+                        }
+            }
+            composeView.rotation = 0f
+            spinAnimator?.start()
+        } else {
+            spinAnimator?.cancel()
+            composeView.rotation = rotationDegrees
+        }
+    }
+
     override fun onDestroy() {
+        spinAnimator?.cancel()
+        spinAnimator = null
         composeView.disposeComposition()
         super.onDestroy()
     }
@@ -216,6 +265,21 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                 else -> 0f
             }
 
+    private fun parseBoolean(value: Any): Boolean =
+            when (value) {
+                is Boolean -> value
+                is Number -> value.toInt() != 0
+                is String -> value.equals("true", ignoreCase = true) || value == "1"
+                else -> false
+            }
+
+    private fun parseRotationDegrees(value: Any): Float =
+            when (value) {
+                is Number -> value.toFloat()
+                is String -> value.toFloatOrNull() ?: 0f
+                else -> 0f
+            }
+
     private fun String.toIconKey(): String =
             trim()
                     .replace(Regex("([a-z0-9])([A-Z])"), "$1-$2")
@@ -235,5 +299,10 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         private const val PROP_FILL = "fill"
         private const val PROP_STROKE_WIDTH = "strokeWidth"
         private const val PROP_VERTICAL_OFFSET_DP = "verticalOffsetDp"
+        private const val PROP_SPINNING = "spinning"
+        private const val PROP_ROTATION_DEGREES = "rotationDegrees"
+
+        /** Matches `SlockIconSpinDurationSeconds` in shared SlockLucideIcon.kt. */
+        private const val SPIN_DURATION_MS = 900L
     }
 }
