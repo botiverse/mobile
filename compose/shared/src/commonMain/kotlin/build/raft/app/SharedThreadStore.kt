@@ -558,6 +558,8 @@ internal class SharedThreadPayloadStore(
     private val prewarmInFlight = mutableMapOf<SharedThreadPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
     private val prewarmInFlightGenerations =
         mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
+    private val prewarmFetchStartedGenerations =
+        mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val prewarmReadyGenerations =
         mutableMapOf<SharedThreadPayloadCacheKey, SharedThreadFreshnessGeneration>()
     private val prewarmFailureGenerations =
@@ -673,6 +675,7 @@ internal class SharedThreadPayloadStore(
                 if (prewarmInFlightGenerations[key] !== generation) {
                     prewarmInFlight.remove(key)
                     prewarmInFlightGenerations.remove(key)
+                    prewarmFetchStartedGenerations.remove(key)
                     failedPrewarmTakeovers.remove(key)
                     failedPrewarmTakeoverGenerations.remove(key)
                     failedPrewarmTakeoverResults.remove(key)
@@ -694,6 +697,22 @@ internal class SharedThreadPayloadStore(
                             val result =
                                 prewarmPool.withPermit {
                                     awaitPrewarmStartRateLimit()
+                                    val currentJob = currentCoroutineContext()[Job]
+                                    val stillOwned =
+                                        prewarmMutex.withLock {
+                                            if (
+                                                prewarmInFlightGenerations[key] === generation &&
+                                                prewarmInFlight[key] === currentJob
+                                            ) {
+                                                prewarmFetchStartedGenerations[key] = generation
+                                                true
+                                            } else {
+                                                false
+                                            }
+                                        }
+                                    if (!stillOwned) {
+                                        throw CancellationException("queued thread prewarm was promoted")
+                                    }
                                     fetch()
                                 }
                             prewarmMutex.withLock {
@@ -726,6 +745,7 @@ internal class SharedThreadPayloadStore(
                                 if (prewarmInFlight[key] === currentJob) {
                                     prewarmInFlight.remove(key)
                                     prewarmInFlightGenerations.remove(key)
+                                    prewarmFetchStartedGenerations.remove(key)
                                 }
                             }
                         }
@@ -742,6 +762,30 @@ internal class SharedThreadPayloadStore(
         val shared = deferred ?: error("prewarm generation lookup missing")
         created?.start()
         shared.await()
+    }
+
+    /**
+     * A visible Thread must not inherit the queue delay of a background prewarm that has not
+     * reached its network fetch yet. Detach and cancel only that queued generation; an already
+     * started request remains single-flight and is joined by [joinOrConsumePrewarm].
+     */
+    suspend fun promoteQueuedPrewarm(serverId: String, threadId: String): Boolean {
+        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+        var queued: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
+        prewarmMutex.withLock {
+            val generation = freshnessLedger.capture(serverId, threadId)
+            val candidate =
+                prewarmInFlight[key]
+                    ?.takeIf { prewarmInFlightGenerations[key] === generation }
+                    ?: return@withLock
+            if (prewarmFetchStartedGenerations[key] === generation) return@withLock
+            prewarmInFlight.remove(key)
+            prewarmInFlightGenerations.remove(key)
+            prewarmFetchStartedGenerations.remove(key)
+            queued = candidate
+        }
+        queued?.cancel()
+        return queued != null
     }
 
     suspend fun joinOrConsumePrewarm(serverId: String, threadId: String): DataResult<KuiklyThreadScreenPayload>? {
@@ -917,6 +961,7 @@ internal class SharedThreadPayloadStore(
         failedPrewarmTakeovers.values.forEach { it.cancel() }
         prewarmInFlight.clear()
         prewarmInFlightGenerations.clear()
+        prewarmFetchStartedGenerations.clear()
         prewarmReadyGenerations.clear()
         prewarmFailures.clear()
         prewarmFailureGenerations.clear()
@@ -1676,15 +1721,23 @@ internal class SharedThreadDataSource(
                 ?: resolvedBasePayload.streamChannelId?.takeIf { it.isNotBlank() }
         var failedPrewarm = false
         if (reusePrewarm && threadId != null) {
-            when (val warmed = payloadCache.joinOrConsumePrewarm(session.currentServerId.orEmpty(), threadId)) {
-                is DataResult.Content -> {
-                    cacheReplyThreadResolution(warmed.data)
-                    return warmed
+            val serverId = session.currentServerId.orEmpty()
+            if (payloadCache.promoteQueuedPrewarm(serverId, threadId)) {
+                diagnosticsLogger(
+                    "thread_prewarm_promote threadId=$threadId from=background_queue to=foreground"
+                )
+                failedPrewarm = true
+            } else {
+                when (val warmed = payloadCache.joinOrConsumePrewarm(serverId, threadId)) {
+                    is DataResult.Content -> {
+                        cacheReplyThreadResolution(warmed.data)
+                        return warmed
+                    }
+                    is DataResult.Empty,
+                    is DataResult.Error,
+                    is DataResult.NoPermission -> failedPrewarm = true
+                    null -> Unit
                 }
-                is DataResult.Empty,
-                is DataResult.Error,
-                is DataResult.NoPermission -> failedPrewarm = true
-                null -> Unit
             }
         }
         suspend fun fetchCanonicalPayload(): DataResult<KuiklyThreadScreenPayload> =
