@@ -7,6 +7,15 @@ import org.junit.Test
 
 class HomeColdStartSplashGateTest {
     @Test
+    fun timeoutRemainingUsesElapsedTime() {
+        val gate = HomeColdStartSplashGate(enabled = true, startedAtMillis = 1_000L)
+
+        assertEquals(1_500L, gate.millisUntilTimeout(nowMillis = 1_000L))
+        assertEquals(1L, gate.millisUntilTimeout(nowMillis = 2_499L))
+        assertEquals(0L, gate.millisUntilTimeout(nowMillis = 2_500L))
+    }
+
+    @Test
     fun installsOnlyForHomeAppShellLaunches() {
         assertTrue(shouldInstallHomeColdStartSplash(SlockKuiklyActivity.PAGE_APP_SHELL, null))
         assertTrue(

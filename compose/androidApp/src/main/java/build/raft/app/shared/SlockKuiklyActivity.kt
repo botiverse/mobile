@@ -65,6 +65,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.BuildConfig
@@ -312,6 +313,11 @@ open class SlockKuiklyActivity :
     private var pageSpec: SlockKuiklyPageSpec? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
     private var homeColdStartSplashTimeoutLogged = false
+    private var homeColdStartUsesNativeHold = false
+    private var homeColdStartHoldView: View? = null
+    private val homeColdStartTimeoutRunnable = Runnable { handleHomeColdStartTimeout() }
+    private var homeColdStartFirstDrawListener: ViewTreeObserver.OnDrawListener? = null
+    private var kuiklyHostAttached = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var pendingAttachmentExport: PendingAttachmentExport? = null
@@ -345,15 +351,41 @@ open class SlockKuiklyActivity :
         get() = resolvedPageName(intent)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installHomeColdStartSplashIfNeeded()
+        prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
-        SlockKuiklyAdapters.init(applicationContext)
         setContentView(R.layout.activity_slock_kuikly)
         registerAndroidShellWindow(intent)
         setupImmersiveMode()
         setupImeInsetsRelayout()
         suppressVisualKeyboard()
+        installHomeColdStartNativeHoldIfNeeded()
+        if (homeColdStartUsesNativeHold) {
+            attachKuiklyHostAfterHoldFirstDraw()
+        } else {
+            attachKuiklyHost()
+        }
+    }
+
+    private fun attachKuiklyHostAfterHoldFirstDraw() {
+        val content = findViewById<View>(android.R.id.content)
+        var drawObserved = false
+        val listener =
+            ViewTreeObserver.OnDrawListener {
+                if (drawObserved) return@OnDrawListener
+                drawObserved = true
+                content.post {
+                    removeHomeColdStartFirstDrawListener(content)
+                    attachKuiklyHost()
+                }
+            }
+        homeColdStartFirstDrawListener = listener
+        content.viewTreeObserver.addOnDrawListener(listener)
+    }
+
+    private fun attachKuiklyHost() {
+        if (kuiklyHostAttached || isFinishing || isDestroyed) return
+        SlockKuiklyAdapters.init(applicationContext)
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
         installSlockInputFontBridge(container)
         val spec = createPageSpec()
@@ -362,34 +394,100 @@ open class SlockKuiklyActivity :
         SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
+        kuiklyHostAttached = true
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            kuiklyRenderViewDelegator.onResume()
+            reportRealtimeVisibility(AndroidHostVisibility.Visible, "deferred_host_attach")
+        }
         SlockAndroidLocalDiagnostics.reportAppFullLaunch()
     }
 
-    private fun installHomeColdStartSplashIfNeeded() {
+    private fun removeHomeColdStartFirstDrawListener(
+        content: View = findViewById(android.R.id.content)
+    ) {
+        val listener = homeColdStartFirstDrawListener ?: return
+        if (content.viewTreeObserver.isAlive) {
+            content.viewTreeObserver.removeOnDrawListener(listener)
+        }
+        homeColdStartFirstDrawListener = null
+    }
+
+    private fun prepareHomeColdStartSplashIfNeeded() {
         val resolvedPageName = resolvedPageName(intent)
         val pageDataText = resolvedPageData(intent).text
         if (!shouldInstallHomeColdStartSplash(resolvedPageName, pageDataText)) return
 
-        setTheme(R.style.Theme_Slock_Starting)
+        setTheme(R.style.Theme_Slock_AppShellStarting)
         val gate =
             HomeColdStartSplashGate(
                 enabled = true,
                 startedAtMillis = SystemClock.elapsedRealtime()
             )
         homeColdStartSplashGate = gate
-        installSplashScreen().setKeepOnScreenCondition {
-            val nowMillis = SystemClock.elapsedRealtime()
-            val keepOnScreen = gate.shouldKeepOnScreen(nowMillis)
-            if (!keepOnScreen && gate.timedOut() && !homeColdStartSplashTimeoutLogged) {
-                homeColdStartSplashTimeoutLogged = true
-                SlockAppLog.w(
-                    "SlockBoot",
-                    "home_content_splash_timeout timeoutMs=$HOME_COLD_START_SPLASH_TIMEOUT_MILLIS"
-                )
-            }
-            keepOnScreen
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            homeColdStartUsesNativeHold = true
+            SlockAppLog.d(
+                "SlockBoot",
+                "home_content_splash_installed page=$resolvedPageName mode=native_hold"
+            )
+            return
         }
-        SlockAppLog.d("SlockBoot", "home_content_splash_installed page=$resolvedPageName")
+        installSplashScreen().setKeepOnScreenCondition {
+            shouldKeepHomeColdStartOnScreen(gate)
+        }
+        SlockAppLog.d(
+            "SlockBoot",
+            "home_content_splash_installed page=$resolvedPageName mode=compat_splash"
+        )
+    }
+
+    private fun installHomeColdStartNativeHoldIfNeeded() {
+        if (!homeColdStartUsesNativeHold) return
+        val gate = homeColdStartSplashGate ?: return
+        val content = findViewById<ViewGroup>(android.R.id.content)
+        val holdView = layoutInflater.inflate(R.layout.slock_app_shell_splash_hold, content, false)
+        content.addView(holdView)
+        homeColdStartHoldView = holdView
+        SlockAppLog.d("SlockBoot", "home_content_splash_hold_view_installed")
+        scheduleHomeColdStartTimeout(gate)
+    }
+
+    private fun shouldKeepHomeColdStartOnScreen(gate: HomeColdStartSplashGate): Boolean {
+        val keepOnScreen = gate.shouldKeepOnScreen(SystemClock.elapsedRealtime())
+        if (!keepOnScreen && gate.timedOut() && !homeColdStartSplashTimeoutLogged) {
+            homeColdStartSplashTimeoutLogged = true
+            SlockAppLog.w(
+                "SlockBoot",
+                "home_content_splash_timeout timeoutMs=$HOME_COLD_START_SPLASH_TIMEOUT_MILLIS"
+            )
+        }
+        return keepOnScreen
+    }
+
+    private fun scheduleHomeColdStartTimeout(gate: HomeColdStartSplashGate) {
+        val delayMillis = gate.millisUntilTimeout(SystemClock.elapsedRealtime())
+        if (delayMillis <= 0L) {
+            handleHomeColdStartTimeout()
+        } else {
+            window.decorView.postDelayed(homeColdStartTimeoutRunnable, delayMillis)
+        }
+    }
+
+    private fun handleHomeColdStartTimeout() {
+        val gate = homeColdStartSplashGate ?: return
+        if (shouldKeepHomeColdStartOnScreen(gate)) {
+            scheduleHomeColdStartTimeout(gate)
+            return
+        }
+        removeHomeColdStartNativeHold(reason = "timeout")
+    }
+
+    private fun removeHomeColdStartNativeHold(reason: String) {
+        window.decorView.removeCallbacks(homeColdStartTimeoutRunnable)
+        val holdView = homeColdStartHoldView ?: return
+        (holdView.parent as? ViewGroup)?.removeView(holdView)
+        homeColdStartHoldView = null
+        SlockAppLog.d("SlockBoot", "home_content_splash_hold_view_removed reason=$reason")
     }
 
     override fun onSlockKuiklyChildPageLoadComplete(
@@ -399,6 +497,7 @@ open class SlockKuiklyActivity :
     ) {
         if (!isHomeAppShellChildPageData(pageDataText)) return
         if (homeColdStartSplashGate?.release() != true) return
+        removeHomeColdStartNativeHold(reason = "child_page_load")
         SlockAppLog.d(
             "SlockBoot",
             "home_content_splash_released source=child_page_load success=$isSucceed page=$pageName"
@@ -418,6 +517,8 @@ open class SlockKuiklyActivity :
     }
 
     override fun onDestroy() {
+        removeHomeColdStartFirstDrawListener()
+        removeHomeColdStartNativeHold(reason = "destroy")
         removeSlockInputFontBridge()
         if (shouldReleaseAndroidShellWindow(isFinishing, isChangingConfigurations)) {
             androidShellLaunchTarget?.let { target ->
@@ -433,7 +534,9 @@ open class SlockKuiklyActivity :
             }
         }
         super.onDestroy()
-        kuiklyRenderViewDelegator.onDetach()
+        if (kuiklyHostAttached) {
+            kuiklyRenderViewDelegator.onDetach()
+        }
     }
 
     private fun registerAndroidShellWindow(intent: Intent?) {
@@ -449,27 +552,24 @@ open class SlockKuiklyActivity :
     }
 
     override fun onPause() {
-        AndroidAppScopeRealtimeOwner.onHostVisibilityChanged(
-            context = applicationContext,
-            visibility = AndroidHostVisibility.Hidden,
-            shellInstanceId = realtimeVisibilityOwnerId,
-            source = "activity_on_pause"
-        )
+        if (kuiklyHostAttached) {
+            reportRealtimeVisibility(AndroidHostVisibility.Hidden, "activity_on_pause")
+        }
         super.onPause()
-        kuiklyRenderViewDelegator.onPause()
+        if (kuiklyHostAttached) {
+            kuiklyRenderViewDelegator.onPause()
+        }
     }
 
     override fun onResume() {
         super.onResume()
         suppressVisualKeyboard()
         applySlockInputTypeface()
-        kuiklyRenderViewDelegator.onResume()
-        AndroidAppScopeRealtimeOwner.onHostVisibilityChanged(
-            context = applicationContext,
-            visibility = AndroidHostVisibility.Visible,
-            shellInstanceId = realtimeVisibilityOwnerId,
-            source = "activity_on_resume"
-        )
+        if (kuiklyHostAttached) {
+            kuiklyRenderViewDelegator.onResume()
+            reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
+        }
+
         AndroidRealtimeKeepAliveController.start(
             context = applicationContext,
             source = "activity_on_resume"
@@ -477,6 +577,18 @@ open class SlockKuiklyActivity :
         SlockActivityWidgetProvider.refreshAllWidgets(applicationContext)
         SlockAgentStatusWidgetProvider.refreshAllWidgets(applicationContext)
         SlockKuiklyBridgeModule.resumePendingQuiverAutoInstall(applicationContext)
+    }
+
+    private fun reportRealtimeVisibility(
+        visibility: AndroidHostVisibility,
+        source: String,
+    ) {
+        AndroidAppScopeRealtimeOwner.onHostVisibilityChanged(
+            context = applicationContext,
+            visibility = visibility,
+            shellInstanceId = realtimeVisibilityOwnerId,
+            source = source
+        )
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

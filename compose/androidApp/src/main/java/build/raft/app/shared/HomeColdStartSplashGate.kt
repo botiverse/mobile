@@ -60,6 +60,13 @@ internal class HomeColdStartSplashGate(
         return false
     }
 
+    @Synchronized
+    fun millisUntilTimeout(nowMillis: Long): Long {
+        if (state != State.Pending) return 0L
+        val elapsedMillis = (nowMillis - startedAtMillis).coerceAtLeast(0L)
+        return (timeoutMillis - elapsedMillis).coerceAtLeast(0L)
+    }
+
     fun timedOut(): Boolean = state == State.TimedOut
 
     private enum class State {
