@@ -46,9 +46,11 @@ Peer `scope_read:updated` receipts are a different derived family and are reject
 
 ## Persistence and recovery
 
-`syncReadStateFactEntity` stores one complete pair per durable identity. Snapshot commit is authoritative full
-replacement. Incremental compare and write occur in one SQL transaction. Restore accepts only a complete,
-valid row from the exact partition; corrupt rows fail closed. A current-grant check is made inside the
+`syncReadStateFactEntity` stores one complete pair per durable identity. Snapshot commit still obeys version
+ordering: a lower hydrate is stale, while a verified equal-version/different-pair hydrate is the authoritative
+conflict adjudicator and may replace that disputed pair. Incremental compare and write occur in one SQL
+transaction. Restore accepts only a complete, valid row from the exact partition; corrupt rows fail closed,
+invalidate the baseline, and coalesce a clean hydrate request. A current-grant check is made inside the
 transaction before mutation and again immediately before commit.
 
 ## HOLD boundary

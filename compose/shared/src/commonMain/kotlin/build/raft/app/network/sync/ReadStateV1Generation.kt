@@ -125,7 +125,11 @@ class ReadStateV1GenerationEngine(
 
     suspend fun restore(witness: ReadStateV1GrantWitness): ReadStateV1GenerationResult {
         if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
-        val fact = store.restore(witness.scope) ?: return requestBaseline(witness)
+        val fact = try {
+            store.restore(witness.scope)
+        } catch (_: ReadStateV1StoredFactCorrupt) {
+            return requestBaseline(witness)
+        } ?: return requestBaseline(witness)
         if (!authority.publishIfCurrent(witness) {
                 synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
                 projectionObserver.onCommitted(witness.scope, fact)
@@ -150,8 +154,14 @@ class ReadStateV1GenerationEngine(
     }
 
     private fun invalidateAndRequest(witness: ReadStateV1GrantWitness) {
-        synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = true) }
-        rebaselineRequester.request(witness.scope)
+        if (!authority.isCurrent(witness)) return
+        val requested = synchronized(lock) {
+            val old = baselines[witness.scope]
+            if (old?.witness === witness && old.requestInFlight) return@synchronized false
+            baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
+            true
+        }
+        if (requested) rebaselineRequester.request(witness.scope)
     }
 
     private fun requestBaseline(witness: ReadStateV1GrantWitness): ReadStateV1GenerationResult {

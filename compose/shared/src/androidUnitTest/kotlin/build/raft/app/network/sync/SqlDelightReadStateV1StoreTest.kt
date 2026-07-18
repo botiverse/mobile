@@ -118,12 +118,20 @@ class SqlDelightReadStateV1StoreTest {
     }
 
     @Test
-    fun snapshotRebaselineReplacesPairAndCorruptStoredRowFailsClosed() = runBlocking {
+    fun snapshotKeepsVersionOrderingResolvesEqualConflictAndCorruptStoredRowFailsClosed() = runBlocking {
         val (database, _) = freshDatabase()
         val store = SqlDelightReadStateV1Store(database, now = { 100L })
         store.commit(scope, fact(10, 100), ReadStateV1CommitMode.Snapshot, current)
-        store.commit(scope, fact(2, 5), ReadStateV1CommitMode.Snapshot, current)
-        assertEquals(fact(2, 5), store.restore(scope))
+        assertEquals(
+            ReadStateV1StoreResult.Stale,
+            store.commit(scope, fact(2, 5), ReadStateV1CommitMode.Snapshot, current),
+        )
+        assertEquals(fact(10, 100), store.restore(scope))
+        assertEquals(
+            ReadStateV1StoreResult.Accepted,
+            store.commit(scope, fact(10, 99), ReadStateV1CommitMode.Snapshot, current),
+        )
+        assertEquals(fact(10, 99), store.restore(scope))
 
         database.queries.upsertSyncReadStateFact(
             serverId = scope.serverId,

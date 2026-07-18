@@ -58,17 +58,24 @@ internal class SqlDelightReadStateV1Store(
                     channelId = scope.channelId,
                 ).executeAsOneOrNull()
                 val transition =
-                    if (mode == ReadStateV1CommitMode.Snapshot || stored == null) {
+                    if (stored == null) {
                         ReadStateV1Transition(
                             fact = fact,
                             result = ReadStateV1ApplyResult.Accepted,
                         )
                     } else {
                         validateStored(scope, stored.readStateVersion, stored.maxReadSeq)
-                        reduceReadStateV1(
+                        val reduced = reduceReadStateV1(
                             current = ReadStateV1Fact(scope.channelId, stored.readStateVersion, stored.maxReadSeq),
                             incoming = fact,
                         )
+                        if (mode == ReadStateV1CommitMode.Snapshot && reduced.result == ReadStateV1ApplyResult.Conflict) {
+                            // A verified hydrate is the authoritative equal-version conflict adjudicator.
+                            // Lower snapshots remain stale; only the disputed equal pair may be replaced.
+                            ReadStateV1Transition(fact, ReadStateV1ApplyResult.Accepted)
+                        } else {
+                            reduced
+                        }
                     }
                 result = transition.result.toStoreResult()
                 if (transition.result == ReadStateV1ApplyResult.Accepted) {
