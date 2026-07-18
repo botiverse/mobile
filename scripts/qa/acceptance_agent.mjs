@@ -449,6 +449,11 @@ async function annotateEvidence(size, taps, assertions) {
     try {
       const svg = Buffer.from(`<svg width="${size.w}" height="${size.h}" xmlns="http://www.w3.org/2000/svg">${overlay}</svg>`);
       await sharp(src).composite([{ input: svg, top: 0, left: 0 }]).png().toFile(dst);
+      // Annotated copy inherits the original's mtime: capture-time ordering
+      // on the Stamp run page pairs it with the moment it depicts, not the
+      // end-of-run annotation pass.
+      const st = fs.statSync(src);
+      fs.utimesSync(dst, st.atime, st.mtime);
       written.push(path.basename(dst));
     } catch (e) {
       console.error(`annotation failed for ${src}: ${String(e?.message || e).slice(0, 120)}`);
