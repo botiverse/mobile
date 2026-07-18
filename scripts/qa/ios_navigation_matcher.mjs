@@ -147,20 +147,81 @@ export function findComposerImageTarget(dump) {
   return { x, y, mode: "composer-relative", line: null, composerLine: composer.line };
 }
 
+// A REAL PhotosUI picker is proven by the COMBINATION of (a) an exact picker
+// header (Recents or All Photos), (b) picker chrome (Cancel/Select), and (c)
+// at least one plausible grid cell below the header (task #26 review: a line-
+// count heuristic or a lone generic word like "select" is NOT sufficient —
+// those match ordinary app panels). The system permission marker must never
+// be used as picker evidence (it only proves the ALERT).
+export function hasRealPhotoPicker(dump) {
+  const nodes = parseDumpNodes(dump);
+  const header = nodes.find((node) => /^(recents|all photos)$/i.test(node.label.trim()));
+  if (!header) return false;
+  const chrome = nodes.some((node) => /^(cancel|select)$/i.test(node.label.trim()));
+  if (!chrome) return false;
+  return nodes.some((node) => isPlausiblePhotoTile(node, header));
+}
+
+function isPlausiblePhotoTile(node, header) {
+  const w = node.x2 - node.x1;
+  const h = node.y2 - node.y1;
+  if (node.y1 < header.y2) return false;          // grid lives below the header
+  if (w < 60 || h < 60 || w > 400 || h > 400) return false;
+  const aspect = w / h;
+  return aspect >= 0.7 && aspect <= 1.4;           // photo tiles are near-square
+}
+
 // Locate the first photo cell in a REAL PhotosUI picker dump (task #26).
-// Native picker cells are large tiles; the staged fixture is the most recent
-// photo, i.e. the top-left cell in the Recents grid. Require at least one
-// plausible tile — never fall back to coordinate probing.
+// The staged fixture is the most recent photo, i.e. the top-left tile in the
+// Recents grid. Hard rules from review: the picker header must exist (no
+// whole-dump fallback), tiles only count below it, and an ambiguous top-left
+// (two overlapping candidates) fails closed.
 export function findPhotoCellTarget(dump) {
-  const lines = String(dump || "").split("\n");
-  const headerIdx = lines.findIndex((l) => /recents|all photos/i.test(l));
-  const cells = lines.slice(headerIdx < 0 ? 0 : headerIdx)
-    .map((line) => ({ line, node: BOUNDS_RE.exec(line) }))
-    .filter((c) => c.node)
-    .map((c) => ({ line: c.line, x1: +c.node[1], y1: +c.node[2], x2: +c.node[3], y2: +c.node[4] }))
-    .filter((c) => c.x2 - c.x1 > 60 && c.y2 - c.y1 > 60)
+  const nodes = parseDumpNodes(dump);
+  const header = nodes.find((node) => /^(recents|all photos)$/i.test(node.label.trim()));
+  if (!header) throw new Error("picker header (Recents/All Photos) not found — not a proven PhotosUI picker");
+
+  const tiles = nodes
+    .filter((node) => isPlausiblePhotoTile(node, header))
     .sort((a, b) => (a.y1 - b.y1) || (a.x1 - b.x1));
-  if (!cells.length) throw new Error("no photo cell target found in the picker dump");
-  const first = cells[0];
-  return { x: Math.round((first.x1 + first.x2) / 2), y: Math.round((first.y1 + first.y2) / 2), line: first.line };
+  if (!tiles.length) throw new Error("no plausible photo tile below the picker header");
+
+  const first = tiles[0];
+  const overlapping = tiles.filter((t) => t !== first
+    && Math.abs(t.x - first.x) < 12 && Math.abs(t.y - first.y) < 12);
+  if (overlapping.length) {
+    throw new Error(`ambiguous top-left photo tile: ${overlapping.length + 1} overlapping candidates`);
+  }
+  return { x: first.x, y: first.y, line: first.line };
+}
+
+// Composer preview proof: a NEW node strictly inside the composer bounds that
+// did not exist before the selection (task #26 review: a closed picker alone
+// is NOT a preview — that is exactly the no-attachment product path we must
+// catch). Compare node sets inside the composer rectangle.
+export function composerHasNewPreview(beforeDump, afterDump, composerLine) {
+  const line = composerLine || '"Message #all"';
+  const before = new Set(nodesInside(beforeDump, line).map((n) => `${n.label}@${n.x},${n.y}`));
+  return nodesInside(afterDump, line).some((n) => !before.has(`${n.label}@${n.x},${n.y}`));
+}
+
+function nodesInside(dump, composerLine) {
+  const nodes = parseDumpNodes(dump);
+  const composer = nodes.find((node) => node.label.trim() === "Message #all") || { line: composerLine, x1: 0, y1: 0, x2: 99999, y2: 99999 };
+  return nodes.filter((node) => node.x1 >= composer.x1 && node.x2 <= composer.x2 && node.y1 >= composer.y1 && node.y2 <= composer.y2);
+}
+
+// Readback proof by before/after diff: count large image-ish nodes in the
+// thread area ABOVE the composer before send and after send; the new image
+// message must increase that count (task #26 review: any historical large
+// node must not satisfy readback).
+export function countThreadImageNodes(dump) {
+  const nodes = parseDumpNodes(dump);
+  const composer = nodes.find((node) => node.label.trim() === "Message #all");
+  if (!composer) return 0;
+  return nodes.filter((node) => {
+    const w = node.x2 - node.x1;
+    const h = node.y2 - node.y1;
+    return node.y2 < composer.y1 && w > 150 && h > 150;
+  }).length;
 }

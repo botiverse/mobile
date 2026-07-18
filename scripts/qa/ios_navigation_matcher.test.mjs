@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  composerHasNewPreview,
+  countThreadImageNodes,
   findAllChannelTarget,
   findComposerImageTarget,
   findPhotoCellTarget,
   hasPhotoPickerGate,
+  hasRealPhotoPicker,
   redactEditableValues,
 } from "./ios_navigation_matcher.mjs";
 
@@ -137,25 +140,66 @@ test("findPhotoCellTarget picks the top-left tile below the Recents header", () 
     '"Cancel" [1000,100][1140,150]',
     '"" [24,200][300,476]',
     '"" [320,200][596,476]',
-    '"Photo, March 12" [24,200][300,476]',
+    '"Photo, March 12" [616,200][892,476]',
   ].join("\n"));
   assert.equal(target.x, 162);
   assert.equal(target.y, 338);
 });
 
-test("findPhotoCellTarget fails closed on an empty picker", () => {
+test("findPhotoCellTarget fails closed when the picker header is absent", () => {
   assert.throws(
-    () => findPhotoCellTarget('"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]'),
-    /no photo cell/,
+    () => findPhotoCellTarget('"Cancel" [1000,100][1140,150]\n"" [24,200][300,476]'),
+    /header .* not found/,
   );
 });
 
-test("findPhotoCellTarget ignores small non-tile nodes", () => {
-  const target = findPhotoCellTarget([
-    '"Recents" [24,100][200,150]',
-    '"Cancel" [1000,100][1140,150]',
-    '"" [24,180][84,220]',
-    '"" [24,260][300,536]',
-  ].join("\n"));
-  assert.equal(target.y, 398);
+test("findPhotoCellTarget rejects tiles above the header", () => {
+  assert.throws(
+    () => findPhotoCellTarget('"Recents" [24,400][200,450]\n"Cancel" [1000,400][1140,450]\n"" [24,100][300,376]'),
+    /no plausible photo tile/,
+  );
+});
+
+test("findPhotoCellTarget rejects oversized container tiles", () => {
+  assert.throws(
+    () => findPhotoCellTarget('"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]\n"" [24,200][900,900]'),
+    /no plausible photo tile/,
+  );
+});
+
+test("findPhotoCellTarget fails closed on an ambiguous top-left", () => {
+  assert.throws(
+    () => findPhotoCellTarget('"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]\n"" [24,200][300,476]\n"" [28,204][304,480]'),
+    /ambiguous top-left/,
+  );
+});
+
+test("hasRealPhotoPicker requires header + chrome + tile combination", () => {
+  const good = '"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]\n"" [24,200][300,476]';
+  assert.equal(hasRealPhotoPicker(good), true);
+  assert.equal(hasRealPhotoPicker('"Recents" [24,100][200,150]\n"" [24,200][300,476]'), false); // no chrome
+  assert.equal(hasRealPhotoPicker('"Cancel" [1000,100][1140,150]\n"" [24,200][300,476]'), false); // no header
+  assert.equal(hasRealPhotoPicker('"Recents" [24,100][200,150]\n"Cancel" [1000,100][1140,150]'), false); // no tile
+});
+
+test("hasRealPhotoPicker rejects ordinary app panels with generic words", () => {
+  assert.equal(hasRealPhotoPicker('"Select Plan" [24,100][300,180]\n"Cancel" [1000,100][1140,150]'), false);
+});
+
+test("composerHasNewPreview only accepts a NEW node inside the composer", () => {
+  const before = '"Message #all" [24,2161][1140,2382]';
+  const noNew = '"Message #all" [24,2161][1140,2382]';
+  const withNew = '"Message #all" [24,2161][1140,2382]\n"" [40,2180][260,2320]';
+  assert.equal(composerHasNewPreview(before, noNew), false); // picker closed ≠ preview
+  assert.equal(composerHasNewPreview(before, withNew), true);
+});
+
+test("countThreadImageNodes counts only large nodes above the composer", () => {
+  const dump = [
+    '"img" [24,400][400,700]',
+    '"small" [24,750][100,800]',
+    '"Message #all" [24,2161][1140,2382]',
+    '"" [40,2180][260,2320]',
+  ].join("\n");
+  assert.equal(countThreadImageNodes(dump), 1);
 });
