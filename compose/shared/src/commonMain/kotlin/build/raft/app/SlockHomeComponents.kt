@@ -73,6 +73,7 @@ import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
@@ -2877,32 +2878,42 @@ private fun SlockTiltedLogoBadge(
     unread: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
 ) {
-    // Render the chrome as final vector geometry, then tilt the complete
-    // foreground as one layer so text, icon, and unread marker share the angle.
     key(text, showDropdown) {
-        Box(modifier = modifier) {
-            TiltedBadgeChrome(modifier = Modifier.matchParentSize())
-            Box(modifier = Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-                Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
-                    com.tencent.kuikly.compose.foundation.layout.Row(
-                        modifier = Modifier.padding(
-                            horizontal = HomeServerBadgeHorizontalInset,
-                            vertical = HomeServerBadgeVerticalInset
-                        ),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-                        if (showDropdown) {
-                            Spacer(Modifier.width(HomeServerBadgeContentGap))
-                            SlockLucideIcon(
-                                SlockLucideIconName.ChevronDown,
-                                Modifier.size(HomeServerBadgeChevronSize),
-                                color = SlockColor.BrandYellowArgb
-                            )
-                        }
-                    }
-                    if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+        SlockTiltedBadgeSurface(modifier = modifier) {
+            com.tencent.kuikly.compose.foundation.layout.Row(
+                modifier = Modifier.padding(
+                    horizontal = HomeServerBadgeHorizontalInset,
+                    vertical = HomeServerBadgeVerticalInset
+                ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+                if (showDropdown) {
+                    Spacer(Modifier.width(HomeServerBadgeContentGap))
+                    SlockLucideIcon(
+                        SlockLucideIconName.ChevronDown,
+                        Modifier.size(HomeServerBadgeChevronSize),
+                        color = SlockColor.BrandYellowArgb
+                    )
                 }
+            }
+            if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+        }
+    }
+}
+
+@Composable
+internal fun SlockTiltedBadgeSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    // Draw the chrome as final vector geometry. Only the foreground is
+    // transformed, so chrome and text are never resampled as one bitmap.
+    Box(modifier = modifier) {
+        TiltedBadgeChrome(modifier = Modifier.matchParentSize())
+        Box(modifier = Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+            Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
+                content()
             }
         }
     }
