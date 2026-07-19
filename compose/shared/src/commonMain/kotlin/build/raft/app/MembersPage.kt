@@ -225,8 +225,10 @@ internal val MembersListNameTextStyle =
 internal val MembersListDescriptionTextStyle =
     SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 12.sp, lineHeight = 16.sp)
 internal val MembersListSectionHeaderMinHeight = 24.dp
-internal val MembersListSectionActionSize = 24.dp
-internal val MembersListSectionActionIconSize = 14.dp
+// React Sidebar's Agents/Humans section `+` is a compact 24px root-list action.
+// This is intentionally separate from the 28dp member-detail message/menu actions below.
+internal val MembersListSectionAddActionSize = 24.dp
+internal val MembersListSectionAddActionIconSize = 14.dp
 internal val MembersListMachineLabelInset = 12.dp
 internal val MembersListMachineLabelIconSize = 9.dp
 internal val MembersListMachineLabelTextStyle =
@@ -3279,8 +3281,8 @@ internal fun MembersListContent(
                             SlockSectionHeaderIconAction(
                                 icon = SlockLucideIconName.Plus,
                                 contentDescription = stringResource(MR.strings.agent_create_action_create),
-                                size = MembersListSectionActionSize,
-                                iconSize = MembersListSectionActionIconSize,
+                                size = MembersListSectionAddActionSize,
+                                iconSize = MembersListSectionAddActionIconSize,
                                 onClick = {
                                     if (createAgentSubmit != null) {
                                         activeCreateAgent = true
@@ -3343,8 +3345,8 @@ internal fun MembersListContent(
                             SlockSectionHeaderIconAction(
                                 icon = SlockLucideIconName.Plus,
                                 contentDescription = stringResource(MR.strings.member_action_invite_human),
-                                size = MembersListSectionActionSize,
-                                iconSize = MembersListSectionActionIconSize,
+                                size = MembersListSectionAddActionSize,
+                                iconSize = MembersListSectionAddActionIconSize,
                                 onClick = { activeInviteHuman = true }
                             )
                         }
@@ -9583,12 +9585,10 @@ internal fun MembersPageHeader(
     refreshing: Boolean = false,
     onBack: (() -> Unit)? = null
 ) {
-    SlockTopPageHeader(
+    SlockMainTabPageHeader(
+        surface = SlockMainTabHeaderSurface.Members,
         title = title,
         subtitle = null,
-        iconName = SlockMainTabHeaderIconName,
-        contentStartPadding = SlockMainTabHeaderStartPadding,
-        titleStyle = SlockMainTabHeaderTitleStyle,
         refreshing = refreshing,
         leadingContent = if (onBack != null) {
             {

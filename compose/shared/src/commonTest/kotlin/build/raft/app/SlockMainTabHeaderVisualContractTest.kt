@@ -4,14 +4,15 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class SlockMainTabHeaderVisualContractTest {
     @Test
-    fun membersTasksAndSettingsUseCompactIconlessMobileHeaderTokens() {
+    fun membersTasksAndSettingsUseCompactIconfulMobileHeaderTokens() {
         assertEquals(8.dp, SlockMainTabHeaderStartPadding)
         assertEquals(16.sp, SlockMainTabHeaderTitleStyle.fontSize)
         assertEquals(20.sp, SlockMainTabHeaderTitleStyle.lineHeight)
-        assertNull(SlockMainTabHeaderIconName)
+        assertEquals(SlockLucideIconName.Users, SlockMainTabHeaderSurface.Members.iconName)
+        assertEquals(SlockLucideIconName.SquareCheckBig, SlockMainTabHeaderSurface.Tasks.iconName)
+        assertEquals(SlockLucideIconName.Settings, SlockMainTabHeaderSurface.Settings.iconName)
     }
 }

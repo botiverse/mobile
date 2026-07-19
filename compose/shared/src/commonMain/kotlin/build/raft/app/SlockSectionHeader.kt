@@ -50,7 +50,14 @@ private val SectionHeaderActionIconSize = 16.dp
 private val PullRefreshCarrierColor = SlockColor.SurfaceWhite
 internal val SlockMainTabHeaderStartPadding = 8.dp
 internal val SlockMainTabHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
-internal val SlockMainTabHeaderIconName: SlockLucideIconName? = null
+
+internal enum class SlockMainTabHeaderSurface(
+    val iconName: SlockLucideIconName
+) {
+    Members(SlockLucideIconName.Users),
+    Tasks(SlockLucideIconName.SquareCheckBig),
+    Settings(SlockLucideIconName.Settings)
+}
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -151,6 +158,29 @@ internal fun SlockTopPageHeader(
         }
         SlockAppShellBodyTopBanner()
     }
+}
+
+@Composable
+internal fun SlockMainTabPageHeader(
+    surface: SlockMainTabHeaderSurface,
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    applyTopSafeArea: Boolean = true,
+    refreshing: Boolean = false,
+    leadingContent: (@Composable BoxScope.() -> Unit)? = null
+) {
+    SlockTopPageHeader(
+        title = title,
+        subtitle = subtitle,
+        iconName = surface.iconName,
+        modifier = modifier,
+        applyTopSafeArea = applyTopSafeArea,
+        contentStartPadding = SlockMainTabHeaderStartPadding,
+        titleStyle = SlockMainTabHeaderTitleStyle,
+        refreshing = refreshing,
+        leadingContent = leadingContent
+    )
 }
 
 @Composable
