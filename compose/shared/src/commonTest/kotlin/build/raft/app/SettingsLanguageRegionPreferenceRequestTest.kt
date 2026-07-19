@@ -6,59 +6,55 @@ import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class SettingsLanguageRegionPreferenceRequestTest {
     @Test
-    fun modeOnlySaveDoesNotBuildAccountRequest() {
-        val request =
-            buildSettingsLanguageRegionPreferenceUpdateRequest(
+    fun modeOnlySaveDoesNotBuildTargetUpdate() {
+        val target =
+            resolveSettingsTranslationTargetUpdate(
                 snapshot = languageRegionSnapshot(language = "browser", display = "automatic"),
                 languageDraft = "browser",
                 displayDraft = "manual"
             )
 
-        assertNull(request)
+        assertNull(target)
     }
 
     @Test
     fun originalModeDoesNotSubmitHiddenLanguageDraft() {
-        val request =
-            buildSettingsLanguageRegionPreferenceUpdateRequest(
+        val target =
+            resolveSettingsTranslationTargetUpdate(
                 snapshot = languageRegionSnapshot(language = "en", display = "automatic"),
                 languageDraft = "zh",
                 displayDraft = "original"
             )
 
-        assertNull(request)
+        assertNull(target)
     }
 
     @Test
-    fun automaticModeCanSubmitChangedLanguageSeparately() {
-        val request =
-            buildSettingsLanguageRegionPreferenceUpdateRequest(
+    fun automaticModeCanSaveChangedLocalTargetSeparately() {
+        val target =
+            resolveSettingsTranslationTargetUpdate(
                 snapshot = languageRegionSnapshot(language = "browser", display = "original"),
                 languageDraft = "en",
                 displayDraft = "automatic"
             )
 
-        assertNull(request?.preferredTranslationDisplay)
-        assertEquals("en", request?.preferredLanguage)
-        assertFalse(request?.clearPreferredLanguage == true)
+        assertEquals("en", target)
     }
 
     @Test
-    fun browserLanguageClearsExplicitTarget() {
-        val request =
-            buildSettingsLanguageRegionPreferenceUpdateRequest(
+    fun browserLanguageBecomesLocalBrowserTarget() {
+        val target =
+            resolveSettingsTranslationTargetUpdate(
                 snapshot = languageRegionSnapshot(language = "ja", display = "automatic"),
                 languageDraft = "browser",
                 displayDraft = "automatic"
             )
 
-        assertNull(request?.preferredLanguage)
-        assertEquals(true, request?.clearPreferredLanguage)
+        assertEquals("browser", target)
     }
 
     private fun languageRegionSnapshot(

@@ -120,9 +120,6 @@ internal interface SlockMessageTranslationApi {
         priority: DataRequestPriority = DataRequestPriority.Visible,
     ): HomeNetworkResponse
 
-    /** `GET auth/me` — account translation preferences (display / auto / language). */
-    suspend fun accountPreferences(): HomeNetworkResponse
-
     /** `GET servers/:id/translation-settings` — server toggle + provider availability. */
     suspend fun serverTranslationSettings(serverId: String): HomeNetworkResponse
 }
@@ -147,9 +144,6 @@ internal class NetworkSlockMessageTranslationApi(
                     mode = mode
                 )
         )
-
-    override suspend fun accountPreferences(): HomeNetworkResponse =
-        networkClient.request(DataRequestPriority.Visible, "auth/me")
 
     override suspend fun serverTranslationSettings(serverId: String): HomeNetworkResponse =
         networkClient.request(

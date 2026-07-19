@@ -5331,13 +5331,13 @@ private fun SettingsAppShellContent(
                             if (selectedMode != snapshot.translationDisplay.selectedKey) {
                                 onSettingsIntent(SharedSettingsIntent.SetTranslationMode(selectedMode))
                             }
-                            buildSettingsLanguageRegionPreferenceUpdateRequest(
+                            resolveSettingsTranslationTargetUpdate(
                                 snapshot = snapshot,
                                 languageDraft = languageRegionLanguageDraft,
                                 displayDraft = languageRegionDisplayDraft
-                            )?.let { request ->
+                            )?.let { language ->
                                 onSettingsIntent(
-                                    SharedSettingsIntent.UpdateLanguageRegionPreference(request)
+                                    SharedSettingsIntent.SetTranslationTargetLanguage(language)
                                 )
                             }
                         }
@@ -6554,22 +6554,18 @@ private val LANGUAGE_REGION_LANGUAGE_ACTIONS =
 private val LANGUAGE_REGION_TIME_ACTIONS =
     setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT)
 
-internal fun buildSettingsLanguageRegionPreferenceUpdateRequest(
+internal fun resolveSettingsTranslationTargetUpdate(
     snapshot: SettingsLanguageRegionSnapshot,
     languageDraft: String,
     displayDraft: String
-): SettingsLanguageRegionPreferenceUpdateRequest? {
+): String? {
     val currentDisplay = snapshot.translationDisplay.selectedKey
     val nextDisplay = displayDraft.ifBlank { currentDisplay }
     val currentLanguage = snapshot.browserLanguage.selectedKey
     val nextLanguage = languageDraft.ifBlank { currentLanguage }
     val languageChanged = nextDisplay != "original" && nextLanguage != currentLanguage
     if (!languageChanged) return null
-    val useBrowserLanguage = nextLanguage == "browser" || nextLanguage == "other"
-    return SettingsLanguageRegionPreferenceUpdateRequest(
-        preferredLanguage = nextLanguage.takeIf { languageChanged && !useBrowserLanguage },
-        clearPreferredLanguage = languageChanged && useBrowserLanguage
-    )
+    return nextLanguage
 }
 
 private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<SegmentedControlOption> =

@@ -76,6 +76,7 @@ class SharedMessageTranslationStore internal constructor(
     private val api: SlockMessageTranslationApi,
     private val scope: CoroutineScope,
     private val translationMode: () -> TranslationModePreference = { TranslationModePreference.Default },
+    private val translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
     private val fallbackLanguage: () -> String? = { null },
     private val diagnosticsLogger: (String) -> Unit = {},
     private val pendingTimeoutMs: Long = MESSAGE_TRANSLATION_PENDING_TIMEOUT_MS,
@@ -97,20 +98,15 @@ class SharedMessageTranslationStore internal constructor(
                 // Server switch: cached entries belong to the previous server.
                 _state.value = SharedMessageTranslationState()
             }
-            val accountResponse = runCatchingNetwork { api.accountPreferences() } ?: return@launch
             val serverResponse = runCatchingNetwork { api.serverTranslationSettings(serverId) } ?: return@launch
-            val account =
-                accountResponse.bodyText
-                    ?.takeIf { accountResponse.isSuccessful }
-                    ?.let(::parseSharedLanguageRegionAccountPreferences)
             val serverTranslation =
                 serverResponse.bodyText
                     ?.takeIf { serverResponse.isSuccessful }
                     ?.let(::parseSharedSettingsTranslation)
-            if (account == null && serverTranslation == null) {
+            if (serverTranslation == null) {
                 diagnosticsLogger(
                     "message_translation_settings_load_failed server=$serverId " +
-                        "accountCode=${accountResponse.code} serverCode=${serverResponse.code}"
+                        "serverCode=${serverResponse.code}"
                 )
                 return@launch
             }
@@ -121,7 +117,7 @@ class SharedMessageTranslationStore internal constructor(
                     serverTranslationEnabled = serverTranslation?.translationEnabled ?: false,
                     providerAvailable = serverTranslation?.translationAvailable ?: false,
                     translationMode = translationMode(),
-                    effectiveLanguage = account?.preferredLanguage ?: normalizedFallbackLanguage(),
+                    effectiveLanguage = normalizedTargetLanguage(),
                 )
             updateState { state ->
                 if (state.settings == nextSettings) state else state.copy(settings = nextSettings)
@@ -184,7 +180,12 @@ class SharedMessageTranslationStore internal constructor(
     private fun requestTranslations(candidates: List<SharedMessageTranslationCandidate>, force: Boolean) {
         val settings = _state.value.settings
         if (!settings.available) return
-        val targetLanguage = settings.effectiveLanguage ?: return
+        val targetLanguage = normalizedTargetLanguage()
+        if (settings.effectiveLanguage != targetLanguage) {
+            updateState { state ->
+                state.copy(settings = state.settings.copy(effectiveLanguage = targetLanguage))
+            }
+        }
         val entries = _state.value.entries
         val eligible =
             candidates.filter { candidate ->
@@ -333,8 +334,10 @@ class SharedMessageTranslationStore internal constructor(
     private fun translationSurfaceUnavailable(code: Int): Boolean =
         code == 403 || code == 404 || code == 501
 
-    private fun normalizedFallbackLanguage(): String? =
-        TranslationTargetLanguages.normalize(fallbackLanguage()) ?: TranslationTargetLanguages.Fallback
+    private fun normalizedTargetLanguage(): String =
+        TranslationTargetLanguages.normalize(translationTargetLanguage())
+            ?: TranslationTargetLanguages.normalize(fallbackLanguage())
+            ?: TranslationTargetLanguages.Fallback
 
     private suspend fun readSessionOrNull(): StoredAuthSession? =
         try {

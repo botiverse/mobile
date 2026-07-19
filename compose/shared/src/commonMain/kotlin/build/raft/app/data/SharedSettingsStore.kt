@@ -361,6 +361,7 @@ sealed interface SharedSettingsIntent {
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class SetLanguageRegionServerTranslation(val enabled: Boolean) : SharedSettingsIntent
     data class SetTranslationMode(val mode: String) : SharedSettingsIntent
+    data class SetTranslationTargetLanguage(val language: String) : SharedSettingsIntent
     data class UpdateLanguageRegionPreference(
         val request: SettingsLanguageRegionPreferenceUpdateRequest
     ) : SharedSettingsIntent
@@ -781,13 +782,13 @@ class SharedSettingsDataSource(
         settingsRepository?.getBilling() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadLanguageRegion(): DataResult<SettingsLanguageRegionSnapshot> =
-        settingsRepository?.getLanguageRegionSettings()?.withLocalTranslationMode()
+        settingsRepository?.getLanguageRegionSettings()?.withLocalTranslationPreferences()
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun updateLanguageRegionPreference(
         request: SettingsLanguageRegionPreferenceUpdateRequest
     ): DataResult<SettingsLanguageRegionSnapshot> =
-        settingsRepository?.updateLanguageRegionPreference(request)?.withLocalTranslationMode()
+        settingsRepository?.updateLanguageRegionPreference(request)?.withLocalTranslationPreferences()
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun setTranslationMode(modeKey: String): DataResult<SettingsLanguageRegionSnapshot> {
@@ -798,6 +799,18 @@ class SharedSettingsDataSource(
             TranslationModePreference.entries.firstOrNull { it.storageKey == modeKey }
                 ?: return DataResult.Error(ScreenError("settings_translation_mode_unknown", retryable = false))
         repository.setTranslationMode(mode)
+        return loadLanguageRegion()
+    }
+
+    suspend fun setTranslationTargetLanguage(language: String): DataResult<SettingsLanguageRegionSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_translation_target_unavailable", retryable = false))
+        val normalized = TranslationTargetLanguages.normalize(language)
+        if (normalized == null && language != TranslationTargetLanguages.Browser) {
+            return DataResult.Error(ScreenError("settings_translation_target_unknown", retryable = false))
+        }
+        repository.setTranslationTargetLanguage(normalized ?: TranslationTargetLanguages.Browser)
         return loadLanguageRegion()
     }
 
@@ -1310,15 +1323,17 @@ class SharedSettingsDataSource(
     ): SettingsMobileSnapshot =
         permission?.let { copy(notificationPermission = it) } ?: this
 
-    private suspend fun DataResult<SettingsLanguageRegionSnapshot>.withLocalTranslationMode(): DataResult<SettingsLanguageRegionSnapshot> =
+    private suspend fun DataResult<SettingsLanguageRegionSnapshot>.withLocalTranslationPreferences(): DataResult<SettingsLanguageRegionSnapshot> =
         when (this) {
-            is DataResult.Content ->
+            is DataResult.Content -> {
+                val preferences = chatLayoutPreferenceRepository?.getChatLayoutPreference()
                 DataResult.Content(
-                    data.withLocalTranslationMode(
-                        chatLayoutPreferenceRepository?.getChatLayoutPreference()?.translationMode
-                            ?: TranslationModePreference.Default
+                    data.withLocalTranslationPreferences(
+                        mode = preferences?.translationMode ?: TranslationModePreference.Default,
+                        targetLanguage = preferences?.translationTargetLanguage ?: TranslationTargetLanguages.Browser
                     )
                 )
+            }
             is DataResult.Empty -> this
             is DataResult.Error -> this
             is DataResult.NoPermission -> this
@@ -1893,6 +1908,12 @@ class SharedSettingsStore(
                 runAction(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY) {
                     dataSource.setTranslationMode(intent.mode)
                         .applyLanguageRegionActionResult(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY)
+                }
+            }
+            is SharedSettingsIntent.SetTranslationTargetLanguage -> {
+                runAction(LANGUAGE_REGION_ACTION_LANGUAGE) {
+                    dataSource.setTranslationTargetLanguage(intent.language)
+                        .applyLanguageRegionActionResult(LANGUAGE_REGION_ACTION_LANGUAGE)
                 }
             }
             is SharedSettingsIntent.UpdateLanguageRegionPreference -> {
@@ -2975,6 +2996,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.SetLanguageRegionServerTranslation,
             is SharedSettingsIntent.SetTranslationMode,
+            is SharedSettingsIntent.SetTranslationTargetLanguage,
             is SharedSettingsIntent.UpdateLanguageRegionPreference,
             is SharedSettingsIntent.UpdateAppearance,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
@@ -3278,10 +3300,27 @@ private fun LinkOpenMode.toSettingsMobileLinkOpenModeSnapshot(): SettingsMobileS
             }
     )
 
-private fun SettingsLanguageRegionSnapshot.withLocalTranslationMode(
-    mode: TranslationModePreference
+private fun SettingsLanguageRegionSnapshot.withLocalTranslationPreferences(
+    mode: TranslationModePreference,
+    targetLanguage: String
 ): SettingsLanguageRegionSnapshot =
     copy(
+        browserLanguage =
+            SettingsMobileSelectionSnapshot(
+                selectedKey = targetLanguage,
+                selectedLabel =
+                    TranslationTargetLanguages.options.firstOrNull { it.key == targetLanguage }?.label
+                        ?: TranslationTargetLanguages.options.first().label,
+                statusLabel =
+                    TranslationTargetLanguages.options.firstOrNull { it.key == targetLanguage }?.label
+                        ?: TranslationTargetLanguages.options.first().label,
+                detail = "Stored locally on this device and used as the target for message translation.",
+                options =
+                    TranslationTargetLanguages.options.map {
+                        SettingsMobileSelectionOptionSnapshot(it.key, it.label)
+                    },
+                available = true
+            ),
         translationDisplay =
             SettingsMobileSelectionSnapshot(
                 selectedKey = mode.storageKey,
