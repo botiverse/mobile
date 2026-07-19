@@ -476,6 +476,7 @@ async function main() {
     await drv.waitReady();
   }
   const stepsPath = path.join(opts.out, "steps.jsonl");
+  const pidPath = path.join(opts.out, "app-pids.txt");
   const started = Date.now();
   const deadline = started + opts.maxMinutes * 60000;
 
@@ -490,7 +491,17 @@ async function main() {
   };
   // ts per step lets the perf collectors (collect_perf*.mjs) derive per-step
   // timing windows for the perf.json slowest-steps section.
-  const logStep = (rec) => fs.appendFileSync(stepsPath, redact(JSON.stringify({ ts: Date.now(), ...rec })) + "\n");
+  const captureAppPid = () => {
+    if (opts.platform !== "android") return;
+    try {
+      const pids = adb(["shell", "pidof", opts.appPackage], { encoding: "utf8" }).trim();
+      if (pids) fs.appendFileSync(pidPath, `${pids}\n`);
+    } catch { /* absence is recorded by the post-run log-scope gate */ }
+  };
+  const logStep = (rec) => {
+    captureAppPid();
+    fs.appendFileSync(stepsPath, redact(JSON.stringify({ ts: Date.now(), ...rec })) + "\n");
+  };
 
   const messages = [{
     role: "user",

@@ -337,7 +337,8 @@ jobs:
             date +%s%3N > qa-evidence/perf-started.txt
             adb shell "nohup sh -c 'i=1; while [ \$i -le 8 ]; do screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 180 /sdcard/qa-rec-\$(printf %02d \$i).mp4; i=\$((i+1)); done' >/dev/null 2>&1 &"
             export MINIMAX_API_KEY="$PI_API_KEY"; node scripts/qa/acceptance_agent.mjs --goal "${QA_GOAL:-$DEFAULT_GOAL}" --max-turns "$QA_MAX_TURNS" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence; echo "$?" > qa-evidence/agent-rc.txt; echo "agent exit code $(cat qa-evidence/agent-rc.txt)"
-            adb logcat -d > qa-evidence/logcat.txt 2>&1 || true
+            adb logcat -d -v threadtime > qa-evidence/logcat-full.txt 2>&1 || true
+            PKG="$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)"; adb shell pidof "$PKG" >> qa-evidence/app-pids.txt 2>/dev/null || true; node scripts/qa/scope_logcat.mjs --input qa-evidence/logcat-full.txt --output qa-evidence/logcat.txt --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt --package "$PKG" || true
             adb shell dumpsys activity top > qa-evidence/activity-top.txt 2>&1 || true
             adb shell dumpsys gfxinfo "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" > qa-evidence/gfxinfo.txt 2>&1 || true
             node scripts/qa/collect_perf.mjs --gfx qa-evidence/gfxinfo.txt --log qa-evidence/logcat.txt --steps qa-evidence/steps.jsonl --pkg "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --environment "${{ inputs.environment }}" --device-json "{\"model\":\"$(adb shell getprop ro.product.model | tr -d '\r')\",\"sdk\":\"$(adb shell getprop ro.build.version.sdk | tr -d '\r')\",\"abi\":\"$(adb shell getprop ro.product.cpu.abi | tr -d '\r')\"}" --started "$(cat qa-evidence/perf-started.txt 2>/dev/null || echo 0)" --out qa-evidence/perf.json || true
