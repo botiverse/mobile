@@ -2707,7 +2707,7 @@ internal fun SlockAppShellContent(
                 scope = storeScope,
                 dataSource = homeDataSource,
                 diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home"),
-                loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
+                loadSidebarOrder = { serverId -> homeSidebarOrderRepository.getServerSidebarOrder(serverId) },
                 updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
                 loadServerOrder = { homeSidebarOrderRepository.getServerOrder() },
                 updateServerOrder = { request -> homeSidebarOrderRepository.updateServerOrder(request) },

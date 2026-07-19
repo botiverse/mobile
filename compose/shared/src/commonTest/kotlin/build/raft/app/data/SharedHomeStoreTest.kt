@@ -384,6 +384,357 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun openingServerDrawerSeedsEveryServerAndExpandsTheSelectedServer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = RecordingHomeApi(), sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+
+        val state = store.state.value
+        assertEquals(true, state.serverDrawer.expanded)
+        assertEquals(setOf(ServerId("server-1")), state.serverDrawer.expandedServerIds)
+        assertEquals(setOf(ServerId("server-1"), ServerId("server-2")), state.serverDrawer.sections.keys)
+        assertEquals(
+            HomeServerDrawerLoadStatus.Loaded,
+            state.serverDrawer.sections.getValue(ServerId("server-1")).status
+        )
+        assertEquals(
+            "server-1",
+            state.serverDrawer.sections.getValue(ServerId("server-1")).content?.snapshot?.server?.id?.value
+        )
+        assertEquals(
+            HomeServerDrawerLoadStatus.Unloaded,
+            state.serverDrawer.sections.getValue(ServerId("server-2")).status
+        )
+        assertEquals("server-1", (state.content as SharedHomeContentState.Content).snapshot.server.id.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun expandingNonSelectedServerLoadsItsSectionWithoutChangingSelectedHome() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        val sidebarRequests = mutableListOf<String>()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope,
+                loadSidebarOrder = { serverId ->
+                    sidebarRequests += serverId.value
+                    DataResult.Content(SettingsServerSidebarOrderSnapshot(channelOrder = listOf("channel-${serverId.value}")))
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        sidebarRequests.clear()
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val blockedServerLoad = api.blockNextChannels()
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        blockedServerLoad.awaitStarted()
+
+        val loading = store.state.value
+        assertEquals("server-1", (loading.content as SharedHomeContentState.Content).snapshot.server.id.value)
+        assertEquals("server-1", sessionStore.readSession()?.currentServerId)
+        assertEquals(
+            HomeServerDrawerLoadStatus.Loading,
+            loading.serverDrawer.sections.getValue(ServerId("server-2")).status
+        )
+        assertEquals(true, ServerId("server-2") in loading.serverDrawer.expandedServerIds)
+
+        blockedServerLoad.release()
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+
+        val loaded = store.state.value
+        val server2Section = loaded.serverDrawer.sections.getValue(ServerId("server-2"))
+        assertEquals("server-2", server2Section.content?.snapshot?.server?.id?.value)
+        assertEquals(listOf("channel-server-2"), server2Section.content?.snapshot?.sidebarOrder?.channelOrder)
+        assertEquals(listOf("server-2"), sidebarRequests)
+        assertEquals("server-1", (loaded.content as SharedHomeContentState.Content).snapshot.server.id.value)
+        assertEquals("server-1", sessionStore.readSession()?.currentServerId)
+        scope.cancel()
+    }
+
+    @Test
+    fun foregroundServerSelectionSupersedesOlderDrawerPublication() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        var server2SidebarLoads = 0
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope,
+                loadSidebarOrder = { serverId ->
+                    val marker =
+                        if (serverId == ServerId("server-2")) {
+                            server2SidebarLoads += 1
+                            if (server2SidebarLoads == 1) "foreground-fresh" else "drawer-stale"
+                        } else {
+                            "server-1"
+                        }
+                    DataResult.Content(SettingsServerSidebarOrderSnapshot(channelOrder = listOf(marker)))
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val olderDrawerLoad = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        olderDrawerLoad.awaitStarted()
+
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+        val foreground = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("server-2", foreground.snapshot.server.id.value)
+        assertEquals(listOf("foreground-fresh"), foreground.snapshot.sidebarOrder?.channelOrder)
+
+        olderDrawerLoad.release()
+        awaitCondition { server2SidebarLoads == 2 }
+
+        store.accept(SharedHomeIntent.SelectServer("server-1"))
+        val reopenRefresh = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        withTimeout(1_000L) { reopenRefresh.awaitStarted() }
+
+        val cachedServer2 = store.state.value.serverDrawer.sections.getValue(ServerId("server-2"))
+        assertEquals(HomeServerDrawerLoadStatus.Refreshing, cachedServer2.status)
+        assertEquals(
+            listOf("foreground-fresh"),
+            cachedServer2.content?.snapshot?.sidebarOrder?.channelOrder
+        )
+        reopenRefresh.release()
+        scope.cancel()
+    }
+
+    @Test
+    fun reopeningDrawerRefreshesExpandedNonSelectedSectionWhileKeepingCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+        val cachedBeforeClose =
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).content
+        assertTrue(cachedBeforeClose != null)
+
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val reopenRefresh = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        withTimeout(1_000L) { reopenRefresh.awaitStarted() }
+
+        val refreshing = store.state.value.serverDrawer.sections.getValue(ServerId("server-2"))
+        assertEquals(HomeServerDrawerLoadStatus.Refreshing, refreshing.status)
+        assertEquals(cachedBeforeClose, refreshing.content)
+
+        reopenRefresh.release()
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+        scope.cancel()
+    }
+
+    @Test
+    fun expandedServerDrawerSectionsLoadIndependentlyByServer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val baseSession = sampleSession()
+        val session =
+            baseSession.copy(
+                servers =
+                    baseSession.servers +
+                        StoredAuthServer(id = "server-3", name = "Third", slug = "third")
+            )
+        val sessionStore = InMemorySlockAuthSessionStore(session)
+        val api = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val server2Block = api.blockNextChannels("server-2")
+        val server3Block = api.blockNextChannels("server-3")
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-3")))
+        server2Block.awaitStarted()
+        server3Block.awaitStarted()
+
+        server3Block.release()
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-3")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+        assertEquals(
+            HomeServerDrawerLoadStatus.Loading,
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).status
+        )
+        assertEquals(
+            "server-1",
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value
+        )
+
+        server2Block.release()
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+        assertEquals(
+            setOf(ServerId("server-1"), ServerId("server-2"), ServerId("server-3")),
+            store.state.value.serverDrawer.expandedServerIds
+        )
+        assertEquals(
+            "server-2",
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).content?.snapshot?.server?.id?.value
+        )
+        assertEquals(
+            "server-3",
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-3")).content?.snapshot?.server?.id?.value
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun retryingServerDrawerSectionRotatesGenerationWithoutChangingSelection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val firstLoad = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        firstLoad.awaitStarted()
+        val firstGeneration =
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).requestGeneration
+
+        store.accept(SharedHomeIntent.RetryServerDrawerSection(ServerId("server-2")))
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+
+        val section = store.state.value.serverDrawer.sections.getValue(ServerId("server-2"))
+        assertEquals(firstGeneration + 1L, section.requestGeneration)
+        assertEquals("server-2", section.content?.snapshot?.server?.id?.value)
+        assertEquals(
+            "server-1",
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value
+        )
+        assertEquals("server-1", sessionStore.readSession()?.currentServerId)
+        firstLoad.release()
+        scope.cancel()
+    }
+
+    @Test
+    fun serverDrawerLoadDropsSectionWhenServerIsRemovedFromSession() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initialSession = sampleSession()
+        val sessionStore = InMemorySlockAuthSessionStore(initialSession)
+        val api = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val blockedLoad = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        blockedLoad.awaitStarted()
+
+        sessionStore.saveSession(
+            initialSession.copy(servers = initialSession.servers.filter { it.id == "server-1" })
+        )
+        blockedLoad.release()
+        awaitCondition {
+            ServerId("server-2") !in store.state.value.serverDrawer.sections
+        }
+
+        assertEquals(setOf(ServerId("server-1")), store.state.value.serverDrawer.expandedServerIds)
+        assertEquals(
+            "server-1",
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value
+        )
+        assertEquals("server-1", sessionStore.readSession()?.currentServerId)
+        scope.cancel()
+    }
+
+    @Test
+    fun failedServerDrawerSectionCanRetryWithoutChangingSelection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = SwitchableHomeApi().apply { setServerUnread("server-1" to 0) }
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        api.setFailing(true)
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.ErrorEmpty
+        }
+
+        assertEquals(
+            "server-1",
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value
+        )
+        api.setServerUnread("server-2" to 0)
+        store.accept(SharedHomeIntent.RetryServerDrawerSection(ServerId("server-2")))
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+
+        assertEquals(
+            "server-2",
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).content?.snapshot?.server?.id?.value
+        )
+        assertEquals("server-1", sessionStore.readSession()?.currentServerId)
+        scope.cancel()
+    }
+
+    @Test
     fun startHydratesPrunedHomeIdentitySnapshotWhileNetworkLoadIsPending() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val storage = InMemorySlockKeyValueStore()
@@ -670,6 +1021,7 @@ class SharedHomeStoreTest {
             scope = scope
         )
         store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
         val otherMember = sampleMember().copy(
             id = MemberId("member-2"),
             displayName = "Cindy",
@@ -700,6 +1052,16 @@ class SharedHomeStoreTest {
         assertEquals("live update", content.baseSnapshot.channels.single().lastMessagePreview)
         assertEquals(1, content.snapshot.channels.single().unreadCount)
         assertEquals(1, content.snapshot.unreadTotal)
+        assertEquals(
+            "live update",
+            store.state.value.serverDrawer.sections
+                .getValue(ServerId("server-1"))
+                .content
+                ?.snapshot
+                ?.channels
+                ?.single()
+                ?.lastMessagePreview
+        )
         assertEquals(null, localStore.readHome(ServerId("server-1")))
         scope.cancel()
     }
@@ -2450,9 +2812,13 @@ class SharedHomeStoreTest {
     private class RecordingHomeApi : SlockHomeApi {
         val calls = mutableListOf<String>()
         private var channelBlock: BlockingCall? = null
+        private val channelBlocksByServer = mutableMapOf<String, BlockingCall>()
 
         fun blockNextChannels(): BlockingCall =
             BlockingCall().also { channelBlock = it }
+
+        fun blockNextChannels(serverId: String): BlockingCall =
+            BlockingCall().also { channelBlocksByServer[serverId] = it }
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
             error("server-specific overload should be used")
@@ -2467,6 +2833,10 @@ class SharedHomeStoreTest {
             error("server-specific overload should be used")
 
         override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            channelBlocksByServer.remove(serverId.value)?.let { block ->
+                block.started.complete(Unit)
+                block.released.await()
+            }
             channelBlock?.let { block ->
                 channelBlock = null
                 block.started.complete(Unit)
@@ -2914,7 +3284,7 @@ class SharedHomeStoreTest {
                     }
                 ),
             scope = scope,
-            loadSidebarOrder = {
+            loadSidebarOrder = { _ ->
                 sidebarOrderLoads += 1
                 if (sidebarOrderLoads == 1) {
                     DataResult.Content(loadedSidebarOrder)
@@ -2962,7 +3332,7 @@ class SharedHomeStoreTest {
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial, updateResult = DataResult.Content(updatedSnapshot), updateCalls = updateCalls),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(updatedSnapshot)
@@ -3012,7 +3382,7 @@ class SharedHomeStoreTest {
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(updatedSnapshot)
@@ -3062,7 +3432,7 @@ class SharedHomeStoreTest {
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(updatedSnapshot)
@@ -3111,7 +3481,7 @@ class SharedHomeStoreTest {
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSnapshot(home),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(updatedSnapshot)
@@ -3154,7 +3524,7 @@ class SharedHomeStoreTest {
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = initial),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { DataResult.Content(updatedSnapshot) },
             persistSlices = listOf(persistSlice)
         )
@@ -3212,7 +3582,7 @@ class SharedHomeStoreTest {
                 initial = null
             ),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(existingSnapshot) },
+            loadSidebarOrder = { _ -> DataResult.Content(existingSnapshot) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(
@@ -3264,7 +3634,7 @@ class SharedHomeStoreTest {
                 updateResult = DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true))
             ),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true)) },
             pinUpdateFailureCallback = { message -> failureMessages += message }
         )
@@ -3287,7 +3657,7 @@ class SharedHomeStoreTest {
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             dataSource = sourceWithSidebarOrder(initial = null),
             scope = scope,
-            loadSidebarOrder = { DataResult.Error(ScreenError(code = "sidebar_order_load_failed", retryable = true)) },
+            loadSidebarOrder = { _ -> DataResult.Error(ScreenError(code = "sidebar_order_load_failed", retryable = true)) },
             updateSidebarOrder = { error("PATCH should not be called when load fails") },
             pinUpdateFailureCallback = { message -> failureMessages += message }
         )
@@ -3317,7 +3687,7 @@ class SharedHomeStoreTest {
                 updateResult = DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true))
             ),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true)) }
         )
 
@@ -3348,7 +3718,7 @@ class SharedHomeStoreTest {
                 updateCalls = updateCalls
             ),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(updatedSnapshot)
@@ -3397,7 +3767,7 @@ class SharedHomeStoreTest {
                     parseHome = { _, _ -> DataResult.Content(home.copy(sidebarOrder = initial)) }
                 ),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(updatedSnapshot)
@@ -3447,7 +3817,7 @@ class SharedHomeStoreTest {
                     parseHome = { _, _ -> DataResult.Content(home.copy(sidebarOrder = initial)) }
                 ),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(updatedSnapshot)
@@ -3618,7 +3988,7 @@ class SharedHomeStoreTest {
                     }
                 ),
             scope = scope,
-            loadSidebarOrder = { DataResult.Content(initial) },
+            loadSidebarOrder = { _ -> DataResult.Content(initial) },
             updateSidebarOrder = { request ->
                 updateCalls += request
                 DataResult.Content(initial.copy(hiddenDmIds = request.hiddenDmIds.orEmpty()))

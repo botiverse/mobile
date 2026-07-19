@@ -341,6 +341,8 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         SharedHomeIntent.ForegroundRefresh -> "hydrate:foreground"
         SharedHomeIntent.ToggleServerSwitcher -> "patch:server-switcher"
         SharedHomeIntent.DismissServerSwitcher -> "patch:server-switcher-dismiss"
+        is SharedHomeIntent.ToggleServerDrawerSection -> "patch:server-drawer-toggle:${serverId.value}"
+        is SharedHomeIntent.RetryServerDrawerSection -> "hydrate:server-drawer-retry:${serverId.value}"
         is SharedHomeIntent.SelectConversation -> "patch:select:$threadId"
         is SharedHomeIntent.SelectTopAction -> "patch:top-action:$action"
         is SharedHomeIntent.SelectServer -> "hydrate:server:$serverId"
