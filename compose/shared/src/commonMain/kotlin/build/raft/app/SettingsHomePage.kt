@@ -145,6 +145,7 @@ import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeServerDrawerState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedHomeTopAction
@@ -14661,6 +14662,10 @@ private fun SharedHomeScreen(
 
     val serverSwitchState = state.serverSwitchState
     val serverSwitcherExpanded = state.serverSwitcherExpanded
+    val serverDrawerSections =
+        remember(state.serverDrawer, state.serverUnreadCounts) {
+            state.serverDrawer.toSlockHomeServerDrawerSections(state.serverUnreadCounts)
+        }
     val renderBranch = sharedHomeRenderBranch(state.content)
     LaunchedEffect(active, renderBranch, homeContentSummary, selectedConversationId, activityUnreadCount, savedCount) {
         bridge.log(
@@ -14676,12 +14681,19 @@ private fun SharedHomeScreen(
                     session = session,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
+                    serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
                     loadingSkeletons = true,
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                    onServerDrawerSectionToggle = { serverId ->
+                        onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                    },
+                    onServerDrawerRetry = { serverId ->
+                        onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                    },
                     onServerSelected = { serverId ->
                         onSelectedConversationCleared()
                         onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -14701,11 +14713,18 @@ private fun SharedHomeScreen(
                 session = current.session,
                 scrollToTopRequest = scrollToTopRequest,
                 serverSwitcherExpanded = serverSwitcherExpanded,
+                serverDrawerSections = serverDrawerSections,
                 serverUnreadCounts = state.serverUnreadCounts,
                 prefersChineseCommunity = prefersChineseCommunity,
                 bottomContentPadding = bottomContentPadding,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                onServerDrawerSectionToggle = { serverId ->
+                    onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                },
+                onServerDrawerRetry = { serverId ->
+                    onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                },
                 onServerSelected = { serverId ->
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -14722,6 +14741,7 @@ private fun SharedHomeScreen(
                     session = current.session,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
+                    serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
@@ -14729,6 +14749,12 @@ private fun SharedHomeScreen(
                     onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                    onServerDrawerSectionToggle = { serverId ->
+                        onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                    },
+                    onServerDrawerRetry = { serverId ->
+                        onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                    },
                     onServerSelected = { serverId ->
                         onSelectedConversationCleared()
                         onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -14878,6 +14904,7 @@ private fun SharedHomeScreen(
                 ),
                 savedCount = savedCount,
                 serverSwitcherExpanded = serverSwitcherExpanded,
+                serverDrawerSections = serverDrawerSections,
                 pendingServerId = serverSwitchState.pendingServerId,
                 prefersChineseCommunity = prefersChineseCommunity,
                 activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
@@ -14903,6 +14930,12 @@ private fun SharedHomeScreen(
                 labels = homeShellLabels,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                onServerDrawerSectionToggle = { serverId ->
+                    onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                },
+                onServerDrawerRetry = { serverId ->
+                    onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                },
                 onServerSelected = { serverId ->
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -17830,6 +17863,7 @@ private fun String.searchAvatarSeed(): String =
 private fun SharedHomeSessionShell(
     session: StoredAuthSession,
     serverSwitcherExpanded: Boolean,
+    serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
     scrollToTopRequest: Int = 0,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     prefersChineseCommunity: Boolean = false,
@@ -17842,6 +17876,8 @@ private fun SharedHomeSessionShell(
     onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
+    onServerDrawerSectionToggle: (String) -> Unit,
+    onServerDrawerRetry: (String) -> Unit,
     onServerSelected: (String) -> Unit,
     onServerOrderChange: (List<String>) -> Unit = {},
     onCreateServerClick: () -> Unit,
@@ -17857,6 +17893,7 @@ private fun SharedHomeSessionShell(
         showLoadingSkeletons = loadingSkeletons,
         inlineError = inlineError,
         serverSwitcherExpanded = serverSwitcherExpanded,
+        serverDrawerSections = serverDrawerSections,
         prefersChineseCommunity = prefersChineseCommunity,
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
@@ -17865,6 +17902,8 @@ private fun SharedHomeSessionShell(
         onInlineErrorAction = onInlineErrorAction,
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
+        onServerDrawerSectionToggle = onServerDrawerSectionToggle,
+        onServerDrawerRetry = onServerDrawerRetry,
         onServerSelected = onServerSelected,
         onServerOrderChange = onServerOrderChange,
         onCreateServerClick = onCreateServerClick,
@@ -17916,6 +17955,35 @@ internal data class SharedHomeConversationRowProjector(
             directoryProjection = directoryProjections[seed.id],
             draftProjection = draftProjection
         )
+}
+
+internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
+    serverUnreadCounts: Map<String, Int> = emptyMap()
+): List<SlockHomeServerDrawerSection> {
+    val projector = SharedHomeConversationRowProjector()
+    return sections.values.map { section ->
+        val snapshot = section.content?.snapshot
+        val sidebarOrder = snapshot?.sidebarOrder
+        SlockHomeServerDrawerSection(
+            server = section.server.toSharedSwitcherItem(serverUnreadCounts),
+            expanded = section.server.id in expandedServerIds,
+            status = section.status,
+            requestGeneration = section.requestGeneration,
+            errorCode = section.errorCode,
+            channels = snapshot?.channels.orEmpty().map(projector::project),
+            directMessages = snapshot?.directMessages.orEmpty().map(projector::project),
+            channelOrder = sidebarOrder?.channelOrder.orEmpty(),
+            channelSortMode = sidebarOrder?.channelSortMode ?: "manual",
+            dmOrder = sidebarOrder?.dmOrder.orEmpty(),
+            dmSortMode = sidebarOrder?.dmSortMode ?: "manual",
+            pinnedChannelIds = sidebarOrder?.pinnedChannelIds.orEmpty(),
+            pinnedAgentIds = sidebarOrder?.pinnedAgentIds.orEmpty(),
+            pinnedOrder = sidebarOrder?.pinnedOrder.orEmpty(),
+            pinnedItems = sidebarOrder?.pinned.orEmpty(),
+            pinnedSortMode = sidebarOrder?.pinnedSortMode ?: "manual",
+            hiddenDmIds = sidebarOrder?.hiddenDmIds.orEmpty()
+        )
+    }
 }
 
 private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =

@@ -4,6 +4,7 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeServerDrawerLoadStatus
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -32,6 +33,90 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
+    @Test
+    fun homeServerDrawerFlattensMultipleExpandedServersIntoOneKeyedRowList() {
+        val sharedId = "shared-conversation"
+        val sections =
+            listOf(
+                SlockHomeServerDrawerSection(
+                    server = SlockServerSwitcherItem(id = "server-1", name = "One", slug = "one"),
+                    expanded = true,
+                    status = HomeServerDrawerLoadStatus.Loaded,
+                    channels = listOf(SlockHomeConversationItem(id = sharedId, name = "General", kind = "channel")),
+                    pinnedChannelIds = listOf(sharedId),
+                    pinnedOrder = listOf(sharedId)
+                ),
+                SlockHomeServerDrawerSection(
+                    server = SlockServerSwitcherItem(id = "server-2", name = "Two", slug = "two"),
+                    expanded = true,
+                    status = HomeServerDrawerLoadStatus.Loaded,
+                    channels = listOf(SlockHomeConversationItem(id = sharedId, name = "Other", kind = "channel"))
+                )
+            )
+
+        val rows = homeServerDrawerRows(sections)
+        val keys = rows.map { it.key }
+
+        assertEquals(keys.size, keys.toSet().size)
+        assertEquals("server:server-1", keys.first())
+        assertTrue("section:server-1:pinned" in keys)
+        assertTrue("conversation:server-1:pinned:$sharedId" in keys)
+        assertTrue("conversation:server-1:channel:$sharedId" in keys)
+        assertTrue("server:server-2" in keys)
+        assertTrue("conversation:server-2:channel:$sharedId" in keys)
+    }
+
+    @Test
+    fun homeServerDrawerShowsSkeletonAndCachePreservingErrorRowsBySectionState() {
+        val rows =
+            homeServerDrawerRows(
+                listOf(
+                    SlockHomeServerDrawerSection(
+                        server = SlockServerSwitcherItem(id = "loading", name = "Loading", slug = "loading"),
+                        expanded = true,
+                        status = HomeServerDrawerLoadStatus.Loading
+                    ),
+                    SlockHomeServerDrawerSection(
+                        server = SlockServerSwitcherItem(id = "cached", name = "Cached", slug = "cached"),
+                        expanded = true,
+                        status = HomeServerDrawerLoadStatus.ErrorWithCache,
+                        errorCode = "home_network",
+                        directMessages =
+                            listOf(
+                                SlockHomeConversationItem(
+                                    id = "dm-1",
+                                    name = "Cindy",
+                                    kind = KuiklyThreadSurfaceKind.DirectMessage
+                                )
+                            )
+                    ),
+                    SlockHomeServerDrawerSection(
+                        server = SlockServerSwitcherItem(id = "collapsed", name = "Collapsed", slug = "collapsed"),
+                        expanded = false,
+                        status = HomeServerDrawerLoadStatus.Loaded,
+                        channels = listOf(SlockHomeConversationItem(id = "hidden", name = "Hidden", kind = "channel"))
+                    )
+                )
+            )
+
+        assertEquals(3, rows.filterIsInstance<SlockHomeServerDrawerRow.Skeleton>().size)
+        assertTrue(rows.any { it.key == "conversation:cached:directmessage:dm-1" })
+        assertEquals(
+            SlockHomeServerDrawerRow.Error("cached", "home_network", hasCache = true),
+            rows.filterIsInstance<SlockHomeServerDrawerRow.Error>().single()
+        )
+        assertFalse(rows.any { it.key.contains("hidden") })
+    }
+
+    @Test
+    fun homeServerDrawerWidthAndSwipeThresholdFollowModalContract() {
+        assertEquals(336.dp, homeServerDrawerWidth(400.dp))
+        assertEquals(360.dp, homeServerDrawerWidth(800.dp))
+        assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -71f))
+        assertTrue(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -72f))
+        assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = 120f))
+    }
+
     @Test
     fun appUpdateNotificationMovesToDedicatedBanner() {
         val update =
