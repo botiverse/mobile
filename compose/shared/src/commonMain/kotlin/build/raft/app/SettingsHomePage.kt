@@ -47,6 +47,7 @@ import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
+import build.raft.app.data.MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
@@ -5668,6 +5669,9 @@ private fun SettingsAppShellContent(
                     onLongMessageCollapseChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetLongMessageCollapseEnabled(enabled))
                     },
+                    onSingleTapOpensThreadChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(enabled))
+                    },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
                     },
@@ -6782,6 +6786,7 @@ private fun SettingsMobileContent(
     onHttp3Change: (Boolean) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
+    onSingleTapOpensThreadChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
@@ -6832,6 +6837,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onLongMessageCollapseChange = onLongMessageCollapseChange
+                )
+            }
+            item {
+                SettingsSingleTapOpensThreadCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onSingleTapOpensThreadChange = onSingleTapOpensThreadChange
                 )
             }
             item {
@@ -7246,6 +7258,58 @@ private fun SettingsLongMessageCollapseCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsSingleTapOpensThreadCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onSingleTapOpensThreadChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.inProgress
+    val preference = snapshot.singleTapOpensThread
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.MessageSquare,
+        title = stringResource(MR.strings.settings_mobile_single_tap_thread)
+    ) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_single_tap_thread_detail))
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onSingleTapOpensThreadChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = preference.localizedToggleStatus(),
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+                Text(
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_single_tap_thread_enabled)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_single_tap_thread_disabled)
+                        },
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -11973,6 +12037,13 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 key = MOBILE_ACTION_LONG_MESSAGE_COLLAPSE,
                                 iconName = SlockLucideIconName.ClipboardList,
                                 title = "Collapse long messages",
+                                fallbackStatus = "Off",
+                                actionState = actionState
+                            ),
+                            mobile.singleTapOpensThread.toMobileToggleRow(
+                                key = MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD,
+                                iconName = SlockLucideIconName.MessageSquare,
+                                title = "Single tap opens Thread",
                                 fallbackStatus = "Off",
                                 actionState = actionState
                             ),

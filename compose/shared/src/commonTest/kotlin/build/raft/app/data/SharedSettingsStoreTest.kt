@@ -783,6 +783,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetLinkOpenMode("in_app"))
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
         store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
+        store.accept(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
@@ -798,6 +799,7 @@ class SharedSettingsStoreTest {
         assertEquals(LinkOpenMode.InAppBrowser, linkOpenPreferenceRepository.mode)
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
         assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
+        assertEquals(true, chatLayoutRepository.singleTapOpensThreadEnabled)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
@@ -819,6 +821,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
         assertEquals(true, mobile.longMessageCollapse.enabled)
         assertEquals("Enabled", mobile.longMessageCollapse.statusLabel)
+        assertEquals(true, mobile.singleTapOpensThread.enabled)
+        assertEquals("Enabled", mobile.singleTapOpensThread.statusLabel)
         assertEquals(true, mobile.imageAnnotation.enabled)
         assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
         assertEquals(true, mobile.foregroundMessageBanners.enabled)
@@ -3224,6 +3228,7 @@ class SharedSettingsStoreTest {
         var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Left,
         var compactConsecutiveMessages: Boolean = false,
         var longMessageCollapseEnabled: Boolean = false,
+        var singleTapOpensThreadEnabled: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
@@ -3239,6 +3244,7 @@ class SharedSettingsStoreTest {
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
@@ -3296,6 +3302,11 @@ class SharedSettingsStoreTest {
 
         override suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             longMessageCollapseEnabled = enabled
+            return getChatLayoutPreference()
+        }
+
+        override suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            singleTapOpensThreadEnabled = enabled
             return getChatLayoutPreference()
         }
 

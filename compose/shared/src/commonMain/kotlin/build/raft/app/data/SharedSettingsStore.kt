@@ -377,6 +377,7 @@ sealed interface SharedSettingsIntent {
     data class SetHttp3Enabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetSingleTapOpensThreadEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
@@ -933,6 +934,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_single_tap_thread_unavailable", retryable = false))
+        repository.setSingleTapOpensThreadEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setImageAnnotationEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1236,6 +1245,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Long message collapse preference is not available on this platform."
+                    ),
+            singleTapOpensThread =
+                chatLayout?.toSettingsMobileSingleTapOpensThreadSnapshot()
+                    ?: singleTapOpensThread.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Single-tap Thread opening is not available on this platform."
                     ),
             imageAnnotation =
                 chatLayout?.toSettingsMobileImageAnnotationSnapshot()
@@ -1946,6 +1962,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setLongMessageCollapseEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_LONG_MESSAGE_COLLAPSE)
+            }
+            is SharedSettingsIntent.SetSingleTapOpensThreadEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD, inProgress = true)
+                    )
+                dataSource.setSingleTapOpensThreadEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD)
             }
             is SharedSettingsIntent.SetImageAnnotationEnabled -> {
                 _state.value =
@@ -2960,6 +2984,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetHttp3Enabled,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
+            is SharedSettingsIntent.SetSingleTapOpensThreadEnabled,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
@@ -3131,6 +3156,7 @@ internal const val MOBILE_ACTION_LINK_OPEN_MODE = "linkOpenMode"
 internal const val MOBILE_ACTION_HTTP3 = "http3"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
+internal const val MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD = "singleTapOpensThread"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
@@ -3318,6 +3344,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileLongMessageCollapseSnap
         available = true,
         statusLabel = if (longMessageCollapseEnabled) "Enabled" else "Off",
         detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSingleTapOpensThreadSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = singleTapOpensThreadEnabled,
+        available = true,
+        statusLabel = if (singleTapOpensThreadEnabled) "Enabled" else "Off",
+        detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot(): SettingsMobileToggleSnapshot =
