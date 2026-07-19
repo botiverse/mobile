@@ -648,6 +648,9 @@
     <string name="member_section_environment_variables">Environment Variables</string>
     <string name="member_state_no_reminders">No reminders yet</string>
     <string name="member_state_no_activity">No activity yet</string>
+    <string name="member_state_loading_activity">Loading activity…</string>
+    <string name="member_state_refreshing_activity">Refreshing activity…</string>
+    <string name="member_error_load_activity">Could not load activity</string>
     <string name="member_error_load_member">Could not load member</string>
     <string name="member_error_reset_agent">Failed to reset agent: %1$s</string>
     <string name="member_state_loading_agent_profile">Loading agent profile…</string>

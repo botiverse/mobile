@@ -646,6 +646,9 @@
     <string name="member_section_environment_variables">环境变量</string>
     <string name="member_state_no_reminders">暂无提醒</string>
     <string name="member_state_no_activity">暂无活动</string>
+    <string name="member_state_loading_activity">正在加载活动…</string>
+    <string name="member_state_refreshing_activity">正在刷新活动…</string>
+    <string name="member_error_load_activity">无法加载活动</string>
     <string name="member_error_load_member">无法加载成员</string>
     <string name="member_error_reset_agent">重置智能体失败：%1$s</string>
     <string name="member_state_loading_agent_profile">正在加载智能体资料…</string>

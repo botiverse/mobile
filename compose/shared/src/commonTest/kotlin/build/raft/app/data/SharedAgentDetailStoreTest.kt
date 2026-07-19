@@ -11,6 +11,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeAgentActivityDetail
 import build.raft.app.model.RealtimeAgentActivityEntry
+import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -96,6 +97,7 @@ class SharedAgentDetailStoreTest {
                     avatar = AvatarReference.fromWireValue("pixel:agent-one"),
                     presence = Presence.Active,
                     agentStatus = AgentStatus.Working,
+                    serverId = ServerId("server-1"),
                     permissionBadges = listOf("computer:Jiachengs-MacBook-Pro", "computer-id:machine-1")
                 )
             )
@@ -104,6 +106,7 @@ class SharedAgentDetailStoreTest {
         val state = s.state.value
         val summary = state.detail?.summary
         assertEquals(testMemberId, state.agentId)
+        assertEquals(ServerId("server-1"), state.detailServerId)
         assertEquals(testMemberId, state.detail?.agentId)
         assertEquals(SharedAgentDetailLoadStatus.Content, state.detailLoadStatus)
         assertEquals("agent-one", summary?.name)
@@ -157,6 +160,71 @@ class SharedAgentDetailStoreTest {
 
         assertEquals("Agent One", s.state.value.detail?.summary?.name)
         assertEquals("Online", s.state.value.detail?.summary?.status)
+    }
+
+    @Test
+    fun seedDetailFromSameAgentOnAnotherServerReplacesTheDisplaySeed() {
+        val s = store()
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = testMemberId,
+                    displayName = "Server One Agent",
+                    handle = "server-one-agent",
+                    kind = MemberKind.Agent,
+                    serverId = ServerId("server-1")
+                )
+            )
+        )
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = testMemberId,
+                    displayName = "Server Two Agent",
+                    handle = "server-two-agent",
+                    kind = MemberKind.Agent,
+                    serverId = ServerId("server-2")
+                )
+            )
+        )
+
+        assertEquals(ServerId("server-2"), s.state.value.detailServerId)
+        assertEquals("Server Two Agent", s.state.value.detail?.summary?.displayName)
+        assertEquals("server-two-agent", s.state.value.detail?.summary?.name)
+    }
+
+    @Test
+    fun serverBoundActivitySnapshotCannotMutateAnotherServerDetail() {
+        val s = store()
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = testMemberId,
+                    displayName = "Server One Agent",
+                    handle = "server-one-agent",
+                    kind = MemberKind.Agent,
+                    serverId = ServerId("server-1")
+                )
+            )
+        )
+        s.dispatch(
+            SharedAgentDetailIntent.SetAgentActivity(
+                agentId = testMemberId,
+                activity =
+                    listOf(
+                        AgentActivityEntry(
+                            id = "wrong-server-activity",
+                            type = "status",
+                            title = "Wrong server",
+                            timestamp = "100"
+                        )
+                    ),
+                serverId = ServerId("server-2")
+            )
+        )
+
+        assertEquals(emptyList(), s.state.value.detail?.activity)
+        assertNull(s.state.value.agentActivityLogs[testMemberId])
     }
 
     @Test

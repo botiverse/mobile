@@ -2487,7 +2487,13 @@ private fun ThreadPageScreen() {
                     ?.let { candidate ->
                         val agentDetailStore = SlockSharedStoreRegistry.get(bridge).agentDetailStore
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(candidate.agentId))
-                        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(candidate.agentId, candidate))
+                        agentDetailStore.dispatch(
+                            SharedAgentDetailIntent.SetDetail(
+                                agentId = candidate.agentId,
+                                detail = candidate,
+                                serverId = selectedIdentity.sourceServerId
+                            )
+                        )
                     }
                 pager.openSlockPage(
                     pageName = MEMBER_DETAIL_PAGE,
