@@ -658,7 +658,7 @@ internal class SlockSharedStoreProvider private constructor(
     fun getOrCreateHomeStore(
         scope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
         dataSource: SharedHomeDataSource,
-        loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+        loadSidebarOrder: suspend (ServerId) -> DataResult<SettingsServerSidebarOrderSnapshot> = { _ ->
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
         },
         updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {

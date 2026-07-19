@@ -25,6 +25,7 @@ import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
@@ -33,6 +34,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,7 +68,7 @@ internal class SharedHomeStore(
      * test fixtures and callers that don't pass a real provider keep
      * compiling.
      */
-    private var loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+    private var loadSidebarOrder: suspend (ServerId) -> DataResult<SettingsServerSidebarOrderSnapshot> = { _ ->
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
     },
     /**
@@ -132,6 +134,8 @@ internal class SharedHomeStore(
     private var agentDirectMessageStatusJob: Job? = null
     private var serverOrderLoadJob: Job? = null
     private val contentByServer = linkedMapOf<ServerId, SharedHomeContentState.Content>()
+    private val serverDrawerLoadJobs = linkedMapOf<ServerId, Job>()
+    private val serverDrawerRequestGenerations = linkedMapOf<ServerId, Long>()
     // #211: serialize sidebar-order loads and mutations so a Pin/Unpin
     // arriving before the initial load resolves cannot PATCH from an empty
     // base snapshot and clobber any server-side pinned list.
@@ -160,7 +164,7 @@ internal class SharedHomeStore(
     fun updateRuntimeIntegrations(
         dataSource: SharedHomeDataSource,
         diagnosticsLogger: (String) -> Unit = {},
-        loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+        loadSidebarOrder: suspend (ServerId) -> DataResult<SettingsServerSidebarOrderSnapshot> = { _ ->
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
         },
         updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
@@ -190,6 +194,9 @@ internal class SharedHomeStore(
     ) {
         loadJob?.cancel()
         agentDirectMessageStatusJob?.cancel()
+        serverDrawerLoadJobs.values.forEach { it.cancel() }
+        serverDrawerLoadJobs.clear()
+        serverDrawerRequestGenerations.clear()
         loadJob = null
         agentDirectMessageStatusJob = null
         this.dataSource = dataSource
@@ -261,6 +268,9 @@ internal class SharedHomeStore(
         loadJob = null
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob = null
+        serverDrawerLoadJobs.values.forEach { it.cancel() }
+        serverDrawerLoadJobs.clear()
+        serverDrawerRequestGenerations.clear()
         sidebarOrderByServer.clear()
         contentByServer.clear()
         backgroundUnreadByScope.clear()
@@ -351,11 +361,38 @@ internal class SharedHomeStore(
                 )
             SharedHomeIntent.ToggleServerSwitcher -> {
                 val expanding = !_state.value.serverSwitcherExpanded
-                reduceState(_state.value.copy(serverSwitcherExpanded = expanding))
-                if (expanding) launchServerOrderRefreshForOpenSwitcher()
+                val drawer =
+                    if (expanding) {
+                        openedServerDrawerState(authStore.readSession())
+                    } else {
+                        _state.value.serverDrawer.copy(expanded = false, reorderMode = false)
+                    }
+                reduceState(
+                    _state.value.copy(
+                        serverSwitcherExpanded = expanding,
+                        serverDrawer = drawer
+                    )
+                )
+                if (expanding) {
+                    launchServerOrderRefreshForOpenSwitcher()
+                    drawer.expandedServerIds.forEach { serverId ->
+                        if (drawer.sections[serverId]?.content == null) {
+                            launchServerDrawerSectionLoad(serverId, force = false)
+                        }
+                    }
+                }
             }
             SharedHomeIntent.DismissServerSwitcher ->
-                reduceState(_state.value.copy(serverSwitcherExpanded = false))
+                reduceState(
+                    _state.value.copy(
+                        serverSwitcherExpanded = false,
+                        serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false)
+                    )
+                )
+            is SharedHomeIntent.ToggleServerDrawerSection ->
+                toggleServerDrawerSection(intent.serverId)
+            is SharedHomeIntent.RetryServerDrawerSection ->
+                launchServerDrawerSectionLoad(intent.serverId, force = true)
             is SharedHomeIntent.SelectConversation ->
                 reduceState(
                     _state.value.copy(
@@ -401,6 +438,7 @@ internal class SharedHomeStore(
                 reduceState(
                     _state.value.copy(
                         serverSwitcherExpanded = false,
+                        serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false),
                         serverSwitchState = nextSwitch,
                         selectedConversationId = null,
                         selectedTopAction = null,
@@ -921,6 +959,350 @@ internal class SharedHomeStore(
             }
     }
 
+    private fun HomeServerDrawerState.withServerContent(
+        content: SharedHomeContentState.Content,
+        status: HomeServerDrawerLoadStatus
+    ): HomeServerDrawerState {
+        val serverId = content.snapshot.server.id
+        val section = sections[serverId] ?: return this
+        return copy(
+            sections =
+                sections +
+                    (serverId to
+                        section.copy(
+                            content = content,
+                            status = status,
+                            errorCode = null
+                        ))
+        )
+    }
+
+    private fun openedServerDrawerState(session: StoredAuthSession?): HomeServerDrawerState {
+        val previous = _state.value.serverDrawer
+        if (session == null) {
+            pruneServerDrawerRuntimeState(emptySet())
+            return previous.copy(expanded = true, sections = emptyMap(), expandedServerIds = emptySet())
+        }
+        val currentContent = _state.value.content as? SharedHomeContentState.Content
+        val serverSummaries = session.servers.map { it.toServerSummary() }
+        val availableServerIds = serverSummaries.mapTo(linkedSetOf()) { it.id }
+        pruneServerDrawerRuntimeState(availableServerIds)
+        val selectedServerId =
+            currentContent?.snapshot?.server?.id
+                ?: session.currentServerId?.let(::ServerId)
+        val expandedServerIds =
+            buildSet {
+                addAll(previous.expandedServerIds.filter { it in availableServerIds })
+                selectedServerId?.takeIf { it in availableServerIds }?.let { add(it) }
+            }
+        val sections =
+            serverSummaries.associate { server ->
+                val cached =
+                    currentContent?.takeIf { it.snapshot.server.id == server.id }
+                        ?: contentByServer[server.id]
+                val status =
+                    when {
+                        cached == null -> HomeServerDrawerLoadStatus.Unloaded
+                        cached.snapshot.server.id == currentContent?.snapshot?.server?.id && cached.contentRefreshing ->
+                            HomeServerDrawerLoadStatus.Refreshing
+                        cached.snapshot.server.id == currentContent?.snapshot?.server?.id ->
+                            HomeServerDrawerLoadStatus.Loaded
+                        else -> HomeServerDrawerLoadStatus.Cached
+                    }
+                server.id to
+                    HomeServerDrawerSectionState(
+                        server = server,
+                        content = cached,
+                        status = status,
+                        requestGeneration = previous.sections[server.id]?.requestGeneration ?: 0L
+                    )
+            }
+        return previous.copy(
+            expanded = true,
+            expandedServerIds = expandedServerIds,
+            sections = sections
+        )
+    }
+
+    private fun pruneServerDrawerRuntimeState(availableServerIds: Set<ServerId>) {
+        serverDrawerLoadJobs.keys
+            .filterNot { it in availableServerIds }
+            .forEach { serverId -> serverDrawerLoadJobs.remove(serverId)?.cancel() }
+        serverDrawerRequestGenerations.keys.removeAll { it !in availableServerIds }
+        contentByServer.keys.removeAll { it !in availableServerIds }
+        sidebarOrderByServer.keys.removeAll { it !in availableServerIds }
+    }
+
+    private fun HomeServerDrawerState.withSessionServers(session: StoredAuthSession): HomeServerDrawerState {
+        val serverSummaries = session.servers.map { it.toServerSummary() }
+        val availableServerIds = serverSummaries.mapTo(linkedSetOf()) { it.id }
+        pruneServerDrawerRuntimeState(availableServerIds)
+        return copy(
+            expandedServerIds = expandedServerIds.filterTo(linkedSetOf()) { it in availableServerIds },
+            sections =
+                serverSummaries.associate { server ->
+                    val existing = sections[server.id]
+                    val cached = existing?.content ?: contentByServer[server.id]
+                    server.id to
+                        if (existing != null) {
+                            existing.copy(server = server, content = cached)
+                        } else {
+                            HomeServerDrawerSectionState(
+                                server = server,
+                                content = cached,
+                                status =
+                                    if (cached == null) {
+                                        HomeServerDrawerLoadStatus.Unloaded
+                                    } else {
+                                        HomeServerDrawerLoadStatus.Cached
+                                    }
+                            )
+                        }
+                }
+        )
+    }
+
+    private fun toggleServerDrawerSection(serverId: ServerId) {
+        val drawer = _state.value.serverDrawer
+        if (!drawer.expanded || serverId !in drawer.sections) return
+        if (serverId in drawer.expandedServerIds) {
+            reduceState(
+                _state.value.copy(
+                    serverDrawer = drawer.copy(expandedServerIds = drawer.expandedServerIds - serverId)
+                )
+            )
+            return
+        }
+        reduceState(
+            _state.value.copy(
+                serverDrawer = drawer.copy(expandedServerIds = drawer.expandedServerIds + serverId)
+            )
+        )
+        val section = _state.value.serverDrawer.sections[serverId] ?: return
+        val currentServerId =
+            (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        if (section.content == null || serverId != currentServerId) {
+            launchServerDrawerSectionLoad(serverId, force = false)
+        }
+    }
+
+    private fun launchServerDrawerSectionLoad(serverId: ServerId, force: Boolean) {
+        val drawer = _state.value.serverDrawer
+        val section = drawer.sections[serverId] ?: return
+        if (!drawer.expanded || serverId !in drawer.expandedServerIds) return
+        if (!force && serverDrawerLoadJobs[serverId]?.isActive == true) return
+
+        val generation = (serverDrawerRequestGenerations[serverId] ?: section.requestGeneration) + 1L
+        serverDrawerRequestGenerations[serverId] = generation
+        serverDrawerLoadJobs.remove(serverId)?.cancel()
+        val cached = section.content ?: contentByServer[serverId]
+        val loadingSection =
+            section.copy(
+                content = cached,
+                status =
+                    if (cached == null) {
+                        HomeServerDrawerLoadStatus.Loading
+                    } else {
+                        HomeServerDrawerLoadStatus.Refreshing
+                    },
+                requestGeneration = generation,
+                errorCode = null
+            )
+        reduceState(
+            _state.value.copy(
+                serverDrawer =
+                    drawer.copy(
+                        sections = drawer.sections + (serverId to loadingSection)
+                    )
+            )
+        )
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                loadServerDrawerSection(serverId, generation)
+            }
+        serverDrawerLoadJobs[serverId] = job
+        job.start()
+    }
+
+    private suspend fun loadServerDrawerSection(serverId: ServerId, generation: Long) {
+        val session = authStore.readSession()
+        if (session == null || session.servers.none { it.id == serverId.value }) {
+            completeServerDrawerSectionError(serverId, generation, "server_unavailable")
+            return
+        }
+        val homeResult =
+            try {
+                dataSource.loadHome(
+                    serverId = serverId,
+                    priority = DataRequestPriority.Background,
+                    forceNetwork = false
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                diagnosticsLogger(
+                    "home_server_drawer_load_failed serverId=${serverId.value} " +
+                        "generation=$generation errorType=${throwable.safeHomeStoreDiagnosticsType()}"
+                )
+                completeServerDrawerSectionError(serverId, generation, "home_network")
+                return
+            }
+        when (homeResult) {
+            is DataResult.Content -> {
+                if (homeResult.data.server.id != serverId) {
+                    completeServerDrawerSectionError(serverId, generation, "server_mismatch")
+                    return
+                }
+                val sidebarOrder = loadServerDrawerSidebarOrder(serverId)
+                if (!isCurrentServerDrawerRequest(serverId, generation)) return
+                val content =
+                    createHomeContent(
+                        snapshot =
+                            if (sidebarOrder != null && homeResult.data.sidebarOrder != sidebarOrder) {
+                                homeResult.data.copy(sidebarOrder = sidebarOrder)
+                            } else {
+                                homeResult.data
+                            },
+                        session = session,
+                        contentRefreshing = false,
+                        previousContent = contentByServer[serverId]
+                    )
+                publishServerDrawerContent(serverId, generation, content)
+            }
+            is DataResult.Empty -> completeServerDrawerSectionEmpty(serverId, generation)
+            is DataResult.Error -> completeServerDrawerSectionError(serverId, generation, homeResult.error.code)
+            is DataResult.NoPermission -> completeServerDrawerSectionError(serverId, generation, homeResult.blocker.code)
+        }
+    }
+
+    private suspend fun loadServerDrawerSidebarOrder(
+        serverId: ServerId
+    ): SettingsServerSidebarOrderSnapshot? =
+        try {
+            when (val result = loadSidebarOrder(serverId)) {
+                is DataResult.Content -> result.data
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> sidebarOrderByServer[serverId]
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            diagnosticsLogger(
+                "home_server_drawer_sidebar_order_failed serverId=${serverId.value} " +
+                    "errorType=${throwable.safeHomeStoreDiagnosticsType()}"
+            )
+            sidebarOrderByServer[serverId]
+        }
+
+    private fun isCurrentServerDrawerRequest(serverId: ServerId, generation: Long): Boolean =
+        serverDrawerRequestGenerations[serverId] == generation &&
+            _state.value.serverDrawer.sections[serverId]?.requestGeneration == generation
+
+    private fun publishServerDrawerContent(
+        serverId: ServerId,
+        generation: Long,
+        content: SharedHomeContentState.Content
+    ) {
+        if (!isCurrentServerDrawerRequest(serverId, generation)) return
+        val latestSession = authStore.readSession()
+        if (latestSession == null || latestSession.servers.none { it.id == serverId.value }) {
+            removeUnavailableServerDrawerSection(serverId, generation)
+            return
+        }
+        content.snapshot.sidebarOrder?.let { sidebarOrderByServer[serverId] = it }
+        contentByServer[serverId] = content
+        updateConversationIdentity(content.baseSnapshot)
+        val drawer = _state.value.serverDrawer
+        val section = drawer.sections[serverId] ?: return
+        reduceState(
+            _state.value.copy(
+                serverDrawer =
+                    drawer.copy(
+                        sections =
+                            drawer.sections +
+                                (serverId to
+                                    section.copy(
+                                        content = content,
+                                        status = HomeServerDrawerLoadStatus.Loaded,
+                                        errorCode = null
+                                    ))
+                    )
+            )
+        )
+        serverDrawerLoadJobs.remove(serverId)
+    }
+
+    private fun removeUnavailableServerDrawerSection(serverId: ServerId, generation: Long) {
+        if (!isCurrentServerDrawerRequest(serverId, generation)) return
+        serverDrawerLoadJobs.remove(serverId)
+        serverDrawerRequestGenerations.remove(serverId)
+        contentByServer.remove(serverId)
+        sidebarOrderByServer.remove(serverId)
+        val drawer = _state.value.serverDrawer
+        reduceState(
+            _state.value.copy(
+                serverDrawer =
+                    drawer.copy(
+                        expandedServerIds = drawer.expandedServerIds - serverId,
+                        sections = drawer.sections - serverId
+                    )
+            )
+        )
+    }
+
+    private fun completeServerDrawerSectionEmpty(serverId: ServerId, generation: Long) {
+        if (!isCurrentServerDrawerRequest(serverId, generation)) return
+        val drawer = _state.value.serverDrawer
+        val section = drawer.sections[serverId] ?: return
+        reduceState(
+            _state.value.copy(
+                serverDrawer =
+                    drawer.copy(
+                        sections =
+                            drawer.sections +
+                                (serverId to
+                                    section.copy(
+                                        status =
+                                            if (section.content == null) {
+                                                HomeServerDrawerLoadStatus.Empty
+                                            } else {
+                                                HomeServerDrawerLoadStatus.Cached
+                                            },
+                                        errorCode = null
+                                    ))
+                    )
+            )
+        )
+        serverDrawerLoadJobs.remove(serverId)
+    }
+
+    private fun completeServerDrawerSectionError(serverId: ServerId, generation: Long, code: String) {
+        if (!isCurrentServerDrawerRequest(serverId, generation)) return
+        val drawer = _state.value.serverDrawer
+        val section = drawer.sections[serverId] ?: return
+        reduceState(
+            _state.value.copy(
+                serverDrawer =
+                    drawer.copy(
+                        sections =
+                            drawer.sections +
+                                (serverId to
+                                    section.copy(
+                                        status =
+                                            if (section.content == null) {
+                                                HomeServerDrawerLoadStatus.ErrorEmpty
+                                            } else {
+                                                HomeServerDrawerLoadStatus.ErrorWithCache
+                                            },
+                                        errorCode = code
+                                    ))
+                    )
+            )
+        )
+        serverDrawerLoadJobs.remove(serverId)
+    }
+
     private fun launchAgentDirectMessageStatusRefreshForCurrentSnapshot() {
         val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
         launchAgentDirectMessageStatusRefresh(
@@ -1092,6 +1474,15 @@ internal class SharedHomeStore(
             reduceState(
                 _state.value.copy(
                     content = nextContent,
+                    serverDrawer =
+                        if (nextContent is SharedHomeContentState.Content) {
+                            _state.value.serverDrawer.withServerContent(
+                                nextContent,
+                                HomeServerDrawerLoadStatus.Loaded
+                            )
+                        } else {
+                            _state.value.serverDrawer
+                        },
                     serverSwitchState =
                         if (resultServerId != null) {
                             latestSwitch.complete(request.requestGeneration, resultServerId)
@@ -1168,6 +1559,25 @@ internal class SharedHomeStore(
         contentRefreshing: Boolean,
         previousContent: SharedHomeContentState.Content?
     ): SharedHomeContentState.Content {
+        val content =
+            createHomeContent(
+                snapshot = snapshot,
+                session = session,
+                contentRefreshing = contentRefreshing,
+                previousContent = previousContent
+            )
+        content.snapshot.sidebarOrder?.let { sidebarOrderByServer[content.snapshot.server.id] = it }
+        contentByServer[content.baseSnapshot.server.id] = content
+        updateConversationIdentity(content.baseSnapshot)
+        return content
+    }
+
+    private fun createHomeContent(
+        snapshot: HomeSnapshot,
+        session: StoredAuthSession,
+        contentRefreshing: Boolean,
+        previousContent: SharedHomeContentState.Content?
+    ): SharedHomeContentState.Content {
         snapshot.sidebarOrder?.let { sidebarOrderByServer[snapshot.server.id] = it }
         val sidebarOrder = snapshot.sidebarOrder ?: sidebarOrderByServer[snapshot.server.id]
         val snapshotWithSidebarOrder =
@@ -1180,15 +1590,12 @@ internal class SharedHomeStore(
             snapshotWithSidebarOrder
                 .withAcceptedReadStateCursors()
                 .preserveStableRowsFrom(previousContent?.baseSnapshot)
-        updateConversationIdentity(baseSnapshot)
-        val content = SharedHomeContentState.Content(
+        return SharedHomeContentState.Content(
             snapshot = baseSnapshot.preserveStableRowsFrom(previousContent?.snapshot),
             session = session,
             contentRefreshing = contentRefreshing,
             baseSnapshot = baseSnapshot
         )
-        contentByServer[baseSnapshot.server.id] = content
-        return content
     }
 
     private fun HomeSnapshot.withAcceptedReadStateCursors(): HomeSnapshot {
@@ -1249,7 +1656,7 @@ internal class SharedHomeStore(
     private suspend fun loadAndMergeSidebarOrder() {
         sidebarOrderMutex.withLock {
             val current = _state.value.content as? SharedHomeContentState.Content ?: return@withLock
-            when (val result = loadSidebarOrder()) {
+            when (val result = loadSidebarOrder(current.snapshot.server.id)) {
                 is DataResult.Content ->
                     applySidebarOrderLocally(serverId = current.snapshot.server.id, next = result.data)
                 is DataResult.Empty,
@@ -1288,7 +1695,7 @@ internal class SharedHomeStore(
                 }
                 return@withLock again
             }
-            val fetched = loadSidebarOrder()
+            val fetched = loadSidebarOrder(latestServerId)
             if (fetched is DataResult.Content) {
                 applySidebarOrderLocally(serverId = latestServerId, next = fetched.data)
                 fetched.data
@@ -1314,7 +1721,12 @@ internal class SharedHomeStore(
         contentByServer[serverId] = nextContent
         reduceState(
             _state.value.copy(
-                content = nextContent
+                content = nextContent,
+                serverDrawer =
+                    _state.value.serverDrawer.withServerContent(
+                        nextContent,
+                        HomeServerDrawerLoadStatus.Loaded
+                    )
             )
         )
         return true
@@ -1347,7 +1759,12 @@ internal class SharedHomeStore(
                 is SharedHomeContentState.Error -> current.copy(session = applied)
                 is SharedHomeContentState.Loading -> current.copy(session = applied)
             }
-        reduceState(_state.value.copy(content = nextContent))
+        reduceState(
+            _state.value.copy(
+                content = nextContent,
+                serverDrawer = _state.value.serverDrawer.withSessionServers(applied)
+            )
+        )
     }
 
     private fun StoredAuthSession.withServerOrder(serverOrder: List<String>): StoredAuthSession {
@@ -2092,7 +2509,7 @@ internal class SharedHomeStore(
         val previousState = _state.value
         val intent = intentOverride ?: stateDiagnosticsIntent
         val diagnosticsReason = intentOverride?.toSharedHomeIntentDiagnosticsLabel() ?: stateDiagnosticsReason
-        val finalState =
+        val reducedState =
             if (intent == null || persistSlices.isEmpty()) {
                 nextState
             } else {
@@ -2100,6 +2517,21 @@ internal class SharedHomeStore(
                     slice.reduce(previous = previousState, intent = intent, reduced = state)
                 }
             }
+        val finalState =
+            (reducedState.content as? SharedHomeContentState.Content)?.let { content ->
+                reducedState.copy(
+                    serverDrawer =
+                        reducedState.serverDrawer.withServerContent(
+                            content = content,
+                            status =
+                                if (content.contentRefreshing) {
+                                    HomeServerDrawerLoadStatus.Refreshing
+                                } else {
+                                    HomeServerDrawerLoadStatus.Loaded
+                                }
+                        )
+                )
+            } ?: reducedState
         if (finalState == previousState) return false
         (finalState.content as? SharedHomeContentState.Content)?.let { content ->
             updateConversationIdentity(content.baseSnapshot)
@@ -2133,7 +2565,7 @@ class SharedHomeViewModel(
     authStore: SlockAuthSessionStore,
     dataSource: SharedHomeDataSource,
     diagnosticsLogger: (String) -> Unit = {},
-    loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+    loadSidebarOrder: suspend (ServerId) -> DataResult<SettingsServerSidebarOrderSnapshot> = { _ ->
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
     },
     updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
@@ -2331,6 +2763,10 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         SharedHomeIntent.ForegroundRefresh -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:foreground"
         SharedHomeIntent.ToggleServerSwitcher -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-switcher"
         SharedHomeIntent.DismissServerSwitcher -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-switcher-dismiss"
+        is SharedHomeIntent.ToggleServerDrawerSection ->
+            "${SharedHomeChannelFoldEvent.Patch.wireName}:server-drawer-toggle:${serverId.value}"
+        is SharedHomeIntent.RetryServerDrawerSection ->
+            "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server-drawer-retry:${serverId.value}"
         is SharedHomeIntent.SelectConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:select:$threadId"
         is SharedHomeIntent.SelectTopAction -> "${SharedHomeChannelFoldEvent.Patch.wireName}:top-action:$action"
         is SharedHomeIntent.SelectServer -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server:$serverId"
@@ -2758,10 +3194,37 @@ private fun HomeSnapshot.withChannelActivityMute(settings: ChannelActivityMuteSe
         }
     )
 
+enum class HomeServerDrawerLoadStatus {
+    Unloaded,
+    Loading,
+    Cached,
+    Refreshing,
+    Loaded,
+    Empty,
+    ErrorWithCache,
+    ErrorEmpty
+}
+
+data class HomeServerDrawerSectionState(
+    val server: ServerSummary,
+    val content: SharedHomeContentState.Content? = null,
+    val status: HomeServerDrawerLoadStatus = HomeServerDrawerLoadStatus.Unloaded,
+    val requestGeneration: Long = 0L,
+    val errorCode: String? = null
+)
+
+data class HomeServerDrawerState(
+    val expanded: Boolean = false,
+    val expandedServerIds: Set<ServerId> = emptySet(),
+    val sections: Map<ServerId, HomeServerDrawerSectionState> = emptyMap(),
+    val reorderMode: Boolean = false
+)
+
 data class SharedHomeState(
     val content: SharedHomeContentState = SharedHomeContentState.Loading(),
     val serverSwitchState: HomeServerSwitchState = HomeServerSwitchState(),
     val serverSwitcherExpanded: Boolean = false,
+    val serverDrawer: HomeServerDrawerState = HomeServerDrawerState(),
     val selectedConversationId: String? = null,
     val selectedTopAction: SharedHomeTopAction? = null,
     val notifications: List<SharedHomeNotification> = emptyList(),
@@ -2790,6 +3253,8 @@ sealed interface SharedHomeIntent {
     data object ForegroundRefresh : SharedHomeIntent
     data object ToggleServerSwitcher : SharedHomeIntent
     data object DismissServerSwitcher : SharedHomeIntent
+    data class ToggleServerDrawerSection(val serverId: ServerId) : SharedHomeIntent
+    data class RetryServerDrawerSection(val serverId: ServerId) : SharedHomeIntent
     data class SelectConversation(val threadId: String) : SharedHomeIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
@@ -2847,6 +3312,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectServer -> true
             SharedHomeIntent.ToggleServerSwitcher,
             SharedHomeIntent.DismissServerSwitcher,
+            is SharedHomeIntent.ToggleServerDrawerSection,
+            is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
@@ -2884,6 +3351,8 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SelectServer -> true
             SharedHomeIntent.ToggleServerSwitcher,
             SharedHomeIntent.DismissServerSwitcher,
+            is SharedHomeIntent.ToggleServerDrawerSection,
+            is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
@@ -2921,6 +3390,8 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SelectServer,
             SharedHomeIntent.ToggleServerSwitcher,
             SharedHomeIntent.DismissServerSwitcher,
+            is SharedHomeIntent.ToggleServerDrawerSection,
+            is SharedHomeIntent.RetryServerDrawerSection,
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,

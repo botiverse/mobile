@@ -1123,6 +1123,11 @@ class RealSettingsRepository(
         return fetchServerSidebarOrder(serverId)
     }
 
+    internal suspend fun getServerSidebarOrder(
+        serverId: ServerId
+    ): DataResult<SettingsServerSidebarOrderSnapshot> =
+        fetchServerSidebarOrder(serverId.value)
+
     override suspend fun updateServerSidebarOrder(
         request: SettingsServerSidebarOrderUpdateRequest
     ): DataResult<SettingsServerSidebarOrderSnapshot> {
