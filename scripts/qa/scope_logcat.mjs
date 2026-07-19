@@ -12,6 +12,7 @@ const output = arg("--output");
 const verdictPath = arg("--verdict");
 const pidPath = arg("--pids");
 const packageId = arg("--package");
+const alreadyFiltered = arg("--already-filtered", "false") === "true";
 if (!input || !output || !verdictPath || !pidPath || !packageId) {
   console.error("usage: scope_logcat.mjs --input full.txt --output logcat.txt --verdict verdict.json --pids app-pids.txt --package id");
   process.exit(2);
@@ -23,7 +24,7 @@ const pids = [...new Set((fs.existsSync(pidPath) ? fs.readFileSync(pidPath, "utf
   .filter((pid) => Number.isInteger(pid) && pid > 0))];
 const lines = fs.existsSync(input) ? fs.readFileSync(input, "utf8").split("\n") : [];
 const allowed = new Set(pids);
-const scoped = lines.filter((line) => {
+const scoped = alreadyFiltered ? lines.filter(Boolean) : lines.filter((line) => {
   const match = /^\S+\s+\S+\s+(\d+)\s+\d+\s/.exec(line);
   return match && allowed.has(Number(match[1]));
 });
@@ -40,4 +41,4 @@ if (fs.existsSync(verdictPath)) {
   fs.writeFileSync(verdictPath, `${JSON.stringify(verdict, null, 2)}\n`);
 }
 
-console.log(JSON.stringify({ package_id: packageId, pids, input_lines: lines.length, scoped_lines: scoped.length }));
+console.log(JSON.stringify({ package_id: packageId, pids, already_filtered: alreadyFiltered, input_lines: lines.length, scoped_lines: scoped.length }));
