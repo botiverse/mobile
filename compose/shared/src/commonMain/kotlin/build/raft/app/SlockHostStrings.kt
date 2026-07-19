@@ -5,21 +5,18 @@ import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.resource.StringResource
 import com.tencent.tmm.kmmresource.resource.desc.Resource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.format
+
+internal expect fun slockResolveHostString(desc: StringDesc): String
 
 /**
- * Localized strings for the NATIVE host layers (task #491).
+ * Localized strings for native host layers.
  *
- * The iOS host (HRBridgeModule) presents UIKit alerts whose copy previously
- * lived as English literals — the app has no Localizable.strings
- * infrastructure, but the kmmresource MR bundle already ships in the app
- * (task #423), so hosts can resolve the shared resources through this object
- * instead. PUBLIC on purpose: it must export into the iOS framework for
- * Objective-C callers (`SharedSlockHostStrings.shared`).
- *
- * Resolution is plain (non-composable): `StringDesc.localeType` is a
- * Kotlin/Native @ThreadLocal, so it is (re)applied on the calling thread from
- * the process-local locale before each lookup — same contract as the compose
- * `stringResource` actual on iOS.
+ * Native Android/iOS surfaces resolve the same KMM resources as Compose. The
+ * process-local locale is published from the MMKV-backed app-language setting,
+ * so hosts use this facade instead of their platform resource locale. Public
+ * on purpose: Kotlin/Native exports it as `SharedSlockHostStrings` for
+ * Objective-C callers.
  */
 object SlockHostStrings {
     fun feedbackPromptTitle(): String = resolve(MR.strings.settings_feedback_title)
@@ -36,6 +33,13 @@ object SlockHostStrings {
 
     fun feedbackErrorUnknown(): String = resolve(MR.strings.host_feedback_error_unknown)
 
+    fun feedbackFailedMessage(detail: String?): String {
+        return resolve(
+            MR.strings.host_feedback_failed_message
+                .format(listOf(detail?.takeIf { it.isNotBlank() } ?: feedbackErrorUnknown()))
+        )
+    }
+
     fun feedbackSentTitle(): String = resolve(MR.strings.host_feedback_sent_title)
 
     fun feedbackCopiedMessage(): String = resolve(MR.strings.host_feedback_copied_message)
@@ -43,7 +47,15 @@ object SlockHostStrings {
     fun ok(): String = resolve(MR.strings.common_ok)
 
     private fun resolve(resource: StringResource): String {
+        return resolve(StringDesc.Resource(resource))
+    }
+
+    private fun resolve(desc: StringDesc): String {
+        applyRuntimeLocale()
+        return slockResolveHostString(desc)
+    }
+
+    private fun applyRuntimeLocale() {
         KmmResourceLocaleRuntime.locale.value?.let { StringDesc.localeType = it.stringDescLocaleType }
-        return StringDesc.Resource(resource).localized()
     }
 }

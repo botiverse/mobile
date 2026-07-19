@@ -70,6 +70,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.BuildConfig
+import build.raft.app.SlockHostStrings
 import build.raft.app.releaseSlockShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
@@ -4234,7 +4235,7 @@ internal class SlockKuiklyBridgeModule(
             val shareText = buildQuiverFeedbackShareText(ticketId, description, attachmentNames)
             withContext(Dispatchers.Main) {
                 copyText("Hands feedback", shareText)
-                Toast.makeText(appContext, appContext.getString(R.string.hands_feedback_copied_toast), Toast.LENGTH_LONG).show()
+                Toast.makeText(appContext, SlockHostStrings.feedbackCopiedMessage(), Toast.LENGTH_LONG).show()
             }
             SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
             mapOf<String, Any>(
@@ -4249,7 +4250,7 @@ internal class SlockKuiklyBridgeModule(
                     "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
             )
             withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, appContext.getString(R.string.hands_feedback_failed_toast, it.message ?: "unknown"), Toast.LENGTH_LONG).show()
+                Toast.makeText(appContext, SlockHostStrings.feedbackFailedMessage(it.message), Toast.LENGTH_LONG).show()
             }
             mapOf<String, Any>(
                     "status" to "error",
