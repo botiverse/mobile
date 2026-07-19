@@ -58,7 +58,7 @@ class MemberDetailLoadingProductionContractTest {
         assertContains(activity, "SlockCenteredLoading(")
         assertContains(activity, "member_state_loading_activity")
         assertContains(activity, "member_error_load_activity")
-        assertTrue(activity.indexOf("MembersAgentActivityLoadNotice(loadState)") < activity.indexOf("rows.forEach"))
+        assertTrue(activity.indexOf("MembersAgentActivityLoadNotice(loadState)") < activity.indexOf("LazyColumn("))
     }
 
     private fun block(source: String, startMarker: String, endMarker: String): String {
