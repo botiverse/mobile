@@ -467,6 +467,98 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun foregroundServerSelectionSupersedesOlderDrawerPublication() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        var server2SidebarLoads = 0
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope,
+                loadSidebarOrder = { serverId ->
+                    val marker =
+                        if (serverId == ServerId("server-2")) {
+                            server2SidebarLoads += 1
+                            if (server2SidebarLoads == 1) "foreground-fresh" else "drawer-stale"
+                        } else {
+                            "server-1"
+                        }
+                    DataResult.Content(SettingsServerSidebarOrderSnapshot(channelOrder = listOf(marker)))
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val olderDrawerLoad = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        olderDrawerLoad.awaitStarted()
+
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+        val foreground = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("server-2", foreground.snapshot.server.id.value)
+        assertEquals(listOf("foreground-fresh"), foreground.snapshot.sidebarOrder?.channelOrder)
+
+        olderDrawerLoad.release()
+        awaitCondition { server2SidebarLoads == 2 }
+
+        store.accept(SharedHomeIntent.SelectServer("server-1"))
+        val reopenRefresh = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        withTimeout(1_000L) { reopenRefresh.awaitStarted() }
+
+        val cachedServer2 = store.state.value.serverDrawer.sections.getValue(ServerId("server-2"))
+        assertEquals(HomeServerDrawerLoadStatus.Refreshing, cachedServer2.status)
+        assertEquals(
+            listOf("foreground-fresh"),
+            cachedServer2.content?.snapshot?.sidebarOrder?.channelOrder
+        )
+        reopenRefresh.release()
+        scope.cancel()
+    }
+
+    @Test
+    fun reopeningDrawerRefreshesExpandedNonSelectedSectionWhileKeepingCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource = source(api = api, sessionStore = sessionStore),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        store.accept(SharedHomeIntent.ToggleServerDrawerSection(ServerId("server-2")))
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+        val cachedBeforeClose =
+            store.state.value.serverDrawer.sections.getValue(ServerId("server-2")).content
+        assertTrue(cachedBeforeClose != null)
+
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        val reopenRefresh = api.blockNextChannels("server-2")
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        withTimeout(1_000L) { reopenRefresh.awaitStarted() }
+
+        val refreshing = store.state.value.serverDrawer.sections.getValue(ServerId("server-2"))
+        assertEquals(HomeServerDrawerLoadStatus.Refreshing, refreshing.status)
+        assertEquals(cachedBeforeClose, refreshing.content)
+
+        reopenRefresh.release()
+        awaitCondition {
+            store.state.value.serverDrawer.sections[ServerId("server-2")]?.status ==
+                HomeServerDrawerLoadStatus.Loaded
+        }
+        scope.cancel()
+    }
+
+    @Test
     fun expandedServerDrawerSectionsLoadIndependentlyByServer() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val baseSession = sampleSession()

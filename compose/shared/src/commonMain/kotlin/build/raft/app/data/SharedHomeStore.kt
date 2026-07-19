@@ -375,8 +375,10 @@ internal class SharedHomeStore(
                 )
                 if (expanding) {
                     launchServerOrderRefreshForOpenSwitcher()
+                    val currentServerId =
+                        (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
                     drawer.expandedServerIds.forEach { serverId ->
-                        if (drawer.sections[serverId]?.content == null) {
+                        if (drawer.sections[serverId]?.content == null || serverId != currentServerId) {
                             launchServerDrawerSectionLoad(serverId, force = false)
                         }
                     }
@@ -429,6 +431,7 @@ internal class SharedHomeStore(
                 )
             is SharedHomeIntent.SelectServer -> {
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+                supersedeServerDrawerRequest(ServerId(intent.serverId))
                 val nextSwitch =
                     if (intent.serverId == currentServerId) {
                         _state.value.serverSwitchState.refresh()
@@ -1084,6 +1087,20 @@ internal class SharedHomeStore(
         if (section.content == null || serverId != currentServerId) {
             launchServerDrawerSectionLoad(serverId, force = false)
         }
+    }
+
+    /**
+     * A foreground server selection owns fresher publication authority than any drawer preload
+     * that started for the same server. Rotate the drawer generation before foreground loading so
+     * even a non-cooperative older request can finish without overwriting [contentByServer] or the
+     * conversation projection. The detached request is intentionally allowed to complete; every
+     * terminal drawer publication path is fenced by [isCurrentServerDrawerRequest].
+     */
+    private fun supersedeServerDrawerRequest(serverId: ServerId) {
+        val sectionGeneration = _state.value.serverDrawer.sections[serverId]?.requestGeneration
+        val currentGeneration = serverDrawerRequestGenerations[serverId] ?: sectionGeneration ?: return
+        serverDrawerRequestGenerations[serverId] = currentGeneration + 1L
+        serverDrawerLoadJobs.remove(serverId)
     }
 
     private fun launchServerDrawerSectionLoad(serverId: ServerId, force: Boolean) {
