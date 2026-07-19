@@ -298,6 +298,45 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellVisibilitySignalsRefreshEveryForegroundGeneration() {
+        val gate = AppShellVisibleRefreshGate()
+
+        assertTrue(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.Lifecycle,
+                appearanceGeneration = 0,
+                target = "home:"
+            )
+        )
+        assertFalse(
+            gate.shouldRefresh(
+                AppShellVisibleRefreshSignal.PageDidAppear,
+                appearanceGeneration = 1,
+                target = "home:"
+            )
+        )
+
+        (1..3).forEach { generation ->
+            gate.onLifecycleHidden(appearanceGeneration = generation)
+            assertTrue(
+                gate.shouldRefresh(
+                    AppShellVisibleRefreshSignal.Lifecycle,
+                    appearanceGeneration = generation,
+                    target = "home:"
+                ),
+                "foreground generation $generation must not reuse a stale lifecycle generation"
+            )
+            assertFalse(
+                gate.shouldRefresh(
+                    AppShellVisibleRefreshSignal.PageDidAppear,
+                    appearanceGeneration = generation + 1,
+                    target = "home:"
+                )
+            )
+        }
+    }
+
+    @Test
     fun appShellEvictedPageFirstGenerationNeedsHiddenBeforeOpeningNext() {
         val gate = AppShellVisibleRefreshGate()
 
