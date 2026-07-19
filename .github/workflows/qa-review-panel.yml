@@ -1,0 +1,98 @@
+name: Stamp Review Panel (3x M3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Stamp run id in running/judging/in_review state"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Independent reviewer ${{ matrix.slot }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3]
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v5
+
+      - name: Install M3 SDK
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p stamp-review-m3
+          cd stamp-review-m3
+          npm init -y >/dev/null
+          npm i @earendil-works/pi-ai@0.80.10 --no-audit --no-fund
+
+      - name: Review raw evidence and submit panel vote
+        env:
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          STAMP_RUN_ID: ${{ inputs.run_id }}
+          STAMP_REVIEWER: m3-review-${{ matrix.slot }}
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
+          PI_MODEL: ${{ vars.PI_MODEL || 'MiniMax-M3' }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/stamp-review-m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+          STAMP_REVIEW_OUT: panel-review-${{ matrix.slot }}.json
+        run: node scripts/qa/review_agent.mjs
+
+      - name: Upload raw and parsed review record
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stamp-panel-review-${{ matrix.slot }}
+          path: panel-review-${{ matrix.slot }}.json
+          if-no-files-found: error
+
+  verify-panel:
+    name: Verify three independent votes
+    needs: review
+    if: ${{ always() }}
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Download reviewer records
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stamp-panel-review-*
+          path: panel-records
+          merge-multiple: true
+
+      - name: Verify panel state in Stamp
+        env:
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          test "${{ needs.review.result }}" = success || {
+            echo "review matrix result: ${{ needs.review.result }}"
+            exit 1
+          }
+          records=$(find panel-records -name 'panel-review-*.json' -type f | sort)
+          test "$(wc -w <<<"$records")" -eq 3
+          manifest_count=$(jq -rs '[.[].evidence_manifest_sha256] | unique | length' $records)
+          echo "review-record manifest variants=$manifest_count"
+          test "$manifest_count" -eq 1
+          json=$(curl -fsS -H "Authorization: Bearer $STAMP_TOKEN" "$STAMP_URL/api/runs/$RUN_ID")
+          count=$(jq '[.reviews[] | select(.role == "panel")] | length' <<<"$json")
+          unique=$(jq '[.reviews[] | select(.role == "panel") | .reviewer] | unique | length' <<<"$json")
+          echo "panel votes=$count unique_reviewers=$unique run_status=$(jq -r .run.status <<<"$json")"
+          test "$count" -eq 3
+          test "$unique" -eq 3
+
+      - name: Upload aggregate panel record
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stamp-panel-aggregate
+          path: panel-records/
+          if-no-files-found: error
