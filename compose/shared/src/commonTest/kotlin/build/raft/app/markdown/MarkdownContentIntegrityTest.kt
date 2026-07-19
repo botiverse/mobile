@@ -35,6 +35,15 @@ class MarkdownContentIntegrityTest {
     }
 
     @Test
+    fun genericAngleBracketPlaceholdersInsideCodeSpanStayVerbatim() {
+        val rendered = renderTopParagraphs("Routes: `/apps/<app>/latest` and `/share/<token>`.")
+        assertTrue(
+            rendered.any { it.contains("/apps/<app>/latest") && it.contains("/share/<token>") },
+            "code spans must keep generic angle-bracket placeholders literal; got: $rendered"
+        )
+    }
+
+    @Test
     fun bareEmailAutolinkKeepsTheAddressText() {
         val rendered = renderTopParagraphs("Bare: <artin@cat.ms> end.")
         assertTrue(

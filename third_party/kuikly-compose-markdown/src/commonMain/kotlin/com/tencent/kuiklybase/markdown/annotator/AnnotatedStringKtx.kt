@@ -317,6 +317,17 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
     var childIndex = 0
     while (childIndex < children.size) {
         val child = children[childIndex]
+        // A code span is verbatim markdown content. Its delimiter nodes have
+        // already been removed by innerList(), so preserve every remaining
+        // AST node literally instead of routing it through the normal markup
+        // dispatcher. Generic angle-bracket placeholders such as <app> lex as
+        // HTML_TAG and were previously dropped because that token deliberately
+        // has no normal-rendering branch (task #502).
+        if (insideCodeSpan) {
+            append(child.getUnescapedTextInNode(content))
+            childIndex++
+            continue
+        }
         if (skipIfNext == null) {
             val consumed = annotateSequence?.invoke(this, content, children, childIndex, annotatorSettings) ?: 0
             if (consumed > 0) {

@@ -1313,6 +1313,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdLatestRelease() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-latest-release",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-latest-release")
+                    .put("visualFixture", "md_latest_release"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdCodeBlock() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-code-block",
