@@ -3923,7 +3923,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.LoadOlder)
         store.accept(SharedThreadIntent.LoadNewer)
 
-        assertEquals(listOf(50, 50, 50), api.channelMessageLimits)
+        assertEquals(listOf(30, 30, 30), api.channelMessageLimits)
         assertEquals(emptyList(), api.syncLimits)
         scope.cancel()
     }

@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -71,6 +72,30 @@ class SharedServerFeatureFlagsTest {
 
         assertFalse(snapshot.isEnabled(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
         assertEquals(null, snapshot.variant(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
+    }
+
+    @Test
+    fun selectedServerFeatureFlagsRefreshAgainWithoutASelectionChange() = runBlocking {
+        var refreshCount = 0
+        val waits = mutableListOf<Long>()
+
+        var canceled = false
+        try {
+            refreshSelectedServerFeatureFlags(
+                intervalMillis = 123L,
+                wait = { interval ->
+                    waits += interval
+                    if (waits.size == 2) throw CancellationException("test complete")
+                },
+                refresh = { refreshCount += 1 }
+            )
+        } catch (_: CancellationException) {
+            canceled = true
+        }
+
+        assertTrue(canceled)
+        assertEquals(2, refreshCount)
+        assertEquals(listOf(123L, 123L), waits)
     }
 
     @Test
