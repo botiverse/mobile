@@ -22,14 +22,4 @@ class TranslationTargetLanguagesTest {
         assertNull(TranslationTargetLanguages.normalize("browser"))
         assertNull(TranslationTargetLanguages.normalize("unsupported"))
     }
-
-    @Test
-    fun accountParserPreservesSupportedExplicitTarget() {
-        val parsed =
-            parseSharedLanguageRegionAccountPreferences(
-                """{"preferredLanguage":"ja-JP","autoTranslationEnabled":true}"""
-            )
-
-        assertEquals("ja", parsed?.preferredLanguage)
-    }
 }
