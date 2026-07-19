@@ -37,6 +37,7 @@ import android.provider.OpenableColumns
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import android.util.Base64InputStream
 import android.util.DisplayMetrics
 import android.util.LruCache
 import android.util.Log
@@ -137,7 +138,6 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
-import build.hands.update.HandsFeedbackException
 import build.hands.update.internal.HandsClient
 import build.hands.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
@@ -4172,17 +4172,17 @@ internal class SlockKuiklyBridgeModule(
                     )
                     return mapOf<String, Any>(
                             "status" to "error",
-                            "code" to "settings_feedback_attachment_read_failed",
+                            "code" to feedbackAttachmentPrepareErrorCode(throwable),
                             "message" to (throwable.message ?: "Unable to read feedback attachment")
                     )
                 }
         val diagnosticsFile =
-                if (userFiles.size < QUIVER_FEEDBACK_MAX_ATTACHMENTS) {
+                if (HandsFeedbackAttachmentPolicy.canAttachDiagnostics(userFiles)) {
                     withContext(Dispatchers.IO) { prepareOptionalDiagnosticsFeedbackFile() }
                 } else {
                     null
                 }
-        val attachments = (userFiles + listOfNotNull(diagnosticsFile)).take(QUIVER_FEEDBACK_MAX_ATTACHMENTS)
+        var attachments = HandsFeedbackAttachmentPolicy.selectAttachments(userFiles, diagnosticsFile)
         SlockAppLog.record(
                 "SlockDiagnostics",
                 "quiver_feedback_submit_prepared messageLength=${description.length} " +
@@ -4190,7 +4190,7 @@ internal class SlockKuiklyBridgeModule(
                         "attachmentCount=${attachments.size}"
         )
         return runCatching {
-            val ticketId = HandsFeedback(
+            val feedbackClient = HandsFeedback(
                     context = appContext,
                     baseUrl = BuildConfig.QUIVER_BASE_URL,
                     appSlug = BuildConfig.QUIVER_APP_SLUG,
@@ -4198,11 +4198,37 @@ internal class SlockKuiklyBridgeModule(
                     versionCode = BuildConfig.VERSION_CODE.toLong(),
                     channel = BuildConfig.QUIVER_CHANNEL,
                     clientKey = BuildConfig.QUIVER_CLIENT_KEY,
-            ).submit(
-                    message = description,
-                    kind = "bug",
-                    attachments = attachments,
             )
+            val ticketId =
+                    try {
+                        attachments =
+                                attachments.map(HandsFeedbackAttachmentPolicy::requireValidFile)
+                        feedbackClient.submit(
+                                message = description,
+                                kind = "bug",
+                                attachments = attachments,
+                        )
+                    } catch (throwable: Throwable) {
+                        if (diagnosticsFile == null ||
+                                !shouldRetryHandsFeedbackWithoutDiagnostics(throwable, diagnosticsFile)
+                        ) {
+                            throw throwable
+                        }
+                        attachments =
+                                userFiles
+                                        .take(HandsFeedbackAttachmentPolicy.maxAttachments)
+                                        .map(HandsFeedbackAttachmentPolicy::requireValidFile)
+                        SlockAppLog.record(
+                                "SlockDiagnostics",
+                                "quiver_feedback_diagnostics_submit_skipped error=${throwable.javaClass.simpleName} " +
+                                        "message=${throwable.message ?: "-"} retryAttachmentCount=${attachments.size}"
+                        )
+                        feedbackClient.submit(
+                                message = description,
+                                kind = "bug",
+                                attachments = attachments,
+                        )
+                    }
             // Shareable reference the user can paste into the community channel.
             val attachmentNames = handsFeedbackAttachmentNames(attachments.map(File::getName))
             val shareText = buildQuiverFeedbackShareText(ticketId, description, attachmentNames)
@@ -4227,7 +4253,7 @@ internal class SlockKuiklyBridgeModule(
             }
             mapOf<String, Any>(
                     "status" to "error",
-                    "code" to quiverFeedbackSubmitErrorCode(it),
+                    "code" to handsFeedbackSubmitErrorCode(it),
                     "message" to (it.message ?: "feedback submission failed"),
             )
         }
@@ -4312,36 +4338,23 @@ internal class SlockKuiklyBridgeModule(
                     null
                 }
                 ?.takeIf { file ->
-                    val fits = file.length() in 1..QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES
+                    val fits = file.length() in 1..HandsFeedbackAttachmentPolicy.maxAttachmentBytes
                     if (!fits) {
                         SlockAppLog.record(
                                 "SlockDiagnostics",
-                                "quiver_feedback_diagnostics_attachment_skipped bytes=${file.length()} max=$QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES"
+                                "quiver_feedback_diagnostics_attachment_skipped bytes=${file.length()} " +
+                                        "max=${HandsFeedbackAttachmentPolicy.maxAttachmentBytes}"
                         )
                     }
                     fits
                 }
     }
 
-    private fun quiverFeedbackSubmitErrorCode(throwable: Throwable): String {
-        val httpCode = (throwable as? HandsFeedbackException)?.code
-        return when {
-            httpCode == 401 || httpCode == 403 -> "settings_feedback_auth_failed"
-            httpCode == 429 -> "settings_feedback_rate_limited"
-            httpCode == 413 -> "settings_feedback_attachment_too_large"
-            httpCode == 400 && "too large" in throwable.message.orEmpty().lowercase(Locale.US) ->
-                "settings_feedback_attachment_too_large"
-            httpCode in 500..599 -> "settings_feedback_server_unavailable"
-            throwable is IOException -> "settings_feedback_network_failed"
-            else -> "settings_feedback_submit_failed"
-        }
-    }
-
     private fun JSONArray?.toFeedbackAttachmentFiles(): List<File> {
         if (this == null) return emptyList()
         val files = mutableListOf<File>()
         for (index in 0 until length()) {
-            if (files.size >= QUIVER_FEEDBACK_MAX_ATTACHMENTS) break
+            if (files.size >= HandsFeedbackAttachmentPolicy.maxAttachments) break
             val fileJson = optJSONObject(index) ?: continue
             val fileName = fileJson.optString("fileName").ifBlank { "attachment-${index + 1}" }
             val mimeType = fileJson.optString("mimeType").ifBlank { "application/octet-stream" }
@@ -4350,10 +4363,10 @@ internal class SlockKuiklyBridgeModule(
             val file =
                     when {
                         bodyBase64 != null ->
-                            writeQuiverFeedbackTempFile(
+                            writeQuiverFeedbackBase64TempFile(
                                     fileName = fileName,
                                     mimeType = mimeType,
-                                    bytes = Base64.decode(bodyBase64, Base64.DEFAULT),
+                                    bodyBase64 = bodyBase64,
                                     index = index
                             )
                         fileRef != null ->
@@ -4377,10 +4390,23 @@ internal class SlockKuiklyBridgeModule(
             index: Int
     ): File {
         val uri = Uri.parse(fileRef)
-        val bytes =
-                openQuiverFeedbackFileRefStream(uri)
-                        .use { input -> input.readBytes() }
-        return writeQuiverFeedbackTempFile(fileName = fileName, mimeType = mimeType, bytes = bytes, index = index)
+        if (uri.scheme.isNullOrBlank() || uri.scheme.equals("file", ignoreCase = true)) {
+            val path = if (uri.scheme.isNullOrBlank()) fileRef else uri.path
+                ?: throw FeedbackAttachmentReadException("No file path")
+            return HandsFeedbackAttachmentPolicy.requireValidFile(File(path))
+        }
+        val target = createQuiverFeedbackTempFile(fileName, mimeType, index)
+        return try {
+            openQuiverFeedbackFileRefStream(uri).use { input ->
+                target.outputStream().use { output ->
+                    HandsFeedbackAttachmentPolicy.copyBounded(input, output)
+                }
+            }
+            HandsFeedbackAttachmentPolicy.requireValidFile(target)
+        } catch (throwable: Throwable) {
+            runCatching { target.delete() }
+            throw throwable
+        }
     }
 
     private fun openQuiverFeedbackFileRefStream(uri: Uri): java.io.InputStream {
@@ -4395,22 +4421,40 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun writeQuiverFeedbackTempFile(
+    private fun writeQuiverFeedbackBase64TempFile(
             fileName: String,
             mimeType: String,
-            bytes: ByteArray,
+            bodyBase64: String,
             index: Int
     ): File {
-        if (bytes.isEmpty()) throw IOException("Feedback attachment is empty")
-        if (bytes.size > QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES) {
-            throw IOException("Feedback attachment exceeds 10 MB")
+        if (HandsFeedbackAttachmentPolicy.estimatedDecodedBase64Bytes(bodyBase64) >
+                        HandsFeedbackAttachmentPolicy.maxAttachmentBytes
+        ) {
+            throw FeedbackAttachmentTooLargeException(HandsFeedbackAttachmentPolicy.maxAttachmentBytes)
         }
+        val target = createQuiverFeedbackTempFile(fileName, mimeType, index)
+        return try {
+            Base64InputStream(Base64StringInputStream(bodyBase64), Base64.DEFAULT).use { input ->
+                target.outputStream().use { output ->
+                    HandsFeedbackAttachmentPolicy.copyBounded(input, output)
+                }
+            }
+            HandsFeedbackAttachmentPolicy.requireValidFile(target)
+        } catch (throwable: Throwable) {
+            runCatching { target.delete() }
+            throw throwable
+        }
+    }
+
+    private fun createQuiverFeedbackTempFile(
+            fileName: String,
+            mimeType: String,
+            index: Int
+    ): File {
         val cacheDir = File(appContext.cacheDir, QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME).apply { mkdirs() }
         cleanupQuiverFeedbackAttachmentCache(cacheDir)
         val safeName = sanitizeQuiverFeedbackFileName(fileName, mimeType, index)
-        val target = File(cacheDir, "${System.currentTimeMillis()}-${System.nanoTime()}-$safeName")
-        target.outputStream().use { output -> output.write(bytes) }
-        return target
+        return File(cacheDir, "${System.currentTimeMillis()}-${System.nanoTime()}-$safeName")
     }
 
     private fun sanitizeQuiverFeedbackFileName(fileName: String, mimeType: String, index: Int): String {
@@ -5240,8 +5284,6 @@ internal class SlockKuiklyBridgeModule(
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
         private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
-        private const val QUIVER_FEEDBACK_MAX_ATTACHMENTS = 3
-        private const val QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 10L * 1024L * 1024L
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME = "quiver-feedback-attachments"
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
