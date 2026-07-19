@@ -66,7 +66,6 @@ import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.layout
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.onSizeChanged
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.Role
@@ -645,7 +644,7 @@ internal fun Button(
     clickIdentity: Any? = null,
     content: (@Composable () -> Unit) = {}
 ) {
-    val rootPosition = remember(clickIdentity) { SlockMutableOffsetRef() }
+    val rootAnchor = remember(clickIdentity) { SlockLiveRootAnchorRef() }
     var pressed by remember { mutableStateOf(false) }
     val onClickUpdate = rememberUpdatedState(onClick)
     val onClick2Update = rememberUpdatedState(onClick2)
@@ -659,9 +658,7 @@ internal fun Button(
             }
             .then(
                 if (onClick2 != null) {
-                    Modifier.onGloballyPositioned {
-                        rootPosition.update(it.positionInRoot())
-                    }
+                    Modifier.slockCaptureLiveRootAnchor(rootAnchor)
                 } else {
                     Modifier
                 }
@@ -685,12 +682,9 @@ internal fun Button(
                     onTap = { offset ->
                         if (enabledUpdate.value) {
                             onClickUpdate.value.invoke()
-                            onClick2Update.value?.invoke(
-                                Offset(
-                                    offset.x + rootPosition.value.x,
-                                    offset.y + rootPosition.value.y
-                                )
-                            )
+                            rootAnchor.resolve(offset)?.let { anchor ->
+                                onClick2Update.value?.invoke(anchor)
+                            }
                         }
                     }
                 )

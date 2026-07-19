@@ -5,10 +5,8 @@ import build.raft.app.base.Utils
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
-import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.AttachmentPreview
 import build.raft.app.data.AttachmentPreviewContent
@@ -72,7 +70,6 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.StrokeCap
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
@@ -3818,22 +3815,17 @@ internal fun SlockFilePreviewOverflowMenuButton(
     onOpenMenu: (Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    val menuAnchor = remember { SlockLiveRootAnchorRef() }
     SlockBrutalIconButton(
         iconName = SlockLucideIconName.Ellipsis,
-        onClick = { onOpenMenu(menuAnchor) },
+        onClick = {
+            menuAnchor.resolve { size ->
+                Offset(size.width.toFloat(), size.height.toFloat())
+            }?.let(onOpenMenu)
+        },
         size = 30.dp,
         shadowOffset = 2.dp,
-        modifier = modifier.onGloballyPositioned { coordinates ->
-            val pos = coordinates.positionInRoot()
-            menuAnchor =
-                slockAnchoredTriggerGeometryAnchor(
-                    root = pos,
-                    width = coordinates.size.width.toFloat(),
-                    height = coordinates.size.height.toFloat(),
-                    placement = SlockAnchorPlacement.BottomEnd
-                )
-        }
+        modifier = modifier.slockCaptureLiveRootAnchor(menuAnchor)
     )
 }
 

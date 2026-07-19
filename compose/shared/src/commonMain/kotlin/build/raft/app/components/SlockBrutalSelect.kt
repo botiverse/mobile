@@ -5,6 +5,7 @@ import build.raft.app.SlockFloatingDefaultViewportGap
 import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockLiveRootAnchorRef
 import build.raft.app.SlockModalAnchoredPopover
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
@@ -38,7 +39,6 @@ import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -91,6 +91,7 @@ internal fun SlockBrutalSelectField(
     val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
     var triggerRootOffset by remember { mutableStateOf(Offset.Zero) }
     var triggerRootWidthPx by remember { mutableStateOf(0f) }
+    val triggerAnchor = remember { SlockLiveRootAnchorRef() }
     val density = LocalDensity.current
     val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
     val menuShadowOffset = SlockShadow.Brutal
@@ -102,7 +103,7 @@ internal fun SlockBrutalSelectField(
                     .fillMaxWidth()
                     .height(triggerHeight + shadowOffset)
                     .onGloballyPositioned { coords ->
-                        triggerRootOffset = coords.positionInRoot()
+                        triggerAnchor.update(coords)
                         triggerRootWidthPx = coords.size.width.toFloat()
                     }
         ) {
@@ -123,7 +124,16 @@ internal fun SlockBrutalSelectField(
                         .height(triggerHeight)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
                         .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                        .clickable(enabled = enabled) { expanded = !expanded }
+                        .clickable(enabled = enabled) {
+                            if (expanded) {
+                                expanded = false
+                            } else {
+                                triggerAnchor.resolve(Offset.Zero)?.let { anchor ->
+                                    triggerRootOffset = anchor
+                                    expanded = true
+                                }
+                            }
+                        }
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically

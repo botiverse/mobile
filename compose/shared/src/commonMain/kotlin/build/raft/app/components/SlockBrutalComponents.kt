@@ -5,14 +5,15 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockLiveRootAnchorRef
 import build.raft.app.SlockModalDismissBarrier
-import build.raft.app.SlockMutableOffsetRef
 import build.raft.app.SlockShadow
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
 import build.raft.app.slockFloatingContentClickTarget
+import build.raft.app.slockCaptureLiveRootAnchor
 import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
 import build.raft.app.resources.MR
@@ -59,7 +60,6 @@ import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.semantics.contentDescription
 import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -150,7 +150,7 @@ internal fun SlockAnchoredMetaChip(
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
     clickIdentity: Any? = null
 ) {
-    val geometryAnchor = remember(clickIdentity) { SlockMutableOffsetRef() }
+    val geometryAnchor = remember(clickIdentity) { SlockLiveRootAnchorRef() }
     val chipModifier =
         modifier
             .heightIn(min = minHeight)
@@ -162,28 +162,24 @@ internal fun SlockAnchoredMetaChip(
                 if (anchorPlacement == SlockAnchorPlacement.Tap) {
                     base
                 } else {
-                    base.onGloballyPositioned { coordinates ->
-                        val root = coordinates.positionInRoot()
-                        geometryAnchor.update(
-                            slockAnchoredChipGeometryAnchor(
-                                root = root,
-                                width = coordinates.size.width.toFloat(),
-                                height = coordinates.size.height.toFloat(),
-                                placement = anchorPlacement
-                            )
-                        )
-                    }
+                    base.slockCaptureLiveRootAnchor(geometryAnchor)
                 }
             }
     SlockAnchorButton(
         onClick2 = { tapAnchor ->
             val anchor =
-                if (anchorPlacement == SlockAnchorPlacement.Tap || !geometryAnchor.hasValue) {
-                    tapAnchor
-                } else {
-                    geometryAnchor.value
+                when (anchorPlacement) {
+                    SlockAnchorPlacement.Tap -> tapAnchor
+                    SlockAnchorPlacement.BottomStart ->
+                        geometryAnchor.resolve { size ->
+                            Offset(x = 0f, y = size.height.toFloat())
+                        }
+                    SlockAnchorPlacement.BottomEnd ->
+                        geometryAnchor.resolve { size ->
+                            Offset(x = size.width.toFloat(), y = size.height.toFloat())
+                        }
                 }
-            onClick?.invoke(anchor)
+            anchor?.let { onClick?.invoke(it) }
         },
         enabled = onClick != null,
         pressFeedback = pressFeedback,
@@ -1126,15 +1122,19 @@ internal fun SlockAnchoredToolbarChip(
     activeShadowColor: Color = SlockColor.ShadowBlack,
     onAnchorChanged: ((Offset) -> Unit)? = null
 ) {
-    val anchor = remember { SlockMutableOffsetRef() }
+    val anchor = remember { SlockLiveRootAnchorRef() }
+    val lastNotifiedAnchor = remember { mutableStateOf<Offset?>(null) }
     Box(
         modifier =
             modifier.onGloballyPositioned { coords ->
-                val root = coords.positionInRoot()
-                val next = Offset(root.x, root.y + coords.size.height.toFloat())
-                if (!anchor.hasValue || anchor.value != next) {
-                    anchor.update(next)
-                    onAnchorChanged?.invoke(next)
+                anchor.update(coords)
+                anchor.resolve { size ->
+                    Offset(x = 0f, y = size.height.toFloat())
+                }?.let { next ->
+                    if (lastNotifiedAnchor.value != next) {
+                        lastNotifiedAnchor.value = next
+                        onAnchorChanged?.invoke(next)
+                    }
                 }
             }
     ) {
@@ -1153,7 +1153,11 @@ internal fun SlockAnchoredToolbarChip(
             activeShadowOffset = activeShadowOffset,
             reserveActiveShadowSpace = reserveActiveShadowSpace,
             activeShadowColor = activeShadowColor,
-            onClick = { if (anchor.hasValue) onClick(anchor.value) }
+            onClick = {
+                anchor.resolve { size ->
+                    Offset(x = 0f, y = size.height.toFloat())
+                }?.let(onClick)
+            }
         )
     }
 }

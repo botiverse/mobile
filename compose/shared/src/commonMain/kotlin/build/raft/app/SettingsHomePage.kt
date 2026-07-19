@@ -16944,7 +16944,7 @@ private fun SharedHomeSavedResultCard(
             item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
-    val contentTopLeft = remember(openGestureKey) { SlockMutableOffsetRef() }
+    val contentAnchor = remember(openGestureKey) { SlockLiveRootAnchorRef() }
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier =
@@ -16963,13 +16963,12 @@ private fun SharedHomeSavedResultCard(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .onGloballyPositioned { coordinates -> contentTopLeft.update(coordinates.positionInRoot()) }
+                        .slockCaptureLiveRootAnchor(contentAnchor)
                         .pointerInput(openGestureKey) {
                             detectTapGestures(
                                 onTap = { currentOnOpen() },
                                 onLongPress = { localOffset ->
-                                    val topLeft = contentTopLeft.value
-                                    currentOnContextMenu(Offset(topLeft.x + localOffset.x, topLeft.y + localOffset.y))
+                                    contentAnchor.resolve(localOffset)?.let(currentOnContextMenu)
                                 }
                             )
                         },

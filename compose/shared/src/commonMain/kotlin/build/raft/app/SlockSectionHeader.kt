@@ -1,10 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -32,8 +29,6 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -390,19 +385,18 @@ internal fun SlockSectionHeaderIconAction(
     size: Dp = SectionHeaderActionSize,
     iconSize: Dp = SectionHeaderActionIconSize
 ) {
-    var anchor by remember { mutableStateOf(Offset.Zero) }
+    val anchorRef = remember { SlockLiveRootAnchorRef() }
     Button(
         onClick = {
             onClick()
-            onClick2(anchor)
+            anchorRef.resolve { coordinatesSize ->
+                Offset(x = 0f, y = coordinatesSize.height.toFloat())
+            }?.let(onClick2)
         },
         modifier =
             Modifier
                 .size(size)
-                .onGloballyPositioned { coords ->
-                    val root = coords.positionInRoot()
-                    anchor = Offset(root.x, root.y + coords.size.height.toFloat())
-                }
+                .slockCaptureLiveRootAnchor(anchorRef)
     ) {
         SlockLucideIcon(icon, Modifier.size(iconSize))
     }

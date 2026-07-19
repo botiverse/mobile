@@ -7,6 +7,7 @@ import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockLiveRootAnchorRef
 import build.raft.app.SlockModalAnchoredPopover
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
@@ -44,7 +45,6 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -456,6 +456,7 @@ internal fun SlockRaftUiSelectField(
     var expanded by remember { mutableStateOf(false) }
     var triggerRootOffset by remember { mutableStateOf(Offset.Zero) }
     var triggerRootWidthPx by remember { mutableStateOf(0f) }
+    val triggerAnchor = remember { SlockLiveRootAnchorRef() }
     val density = LocalDensity.current
     val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
     SlockRaftUiControlledSelect(
@@ -477,10 +478,19 @@ internal fun SlockRaftUiSelectField(
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    triggerRootOffset = coordinates.positionInRoot()
+                    triggerAnchor.update(coordinates)
                     triggerRootWidthPx = coordinates.size.width.toFloat()
                 },
-        onTriggerClick = { expanded = !expanded },
+        onTriggerClick = {
+            if (expanded) {
+                expanded = false
+            } else {
+                triggerAnchor.resolve(Offset.Zero)?.let { anchor ->
+                    triggerRootOffset = anchor
+                    expanded = true
+                }
+            }
+        },
         onDismiss = { expanded = false },
         onSelect = { id ->
             options.firstOrNull { it.id == id }?.let(onSelect)

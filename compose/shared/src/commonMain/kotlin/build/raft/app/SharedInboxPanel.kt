@@ -77,8 +77,6 @@ import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
@@ -1035,11 +1033,11 @@ private fun Modifier.activityRowGestures(
 ): Modifier {
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnOpenMenu by rememberUpdatedState(onOpenMenu)
-    val rootPos = remember(gestureKey) { SlockMutableOffsetRef() }
+    val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef() }
     return this
         .then(
             if (captureMenuAnchor) {
-                Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+                Modifier.slockCaptureLiveRootAnchor(rootAnchor)
             } else {
                 Modifier
             }
@@ -1048,8 +1046,7 @@ private fun Modifier.activityRowGestures(
             detectTapGestures(
                 onTap = { currentOnClick() },
                 onLongPress = { localOffset ->
-                    val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
-                    currentOnOpenMenu(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                    rootAnchor.resolve(localOffset)?.let(currentOnOpenMenu)
                 }
             )
         }

@@ -110,7 +110,6 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -4221,28 +4220,16 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 
 private fun Modifier.homeRowAnchorCapture(
     enabled: Boolean,
-    anchorRef: SlockMutableOffsetRef
-): Modifier =
-    if (enabled) {
-        onGloballyPositioned { coordinates ->
-            val pos = coordinates.positionInRoot()
-            anchorRef.update(Offset(x = pos.x, y = pos.y))
-        }
-    } else {
-        this
-    }
+    anchorRef: SlockLiveRootAnchorRef
+): Modifier = this.slockCaptureLiveRootAnchor(anchorRef = anchorRef, enabled = enabled)
 
 private fun homeRowLongPressAnchor(
-    rowTopLeft: SlockMutableOffsetRef,
-    pressOffset: Offset,
-    rowHeightPx: Int
-): Offset {
-    val base = rowTopLeft.value.takeIf { rowTopLeft.hasValue } ?: Offset.Zero
-    return Offset(
-        x = base.x + pressOffset.x,
-        y = base.y + rowHeightPx.toFloat()
-    )
-}
+    rowAnchor: SlockLiveRootAnchorRef,
+    pressOffset: Offset
+): Offset? =
+    rowAnchor.resolve { size ->
+        Offset(x = pressOffset.x, y = size.height.toFloat())
+    }
 
 @Composable
 private fun ChannelRow(
@@ -4286,7 +4273,7 @@ private fun ChannelRow(
     }
     val titleColor = homeConversationTitleColor(muted = content.muted, joined = content.joined)
     val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(content.muted)
-    val rowTopLeft = remember(interactionIdentity) { SlockMutableOffsetRef() }
+    val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef() }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val currentOnClick by rememberUpdatedState(interaction.onClick)
@@ -4346,8 +4333,9 @@ private fun ChannelRow(
                     },
                     onTap = { currentOnClick?.invoke() },
                     onLongPress = { pressOffset ->
-                        val rowHeightPx = this.size.height
-                        currentOnLongPress?.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
+                        homeRowLongPressAnchor(rowAnchor, pressOffset)?.let { anchor ->
+                            currentOnLongPress?.invoke(anchor)
+                        }
                     }
                 )
             }
@@ -4375,7 +4363,7 @@ private fun ChannelRow(
                 modifier
                     .fillMaxWidth()
                     .offset { IntOffset(0, drag.offsetY.roundToInt()) }
-                    .homeRowAnchorCapture(interaction.captureLongPressAnchor || captureAnchorForPress, rowTopLeft)
+                    .homeRowAnchorCapture(interaction.captureLongPressAnchor || captureAnchorForPress, rowAnchor)
                     .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                     .then(clickModifier)
                     .then(rowDragModifier)
@@ -4839,7 +4827,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    val rowTopLeft = remember(interactionIdentity) { SlockMutableOffsetRef() }
+    val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef() }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val currentOnClick by rememberUpdatedState(onClick)
@@ -4863,8 +4851,9 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     },
                     onTap = { currentOnClick?.invoke() },
                     onLongPress = { pressOffset ->
-                        val rowHeightPx = this.size.height
-                        currentOnLongPress?.invoke(homeRowLongPressAnchor(rowTopLeft, pressOffset, rowHeightPx))
+                        homeRowLongPressAnchor(rowAnchor, pressOffset)?.let { anchor ->
+                            currentOnLongPress?.invoke(anchor)
+                        }
                     }
                 )
             }
@@ -4891,7 +4880,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             modifier =
                 modifier
                     .fillMaxWidth()
-                    .homeRowAnchorCapture(captureLongPressAnchor || captureAnchorForPress, rowTopLeft)
+                    .homeRowAnchorCapture(captureLongPressAnchor || captureAnchorForPress, rowAnchor)
                     .then(clickModifier)
                     .then(hoverableModifier)
         ) {
