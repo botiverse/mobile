@@ -1159,6 +1159,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
         ),
+    val singleTapOpensThread: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
+        ),
     val imageAnnotation: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

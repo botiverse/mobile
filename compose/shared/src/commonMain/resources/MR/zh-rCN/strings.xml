@@ -1349,6 +1349,10 @@
     <string name="settings_mobile_long_message_collapse_detail">将长消息折叠为 8 行预览，需要时可展开查看完整内容。</string>
     <string name="settings_mobile_long_message_collapse_enabled">预览前 8 行</string>
     <string name="settings_mobile_long_message_collapse_disabled">显示完整消息</string>
+    <string name="settings_mobile_single_tap_thread">单击打开 Thread</string>
+    <string name="settings_mobile_single_tap_thread_detail">单击消息正文即可打开 Thread。关闭后仍可通过回复入口或消息菜单打开。</string>
+    <string name="settings_mobile_single_tap_thread_enabled">单击消息正文打开 Thread</string>
+    <string name="settings_mobile_single_tap_thread_disabled">使用回复入口或消息菜单</string>
     <string name="settings_mobile_activity_task_badges">活动中的任务状态标记</string>
     <string name="settings_mobile_activity_task_badges_detail">在活动列表行底部显示任务状态标记。关闭后活动列表会更简洁。</string>
     <string name="settings_mobile_activity_task_badges_enabled">在活动列表中显示任务状态标签</string>

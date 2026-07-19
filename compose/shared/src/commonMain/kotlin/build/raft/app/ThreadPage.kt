@@ -4200,6 +4200,7 @@ internal fun SharedThreadRouteContent(
     val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     val longMessageCollapseEnabled = chatLayoutPreferenceStore.readLongMessageCollapseEnabledSync()
+    val singleTapOpensThreadEnabled = chatLayoutPreferenceStore.readSingleTapOpensThreadEnabledSync()
     val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
     val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
     val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
@@ -5925,6 +5926,7 @@ internal fun SharedThreadRouteContent(
             attachmentCommentsEnabled = attachmentCommentsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
             longMessageCollapseEnabled = longMessageCollapseEnabled,
+            singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
             mentionHandleResolver = { message ->
@@ -10068,6 +10070,7 @@ private fun ThreadPageContent(
     attachmentCommentsEnabled: Boolean = false,
     composerSendKeyEnabled: Boolean = false,
     longMessageCollapseEnabled: Boolean = false,
+    singleTapOpensThreadEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
     mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
@@ -10569,6 +10572,7 @@ private fun ThreadPageContent(
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
+                        singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                         inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
                         markdownTagContextSignature = markdownTagContextSignature,
@@ -11579,6 +11583,7 @@ private fun ThreadChatTab(
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
+    singleTapOpensThreadEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
@@ -11655,6 +11660,7 @@ private fun ThreadChatTab(
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
+                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
@@ -11718,6 +11724,7 @@ private fun ThreadChatTab(
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
+                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
@@ -11772,6 +11779,7 @@ private fun ThreadChatTab(
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
+                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -12067,6 +12075,7 @@ private fun ThreadMessagesList(
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
+    singleTapOpensThreadEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
@@ -13479,6 +13488,7 @@ private fun ThreadMessagesList(
                                 compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
                                 suppressRepeatedAuthor = suppressRepeatedAuthor,
                                 showReplyAction = renderPayload.showReplyActions,
+                                singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                                 resolvedTaskAssigneeName = linkedTaskAssigneeName,
                                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                                 markdownTagContextSignature = markdownTagContextSignature,
@@ -15094,6 +15104,7 @@ private fun ThreadMessageCard(
     compactConsecutiveMessages: Boolean = false,
     suppressRepeatedAuthor: Boolean = false,
     showReplyAction: Boolean = true,
+    singleTapOpensThreadEnabled: Boolean = false,
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     markdownTagContextSignature: String = "",
@@ -15219,13 +15230,33 @@ private fun ThreadMessageCard(
         }
     val rowTapAction =
         if (
-            threadMessageTapOpensThread(
+            threadMessageBodyTapEligible(
                 showReplyAction = showReplyAction,
                 shareSelectionActive = shareSelectionActive,
                 hasLocalSendState = message.hasLocalSendState()
             )
         ) {
-            { onOpenThread(message.id) }
+            {
+                if (
+                    threadMessageTapOpensThread(
+                        showReplyAction = showReplyAction,
+                        shareSelectionActive = shareSelectionActive,
+                        hasLocalSendState = message.hasLocalSendState(),
+                        singleTapOpensThreadEnabled = singleTapOpensThreadEnabled
+                    )
+                ) {
+                    diagnosticsLogger(
+                        "thread_message_row_tap_open messageId=${message.id} " +
+                            "setting=single_tap_opens_thread"
+                    )
+                    onOpenThread(message.id)
+                } else {
+                    diagnosticsLogger(
+                        "thread_message_row_tap_open_disabled messageId=${message.id} " +
+                            "hint=Settings>Mobile>Single_tap_opens_Thread"
+                    )
+                }
+            }
         } else {
             null
         }
@@ -16571,6 +16602,15 @@ internal fun threadMessageUsesFullRowLongPressActions(shareSelectionActive: Bool
     !shareSelectionActive
 
 internal fun threadMessageTapOpensThread(
+    showReplyAction: Boolean,
+    shareSelectionActive: Boolean,
+    hasLocalSendState: Boolean,
+    singleTapOpensThreadEnabled: Boolean
+): Boolean =
+    singleTapOpensThreadEnabled &&
+        threadMessageBodyTapEligible(showReplyAction, shareSelectionActive, hasLocalSendState)
+
+internal fun threadMessageBodyTapEligible(
     showReplyAction: Boolean,
     shareSelectionActive: Boolean,
     hasLocalSendState: Boolean

@@ -17,9 +17,25 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
-    fun ordinaryMessageBodyTapOpensItsThread() {
+    fun ordinaryMessageBodyTapOpensItsThreadOnlyWhenEnabled() {
+        assertFalse(
+            threadMessageTapOpensThread(
+                showReplyAction = true,
+                shareSelectionActive = false,
+                hasLocalSendState = false,
+                singleTapOpensThreadEnabled = false
+            )
+        )
         assertTrue(
             threadMessageTapOpensThread(
+                showReplyAction = true,
+                shareSelectionActive = false,
+                hasLocalSendState = false,
+                singleTapOpensThreadEnabled = true
+            )
+        )
+        assertTrue(
+            threadMessageBodyTapEligible(
                 showReplyAction = true,
                 shareSelectionActive = false,
                 hasLocalSendState = false
@@ -33,21 +49,24 @@ class ThreadMessageLongPressSurfaceTest {
             threadMessageTapOpensThread(
                 showReplyAction = false,
                 shareSelectionActive = false,
-                hasLocalSendState = false
+                hasLocalSendState = false,
+                singleTapOpensThreadEnabled = true
             )
         )
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
                 shareSelectionActive = true,
-                hasLocalSendState = false
+                hasLocalSendState = false,
+                singleTapOpensThreadEnabled = true
             )
         )
         assertFalse(
             threadMessageTapOpensThread(
                 showReplyAction = true,
                 shareSelectionActive = false,
-                hasLocalSendState = true
+                hasLocalSendState = true,
+                singleTapOpensThreadEnabled = true
             )
         )
     }
