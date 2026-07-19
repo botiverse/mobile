@@ -133,6 +133,20 @@ private fun logNetworkKmmRemoteConfig(message: String) {
     }
 }
 
+internal const val ServerFeatureFlagRefreshIntervalMillis = 60_000L
+
+internal suspend fun refreshSelectedServerFeatureFlags(
+    intervalMillis: Long = ServerFeatureFlagRefreshIntervalMillis,
+    wait: suspend (Long) -> Unit = { delay(it) },
+    refresh: suspend () -> Unit
+) {
+    require(intervalMillis > 0L) { "feature flag refresh interval must be positive" }
+    while (true) {
+        refresh()
+        wait(intervalMillis)
+    }
+}
+
 private const val ProcessRealtimeAuthorityScopeKey = "process-realtime-host"
 private const val ProcessRealtimeAuthorityRegistrationId = "process-realtime-host-owner"
 
@@ -470,27 +484,31 @@ internal class SlockSharedStoreProvider private constructor(
                     }
                 }
             ).also { selectionStore ->
-                // Prefetch registered server feature flags whenever this shell selects a server.
-                // StateFlow conflates to distinct values, so this evaluates once per server change.
+                // Prefetch registered server feature flags whenever this shell selects a server, then
+                // periodically refresh the same selection so operator variant changes propagate without
+                // requiring a server reselect or process restart. collectLatest cancels the old loop before
+                // a new selected server can publish into this shell's snapshot path.
                 // The collector lives on threadSendScope (not the shell scope), so cancel it when the
                 // store is disposed, or it would outlive an evicted shell selection store.
                 threadSendScope.launch {
                     val prefetching = launch {
                         selectionStore.currentServerId.collectLatest { serverId ->
                             if (!serverId.isNullOrBlank()) {
-                                try {
-                                    val environmentId = updateNetworkKmmRecoveryEnvironment()
-                                    serverFeatureFlags.prefetch(
-                                        serverId = ServerId(serverId),
-                                        evaluationContext = environmentId
-                                    )
-                                } catch (cancellation: CancellationException) {
-                                    throw cancellation
-                                } catch (error: Throwable) {
-                                    sharedWarnLogger("SlockFeatureFlags", "feature_flags")(
-                                        "prefetch_failed server=$serverId " +
-                                            "reason=${error::class.simpleName ?: "unknown"}"
-                                    )
+                                refreshSelectedServerFeatureFlags {
+                                    try {
+                                        val environmentId = updateNetworkKmmRecoveryEnvironment()
+                                        serverFeatureFlags.prefetch(
+                                            serverId = ServerId(serverId),
+                                            evaluationContext = environmentId
+                                        )
+                                    } catch (cancellation: CancellationException) {
+                                        throw cancellation
+                                    } catch (error: Throwable) {
+                                        sharedWarnLogger("SlockFeatureFlags", "feature_flags")(
+                                            "prefetch_failed server=$serverId " +
+                                                "reason=${error::class.simpleName ?: "unknown"}"
+                                        )
+                                    }
                                 }
                             }
                         }

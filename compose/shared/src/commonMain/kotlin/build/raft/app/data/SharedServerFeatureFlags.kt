@@ -27,6 +27,7 @@ const val SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY: String = "sync_core_messages_v0"
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY: String = "attachment_comments_v0"
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
+const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 
 /**
  * Positive default-on flag whose backend `kill_switch` reason is persisted by Android as the emergency
@@ -40,6 +41,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY,
     READ_RECEIPTS_FEATURE_FLAG_KEY,
+    MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
 )
 
@@ -72,6 +74,7 @@ private data class FeatureFlagEvaluation(
     val key: String,
     val enabled: Boolean = false,
     val reason: String? = null,
+    val variant: String? = null,
 )
 
 @Serializable
@@ -84,8 +87,10 @@ data class ServerFeatureFlagSnapshot(
     val serverId: ServerId?,
     val resolved: Boolean,
     val values: Map<String, Boolean>,
+    val variants: Map<String, String> = emptyMap(),
 ) {
     fun isEnabled(key: String): Boolean = values[key] == true
+    fun variant(key: String): String? = variants[key]
 
     companion object {
         val Unresolved: ServerFeatureFlagSnapshot = ServerFeatureFlagSnapshot(null, resolved = false, values = emptyMap())
@@ -172,14 +177,25 @@ class SharedServerFeatureFlags(
             return snapshotFor(serverId)
         }
         val values = keys.associateWith { false }.toMutableMap()
+        val variants = linkedMapOf<String, String>()
         val observedEvaluations = linkedMapOf<String, FeatureFlagEvaluation>()
         for (evaluation in decoded.evaluations) {
             if (values.containsKey(evaluation.key)) {
                 values[evaluation.key] = evaluation.enabled
+                evaluation.variant
+                    ?.trim()
+                    ?.takeIf { evaluation.enabled && it.isNotEmpty() }
+                    ?.let { variants[evaluation.key] = it }
                 observedEvaluations[evaluation.key] = evaluation
             }
         }
-        val snapshot = ServerFeatureFlagSnapshot(serverId = serverId, resolved = true, values = values.toMap())
+        val snapshot =
+            ServerFeatureFlagSnapshot(
+                serverId = serverId,
+                resolved = true,
+                values = values.toMap(),
+                variants = variants.toMap()
+            )
         val accepted = synchronized(stateLock) {
             val latestAcceptedGeneration = acceptedGenerationByServer[serverId.value] ?: 0L
             if (requestGeneration < latestAcceptedGeneration) {

@@ -57,12 +57,14 @@ import build.raft.app.data.MemberRepository
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MessageReactionSummary
+import build.raft.app.data.MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.SendMessageResult
 import build.raft.app.data.SavedMessageStatusSnapshot
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.SlockAgentsApi
 import build.raft.app.data.SlockAgentsApiClient
@@ -3921,7 +3923,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.LoadOlder)
         store.accept(SharedThreadIntent.LoadNewer)
 
-        assertEquals(listOf(50, 50, 50), api.channelMessageLimits)
+        assertEquals(listOf(30, 30, 30), api.channelMessageLimits)
         assertEquals(emptyList(), api.syncLimits)
         scope.cancel()
     }
@@ -10459,6 +10461,93 @@ class SharedThreadStoreTest {
         assertNull(localStore.readThread(ThreadId("channel-1")))
         assertEquals("older body", dataSource.cachedPayload("channel-1")?.messages?.first()?.body)
         scope.cancel()
+    }
+
+    @Test
+    fun threadPageSizeDefaultsToThirtyAndReevaluatesRemoteValuePerRequest() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10),
+                olderBodyText = messagesResponse("older body", id = "m5", seq = 5, historyLimited = false)
+            )
+        var remotePageSize: Int? = null
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                threadPageSizeProvider = { remotePageSize }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        remotePageSize = 20
+        store.accept(SharedThreadIntent.LoadOlder)
+
+        assertEquals(listOf(30, 20), api.channelMessageLimits)
+        scope.cancel()
+    }
+
+    @Test
+    fun repositoryThreadPagingUsesTheSameResolvedRemotePageSize() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeConversationRepository()
+        var remotePageSize: Int? = null
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                threadPageSizeProvider = { remotePageSize }
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        remotePageSize = 50
+        store.accept(
+            SharedThreadIntent.SetPagingAvailability(
+                canLoadMoreBefore = true,
+                canLoadMoreAfter = false
+            )
+        )
+        store.accept(SharedThreadIntent.LoadOlder)
+
+        assertEquals(listOf(30), repository.getThreadLimits)
+        assertEquals(listOf(50), repository.olderLimits)
+        scope.cancel()
+    }
+
+    @Test
+    fun threadPageSizeAcceptsTwentyThirtyAndFiftyButRejectsUnsafeValues() {
+        assertEquals(20, SharedThreadPaging.resolve(20))
+        assertEquals(30, SharedThreadPaging.resolve(30))
+        assertEquals(50, SharedThreadPaging.resolve(50))
+        assertEquals(30, SharedThreadPaging.resolve(null))
+        assertEquals(30, SharedThreadPaging.resolve(0))
+        assertEquals(30, SharedThreadPaging.resolve(9))
+        assertEquals(30, SharedThreadPaging.resolve(51))
+    }
+
+    @Test
+    fun threadPageSizeVariantRequiresEnabledFlagAndSafeNumericRange() {
+        val enabledTwenty =
+            ServerFeatureFlagSnapshot(
+                serverId = ServerId("server-1"),
+                resolved = true,
+                values = mapOf(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY to true),
+                variants = mapOf(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY to "20")
+            )
+        val disabledFifty =
+            enabledTwenty.copy(
+                values = mapOf(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY to false),
+                variants = mapOf(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY to "50")
+            )
+        val malformed =
+            enabledTwenty.copy(variants = mapOf(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY to "fast"))
+
+        assertEquals(20, SharedThreadPaging.resolve(enabledTwenty.mobileThreadPageSize()))
+        assertEquals(30, SharedThreadPaging.resolve(disabledFifty.mobileThreadPageSize()))
+        assertEquals(30, SharedThreadPaging.resolve(malformed.mobileThreadPageSize()))
     }
 
     @Test

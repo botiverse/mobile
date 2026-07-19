@@ -2327,6 +2327,9 @@ private fun ThreadPageScreen() {
                     ),
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
+                threadPageSizeProvider = { serverId ->
+                    sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
+                },
                 createAgentCoordinator = createAgentCoordinator,
                 diagnosticsLogger = { message -> bridge.log("thread_api $message") }
             )
