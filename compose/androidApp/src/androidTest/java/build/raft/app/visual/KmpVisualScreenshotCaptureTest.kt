@@ -970,7 +970,6 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureThreadForwardModal() {
-        assertThreadForwardRecipientListScrollsAndRowsRemainTappable()
         captureKmpComponentCase(
             caseId = "components.thread.forward-modal",
             pageName = "compose_thread_forward_modal_visual",
@@ -982,7 +981,8 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    private fun assertThreadForwardRecipientListScrollsAndRowsRemainTappable() {
+    @Test
+    fun captureThreadForwardModalScrollProbe() {
         val caseId = "components.thread.forward-modal-scroll-probe"
         currentCaseId = caseId
         val instrumentation = InstrumentationRegistry.getInstrumentation()
