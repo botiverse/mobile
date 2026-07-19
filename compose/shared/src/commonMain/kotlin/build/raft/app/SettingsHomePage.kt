@@ -14287,9 +14287,9 @@ private fun SharedMembersScreen(
             PageErrorContent(
                 title = "Members",
                 subtitle = "Workspace members",
-                iconName = null,
-                headerContentStartPadding = MembersListHeaderStartPadding,
-                headerTitleStyle = MembersListHeaderTitleStyle,
+                iconName = SlockMainTabHeaderIconName,
+                headerContentStartPadding = SlockMainTabHeaderStartPadding,
+                headerTitleStyle = SlockMainTabHeaderTitleStyle,
                 message = "Could not load members",
                 code = current.code,
                 onRetry = onRetry
@@ -20896,7 +20896,9 @@ internal fun SettingsHomeContent(
         SlockTopPageHeader(
             title = payload.title,
             subtitle = null,
-            iconName = SlockLucideIconName.Settings,
+            iconName = SlockMainTabHeaderIconName,
+            contentStartPadding = SlockMainTabHeaderStartPadding,
+            titleStyle = SlockMainTabHeaderTitleStyle,
             modifier = headerModifier,
             applyTopSafeArea = applyTopSafeArea
         )

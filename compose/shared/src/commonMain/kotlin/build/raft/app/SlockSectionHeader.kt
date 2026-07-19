@@ -48,6 +48,9 @@ private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
 private val PullRefreshCarrierColor = SlockColor.SurfaceWhite
+internal val SlockMainTabHeaderStartPadding = 8.dp
+internal val SlockMainTabHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+internal val SlockMainTabHeaderIconName: SlockLucideIconName? = null
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180

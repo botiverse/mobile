@@ -231,9 +231,6 @@ internal val MembersListMachineLabelInset = 12.dp
 internal val MembersListMachineLabelIconSize = 9.dp
 internal val MembersListMachineLabelTextStyle =
     SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
-internal val MembersListHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
-internal val MembersListHeaderStartPadding = 16.dp
-internal val MembersListHeaderIconName: SlockLucideIconName? = null
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 private val MembersAgentActivityTimeColumnWidth = 74.dp
@@ -9589,9 +9586,9 @@ internal fun MembersPageHeader(
     SlockTopPageHeader(
         title = title,
         subtitle = null,
-        iconName = MembersListHeaderIconName,
-        contentStartPadding = MembersListHeaderStartPadding,
-        titleStyle = MembersListHeaderTitleStyle,
+        iconName = SlockMainTabHeaderIconName,
+        contentStartPadding = SlockMainTabHeaderStartPadding,
+        titleStyle = SlockMainTabHeaderTitleStyle,
         refreshing = refreshing,
         leadingContent = if (onBack != null) {
             {

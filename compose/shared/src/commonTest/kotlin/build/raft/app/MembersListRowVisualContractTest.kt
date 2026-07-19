@@ -5,7 +5,6 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class MembersListRowVisualContractTest {
     @Test
@@ -29,10 +28,6 @@ class MembersListRowVisualContractTest {
         assertEquals(9.dp, MembersListMachineLabelIconSize)
         assertEquals(10.sp, MembersListMachineLabelTextStyle.fontSize)
         assertEquals(14.sp, MembersListMachineLabelTextStyle.lineHeight)
-        assertEquals(16.sp, MembersListHeaderTitleStyle.fontSize)
-        assertEquals(20.sp, MembersListHeaderTitleStyle.lineHeight)
-        assertEquals(16.dp, MembersListHeaderStartPadding)
-        assertNull(MembersListHeaderIconName)
         assertEquals("jiachens-macbook-pro.local", membersListMachineLabel("Jiachens-MacBook-Pro.local"))
     }
 }

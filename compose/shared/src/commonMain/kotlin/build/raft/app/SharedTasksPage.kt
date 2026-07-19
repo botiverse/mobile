@@ -269,7 +269,9 @@ private fun SharedTasksHeader(
     SlockTopPageHeader(
         title = stringResource(MR.strings.tasks_title),
         subtitle = subtitle ?: stringResource(MR.strings.tasks_header_channel_tasks),
-        iconName = SlockLucideIconName.SquareCheckBig,
+        iconName = SlockMainTabHeaderIconName,
+        contentStartPadding = SlockMainTabHeaderStartPadding,
+        titleStyle = SlockMainTabHeaderTitleStyle,
         refreshing = refreshing
     )
 }
