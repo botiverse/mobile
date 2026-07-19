@@ -122,6 +122,43 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
+    fun childActionRejectsOnlyTheOwningRowTapGesture() {
+        val gate = ThreadMessageTapMovementGate()
+        gate.begin(Offset(100f, 100f))
+        val childGesture = gate.currentGestureToken()
+        gate.rejectChildAction("markdown_url")
+
+        val rejected = gate.decision(childGesture)
+        assertFalse(rejected.allowed)
+        assertTrue(rejected.reason == "child_action:markdown_url")
+
+        gate.begin(Offset(120f, 120f))
+        gate.observe(Offset(120f, 120f), pointerCount = 1, touchSlop = 18f)
+        assertTrue(gate.decision().allowed)
+        val staleDecision = gate.decision(childGesture)
+        assertFalse(staleDecision.allowed)
+        assertTrue(staleDecision.reason == "gesture_superseded")
+    }
+
+    @Test
+    fun pendingRowTapIsRejectedWhenPointerSessionAdvancesWithoutNewDown() {
+        val gate = ThreadMessageTapMovementGate()
+        gate.activatePointerSession(7)
+        gate.begin(Offset(100f, 100f))
+        val pendingTap = gate.currentGestureToken()
+
+        gate.activatePointerSession(8)
+
+        val staleSessionDecision = gate.decision(pendingTap)
+        assertFalse(staleSessionDecision.allowed)
+        assertTrue(staleSessionDecision.reason == "session_superseded")
+
+        gate.begin(Offset(120f, 120f))
+        gate.observe(Offset(120f, 120f), pointerCount = 1, touchSlop = 18f)
+        assertTrue(gate.decision().allowed)
+    }
+
+    @Test
     fun pointerSessionKeyAdvancesAcrossHostResumeAndWrapsSafely() {
         assertTrue(nextThreadPointerSessionKey(0) == 1)
         assertTrue(nextThreadPointerSessionKey(41) == 42)

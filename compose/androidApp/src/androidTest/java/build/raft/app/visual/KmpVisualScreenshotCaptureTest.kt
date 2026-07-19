@@ -726,7 +726,8 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-tap")
-                    .put("visualFixture", "default"),
+                    .put("visualFixture", "default")
+                    .put("singleTapOpensThreadEnabled", true),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -755,14 +756,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadInteractiveChildrenDoNotOpenThread() {
+    fun captureThreadMarkdownLinkOpensChildOnly() {
         captureKmpComponentCase(
-            caseId = "components.thread.message-interactive-child-tap",
+            caseId = "components.thread.message-markdown-link-child-tap",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
-                    .put("instanceId", "visual-thread-message-interactive-child-tap")
-                    .put("visualFixture", "default"),
+                    .put("instanceId", "visual-thread-message-markdown-link-child-tap")
+                    .put("visualFixture", "markdown_link_child")
+                    .put("singleTapOpensThreadEnabled", true),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -771,19 +773,77 @@ class KmpVisualScreenshotCaptureTest {
                 var before: Bitmap? = null
                 var after: Bitmap? = null
                 try {
-                    before = captureActivityScreenshot("components.thread.message-interactive-child-tap.before")
+                    before = captureActivityScreenshot("components.thread.message-markdown-link-child-tap.before")
                     val yellowBefore = before.countThreadTapProbeYellowSamples()
-                    tapDisplayDp(x = 25f, y = 35f)
+                    val cyanBefore = before.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
+                    val duplicateBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
+                    tapDisplayDp(x = 95f, y = 91f)
                     waitForIdleBounded()
                     Thread.sleep(300)
-                    tapDisplayDp(x = 120f, y = 95f)
-                    waitForIdleBounded()
-                    Thread.sleep(300)
-                    after = captureActivityScreenshot("components.thread.message-interactive-child-tap.after")
+                    after = captureActivityScreenshot("components.thread.message-markdown-link-child-tap.after")
                     val yellowAfter = after.countThreadTapProbeYellowSamples()
+                    val cyanAfter = after.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
+                    val duplicateAfter = after.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
                     assertTrue(
-                        "Avatar and markdown-tag taps must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
+                        "Markdown link tap must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
                         yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                    assertTrue(
+                        "Markdown link tap must dispatch exactly one child action; cyanBefore=$cyanBefore cyanAfter=$cyanAfter",
+                        cyanAfter >= cyanBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
+                    )
+                    assertTrue(
+                        "Markdown link child action must not dispatch twice; duplicateBefore=$duplicateBefore duplicateAfter=$duplicateAfter",
+                        duplicateAfter < duplicateBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
+                    )
+                } finally {
+                    before?.recycle()
+                    after?.recycle()
+                }
+            }
+        )
+    }
+
+    @Test
+    fun captureThreadMarkdownMentionOpensChildOnly() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-markdown-mention-child-tap",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-markdown-mention-child-tap")
+                    .put("visualFixture", "markdown_mention_child")
+                    .put("singleTapOpensThreadEnabled", true),
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true,
+            beforeScreenshot = {
+                dismissCompatibilityDialog()
+                waitForIdleBounded()
+                var before: Bitmap? = null
+                var after: Bitmap? = null
+                try {
+                    before = captureActivityScreenshot("components.thread.message-markdown-mention-child-tap.before")
+                    val yellowBefore = before.countThreadTapProbeYellowSamples()
+                    val magentaBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0xFF)
+                    val duplicateBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
+                    tapDisplayDp(x = 78f, y = 91f)
+                    waitForIdleBounded()
+                    Thread.sleep(300)
+                    after = captureActivityScreenshot("components.thread.message-markdown-mention-child-tap.after")
+                    val yellowAfter = after.countThreadTapProbeYellowSamples()
+                    val magentaAfter = after.countThreadChildActionProbeSamples(0xFF, 0x00, 0xFF)
+                    val duplicateAfter = after.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
+                    assertTrue(
+                        "Markdown mention tap must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
+                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
+                    )
+                    assertTrue(
+                        "Markdown mention tap must dispatch exactly one Profile child action; magentaBefore=$magentaBefore magentaAfter=$magentaAfter",
+                        magentaAfter >= magentaBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
+                    )
+                    assertTrue(
+                        "Markdown mention child action must not dispatch twice; duplicateBefore=$duplicateBefore duplicateAfter=$duplicateAfter",
+                        duplicateAfter < duplicateBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
                     )
                 } finally {
                     before?.recycle()
@@ -801,7 +861,8 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-body-long-press")
-                    .put("visualFixture", "default"),
+                    .put("visualFixture", "default")
+                    .put("singleTapOpensThreadEnabled", true),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true,
             beforeScreenshot = {
@@ -1112,6 +1173,31 @@ class KmpVisualScreenshotCaptureTest {
                     kotlin.math.abs(Color.red(pixel) - 0xFF) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
                         kotlin.math.abs(Color.green(pixel) - 0xD4) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
                         kotlin.math.abs(Color.blue(pixel) - 0x40) <= FORWARD_PROBE_YELLOW_TOLERANCE
+                ) {
+                    samples++
+                }
+                x += FORWARD_PROBE_PIXEL_STRIDE
+            }
+            y += FORWARD_PROBE_PIXEL_STRIDE
+        }
+        return samples
+    }
+
+    private fun Bitmap.countThreadChildActionProbeSamples(
+        red: Int,
+        green: Int,
+        blue: Int
+    ): Int {
+        var samples = 0
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                val pixel = getPixel(x, y)
+                if (
+                    kotlin.math.abs(Color.red(pixel) - red) <= THREAD_CHILD_ACTION_PROBE_TOLERANCE &&
+                    kotlin.math.abs(Color.green(pixel) - green) <= THREAD_CHILD_ACTION_PROBE_TOLERANCE &&
+                    kotlin.math.abs(Color.blue(pixel) - blue) <= THREAD_CHILD_ACTION_PROBE_TOLERANCE
                 ) {
                     samples++
                 }
@@ -4071,6 +4157,8 @@ class KmpVisualScreenshotCaptureTest {
         private const val FORWARD_PROBE_PIXEL_STRIDE = 4
         private const val FORWARD_PROBE_MIN_YELLOW_SAMPLES = 1_500
         private const val THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES = 100
+        private const val THREAD_CHILD_ACTION_PROBE_TOLERANCE = 12
+        private const val THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES = 100
         private const val THREAD_LONG_PRESS_MIN_CHANGED_RATIO = 0.02f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12

@@ -2801,6 +2801,7 @@ private fun ThreadMessageVisualScreenContent() {
     val visualFixture = params.optString("visualFixture")
     val menuVariant = params.optString("menuVariant")
     val instanceId = params.optString("instanceId")
+    val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
     val payload =
         remember(visualFixture, instanceId) {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
@@ -3013,6 +3014,8 @@ private fun ThreadMessageVisualScreenContent() {
             }
         }
     var openedVisualThreadMessageId by remember(visualFixture) { mutableStateOf<String?>(null) }
+    var openedVisualMarkdownUrlCount by remember(visualFixture) { mutableStateOf(0) }
+    var openedVisualMentionCount by remember(visualFixture) { mutableStateOf(0) }
     CompositionLocalProvider(
         LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
         LocalSlockMarkdownRenderConfig provides
@@ -3034,6 +3037,41 @@ private fun ThreadMessageVisualScreenContent() {
                     .padding(SlockSpacing.Md)
         ) {
             if (message != null) {
+                if (
+                    visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD ||
+                    visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD
+                ) {
+                    Row {
+                        if (openedVisualMarkdownUrlCount > 0) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .size(24.dp)
+                                        .background(
+                                            if (openedVisualMarkdownUrlCount == 1) {
+                                                Color(0xFF00E5FF)
+                                            } else {
+                                                Color(0xFFFF0000)
+                                            }
+                                        )
+                            )
+                        }
+                        if (openedVisualMentionCount > 0) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .size(24.dp)
+                                        .background(
+                                            if (openedVisualMentionCount == 1) {
+                                                Color(0xFFFF00FF)
+                                            } else {
+                                                Color(0xFFFF0000)
+                                            }
+                                        )
+                            )
+                        }
+                    }
+                }
                 if (openedVisualThreadMessageId != null) {
                     Box(
                         modifier =
@@ -3048,6 +3086,7 @@ private fun ThreadMessageVisualScreenContent() {
                     highlightedMentions = highlightedMentions,
                     alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                     showReplyAction = payload.showReplyActions,
+                    singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
                     resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
                         value = message.taskAssigneeName,
                         id = message.taskAssigneeId
@@ -3069,8 +3108,12 @@ private fun ThreadMessageVisualScreenContent() {
                     onOpenTaskStatusMenu = {},
                     onToggleReaction = {},
                     onOpenAttachment = {},
-                    onOpenMarkdownTag = {},
-                    onOpenMarkdownUrl = {},
+                    onOpenMarkdownTag = { tag ->
+                        if (tag.kind == ThreadMarkdownTagKind.UserMention) {
+                            openedVisualMentionCount += 1
+                        }
+                    },
+                    onOpenMarkdownUrl = { openedVisualMarkdownUrlCount += 1 },
                     outerPadding = 0.dp
                 )
                 if (menuActions.isNotEmpty()) {
@@ -8408,6 +8451,8 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     }
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD = "markdown_link_child"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD = "markdown_mention_child"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
@@ -8460,6 +8505,40 @@ internal fun threadVisualFixture(
                 messages =
                     base.messages.mapIndexed { index, message ->
                         if (index == 0) message.copy(isSaved = true) else message
+                    }
+            )
+        }
+        THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_LINK_CHILD -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            base.copy(
+                messages =
+                    base.messages.mapIndexed { index, message ->
+                        if (index == 0) {
+                            message.copy(
+                                body =
+                                    "Captured the Android visual artifact for " +
+                                        "[external](https://example.com) and queued React parity."
+                            )
+                        } else {
+                            message
+                        }
+                    }
+            )
+        }
+        THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            base.copy(
+                messages =
+                    base.messages.mapIndexed { index, message ->
+                        if (index == 0) {
+                            message.copy(
+                                body =
+                                    "Captured the Android visual artifact for\n" +
+                                        "@artin and queued React parity."
+                            )
+                        } else {
+                            message
+                        }
                     }
             )
         }
@@ -9936,7 +10015,8 @@ internal fun threadVisualFixtureHighlightedMentions(
     }
 
 private fun String.requiresViewerSelfMentionContext(): Boolean =
-    this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
+    this == THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_MENTION_CHILD ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS ||
@@ -15230,8 +15310,10 @@ private fun ThreadMessageCard(
         remember(message.id, message.authorId, message.authorKind) {
             message.memberDetailIdentity()
         }
+    val tapMovementGate = remember(message.id) { ThreadMessageTapMovementGate() }
     fun openAuthorProfile(source: String) {
         if (!message.canOpenThreadAuthorProfile(shareSelectionActive)) return
+        tapMovementGate.rejectChildAction("author_profile")
         diagnosticsLogger(
             "thread_member_profile_tap source=$source messageId=${message.id} " +
                 "authorId=${message.authorId} authorKind=${message.authorKind} " +
@@ -15316,6 +15398,7 @@ private fun ThreadMessageCard(
                         Modifier.threadMessageLongPressActions(
                             messageId = message.id,
                             pointerSessionKey = pointerSessionKey,
+                            tapMovementGate = tapMovementGate,
                             captureLongPressAnchor = captureLongPressAnchor,
                             onTap = rowTapAction,
                             onTapRejected = { decision ->
@@ -15524,8 +15607,14 @@ private fun ThreadMessageCard(
                                             resolveTagLabel = resolveMarkdownTagLabel,
                                             inlineContentScope = markdownRenderSignature.inlineContentScope,
                                             activeTagKey = activeMarkdownTagKey,
-                                            onOpenTag = onOpenMarkdownTag,
-                                            onOpenUrl = onOpenMarkdownUrl,
+                                            onOpenTag = { tag ->
+                                                tapMovementGate.rejectChildAction("markdown_tag")
+                                                onOpenMarkdownTag(tag)
+                                            },
+                                            onOpenUrl = { url ->
+                                                tapMovementGate.rejectChildAction("markdown_url")
+                                                onOpenMarkdownUrl(url)
+                                            },
                                             performanceKey = messagePerformanceKey,
                                             performanceLogger = diagnosticsLogger
                                         )
@@ -16712,6 +16801,7 @@ internal fun threadMessageRippleRadius(
 private fun Modifier.threadMessageLongPressActions(
     messageId: String,
     pointerSessionKey: Int,
+    tapMovementGate: ThreadMessageTapMovementGate,
     captureLongPressAnchor: () -> Boolean = { true },
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
@@ -16724,7 +16814,8 @@ private fun Modifier.threadMessageLongPressActions(
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
     val currentCaptureLongPressAnchor by rememberUpdatedState(captureLongPressAnchor)
     val rootPos = remember(messageId) { SlockMutableOffsetRef() }
-    val tapMovementGate = remember(messageId) { ThreadMessageTapMovementGate() }
+    val tapDispatchScope = rememberCoroutineScope()
+    tapMovementGate.activatePointerSession(pointerSessionKey)
     return this
         .onGloballyPositioned { rootPos.update(it.positionInRoot()) }
         .pointerInput("thread-message-tap-movement-$messageId-$pointerSessionKey") {
@@ -16761,11 +16852,18 @@ private fun Modifier.threadMessageLongPressActions(
                     }
                 },
                 onTap = {
-                    val decision = tapMovementGate.decision()
-                    if (decision.allowed) {
-                        currentOnTap?.invoke()
-                    } else if (currentOnTap != null) {
-                        currentOnTapRejected(decision)
+                    val gestureToken = tapMovementGate.currentGestureToken()
+                    tapDispatchScope.launch {
+                        // Native rich-text annotations may dispatch their Clickable callback
+                        // after the parent pointer detector completes. Commit on the next frame
+                        // so every child callback from this gesture can reject its generation.
+                        withFrameNanos { }
+                        val decision = tapMovementGate.decision(gestureToken)
+                        if (decision.allowed) {
+                            currentOnTap?.invoke()
+                        } else if (currentOnTap != null) {
+                            currentOnTapRejected(decision)
+                        }
                     }
                 },
                 onLongPress = { localOffset ->
@@ -16786,6 +16884,11 @@ internal data class ThreadMessageTapMovementDecision(
     val pointerCount: Int
 )
 
+internal data class ThreadMessageTapGestureToken(
+    val pointerSessionKey: Int,
+    val gestureGeneration: Int
+)
+
 internal val LocalThreadMessagePointerSessionKey = compositionLocalOf { 0 }
 
 internal fun nextThreadPointerSessionKey(current: Int): Int =
@@ -16798,8 +16901,19 @@ internal class ThreadMessageTapMovementGate {
     private var maxDistance: Float = 0f
     private var touchSlop: Float = 0f
     private var pointerCount: Int = 1
+    private var gestureGeneration: Int = 0
+    private var pointerSessionKey: Int = 0
+
+    fun activatePointerSession(pointerSessionKey: Int) {
+        if (this.pointerSessionKey == pointerSessionKey) return
+        this.pointerSessionKey = pointerSessionKey
+        downPosition = null
+        canceled = true
+        reason = "session_superseded"
+    }
 
     fun begin(position: Offset) {
+        gestureGeneration = nextThreadPointerSessionKey(gestureGeneration)
         downPosition = position
         canceled = false
         reason = "none"
@@ -16833,10 +16947,33 @@ internal class ThreadMessageTapMovementGate {
         }
     }
 
-    fun decision(): ThreadMessageTapMovementDecision =
+    fun rejectChildAction(source: String) {
+        if (downPosition == null) return
+        canceled = true
+        reason = "child_action:$source"
+    }
+
+    fun currentGestureToken(): ThreadMessageTapGestureToken =
+        ThreadMessageTapGestureToken(
+            pointerSessionKey = pointerSessionKey,
+            gestureGeneration = gestureGeneration
+        )
+
+    fun decision(
+        expectedGestureToken: ThreadMessageTapGestureToken = currentGestureToken()
+    ): ThreadMessageTapMovementDecision =
         ThreadMessageTapMovementDecision(
-            allowed = downPosition != null && !canceled,
-            reason = reason,
+            allowed =
+                expectedGestureToken.pointerSessionKey == pointerSessionKey &&
+                    expectedGestureToken.gestureGeneration == gestureGeneration &&
+                    downPosition != null &&
+                    !canceled,
+            reason =
+                when {
+                    expectedGestureToken.pointerSessionKey != pointerSessionKey -> "session_superseded"
+                    expectedGestureToken.gestureGeneration != gestureGeneration -> "gesture_superseded"
+                    else -> reason
+                },
             maxDistance = maxDistance,
             touchSlop = touchSlop,
             pointerCount = pointerCount
