@@ -918,6 +918,7 @@
     <string name="file_preview_toolbar_pen">画笔</string>
     <string name="file_preview_toolbar_text">文本</string>
     <string name="file_preview_toolbar_erase">橡皮</string>
+    <string name="file_preview_toolbar_mosaic">马赛克</string>
     <string name="file_preview_action_delete_downloaded">清除缓存副本</string>
     <string name="file_preview_placeholder_tap_to_add_text">点击图片添加文字</string>
     <string name="file_preview_error_send_comment">无法发送评论</string>

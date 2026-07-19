@@ -920,6 +920,7 @@
     <string name="file_preview_toolbar_pen">Pen</string>
     <string name="file_preview_toolbar_text">Text</string>
     <string name="file_preview_toolbar_erase">Erase</string>
+    <string name="file_preview_toolbar_mosaic">Mosaic</string>
     <string name="file_preview_action_delete_downloaded">Clear cached copy</string>
     <string name="file_preview_placeholder_tap_to_add_text">Tap image to place text</string>
     <string name="file_preview_error_send_comment">Unable to send comment</string>

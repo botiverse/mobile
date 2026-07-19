@@ -17,18 +17,18 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalSerializationApi::class)
 class SlockFilePreviewDownloadStatusTest {
     @Test
-    fun editorDestructiveToolUsesTheOpaqueDangerToken() {
+    fun editorSelectedToolUsesTheActiveIconTone() {
         assertEquals(
-            SlockColor.AccentRed,
-            slockFilePreviewEditorToolBackground(selected = false, destructive = true)
+            SlockColor.AccentRedArgb,
+            slockFilePreviewEditorToolIconColor(selected = true)
         )
     }
 
     @Test
-    fun editorSelectedToolKeepsPriorityOverDestructiveTone() {
+    fun editorIdleToolUsesTheDefaultIconTone() {
         assertEquals(
-            SlockColor.BrandYellow,
-            slockFilePreviewEditorToolBackground(selected = true, destructive = true)
+            SlockColor.TextBlackArgb,
+            slockFilePreviewEditorToolIconColor(selected = false)
         )
     }
 
@@ -111,9 +111,12 @@ class SlockFilePreviewDownloadStatusTest {
             slockComposerImageEraseStrokes(
                 strokes =
                     listOf(
-                        listOf(
-                            Offset(10f, 10f),
-                            Offset(80f, 10f)
+                        SlockComposerImageStroke(
+                            points =
+                                listOf(
+                                    Offset(10f, 10f),
+                                    Offset(80f, 10f)
+                                )
                         )
                     ),
                 point = Offset(48f, 12f)
@@ -123,9 +126,58 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun composerImageMosaicBrushCreatesAThreeByThreeTileMask() {
+        val tiles =
+            slockComposerImageMosaicTilesAt(
+                point = Offset(35f, 25f),
+                tileSizePx = 10f,
+                brushRadius = 1,
+            )
+
+        assertEquals(9, tiles.size)
+        assertTrue(SlockComposerImageMosaicTile(column = 3, row = 2) in tiles)
+        assertTrue(SlockComposerImageMosaicTile(column = 2, row = 1) in tiles)
+        assertTrue(SlockComposerImageMosaicTile(column = 4, row = 3) in tiles)
+    }
+
+    @Test
+    fun composerImageEraserRemovesNearbyMosaicTiles() {
+        val tiles =
+            setOf(
+                SlockComposerImageMosaicTile(column = 2, row = 2),
+                SlockComposerImageMosaicTile(column = 8, row = 8),
+            )
+
+        val remaining =
+            slockComposerImageEraseMosaicTiles(
+                tiles = tiles,
+                point = Offset(25f, 25f),
+                tileSizePx = 10f,
+            )
+
+        assertEquals(setOf(SlockComposerImageMosaicTile(column = 8, row = 8)), remaining)
+    }
+
+    @Test
+    fun composerImageUndoRestoresThePreviousMosaicMask() {
+        val first = SlockComposerImageMosaicTile(column = 1, row = 1)
+        val second = SlockComposerImageMosaicTile(column = 2, row = 2)
+        val afterFirst =
+            SlockComposerImageEditorHistory().apply(
+                SlockComposerImageEditorContent(mosaicTiles = setOf(first))
+            )
+        val afterSecond =
+            afterFirst.apply(
+                afterFirst.content.copy(mosaicTiles = setOf(first, second))
+            )
+
+        assertEquals(setOf(first), afterSecond.undo().content.mosaicTiles)
+    }
+
+    @Test
     fun composerImageUndoUsesChronologicalHistoryAcrossTextAndPen() {
         val text = SlockComposerImageTextAnnotation(id = 1, text = "note", position = Offset(20f, 20f))
-        val stroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
+        val stroke = SlockComposerImageStroke(points = listOf(Offset(10f, 10f), Offset(80f, 10f)))
         val afterText =
             SlockComposerImageEditorHistory().apply(
                 SlockComposerImageEditorContent(textAnnotations = listOf(text))
@@ -144,7 +196,7 @@ class SlockFilePreviewDownloadStatusTest {
 
     @Test
     fun composerImageUndoRestoresObjectsRemovedByEraserTransaction() {
-        val stroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
+        val stroke = SlockComposerImageStroke(points = listOf(Offset(10f, 10f), Offset(80f, 10f)))
         val text = SlockComposerImageTextAnnotation(id = 1, text = "note", position = Offset(20f, 20f))
         val original = SlockComposerImageEditorContent(strokes = listOf(stroke), textAnnotations = listOf(text))
         val beforeErase = SlockComposerImageEditorHistory(content = original)
@@ -161,7 +213,12 @@ class SlockFilePreviewDownloadStatusTest {
     fun composerImageUndoRestoresContentClearedInOneAction() {
         val original =
             SlockComposerImageEditorContent(
-                strokes = listOf(listOf(Offset(10f, 10f), Offset(80f, 10f))),
+                strokes =
+                    listOf(
+                        SlockComposerImageStroke(
+                            points = listOf(Offset(10f, 10f), Offset(80f, 10f))
+                        )
+                    ),
                 textAnnotations =
                     listOf(
                         SlockComposerImageTextAnnotation(
@@ -180,7 +237,7 @@ class SlockFilePreviewDownloadStatusTest {
 
     @Test
     fun composerImageRedoRestoresTheUndoneEdit() {
-        val stroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
+        val stroke = SlockComposerImageStroke(points = listOf(Offset(10f, 10f), Offset(80f, 10f)))
         val edited =
             SlockComposerImageEditorHistory().apply(
                 SlockComposerImageEditorContent(strokes = listOf(stroke))
@@ -196,8 +253,8 @@ class SlockFilePreviewDownloadStatusTest {
 
     @Test
     fun composerImageNewEditClearsTheRedoBranch() {
-        val firstStroke = listOf(Offset(10f, 10f), Offset(80f, 10f))
-        val replacementStroke = listOf(Offset(20f, 20f), Offset(90f, 20f))
+        val firstStroke = SlockComposerImageStroke(points = listOf(Offset(10f, 10f), Offset(80f, 10f)))
+        val replacementStroke = SlockComposerImageStroke(points = listOf(Offset(20f, 20f), Offset(90f, 20f)))
         val undone =
             SlockComposerImageEditorHistory()
                 .apply(SlockComposerImageEditorContent(strokes = listOf(firstStroke)))
@@ -217,6 +274,75 @@ class SlockFilePreviewDownloadStatusTest {
 
         assertFalse(unchanged.canUndo)
         assertEquals(history, unchanged)
+    }
+
+    @Test
+    fun imageEditorControlsReserveTheMainToolbarHeight() {
+        assertEquals(
+            80.dp,
+            slockFilePreviewEditorControlsHeight(
+                secondaryControlsVisible = false,
+                bottomPadding = 30.dp,
+            )
+        )
+    }
+
+    @Test
+    fun imageEditorControlsReserveTheExpandedPencilToolbarHeight() {
+        assertEquals(
+            132.dp,
+            slockFilePreviewEditorControlsHeight(
+                secondaryControlsVisible = true,
+                bottomPadding = 30.dp,
+            )
+        )
+    }
+
+    @Test
+    fun imageEditorPencilButtonTogglesItsOptions() {
+        assertFalse(
+            slockFilePreviewPencilOptionsExpandedAfterToolSelection(
+                currentTool = SlockComposerImageEditorTool.Pencil,
+                selectedTool = SlockComposerImageEditorTool.Pencil,
+                currentlyExpanded = true,
+            )
+        )
+        assertTrue(
+            slockFilePreviewPencilOptionsExpandedAfterToolSelection(
+                currentTool = SlockComposerImageEditorTool.Pencil,
+                selectedTool = SlockComposerImageEditorTool.Pencil,
+                currentlyExpanded = false,
+            )
+        )
+    }
+
+    @Test
+    fun imageEditorSelectingPencilFromAnotherToolOpensItsOptions() {
+        assertTrue(
+            slockFilePreviewPencilOptionsExpandedAfterToolSelection(
+                currentTool = SlockComposerImageEditorTool.Text,
+                selectedTool = SlockComposerImageEditorTool.Pencil,
+                currentlyExpanded = false,
+            )
+        )
+    }
+
+    @Test
+    fun imageEditorTextAndMosaicHidePencilOptions() {
+        assertFalse(
+            slockFilePreviewPencilOptionsExpandedAfterToolSelection(
+                currentTool = SlockComposerImageEditorTool.Pencil,
+                selectedTool = SlockComposerImageEditorTool.Text,
+                currentlyExpanded = true,
+            )
+        )
+        assertFalse(
+            slockFilePreviewPencilOptionsExpandedAfterToolSelection(
+                currentTool = SlockComposerImageEditorTool.Pencil,
+                selectedTool = SlockComposerImageEditorTool.Mosaic,
+                currentlyExpanded = true,
+            )
+        )
     }
 
     @Test
