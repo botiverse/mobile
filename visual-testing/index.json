@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-19T05:29:30.811Z",
+  "generatedAt": "2026-07-19T05:33:26.743Z",
   "latestRunId": "52bfef4-20260719052734",
   "latest": {
     "runId": "52bfef4-20260719052734",
     "commit": "52bfef4-20260719052734",
     "commitSubject": "fix(settings): support large Hands feedback attachments (#1290)",
-    "generatedAt": "2026-07-19T05:29:30.811Z",
+    "generatedAt": "2026-07-19T05:33:26.743Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 82,
-      "ready": 69,
-      "pending": 13
+      "ready": 82,
+      "pending": 0
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "52bfef4-20260719052734",
       "commit": "52bfef4-20260719052734",
       "commitSubject": "fix(settings): support large Hands feedback attachments (#1290)",
-      "generatedAt": "2026-07-19T05:29:30.811Z",
+      "generatedAt": "2026-07-19T05:33:26.743Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 82,
-        "ready": 69,
-        "pending": 13
+        "ready": 82,
+        "pending": 0
       },
       "comparisons": [
         "react__android",

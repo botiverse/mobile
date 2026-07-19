@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-19 05:29:30 UTC
+Generated: 2026-07-19 05:33:26 UTC
 Latest run: 52bfef4-20260719052734
 Latest commit: 52bfef4-20260719052734
 Commit subject: fix(settings): support large Hands feedback attachments (#1290)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 82, same 0, pass 0, basic-pass 1, different 81, missing 0
-AI analysis: ready 69 / total 82, pending 13
+AI analysis: ready 82 / total 82, pending 0
 Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

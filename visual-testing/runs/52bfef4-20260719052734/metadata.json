@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-19T05:29:30.811Z",
+  "generatedAt": "2026-07-19T05:33:26.743Z",
   "runId": "52bfef4-20260719052734",
   "commit": "52bfef4-20260719052734",
   "commitSubject": "fix(settings): support large Hands feedback attachments (#1290)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 82,
-        "ready": 69,
-        "pending": 13
+        "ready": 82,
+        "pending": 0
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 82,
-        "ready": 63,
-        "pending": 19
+        "ready": 76,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 82,
-        "ready": 68,
-        "pending": 14
+        "ready": 76,
+        "pending": 6
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 82,
-    "ready": 69,
-    "pending": 13
+    "ready": 82,
+    "pending": 0
   },
   "componentMatrixSummary": {
     "total": 110,

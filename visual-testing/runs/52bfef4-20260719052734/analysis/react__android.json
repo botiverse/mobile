@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-19T05:29:23.519Z",
+  "generatedAt": "2026-07-19T05:33:19.408Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 82,
-    "ready": 69,
-    "pending": 13
+    "ready": 82,
+    "pending": 0
   },
   "cases": [
     {
@@ -670,28 +670,71 @@
     },
     {
       "id": "components.auth.register.inputs",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffc000000000000000030800000fe7f7fbefe7ffe7ff08ffe7ff00ff81f9fffffff83fcc0fb8000c06b8fffc00380fcc3fb8000c003881fcffff61fc0fb8000c0038001d41fc3e3c00bb00cc0038000c003b00cffff8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-19T05:29:22.509Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:18.078Z",
+      "severity": "high",
+      "summary": [
+        "Android page is missing the 'Name' field present in React; React shows only Email + Password while Android adds Name as the first field.",
+        "Heading text differs: React uses 'Create your account' (sentence case) vs Android 'Create Account' (Title Case).",
+        "Primary CTA label differs: React 'Continue' vs Android 'Create Account'.",
+        "React includes OAuth buttons ('Continue with Google', 'Continue with GitHub') and an 'OR' divider; Android omits both.",
+        "Typography weight differs — React headings/labels render heavier/bolder; Android labels and body text appear lighter/thinner."
+      ],
+      "likelyCauses": [
+        "Android implementation diverged from React design spec — added Name field, removed OAuth providers, renamed CTA.",
+        "Design tokens (font-weight, font-size, border-width) not shared between web and Android themes.",
+        "OAuth integration not implemented in Android client.",
+        "Localized/rewritten copy in Android ('Create Account') instead of using i18n key for 'Continue'.",
+        "Different default Material/AppCompat styling on Android overriding custom theme."
+      ],
+      "suggestedOwner": "android-auth-feature-owner",
+      "suggestedFixes": [
+        "Remove 'Name' input from Android screen or add it to React baseline if intentional — align field set across platforms.",
+        "Add OAuth provider buttons (Google, GitHub) and the 'OR' divider to Android to match React, or formally mark as out-of-scope.",
+        "Change Android CTA text to 'Continue' and heading to 'Create your account' to match React copy.",
+        "Unify typography tokens: match React font-weight (bolder headings) and increase Android label/input font-weight.",
+        "Thicken input/checkbox border stroke on Android to match React's heavier black outline, and standardize spacing/padding between form fields."
+      ],
+      "intentional": [
+        "Android may intentionally omit OAuth providers if social login is web-only.",
+        "Different CTA label may be product-decision on Android.",
+        "Vertical layout offset may reflect Android safe-area / status bar handling."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20659658929801106
     },
     {
       "id": "components.navigation.tabbar.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff00000000ffffffff1ffe1ffc9ffc1ffc0ffe0ffe7fff7fff200020000000000007ff0fff07ff0fff09bb09bb0d9b0dbb0d9b09bb099b09bb0fff0fff07ff0f93891109118911091107ff0fff07ff0fff0fff0000ffff7fff00000000fffffffffffffffffffffffffff81ffffff81fffffffffffffffffffffffffff",
-      "generatedAt": "2026-07-19T05:29:22.443Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:18.020Z",
+      "severity": "low",
+      "summary": [
+        "Android tab labels appear in ALL-CAPS (HOME, TASKS, MEMBERS, SETTINGS) while React renders Title Case (Home, Tasks, Members, Settings)",
+        "Android tab labels are rendered in a heavier/bolder font weight compared to React's lighter weight",
+        "Both platforms have the same selected tab (Home) with yellow background — no drift in active state",
+        "Icon glyphs, spacing, tab widths, and yellow selection fill appear visually equivalent between platforms"
+      ],
+      "likelyCauses": [
+        "Android uses platform-default all-caps transformation via Material textAppearance on BottomNavigationView labels",
+        "React MobileTabBar applies text-transform: capitalize or renders Title Case from source labels",
+        "Font weight on Android is set heavier than the React/web tab bar label token"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Add textAllCaps={false} on the Android BottomNavigationView tab labels to match React casing, or accept the platform difference intentionally",
+        "Align the Android label font weight to the React tab bar token (e.g., 500/medium) if drift is unintended",
+        "Confirm whether ALL-CAPS + bolder weight is the intended Android brand style and document it under platform-difference if so"
+      ],
+      "intentional": [
+        "Android ALL-CAPS tab labels (HOME, TASKS, MEMBERS, SETTINGS) vs React Title Case — deliberate platform-difference per known divergences"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.13060259097994942
     },
     {
@@ -763,15 +806,35 @@
     },
     {
       "id": "components.thread.composer.as-task-selected",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffffffffffffffffffefffc03fc03fc97ff17ff0000000000000000ffffffff80010001fffefffdfffefffd80b6000d80060005fffefffdfffefffd8ff80ff987f80ff987d80f9187c00f8187d80f9187f80ff98ff80001800000018000ffffffffffff0000000080018001fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-07-19T05:29:22.460Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:18.074Z",
+      "severity": "medium",
+      "summary": [
+        "Composer title 'Review the Android composer crop' appears slightly larger/heavier on Android (React) side",
+        "Left icon group (image/attach) has tighter spacing on Android; React shows more gap between icons",
+        "'As Task' checkbox label appears bolder and darker on Android; React shows lighter gray weight",
+        "Send button (pink) appears slightly larger and more saturated on Android vs React",
+        "Overall component bounds differ in horizontal offset — Android crop is shifted right by ~24px in source canvas"
+      ],
+      "likelyCauses": [
+        "Different default font metrics/scale between React web rendering and Android (Compose/View) rendering",
+        "Inconsistent icon-button spacing token between web and Android design system implementations",
+        "Missing or misapplied design token for checkbox label weight/color on React baseline",
+        "Send icon button has different size/fill treatment across platforms"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Reconcile composer title font-size and line-height tokens between React and Android",
+        "Align icon-button horizontal padding/margin to a shared spacing token (e.g., 8dp/12dp)",
+        "Match 'As Task' label color/weight to Android using the shared token (e.g., text-secondary, regular)",
+        "Normalize send button size and color using the shared accent token",
+        "Verify component crop rect alignment — current Android rect uses x=24 while React uses x=0, causing horizontal shift"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2130961663417804
     },
     {
@@ -844,15 +907,33 @@
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffefffc07fc07fc00000000000000008fff0fff8fff0fff8fff0fff8fff0fff8fff0fff8fff0fff800100038000200180000001800036fd8ff80ff187c00f8187c80fb1800000018000f007fffefffffffefffffffefffffffeffff0000ffffffffffffffffffffffffffffffffffffffff0000ffff0000fff81fffffffffff",
-      "generatedAt": "2026-07-19T05:29:22.489Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:18.107Z",
+      "severity": "medium",
+      "summary": [
+        "Android preview includes a dismiss/close (X) button overlaid on the top-right of the image thumbnail; React baseline does not show this control.",
+        "Android component has extra vertical height (270 vs 210) likely to accommodate the close affordance and slight internal spacing differences.",
+        "Bottom action bar in Android has larger vertical padding/height, making the 'As Task' row taller than in React.",
+        "Image thumbnail in Android is positioned slightly differently relative to the container, possibly due to the close button offsetting layout."
+      ],
+      "likelyCauses": [
+        "Android implementation renders an additional remove/close button on the preview that the React baseline omits (or vice versa).",
+        "Different vertical padding/margins applied to the composer preview card on Android vs React.",
+        "Platform-specific component (e.g., Android only) attached a dismissal control not mirrored in the React design spec.",
+        "Crop rect used for Android includes extra bottom whitespace because of taller action bar."
+      ],
+      "suggestedOwner": "android-composer",
+      "suggestedFixes": [
+        "Decide whether the close (X) button belongs in the spec; if yes, add it to the React baseline; if no, remove it from the Android render.",
+        "Align the bottom action bar padding/min-height between Android and React so the 'As Task' row height matches.",
+        "Adjust the Android crop/measurement bounds to exclude extraneous whitespace, or tighten Android's vertical spacing.",
+        "Verify the image preview card uses a shared design token for padding so both platforms render equal heights."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.12943590113830528
     },
     {
@@ -1144,15 +1225,39 @@
     },
     {
       "id": "components.thread.comment-anchor",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fc001e00fe0000801e807f0e08807f0ffeffff1d06ffff7ffefffefffefffefffefffefffefffefffefffefffefffefffeffff0000fffe0ff8ffff0018ffff003effff03feffff0200ffff001cffff0004ffff1dfcffff00fcffff0000ffff0002fffe003e003207fc00023ffc7fde00007ff8000400000000ffff7fff",
-      "generatedAt": "2026-07-19T05:29:22.674Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:18.391Z",
+      "severity": "high",
+      "summary": [
+        "React shows an inline comment thread component in a minimal/contextual layout, while Android renders a full-page 'FILE PREVIEW' screen with a modal comments panel — these are fundamentally different surfaces.",
+        "Header text differs: React uses 'Comments · agent-tabs-full-page-review.mp4' as a single inline title; Android uses 'FILE PREVIEW' in large uppercase heading plus a monospace filename 'agent-tabs-full-page-review.md' underneath.",
+        "Avatar tile on React is a purple square with person icon + 'Artea' label and '06/25 10:32 AM' timestamp; Android shows 'Artea' with '18:32' timestamp and no avatar icon, placed inside a larger comments-panel card.",
+        "Anchor tag content differs: React embeds '§ agent-tabs-full-page-review.mp4' with a section/pin icon; Android shows 'Anchor: agent-tabs-full-page-review.md' as a bordered label and additionally repeats the anchor label in a separate outlined chip above the comment input.",
+        "Android adds chrome not present in React: back arrow icon in header, close (X) button on the comments panel, 'All / Unresolved' filter tabs, 'Quote' and 'Resolve' action buttons, and a full-width 'SEND COMMENT' button with paper-plane icon."
+      ],
+      "likelyCauses": [
+        "Android view is capturing an expanded/modal state ('COMMENTS' bottom sheet or side panel) while React baseline captures the inline thread in-place, so the comparison contracts are mismatched surfaces.",
+        "Crop mismatch: baseline uses 'element/component-bounds' while current uses 'manual-rect/viewport-bounds', causing the Android frame to include the full screen including header, file preview body, and modal that React does not render.",
+        "File-name string changed between implementations (`.mp4` vs `.md`), suggesting a data fixture mismatch in the Android screenshot.",
+        "Different design variants or intent: Android uses a standalone file-preview page with a comments drawer; React uses an inline annotation pattern — possible intentional divergence but unverified."
+      ],
+      "suggestedOwner": "Android engineering + design systems (review contract/surface mismatch)",
+      "suggestedFixes": [
+        "Align crop contracts so both baselines render the same component surface (inline thread on React vs comments drawer on Android should be compared at the drawer level, or vice versa).",
+        "Decide whether the Android implementation should render inline (matching React) or whether the React baseline should be updated to the new full-page preview + modal pattern; standardize before re-baselining.",
+        "Unify file-name fixture so both sides reference the same extension (`.mp4` or `.md`) in the screenshot harness.",
+        "Normalize timestamp rendering (locale + format) between platforms to avoid noise in visual diff.",
+        "Match typographic scale: bring Android heading weights/sizes in line with React's lighter inline hierarchy, or explicitly codify the new modal variant in the design system."
+      ],
+      "intentional": [
+        "Android's full-page 'FILE PREVIEW' header with back arrow may be intentional mobile navigation chrome.",
+        "The 'All / Unresolved' filter tabs and 'Quote / Resolve' actions on Android may be deliberate features for the file-preview modal that React's inline thread does not expose.",
+        "24-hour clock and locale formatting on Android could be a deliberate platform convention."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24810460296242287
     },
     {
@@ -1432,54 +1537,143 @@
     },
     {
       "id": "components.home.create-channel.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff00000000000000000000000000007ffc7ffc7ef87ffc7ffc7ffe7ffc7ffc7ffc67fc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe47fc67fe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc5ffc7ffc5ffc7ffc5ffc7ffc7ffc7ffc7ffc7ffc4ffc7f007f807f007f0000000000000000000000000000000000ffffffff",
-      "generatedAt": "2026-07-19T05:29:22.826Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:18.917Z",
+      "severity": "high",
+      "summary": [
+        "Android dialog is significantly larger and uses more vertical space — it starts higher (closer to top) and extends further down, leaving little bottom margin versus React's more compact modal.",
+        "Android renders secondary metadata under each member (e.g., 'agent · @Cindy', 'human · @designer') which is absent in React.",
+        "Android adds a helper text under the Name input ('Start with a letter. Use letters from any language, nu…') that React does not show — text is also clipped/truncated on Android.",
+        "Android's Description textarea clips the second line ('blockers' is cut off) due to fixed height; React wraps fully.",
+        "Agent list rows on Android are taller with more vertical padding; selection checkmark indicator is larger and farther right."
+      ],
+      "likelyCauses": [
+        "Android implementation uses different default TextView/Compose typography scale and line-heights than the web (React) baseline.",
+        "Android dialog is laid out with a fixed larger modal height (or no max-height constraint) versus React's compact modal styling.",
+        "Name field on Android includes extra helper/validation text that React omits, increasing row height.",
+        "Member list item rendering on Android adds an avatar status dot + subtitle line that React's simpler item layout does not.",
+        "Description textarea has a fixed small height on Android that doesn't grow with content, causing clipping."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Match Android dialog dimensions/padding to the React modal sizing and constrain vertical extent so it doesn't expand the viewport.",
+        "Remove or conditionally hide the 'Start with a letter...' helper text under Name to align with React, or ensure consistent copy.",
+        "Allow the Description textarea to auto-grow or set a taller min-height so 'Build reports, screenshots, release blockers' is not clipped.",
+        "Normalize section label typography (NAME, DESCRIPTION, VISIBILITY, MEMBERS) and dialog title to React's size/weight.",
+        "Simplify member list rows on Android to a single line (name only) or ensure subtitle metadata matches React's design intent; resize the selection checkmark to React's scale."
+      ],
+      "intentional": [
+        "Platform-native status indicator dot on avatars may be an intentional Android addition.",
+        "Larger touch targets on Android for accessibility could be intentional if documented."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.23078442095029772
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000000007ffc3ffc7ff83ffc3ffc3ffc01fc006c7ffc21fc7ffc3ffc3ffc3ffc7ffc39fc1ffc3ffc3ffc3ffc7ffc3ffc0ffc27fc3ffc3ffc3ffc3ffc7ffc3ffc7ffc3ffc7ffc3ffc07fc2ffc7ffc37fc7ffc2ffc17fc3ffc67fc3ffc7ffc3ffc1ffc3ffc7ffc3d007ffc38007f7c0000380400000000ffffffff",
-      "generatedAt": "2026-07-19T05:29:22.836Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:23.301Z",
+      "severity": "high",
+      "summary": [
+        "Android version shows additional fields (Reasoning and Mode) and expanded model section, while React stops at Model and a '> MORE' toggle",
+        "Android dialog spans more vertical space; fields are more tightly packed with reduced vertical gaps between labels and inputs",
+        "Typography weight on Android dialog headings and labels appears slightly heavier/bolder than React",
+        "Form field borders on Android are rendered with thinner, lighter strokes versus React's heavier dark borders",
+        "Action button area: React shows pink-filled 'Create Agent' primary button; Android shows a gray/disabled 'Create Agent' button with no fill color"
+      ],
+      "likelyCauses": [
+        "Android implementation renders advanced fields expanded by default instead of behind a 'More' disclosure",
+        "Android theme uses different button styling tokens (disabled-style primary button instead of brand pink)",
+        "Android uses a different typography scale/weight for form labels",
+        "Missing shared design tokens between React web and Android for input border, spacing, and primary action colors"
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Collapse Reasoning and Mode behind the 'More' disclosure to match React's progressive disclosure pattern",
+        "Apply brand pink fill to the 'Create Agent' primary CTA (current appears as disabled/secondary style)",
+        "Normalize form label typography weight and input border thickness to match React tokens",
+        "Tighten vertical rhythm between label-to-input spacing to align with React layout",
+        "Verify modal padding and Cancel button width match shared design spec"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3197762655108627
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:efffdfff000000003ffc3dfc2bf82df83f6c3e0c00ec00cc3ffc3ffc27fc1ffc3ffc39fc2ffc1ffc0ffc1ffc3dfc3ffc23fc27fc27fc03fc3dfc3ffc3ffc3ffc2ffc3ff43ffc7ffc3ffc3ffc0ffc03fc3ffc2ffc27fc3ffc0ffc0ffc2ffc7ffc3ffc7ffc3ffc3ffc0ffc3ffc3ffc7ffc2ffc7d7c3ffc38003d000000ffffffff",
-      "generatedAt": "2026-07-19T05:29:22.840Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:23.776Z",
+      "severity": "medium",
+      "summary": [
+        "Android modal is vertically taller/larger overall, extending further down the viewport than React baseline",
+        "Android shows the full form including Cancel and Create Agent action buttons visible; React shows them clipped at the bottom with Create Agent appearing as a pink-filled button",
+        "On Android, the Claude Opus Model field is partially clipped/overlapping by the action buttons (overlap region visible)",
+        "React baseline shows a '> MORE' expandable section above the action buttons that is not visible on Android",
+        "Typography weight on Android 'CREATE AGENT' title and form labels appears slightly heavier/bolder than React"
+      ],
+      "likelyCauses": [
+        "Android implementation renders the modal at a larger intrinsic height, pushing footer buttons up into the Model field area",
+        "Android missing the '> MORE' collapsible disclosure section present in React baseline",
+        "Different default textarea/input line-heights or vertical padding between platforms causing cumulative shift",
+        "Inconsistent dialog max-height or scroll-container handling between React and Android implementations",
+        "Action button positioning not pinned to dialog footer in Android build"
+      ],
+      "suggestedOwner": "android-engineering",
+      "suggestedFixes": [
+        "Pin Cancel and Create Agent buttons to a fixed footer of the dialog on Android so they don't overlap the Model field",
+        "Match React's modal max-height and ensure the scroll container wraps the form fields, not the footer",
+        "Add the '> MORE' expandable section to the Android variant if it is part of the spec",
+        "Align typography weight (e.g., 700 vs 800) for 'CREATE AGENT' heading and field labels to React values",
+        "Normalize vertical spacing/padding on Android form fields to match React baseline metrics"
+      ],
+      "intentional": [
+        "Android action buttons being visible without scrolling may be intentional UX choice",
+        "Platform-specific typography rendering differences may be expected"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2152624188169212
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:efffcfff000000003ffc3dfc2bf82df83f6c3e0c00ec00cc3ffc3ffc27fc1ffc3ffc39fc2ffc1ffc0ffc1ffc3dfc3ffc23fc27fc27fc03fc3dfc3ffc3ffc3ffc2ffc3ff43ffc7ffc3ffc3ffc0ffc03fc3ffc2ffc27fc3ffc2ffc0ffc2ffc7ffc3ffc7ffc3ffc3ffc2ffc0ffc3ffc7ffc2ffc7f7c2ffc38003ffc0000ffffffff",
-      "generatedAt": "2026-07-19T05:29:22.864Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:26.146Z",
+      "severity": "high",
+      "summary": [
+        "Modal extent differs: React dialog extends well below the viewport (API KEY field clipped at bottom, no action buttons visible), while Android dialog is shorter and fits entirely with Cancel/Create Agent buttons visible.",
+        "Header layout differs: Android shows the close (X) button higher and slightly more inset, React sits lower and farther right.",
+        "Form fields and labels render at slightly different vertical positions between platforms; Android appears more compact at the top.",
+        "'Agent limit reached' banner in Android is narrower (more side padding) and the text wraps onto two lines, while React banner spans nearly full width on a single visual block.",
+        "Required-field asterisk color: React renders the pink/red asterisk as a small dot; Android renders a noticeably larger, more saturated pink asterisk."
+      ],
+      "likelyCauses": [
+        "React modal uses a non-scrollable content container causing the form to overflow the 844px viewport without action bar visibility.",
+        "Android implementation auto-fits modal to viewport height, hiding the scroll or rendering buttons within bounds.",
+        "Inconsistent padding/insets for header close button between web (React) and native (Android) dialogs.",
+        "Field label asterisk style tokens not synchronized across platforms (size/weight/color).",
+        "Banner component uses different horizontal padding or max-width on Android vs React."
+      ],
+      "suggestedOwner": "design-system / mobile-eng",
+      "suggestedFixes": [
+        "Make the React modal body scrollable so API KEY field and Create Agent / Cancel buttons are reachable within 390×844.",
+        "Align modal header close-button offset/padding between React and Android using the same token (e.g., 16dp inset).",
+        "Sync asterisk style (color #FF3B6E approx., 14–16px, baseline-aligned) across both platforms.",
+        "Standardize the 'Agent limit reached' banner container width/padding (use full modal-content width minus 24dp gutters).",
+        "Pin Cancel and Create Agent actions in a sticky bottom bar on both platforms to guarantee visibility regardless of content length."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.21907144110935584
     },
     {
@@ -1521,15 +1715,33 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff8000000000000000000000000000000000000000000000007ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7c3860027ffc781e781c40026004400240007ffe23c4000000000000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-19T05:29:22.923Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:29.921Z",
+      "severity": "high",
+      "summary": [
+        "Save Changes button on Android is rendered disabled (greyed out, grey text) while React shows it active in pink",
+        "Android panel has smaller vertical spacing — the Cancel/Save row sits closer to the Description field and the action buttons (Make Private, Archive, Delete) are more tightly stacked",
+        "Title 'EDIT CHANNEL' and close (×) icon have less vertical breathing room on Android, sitting closer to the panel top",
+        "Make Private, Archive Channel, and Delete Channel buttons appear slightly narrower / shorter on Android, causing icon+label to wrap tighter",
+        "Required-field asterisk on 'NAME *' and '(optional)' label color/weight on Description look visually identical, so those are not the source of the diff"
+      ],
+      "likelyCauses": [
+        "Android component binds Save Changes disabled state to a validation/form-condition that React does not enforce",
+        "Differing vertical padding/margin tokens between the React and Android design-token implementations",
+        "Android buttons use a different height/padding token than the React spec for destructive/secondary actions"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Verify the Save Changes enabled/disabled logic on Android matches React; remove premature disabled state when form is valid",
+        "Align Android spacing scale (panel internal padding, row gaps, action-button height) to the React design tokens",
+        "Ensure the same button-height token is applied to Make Private / Archive / Delete on both platforms",
+        "Re-run slock with crop contract consistent on both sides (baseline 'modal-viewport' vs current 'viewport-bounds') to eliminate false layout diff"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1774965906482494
     },
     {
@@ -1810,15 +2022,37 @@
     },
     {
       "id": "components.settings.language-region.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff80ff803fbffe3fff87ff03f783fc7ff3c1fc0073803c00178fe88007800083f7c1fc03f3fffc7ed383fc007387fc000787fc003380007ff3ffff00f78ffc0ff7cffc8007bffc07f38000800787fc87ffdffc0ff381fc7ff381fc0ff787fc8007800007f3ffff00f3ffff00f3ffff0ff3ffff07f2ffffffff",
-      "generatedAt": "2026-07-19T05:29:23.090Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:32.133Z",
+      "severity": "high",
+      "summary": [
+        "Android splits the Language section into two separate cards ('App language' and 'Language') while React combines display language and translation mode in one card.",
+        "Android uses sentence-case section headings ('App language', 'Language', 'Date & Time') whereas React uses uppercase tracked labels ('LANGUAGE', 'DATE & TIME').",
+        "Android adds a third Translation mode option ('Original') not present in React; React only offers Auto/Off.",
+        "Android introduces a separate 'Preferred translation language' dropdown that React lacks.",
+        "Android translation-mode buttons include leading icons (translate/pencil/document) which React does not show."
+      ],
+      "likelyCauses": [
+        "Android implementation followed a newer component spec with split cards, extra translation options, and icons.",
+        "Inconsistent typography token mapping between platforms: Android did not apply the uppercase/letter-spacing style used by React.",
+        "Timezone label formatting differs — Android uses IANA name only while React includes UTC offset.",
+        "Different crop contract used for the two images (element-bounds vs viewport-bounds) exposes a layout-overflow issue on Android."
+      ],
+      "suggestedOwner": "android-settings",
+      "suggestedFixes": [
+        "Unify the Language section structure across platforms: merge display language and translation mode into one card or split consistently in both.",
+        "Apply uppercase + tracked style to Android section headings to match the React typography tokens.",
+        "Add the 'Original' translation mode (and matching icon) to the React build, or remove it from Android to keep parity.",
+        "Remove the extra 'Preferred translation language' dropdown from Android or add it to React if it is required.",
+        "Standardize timezone select label format (e.g., always include UTC offset) on both platforms."
+      ],
+      "intentional": [
+        "The third 'Original' translation option and the 'Preferred translation language' field may be an intentional Android-only expansion pending React rollout."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3228186899987848
     },
     {
@@ -2103,15 +2337,36 @@
     },
     {
       "id": "screens.members.agent-detail.activity",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe17fc80100030801000000000000000000000010053e0000271fef87e71fef006719ef8fe707ef8fa707ef80e780ef83e703ef8027002fc427cfef8be7ffef01e7ffef8067ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-19T05:29:23.269Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:32.462Z",
+      "severity": "medium",
+      "summary": [
+        "Avatar placeholder differs: React shows a solid cyan square, Android shows a pixelated black/white/cyan pattern",
+        "Copy button text differs: React reads 'Copy Diagnostic Info', Android reads 'Copy info' (truncated/shortened)",
+        "Time format differs: React uses 12-hour format with AM/PM (e.g., '12:28:00 PM'), Android uses 24-hour format (e.g., '20:28:00')",
+        "Body text appears in monospaced/code font on React vs proportional sans-serif on Android, causing different line wrapping",
+        "Status indicators (dots) render smaller and tighter on Android; secondary description text wraps tighter due to font differences"
+      ],
+      "likelyCauses": [
+        "Platform-specific text rendering (monospace fallback on React/web vs system font on Android)",
+        "Locale/time-format configuration not aligned across platforms (12h vs 24h)",
+        "Avatar component not ported — fallback placeholder differs between React and Android implementations",
+        "Button label string differs ('Copy Diagnostic Info' vs 'Copy info'); possible truncation or different copy source",
+        "Token/theme values for font size, line-height, and dot indicator size not shared between React and Android design systems"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Unify the avatar placeholder across React and Android (single component/token) or accept intentional divergence and add to baseline",
+        "Normalize the Copy button label to 'Copy Diagnostic Info' on Android, or update both to a shared shorter copy",
+        "Align locale/time-format handling (12h vs 24h) via shared user preference so timestamps render identically",
+        "Share typography tokens (font family, size, line-height) for activity items between React and Android to fix wrapping",
+        "Calibrate the status dot size, color, and tab active-state weight to the same design tokens across platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.095736960073453
     },
     {
@@ -2222,15 +2477,35 @@
     },
     {
       "id": "screens.settings.server-danger-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff800180018000000180000001800100018000000180000001800000018000fff58000fffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcff86fffdfffe0001800080018001000180010001800100018001000180010001800100018000000180018001ffffffff",
-      "generatedAt": "2026-07-19T05:29:23.350Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T05:31:32.631Z",
+      "severity": "high",
+      "summary": [
+        "Modal positioned lower and shifted right on Android vs React baseline",
+        "Modal width is narrower on Android, leaving more background visible on the right",
+        "Underlying 'Visual Server' Name input is visible on Android but clipped/occluded on React",
+        "Warning body text on Android shows a missing space: 'deleteVisual Server' (rendered as 'deleteVisual Server' without space), whereas React shows 'delete Visual Server'",
+        "Delete Server button on Android is in a disabled (light pink/faded) state; on React it is active (solid red/coral)"
+      ],
+      "likelyCauses": [
+        "Inconsistent i18n/translation string interpolation for the server name placeholder in the warning copy",
+        "Modal anchor/offset logic differs between platforms, causing different vertical and horizontal placement",
+        "Confirmation-enable condition for the Delete Server button differs on Android (input validation not recognizing typed value)",
+        "Differing dialog width token/size between React and Android implementations"
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Restore the space in the interpolated warning text: ensure 'delete ${serverName}' renders with a space between 'delete' and the server name on Android",
+        "Re-anchor the danger modal so its top and horizontal position match the React baseline (centered horizontally, same vertical offset)",
+        "Set the dialog width to match the React modal width token",
+        "Fix the Delete Server button enabled-state logic so it activates when the input exactly matches the server name",
+        "Increase button vertical padding/height to match React's Cancel and Delete Server buttons"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.8880915731626632
     },
     {

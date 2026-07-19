@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>52bfef4-20260719052734</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-19T05:29:30.811Z" data-timestamp="2026-07-19T05:29:30.811Z" title="2026-07-19T05:29:30.811Z">2026-07-19 05:29:30 UTC</time></p>
+    <p class="runMeta"><code>52bfef4-20260719052734</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-19T05:33:26.743Z" data-timestamp="2026-07-19T05:33:26.743Z" title="2026-07-19T05:33:26.743Z">2026-07-19 05:33:26 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 82</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 1</span>
       <span class="pill">Different 81</span>
       <span class="pill">Missing 0</span>
-      <span class="pill">AI 69/82 ready</span>
+      <span class="pill">AI 82/82 ready</span>
       <span class="pill">Matrix 91/110 active</span>
       <span class="pill">Components Parity 80/84 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -1415,7 +1415,12 @@
       <p><code>RGB 89.1%</code><br/><code>Pixel 79.34%</code><br/><code>Mismatch 20.66%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-auth-feature-owner</summary>
+    <ul><li>Android page is missing the 'Name' field present in React; React shows only Email + Password while Android adds Name as the first field.</li><li>Heading text differs: React uses 'Create your account' (sentence case) vs Android 'Create Account' (Title Case).</li><li>Primary CTA label differs: React 'Continue' vs Android 'Create Account'.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Remove 'Name' input from Android screen or add it to React baseline if intentional — align field set across platforms.</li><li>Add OAuth provider buttons (Google, GitHub) and the 'OR' divider to Android to match React, or formally mark as out-of-scope.</li><li>Change Android CTA text to 'Continue' and heading to 'Create your account' to match React copy.</li><li>Unify typography tokens: match React font-weight (bolder headings) and increase Android label/input font-weight.</li><li>Thicken input/checkbox border stroke on Android to match React's heavier black outline, and standardize spacing/padding between form fields.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.auth.register.inputs.png" data-current-src="android/components.auth.register.inputs.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -1477,7 +1482,12 @@
       <p><code>RGB 89.8%</code><br/><code>Pixel 86.94%</code><br/><code>Mismatch 13.06%</code><br/><code>Raw 1170×159 / 1170×159</code><br/><code>Canvas 1170×159</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×53 / component-bounds 390×53</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · android</summary>
+    <ul><li>Android tab labels appear in ALL-CAPS (HOME, TASKS, MEMBERS, SETTINGS) while React renders Title Case (Home, Tasks, Members, Settings)</li><li>Android tab labels are rendered in a heavier/bolder font weight compared to React's lighter weight</li><li>Both platforms have the same selected tab (Home) with yellow background — no drift in active state</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add textAllCaps={false} on the Android BottomNavigationView tab labels to match React casing, or accept the platform difference intentionally</li><li>Align the Android label font weight to the React tab bar token (e.g., 500/medium) if drift is unintended</li><li>Confirm whether ALL-CAPS + bolder weight is the intended Android brand style and document it under platform-difference if so</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.navigation.tabbar.states.png" data-current-src="android/components.navigation.tabbar.states.png" data-overlay-width="1170" data-overlay-height="159">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -1667,7 +1677,12 @@
       <p><code>RGB 83.4%</code><br/><code>Pixel 78.69%</code><br/><code>Mismatch 21.31%</code><br/><code>Raw 1026×300 / 1026×300</code><br/><code>Canvas 1026×300</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×100 / component-bounds 342×100</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · design-system</summary>
+    <ul><li>Composer title 'Review the Android composer crop' appears slightly larger/heavier on Android (React) side</li><li>Left icon group (image/attach) has tighter spacing on Android; React shows more gap between icons</li><li>'As Task' checkbox label appears bolder and darker on Android; React shows lighter gray weight</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reconcile composer title font-size and line-height tokens between React and Android</li><li>Align icon-button horizontal padding/margin to a shared spacing token (e.g., 8dp/12dp)</li><li>Match 'As Task' label color/weight to Android using the shared token (e.g., text-secondary, regular)</li><li>Normalize send button size and color using the shared accent token</li><li>Verify component crop rect alignment — current Android rect uses x=24 while React uses x=0, causing horizontal shift</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.as-task-selected.png" data-current-src="android/components.thread.composer.as-task-selected.png" data-overlay-width="1026" data-overlay-height="300">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -1854,7 +1869,12 @@
       <p><code>RGB 86.6%</code><br/><code>Pixel 87.06%</code><br/><code>Mismatch 12.94%</code><br/><code>Raw 1026×630 / 1026×810</code><br/><code>Canvas 1026×810</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×210 / component-bounds 342×270</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-composer</summary>
+    <ul><li>Android preview includes a dismiss/close (X) button overlaid on the top-right of the image thumbnail; React baseline does not show this control.</li><li>Android component has extra vertical height (270 vs 210) likely to accommodate the close affordance and slight internal spacing differences.</li><li>Bottom action bar in Android has larger vertical padding/height, making the 'As Task' row taller than in React.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Decide whether the close (X) button belongs in the spec; if yes, add it to the React baseline; if no, remove it from the Android render.</li><li>Align the bottom action bar padding/min-height between Android and React so the 'As Task' row height matches.</li><li>Adjust the Android crop/measurement bounds to exclude extraneous whitespace, or tighten Android's vertical spacing.</li><li>Verify the image preview card uses a shared design token for padding so both platforms render equal heights.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.image-preview.png" data-current-src="android/components.thread.composer.image-preview.png" data-overlay-width="1026" data-overlay-height="810">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2425,7 +2445,12 @@
       <p><code>RGB 90.0%</code><br/><code>Pixel 75.19%</code><br/><code>Mismatch 24.81%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Android engineering + design systems (review contract/surface mismatch)</summary>
+    <ul><li>React shows an inline comment thread component in a minimal/contextual layout, while Android renders a full-page 'FILE PREVIEW' screen with a modal comments panel — these are fundamentally different surfaces.</li><li>Header text differs: React uses 'Comments · agent-tabs-full-page-review.mp4' as a single inline title; Android uses 'FILE PREVIEW' in large uppercase heading plus a monospace filename 'agent-tabs-full-page-review.md' underneath.</li><li>Avatar tile on React is a purple square with person icon + 'Artea' label and '06/25 10:32 AM' timestamp; Android shows 'Artea' with '18:32' timestamp and no avatar icon, placed inside a larger comments-panel card.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align crop contracts so both baselines render the same component surface (inline thread on React vs comments drawer on Android should be compared at the drawer level, or vice versa).</li><li>Decide whether the Android implementation should render inline (matching React) or whether the React baseline should be updated to the new full-page preview + modal pattern; standardize before re-baselining.</li><li>Unify file-name fixture so both sides reference the same extension (`.mp4` or `.md`) in the screenshot harness.</li><li>Normalize timestamp rendering (locale + format) between platforms to avoid noise in visual diff.</li><li>Match typographic scale: bring Android heading weights/sizes in line with React's lighter inline hierarchy, or explicitly codify the new modal variant in the design system.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.comment-anchor.png" data-current-src="android/components.thread.comment-anchor.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -3319,7 +3344,12 @@
       <p><code>RGB 86.6%</code><br/><code>Pixel 76.92%</code><br/><code>Mismatch 23.08%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-ui</summary>
+    <ul><li>Android dialog is significantly larger and uses more vertical space — it starts higher (closer to top) and extends further down, leaving little bottom margin versus React's more compact modal.</li><li>Android renders secondary metadata under each member (e.g., 'agent · @Cindy', 'human · @designer') which is absent in React.</li><li>Android adds a helper text under the Name input ('Start with a letter. Use letters from any language, nu…') that React does not show — text is also clipped/truncated on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Match Android dialog dimensions/padding to the React modal sizing and constrain vertical extent so it doesn't expand the viewport.</li><li>Remove or conditionally hide the 'Start with a letter...' helper text under Name to align with React, or ensure consistent copy.</li><li>Allow the Description textarea to auto-grow or set a taller min-height so 'Build reports, screenshots, release blockers' is not clipped.</li><li>Normalize section label typography (NAME, DESCRIPTION, VISIBILITY, MEMBERS) and dialog title to React's size/weight.</li><li>Simplify member list rows on Android to a single line (name only) or ensure subtitle metadata matches React's design intent; resize the selection checkmark to React's scale.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.create-channel.dialog.png" data-current-src="android/components.home.create-channel.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -3512,7 +3542,12 @@
       <p><code>RGB 81.8%</code><br/><code>Pixel 68.02%</code><br/><code>Mismatch 31.98%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-engineering</summary>
+    <ul><li>Android version shows additional fields (Reasoning and Mode) and expanded model section, while React stops at Model and a '&gt; MORE' toggle</li><li>Android dialog spans more vertical space; fields are more tightly packed with reduced vertical gaps between labels and inputs</li><li>Typography weight on Android dialog headings and labels appears slightly heavier/bolder than React</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Collapse Reasoning and Mode behind the 'More' disclosure to match React's progressive disclosure pattern</li><li>Apply brand pink fill to the 'Create Agent' primary CTA (current appears as disabled/secondary style)</li><li>Normalize form label typography weight and input border thickness to match React tokens</li><li>Tighten vertical rhythm between label-to-input spacing to align with React layout</li><li>Verify modal padding and Cancel button width match shared design spec</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="android/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -3571,7 +3606,12 @@
       <p><code>RGB 85.2%</code><br/><code>Pixel 78.47%</code><br/><code>Mismatch 21.53%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-engineering</summary>
+    <ul><li>Android modal is vertically taller/larger overall, extending further down the viewport than React baseline</li><li>Android shows the full form including Cancel and Create Agent action buttons visible; React shows them clipped at the bottom with Create Agent appearing as a pink-filled button</li><li>On Android, the Claude Opus Model field is partially clipped/overlapping by the action buttons (overlap region visible)</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Pin Cancel and Create Agent buttons to a fixed footer of the dialog on Android so they don't overlap the Model field</li><li>Match React's modal max-height and ensure the scroll container wraps the form fields, not the footer</li><li>Add the '&gt; MORE' expandable section to the Android variant if it is part of the spec</li><li>Align typography weight (e.g., 700 vs 800) for 'CREATE AGENT' heading and field labels to React values</li><li>Normalize vertical spacing/padding on Android form fields to match React baseline metrics</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-dialog.png" data-current-src="android/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -3630,7 +3670,12 @@
       <p><code>RGB 84.7%</code><br/><code>Pixel 78.09%</code><br/><code>Mismatch 21.91%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · design-system / mobile-eng</summary>
+    <ul><li>Modal extent differs: React dialog extends well below the viewport (API KEY field clipped at bottom, no action buttons visible), while Android dialog is shorter and fits entirely with Cancel/Create Agent buttons visible.</li><li>Header layout differs: Android shows the close (X) button higher and slightly more inset, React sits lower and farther right.</li><li>Form fields and labels render at slightly different vertical positions between platforms; Android appears more compact at the top.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Make the React modal body scrollable so API KEY field and Create Agent / Cancel buttons are reachable within 390×844.</li><li>Align modal header close-button offset/padding between React and Android using the same token (e.g., 16dp inset).</li><li>Sync asterisk style (color #FF3B6E approx., 14–16px, baseline-aligned) across both platforms.</li><li>Standardize the 'Agent limit reached' banner container width/padding (use full modal-content width minus 24dp gutters).</li><li>Pin Cancel and Create Agent actions in a sticky bottom bar on both platforms to guarantee visibility regardless of content length.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-custom-provider-dialog.png" data-current-src="android/components.members.create-agent.claude-custom-provider-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -3884,7 +3929,12 @@
       <p><code>RGB 88.9%</code><br/><code>Pixel 82.25%</code><br/><code>Mismatch 17.75%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android</summary>
+    <ul><li>Save Changes button on Android is rendered disabled (greyed out, grey text) while React shows it active in pink</li><li>Android panel has smaller vertical spacing — the Cancel/Save row sits closer to the Description field and the action buttons (Make Private, Archive, Delete) are more tightly stacked</li><li>Title 'EDIT CHANNEL' and close (×) icon have less vertical breathing room on Android, sitting closer to the panel top</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify the Save Changes enabled/disabled logic on Android matches React; remove premature disabled state when form is valid</li><li>Align Android spacing scale (panel internal padding, row gaps, action-button height) to the React design tokens</li><li>Ensure the same button-height token is applied to Make Private / Archive / Delete on both platforms</li><li>Re-run slock with crop contract consistent on both sides (baseline 'modal-viewport' vs current 'viewport-bounds') to eliminate false layout diff</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.channel.settings.panel.png" data-current-src="android/components.channel.settings.panel.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -4458,7 +4508,12 @@
       <p><code>RGB 86.5%</code><br/><code>Pixel 67.72%</code><br/><code>Mismatch 32.28%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-settings</summary>
+    <ul><li>Android splits the Language section into two separate cards ('App language' and 'Language') while React combines display language and translation mode in one card.</li><li>Android uses sentence-case section headings ('App language', 'Language', 'Date &amp; Time') whereas React uses uppercase tracked labels ('LANGUAGE', 'DATE &amp; TIME').</li><li>Android adds a third Translation mode option ('Original') not present in React; React only offers Auto/Off.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the Language section structure across platforms: merge display language and translation mode into one card or split consistently in both.</li><li>Apply uppercase + tracked style to Android section headings to match the React typography tokens.</li><li>Add the 'Original' translation mode (and matching icon) to the React build, or remove it from Android to keep parity.</li><li>Remove the extra 'Preferred translation language' dropdown from Android or add it to React if it is required.</li><li>Standardize timezone select label format (e.g., always include UTC offset) on both platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.language-region.page.png" data-current-src="android/components.settings.language-region.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -5017,7 +5072,12 @@
       <p><code>RGB 94.8%</code><br/><code>Pixel 90.43%</code><br/><code>Mismatch 9.57%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · design-system</summary>
+    <ul><li>Avatar placeholder differs: React shows a solid cyan square, Android shows a pixelated black/white/cyan pattern</li><li>Copy button text differs: React reads 'Copy Diagnostic Info', Android reads 'Copy info' (truncated/shortened)</li><li>Time format differs: React uses 12-hour format with AM/PM (e.g., '12:28:00 PM'), Android uses 24-hour format (e.g., '20:28:00')</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the avatar placeholder across React and Android (single component/token) or accept intentional divergence and add to baseline</li><li>Normalize the Copy button label to 'Copy Diagnostic Info' on Android, or update both to a shared shorter copy</li><li>Align locale/time-format handling (12h vs 24h) via shared user preference so timestamps render identically</li><li>Share typography tokens (font family, size, line-height) for activity items between React and Android to fix wrapping</li><li>Calibrate the status dot size, color, and tab active-state weight to the same design tokens across platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.members.agent-detail.activity.png" data-current-src="android/screens.members.agent-detail.activity.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -5137,7 +5197,12 @@
       <p><code>RGB 85.4%</code><br/><code>Pixel 11.19%</code><br/><code>Mismatch 88.81%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android</summary>
+    <ul><li>Modal positioned lower and shifted right on Android vs React baseline</li><li>Modal width is narrower on Android, leaving more background visible on the right</li><li>Underlying 'Visual Server' Name input is visible on Android but clipped/occluded on React</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Restore the space in the interpolated warning text: ensure 'delete ${serverName}' renders with a space between 'delete' and the server name on Android</li><li>Re-anchor the danger modal so its top and horizontal position match the React baseline (centered horizontally, same vertical offset)</li><li>Set the dialog width to match the React modal width token</li><li>Fix the Delete Server button enabled-state logic so it activates when the input exactly matches the server name</li><li>Increase button vertical padding/height to match React's Cancel and Delete Server buttons</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.settings.server-danger-modal.png" data-current-src="android/screens.settings.server-danger-modal.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
