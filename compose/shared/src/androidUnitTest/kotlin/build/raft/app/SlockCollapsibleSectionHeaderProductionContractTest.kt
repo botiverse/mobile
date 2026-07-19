@@ -30,9 +30,18 @@ class SlockCollapsibleSectionHeaderProductionContractTest {
             )
 
         assertContains(block, "Arrangement.spacedBy(SlockCollapsibleSectionContentGap)")
-        assertContains(block, "style = SlockCollapsibleSectionCountTextStyle")
-        assertContains(block, "color = SlockCollapsibleSectionCountColor")
-        assertTrue("modifier = Modifier.padding(start = SlockSpacing.Xs)" !in block)
+        val countSlot =
+            block.substring(
+                startIndex = block.indexOf("Text(\n            count.toString(),").also {
+                    assertTrue(it >= 0, "Missing section count Text slot")
+                },
+                endIndex = block.indexOf("if (!expanded && showCollapsedUnreadDot)").also {
+                    assertTrue(it >= 0, "Missing collapsed unread indicator boundary")
+                }
+            )
+        assertContains(countSlot, "style = SlockCollapsibleSectionCountTextStyle")
+        assertContains(countSlot, "color = SlockCollapsibleSectionCountColor")
+        assertTrue("modifier = Modifier.padding(start = SlockSpacing.Xs)" !in countSlot)
     }
 
     private fun String.count(needle: String): Int = split(needle).size - 1
