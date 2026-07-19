@@ -3869,58 +3869,162 @@ private fun HomeServerDrawerConversationRow(
 ) {
     val item = row.item
     val badgeProjection = item.homeConversationBadgeProjection()
-    if (item.isDirectMessageConversation()) {
-        val agentStatusResolver =
-            remember(serverMembersStore, row.serverId) {
-                slockAgentStatusResolver(serverMembersStore, row.serverId)
-            }
-        val memberAvatarResolver =
+    val isDirectMessage = item.isDirectMessageConversation()
+    val titleColor =
+        if (isDirectMessage) {
+            homeConversationTitleColor(muted = item.activityMuted)
+        } else {
+            homeConversationTitleColor(muted = item.activityMuted, joined = item.joined)
+        }
+    val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(item.activityMuted)
+    val memberAvatarResolver =
+        if (isDirectMessage) {
             remember(serverMembersStore, row.serverId) {
                 slockMemberAvatarResolver(serverMembersStore, row.serverId)
             }
-        DirectMessageRow(
-            interactionIdentity = "drawer:${row.serverId}:${row.section.name}:${item.id}",
-            name = item.name,
-            description = item.description,
-            avatarLabel = item.avatarLabel,
-            peerType = item.peerType,
-            memberId = item.presenceMemberId,
-            agentStatusResolver = agentStatusResolver,
-            memberAvatarResolver = memberAvatarResolver,
-            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-            hasDraft = item.hasDraft,
-            muted = item.activityMuted,
-            badge = badgeProjection.label,
-            badgeTone = badgeProjection.tone,
-            interactionState = ChannelRowInteractionState.Default,
-            onClick = onClick,
-            onLongPress = null,
-            onPress = null,
-            onPressEnd = {}
-        )
-    } else {
-        ChannelRow(
-            content =
-                ChannelRowContent(
-                    name = item.name,
-                    symbol = item.homeChannelSymbol(),
-                    joined = item.joined,
-                    hasDraft = item.hasDraft,
-                    muted = item.activityMuted,
-                    badge = badgeProjection.label,
-                    badgeTone = badgeProjection.tone
-                ),
-            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-            interaction =
-                ChannelRowInteraction(
-                    identity = "drawer:${row.serverId}:${row.section.name}:${item.id}",
-                    state = ChannelRowInteractionState.Default,
-                    onClick = onClick,
-                    onLongPress = null,
-                    onPress = null,
-                    onPressEnd = {}
+        } else {
+            EmptySlockMemberAvatarResolver
+        }
+    val avatarWireValue =
+        if (isDirectMessage) {
+            rememberSlockMemberAvatarWireValue(memberAvatarResolver, item.presenceMemberId)
+        } else {
+            null
+        }
+    val agentStatus =
+        if (isDirectMessage && item.peerType?.equals("agent", ignoreCase = true) == true) {
+            val agentStatusResolver =
+                remember(serverMembersStore, row.serverId) {
+                    slockAgentStatusResolver(serverMembersStore, row.serverId)
+                }
+            item.presenceMemberId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { memberId ->
+                    rememberSlockAgentStatusIndicatorState(agentStatusResolver, memberId)
+                        ?: slockAgentStatusIndicatorState(status = null, presence = Presence.Offline)
+                }
+        } else {
+            null
+        }
+    val directMessageDescription =
+        item.description?.takeIf { isDirectMessage && it.isNotBlank() }
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = HomeListHorizontalPadding)
+                .height(ChannelRowHeight)
+                .clickable(onClick = onClick)
+                .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isDirectMessage) {
+                SlockAvatar(avatarWireValue, item.avatarLabel)
+            } else {
+                when (val symbol = item.homeChannelSymbol()) {
+                    "#" ->
+                        SlockLucideIcon(
+                            "hash",
+                            Modifier.size(ChannelSymbolIconSize),
+                            color = if (item.joined) SlockColor.TextBlackArgb else "#75000000"
+                        )
+                    "git-branch" ->
+                        SlockLucideIcon(
+                            "git-branch",
+                            Modifier.size(ChannelSymbolIconSize),
+                            color = if (item.joined) SlockColor.TextBlackArgb else "#75000000"
+                        )
+                    "lock" ->
+                        SlockLucideIcon(
+                            "lock",
+                            Modifier.size(ChannelSymbolIconSize),
+                            color = if (item.joined) SlockColor.TextBlackArgb else "#75000000"
+                        )
+                    else ->
+                        Text(
+                            symbol,
+                            style = SlockType.Button,
+                            color = SlockColor.TextBlack.copy(alpha = if (item.joined) 1f else 0.46f),
+                            textAlign = TextAlign.Center
+                        )
+                }
+            }
+        }
+        Row(
+            modifier =
+                Modifier
+                    .padding(start = SidebarActionLabelGap)
+                    .weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = item.name,
+                style =
+                    if (isDirectMessage) {
+                        if (badgeProjection.label != null) SlockType.ButtonBold else SlockType.Button
+                    } else {
+                        homeChannelTitleTextStyle(
+                            selected = false,
+                            hasUnread = badgeProjection.label != null,
+                            badgeTone = badgeProjection.tone
+                        )
+                    },
+                color = titleColor,
+                modifier =
+                    if (directMessageDescription != null) {
+                        Modifier.widthIn(max = 260.dp)
+                    } else {
+                        Modifier.weight(1f, fill = false)
+                    },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (mutedIndicatorIcon != null) {
+                Spacer(Modifier.width(ChannelRowMutedIconGap))
+                SlockLucideIcon(
+                    mutedIndicatorIcon,
+                    Modifier.size(ChannelRowMutedIconSize),
+                    color = SlockColor.TextMutedGrayArgb
                 )
-        )
+            }
+            directMessageDescription?.let { description ->
+                Spacer(Modifier.width(SlockSpacing.Xs))
+                Text(
+                    text = description,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (agentStatus != null || item.hasDraft || badgeProjection.label != null) {
+            Spacer(Modifier.width(SlockSpacing.Sm))
+        }
+        if (agentStatus != null) {
+            DirectMessageStatusDot(agentStatus)
+        }
+        if (item.hasDraft) {
+            if (agentStatus != null) Spacer(Modifier.width(SlockSpacing.Xs))
+            SlockLucideIcon(
+                SlockLucideIconName.Pencil,
+                Modifier.size(14.dp),
+                color = SlockColor.TextMutedGrayArgb
+            )
+        }
+        badgeProjection.label?.let { badge ->
+            if (agentStatus != null || item.hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
+            when (badgeProjection.tone) {
+                HomeSidebarBadgeTone.Loud -> CountPill(badge, SlockColor.AccentPink)
+                HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge)
+            }
+        }
     }
 }
 
