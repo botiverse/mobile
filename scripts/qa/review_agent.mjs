@@ -185,6 +185,7 @@ async function main() {
 
   const reviewedEvidence = [...rawShots, ...rawDumps, ...rawLogs]
     .sort((a, b) => a.id.localeCompare(b.id));
+  await Promise.all(reviewedEvidence.map((ev) => bytesFor(ev)));
   const evidenceManifest = reviewedEvidence.map((e) => ({ id: e.id, kind: e.kind, sha256: e.sha256 }));
   const evidenceManifestSha256 = crypto.createHash("sha256").update(JSON.stringify(evidenceManifest)).digest("hex");
   const reviewInput = {
