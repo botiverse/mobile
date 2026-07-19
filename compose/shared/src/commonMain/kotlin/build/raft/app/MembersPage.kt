@@ -9635,6 +9635,7 @@ private fun MembersListRow(
             memberAvatarResolver = memberAvatarResolver
         )
         BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            val maxNameWidth = maxWidth * MembersListNameMaxWidthFraction
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -9646,7 +9647,7 @@ private fun MembersListRow(
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = maxWidth * MembersListNameMaxWidthFraction)
+                    modifier = Modifier.widthIn(max = maxNameWidth)
                 )
                 Text(
                     text = member.description ?: member.handle,
