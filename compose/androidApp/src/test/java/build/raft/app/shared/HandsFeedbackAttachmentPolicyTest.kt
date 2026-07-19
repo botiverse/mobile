@@ -7,6 +7,7 @@ import java.io.File
 import java.io.RandomAccessFile
 import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -57,6 +58,23 @@ class HandsFeedbackAttachmentPolicyTest {
     }
 
     @Test
+    fun diagnosticsIsOmittedWhenAUserAttachmentUsesPresign() {
+        val directory = createTempDirectory("hands-feedback-diagnostics").toFile()
+        val largeUserFile = File(directory, "recording.mp4")
+        val diagnostics = File(directory, "diagnostics.zip")
+        RandomAccessFile(largeUserFile, "rw").use {
+            it.setLength(HandsFeedback.MULTIPART_MAX_BYTES + 1L)
+        }
+        diagnostics.writeText("diagnostics")
+
+        assertEquals(
+            listOf(largeUserFile),
+            HandsFeedbackAttachmentPolicy.selectAttachments(listOf(largeUserFile), diagnostics)
+        )
+        assertFalse(HandsFeedbackAttachmentPolicy.canAttachDiagnostics(listOf(largeUserFile)))
+    }
+
+    @Test
     fun boundedCopyStreamsAndPreservesSizeSemantics() {
         val output = ByteArrayOutputStream()
         val copied = HandsFeedbackAttachmentPolicy.copyBounded(
@@ -82,6 +100,18 @@ class HandsFeedbackAttachmentPolicyTest {
         val failure = IllegalArgumentException("attachment recording.mp4 exceeds the 200 MB limit")
         assertEquals("settings_feedback_attachment_too_large", handsFeedbackSubmitErrorCode(failure))
         assertTrue(HandsFeedbackAttachmentPolicy.maxAttachmentBytes > HandsFeedbackAttachmentPolicy.multipartMaxBytes)
+    }
+
+    @Test
+    fun missingDiagnosticsFileAllowsRetryWithoutDiagnostics() {
+        val missingDiagnostics = File("missing-diagnostics.zip")
+
+        assertTrue(
+            shouldRetryHandsFeedbackWithoutDiagnostics(
+                FeedbackAttachmentReadException("Unable to read feedback attachment"),
+                missingDiagnostics
+            )
+        )
     }
 
     @Test

@@ -4177,7 +4177,7 @@ internal class SlockKuiklyBridgeModule(
                     )
                 }
         val diagnosticsFile =
-                if (userFiles.size < HandsFeedbackAttachmentPolicy.maxAttachments) {
+                if (HandsFeedbackAttachmentPolicy.canAttachDiagnostics(userFiles)) {
                     withContext(Dispatchers.IO) { prepareOptionalDiagnosticsFeedbackFile() }
                 } else {
                     null
@@ -4201,6 +4201,8 @@ internal class SlockKuiklyBridgeModule(
             )
             val ticketId =
                     try {
+                        attachments =
+                                attachments.map(HandsFeedbackAttachmentPolicy::requireValidFile)
                         feedbackClient.submit(
                                 message = description,
                                 kind = "bug",
@@ -4212,7 +4214,10 @@ internal class SlockKuiklyBridgeModule(
                         ) {
                             throw throwable
                         }
-                        attachments = userFiles.take(HandsFeedbackAttachmentPolicy.maxAttachments)
+                        attachments =
+                                userFiles
+                                        .take(HandsFeedbackAttachmentPolicy.maxAttachments)
+                                        .map(HandsFeedbackAttachmentPolicy::requireValidFile)
                         SlockAppLog.record(
                                 "SlockDiagnostics",
                                 "quiver_feedback_diagnostics_submit_skipped error=${throwable.javaClass.simpleName} " +

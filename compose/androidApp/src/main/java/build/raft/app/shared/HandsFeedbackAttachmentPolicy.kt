@@ -18,9 +18,15 @@ internal object HandsFeedbackAttachmentPolicy {
     val maxAttachmentBytes: Long
         get() = HandsFeedback.PRESIGN_MAX_BYTES
 
+    fun canAttachDiagnostics(userFiles: List<File>): Boolean {
+        val selectedUsers = userFiles.take(maxAttachments)
+        return selectedUsers.size < maxAttachments &&
+            selectedUsers.none { file -> file.length() > multipartMaxBytes }
+    }
+
     fun selectAttachments(userFiles: List<File>, diagnosticsFile: File?): List<File> {
         val selectedUsers = userFiles.take(maxAttachments)
-        return if (diagnosticsFile != null && selectedUsers.size < maxAttachments) {
+        return if (diagnosticsFile != null && canAttachDiagnostics(selectedUsers)) {
             selectedUsers + diagnosticsFile
         } else {
             selectedUsers
@@ -148,5 +154,15 @@ internal fun shouldRetryHandsFeedbackWithoutDiagnostics(
 ): Boolean {
     val message = throwable.message.orEmpty()
     val httpCode = (throwable as? HandsFeedbackException)?.code
-    return diagnosticsFile.name in message || httpCode == 400 || httpCode == 413
+    val diagnosticsUnavailable =
+        !diagnosticsFile.isFile ||
+            !diagnosticsFile.canRead() ||
+            diagnosticsFile.length() !in 1L..HandsFeedbackAttachmentPolicy.maxAttachmentBytes
+    val attachmentPreparationFailure =
+        throwable is FeedbackAttachmentReadException ||
+            throwable is FeedbackAttachmentTooLargeException
+    return diagnosticsFile.name in message ||
+        (diagnosticsUnavailable && attachmentPreparationFailure) ||
+        httpCode == 400 ||
+        httpCode == 413
 }
