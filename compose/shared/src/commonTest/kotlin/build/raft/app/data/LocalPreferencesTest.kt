@@ -7,6 +7,18 @@ import kotlin.test.assertTrue
 
 class LocalPreferencesTest {
     @Test
+    fun serverDrawerOnlyUnreadDefaultsOffAndPersists() {
+        val values = InMemorySlockKeyValueStore()
+        val store = KeyValueServerDrawerPreferenceStore(values)
+
+        assertEquals(false, store.readSnapshot().onlyUnread)
+        assertEquals(true, store.saveOnlyUnread(true).onlyUnread)
+        assertEquals(true, KeyValueServerDrawerPreferenceStore(values).readSnapshot().onlyUnread)
+        assertEquals(false, store.saveOnlyUnread(false).onlyUnread)
+        assertEquals(false, KeyValueServerDrawerPreferenceStore(values).readSnapshot().onlyUnread)
+    }
+
+    @Test
     fun networkTransportPreferenceUsesPlatformDefaultUntilExplicitlyPersisted() {
         val values = InMemorySlockKeyValueStore()
         val store = KeyValueNetworkTransportPreferenceStore(values)

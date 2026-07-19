@@ -333,22 +333,32 @@ internal fun SlockCollapsibleSectionHeader(
     minHeight: Dp = 30.dp,
     sortContentDescription: String? = null,
     onSortClick: ((Offset) -> Unit)? = null,
+    interactive: Boolean = true,
+    showChevron: Boolean = true,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
+    val interactionModifier =
+        if (interactive) {
+            Modifier.clickable { onExpandedChange(!expanded) }
+        } else {
+            Modifier
+        }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = minHeight)
-            .clickable { onExpandedChange(!expanded) },
+            .then(interactionModifier),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockCollapsibleSectionContentGap)
     ) {
-        SlockLucideIcon(
-            SlockLucideIconName.ChevronRight,
-            Modifier.size(SectionChevronSize),
-            rotationDegrees = if (expanded) 90f else 0f,
-            rotationAnimationDurationSeconds = SlockCollapsibleSectionTokens.AnimationDurationSeconds
-        )
+        if (showChevron) {
+            SlockLucideIcon(
+                SlockLucideIconName.ChevronRight,
+                Modifier.size(SectionChevronSize),
+                rotationDegrees = if (expanded) 90f else 0f,
+                rotationAnimationDurationSeconds = SlockCollapsibleSectionTokens.AnimationDurationSeconds
+            )
+        }
         Text(
             label.uppercase(),
             style = SlockType.SectionLabel,

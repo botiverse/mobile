@@ -109,12 +109,116 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerDrawerSectionCollapseHidesOnlyThatSectionsConversationRows() {
+        val rows =
+            homeServerDrawerRows(
+                listOf(
+                    SlockHomeServerDrawerSection(
+                        server = SlockServerSwitcherItem(id = "server", name = "Server", slug = "server"),
+                        expanded = true,
+                        status = HomeServerDrawerLoadStatus.Loaded,
+                        channels = listOf(SlockHomeConversationItem(id = "channel", name = "Channel", kind = "channel")),
+                        directMessages =
+                            listOf(
+                                SlockHomeConversationItem(
+                                    id = "dm",
+                                    name = "DM",
+                                    kind = KuiklyThreadSurfaceKind.DirectMessage
+                                )
+                            )
+                    )
+                )
+            )
+
+        val visible =
+            homeServerDrawerVisibleRows(
+                rows = rows,
+                collapsedSectionKeys =
+                    setOf(homeServerDrawerSectionKey("server", SlockHomeConversationSection.Channel))
+            )
+
+        assertTrue(visible.any { it.key == "section:server:channel" })
+        assertFalse(visible.any { it.key == "conversation:server:channel:channel" })
+        assertTrue(visible.any { it.key == "conversation:server:directmessage:dm" })
+    }
+
+    @Test
+    fun homeServerDrawerOnlyUnreadKeepsApplicableSectionScopedEmptyRows() {
+        val section =
+            SlockHomeServerDrawerSection(
+                server = SlockServerSwitcherItem(id = "server", name = "Server", slug = "server"),
+                expanded = true,
+                status = HomeServerDrawerLoadStatus.Loaded,
+                channels =
+                    listOf(
+                        SlockHomeConversationItem(id = "read", name = "Read", kind = "channel"),
+                        SlockHomeConversationItem(id = "unread", name = "Unread", kind = "channel", unreadCount = 2)
+                    ),
+                directMessages =
+                    listOf(
+                        SlockHomeConversationItem(id = "read-dm", name = "Read DM", kind = "directMessage")
+                    )
+            )
+
+        val unreadRows = homeServerDrawerRows(listOf(section), onlyUnread = true)
+        val allEmptyRows = homeServerDrawerRows(listOf(section.copy(channels = section.channels.take(1))), onlyUnread = true)
+
+        assertEquals(
+            1,
+            unreadRows.filterIsInstance<SlockHomeServerDrawerRow.SectionHeader>()
+                .single { it.section == SlockHomeConversationSection.Channel }
+                .count
+        )
+        assertFalse(unreadRows.any { it.key == "conversation:server:channel:read" })
+        assertTrue(unreadRows.any { it.key == "conversation:server:channel:unread" })
+        assertTrue(unreadRows.any { it.key == "section:server:directmessage" })
+        assertTrue(unreadRows.any { it.key == "filter-empty:server:directmessage" })
+        assertEquals(2, allEmptyRows.filterIsInstance<SlockHomeServerDrawerRow.SectionHeader>().size)
+        assertEquals(2, allEmptyRows.filterIsInstance<SlockHomeServerDrawerRow.FilterEmpty>().size)
+        assertTrue(allEmptyRows.any { it.key == "filter-empty:server:channel" })
+        assertTrue(allEmptyRows.any { it.key == "filter-empty:server:directmessage" })
+        assertTrue(allEmptyRows.any { it.key == "server:server" })
+
+        val collapsed =
+            homeServerDrawerVisibleRows(
+                unreadRows,
+                setOf(homeServerDrawerSectionKey("server", SlockHomeConversationSection.DirectMessage))
+            )
+        assertTrue(collapsed.any { it.key == "section:server:directmessage" })
+        assertFalse(collapsed.any { it.key == "filter-empty:server:directmessage" })
+    }
+
+    @Test
     fun homeServerDrawerWidthAndSwipeThresholdFollowModalContract() {
         assertEquals(336.dp, homeServerDrawerWidth(400.dp))
         assertEquals(360.dp, homeServerDrawerWidth(800.dp))
+        assertEquals(SlockSize.PageHeaderHeight, homeServerDrawerHeaderHeight(0.dp))
+        assertEquals(24.dp + SlockSize.PageHeaderHeight, homeServerDrawerHeaderHeight(24.dp))
         assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -71f))
         assertTrue(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -72f))
         assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = 120f))
+        assertFalse(shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp = 71f))
+        assertTrue(shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp = 72f))
+        assertFalse(shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp = -120f))
+    }
+
+    @Test
+    fun homeServerDrawerCloseBeforeFirstOpenFrameInvalidatesTheOpenCommand() {
+        val opening = HomeServerDrawerCommandFence().next(desiredOpen = true)
+        val dismissedBeforeFirstFrame = opening.next(desiredOpen = false)
+
+        assertFalse(
+            dismissedBeforeFirstFrame.accepts(
+                commandGeneration = opening.generation,
+                commandDesiredOpen = true
+            )
+        )
+        assertTrue(
+            dismissedBeforeFirstFrame.accepts(
+                commandGeneration = dismissedBeforeFirstFrame.generation,
+                commandDesiredOpen = false
+            )
+        )
     }
 
     @Test

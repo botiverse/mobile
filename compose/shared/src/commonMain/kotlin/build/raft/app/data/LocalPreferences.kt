@@ -735,6 +735,28 @@ class PersistentChatLayoutPreferenceRepository(
     }
 }
 
+data class ServerDrawerPreferenceSnapshot(
+    val onlyUnread: Boolean = false
+)
+
+class KeyValueServerDrawerPreferenceStore(
+    private val store: SharedPreferenceStore
+) {
+    fun readSnapshot(): ServerDrawerPreferenceSnapshot =
+        ServerDrawerPreferenceSnapshot(
+            onlyUnread = store.getBoolean(KEY_ONLY_UNREAD, false)
+        )
+
+    fun saveOnlyUnread(enabled: Boolean): ServerDrawerPreferenceSnapshot {
+        store.putBoolean(KEY_ONLY_UNREAD, enabled)
+        return ServerDrawerPreferenceSnapshot(onlyUnread = enabled)
+    }
+
+    private companion object {
+        const val KEY_ONLY_UNREAD = "mobile:server_drawer_only_unread"
+    }
+}
+
 data class RecompositionProfilerPreferenceSnapshot(
     val enabled: Boolean
 )
