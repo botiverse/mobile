@@ -117,6 +117,7 @@
     <string name="host_feedback_prompt_placeholder">描述你的反馈</string>
     <string name="host_feedback_sent_title">反馈已发送</string>
     <string name="host_feedback_copied_message">已复制——请粘贴到社区频道。</string>
+    <string name="host_feedback_failed_message">反馈提交失败：%1$s</string>
     <string name="host_feedback_error_unknown">未知错误</string>
     <string name="settings_feedback_submission_failed_title">反馈发送失败</string>
     <string name="settings_feedback_submission_failed_body">无法发送你的反馈，请重试。</string>

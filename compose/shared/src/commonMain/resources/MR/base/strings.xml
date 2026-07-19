@@ -117,6 +117,7 @@
     <string name="host_feedback_prompt_placeholder">Describe your feedback</string>
     <string name="host_feedback_sent_title">Feedback sent</string>
     <string name="host_feedback_copied_message">Copied — paste it in the community.</string>
+    <string name="host_feedback_failed_message">Feedback failed: %1$s</string>
     <string name="host_feedback_error_unknown">Unknown error</string>
     <string name="settings_feedback_submission_failed_title">Feedback failed</string>
     <string name="settings_feedback_submission_failed_body">We could not send your feedback. Please try again.</string>

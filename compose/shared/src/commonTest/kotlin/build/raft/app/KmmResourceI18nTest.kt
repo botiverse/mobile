@@ -904,13 +904,14 @@ class KmmResourceI18nTest {
 
     @Test
     fun hostLayerStringResourcesAreGenerated() {
-        // Task #491: native-host alert copy (iOS HRBridgeModule resolves these
-        // through the exported SlockHostStrings object).
+        // Native-host alert/toast copy resolves through the shared
+        // SlockHostStrings facade on Android and iOS.
         listOf(
             MR.strings.host_feedback_prompt_message,
             MR.strings.host_feedback_prompt_placeholder,
             MR.strings.host_feedback_sent_title,
             MR.strings.host_feedback_copied_message,
+            MR.strings.host_feedback_failed_message,
             MR.strings.host_feedback_error_unknown
         ).forEach { resource ->
             assertTrue(
