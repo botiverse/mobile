@@ -18314,6 +18314,8 @@ internal fun buildAppShellThreadPayload(
         parentSurfaceKind = parentSurfaceKind,
         parentChannelKind = parentChannelKind,
         dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
+        headerTitleSeed = conversation.headerTitleSeed,
+        headerSubtitleSeed = conversation.headerSubtitleSeed,
         memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
@@ -18600,6 +18602,8 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
             },
         parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
         dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
+        headerTitleSeed = conversation.headerTitleSeed,
+        headerSubtitleSeed = conversation.headerSubtitleSeed,
         originParentMessageId = if (isReplyThread) parentMessageId else null,
         focusedMessageId = focusedMessageId,
         focusedMessageRequestNonce =
