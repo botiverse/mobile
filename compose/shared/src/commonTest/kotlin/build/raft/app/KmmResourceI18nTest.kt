@@ -764,7 +764,13 @@ class KmmResourceI18nTest {
             MR.strings.settings_notifications_permission_open_settings,
             MR.strings.settings_notifications_request_permission,
             MR.strings.settings_notifications_workspace,
-            MR.strings.settings_notifications_mute_workspace
+            MR.strings.settings_notifications_mute_workspace,
+            MR.strings.settings_notifications_mode_all,
+            MR.strings.settings_notifications_mode_all_detail,
+            MR.strings.settings_notifications_mode_mentions,
+            MR.strings.settings_notifications_mode_mentions_detail,
+            MR.strings.settings_notifications_mode_none,
+            MR.strings.settings_notifications_mode_none_detail
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,

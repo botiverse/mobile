@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
 
 private val settingsJson = Json {
     ignoreUnknownKeys = true
@@ -615,10 +616,41 @@ fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSub
 @Serializable
 private data class WireSettingsNotificationSettings(
     val serverPushMuted: Boolean,
+    val serverPushMentionsOnly: Boolean = false,
+    val serverPushMode: String? = null,
 )
 
-fun parseSharedSettingsServerNotificationSettings(bodyText: String): Boolean? = runCatching {
-    settingsJson.decodeFromString(WireSettingsNotificationSettings.serializer(), bodyText).serverPushMuted
+data class SettingsServerNotificationPreferences(
+    val mode: ServerPushMode,
+    val legacyMuted: Boolean,
+    val canonicalModeSupported: Boolean
+)
+
+fun parseSharedSettingsServerNotificationSettings(
+    bodyText: String,
+    diagnostics: (String) -> Unit = {}
+): SettingsServerNotificationPreferences? = runCatching {
+    val root = settingsJson.parseToJsonElement(bodyText).jsonObject
+    val wire = settingsJson.decodeFromString(WireSettingsNotificationSettings.serializer(), bodyText)
+    val canonicalModePresent = "serverPushMode" in root
+    val mode = if (canonicalModePresent) {
+        ServerPushMode.fromWire(wire.serverPushMode)
+            ?: run {
+                diagnostics("projection_value_rejected source=settings_server_notification field=server_push_mode value=unknown")
+                return@runCatching null
+            }
+    } else {
+        when {
+                wire.serverPushMuted -> ServerPushMode.None
+                wire.serverPushMentionsOnly -> ServerPushMode.Mentions
+                else -> ServerPushMode.All
+            }
+    }
+    SettingsServerNotificationPreferences(
+        mode = mode,
+        legacyMuted = wire.serverPushMuted,
+        canonicalModeSupported = canonicalModePresent
+    )
 }.getOrNull()
 
 @Serializable

@@ -191,6 +191,7 @@ import build.raft.app.data.SharedSettingsStorageSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.ServerSwitcherOrderPreference
+import build.raft.app.data.ServerPushMode
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -361,6 +362,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Presence
@@ -5634,8 +5636,8 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.SetForegroundMessageBanners(enabled))
                         onForegroundMessageBannersSelected(enabled)
                     },
-                    onServerMuteChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetServerMute(enabled))
+                    onServerNotificationModeChange = { mode ->
+                        onSettingsIntent(SharedSettingsIntent.SetServerNotificationMode(mode))
                     },
                     onPermission = { onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission) },
                     onSettings = { onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings) },
@@ -7578,7 +7580,7 @@ private fun SettingsNotificationsContent(
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
     onForegroundMessageBannersChange: (Boolean) -> Unit,
-    onServerMuteChange: (Boolean) -> Unit,
+    onServerNotificationModeChange: (String) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
     onTest: () -> Unit,
@@ -7648,10 +7650,10 @@ private fun SettingsNotificationsContent(
                     )
                 }
                 item {
-                    SettingsServerMuteCard(
+                    SettingsServerNotificationModeCard(
                         snapshot = snapshot,
                         actionState = actionState,
-                        onServerMuteChange = onServerMuteChange
+                        onServerNotificationModeChange = onServerNotificationModeChange
                     )
                 }
             }
@@ -7925,30 +7927,47 @@ private fun SettingsNotificationToggleRow(
 }
 
 @Composable
-private fun SettingsServerMuteCard(
+private fun SettingsServerNotificationModeCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
-    onServerMuteChange: (Boolean) -> Unit
+    onServerNotificationModeChange: (String) -> Unit
 ) {
     val busy = actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.inProgress
+    val preference = snapshot.serverNotificationMode
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_workspace))
-        SettingsNotificationPreferenceGroup {
-            SettingsNotificationToggleRow(
-                title = stringResource(MR.strings.settings_notifications_mute_workspace),
-                detail = snapshot.muteServer.detail,
-                checked = snapshot.muteServer.enabled,
-                enabled = snapshot.muteServer.available && !busy,
-                onCheckedChange = onServerMuteChange
-            )
-            if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    SettingsFormErrorText(actionState.errorCode)
-                }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            preference.options.mapNotNull { option -> ServerPushMode.fromWire(option.key) }.forEach { mode ->
+                SettingsServerSelectRow(
+                    title = mode.settingsNotificationModeTitle(),
+                    detail = mode.settingsNotificationModeDetail(),
+                    selected = preference.selectedKey == mode.wireName,
+                    enabled = preference.available && !busy,
+                    onClick = { onServerNotificationModeChange(mode.wireName) }
+                )
             }
+        }
+        if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
         }
     }
 }
+
+@Composable
+private fun ServerPushMode.settingsNotificationModeTitle(): String =
+    when (this) {
+        ServerPushMode.All -> stringResource(MR.strings.settings_notifications_mode_all)
+        ServerPushMode.Mentions -> stringResource(MR.strings.settings_notifications_mode_mentions)
+        ServerPushMode.None -> stringResource(MR.strings.settings_notifications_mode_none)
+    }
+
+@Composable
+private fun ServerPushMode.settingsNotificationModeDetail(): String =
+    when (this) {
+        ServerPushMode.All -> stringResource(MR.strings.settings_notifications_mode_all_detail)
+        ServerPushMode.Mentions -> stringResource(MR.strings.settings_notifications_mode_mentions_detail)
+        ServerPushMode.None -> stringResource(MR.strings.settings_notifications_mode_none_detail)
+    }
 
 @Composable
 private fun SettingsLoadStateCard(
@@ -18915,6 +18934,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is Heartbeat -> "heartbeat"
         is PerReceiverReadStateChanged -> "read_state_updated"
         is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
+        is ServerNotificationPreferencesChanged -> "server_notification_prefs_updated"
         is PerReceiverPinnedChanged -> "pinned_updated"
         is NotificationPushReceived -> "notification_push"
     }
@@ -18938,6 +18958,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
         is PerReceiverNotificationPrefsChanged,
+        is ServerNotificationPreferencesChanged,
         is PerReceiverPinnedChanged -> "realtime_content_apply"
         is NotificationPushReceived -> "realtime_notification_apply"
     }
@@ -19657,7 +19678,7 @@ private fun SettingsVisualNotificationsContent() {
         onNotificationPreferenceChange = {},
         onForegroundKeepAlivePreferenceChange = {},
         onForegroundMessageBannersChange = {},
-        onServerMuteChange = {},
+        onServerNotificationModeChange = {},
         onPermission = {},
         onSettings = {},
         onTest = {},

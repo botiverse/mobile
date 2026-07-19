@@ -1391,6 +1391,12 @@
     <string name="settings_notifications_request_permission">Request permission</string>
     <string name="settings_notifications_workspace">Workspace</string>
     <string name="settings_notifications_mute_workspace">Mute this workspace</string>
+    <string name="settings_notifications_mode_all">All messages</string>
+    <string name="settings_notifications_mode_all_detail">Notify for every message you are eligible to receive in this workspace.</string>
+    <string name="settings_notifications_mode_mentions">Only mentions</string>
+    <string name="settings_notifications_mode_mentions_detail">Notify only when a message directly mentions you, including expanded group mentions.</string>
+    <string name="settings_notifications_mode_none">Nothing</string>
+    <string name="settings_notifications_mode_none_detail">Do not send push notifications from this workspace, even for mentions.</string>
     <string name="settings_computers_loading">Loading computers</string>
     <string name="settings_computers_loading_detail">Fetching connected machines from this server.</string>
     <string name="settings_computers_error_load">Unable to load computers</string>

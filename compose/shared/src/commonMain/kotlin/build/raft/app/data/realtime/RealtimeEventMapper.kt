@@ -3,6 +3,7 @@ package build.raft.app.data.realtime
 import build.raft.app.MemberKindWireContract
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.ServerPushMode
 import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
@@ -36,6 +37,7 @@ import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
@@ -249,7 +251,10 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.ReadStateUpdatedBulk ->
                 decodeOrNull(ReadStateUpdatedBulkDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPrefsUpdated ->
-                decodeOrNull(NotificationPrefsUpdatedDto.serializer(), element)?.toDomain()
+                decodeOrNull(NotificationPrefsUpdatedDto.serializer(), element)?.toDomain(
+                    diagnostics = diagnosticsLogger,
+                    canonicalServerModePresent = (element["prefs"] as? JsonObject)?.containsKey("serverPushMode") == true
+                )
             RealtimeSocketEvents.PinnedUpdated ->
                 decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPush ->
@@ -552,8 +557,11 @@ private data class ReadStateUpdatedBulkDto(
 
 @Serializable
 private data class NotificationPrefsWireDto(
-    val activityMuted: Boolean = false,
+    val activityMuted: Boolean? = null,
     val muteFromSeq: Long? = null,
+    val serverPushMuted: Boolean? = null,
+    val serverPushMentionsOnly: Boolean? = null,
+    val serverPushMode: String? = null,
 )
 
 // task #459: server-qualified notification payload (server PR #4233,
@@ -1167,13 +1175,41 @@ private fun ReadStateUpdatedBulkDto.toDomain(): PerReceiverReadStateChanged? {
     )
 }
 
-private fun NotificationPrefsUpdatedDto.toDomain(): PerReceiverNotificationPrefsChanged? {
+private fun NotificationPrefsUpdatedDto.toDomain(
+    diagnostics: (String) -> Unit,
+    canonicalServerModePresent: Boolean
+): RealtimeEvent? {
     val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
+    val serverMode = if (canonicalServerModePresent) {
+        ServerPushMode.fromWire(prefs.serverPushMode)
+            ?: run {
+                diagnostics(
+                    "projection_value_rejected source=realtime_server_notification field=server_push_mode value=unknown"
+                )
+                return null
+            }
+    } else {
+        when {
+                prefs.serverPushMuted == true -> ServerPushMode.None
+                prefs.serverPushMentionsOnly == true -> ServerPushMode.Mentions
+                prefs.serverPushMuted == false || prefs.serverPushMentionsOnly == false -> ServerPushMode.All
+                else -> null
+            }
+    }
+    if (serverMode != null) {
+        val cleanServerId = serverId?.takeIf { it.isNotBlank() } ?: cleanScopeId
+        return ServerNotificationPreferencesChanged(
+            serverId = ServerId(cleanServerId),
+            serverPushMode = serverMode.wireName,
+            prefsVersion = prefsVersion
+        )
+    }
+    val activityMuted = prefs.activityMuted ?: return null
     return PerReceiverNotificationPrefsChanged(
         serverId = serverId?.takeIf { it.isNotBlank() }?.let(::ServerId),
         scopeId = ChannelId(cleanScopeId),
         preference = ChannelActivityNotificationPreference(
-            activityMuted = prefs.activityMuted,
+            activityMuted = activityMuted,
             muteFromSeq = prefs.muteFromSeq,
             activityMuteSupported = true
         ),

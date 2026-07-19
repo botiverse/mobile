@@ -1097,6 +1097,8 @@ data class SettingsServerSidebarPinnedItem(
 data class SettingsMobileSnapshot(
     val pushNotifications: SettingsMobileToggleSnapshot,
     val muteServer: SettingsMobileToggleSnapshot,
+    val serverNotificationMode: SettingsMobileSelectionSnapshot =
+        ServerPushMode.All.toSettingsMobileSelectionSnapshot(available = false),
     val sendTestEnabled: Boolean = false,
     val notificationPermission: SettingsMobileActionSnapshot =
         SettingsMobileActionSnapshot(
@@ -1240,6 +1242,33 @@ data class SettingsMobileSnapshot(
                 )
         )
 )
+
+enum class ServerPushMode(val wireName: String) {
+    All("all"),
+    Mentions("mentions"),
+    None("none");
+
+    companion object {
+        fun fromWire(value: String?): ServerPushMode? = entries.firstOrNull { it.wireName == value }
+    }
+}
+
+fun ServerPushMode.toSettingsMobileSelectionSnapshot(
+    available: Boolean = true,
+    mentionsSupported: Boolean = true,
+    detail: String = "Choose which messages from the selected workspace can send push notifications."
+): SettingsMobileSelectionSnapshot =
+    SettingsMobileSelectionSnapshot(
+        selectedKey = wireName,
+        selectedLabel = wireName,
+        statusLabel = wireName,
+        detail = detail,
+        options =
+            ServerPushMode.entries.filter { mode -> mentionsSupported || mode != ServerPushMode.Mentions }.map { mode ->
+                SettingsMobileSelectionOptionSnapshot(key = mode.wireName, label = mode.wireName)
+            },
+        available = available
+    )
 
 /**
  * Device-local HTTP/3 preference. Requested state, effective eligibility and

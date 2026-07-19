@@ -107,6 +107,14 @@ interface SettingsServerActionRepository {
     suspend fun createServerJoinLink(request: SettingsServerJoinLinkCreateRequest): DataResult<SettingsServerJoinLinkSnapshot>
     suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult>
     suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot>
+
+    suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> =
+        when (mode) {
+            ServerPushMode.All -> setServerMute(false)
+            ServerPushMode.None -> setServerMute(true)
+            ServerPushMode.Mentions ->
+                DataResult.Error(ScreenError("settings_server_mentions_only_unavailable", retryable = false))
+        }
 }
 
 interface SettingsServerManagementRepository {

@@ -4,6 +4,7 @@ import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.SlockLucideIconName
 import build.raft.app.model.MemberId
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
@@ -359,6 +360,7 @@ sealed interface SharedSettingsIntent {
     data class SetNotificationPreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundKeepAlivePreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
+    data class SetServerNotificationMode(val mode: String) : SharedSettingsIntent
     data class SetLanguageRegionServerTranslation(val enabled: Boolean) : SharedSettingsIntent
     data class SetTranslationMode(val mode: String) : SharedSettingsIntent
     data class UpdateLanguageRegionPreference(
@@ -860,14 +862,22 @@ class SharedSettingsDataSource(
     }
 
     suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> =
-        when (val result =
-            (settingsRepository as? SettingsServerActionRepository)?.setServerMute(enabled)
-                ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)) {
+        setServerNotificationMode(if (enabled) ServerPushMode.None.wireName else ServerPushMode.All.wireName)
+
+    suspend fun setServerNotificationMode(mode: String): DataResult<SettingsMobileSnapshot> {
+        val selectedMode =
+            ServerPushMode.fromWire(mode)
+                ?: return DataResult.Error(ScreenError("settings_server_notification_mode_unknown", retryable = false))
+        val repository =
+            settingsRepository as? SettingsServerActionRepository
+                ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return when (val result = repository.setServerNotificationMode(selectedMode)) {
             is DataResult.Content -> DataResult.Content(result.data.withLocalMobilePreferences())
             is DataResult.Empty -> result
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
         }
+    }
 
     suspend fun setLocale(localeTag: String): DataResult<SettingsMobileSnapshot> {
         val repository =
@@ -1883,6 +1893,13 @@ class SharedSettingsStore(
                     )
                 dataSource.setServerMute(intent.enabled).applyMobileActionResult(MOBILE_ACTION_SERVER_MUTE)
             }
+            is SharedSettingsIntent.SetServerNotificationMode -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_SERVER_MUTE, inProgress = true)
+                    )
+                dataSource.setServerNotificationMode(intent.mode).applyMobileActionResult(MOBILE_ACTION_SERVER_MUTE)
+            }
             is SharedSettingsIntent.SetLanguageRegionServerTranslation -> {
                 runAction(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION) {
                     dataSource.setLanguageRegionServerTranslation(intent.enabled)
@@ -2251,6 +2268,15 @@ class SharedSettingsStore(
      * - Any other route: ignored (no excessive refresh).
      */
     private suspend fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
+        if (event is ServerNotificationPreferencesChanged) {
+            if (event.serverId.value != serverId) return
+            when (_state.value.route.destination) {
+                SharedSettingsDestination.Notifications ->
+                    dataSource.loadMobile().applyToState(SharedSettingsDestination.Notifications) { copy(mobile = it) }
+                else -> Unit
+            }
+            return
+        }
         if (event !is RealtimeRefreshRequired) return
         if (event.scope != RealtimeRefreshScope.Machines) return
         if (event.serverId?.value != null && event.serverId.value != serverId) return
@@ -2973,6 +2999,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetNotificationPreference,
             is SharedSettingsIntent.SetForegroundKeepAlivePreference,
             is SharedSettingsIntent.SetServerMute,
+            is SharedSettingsIntent.SetServerNotificationMode,
             is SharedSettingsIntent.SetLanguageRegionServerTranslation,
             is SharedSettingsIntent.SetTranslationMode,
             is SharedSettingsIntent.UpdateLanguageRegionPreference,
