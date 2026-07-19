@@ -6,29 +6,35 @@ import kotlin.test.assertTrue
 
 class ThreadBackToBottomPointerBoundaryTest {
     @Test
-    fun floatingButtonCapturesNativeDispatchBehindItsInteractiveContent() {
+    fun androidCaptureModifierDelegatesToKuiklyNativeDispatch() {
+        val source = androidMainSource("build/raft/app/SlockNativeDispatchCapture.android.kt")
+
+        assertTrue(
+            "internal actual fun Modifier.slockNativeDispatchCapture(): Modifier" in source &&
+                "nativeDispatchCapture()" in source,
+            "The shared marker must remain wired to Kuikly's Android native-dispatch capture modifier.",
+        )
+    }
+
+    @Test
+    fun floatingButtonCapturesNativeDispatchOnItsInteractiveHitPath() {
         val source = threadPageSource()
         val button =
             source.functionWindow(
                 "private fun ThreadBackToBottomButton(",
-                "private const val ThreadBackToBottomTouchGuardAlpha",
+                "private const val ThreadBackToBottomReleaseGuardMillis",
             )
 
-        val captureIndex = button.indexOf(".slockNativeDispatchCapture()")
         val actionIndex = button.indexOf("SlockBrutalActionButton(")
+        val captureIndex = button.indexOf("modifier = modifier.slockNativeDispatchCapture()", actionIndex)
 
         assertTrue(
-            "Box(modifier = modifier, propagateMinConstraints = true)" in button,
-            "The externally positioned button must own a same-size pointer boundary.",
+            actionIndex >= 0 && captureIndex > actionIndex,
+            "Native dispatch capture must be on the interactive button's own ancestor hit path.",
         )
         assertTrue(
-            ".matchParentSize()" in button &&
-                ".background(SlockColor.SurfaceWhite.copy(alpha = ThreadBackToBottomTouchGuardAlpha))" in button,
-            "The native capture sibling must cover the complete floating button bounds and create a host hit-test node.",
-        )
-        assertTrue(
-            captureIndex >= 0 && actionIndex > captureIndex,
-            "Native dispatch capture must be a sibling behind the interactive button, not a parent that blocks it.",
+            ".matchParentSize()" !in button,
+            "A behind-button sibling is not part of the ACTION_DOWN hit path and must not be used as the capture oracle.",
         )
     }
 
@@ -67,6 +73,15 @@ class ThreadBackToBottomPointerBoundaryTest {
                     .firstOrNull(File::isDirectory)
             ) { "Could not locate shared commonMain Kotlin sources" }
         return File(commonMain, "build/raft/app/ThreadPage.kt").readText().replace("\r\n", "\n")
+    }
+
+    private fun androidMainSource(relativePath: String): String {
+        val androidMain =
+            requireNotNull(
+                listOf(File("src/androidMain/kotlin"), File("shared/src/androidMain/kotlin"))
+                    .firstOrNull(File::isDirectory)
+            ) { "Could not locate shared androidMain Kotlin sources" }
+        return File(androidMain, relativePath).readText().replace("\r\n", "\n")
     }
 
     private fun String.functionWindow(startMarker: String, endMarker: String): String {
