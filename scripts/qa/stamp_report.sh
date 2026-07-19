@@ -9,6 +9,9 @@ EV="${2:-qa-evidence}"
 [ -n "${STAMP_URL:-}" ] && [ -n "${STAMP_TOKEN:-}" ] || { echo "stamp: URL/token missing, skipping"; exit 0; }
 AUTH="Authorization: Bearer $STAMP_TOKEN"
 BASE="$STAMP_URL/api/agent/run-cases/$STAMP_RUN_CASE_ID"
+JOB_REF="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
+JOB_HEADER="X-Stamp-CI-Job-Ref: $JOB_REF"
+CLAIM_TOKEN_FILE="${RUNNER_TEMP:-$EV}/stamp-claim-$STAMP_RUN_CASE_ID"
 
 if [ "$PHASE" = "claim" ]; then
   # bind the exact build under test to the run (artin: every run records its version)
@@ -20,13 +23,36 @@ if [ "$PHASE" = "claim" ]; then
     VN=$(printf '%s' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
     VC=$(printf '%s' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
   fi
-  curl -sf -X POST "$BASE/claim" -H "$AUTH" -H 'content-type: application/json' \
-    -d "{\"ci_job_ref\":\"${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}\",\"source_commit\":\"${GITHUB_SHA:-}\",\"apk_sha256\":\"$APK_SHA\",\"app_version\":\"$VN\",\"version_code\":${VC:-null}}" \
-    >/dev/null && echo "stamp: claimed (commit=${GITHUB_SHA:-?} apk=${APK_SHA:0:12})" || echo "stamp: claim failed (continuing)"
-  exit 0
+  mkdir -p "$EV"
+  CLAIM_RESPONSE="${RUNNER_TEMP:-$EV}/stamp-claim-response-$STAMP_RUN_CASE_ID.json"
+  if curl -sf -X POST "$BASE/claim" -H "$AUTH" -H 'content-type: application/json' \
+    -d "{\"ci_job_ref\":\"$JOB_REF\",\"source_commit\":\"${GITHUB_SHA:-}\",\"apk_sha256\":\"$APK_SHA\",\"app_version\":\"$VN\",\"version_code\":${VC:-null}}" \
+    -o "$CLAIM_RESPONSE"; then
+    node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(v.claim_token)fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE"
+    rm -f "$CLAIM_RESPONSE"
+    echo "stamp: claimed (commit=${GITHUB_SHA:-?} apk=${APK_SHA:0:12})"
+    exit 0
+  fi
+  rm -f "$CLAIM_RESPONSE"
+  echo "stamp: claim failed (strict fail-closed)" >&2
+  exit 1
 fi
 
+CLAIM_TOKEN=""; [ -f "$CLAIM_TOKEN_FILE" ] && CLAIM_TOKEN=$(cat "$CLAIM_TOKEN_FILE")
+CLAIM_HEADER="X-Stamp-Claim-Token: $CLAIM_TOKEN"
+
 # report phase: upload evidence files, then the verdict
+# Freeze the execution identity before any scoped log or verdict write. Stamp
+# accepts an exact repeat idempotently and rejects a conflicting generation.
+if [ -f "$EV/verdict.json" ] && [ -f "$EV/logcat.txt" ]; then
+  if ! SCOPE=$(node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const s=v.log_scope;if(!(s&&s.filtered===true&&s.package_id&&Array.isArray(s.pids)&&s.pids.length&&s.generation))process.exit(2);process.stdout.write(JSON.stringify({package_id:s.package_id,pids:s.pids,generation:s.generation}))' "$EV/verdict.json"); then
+    echo "stamp: scoped log exists but verdict execution scope is invalid" >&2
+    exit 1
+  fi
+  curl -sf -X POST "$BASE/execution-scope" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
+    -d "$SCOPE" >/dev/null && echo "stamp: execution scope frozen" || { echo "stamp: execution scope freeze failed" >&2; exit 1; }
+fi
+
 seq=0
 upload() { # file kind
   local f="$1" kind="$2" sha mt
@@ -34,7 +60,7 @@ upload() { # file kind
   # capture time = file mtime (ms); GNU stat on Linux, BSD stat on macOS.
   mt=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo "")
   seq=$((seq+1))
-  curl -sf -X POST "$BASE/evidence?kind=$kind&seq=$seq&sha256=$sha${mt:+&captured_at=${mt}000}" -H "$AUTH" \
+  curl -sf -X POST "$BASE/evidence?kind=$kind&seq=$seq&sha256=$sha${mt:+&captured_at=${mt}000}" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" \
     --data-binary @"$f" >/dev/null && echo "stamp: uploaded $(basename "$f")" \
     || echo "stamp: upload failed $(basename "$f") (continuing)"
 }
@@ -53,10 +79,10 @@ done
 for f in "$EV"/qa-rec-*.mp4; do [ -f "$f" ] && upload "$f" recording; done
 
 if [ -f "$EV/verdict.json" ]; then
-  curl -sf -X POST "$BASE/verdict" -H "$AUTH" -H 'content-type: application/json' \
+  curl -sf -X POST "$BASE/verdict" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
     --data-binary @"$EV/verdict.json" >/dev/null && echo "stamp: verdict reported" \
     || echo "stamp: verdict report failed"
 else
-  curl -sf -X POST "$BASE/verdict" -H "$AUTH" -H 'content-type: application/json' \
+  curl -sf -X POST "$BASE/verdict" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
     -d '{"verdict":"error","reason":"no verdict.json produced"}' >/dev/null || true
 fi

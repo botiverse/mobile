@@ -242,6 +242,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           # BSD date (macOS) has no %3N — compose ms from seconds instead.
           echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
+          date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
           export MINIMAX_API_KEY="$PI_API_KEY"
           set +e
           node scripts/qa/acceptance_agent.mjs \
@@ -267,6 +268,7 @@ jobs:
           mkdir -p qa-evidence
           cp "$GITHUB_WORKSPACE/build-info-ios.json" qa-evidence/build-info.json 2>/dev/null || true
           echo $(( $(date +%s) * 1000 )) > qa-evidence/perf-started.txt
+          date -u +"%Y-%m-%d %H:%M:%S" > qa-evidence/run-start.txt
           set +e
           node scripts/qa/ios_deterministic_repro.mjs \
             --ios-io-dir "$QA_LOOP_IO_DIR" --ios-udid "$UDID" --package "$BUNDLE_ID" --out qa-evidence
@@ -292,6 +294,19 @@ jobs:
           xcrun simctl spawn "$UDID" log show --last 12m --style syslog 2>/dev/null \
             | grep -iE 'raft|iosApp|SpringBoard|launchd|assertiond|runningboardd|jetsam|crash|terminat|signal|exception|watchdog' \
             | tail -4000 > qa-evidence/system-log-raft.txt || true
+          # Stamp's product-judgment log is app-scoped. Keep the broader
+          # lifecycle log above in the workflow artifact, but upload only the
+          # iosApp process lane as `logcat` and bind it to the frozen bundle/PID.
+          xcrun simctl spawn "$UDID" launchctl list 2>/dev/null \
+            | grep -F "${BUNDLE_ID:-build.raft.app}" | awk '{print $1}' \
+            | grep -E '^[0-9]+$' > qa-evidence/app-pids.txt || true
+          xcrun simctl spawn "$UDID" log show --start "$(cat qa-evidence/run-start.txt)" --style ndjson --predicate 'process == "iosApp"' \
+            2>/dev/null | tail -4000 > qa-evidence/logcat-iosApp.txt || true
+          node scripts/qa/scope_logcat.mjs \
+            --input qa-evidence/logcat-iosApp.txt --output qa-evidence/logcat.txt \
+            --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt \
+            --package "${BUNDLE_ID:-build.raft.app}" --generation "${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" \
+            --format ios-ndjson --started-at "$(cat qa-evidence/run-start.txt)" || true
           # 2) Crash reports (.ips): simulator app crashes land in the SIMULATOR's
           #    own data dir, NOT the host ~/Library/Logs/DiagnosticReports (which is
           #    empty for sim app crashes — the old `cp host/*.ips || true` silently

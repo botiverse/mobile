@@ -25,6 +25,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { normalizeAssertionAnnotation } from "./assertion_annotations.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -232,7 +233,7 @@ function preamble(size) {
     '  {"action":"note","milestone":"<3-6 words>","note":"<one-sentence conclusion>"}   record a',
     "                                                 progress checkpoint reviewers watch live",
     '  {"action":"finish","verdict":"pass|fail","reason":"<what you verified / what failed>",',
-    '   "annotations":[{"step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"<short>"}]}',
+    '   "annotations":[{"assertion_id":"<stable id from [id] in goal>","step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"[id] <short>"}]}',
     "",
     "Rules:",
     ...(opts.platform === "ios"
@@ -266,7 +267,8 @@ function preamble(size) {
     "- Use note at each MEANINGFUL milestone (logged in, target page reached, a requirement",
     "  verified or contradicted) with your conclusion so far — reviewers follow the run live",
     "  through these. Milestones, not commentary: never two notes in a row, never for taps.",
-    "- In finish, include ONE annotations entry per goal requirement: step = the turn whose",
+    "- In finish, include ONE annotations entry per goal requirement: assertion_id = the stable",
+    "  bracketed [id] printed in the goal; label MUST start with the same [id]; step = the turn whose",
     "  screenshot shows the verified (or missing) region, bounds = that region's uiautomator",
     '  bounds "[x1,y1][x2,y2]" from your dump_ui, label = 3-6 words naming the requirement.',
     "  Reviewers see these as boxes drawn on the evidence — accuracy matters more than count.",
@@ -474,6 +476,7 @@ async function main() {
     await drv.waitReady();
   }
   const stepsPath = path.join(opts.out, "steps.jsonl");
+  const pidPath = path.join(opts.out, "app-pids.txt");
   const started = Date.now();
   const deadline = started + opts.maxMinutes * 60000;
 
@@ -488,7 +491,17 @@ async function main() {
   };
   // ts per step lets the perf collectors (collect_perf*.mjs) derive per-step
   // timing windows for the perf.json slowest-steps section.
-  const logStep = (rec) => fs.appendFileSync(stepsPath, redact(JSON.stringify({ ts: Date.now(), ...rec })) + "\n");
+  const captureAppPid = () => {
+    if (opts.platform !== "android") return;
+    try {
+      const pids = adb(["shell", "pidof", opts.appPackage], { encoding: "utf8" }).trim();
+      if (pids) fs.appendFileSync(pidPath, `${pids}\n`);
+    } catch { /* absence is recorded by the post-run log-scope gate */ }
+  };
+  const logStep = (rec) => {
+    captureAppPid();
+    fs.appendFileSync(stepsPath, redact(JSON.stringify({ ts: Date.now(), ...rec })) + "\n");
+  };
 
   const messages = [{
     role: "user",
@@ -685,7 +698,10 @@ async function main() {
     durationMs: Date.now() - started, model: "MiniMax-M3", screen: size,
     usage: { ...modelUsage, totalTokens: modelUsage.input + modelUsage.output },
     annotations: {
-      assertion: assertionAnnotations.map((a) => ({ ...a, label: redact(String(a.label ?? "")) })),
+      assertion: assertionAnnotations.map((a) => normalizeAssertionAnnotation({
+        ...a,
+        label: redact(String(a.label ?? "")),
+      })),
       taps: tapAnnotations.length,
       annotatedFiles: annotated,
     },
