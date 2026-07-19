@@ -5,7 +5,9 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerLoadStatus
+import build.raft.app.data.HomeServerDrawerState
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.SharedHomeShellState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.StoredAuthSession
@@ -222,15 +224,39 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeServerDrawerCloseSupersedesPrimaryAndFallbackOpenJobsTogether() {
+    fun appShellRenderStateIgnoresDrawerOnlyMutationsButKeepsHomeContentMutations() {
+        val closed = SharedHomeShellState(home = SharedHomeState())
+        val opened =
+            closed.copy(
+                home =
+                    closed.home.copy(
+                        serverSwitcherExpanded = true,
+                        serverDrawer = HomeServerDrawerState(expanded = true)
+                    )
+            )
+        val conversationChanged =
+            opened.copy(home = opened.home.copy(selectedConversationId = "conversation-2"))
+
+        assertFalse(closed == opened)
+        assertEquals(
+            closed.withoutServerDrawerRuntimeForAppShellRender(),
+            opened.withoutServerDrawerRuntimeForAppShellRender()
+        )
+        assertFalse(
+            opened.withoutServerDrawerRuntimeForAppShellRender() ==
+                conversationChanged.withoutServerDrawerRuntimeForAppShellRender()
+        )
+    }
+
+    @Test
+    fun homeServerDrawerCloseSupersedesTheOwnedOpenJob() {
         val opening =
             HomeServerDrawerNativeJobOwnership<String>(generation = 1)
                 .register(commandGeneration = 1, job = "primary-open")
-                .register(commandGeneration = 1, job = "fallback-open")
 
         val (jobsToCancelAndJoin, closing) = opening.supersede(nextGeneration = 2)
 
-        assertEquals(listOf("primary-open", "fallback-open"), jobsToCancelAndJoin)
+        assertEquals(listOf("primary-open"), jobsToCancelAndJoin)
         assertEquals(2, closing.generation)
         assertTrue(closing.jobs.isEmpty())
         assertEquals(
@@ -240,15 +266,14 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeServerDrawerNewOpenSupersedesPrimaryAndRetryCloseJobsTogether() {
+    fun homeServerDrawerNewOpenSupersedesTheOwnedCloseJob() {
         val closing =
             HomeServerDrawerNativeJobOwnership<String>(generation = 2)
                 .register(commandGeneration = 2, job = "primary-close")
-                .register(commandGeneration = 2, job = "retry-close")
 
         val (jobsToCancelAndJoin, reopening) = closing.supersede(nextGeneration = 3)
 
-        assertEquals(listOf("primary-close", "retry-close"), jobsToCancelAndJoin)
+        assertEquals(listOf("primary-close"), jobsToCancelAndJoin)
         assertEquals(3, reopening.generation)
         assertTrue(reopening.jobs.isEmpty())
         assertEquals(

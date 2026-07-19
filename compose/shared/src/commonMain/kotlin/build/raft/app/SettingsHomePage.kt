@@ -164,6 +164,7 @@ import build.raft.app.data.SharedHomeShellDestinationActivity
 import build.raft.app.data.SharedHomeShellDestinationSaved
 import build.raft.app.data.SharedHomeShellDestinationSearch
 import build.raft.app.data.SharedHomeShellIntent
+import build.raft.app.data.SharedHomeShellState
 import build.raft.app.data.SharedHomeShellStore
 import build.raft.app.data.RealtimeGuardedDomainEventSinks
 import build.raft.app.data.RealtimeShellCallbackGate
@@ -493,6 +494,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -2946,7 +2948,28 @@ internal fun SlockAppShellContent(
     DisposableEffect(homeShellStore) {
         onDispose { homeShellStore.clear() }
     }
-    val homeShellState by homeShellStore.state.collectAsState()
+    val homeShellRenderState =
+        remember(homeShellStore, serverDrawerEnabled) {
+            if (serverDrawerEnabled) {
+                homeShellStore.state
+                    .map { shellState ->
+                        shellState.withoutServerDrawerRuntimeForAppShellRender()
+                    }
+                    .distinctUntilChanged()
+            } else {
+                homeShellStore.state
+            }
+        }
+    val initialHomeShellRenderState =
+        remember(homeShellStore, serverDrawerEnabled) {
+            val shellState = homeShellStore.state.value
+            if (serverDrawerEnabled) {
+                shellState.withoutServerDrawerRuntimeForAppShellRender()
+            } else {
+                shellState
+            }
+        }
+    val homeShellState by homeShellRenderState.collectAsState(initialHomeShellRenderState)
     val homeState = homeShellState.home
     val homeActivityState = homeShellState.activity
     val homeSearchSavedState = homeShellState.searchSaved
@@ -3731,7 +3754,7 @@ internal fun SlockAppShellContent(
             pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
             return true
         }
-        if (homeState.serverSwitcherExpanded) {
+        if (homeShellStore.state.value.home.serverSwitcherExpanded) {
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
         }
@@ -4383,17 +4406,6 @@ internal fun SlockAppShellContent(
         }
     }
 
-    val appShellServerDrawerSections =
-        remember(homeState.serverDrawer, homeState.serverUnreadCounts) {
-            homeState.serverDrawer.toSlockHomeServerDrawerSections(homeState.serverUnreadCounts)
-        }
-    val appShellServerDrawerRows =
-        remember(appShellServerDrawerSections, serverDrawerOnlyUnread) {
-            homeServerDrawerRows(
-                sections = appShellServerDrawerSections,
-                onlyUnread = serverDrawerOnlyUnread
-            )
-        }
     val appShellHomeLabels = SlockHomeShellLabels.localized()
     val serverDrawerUserHeader =
         remember(
@@ -4411,8 +4423,6 @@ internal fun SlockAppShellContent(
                 avatarLabel = displayName.take(2).uppercase().ifBlank { "?" }
             )
         }
-    var directServerDrawerOpenCommand by remember { mutableStateOf<(() -> Unit)?>(null) }
-
     fun openServerDrawerConversation(serverIdValue: String, conversationId: String) {
         val normalizedServerId = serverIdValue.trim().takeIf { it.isNotBlank() }
         val normalizedConversationId = conversationId.trim().takeIf { it.isNotBlank() }
@@ -4579,12 +4589,8 @@ internal fun SlockAppShellContent(
                                 serverDrawerEnabled = serverDrawerEnabled,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
-                                    if (
-                                        intent is SharedHomeIntent.ToggleServerSwitcher &&
-                                        !homeState.serverSwitcherExpanded
-                                    ) {
+                                    if (intent is SharedHomeIntent.ToggleServerSwitcher) {
                                         bridge.log("server_drawer_input source=home_badge action=open")
-                                        directServerDrawerOpenCommand?.invoke()
                                     }
                                     if (intent is SharedHomeIntent.SelectServer) {
                                         pendingHomeServerSwitchId =
@@ -4977,350 +4983,24 @@ internal fun SlockAppShellContent(
 
     val mainRouteContent: @Composable () -> Unit = {
         if (serverDrawerEnabled) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val drawerState =
-                    rememberMoveableDrawerState(
-                        initiallyOpen = false,
-                        drawerWidth = homeServerDrawerWidth(maxWidth)
-                    )
-                var drawerWasOpen by remember(drawerState) { mutableStateOf(drawerState.isOpen) }
-                var drawerOpenInFlight by remember(drawerState) { mutableStateOf(false) }
-                var drawerCloseInFlight by remember(drawerState) { mutableStateOf(false) }
-                var drawerNativeJobOwnership by remember(drawerState) {
-                    mutableStateOf(HomeServerDrawerNativeJobOwnership<Job>())
-                }
-                var drawerCommandFence by remember(drawerState) {
-                    mutableStateOf(
-                        HomeServerDrawerCommandFence(desiredOpen = drawerState.progress > 0.01f)
-                    )
-                }
-                val edgeDensity = LocalDensity.current
-
-                fun requestDrawerOpen(source: String) {
-                    if (drawerCommandFence.desiredOpen || drawerOpenInFlight || drawerState.progress > 0.01f) return
-                    val openFence = drawerCommandFence.next(desiredOpen = true)
-                    drawerCommandFence = openFence
-                    val commandGeneration = openFence.generation
-                    val (supersededNativeJobs, nextNativeJobOwnership) =
-                        drawerNativeJobOwnership.supersede(commandGeneration)
-                    drawerNativeJobOwnership = nextNativeJobOwnership
-                    supersededNativeJobs.forEach { it.cancel() }
-                    drawerCloseInFlight = false
-                    drawerOpenInFlight = true
-                    bridge.log(
-                        "server_drawer_open_start source=$source generation=$commandGeneration " +
-                            "storeExpanded=${homeState.serverSwitcherExpanded}"
-                    )
-                    appShellCoroutineScope.launch {
-                        val ownedNativeJobs = mutableListOf<Job>()
-                        fun launchOwnedNativeJob(block: suspend () -> Unit): Job =
-                            launch { block() }.also { job ->
-                                ownedNativeJobs += job
-                                drawerNativeJobOwnership =
-                                    drawerNativeJobOwnership.register(commandGeneration, job)
-                            }
-                        try {
-                            supersededNativeJobs.forEach { it.join() }
-                            withFrameNanos {
-                                bridge.log(
-                                    "server_drawer_open_command_frame source=$source " +
-                                        "generation=$commandGeneration"
-                                )
-                            }
-                            if (
-                                !drawerCommandFence.accepts(
-                                    commandGeneration = commandGeneration,
-                                    commandDesiredOpen = true
-                                )
-                            ) {
-                                bridge.log(
-                                    "server_drawer_open_canceled source=$source " +
-                                        "generation=$commandGeneration phase=before_native"
-                                )
-                                return@launch
-                            }
-                            // Wait until the tap's ACTION_UP dispatch has completed before asking
-                            // the native pager to animate. Otherwise the pager can settle that same
-                            // gesture back to page 1 and erase the direct command.
-                            val openJob = launchOwnedNativeJob { drawerState.open() }
-                            var firstVisibleLogged = false
-                            var storeFallbackIssued = false
-                            var settled = false
-                            for (frame in 0 until 90) {
-                                withFrameNanos { }
-                                if (
-                                    !drawerCommandFence.accepts(
-                                        commandGeneration = commandGeneration,
-                                        commandDesiredOpen = true
-                                    )
-                                ) {
-                                    ownedNativeJobs.forEach { it.cancel() }
-                                    ownedNativeJobs.forEach { it.join() }
-                                    bridge.log(
-                                        "server_drawer_open_canceled source=$source " +
-                                            "generation=$commandGeneration phase=progress frame=$frame"
-                                    )
-                                    break
-                                }
-                                val progress = drawerState.progress
-                                if (!firstVisibleLogged && progress > 0.01f) {
-                                    firstVisibleLogged = true
-                                    bridge.log(
-                                        "server_drawer_open_first_visible source=$source " +
-                                            "generation=$commandGeneration frame=$frame progress=$progress"
-                                    )
-                                }
-                                if (progress >= 0.98f) {
-                                    settled = true
-                                    break
-                                }
-                                val storeExpandedNow =
-                                    homeShellStore.state.value.home.serverSwitcherExpanded
-                                if (
-                                    !firstVisibleLogged &&
-                                    storeExpandedNow &&
-                                    !storeFallbackIssued &&
-                                    openJob.isCompleted &&
-                                    frame >= 2
-                                ) {
-                                    storeFallbackIssued = true
-                                    bridge.log(
-                                        "server_drawer_open_store_fallback source=$source " +
-                                            "generation=$commandGeneration frame=$frame"
-                                    )
-                                    launchOwnedNativeJob { drawerState.open() }
-                                }
-                            }
-                            ownedNativeJobs.forEach { it.join() }
-                            val finalProgress = drawerState.progress
-                            bridge.log(
-                                "server_drawer_open_end source=$source generation=$commandGeneration settled=$settled " +
-                                    "progress=$finalProgress isOpen=${drawerState.isOpen}"
-                            )
-                            if (
-                                drawerCommandFence.accepts(
-                                    commandGeneration = commandGeneration,
-                                    commandDesiredOpen = true
-                                ) &&
-                                !firstVisibleLogged &&
-                                finalProgress <= 0.01f
-                            ) {
-                                drawerOpenInFlight = false
-                                drawerCommandFence = drawerCommandFence.next(desiredOpen = false)
-                            }
-                        } finally {
-                            ownedNativeJobs.forEach { it.cancel() }
-                            ownedNativeJobs.forEach { it.join() }
-                            drawerNativeJobOwnership =
-                                drawerNativeJobOwnership.release(commandGeneration, ownedNativeJobs)
-                            if (commandGeneration == drawerCommandFence.generation) {
-                                drawerOpenInFlight = false
-                            }
-                        }
-                    }
-                }
-
-                fun requestDrawerClose(source: String) {
-                    if (drawerCloseInFlight && !drawerCommandFence.desiredOpen) return
-                    val hadOpenCommand =
-                        drawerCommandFence.desiredOpen ||
-                            drawerOpenInFlight ||
-                            drawerState.isOpen ||
-                            drawerState.progress > 0.01f
-                    if (!hadOpenCommand && !drawerCloseInFlight) return
-                    val closeFence = drawerCommandFence.next(desiredOpen = false)
-                    drawerCommandFence = closeFence
-                    val commandGeneration = closeFence.generation
-                    val (supersededNativeJobs, nextNativeJobOwnership) =
-                        drawerNativeJobOwnership.supersede(commandGeneration)
-                    drawerNativeJobOwnership = nextNativeJobOwnership
-                    supersededNativeJobs.forEach { it.cancel() }
-                    drawerOpenInFlight = false
-                    drawerCloseInFlight = true
-                    bridge.log(
-                        "server_drawer_close_start source=$source generation=$commandGeneration " +
-                            "progress=${drawerState.progress}"
-                    )
-                    appShellCoroutineScope.launch {
-                        val ownedNativeJobs = mutableListOf<Job>()
-                        fun launchOwnedNativeJob(block: suspend () -> Unit): Job =
-                            launch { block() }.also { job ->
-                                ownedNativeJobs += job
-                                drawerNativeJobOwnership =
-                                    drawerNativeJobOwnership.register(commandGeneration, job)
-                            }
-                        try {
-                            supersededNativeJobs.forEach { it.join() }
-                            withFrameNanos { }
-                            if (
-                                !drawerCommandFence.accepts(
-                                    commandGeneration = commandGeneration,
-                                    commandDesiredOpen = false
-                                )
-                            ) return@launch
-                            launchOwnedNativeJob { drawerState.close() }
-                            var closeRetryIssued = false
-                            var settled = false
-                            for (frame in 0 until 60) {
-                                withFrameNanos { }
-                                if (
-                                    !drawerCommandFence.accepts(
-                                        commandGeneration = commandGeneration,
-                                        commandDesiredOpen = false
-                                    )
-                                ) {
-                                    ownedNativeJobs.forEach { it.cancel() }
-                                    ownedNativeJobs.forEach { it.join() }
-                                    break
-                                }
-                                val progress = drawerState.progress
-                                if (progress <= 0.01f) {
-                                    settled = true
-                                    break
-                                }
-                                if (!closeRetryIssued && frame >= 2) {
-                                    closeRetryIssued = true
-                                    bridge.log(
-                                        "server_drawer_close_retry source=$source " +
-                                            "generation=$commandGeneration frame=$frame progress=$progress"
-                                    )
-                                    launchOwnedNativeJob { drawerState.close() }
-                                }
-                            }
-                            ownedNativeJobs.forEach { it.join() }
-                            bridge.log(
-                                "server_drawer_close_end source=$source generation=$commandGeneration " +
-                                    "settled=$settled progress=${drawerState.progress} " +
-                                    "isOpen=${drawerState.isOpen}"
-                            )
-                        } finally {
-                            ownedNativeJobs.forEach { it.cancel() }
-                            ownedNativeJobs.forEach { it.join() }
-                            drawerNativeJobOwnership =
-                                drawerNativeJobOwnership.release(commandGeneration, ownedNativeJobs)
-                            if (commandGeneration == drawerCommandFence.generation) {
-                                drawerCloseInFlight = false
-                            }
-                        }
-                    }
-                }
-
-                val directOpenCommand = remember(drawerState) { { requestDrawerOpen("direct_input") } }
-                SideEffect {
-                    directServerDrawerOpenCommand = directOpenCommand
-                }
-                DisposableEffect(drawerState) {
-                    onDispose {
-                        if (directServerDrawerOpenCommand === directOpenCommand) {
-                            directServerDrawerOpenCommand = null
-                        }
-                    }
-                }
-
-                LaunchedEffect(homeState.serverSwitcherExpanded, serverDrawerEnabled, drawerState) {
-                    bridge.log(
-                        "server_drawer_store_transition expanded=${homeState.serverSwitcherExpanded} " +
-                            "isOpen=${drawerState.isOpen} openDesired=${drawerCommandFence.desiredOpen} " +
-                            "generation=${drawerCommandFence.generation} openInFlight=$drawerOpenInFlight"
-                    )
-                    if (homeState.serverSwitcherExpanded) {
-                        requestDrawerOpen("store_transition")
-                    } else {
-                        requestDrawerClose("store_transition")
-                    }
-                }
-                LaunchedEffect(drawerState.isOpen, drawerState) {
-                    val isOpen = drawerState.isOpen
-                    if (drawerWasOpen && !isOpen && homeState.serverSwitcherExpanded) {
-                        homeShellStore.dispatch(
-                            SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
-                        )
-                    } else if (!drawerWasOpen && isOpen && !homeState.serverSwitcherExpanded) {
-                        homeShellStore.dispatch(
-                            SharedHomeShellIntent.Home(SharedHomeIntent.ToggleServerSwitcher)
-                        )
-                    }
-                    drawerWasOpen = isOpen
-                }
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    MoveableDrawer(
-                        state = drawerState,
-                        drawerContent = {
-                            HomeServerDrawerPanel(
-                                rows = appShellServerDrawerRows,
-                                labels = appShellHomeLabels,
-                                userHeader = serverDrawerUserHeader,
-                                topSafeArea = shellScope.topSafeArea,
-                                bottomSafeArea = shellScope.bottomSafeArea,
-                                serverMembersStore = appShellServerMembersStore,
-                                onlyUnread = serverDrawerOnlyUnread,
-                                onOnlyUnreadChange = { enabled ->
-                                    serverDrawerOnlyUnread =
-                                        serverDrawerPreferenceStore.saveOnlyUnread(enabled).onlyUnread
-                                },
-                                onSectionToggle = { serverId ->
-                                    homeShellStore.dispatch(
-                                        SharedHomeShellIntent.Home(
-                                            SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId))
-                                        )
-                                    )
-                                },
-                                onRetry = { serverId ->
-                                    homeShellStore.dispatch(
-                                        SharedHomeShellIntent.Home(
-                                            SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId))
-                                        )
-                                    )
-                                },
-                                onConversationClick = ::openServerDrawerConversation,
-                                onDismissBySwipe = {
-                                    requestDrawerClose("drawer_left_swipe")
-                                    homeShellStore.dispatch(
-                                        SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
-                                    )
-                                }
-                            )
-                        },
-                        content = mainRouteSurface
-                    )
-                    if (!drawerState.isOpen && !homeState.serverSwitcherExpanded) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .align(Alignment.CenterStart)
-                                    .fillMaxHeight()
-                                    .width(32.dp)
-                                    .background(Color.Transparent)
-                                    .pointerInput(drawerState) {
-                                        var horizontalDragPx = 0f
-                                        detectHorizontalDragGestures(
-                                            onDragStart = { horizontalDragPx = 0f },
-                                            onDragEnd = {
-                                                val horizontalDragDp = horizontalDragPx / edgeDensity.density
-                                                if (shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp)) {
-                                                    bridge.log(
-                                                        "server_drawer_input source=app_shell_root_edge action=open " +
-                                                            "selectedTab=$selectedTab dragDp=$horizontalDragDp"
-                                                    )
-                                                    requestDrawerOpen("app_shell_root_edge")
-                                                    homeShellStore.dispatch(
-                                                        SharedHomeShellIntent.Home(
-                                                            SharedHomeIntent.ToggleServerSwitcher
-                                                        )
-                                                    )
-                                                }
-                                                horizontalDragPx = 0f
-                                            },
-                                            onDragCancel = { horizontalDragPx = 0f }
-                                        ) { _, dragAmount ->
-                                            horizontalDragPx += dragAmount
-                                        }
-                                    }
-                        )
-                    }
-                }
-            }
+            AppShellServerDrawerHost(
+                homeShellStore = homeShellStore,
+                bridge = bridge,
+                coroutineScope = appShellCoroutineScope,
+                labels = appShellHomeLabels,
+                userHeader = serverDrawerUserHeader,
+                topSafeArea = shellScope.topSafeArea,
+                bottomSafeArea = shellScope.bottomSafeArea,
+                serverMembersStore = appShellServerMembersStore,
+                onlyUnread = serverDrawerOnlyUnread,
+                onOnlyUnreadChange = { enabled ->
+                    serverDrawerOnlyUnread =
+                        serverDrawerPreferenceStore.saveOnlyUnread(enabled).onlyUnread
+                },
+                onConversationClick = ::openServerDrawerConversation,
+                selectedTab = selectedTab,
+                content = mainRouteSurface
+            )
         } else {
             mainRouteSurface()
         }
@@ -5344,6 +5024,306 @@ internal fun SlockAppShellContent(
             onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
         ) {
             key("route-main") { mainRouteContent() }
+        }
+    }
+}
+
+internal fun SharedHomeShellState.withoutServerDrawerRuntimeForAppShellRender(): SharedHomeShellState =
+    copy(
+        home =
+            home.copy(
+                serverSwitcherExpanded = false,
+                serverDrawer = HomeServerDrawerState()
+            )
+    )
+
+@Composable
+private fun AppShellServerDrawerHost(
+    homeShellStore: SharedHomeShellStore,
+    bridge: build.raft.app.base.BridgeModule,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    labels: SlockHomeShellLabels,
+    userHeader: SlockServerDrawerUserHeader,
+    topSafeArea: Dp,
+    bottomSafeArea: Dp,
+    serverMembersStore: SharedServerMembersStore?,
+    onlyUnread: Boolean,
+    onOnlyUnreadChange: (Boolean) -> Unit,
+    onConversationClick: (String, String) -> Unit,
+    selectedTab: String,
+    content: @Composable () -> Unit
+) {
+    val shellState by homeShellStore.state.collectAsState()
+    val homeState = shellState.home
+    val drawerSections =
+        remember(homeState.serverDrawer, homeState.serverUnreadCounts) {
+            homeState.serverDrawer.toSlockHomeServerDrawerSections(homeState.serverUnreadCounts)
+        }
+    val drawerRows =
+        remember(drawerSections, onlyUnread) {
+            homeServerDrawerRows(sections = drawerSections, onlyUnread = onlyUnread)
+        }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val drawerState =
+            rememberMoveableDrawerState(
+                initiallyOpen = false,
+                drawerWidth = homeServerDrawerWidth(maxWidth)
+            )
+        var drawerWasOpen by remember(drawerState) { mutableStateOf(drawerState.isOpen) }
+        var drawerOpenInFlight by remember(drawerState) { mutableStateOf(false) }
+        var drawerCloseInFlight by remember(drawerState) { mutableStateOf(false) }
+        var drawerNativeJobOwnership by remember(drawerState) {
+            mutableStateOf(HomeServerDrawerNativeJobOwnership<Job>())
+        }
+        var drawerCommandFence by remember(drawerState) {
+            mutableStateOf(HomeServerDrawerCommandFence(desiredOpen = drawerState.progress > 0.01f))
+        }
+        val edgeDensity = LocalDensity.current
+
+        fun requestDrawerOpen(source: String) {
+            if (drawerCommandFence.desiredOpen || drawerOpenInFlight || drawerState.progress > 0.01f) return
+            val openFence = drawerCommandFence.next(desiredOpen = true)
+            drawerCommandFence = openFence
+            val commandGeneration = openFence.generation
+            val (supersededNativeJobs, nextNativeJobOwnership) =
+                drawerNativeJobOwnership.supersede(commandGeneration)
+            drawerNativeJobOwnership = nextNativeJobOwnership
+            supersededNativeJobs.forEach { it.cancel() }
+            drawerCloseInFlight = false
+            drawerOpenInFlight = true
+            bridge.log(
+                "server_drawer_open_start source=$source generation=$commandGeneration " +
+                    "storeExpanded=${homeState.serverSwitcherExpanded}"
+            )
+            coroutineScope.launch {
+                val ownedNativeJobs = mutableListOf<Job>()
+                fun launchOwnedNativeJob(block: suspend () -> Unit): Job =
+                    launch { block() }.also { job ->
+                        ownedNativeJobs += job
+                        drawerNativeJobOwnership =
+                            drawerNativeJobOwnership.register(commandGeneration, job)
+                    }
+                try {
+                    supersededNativeJobs.forEach { it.join() }
+                    withFrameNanos {
+                        bridge.log(
+                            "server_drawer_open_command_frame source=$source generation=$commandGeneration"
+                        )
+                    }
+                    if (!drawerCommandFence.accepts(commandGeneration, commandDesiredOpen = true)) {
+                        bridge.log(
+                            "server_drawer_open_canceled source=$source " +
+                                "generation=$commandGeneration phase=before_native"
+                        )
+                        return@launch
+                    }
+                    launchOwnedNativeJob { drawerState.open() }
+                    var firstVisibleLogged = false
+                    var settled = false
+                    for (frame in 0 until 90) {
+                        withFrameNanos { }
+                        if (!drawerCommandFence.accepts(commandGeneration, commandDesiredOpen = true)) {
+                            ownedNativeJobs.forEach { it.cancel() }
+                            ownedNativeJobs.forEach { it.join() }
+                            bridge.log(
+                                "server_drawer_open_canceled source=$source " +
+                                    "generation=$commandGeneration phase=progress frame=$frame"
+                            )
+                            break
+                        }
+                        val progress = drawerState.progress
+                        if (!firstVisibleLogged && progress > 0.01f) {
+                            firstVisibleLogged = true
+                            bridge.log(
+                                "server_drawer_open_first_visible source=$source " +
+                                    "generation=$commandGeneration frame=$frame progress=$progress"
+                            )
+                        }
+                        if (progress >= 0.98f) {
+                            settled = true
+                            break
+                        }
+                    }
+                    ownedNativeJobs.forEach { it.join() }
+                    bridge.log(
+                        "server_drawer_open_end source=$source generation=$commandGeneration settled=$settled " +
+                            "progress=${drawerState.progress} isOpen=${drawerState.isOpen}"
+                    )
+                } finally {
+                    ownedNativeJobs.forEach { it.cancel() }
+                    ownedNativeJobs.forEach { it.join() }
+                    drawerNativeJobOwnership =
+                        drawerNativeJobOwnership.release(commandGeneration, ownedNativeJobs)
+                    if (commandGeneration == drawerCommandFence.generation) {
+                        drawerOpenInFlight = false
+                    }
+                }
+            }
+        }
+
+        fun requestDrawerClose(source: String) {
+            if (drawerCloseInFlight && !drawerCommandFence.desiredOpen) return
+            val hadOpenCommand =
+                drawerCommandFence.desiredOpen ||
+                    drawerOpenInFlight ||
+                    drawerState.isOpen ||
+                    drawerState.progress > 0.01f
+            if (!hadOpenCommand && !drawerCloseInFlight) return
+            val closeFence = drawerCommandFence.next(desiredOpen = false)
+            drawerCommandFence = closeFence
+            val commandGeneration = closeFence.generation
+            val (supersededNativeJobs, nextNativeJobOwnership) =
+                drawerNativeJobOwnership.supersede(commandGeneration)
+            drawerNativeJobOwnership = nextNativeJobOwnership
+            supersededNativeJobs.forEach { it.cancel() }
+            drawerOpenInFlight = false
+            drawerCloseInFlight = true
+            bridge.log(
+                "server_drawer_close_start source=$source generation=$commandGeneration " +
+                    "progress=${drawerState.progress}"
+            )
+            coroutineScope.launch {
+                val ownedNativeJobs = mutableListOf<Job>()
+                fun launchOwnedNativeJob(block: suspend () -> Unit): Job =
+                    launch { block() }.also { job ->
+                        ownedNativeJobs += job
+                        drawerNativeJobOwnership =
+                            drawerNativeJobOwnership.register(commandGeneration, job)
+                    }
+                try {
+                    supersededNativeJobs.forEach { it.join() }
+                    withFrameNanos { }
+                    if (!drawerCommandFence.accepts(commandGeneration, commandDesiredOpen = false)) {
+                        return@launch
+                    }
+                    launchOwnedNativeJob { drawerState.close() }
+                    var settled = false
+                    for (frame in 0 until 60) {
+                        withFrameNanos { }
+                        if (!drawerCommandFence.accepts(commandGeneration, commandDesiredOpen = false)) {
+                            ownedNativeJobs.forEach { it.cancel() }
+                            ownedNativeJobs.forEach { it.join() }
+                            break
+                        }
+                        if (drawerState.progress <= 0.01f) {
+                            settled = true
+                            break
+                        }
+                    }
+                    ownedNativeJobs.forEach { it.join() }
+                    bridge.log(
+                        "server_drawer_close_end source=$source generation=$commandGeneration " +
+                            "settled=$settled progress=${drawerState.progress} isOpen=${drawerState.isOpen}"
+                    )
+                } finally {
+                    ownedNativeJobs.forEach { it.cancel() }
+                    ownedNativeJobs.forEach { it.join() }
+                    drawerNativeJobOwnership =
+                        drawerNativeJobOwnership.release(commandGeneration, ownedNativeJobs)
+                    if (commandGeneration == drawerCommandFence.generation) {
+                        drawerCloseInFlight = false
+                    }
+                }
+            }
+        }
+
+        LaunchedEffect(homeState.serverSwitcherExpanded, drawerState) {
+            bridge.log(
+                "server_drawer_store_transition expanded=${homeState.serverSwitcherExpanded} " +
+                    "isOpen=${drawerState.isOpen} openDesired=${drawerCommandFence.desiredOpen} " +
+                    "generation=${drawerCommandFence.generation} openInFlight=$drawerOpenInFlight"
+            )
+            if (homeState.serverSwitcherExpanded) {
+                requestDrawerOpen("store_transition")
+            } else {
+                requestDrawerClose("store_transition")
+            }
+        }
+        LaunchedEffect(drawerState.isOpen, drawerState) {
+            val isOpen = drawerState.isOpen
+            if (drawerWasOpen && !isOpen && homeState.serverSwitcherExpanded) {
+                homeShellStore.dispatch(
+                    SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
+                )
+            } else if (!drawerWasOpen && isOpen && !homeState.serverSwitcherExpanded) {
+                homeShellStore.dispatch(
+                    SharedHomeShellIntent.Home(SharedHomeIntent.ToggleServerSwitcher)
+                )
+            }
+            drawerWasOpen = isOpen
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            MoveableDrawer(
+                state = drawerState,
+                drawerContent = {
+                    HomeServerDrawerPanel(
+                        rows = drawerRows,
+                        labels = labels,
+                        userHeader = userHeader,
+                        topSafeArea = topSafeArea,
+                        bottomSafeArea = bottomSafeArea,
+                        serverMembersStore = serverMembersStore,
+                        onlyUnread = onlyUnread,
+                        onOnlyUnreadChange = onOnlyUnreadChange,
+                        onSectionToggle = { serverId ->
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(
+                                    SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId))
+                                )
+                            )
+                        },
+                        onRetry = { serverId ->
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(
+                                    SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId))
+                                )
+                            )
+                        },
+                        onConversationClick = onConversationClick,
+                        onDismissBySwipe = {
+                            requestDrawerClose("drawer_left_swipe")
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
+                            )
+                        }
+                    )
+                },
+                content = content
+            )
+            if (!drawerState.isOpen && !homeState.serverSwitcherExpanded) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(32.dp)
+                            .background(Color.Transparent)
+                            .pointerInput(drawerState) {
+                                var horizontalDragPx = 0f
+                                detectHorizontalDragGestures(
+                                    onDragStart = { horizontalDragPx = 0f },
+                                    onDragEnd = {
+                                        val horizontalDragDp = horizontalDragPx / edgeDensity.density
+                                        if (shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp)) {
+                                            bridge.log(
+                                                "server_drawer_input source=app_shell_root_edge action=open " +
+                                                    "selectedTab=$selectedTab dragDp=$horizontalDragDp"
+                                            )
+                                            homeShellStore.dispatch(
+                                                SharedHomeShellIntent.Home(
+                                                    SharedHomeIntent.ToggleServerSwitcher
+                                                )
+                                            )
+                                        }
+                                        horizontalDragPx = 0f
+                                    },
+                                    onDragCancel = { horizontalDragPx = 0f }
+                                ) { _, dragAmount -> horizontalDragPx += dragAmount }
+                            }
+                )
+            }
         }
     }
 }

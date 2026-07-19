@@ -37,7 +37,7 @@ class HomeServerDrawerOptInProductionCallsiteTest {
                 }
             )
         val appShellSource = settingsHomePageSource()
-        val drawerHost =
+        val drawerCallsite =
             appShellSource.substring(
                 startIndex = appShellSource.indexOf("val mainRouteSurface:").also { assertFalse(it < 0) },
                 endIndex = appShellSource.indexOf(
@@ -47,6 +47,12 @@ class HomeServerDrawerOptInProductionCallsiteTest {
                     assertFalse(it < 0)
                 }
             )
+        val drawerHelper =
+            appShellSource.substring(
+                startIndex = appShellSource.indexOf("private fun AppShellServerDrawerHost(").also { assertFalse(it < 0) },
+                endIndex = appShellSource.indexOf("internal fun appShellAuthGateViewModelKey").also { assertFalse(it < 0) }
+            )
+        val drawerHost = drawerCallsite + drawerHelper
         val drawerNavigation =
             appShellSource.substring(
                 startIndex = appShellSource.indexOf("fun openServerDrawerConversation(").also { assertFalse(it < 0) },
@@ -73,29 +79,29 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         assertContains(drawerHost, "selectedTab=\$selectedTab")
         assertContains(drawerHost, ".width(32.dp)")
         assertContains(drawerHost, ".background(Color.Transparent)")
-        assertContains(drawerHost, "requestDrawerOpen(\"direct_input\")")
         assertContains(drawerHost, "server_drawer_open_first_visible")
-        assertContains(drawerHost, "server_drawer_open_store_fallback")
+        assertFalse(drawerHost.contains("server_drawer_open_store_fallback"))
+        assertFalse(drawerHost.contains("requestDrawerOpen(\"direct_input\")"))
         assertContains(drawerHost, "drawerCommandFence")
         assertContains(drawerHost, "HomeServerDrawerCommandFence")
         assertContains(drawerHost, "server_drawer_open_canceled")
         assertContains(drawerHost, "drawerNativeJobOwnership.supersede(commandGeneration)")
         assertContains(drawerHost, "supersededNativeJobs.forEach { it.cancel() }")
         assertContains(drawerHost, "supersededNativeJobs.forEach { it.join() }")
-        assertContains(drawerHost, "val openJob = launchOwnedNativeJob { drawerState.open() }")
         assertContains(drawerHost, "launchOwnedNativeJob { drawerState.open() }")
         assertContains(drawerHost, "launchOwnedNativeJob { drawerState.close() }")
         assertContains(drawerHost, "ownedNativeJobs.forEach { it.cancel() }")
         assertContains(drawerHost, "ownedNativeJobs.forEach { it.join() }")
         assertTrue(
-            drawerHost.indexOf("val openJob = launchOwnedNativeJob { drawerState.open() }") <
+            drawerHost.indexOf("launchOwnedNativeJob { drawerState.open() }") <
                 drawerHost.indexOf("server_drawer_open_first_visible")
         )
         assertTrue(
             drawerHost.indexOf("supersededNativeJobs.forEach { it.join() }") <
-                drawerHost.indexOf("val openJob = launchOwnedNativeJob { drawerState.open() }")
+                drawerHost.indexOf("launchOwnedNativeJob { drawerState.open() }")
         )
-        assertContains(drawerHost, "server_drawer_close_retry")
+        assertContains(appShellSource, "serverSwitcherExpanded = false")
+        assertContains(appShellSource, "serverDrawer = HomeServerDrawerState()")
         assertContains(drawerHost, "onDismissBySwipe")
         assertTrue(
             drawerHost.indexOf("source=app_shell_root_edge") >

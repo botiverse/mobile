@@ -12,7 +12,7 @@ class SlockCollapsibleSectionHeaderProductionContractTest {
         val home = source("build/raft/app/SlockHomeComponents.kt")
         val members = source("build/raft/app/MembersPage.kt")
 
-        assertEquals(4, home.count("SlockCollapsibleSectionHeader("))
+        assertEquals(5, home.count("SlockCollapsibleSectionHeader("))
         assertEquals(2, members.count("SlockCollapsibleSectionHeader("))
     }
 
