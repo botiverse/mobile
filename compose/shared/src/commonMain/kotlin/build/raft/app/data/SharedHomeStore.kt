@@ -1199,7 +1199,7 @@ internal class SharedHomeStore(
         serverDrawerRequestGenerations[serverId] == generation &&
             _state.value.serverDrawer.sections[serverId]?.requestGeneration == generation
 
-    private fun publishServerDrawerContent(
+    private suspend fun publishServerDrawerContent(
         serverId: ServerId,
         generation: Long,
         content: SharedHomeContentState.Content
