@@ -8432,6 +8432,7 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_CODE_BLOCK = "md_code_block"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE = "md_table"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_TABLE_TIGHT = "md_table_tight"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_ESCAPES = "md_escapes"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE = "md_latest_release"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
@@ -9278,6 +9279,53 @@ internal fun threadVisualFixture(
                                 "Inline code keeps the email literal: `artin <artin@cat.ms>` end.\n\n" +
                                     "Bare autolink form: <artin@cat.ms> end.\n\n" +
                                     "Plain text form: artin@cat.ms end."
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_LATEST_RELEASE ->
+            // task #502: real mixed-markdown status message requested by artin.
+            // Pins a leading horizontal rule, Chinese prose, bold emphasis,
+            // inline-code routes containing angle-bracket placeholders, and a
+            // plain PR reference in one message across Android/iOS/OHOS.
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Latest release landing markdown specimen (task #502)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_latest_release_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/19 13:03",
+                            messageType = "Chat",
+                            body =
+                                "---\n\n" +
+                                    "明白，是我理解错了。你要的是一个**不需要先创建 share token 的稳定 latest release landing page**，" +
+                                    "类似 `/apps/<app>/latest`，打开永远展示当前最新版并可下载；不是让某条 `/share/<token>` 变成 rolling。\n\n" +
+                                    "我撤掉 PR #318 这套 rolling-share 设计，改做 app latest landing page，并复用现有 share 页的版本信息/下载体验。"
                         )
                     ),
                 members = emptyList(),
