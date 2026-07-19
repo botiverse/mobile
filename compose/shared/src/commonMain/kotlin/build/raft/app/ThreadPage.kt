@@ -783,8 +783,6 @@ internal data class KuiklyThreadScreenPayload(
     val dmPeerName: String? = null,
     val dmPeerAvatarUrl: String? = null,
     val dmPeerAvatarLabel: String? = null,
-    val headerTitleSeed: String? = null,
-    val headerSubtitleSeed: String? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false
