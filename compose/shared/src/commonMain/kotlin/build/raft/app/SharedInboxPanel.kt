@@ -96,7 +96,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
-private const val ActivityNearTopThresholdPx = 50
 private const val ActivityUpdateTrackingWindow = 20
 
 @Composable
@@ -634,34 +633,20 @@ private fun SharedActivityList(
         }
     }
     LaunchedEffect(snapshot.items) {
-        // A drag in progress means the user is NOT parked at the top even if
-        // the viewport currently is: auto-scrolling would cancel the gesture
-        // and yank them (task #554 pattern scan).
-        val nearTop = listState.isActivityNearTop()
+        // Realtime arrivals never take ownership of the Activity viewport, even
+        // while it is parked at the top. Stable item keys retain the row under
+        // the user's finger and the explicit "x new" action owns revealing the
+        // new head. This avoids replacing the first tap target between pointer
+        // down and click dispatch.
         val update =
             activityUpdatePresentation(
                 previousItems = previousItems,
-                currentItems = snapshot.items,
-                nearTop = nearTop,
-                isScrollInProgress = listState.isScrollInProgress
+                currentItems = snapshot.items
             )
         if (update.pendingIncrement > 0) {
             pendingUpdateCount += update.pendingIncrement
         }
-        if (update.shouldAutoAnchorTop) {
-            pendingUpdateCount = 0
-            listState.scrollToItem(0)
-        }
         previousItems = snapshot.items.take(ActivityUpdateTrackingWindow)
-    }
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isActivityNearTop() }
-            .distinctUntilChanged()
-            .collect { nearTop ->
-                if (nearTop) {
-                    pendingUpdateCount = 0
-                }
-            }
     }
     LaunchedEffect(listState, snapshot.server.id, snapshot.items) {
         val activityItemsByKey = snapshot.items.associateBy(InboxItem::key)
@@ -1537,9 +1522,6 @@ internal fun activityLoadMoreFooterMode(
         else -> ActivityLoadMoreFooterMode.Sentinel
     }
 
-private fun LazyListState.isActivityNearTop(): Boolean =
-    firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
-
 internal fun activityListShouldRecoverVisibleContent(
     firstVisibleItemIndex: Int,
     visibleItemKeys: List<String>,
@@ -1551,27 +1533,23 @@ internal fun activityListShouldRecoverVisibleContent(
 }
 
 internal data class ActivityUpdatePresentation(
-    val pendingIncrement: Int,
-    val shouldAutoAnchorTop: Boolean
+    val pendingIncrement: Int
 )
 
 internal fun activityUpdatePresentation(
     previousItems: List<InboxItem>,
-    currentItems: List<InboxItem>,
-    nearTop: Boolean,
-    isScrollInProgress: Boolean
+    currentItems: List<InboxItem>
 ): ActivityUpdatePresentation {
-    val parkedAtTop = nearTop && !isScrollInProgress
+    // A data arrival is not a viewport-replacement intent. Always accumulate
+    // genuine head changes behind the explicit reveal action; do not silently
+    // scroll just because the current viewport happens to be near the top.
     val topUpdateCount =
         activityPendingUpdateIncrement(
             previousItems = previousItems,
             currentItems = currentItems,
             nearTop = false
         )
-    return ActivityUpdatePresentation(
-        pendingIncrement = if (parkedAtTop) 0 else topUpdateCount,
-        shouldAutoAnchorTop = parkedAtTop && topUpdateCount > 0
-    )
+    return ActivityUpdatePresentation(pendingIncrement = topUpdateCount)
 }
 
 // "↑ x new" counts ONLY genuinely new activity, never the user's own actions.

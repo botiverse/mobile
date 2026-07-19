@@ -478,18 +478,16 @@ class SharedInboxPanelTest {
         val current = previous + activityItem(key = "channel:older-page")
 
         assertEquals(
-            ActivityUpdatePresentation(pendingIncrement = 0, shouldAutoAnchorTop = false),
+            ActivityUpdatePresentation(pendingIncrement = 0),
             activityUpdatePresentation(
                 previousItems = previous,
-                currentItems = current,
-                nearTop = true,
-                isScrollInProgress = false
+                currentItems = current
             )
         )
     }
 
     @Test
-    fun activityUpdatePresentationAutoAnchorsGenuineTopUpdateWhenParked() {
+    fun activityUpdatePresentationDefersGenuineTopUpdateEvenWhenParked() {
         val previous = listOf(activityItem(key = "channel:channel-old-top"))
         val current =
             listOf(
@@ -498,32 +496,10 @@ class SharedInboxPanelTest {
             )
 
         assertEquals(
-            ActivityUpdatePresentation(pendingIncrement = 0, shouldAutoAnchorTop = true),
+            ActivityUpdatePresentation(pendingIncrement = 1),
             activityUpdatePresentation(
                 previousItems = previous,
-                currentItems = current,
-                nearTop = true,
-                isScrollInProgress = false
-            )
-        )
-    }
-
-    @Test
-    fun activityUpdatePresentationDefersTopUpdateDuringUserScroll() {
-        val previous = listOf(activityItem(key = "channel:channel-old-top"))
-        val current =
-            listOf(
-                activityItem(key = "channel:channel-new"),
-                activityItem(key = "channel:channel-old-top")
-            )
-
-        assertEquals(
-            ActivityUpdatePresentation(pendingIncrement = 1, shouldAutoAnchorTop = false),
-            activityUpdatePresentation(
-                previousItems = previous,
-                currentItems = current,
-                nearTop = true,
-                isScrollInProgress = true
+                currentItems = current
             )
         )
     }
@@ -534,12 +510,10 @@ class SharedInboxPanelTest {
         val current = listOf(activityItem(key = "channel:channel-top", unreadCount = 0))
 
         assertEquals(
-            ActivityUpdatePresentation(pendingIncrement = 0, shouldAutoAnchorTop = false),
+            ActivityUpdatePresentation(pendingIncrement = 0),
             activityUpdatePresentation(
                 previousItems = previous,
-                currentItems = current,
-                nearTop = true,
-                isScrollInProgress = false
+                currentItems = current
             )
         )
     }
