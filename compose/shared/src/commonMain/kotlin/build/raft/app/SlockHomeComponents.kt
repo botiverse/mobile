@@ -2734,6 +2734,16 @@ internal data class HomeServerDrawerCommandFence(
         generation == commandGeneration && desiredOpen == commandDesiredOpen
 }
 
+internal fun shouldHydrateHomeServerDrawerContent(
+    commandFence: HomeServerDrawerCommandFence,
+    commandGeneration: Int,
+    storeExpanded: Boolean,
+    drawerIsOpen: Boolean
+): Boolean =
+    commandFence.accepts(commandGeneration, commandDesiredOpen = true) &&
+        storeExpanded &&
+        drawerIsOpen
+
 internal data class HomeServerDrawerNativeJobOwnership<T>(
     val generation: Int = 0,
     val jobs: List<T> = emptyList()
@@ -3500,6 +3510,96 @@ internal fun HomeInlineErrorCard(
 }
 
 @Composable
+internal fun HomeServerDrawerColdStartPanel(
+    userHeader: SlockServerDrawerUserHeader,
+    topSafeArea: Dp,
+    bottomSafeArea: Dp
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(homeServerDrawerHeaderHeight(topSafeArea))
+                    .background(SlockColor.BrandYellow)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(SlockStroke.Default)
+                        .background(SlockColor.BorderBlack)
+                        .align(Alignment.BottomCenter)
+            )
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(homeServerDrawerHeaderHeight(topSafeArea) - SlockStroke.Default)
+                        .padding(top = topSafeArea)
+                        .padding(horizontal = SlockSpacing.Md),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(32.dp)
+                            .background(SlockColor.SurfaceCream)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = userHeader.avatarLabel.trim().take(1).uppercase(),
+                        style = SlockType.ButtonBold,
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    text = userHeader.displayName,
+                    style = SlockType.ButtonBold,
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                SlockLucideIcon(
+                    SlockLucideIconName.LoaderCircle,
+                    modifier = Modifier.size(18.dp),
+                    color = SlockColor.TextBlackArgb,
+                    spinning = true
+                )
+            }
+        }
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            repeat(6) {
+                HomeSidebarSkeletonRow(
+                    modifier =
+                        Modifier.padding(
+                            horizontal = HomeListHorizontalPadding,
+                            vertical = SlockSpacing.Xs
+                        )
+                )
+            }
+        }
+        Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
+    }
+}
+
+@Composable
 internal fun HomeServerDrawerPanel(
     rows: List<SlockHomeServerDrawerRow>,
     labels: SlockHomeShellLabels,
@@ -3512,8 +3612,13 @@ internal fun HomeServerDrawerPanel(
     onSectionToggle: (String) -> Unit,
     onRetry: (String) -> Unit,
     onConversationClick: (String, String) -> Unit,
-    onDismissBySwipe: () -> Unit
+    onDismissBySwipe: () -> Unit,
+    onContentInteractive: () -> Unit
 ) {
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        onContentInteractive()
+    }
     var collapsedSectionKeys by remember { mutableStateOf(emptySet<String>()) }
     val visibleRows =
         remember(rows, collapsedSectionKeys) {

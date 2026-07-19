@@ -5037,6 +5037,9 @@ internal fun SharedHomeShellState.withoutServerDrawerRuntimeForAppShellRender():
             )
     )
 
+internal fun SharedHomeShellState.withoutServerDrawerVisibilityForDrawerRender(): SharedHomeShellState =
+    copy(home = home.copy(serverSwitcherExpanded = false))
+
 @Composable
 private fun AppShellServerDrawerHost(
     homeShellStore: SharedHomeShellStore,
@@ -5053,7 +5056,19 @@ private fun AppShellServerDrawerHost(
     selectedTab: String,
     content: @Composable () -> Unit
 ) {
-    val shellState by homeShellStore.state.collectAsState()
+    val drawerRenderState =
+        remember(homeShellStore) {
+            homeShellStore.state
+                .map { shellState ->
+                    shellState.withoutServerDrawerVisibilityForDrawerRender()
+                }
+                .distinctUntilChanged()
+        }
+    val initialDrawerRenderState =
+        remember(homeShellStore) {
+            homeShellStore.state.value.withoutServerDrawerVisibilityForDrawerRender()
+        }
+    val shellState by drawerRenderState.collectAsState(initialDrawerRenderState)
     val homeState = shellState.home
     val drawerSections =
         remember(homeState.serverDrawer, homeState.serverUnreadCounts) {
@@ -5073,6 +5088,7 @@ private fun AppShellServerDrawerHost(
         var drawerWasOpen by remember(drawerState) { mutableStateOf(drawerState.isOpen) }
         var drawerOpenInFlight by remember(drawerState) { mutableStateOf(false) }
         var drawerCloseInFlight by remember(drawerState) { mutableStateOf(false) }
+        var drawerContentReady by remember(drawerState) { mutableStateOf(false) }
         var drawerNativeJobOwnership by remember(drawerState) {
             mutableStateOf(HomeServerDrawerNativeJobOwnership<Job>())
         }
@@ -5094,7 +5110,7 @@ private fun AppShellServerDrawerHost(
             drawerOpenInFlight = true
             bridge.log(
                 "server_drawer_open_start source=$source generation=$commandGeneration " +
-                    "storeExpanded=${homeState.serverSwitcherExpanded}"
+                    "storeExpanded=${homeShellStore.state.value.home.serverSwitcherExpanded}"
             )
             coroutineScope.launch {
                 val ownedNativeJobs = mutableListOf<Job>()
@@ -5150,6 +5166,37 @@ private fun AppShellServerDrawerHost(
                         "server_drawer_open_end source=$source generation=$commandGeneration settled=$settled " +
                             "progress=${drawerState.progress} isOpen=${drawerState.isOpen}"
                     )
+                    if (
+                        settled &&
+                        !drawerContentReady &&
+                        shouldHydrateHomeServerDrawerContent(
+                            commandFence = drawerCommandFence,
+                            commandGeneration = commandGeneration,
+                            storeExpanded = homeShellStore.state.value.home.serverSwitcherExpanded,
+                            drawerIsOpen = drawerState.isOpen
+                        )
+                    ) {
+                        withFrameNanos { }
+                        val hydrateAfterFrame =
+                            shouldHydrateHomeServerDrawerContent(
+                                commandFence = drawerCommandFence,
+                                commandGeneration = commandGeneration,
+                                storeExpanded = homeShellStore.state.value.home.serverSwitcherExpanded,
+                                drawerIsOpen = drawerState.isOpen
+                            )
+                        if (hydrateAfterFrame) {
+                            bridge.log(
+                                "server_drawer_content_hydration source=$source " +
+                                    "generation=$commandGeneration phase=requested"
+                            )
+                            drawerContentReady = true
+                        } else {
+                            bridge.log(
+                                "server_drawer_content_hydration source=$source " +
+                                    "generation=$commandGeneration phase=canceled"
+                            )
+                        }
+                    }
                 } finally {
                     ownedNativeJobs.forEach { it.cancel() }
                     ownedNativeJobs.forEach { it.join() }
@@ -5228,25 +5275,31 @@ private fun AppShellServerDrawerHost(
             }
         }
 
-        LaunchedEffect(homeState.serverSwitcherExpanded, drawerState) {
-            bridge.log(
-                "server_drawer_store_transition expanded=${homeState.serverSwitcherExpanded} " +
-                    "isOpen=${drawerState.isOpen} openDesired=${drawerCommandFence.desiredOpen} " +
-                    "generation=${drawerCommandFence.generation} openInFlight=$drawerOpenInFlight"
-            )
-            if (homeState.serverSwitcherExpanded) {
-                requestDrawerOpen("store_transition")
-            } else {
-                requestDrawerClose("store_transition")
-            }
+        LaunchedEffect(homeShellStore, drawerState) {
+            homeShellStore.state
+                .map { shellState -> shellState.home.serverSwitcherExpanded }
+                .distinctUntilChanged()
+                .collect { expanded ->
+                    bridge.log(
+                        "server_drawer_store_transition expanded=$expanded " +
+                            "isOpen=${drawerState.isOpen} openDesired=${drawerCommandFence.desiredOpen} " +
+                            "generation=${drawerCommandFence.generation} openInFlight=$drawerOpenInFlight"
+                    )
+                    if (expanded) {
+                        requestDrawerOpen("store_transition")
+                    } else {
+                        requestDrawerClose("store_transition")
+                    }
+                }
         }
         LaunchedEffect(drawerState.isOpen, drawerState) {
             val isOpen = drawerState.isOpen
-            if (drawerWasOpen && !isOpen && homeState.serverSwitcherExpanded) {
+            val storeExpanded = homeShellStore.state.value.home.serverSwitcherExpanded
+            if (drawerWasOpen && !isOpen && storeExpanded) {
                 homeShellStore.dispatch(
                     SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
                 )
-            } else if (!drawerWasOpen && isOpen && !homeState.serverSwitcherExpanded) {
+            } else if (!drawerWasOpen && isOpen && !storeExpanded) {
                 homeShellStore.dispatch(
                     SharedHomeShellIntent.Home(SharedHomeIntent.ToggleServerSwitcher)
                 )
@@ -5258,41 +5311,55 @@ private fun AppShellServerDrawerHost(
             MoveableDrawer(
                 state = drawerState,
                 drawerContent = {
-                    HomeServerDrawerPanel(
-                        rows = drawerRows,
-                        labels = labels,
-                        userHeader = userHeader,
-                        topSafeArea = topSafeArea,
-                        bottomSafeArea = bottomSafeArea,
-                        serverMembersStore = serverMembersStore,
-                        onlyUnread = onlyUnread,
-                        onOnlyUnreadChange = onOnlyUnreadChange,
-                        onSectionToggle = { serverId ->
-                            homeShellStore.dispatch(
-                                SharedHomeShellIntent.Home(
-                                    SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId))
+                    if (drawerContentReady) {
+                        HomeServerDrawerPanel(
+                            rows = drawerRows,
+                            labels = labels,
+                            userHeader = userHeader,
+                            topSafeArea = topSafeArea,
+                            bottomSafeArea = bottomSafeArea,
+                            serverMembersStore = serverMembersStore,
+                            onlyUnread = onlyUnread,
+                            onOnlyUnreadChange = onOnlyUnreadChange,
+                            onSectionToggle = { serverId ->
+                                homeShellStore.dispatch(
+                                    SharedHomeShellIntent.Home(
+                                        SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId))
+                                    )
                                 )
-                            )
-                        },
-                        onRetry = { serverId ->
-                            homeShellStore.dispatch(
-                                SharedHomeShellIntent.Home(
-                                    SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId))
+                            },
+                            onRetry = { serverId ->
+                                homeShellStore.dispatch(
+                                    SharedHomeShellIntent.Home(
+                                        SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId))
+                                    )
                                 )
-                            )
-                        },
-                        onConversationClick = onConversationClick,
-                        onDismissBySwipe = {
-                            requestDrawerClose("drawer_left_swipe")
-                            homeShellStore.dispatch(
-                                SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
-                            )
-                        }
-                    )
+                            },
+                            onConversationClick = onConversationClick,
+                            onDismissBySwipe = {
+                                requestDrawerClose("drawer_left_swipe")
+                                homeShellStore.dispatch(
+                                    SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
+                                )
+                            },
+                            onContentInteractive = {
+                                bridge.log(
+                                    "server_drawer_content_hydration source=panel " +
+                                        "generation=${drawerCommandFence.generation} phase=interactive"
+                                )
+                            }
+                        )
+                    } else {
+                        HomeServerDrawerColdStartPanel(
+                            userHeader = userHeader,
+                            topSafeArea = topSafeArea,
+                            bottomSafeArea = bottomSafeArea
+                        )
+                    }
                 },
                 content = content
             )
-            if (!drawerState.isOpen && !homeState.serverSwitcherExpanded) {
+            if (!drawerState.isOpen && !drawerCommandFence.desiredOpen) {
                 Box(
                     modifier =
                         Modifier

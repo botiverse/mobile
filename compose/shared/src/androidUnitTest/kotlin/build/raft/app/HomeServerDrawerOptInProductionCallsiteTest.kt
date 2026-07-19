@@ -80,6 +80,15 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         assertContains(drawerHost, ".width(32.dp)")
         assertContains(drawerHost, ".background(Color.Transparent)")
         assertContains(drawerHost, "server_drawer_open_first_visible")
+        assertContains(drawerHost, "HomeServerDrawerColdStartPanel(")
+        assertContains(drawerHost, "server_drawer_content_hydration")
+        assertContains(drawerHost, "shouldHydrateHomeServerDrawerContent(")
+        assertContains(drawerHost, "phase=canceled")
+        assertContains(drawerHost, "phase=interactive")
+        assertTrue(
+            drawerHost.indexOf("server_drawer_open_end") <
+                drawerHost.indexOf("server_drawer_content_hydration")
+        )
         assertFalse(drawerHost.contains("server_drawer_open_store_fallback"))
         assertFalse(drawerHost.contains("requestDrawerOpen(\"direct_input\")"))
         assertContains(drawerHost, "drawerCommandFence")
@@ -102,6 +111,12 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         )
         assertContains(appShellSource, "serverSwitcherExpanded = false")
         assertContains(appShellSource, "serverDrawer = HomeServerDrawerState()")
+        assertContains(drawerHost, "withoutServerDrawerVisibilityForDrawerRender()")
+        assertContains(drawerHost, ".map { shellState -> shellState.home.serverSwitcherExpanded }")
+        assertContains(drawerHost, ".distinctUntilChanged()")
+        assertContains(drawerHost, "LaunchedEffect(homeShellStore, drawerState)")
+        assertFalse(drawerHost.contains("LaunchedEffect(homeState.serverSwitcherExpanded"))
+        assertFalse(drawerHost.contains("homeState.serverSwitcherExpanded"))
         assertContains(drawerHost, "onDismissBySwipe")
         assertTrue(
             drawerHost.indexOf("source=app_shell_root_edge") >
@@ -118,6 +133,11 @@ class HomeServerDrawerOptInProductionCallsiteTest {
     @Test
     fun enabledDrawerReusesHomeRowsResolversSafeAreaAndPremeasureRamp() {
         val source = homeComponentsSource()
+        val coldPanel =
+            source.substring(
+                startIndex = source.indexOf("internal fun HomeServerDrawerColdStartPanel(").also { assertFalse(it < 0) },
+                endIndex = source.indexOf("internal fun HomeServerDrawerPanel(").also { assertFalse(it < 0) }
+            )
         val panel =
             source.substring(
                 startIndex = source.indexOf("internal fun HomeServerDrawerPanel(").also { assertFalse(it < 0) },
@@ -125,6 +145,13 @@ class HomeServerDrawerOptInProductionCallsiteTest {
             )
 
         assertContains(panel, "homeServerDrawerHeaderHeight(topSafeArea)")
+        assertContains(panel, "LaunchedEffect(Unit)")
+        assertContains(panel, "onContentInteractive()")
+        assertContains(coldPanel, "homeServerDrawerHeaderHeight(topSafeArea)")
+        assertContains(coldPanel, "repeat(6)")
+        assertContains(coldPanel, "HomeSidebarSkeletonRow(")
+        assertContains(coldPanel, "SlockLucideIconName.LoaderCircle")
+        assertFalse(coldPanel.contains("SlockAvatar("))
         assertContains(panel, "Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))")
         assertContains(panel, "homeListInitialBeyondBoundsItemCount()")
         assertContains(panel, "homeListNextServerSwitchBeyondBoundsItemCount(")

@@ -249,6 +249,62 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun drawerRenderStateIgnoresVisibilityButKeepsDrawerContentMutations() {
+        val closed = SharedHomeShellState(home = SharedHomeState())
+        val opened =
+            closed.copy(home = closed.home.copy(serverSwitcherExpanded = true))
+        val drawerChanged =
+            opened.copy(
+                home =
+                    opened.home.copy(
+                        serverDrawer = HomeServerDrawerState(expanded = true)
+                    )
+            )
+
+        assertEquals(
+            closed.withoutServerDrawerVisibilityForDrawerRender(),
+            opened.withoutServerDrawerVisibilityForDrawerRender()
+        )
+        assertFalse(
+            opened.withoutServerDrawerVisibilityForDrawerRender() ==
+                drawerChanged.withoutServerDrawerVisibilityForDrawerRender()
+        )
+    }
+
+    @Test
+    fun drawerHydrationRechecksCloseAndAllowsTheNextOpenGeneration() {
+        val settledOpen = HomeServerDrawerCommandFence(generation = 3, desiredOpen = true)
+        assertTrue(
+            shouldHydrateHomeServerDrawerContent(
+                commandFence = settledOpen,
+                commandGeneration = 3,
+                storeExpanded = true,
+                drawerIsOpen = true
+            )
+        )
+
+        val closedDuringHydrationFrame = settledOpen.next(desiredOpen = false)
+        assertFalse(
+            shouldHydrateHomeServerDrawerContent(
+                commandFence = closedDuringHydrationFrame,
+                commandGeneration = 3,
+                storeExpanded = false,
+                drawerIsOpen = false
+            )
+        )
+
+        val reopened = closedDuringHydrationFrame.next(desiredOpen = true)
+        assertTrue(
+            shouldHydrateHomeServerDrawerContent(
+                commandFence = reopened,
+                commandGeneration = reopened.generation,
+                storeExpanded = true,
+                drawerIsOpen = true
+            )
+        )
+    }
+
+    @Test
     fun homeServerDrawerCloseSupersedesTheOwnedOpenJob() {
         val opening =
             HomeServerDrawerNativeJobOwnership<String>(generation = 1)
