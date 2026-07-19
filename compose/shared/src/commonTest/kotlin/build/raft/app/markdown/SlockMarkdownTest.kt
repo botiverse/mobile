@@ -1652,6 +1652,13 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun pullRequestNumbersStayPlainWhileRaftTaskNumbersRemainReferences() {
+        val body = "I reverted PR #318; keep task #502 and bare #503 linked."
+
+        assertEquals(listOf("#502", "#503"), body.threadInlineTagMatches().map { it.tag.label })
+    }
+
+    @Test
     fun inlineTokenRegistryKeepsColonThreadReferenceAsSingleToken() {
         val plan =
             SlockMarkdownInlineTokenRegistry.plan(

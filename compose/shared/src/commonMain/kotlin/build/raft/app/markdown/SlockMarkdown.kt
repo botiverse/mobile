@@ -676,7 +676,10 @@ private fun String.threadInlineTagRanges(protectedRanges: List<IntRange>): List<
         val range =
             when (char) {
                 '@' -> scanThreadMentionRange(index)
-                '#' -> scanThreadHashRange(index)
+                // `PR #123` names an external pull request in ordinary prose,
+                // not a Raft task. Keep it plain even when task hydration is
+                // unavailable and the fallback validator accepts numeric refs.
+                '#' -> if (isThreadPullRequestNumber(index)) null else scanThreadHashRange(index)
                 else -> null
             }
         if (range != null && isThreadInlineTagBoundary(index - 1)) {
@@ -687,6 +690,14 @@ private fun String.threadInlineTagRanges(protectedRanges: List<IntRange>): List<
         }
     }
     return ranges
+}
+
+private fun String.isThreadPullRequestNumber(hashIndex: Int): Boolean {
+    var end = hashIndex - 1
+    while (end >= 0 && this[end].isWhitespace()) end--
+    if (end < 1 || this[end].lowercaseChar() != 'r' || this[end - 1].lowercaseChar() != 'p') return false
+    val prefixStart = end - 1
+    return prefixStart == 0 || !(this[prefixStart - 1].isLetterOrDigit() || this[prefixStart - 1] == '_')
 }
 
 private fun String.scanThreadMentionRange(start: Int): IntRange? {
