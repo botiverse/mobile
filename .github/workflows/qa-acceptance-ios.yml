@@ -34,8 +34,36 @@ on:
         description: "Execution mode: agent (M3) or deterministic (scripted, no model)"
         required: false
         default: "agent"
+      app_run_id:
+        description: "Download ios-simulator-app-<run> and replace the app product after building the UITest runner"
+        required: false
+        default: ""
+      artifact_sha256:
+        description: "Frozen SHA-256 of the exact .app.zip"
+        required: false
+        default: ""
+      artifact_source_commit:
+        description: "Frozen source commit of the exact app artifact"
+        required: false
+        default: ""
+      artifact_version:
+        description: "Frozen CFBundleShortVersionString"
+        required: false
+        default: ""
+      artifact_version_code:
+        description: "Frozen CFBundleVersion"
+        required: false
+        default: ""
+      artifact_package_id:
+        description: "Frozen CFBundleIdentifier"
+        required: false
+        default: ""
   push:
     branches: [xishi/qa-ios-executor]
+
+permissions:
+  contents: read
+  actions: read
 
 env:
   # login smoke (iOS first-run PoC): mirrors the Android case-01 path.
@@ -58,6 +86,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Validate frozen artifact inputs
+        id: frozen-inputs
+        env:
+          PIN_PRIMARY: ${{ inputs.app_run_id }}
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          ARTIFACT_SOURCE_COMMIT: ${{ inputs.artifact_source_commit }}
+          ARTIFACT_VERSION: ${{ inputs.artifact_version }}
+          ARTIFACT_VERSION_CODE: ${{ inputs.artifact_version_code }}
+          ARTIFACT_PACKAGE_ID: ${{ inputs.artifact_package_id }}
+        run: node scripts/qa/validate_frozen_inputs.mjs
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -180,6 +219,33 @@ jobs:
           fi
           exit "$status"
 
+      - name: Download frozen iOS Simulator app
+        if: ${{ inputs.app_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-simulator-app-${{ inputs.app_run_id }}
+          path: pinned-ios-app
+          run-id: ${{ inputs.app_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Replace app product with frozen artifact
+        if: ${{ inputs.app_run_id != '' }}
+        env:
+          PINNED_ZIP: pinned-ios-app/raft-ios-simulator.app.zip
+          PINNED_METADATA: pinned-ios-app/metadata.json
+          PRODUCTS_DIR: compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator
+          APP_RUN_ID: ${{ inputs.app_run_id }}
+          EXPECTED_SHA256: ${{ inputs.artifact_sha256 }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.artifact_source_commit }}
+          EXPECTED_VERSION: ${{ inputs.artifact_version }}
+          EXPECTED_VERSION_CODE: ${{ inputs.artifact_version_code }}
+          EXPECTED_PACKAGE_ID: ${{ inputs.artifact_package_id }}
+        run: |
+          bash scripts/qa/prepare_pinned_ios_app.sh \
+            "$PINNED_ZIP" "$PINNED_METADATA" "$PRODUCTS_DIR" "$APP_RUN_ID" \
+            "$EXPECTED_SHA256" "$EXPECTED_SOURCE_COMMIT" "$EXPECTED_PACKAGE_ID" \
+            "$EXPECTED_VERSION" "$EXPECTED_VERSION_CODE"
+
       - name: Install app
         run: |
           app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' ! -name '*Runner*' | head -1)
@@ -194,8 +260,11 @@ jobs:
           buildnum=$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$app/Info.plist" 2>/dev/null || echo "")
           binary=$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Info.plist" 2>/dev/null || echo "iosApp")
           binhash=$(shasum -a 256 "$app/$binary" 2>/dev/null | cut -d' ' -f1 || echo "")
-          printf '{\n "platform": "ios",\n "source_commit": "%s",\n "branch": "%s",\n "build_run_id": "%s",\n "app_version": "%s",\n "version_code": "%s",\n "binary_sha256": "%s",\n "bundle_id": "%s"\n}\n' \
-            "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_RUN_ID" "$version" "$buildnum" "$binhash" "$bundle_id" > "$GITHUB_WORKSPACE/build-info-ios.json"
+          source_commit="${VERIFIED_ARTIFACT_SOURCE_COMMIT:-$GITHUB_SHA}"
+          build_run_id="${VERIFIED_ARTIFACT_BUILD_RUN_ID:-$GITHUB_RUN_ID}"
+          artifact_hash="${VERIFIED_ARTIFACT_SHA256:-}"
+          printf '{\n "platform": "ios",\n "source_commit": "%s",\n "branch": "%s",\n "build_run_id": "%s",\n "app_version": "%s",\n "version_code": "%s",\n "artifact_sha256": "%s",\n "binary_sha256": "%s",\n "bundle_id": "%s"\n}\n' \
+            "$source_commit" "$GITHUB_REF_NAME" "$build_run_id" "$version" "$buildnum" "$artifact_hash" "$binhash" "$bundle_id" > "$GITHUB_WORKSPACE/build-info-ios.json"
           cat "$GITHUB_WORKSPACE/build-info-ios.json"
 
       - name: Install M3 SDK (pi-ai)

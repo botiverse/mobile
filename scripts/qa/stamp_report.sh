@@ -17,23 +17,33 @@ if [ "$PHASE" = "claim" ]; then
   # bind the exact build under test to the run (artin: every run records its version)
   APK_FILE=$(find apks -name '*.apk' 2>/dev/null | head -1)
   APK_SHA=""; [ -n "$APK_FILE" ] && APK_SHA=$(sha256sum "$APK_FILE" | cut -d' ' -f1)
-  VN=""; VC=""
+  VN=""; VC=""; PKG=""
   if [ -n "$APK_FILE" ] && command -v aapt >/dev/null 2>&1; then
     BADGING=$(aapt dump badging "$APK_FILE" 2>/dev/null | head -1)
+    PKG=$(printf '%s' "$BADGING" | sed -n "s/package: name='\([^']*\)'.*/\1/p")
     VN=$(printf '%s' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
     VC=$(printf '%s' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
   fi
+  SOURCE_COMMIT="${STAMP_VERIFIED_SOURCE_COMMIT:-${GITHUB_SHA:-}}"
+  ARTIFACT_SHA="${STAMP_VERIFIED_ARTIFACT_SHA256:-$APK_SHA}"
+  APP_VERSION="${STAMP_VERIFIED_APP_VERSION:-$VN}"
+  VERSION_CODE="${STAMP_VERIFIED_VERSION_CODE:-$VC}"
+  PACKAGE_ID="${STAMP_VERIFIED_PACKAGE_ID:-${BUNDLE_ID:-$PKG}}"
   mkdir -p "$EV"
   CLAIM_RESPONSE="${RUNNER_TEMP:-$EV}/stamp-claim-response-$STAMP_RUN_CASE_ID.json"
+  CLAIM_PAYLOAD="${RUNNER_TEMP:-$EV}/stamp-claim-payload-$STAMP_RUN_CASE_ID.json"
+  SOURCE_COMMIT="$SOURCE_COMMIT" ARTIFACT_SHA="$ARTIFACT_SHA" APP_VERSION="$APP_VERSION" \
+    VERSION_CODE="$VERSION_CODE" PACKAGE_ID="$PACKAGE_ID" JOB_REF="$JOB_REF" \
+    node -e 'const fs=require("fs"); const e=process.env; const code=e.VERSION_CODE===""?null:Number(e.VERSION_CODE); if(code!==null&&!Number.isInteger(code))process.exit(2); fs.writeFileSync(process.argv[1],JSON.stringify({ci_job_ref:e.JOB_REF,source_commit:e.SOURCE_COMMIT,apk_sha256:e.ARTIFACT_SHA,app_version:e.APP_VERSION,version_code:code,package_id:e.PACKAGE_ID}));' "$CLAIM_PAYLOAD"
   if curl -sf -X POST "$BASE/claim" -H "$AUTH" -H 'content-type: application/json' \
-    -d "{\"ci_job_ref\":\"$JOB_REF\",\"source_commit\":\"${GITHUB_SHA:-}\",\"apk_sha256\":\"$APK_SHA\",\"app_version\":\"$VN\",\"version_code\":${VC:-null}}" \
+    --data-binary @"$CLAIM_PAYLOAD" \
     -o "$CLAIM_RESPONSE"; then
     node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(v.claim_token)fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE"
-    rm -f "$CLAIM_RESPONSE"
-    echo "stamp: claimed (commit=${GITHUB_SHA:-?} apk=${APK_SHA:0:12})"
+    rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"
+    echo "stamp: claimed (commit=${SOURCE_COMMIT:-?} artifact=${ARTIFACT_SHA:0:12})"
     exit 0
   fi
-  rm -f "$CLAIM_RESPONSE"
+  rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"
   echo "stamp: claim failed (strict fail-closed)" >&2
   exit 1
 fi

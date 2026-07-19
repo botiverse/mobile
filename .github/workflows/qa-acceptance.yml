@@ -34,6 +34,26 @@ on:
         description: "Direct APK download URL to test (skips build)"
         required: false
         default: ""
+      artifact_sha256:
+        description: "Frozen artifact SHA-256 for strict Stamp claim identity"
+        required: false
+        default: ""
+      artifact_source_commit:
+        description: "Frozen source commit for strict Stamp claim identity"
+        required: false
+        default: ""
+      artifact_version:
+        description: "Frozen version name for strict Stamp claim identity"
+        required: false
+        default: ""
+      artifact_version_code:
+        description: "Frozen version code for strict Stamp claim identity"
+        required: false
+        default: ""
+      artifact_package_id:
+        description: "Frozen package id for strict Stamp claim identity"
+        required: false
+        default: ""
       # Required-marker coverage gate (task #6): comma-separated
       # `marker|min|max` entries checked against qa-evidence/logcat.txt after
       # the run. Any missing/out-of-bounds marker overrides the agent's visual
@@ -171,6 +191,17 @@ jobs:
       - name: Checkout mobile
         uses: actions/checkout@v5
 
+      - name: Validate frozen artifact inputs
+        env:
+          PIN_PRIMARY: ${{ inputs.apk_run_id }}
+          PIN_SECONDARY: ${{ inputs.apk_url }}
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          ARTIFACT_SOURCE_COMMIT: ${{ inputs.artifact_source_commit }}
+          ARTIFACT_VERSION: ${{ inputs.artifact_version }}
+          ARTIFACT_VERSION_CODE: ${{ inputs.artifact_version_code }}
+          ARTIFACT_PACKAGE_ID: ${{ inputs.artifact_package_id }}
+        run: node scripts/qa/validate_frozen_inputs.mjs
+
       - name: Free runner disk space for emulator
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
@@ -195,6 +226,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           APK_RUN_ID: ${{ inputs.apk_run_id }}
           APK_URL: ${{ inputs.apk_url }}
+          FROZEN_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
         run: |
           mkdir -p apks
           if [ -n "$APK_RUN_ID" ]; then
@@ -202,8 +234,44 @@ jobs:
             # artifacts for foreign runs (the alpha workflow names its APK
             # android-alpha-<n>-<sha>), then bind build-info to the source
             # run's head commit if the artifact didn't carry one.
-            gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n qa-acceptance-apk -D apks 2>/dev/null \
-              || gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -D apks
+            if [ -n "$FROZEN_ARTIFACT_SHA256" ]; then
+              metadata="$RUNNER_TEMP/pinned-android-artifacts.json"
+              resolved="$RUNNER_TEMP/pinned-android-artifact.json"
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$APK_RUN_ID/artifacts?per_page=100" > "$metadata"
+              node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID"
+              artifact_name=$(jq -r .artifactName "$resolved")
+              source_commit=$(jq -r .sourceCommit "$resolved")
+              artifact_id=$(jq -r .artifactId "$resolved")
+              gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n "$artifact_name" -D apks
+              apk=$(find apks -type f -name '*.apk' -print -quit)
+              test -s "$apk"
+              bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+              badging=$("$bt/aapt" dump badging "$apk")
+              pkg=$(printf '%s' "$badging" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)
+              vn=$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+              vc=$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+              APK="$apk" SOURCE="$source_commit" PIN="$APK_RUN_ID" ARTIFACT_NAME="$artifact_name" ARTIFACT_ID="$artifact_id" PKG="$pkg" VN="$vn" VC="$vc" python3 - <<'EOF2'
+          import hashlib, json, os
+          apk = os.environ["APK"]
+          info = {
+              "platform": "android",
+              "pinned_from_run": os.environ["PIN"],
+              "artifact_id": os.environ["ARTIFACT_ID"],
+              "artifact_name": os.environ["ARTIFACT_NAME"],
+              "source_commit": os.environ["SOURCE"],
+              "source_commit_verified": True,
+              "apk_sha256": hashlib.sha256(open(apk, "rb").read()).hexdigest(),
+              "package": os.environ["PKG"],
+              "app_version": os.environ["VN"],
+              "version_code": os.environ["VC"],
+          }
+          json.dump(info, open("apks/build-info.json", "w"), indent=1)
+          print(json.dumps(info))
+          EOF2
+            else
+              gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n qa-acceptance-apk -D apks 2>/dev/null \
+                || gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -D apks
+            fi
             if ! find apks -name build-info.json | grep -q .; then
               # A foreign run's headSha is its WORKFLOW-DEFINITION ref, not the
               # build source (the Android Alpha Validation run 29546326028
@@ -262,6 +330,36 @@ jobs:
           EOF
           fi
           ls -la apks
+
+      - name: Verify frozen Android artifact identity
+        if: ${{ inputs.artifact_sha256 != '' }}
+        env:
+          ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          ARTIFACT_SOURCE_COMMIT: ${{ inputs.artifact_source_commit }}
+          ARTIFACT_VERSION: ${{ inputs.artifact_version }}
+          ARTIFACT_VERSION_CODE: ${{ inputs.artifact_version_code }}
+          ARTIFACT_PACKAGE_ID: ${{ inputs.artifact_package_id }}
+        run: |
+          mapfile -t apk_candidates < <(find apks -type f -name '*.apk' -print)
+          mapfile -t manifest_candidates < <(find apks -type f -name build-info.json -print)
+          if [ "${#apk_candidates[@]}" -ne 1 ] || [ "${#manifest_candidates[@]}" -ne 1 ]; then
+            echo "strict frozen Android identity requires exactly one APK and one build-info.json" >&2
+            printf 'APKs: %s\n' "${apk_candidates[*]:-none}" >&2
+            printf 'manifests: %s\n' "${manifest_candidates[*]:-none}" >&2
+            exit 2
+          fi
+          apk="${apk_candidates[0]}"
+          manifest="${manifest_candidates[0]}"
+          test -s "$apk" && test -s "$manifest"
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          badging=$("$bt/aapt" dump badging "$apk")
+          pkg=$(printf '%s' "$badging" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)
+          vn=$(printf '%s' "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+          vc=$(printf '%s' "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+          sha=$(sha256sum "$apk" | awk '{print $1}')
+          APK_SHA="$sha" APK_PKG="$pkg" APK_VERSION="$vn" APK_CODE="$vc" node -e \
+            'const fs=require("fs"),e=process.env;fs.writeFileSync("apks/observed-identity.json",JSON.stringify({sha256:e.APK_SHA,packageId:e.APK_PKG,version:e.APK_VERSION,versionCode:e.APK_CODE}))'
+          node scripts/qa/verify_pinned_android_identity.mjs "$manifest" apks/observed-identity.json
 
       - name: Enable KVM
         run: |

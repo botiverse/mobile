@@ -1,0 +1,41 @@
+name: QA infrastructure tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/qa-acceptance.yml"
+      - ".github/workflows/qa-acceptance-ios.yml"
+      - ".github/workflows/qa-infra-test.yml"
+      - "scripts/qa/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/qa-acceptance.yml"
+      - ".github/workflows/qa-acceptance-ios.yml"
+      - ".github/workflows/qa-infra-test.yml"
+      - "scripts/qa/**"
+
+permissions:
+  contents: read
+
+jobs:
+  qa-infra:
+    name: Frozen artifact and reporter contracts
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Run QA contract tests
+        run: node --test scripts/qa/*.test.mjs
+      - name: Check shell syntax
+        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh
+      - name: Check patch whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: git diff --check "$BASE_SHA" "$HEAD_SHA" --
