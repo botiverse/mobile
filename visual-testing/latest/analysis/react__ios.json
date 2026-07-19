@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-18T07:43:15.996Z",
+  "generatedAt": "2026-07-19T05:29:26.256Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 84,
-    "ready": 71,
-    "pending": 13
+    "total": 82,
+    "ready": 63,
+    "pending": 19
   },
   "cases": [
     {
@@ -368,7 +368,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062097122642146285
+      "metricMismatch": 0.062095097284670775
     },
     {
       "id": "components.ui.spinner.states",
@@ -672,48 +672,28 @@
     {
       "id": "components.auth.register.inputs",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:14.893Z",
+      "imageHash": "p1:1ffe1ffe000000000000000030800000fe7f0000fe7ffffff08ffe7ff00ffe7f9ffff81f83fcdfff8000c0fb8fffc00380fcdf038000c3fb881fc003f61fcfff8000c0038001c003c3e3d40fb00cc0038000c003b00cf01f8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-07-19T05:29:25.169Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22756916595779153
     },
     {
       "id": "components.navigation.tabbar.states",
-      "status": "ready",
+      "status": "pending",
       "imageHash": "p1:00000000000000000000000000006666fffefffefffe7ffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffeffff0000fff80fff",
-      "generatedAt": "2026-07-11T22:11:10.892Z",
-      "severity": "low",
-      "summary": [
-        "Different active tab state: React baseline has 'Home' selected/active (yellow fill), iOS shows 'Tasks' as the active tab (yellow fill)",
-        "Tab labels in iOS are rendered in ALL CAPS (HOME, TASKS, MEMBERS, SETTINGS) whereas React baseline uses Title Case (Home, Tasks, Members, Settings)",
-        "Label typography appears heavier/bolder in iOS compared to the lighter weight in React",
-        "Top divider line is thicker/more prominent in the iOS render than in React",
-        "Icons appear visually similar in shape and proportion across both renders"
-      ],
-      "likelyCauses": [
-        "iOS applies default UINavigationBar/UITabBar text-transform uppercase styling not overridden in custom TabBar component",
-        "Active tab prop state differs between baseline snapshot and current iOS snapshot (Home vs Tasks selected)",
-        "React baseline snapshot used a different selectedIndex than the iOS render",
-        "Default iOS font weight (semibold/bold) used for tab item labels instead of matching React's weight token"
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Add `textTransform: 'none'` (or set attributed string with original casing) to iOS tab labels to match React Title Case",
-        "Align the active/selected tab in the iOS snapshot fixture with the React baseline (currently both should show Home active)",
-        "Match iOS tab label font weight to React's token (likely 500/medium) instead of iOS default semibold",
-        "Review top divider stroke thickness and align to React's 1px border token",
-        "Re-run snapshot test after state alignment to confirm pixel mismatch drops below tolerance"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.03257719987577812
+      "generatedAt": "2026-07-19T05:29:25.214Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0057496523136333355
     },
     {
       "id": "components.thread.composer.empty",
@@ -782,15 +762,15 @@
     {
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:14.973Z",
+      "imageHash": "p1:0000000000010002000100020081080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-19T05:29:25.268Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.021368534046259158
     },
     {
       "id": "components.thread.composer.member-suggestions",
@@ -867,15 +847,15 @@
     {
       "id": "components.thread.composer.image-preview",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:14.980Z",
+      "imageHash": "p1:00000000000100020ffd4ffe0ff90ff20001000206910f02000100027ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-19T05:29:25.293Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04133214512361427
     },
     {
       "id": "components.thread.files.list",
@@ -1053,7 +1033,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09699740754243125
+      "metricMismatch": 0.09699673242327267
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1089,7 +1069,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10814261217104815
+      "metricMismatch": 0.1081412619327311
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1160,39 +1140,16 @@
     },
     {
       "id": "components.thread.comment-anchor",
-      "status": "ready",
-      "imageHash": "p1:07fe07fe001e00fe0000801e807e0e08807f0ffeffff0106ffff7ffefffefffefffefffefffefffefffefffefffefffefffefffeffff0000ffff0ff8ffff0018ffff001effff03feffff03e0ffff001cffff0004ffff1ffcffff00fcffff0000ffff0002fffe001e003207fc00023ffc7fde00007ff8000400000000ffff7fff",
-      "generatedAt": "2026-07-10T22:13:15.016Z",
-      "severity": "high",
-      "summary": [
-        "Completely different component scope rendered: React (left) shows only a small top comment chip + a bottom composer anchored to a video file (.mp4); iOS (right) renders a full file preview surface (FILE PREVIEW header, Review text, body) with a side/bottom Comments panel containing file metadata, All/Unresolved tabs, existing comment card with Quote/Resolve actions, and a full composer with SEND COMMENT button.",
-        "Anchor/attachment label differs: React anchors to 'agent-tabs-full-page-review.mp4' (video file, map-pin icon), iOS anchors to 'agent-tabs-full-page-review.md' (markdown file, document icon) with 23.0 KB · text/markdown metadata.",
-        "Comment body differs: React shows monospaced code-style text 'Please keep the tag inset consistent with the field below.'; iOS shows the same sentence in a proportional sans-serif at larger size with a white card background, border, Quote and Resolve action buttons, and a top-right close (×) icon not present in React.",
-        "Typography weight/size mismatch: iOS uses a much larger, bolder title ('FILE PREVIEW' all-caps), larger H1 'Review', and a more condensed comment timestamp ('18:32') versus React's small, lighter '06/25 10:32 AM'.",
-        "Alignment and layout differ: React is a single-column sheet with comment chip top-left and composer bottom-left; iOS uses a two-region layout (preview on top, comments panel below) with right-aligned timestamps, right-aligned close icon, and right-aligned SEND COMMENT button."
-      ],
-      "likelyCauses": [
-        "Baseline React snapshot was captured from a different entry point (a comment-anchor/chip variant) while iOS rendered the full file preview with the comments drawer open, so the two views are not the same component state.",
-        "Fixture/test data diverged between platforms: React used an .mp4 anchor with no metadata, iOS used an .md anchor with size/type metadata and a richer comment card.",
-        "No shared design tokens or cross-platform Storybook entry for 'thread.comment-anchor' — each platform implements its own layout, leading to divergent typography, spacing, and chrome (back arrow, tabs, close button, send button).",
-        "Comment card density differs: iOS added Quote/Resolve actions and a bordered card surface that React's anchor variant does not include."
-      ],
-      "suggestedOwner": "design-system / cross-platform parity owner (Threads comment component maintainers)",
-      "suggestedFixes": [
-        "Align on a single source of truth: pick one canonical layout for 'thread.comment-anchor' (chip-only vs full preview + comments drawer) and ensure both React and iOS baselines render the same component state during Slock capture.",
-        "Normalize anchor metadata: render the same filename, icon, and subtitle (e.g., size + mime) on both platforms; remove the .mp4 vs .md mismatch or update the fixture to match.",
-        "Unify comment card treatment: match border, background, padding, typography weight/size, and include/exclude Quote/Resolve buttons consistently across React and iOS.",
-        "Align composer affordances: place the send button, attachment tag, and close (×) icon in the same positions; match composer input height and placeholder text weight.",
-        "Add a token check for the FILE PREVIEW header style (size, weight, casing) and the timestamp format ('06/25 10:32 AM' vs '18:32') so they match the design spec."
-      ],
-      "intentional": [
-        "iOS platform-specific file metadata (23.0 KB · text/markdown) may be intentional on iOS only.",
-        "iOS close (×) button in the comments panel is a platform navigation convention that may be intentionally omitted on React."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.24783151726279684
+      "status": "pending",
+      "imageHash": "p1:07fe07fe001e00fe0000801e807e0e08807f0ffeffff0106ffff7ffefffefffefffefffefffefffefffefffefffefffefffe7ffeffff0000ffff07f8ffff001cffff001cffff03feffff0000ffff001cffff0004ffff00fcffff00fcffff0000ffff0002fffe001e003207fc00023ffc7fde00007ff8000400000000ffff7fff",
+      "generatedAt": "2026-07-19T05:29:25.502Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2483624984809819
     },
     {
       "id": "components.home.titlebar.states",
@@ -1296,12 +1253,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26784204912167
+      "metricMismatch": 0.2678184199511213
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c0000c1cc00078000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c0000c1cc00078000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.554Z",
       "severity": "high",
       "summary": [
@@ -1332,12 +1289,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26763141194420814
+      "metricMismatch": 0.26760643253534244
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc0ffe87fc07fe0000000681f107c680310066800d007ec1fdfffefc31ffee80310146801d00668ffd087efcf1fffe81f1fbce801103c6801d0026e3f1007e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc0ffe87fc07fe0000000683f107c680310066800d007ec1fdfffefc31ffee80310146801d00668ffd087efcf1fffe81f1fbce801103c6801d0026e3f1007e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-07-11T22:11:14.878Z",
       "severity": "medium",
       "summary": [
@@ -1366,7 +1323,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.11590783273247729
+      "metricMismatch": 0.1157906995584721
     },
     {
       "id": "components.home.activity.results",
@@ -1395,7 +1352,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09555332766233238
+      "metricMismatch": 0.0955155209894546
     },
     {
       "id": "components.tasks.panel.states",
@@ -1460,119 +1417,55 @@
     },
     {
       "id": "components.home.create-channel.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff00000000000000000000000000003ff47ffc7cf87ffc7ffc7ffe7ffc7ffc7ffc63fc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffe47fc47fe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc8e7f7ffcffff7ffcffff7ffcffff7ffcffff6ffcbffd7f00bffd7f008ff000008ff00000bff900009ff90000ffffffffffff",
-      "generatedAt": "2026-07-18T07:40:26.406Z",
-      "severity": "high",
-      "summary": [
-        "iOS view is missing the bottom action buttons (Cancel and Create Channel) due to on-screen keyboard occlusion.",
-        "iOS keyboard is visible and pushing the AGENTS list and Members search field partially out of view.",
-        "React baseline shows the full dialog including selected agents (Cindy, Visual QA, Designer) with pink selection highlight and checkmarks; iOS only shows the AGENTS header with no list items visible.",
-        "iOS name field shows helper text 'Start with a letter. Use letters from any language, nu…' that is clipped/truncated and not present in React.",
-        "iOS description textarea content ('blockers') is clipped at the bottom of the visible field."
-      ],
-      "likelyCauses": [
-        "iOS screenshot was captured while the keyboard was active, causing viewport compression and hiding lower dialog content.",
-        "Missing auto-scroll-to-focused-field behavior on iOS to keep the dialog context visible above the keyboard.",
-        "Action button row (Cancel/Create Channel) is positioned at the bottom of the scroll content with no safe-area or keyboard avoidance handling.",
-        "Selection state for agents (pink highlight, checkmark icons) may render below the fold and is not visible in the captured iOS state."
-      ],
-      "suggestedOwner": "ios",
-      "suggestedFixes": [
-        "Add KeyboardAvoidingView or equivalent safe-area padding so the dialog content and action buttons remain visible when the soft keyboard is shown.",
-        "On focus of Name/Description fields, scroll the dialog so the focused input and the primary action button (Create Channel) stay above the keyboard.",
-        "Ensure the bottom action bar (Cancel / Create Channel) is pinned or repositioned when the keyboard appears (e.g., dock above keyboard).",
-        "Truncate helper text under the Name field with an ellipsis correctly, or move the full helper text below the visible input so it does not clip against the field border.",
-        "Resize the description textarea to avoid clipping its content; allow vertical growth or ensure scrolling reveals the full text."
-      ],
-      "intentional": [
-        "Presence of the iOS soft keyboard is expected for a text-entry screenshot."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.44041465818717007
-    },
-    {
-      "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000007dfc3ffc7df83ffc7ffc3ffc39fc006c7ffc21fc7ffc3ffc3ffc3ffc000428fc3ffc1ffc3ffc3ffc3ffc3ffc3ffc27fc7ffc3ffc7ffc3ffc07fc3ffc7ffc3ffc7ffc3ffc80012ffcfff737fcffff2ffcffff3ffcffff37fcbff83ffc3ff83ffc8ff03d000ff038008181000090010000fffdffffffff",
-      "generatedAt": "2026-07-13T22:12:02.692Z",
-      "severity": "high",
-      "summary": [
-        "React baseline shows a full modal with 'Agent limit reached' warning banner, MORE section, and Cancel/Create Agent footer buttons; iOS side is missing all of these.",
-        "iOS screen is dominated by the on-screen keyboard, which is not present in the React baseline.",
-        "iOS form fields appear at larger physical sizes (taller inputs, larger type) consistent with a 1170×2532 canvas scaled up vs. the 390×844 React canvas.",
-        "React shows a pink 'Create Agent' primary button plus 'Cancel' secondary; iOS shows neither, only the system keyboard's blue 'done' key.",
-        "iOS has a visible 'Suggested computer: computer-mbp' helper line beneath the Computer field; React baseline does not render this helper."
-      ],
-      "likelyCauses": [
-        "iOS screenshot was captured while the soft keyboard was open, cropping/occluding the lower portion of the modal (footer buttons, MORE expander, model field).",
-        "Different viewport/scale handling in the iOS harness produced a higher-DPR render (1170×2532) versus baseline (390×844), inflating type and input heights.",
-        "iOS dialog appears to omit the upgrade-limit banner and action footer entirely, or they are hidden behind the keyboard.",
-        "Helper text 'Suggested computer' may be rendered conditionally or positioned differently on iOS."
-      ],
-      "suggestedOwner": "iOS client / mobile-dialog owner",
-      "suggestedFixes": [
-        "Dismiss the keyboard before capturing the iOS screenshot so the modal footer (Cancel / Create Agent) and MORE section are visible.",
-        "Match the iOS dialog layout to the React dialog: include the 'Agent limit reached' warning banner and the Cancel + Create Agent action buttons.",
-        "Normalize DPR/scale so iOS form fields, labels, and spacing match the 390×844 React baseline proportions (or compare at equivalent logical points).",
-        "Verify the 'Suggested computer' helper text rendering on iOS and align visibility/placement with the React version.",
-        "Re-run the visual diff with the keyboard hidden and a consistent crop contract applied to both sides."
-      ],
-      "intentional": [
-        "Higher physical resolution (1170×2532) on iOS is expected; the visual diff should be evaluated at normalized logical size."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.48325704486841925
-    },
-    {
-      "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:8fffcfff000000003ffc2dfc2bf82df83e6c3ffc006c00fc3ffc2bfc27fc3ffc3ffc3ffc2ffc00040ffc03fc3dfc3ffc23fc3ffc27fc3ff43dfc7ffc3ffc3ffc27fc07fc3ffc3ffc3ffc3ffc0ffc80003bfcce7327fcffff0ffcffff2ffcfffe3ffc1ff83ffc1ff80ffc0ff037fc0fe02ffc80013ffc80013d008001ffffffff",
-      "generatedAt": "2026-07-13T22:12:02.744Z",
-      "severity": "high",
-      "summary": [
-        "iOS view shows keyboard covering most of the form, while React baseline shows full form with Cancel/Create Agent buttons visible at bottom",
-        "React baseline displays 'Agent limit reached (2/2 on Free plan). Upgrade for more' banner; iOS version is missing this alert/banner entirely",
-        "React baseline shows a 'PROVIDER' section with Default dropdown and descriptive helper text; iOS view has no Provider section visible",
-        "React shows Claude Code in Runtime and Claude Opus in Model; iOS shows Codex CLI in Runtime (different values selected)",
-        "iOS view is cropped/clipped at the Model dropdown and bottom action buttons, while React shows the full dialog including MORE disclosure and Cancel/Create Agent buttons"
-      ],
-      "likelyCauses": [
-        "iOS screenshot captured during active text input, triggering the system keyboard overlay",
-        "Different form state/focus between baseline (full form) and current (name field focused with keyboard up)",
-        "iOS implementation may omit the Provider field and the agent-limit-reached warning banner",
-        "Possible missing 'Upgrade' alert component in the iOS implementation"
-      ],
-      "suggestedOwner": "ios-engineering",
-      "suggestedFixes": [
-        "Dismiss keyboard before capturing the iOS screenshot, or capture with no field focused to show full dialog",
-        "Verify whether the 'Agent limit reached' warning banner and Provider dropdown are implemented in iOS",
-        "Ensure consistent form values (Runtime/Model defaults) when capturing for comparison",
-        "If the dialog should be scrollable on iOS, scroll to top before screenshot to show the COMPUTER field at top",
-        "Add the same alert/banner component used on React to the iOS Create Agent flow"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.43312202103671293
-    },
-    {
-      "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.385Z",
+      "imageHash": "p1:ffffffff00000000000000000000000000007ffc7ffc7ef87ffc7ffc7ffe7ffc7ffc41f863fc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc6ffe47fc47fe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc8e7f4ffcffff7ffcffff7ffcffff7ffcffff6ffcbffd7f003ffd7e008ff000008ff00000bff900009ff90000ffffffffffff",
+      "generatedAt": "2026-07-19T05:29:25.668Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4478568342312418
+    },
+    {
+      "id": "components.members.create-agent.dialog",
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ffc3ffc3ffc00cc006c7ffc21fc3ffc3ffc3dfc3ffc7ffc28fc1ffc1ffc31fc3ffc07fc3ffc07fc27fc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc3ffc80012ffcfff737fcffff2ffcffff3ffcffff37fcbff83ffc3ff83ffc8ff03d000ff038008181000090090000fffdffffffff",
+      "generatedAt": "2026-07-19T05:29:25.672Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.5004729209705513
+    },
+    {
+      "id": "components.members.create-agent.claude-dialog",
+      "status": "pending",
+      "imageHash": "p1:8fffcfff000000003ffc2dfc2bf82df83e6c3e4c006c000c3ffc3ffc27fc0ffc3ffc38fc2ffc1ffc0ffc1ffc3dfc21fc23fc03fc27fc03fc3dfc3ffc3ffc3ffc27fc3ff43ffc3ffc3ffc2ffc0ffc80003bfcce7327fcffff0ffcffff2ffcfffe3ffc1ff83ffc1ff80ffc0ff037fc0fe02ffc80013ffc80013d008001ffffffff",
+      "generatedAt": "2026-07-19T05:29:25.703Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.399672229648533
+    },
+    {
+      "id": "components.members.create-agent.claude-custom-provider-dialog",
+      "status": "pending",
+      "imageHash": "p1:efffcfff000000003ffc3dfc2bf82df83f6c3e4c00ec000c3ffc3ffc27fc1ffc3ffc38fc2ffc1ffc0ffc1ffc3dfc21fc23fc03fc27fc03fc3dfc3ffc3ffc3ffc2ffc3ff43ffc7ffc3ffc3ffc0ffc80003ffcce7327fcffff2ffcffff2ffcfffe3ffc1ff83ffc1ff82ffc0ff03ffc0fe02ffc80012ffc80013ffc8001ffffffff",
+      "generatedAt": "2026-07-19T05:29:25.748Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4009269386046638
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -1610,39 +1503,16 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff8000000100000000000000000000000000000000000000007ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e400060027ffc783e400060027ffc400240007ffe2004000000000000000000000000000000000000000080018001ffffffff",
-      "generatedAt": "2026-07-18T07:40:30.853Z",
-      "severity": "high",
-      "summary": [
-        "Save Changes button: React baseline is solid pink/magenta and active; iOS is greyed out / disabled state, indicating a different interactive state is being captured.",
-        "Cancel and Save Changes buttons have reduced internal padding in iOS vs React baseline — buttons appear noticeably shorter in height.",
-        "Cancel and Save Changes buttons in iOS are positioned side-by-side with smaller gap; React has buttons centered with more vertical breathing room.",
-        "Bottom action buttons (Make Private / Archive Channel / Delete Channel) in iOS are wider (full panel width) vs React where they have horizontal padding inset from modal edges.",
-        "Overall panel/modal padding in iOS is tighter; field labels, inputs and buttons all sit closer to the modal edges compared to React."
-      ],
-      "likelyCauses": [
-        "iOS capture is being taken with the form in a different state (Save Changes disabled because name not edited, or initial render).",
-        "iOS implementation uses different button sizing tokens (smaller heights, full-width destructive/secondary actions).",
-        "iOS uses platform-default regular font weight for form labels while React uses a bold token.",
-        "Layout system on iOS applies tighter insets / no horizontal inset for stacked action buttons.",
-        "Button gap/spacing tokens for modal action rows differ between web (React) and iOS."
-      ],
-      "suggestedOwner": "ios-engineering",
-      "suggestedFixes": [
-        "Normalize the test state so both platforms render the same form state (force Save Changes enabled, identical input values) before capture.",
-        "Match iOS Cancel/Save button height to React baseline (~44pt vs current ~36pt) by adjusting vertical padding.",
-        "Apply consistent side padding so stacked action buttons (Make Private / Archive / Delete) are not full-width on iOS, matching the React inset.",
-        "Use bold font weight for 'NAME *' and 'DESCRIPTION (optional)' labels to match the React baseline.",
-        "Increase horizontal margin between Cancel and Save Changes to match the React button-group spacing token."
-      ],
-      "intentional": [
-        "None expected — the disabled Save Changes and resized buttons suggest unintended drift rather than platform convention."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.21101085591606916
+      "status": "pending",
+      "imageHash": "p1:ffffffff8000000100000000000000000000000000000000000000007ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7f867ffc7f827ffc7ffe7ffc7c3e7c3860027dfc781e781c40024004400240007ffe2004000000000000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-19T05:29:25.755Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17753068416575524
     },
     {
       "id": "components.channel.members.add-panel",
@@ -1928,50 +1798,17 @@
       "metricMismatch": 0.21314862073155916
     },
     {
-      "id": "components.settings.billing.page",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe9bff9bff81fe80ff9ffe1fff81ff01f79ffc1ff78ff41ef7a0fc001780040ff78ffc6ff7a1fc6ff7a03c6837a87c6bf7adfc41f7a1fc60f7bf7c60779ffc6ff7800027f780fc40f7bffc6077800c7bf7800c4057801c4ff780007ff7efff0ff7807c7ff7bffc6007800c000787fc83ff99fc0ff701fc1ff2ffffffff",
-      "generatedAt": "2026-07-09T22:22:02.573Z",
-      "severity": "high",
-      "summary": [
-        "Different plan states rendered: React shows 'Pro' (paid) with seat usage bar and Billing portal/Cancel subscription buttons, while iOS shows 'Free' tier with 'Included'/'Not included' sections and Message History/File uploads usage.",
-        "React includes a 'MANAGE SEATS' section with Total seats input field; iOS instead shows an 'UPGRADE TO PRO' section with a 'PRO' card at the bottom.",
-        "Feature lists differ: React lists 'Everything in Free', 'Unlimited message history', 'Higher file upload limits', 'Joint channels', 'More professional features coming soon'; iOS lists Channels, Tasks, Agents on your own computers, Agent reminders, Basic observability, 30 days of message history, 100 MB file uploads/month, and a separate 'Not included' list with red X marks.",
-        "React has a yellow seat progress bar (Humans/Agents legend); iOS has no seat bar and instead shows numeric usage rows (30 days, 128 MB / 1024 MB).",
-        "Action buttons differ: React has 'Billing portal' and 'Cancel subscription'; iOS has only 'See all features and compare plans' plus an Upgrade to Pro CTA."
-      ],
-      "likelyCauses": [
-        "React component is rendering a paid/Pro subscription state while iOS is rendering a Free tier state—likely different mock data or fixture per platform.",
-        "Plan card component is platform-specific (separate React vs. iOS implementations) with divergent copy and feature lists.",
-        "The test snapshots are using mismatched account/plan fixtures between the two platforms.",
-        "Manage seats and Billing portal are missing from iOS build, or iOS route is showing a different page section (upgrade prompt) instead of the same billing view."
-      ],
-      "suggestedOwner": "billing-frontend",
-      "suggestedFixes": [
-        "Align the test fixtures so both platforms render the same plan state (both Pro or both Free) before comparison.",
-        "Consolidate the plan card content into a shared spec so feature lists, CTAs, and usage meters match across React and iOS.",
-        "Ensure the iOS Settings/Billing page renders the Manage seats, Billing portal, and Cancel subscription sections that exist in React.",
-        "Use the same plan tier copy (e.g., include the Free tier features list in React's 'Everything in Free' expandable view, and vice versa).",
-        "Re-run the visual diff after aligning fixtures and component parity; verify seat progress bar and usage rows match in intent and placement."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17163149295850721
-    },
-    {
       "id": "components.settings.language-region.page",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.617Z",
+      "imageHash": "p1:0ffe0ffe9fff9fff80ff803fbffe3fff87ff03f783fc7ff7c1fc0077803c00178fe88007800083f7c1fc03f7fffc7ed783fc007787fc000787fc003780007ff7ffff35f78ffc0e27cffc8007bffc07f78000800787fc8fffdffc0ff781fc7ff781fc3ff787fc8007800007f7ffff00f7ffff00f7ffff0ff7ffff07f2ffffffff",
+      "generatedAt": "2026-07-19T05:29:25.951Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2030198079961113
     },
     {
       "id": "components.settings.appearance.page",
@@ -2003,7 +1840,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1799773159962733
+      "metricMismatch": 0.17999621933271226
     },
     {
       "id": "components.settings.notifications.page",
@@ -2114,20 +1951,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.697Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
-    },
-    {
-      "id": "screens.members.agent-detail.permissions",
-      "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.697Z",
+      "generatedAt": "2026-07-19T05:29:25.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2140,7 +1964,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.697Z",
+      "generatedAt": "2026-07-19T05:29:25.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2153,7 +1977,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.697Z",
+      "generatedAt": "2026-07-19T05:29:25.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2166,7 +1990,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.697Z",
+      "generatedAt": "2026-07-19T05:29:25.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2179,7 +2003,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.697Z",
+      "generatedAt": "2026-07-19T05:29:25.921Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2286,56 +2110,33 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25410438692429216
+      "metricMismatch": 0.25410404936471287
     },
     {
       "id": "screens.settings.server-danger-modal",
       "status": "pending",
-      "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.746Z",
+      "imageHash": "p1:ffffffff800180018000000180000001800100018000000180000001800000018000fffd8000fffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcff86fffdfffe0001800080018001000180010001800100018001000180010001800100018000000180018001ffffffff",
+      "generatedAt": "2026-07-19T05:29:26.116Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "missing side-by-side image",
-      "metricMismatch": null
+      "error": "codex CLI not found",
+      "metricMismatch": 0.8870539150160003
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffec7ff8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffec1ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffefffefffefffeffff0000000000010109000000007ffefffe3fff",
-      "generatedAt": "2026-07-18T07:40:47.832Z",
-      "severity": "high",
-      "summary": [
-        "React shows full list including PINNED, JOINT CHANNELS, CHANNELS, and DIRECT MESSAGES sections; iOS shows only CHANNELS and DIRECT MESSAGES.",
-        "React renders 9 placeholder list rows across all sections (2+4+3); iOS renders 7 rows (4 channels + 3 DMs).",
-        "iOS is missing the PINNED section header and the 'Drag channels or DMs here to pin' empty-state hint.",
-        "iOS is missing the JOINT CHANNELS section header and its 2 placeholder rows.",
-        "React uses 'Channels' label casing while iOS uses 'CHANNELS' (uppercase) in the section header."
-      ],
-      "likelyCauses": [
-        "iOS build is rendering a different default/loading state that omits Pinned and Joint Channels sections.",
-        "Section header text transform (uppercase) is applied on iOS but not in React baseline.",
-        "Bottom navigation typography style differs by platform (UPPERCASE on iOS, Title Case on web).",
-        "Tab bar selected-item visual treatment is implemented inconsistently across platforms.",
-        "Different placeholder/skeleton counts per platform due to divergent loading-state contracts."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Reconcile loading-state contract: ensure iOS renders PINNED, JOINT CHANNELS, CHANNELS, and DIRECT MESSAGES sections consistently with web.",
-        "Apply consistent text casing across section headers and bottom-nav labels between platforms.",
-        "Match bottom-nav active-state sizing, color block, and typography weight to the React baseline.",
-        "Align skeleton/placeholder row counts (2 + 4 + 3 in baseline) on iOS loading state.",
-        "Add the empty-state hint 'Drag channels or DMs here to pin' under Pinned on iOS when count is 0."
-      ],
-      "intentional": [
-        "Skeletons indicating loading may be acceptable but counts/structure should match baseline."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.16607863787958577
+      "status": "pending",
+      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffec7fe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffec1ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
+      "generatedAt": "2026-07-19T05:29:26.164Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1930739525526255
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2581,7 +2382,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-18T07:43:15.904Z",
+      "generatedAt": "2026-07-19T05:29:26.170Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

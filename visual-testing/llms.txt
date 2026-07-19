@@ -1,31 +1,31 @@
 # Raft Visual Testing
 
-Generated: 2026-07-18 07:43:20 UTC
-Latest run: 5149272-20260718073555
-Latest commit: 5149272-20260718073555
-Commit subject: ci(visual): wire degraded-provider publish tolerance + allow_case_drop input (task #498) (#1239)
+Generated: 2026-07-19 05:29:30 UTC
+Latest run: 52bfef4-20260719052734
+Latest commit: 52bfef4-20260719052734
+Commit subject: fix(settings): support large Hands feedback attachments (#1290)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 84, same 0, pass 0, basic-pass 1, different 76, missing 7
-AI analysis: ready 77 / total 84, pending 7
-Visual coverage matrix: active 93 / total 112, pending 16, skipped 3
+Summary: total 82, same 0, pass 0, basic-pass 1, different 81, missing 0
+AI analysis: ready 69 / total 82, pending 13
+Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 84, same 0, pass 0, basic-pass 1, different 76, missing 7
-- react__ios: total 84, same 0, pass 12, basic-pass 10, different 49, missing 13
-- android__ios: total 84, same 0, pass 13, basic-pass 17, different 47, missing 7
+- react__android: total 82, same 0, pass 0, basic-pass 1, different 81, missing 0
+- react__ios: total 82, same 0, pass 13, basic-pass 10, different 53, missing 6
+- android__ios: total 82, same 0, pass 13, basic-pass 17, different 46, missing 6
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 81, pending 2, total 85
-- Screens Parity (real-screen): active 12, pending 14, total 27
+- Components Parity (component-fixture): active 80, pending 2, total 84
+- Screens Parity (real-screen): active 11, pending 14, total 26
 
 ## Provider Coverage
 
-- react: active 93, pending 13, unsupported 0
-- android: active 87, pending 19, unsupported 0
-- harmony: active 0, pending 86, unsupported 0
+- react: active 91, pending 13, unsupported 0
+- android: active 85, pending 19, unsupported 0
+- harmony: active 0, pending 84, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
@@ -80,7 +80,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.settings.administration.pre-join-agreement: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.administration.translation: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.appearance.page: Real React SettingsPanel AppearanceSection mapped to KMP SettingsAppearanceContent through the shared settings visual page; full Settings route coverage remains screens.settings.appearance pending.
-- components.settings.billing.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.connected-apps.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.language-region.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.notifications.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
@@ -100,7 +99,6 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - screens.home.saved: Existing components.home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture.
 - screens.members.agent-detail.activity: Real Members route capture for the Activity tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.apps: Real Members route capture for the Apps tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
-- screens.members.agent-detail.permissions: Real Members route capture for the Permissions tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.profile: Real Members route capture for the Profile tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.reminders: Real Members route capture for the Reminders tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.agent-detail.workspace: Real Members route capture for the Workspace tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
@@ -120,6 +118,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 52bfef4-20260719052734: react vs android, total 82, pass 0, basic-pass 1, different 81, matrix runs/52bfef4-20260719052734/component-matrix.json, page runs/52bfef4-20260719052734/
 - 5149272-20260718073555: react vs android, total 84, pass 0, basic-pass 1, different 76, matrix runs/5149272-20260718073555/component-matrix.json, page runs/5149272-20260718073555/
 - c1d1e21-20260713220645: react vs android, total 95, pass 0, basic-pass 1, different 89, matrix runs/c1d1e21-20260713220645/component-matrix.json, page runs/c1d1e21-20260713220645/
 - 0dcd91e-20260712220551: react vs android, total 90, pass 0, basic-pass 1, different 85, matrix runs/0dcd91e-20260712220551/component-matrix.json, page runs/0dcd91e-20260712220551/
