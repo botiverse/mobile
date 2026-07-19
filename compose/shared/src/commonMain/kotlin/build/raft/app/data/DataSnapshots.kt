@@ -1194,6 +1194,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Open different workspaces in separate Android app windows. Existing windows remain open until you close them."
         ),
+    val serverDrawer: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
+        ),
     val threadRowAffordances: SettingsMobileMultiSelectionSnapshot =
         SettingsMobileMultiSelectionSnapshot(
             selectedKeys = ThreadRowAffordancePreference.Default.map { it.storageKey }.toSet(),

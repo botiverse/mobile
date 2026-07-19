@@ -54,6 +54,7 @@ import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
+import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -145,6 +146,7 @@ import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeServerDrawerState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedHomeTopAction
@@ -2809,6 +2811,7 @@ internal fun SlockAppShellContent(
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
+    var serverDrawerEnabled by remember { mutableStateOf(false) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
@@ -3276,6 +3279,7 @@ internal fun SlockAppShellContent(
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
         foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
+        serverDrawerEnabled = chatLayout.serverDrawerEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
@@ -4448,6 +4452,7 @@ internal fun SlockAppShellContent(
                                 activityTotalCount = homeActivityState.totalCount,
                                 savedCount = homeSearchSavedState.saved.totalCount,
                                 prefersChineseCommunity = prefersChineseCommunity,
+                                serverDrawerEnabled = serverDrawerEnabled,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
@@ -4662,6 +4667,10 @@ internal fun SlockAppShellContent(
                             onActivityTaskStatusBadgesSelected = {
                                 prewarmAdmissionGate.invalidate("settings_activity_badges")
                                 activityTaskStatusBadgesEnabled = it
+                            },
+                            onServerDrawerSelected = {
+                                prewarmAdmissionGate.invalidate("settings_server_drawer")
+                                serverDrawerEnabled = it
                             },
                             onThreadRowAffordanceSelected = { affordance, enabled ->
                                 prewarmAdmissionGate.invalidate("settings_thread_affordance")
@@ -4882,6 +4891,7 @@ private fun SettingsAppShellContent(
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
     onActivityTaskStatusBadgesSelected: (Boolean) -> Unit,
+    onServerDrawerSelected: (Boolean) -> Unit,
     onThreadRowAffordanceSelected: (ThreadRowAffordancePreference, Boolean) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
@@ -5650,6 +5660,10 @@ private fun SettingsAppShellContent(
                     },
                     onMultiShellHostChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetMultiShellHostEnabled(enabled))
+                    },
+                    onServerDrawerChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetServerDrawerEnabled(enabled))
+                        onServerDrawerSelected(enabled)
                     },
                     onThreadRowAffordanceChange = { affordance, enabled ->
                         onSettingsIntent(
@@ -6752,6 +6766,7 @@ private fun SettingsMobileContent(
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
     onMultiShellHostChange: (Boolean) -> Unit,
+    onServerDrawerChange: (Boolean) -> Unit,
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val snapshot =
@@ -6821,6 +6836,13 @@ private fun SettingsMobileContent(
                         onMultiShellHostChange = onMultiShellHostChange
                     )
                 }
+            }
+            item {
+                SettingsServerDrawerCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onServerDrawerChange = onServerDrawerChange
+                )
             }
             item {
                 SettingsThreadRowAffordancesCard(
@@ -6954,6 +6976,54 @@ private fun SettingsMultiShellHostCard(
             SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_MULTI_SHELL_HOST && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsServerDrawerCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onServerDrawerChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.inProgress
+    val preference = snapshot.serverDrawer
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Menu,
+        title = stringResource(MR.strings.settings_mobile_server_drawer)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onServerDrawerChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), SlockColor.BrandYellow)
+                    Text(
+                        preference.localizedToggleStatus(),
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+                Text(
+                    stringResource(MR.strings.settings_mobile_server_drawer_detail),
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
+        }
+        if (actionState?.action == MOBILE_ACTION_SERVER_DRAWER && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -11892,6 +11962,14 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 title = "Foreground message banners",
                                 fallbackStatus = "Off",
                                 actionState = actionState
+                            ),
+                            mobile.serverDrawer.toMobileToggleRow(
+                                key = MOBILE_ACTION_SERVER_DRAWER,
+                                iconName = SlockLucideIconName.Menu,
+                                title = "Multi-server Home drawer",
+                                fallbackStatus = "Off",
+                                actionState = actionState,
+                                badgeLabel = "Beta"
                             )
                         )
                 )
@@ -14612,6 +14690,7 @@ private fun SharedHomeScreen(
     activityTotalCount: Int = 0,
     savedCount: Int = 0,
     prefersChineseCommunity: Boolean = false,
+    serverDrawerEnabled: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -14661,6 +14740,10 @@ private fun SharedHomeScreen(
 
     val serverSwitchState = state.serverSwitchState
     val serverSwitcherExpanded = state.serverSwitcherExpanded
+    val serverDrawerSections =
+        remember(state.serverDrawer, state.serverUnreadCounts) {
+            state.serverDrawer.toSlockHomeServerDrawerSections(state.serverUnreadCounts)
+        }
     val renderBranch = sharedHomeRenderBranch(state.content)
     LaunchedEffect(active, renderBranch, homeContentSummary, selectedConversationId, activityUnreadCount, savedCount) {
         bridge.log(
@@ -14676,12 +14759,20 @@ private fun SharedHomeScreen(
                     session = session,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
+                    serverDrawerEnabled = serverDrawerEnabled,
+                    serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
                     loadingSkeletons = true,
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                    onServerDrawerSectionToggle = { serverId ->
+                        onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                    },
+                    onServerDrawerRetry = { serverId ->
+                        onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                    },
                     onServerSelected = { serverId ->
                         onSelectedConversationCleared()
                         onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -14701,11 +14792,19 @@ private fun SharedHomeScreen(
                 session = current.session,
                 scrollToTopRequest = scrollToTopRequest,
                 serverSwitcherExpanded = serverSwitcherExpanded,
+                serverDrawerEnabled = serverDrawerEnabled,
+                serverDrawerSections = serverDrawerSections,
                 serverUnreadCounts = state.serverUnreadCounts,
                 prefersChineseCommunity = prefersChineseCommunity,
                 bottomContentPadding = bottomContentPadding,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                onServerDrawerSectionToggle = { serverId ->
+                    onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                },
+                onServerDrawerRetry = { serverId ->
+                    onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                },
                 onServerSelected = { serverId ->
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -14722,6 +14821,8 @@ private fun SharedHomeScreen(
                     session = current.session,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
+                    serverDrawerEnabled = serverDrawerEnabled,
+                    serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
@@ -14729,6 +14830,12 @@ private fun SharedHomeScreen(
                     onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                    onServerDrawerSectionToggle = { serverId ->
+                        onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                    },
+                    onServerDrawerRetry = { serverId ->
+                        onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                    },
                     onServerSelected = { serverId ->
                         onSelectedConversationCleared()
                         onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -14878,6 +14985,8 @@ private fun SharedHomeScreen(
                 ),
                 savedCount = savedCount,
                 serverSwitcherExpanded = serverSwitcherExpanded,
+                serverDrawerEnabled = serverDrawerEnabled,
+                serverDrawerSections = serverDrawerSections,
                 pendingServerId = serverSwitchState.pendingServerId,
                 prefersChineseCommunity = prefersChineseCommunity,
                 activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
@@ -14903,6 +15012,12 @@ private fun SharedHomeScreen(
                 labels = homeShellLabels,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
+                onServerDrawerSectionToggle = { serverId ->
+                    onIntent(SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId)))
+                },
+                onServerDrawerRetry = { serverId ->
+                    onIntent(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                },
                 onServerSelected = { serverId ->
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
@@ -17830,6 +17945,8 @@ private fun String.searchAvatarSeed(): String =
 private fun SharedHomeSessionShell(
     session: StoredAuthSession,
     serverSwitcherExpanded: Boolean,
+    serverDrawerEnabled: Boolean = false,
+    serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
     scrollToTopRequest: Int = 0,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
     prefersChineseCommunity: Boolean = false,
@@ -17842,6 +17959,8 @@ private fun SharedHomeSessionShell(
     onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
+    onServerDrawerSectionToggle: (String) -> Unit,
+    onServerDrawerRetry: (String) -> Unit,
     onServerSelected: (String) -> Unit,
     onServerOrderChange: (List<String>) -> Unit = {},
     onCreateServerClick: () -> Unit,
@@ -17857,6 +17976,8 @@ private fun SharedHomeSessionShell(
         showLoadingSkeletons = loadingSkeletons,
         inlineError = inlineError,
         serverSwitcherExpanded = serverSwitcherExpanded,
+        serverDrawerEnabled = serverDrawerEnabled,
+        serverDrawerSections = serverDrawerSections,
         prefersChineseCommunity = prefersChineseCommunity,
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
@@ -17865,6 +17986,8 @@ private fun SharedHomeSessionShell(
         onInlineErrorAction = onInlineErrorAction,
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
+        onServerDrawerSectionToggle = onServerDrawerSectionToggle,
+        onServerDrawerRetry = onServerDrawerRetry,
         onServerSelected = onServerSelected,
         onServerOrderChange = onServerOrderChange,
         onCreateServerClick = onCreateServerClick,
@@ -17916,6 +18039,35 @@ internal data class SharedHomeConversationRowProjector(
             directoryProjection = directoryProjections[seed.id],
             draftProjection = draftProjection
         )
+}
+
+internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
+    serverUnreadCounts: Map<String, Int> = emptyMap()
+): List<SlockHomeServerDrawerSection> {
+    val projector = SharedHomeConversationRowProjector()
+    return sections.values.map { section ->
+        val snapshot = section.content?.snapshot
+        val sidebarOrder = snapshot?.sidebarOrder
+        SlockHomeServerDrawerSection(
+            server = section.server.toSharedSwitcherItem(serverUnreadCounts),
+            expanded = section.server.id in expandedServerIds,
+            status = section.status,
+            requestGeneration = section.requestGeneration,
+            errorCode = section.errorCode,
+            channels = snapshot?.channels.orEmpty().map(projector::project),
+            directMessages = snapshot?.directMessages.orEmpty().map(projector::project),
+            channelOrder = sidebarOrder?.channelOrder.orEmpty(),
+            channelSortMode = sidebarOrder?.channelSortMode ?: "manual",
+            dmOrder = sidebarOrder?.dmOrder.orEmpty(),
+            dmSortMode = sidebarOrder?.dmSortMode ?: "manual",
+            pinnedChannelIds = sidebarOrder?.pinnedChannelIds.orEmpty(),
+            pinnedAgentIds = sidebarOrder?.pinnedAgentIds.orEmpty(),
+            pinnedOrder = sidebarOrder?.pinnedOrder.orEmpty(),
+            pinnedItems = sidebarOrder?.pinned.orEmpty(),
+            pinnedSortMode = sidebarOrder?.pinnedSortMode ?: "manual",
+            hiddenDmIds = sidebarOrder?.hiddenDmIds.orEmpty()
+        )
+    }
 }
 
 private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
@@ -20417,6 +20569,7 @@ private fun SettingsRouteVisualScreen() {
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
         onActivityTaskStatusBadgesSelected = {},
+        onServerDrawerSelected = {},
         onThreadRowAffordanceSelected = { _, _ -> },
         onSettingsAction = { _, _ -> },
         onDiagnosticsFeedbackPrepared = {},

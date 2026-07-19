@@ -128,6 +128,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
         assertEquals(false, snapshot.composerSendKeyEnabled)
         assertEquals(false, snapshot.multiShellHostEnabled)
+        assertEquals(false, snapshot.serverDrawerEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
@@ -173,6 +174,7 @@ class LocalPreferencesTest {
         val activityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(true)
         val composerSendKey = repository.setComposerSendKeyEnabled(false)
         val multiShellHost = repository.setMultiShellHostEnabled(true)
+        val serverDrawer = repository.setServerDrawerEnabled(true)
         val translationMode = repository.setTranslationMode(TranslationModePreference.Manual)
         val savedAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Saved, true)
         val reactionAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
@@ -192,6 +194,7 @@ class LocalPreferencesTest {
         assertEquals(true, activityTaskStatusBadges.activityTaskStatusBadgesEnabled)
         assertEquals(false, composerSendKey.composerSendKeyEnabled)
         assertEquals(true, multiShellHost.multiShellHostEnabled)
+        assertEquals(true, serverDrawer.serverDrawerEnabled)
         assertEquals(TranslationModePreference.Manual, translationMode.translationMode)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
@@ -202,6 +205,7 @@ class LocalPreferencesTest {
         assertEquals(true, restored.activityTaskStatusBadgesEnabled)
         assertEquals(false, restored.composerSendKeyEnabled)
         assertEquals(true, restored.multiShellHostEnabled)
+        assertEquals(true, restored.serverDrawerEnabled)
         assertEquals(TranslationModePreference.Manual, restored.translationMode)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), savedAction.threadRowAffordances)
         assertEquals(emptySet(), reactionAction.threadRowAffordances)
@@ -215,6 +219,7 @@ class LocalPreferencesTest {
         assertEquals(false, restoredDisabledCompact.compactConsecutiveMessages)
         assertEquals(true, restoredDisabledCompact.composerSendKeyEnabled)
         assertEquals(true, restoredDisabledCompact.multiShellHostEnabled)
+        assertEquals(true, restoredDisabledCompact.serverDrawerEnabled)
     }
 
     @Test

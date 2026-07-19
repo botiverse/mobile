@@ -244,6 +244,7 @@ data class ChatLayoutPreferenceSnapshot(
     val activityTaskStatusBadgesEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
+    val serverDrawerEnabled: Boolean = false,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val supportedTranslationModes: List<TranslationModePreference> =
         TranslationModePreference.entries,
@@ -281,6 +282,9 @@ interface ChatLayoutPreferenceStore {
     fun readMultiShellHostEnabledSync(): Boolean
     suspend fun readMultiShellHostEnabled(): Boolean
     suspend fun saveMultiShellHostEnabled(enabled: Boolean)
+    fun readServerDrawerEnabledSync(): Boolean
+    suspend fun readServerDrawerEnabled(): Boolean
+    suspend fun saveServerDrawerEnabled(enabled: Boolean)
     fun readTranslationModeSync(): TranslationModePreference
     suspend fun readTranslationMode(): TranslationModePreference
     suspend fun saveTranslationMode(mode: TranslationModePreference)
@@ -386,6 +390,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_MULTI_SHELL_HOST_ENABLED, enabled)
     }
 
+    override fun readServerDrawerEnabledSync(): Boolean =
+        store.getBoolean(KEY_SERVER_DRAWER_ENABLED, false)
+
+    override suspend fun readServerDrawerEnabled(): Boolean =
+        readServerDrawerEnabledSync()
+
+    override suspend fun saveServerDrawerEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_SERVER_DRAWER_ENABLED, enabled)
+    }
+
     override fun readTranslationModeSync(): TranslationModePreference =
         TranslationModePreference.fromStorageKey(store.getString(KEY_TRANSLATION_MODE))
 
@@ -431,6 +445,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
+        const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
     }
@@ -451,6 +466,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
     suspend fun setThreadRowAffordance(
         affordance: ThreadRowAffordancePreference,
@@ -472,6 +488,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -490,6 +507,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -509,6 +527,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -526,6 +545,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -548,6 +568,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -565,6 +586,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -582,6 +604,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = enabled,
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -597,6 +620,11 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
+    override suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveServerDrawerEnabled(enabled)
+        return getChatLayoutPreference()
+    }
+
     override suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot {
         store.saveTranslationMode(mode)
         return ChatLayoutPreferenceSnapshot(
@@ -609,6 +637,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = mode,
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -636,6 +665,7 @@ class PersistentChatLayoutPreferenceRepository(
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
+            serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = next
         )

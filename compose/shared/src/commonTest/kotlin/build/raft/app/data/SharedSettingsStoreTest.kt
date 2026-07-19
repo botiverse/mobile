@@ -788,6 +788,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
         store.accept(SharedSettingsIntent.SetComposerSendKey(false))
         store.accept(SharedSettingsIntent.SetMultiShellHostEnabled(true))
+        store.accept(SharedSettingsIntent.SetServerDrawerEnabled(true))
         store.accept(SharedSettingsIntent.SetThreadRowAffordance("reactions", false))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
@@ -802,6 +803,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
         assertEquals(false, chatLayoutRepository.composerSendKeyEnabled)
         assertEquals(true, chatLayoutRepository.multiShellHostEnabled)
+        assertEquals(true, chatLayoutRepository.serverDrawerEnabled)
         assertEquals(emptySet(), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
@@ -827,6 +829,8 @@ class SharedSettingsStoreTest {
         assertEquals("New line", mobile.composerSendKey.statusLabel)
         assertEquals(true, mobile.multiShellHost.enabled)
         assertEquals("Enabled", mobile.multiShellHost.statusLabel)
+        assertEquals(true, mobile.serverDrawer.enabled)
+        assertEquals("Enabled", mobile.serverDrawer.statusLabel)
         assertEquals(emptySet(), mobile.threadRowAffordances.selectedKeys)
         assertEquals("Off", mobile.threadRowAffordances.statusLabel)
         assertEquals(listOf("reactions"), mobile.threadRowAffordances.options.map { it.key })
@@ -3225,6 +3229,7 @@ class SharedSettingsStoreTest {
         var activityTaskStatusBadgesEnabled: Boolean = false,
         var composerSendKeyEnabled: Boolean = true,
         var multiShellHostEnabled: Boolean = false,
+        var serverDrawerEnabled: Boolean = false,
         var translationMode: TranslationModePreference = TranslationModePreference.Automatic,
         var threadRowAffordances: Set<ThreadRowAffordancePreference> =
             ThreadRowAffordancePreference.Default
@@ -3239,6 +3244,7 @@ class SharedSettingsStoreTest {
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 multiShellHostEnabled = multiShellHostEnabled,
+                serverDrawerEnabled = serverDrawerEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3351,6 +3357,11 @@ class SharedSettingsStoreTest {
 
         override suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
             multiShellHostEnabled = enabled
+            return getChatLayoutPreference()
+        }
+
+        override suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            serverDrawerEnabled = enabled
             return getChatLayoutPreference()
         }
 
