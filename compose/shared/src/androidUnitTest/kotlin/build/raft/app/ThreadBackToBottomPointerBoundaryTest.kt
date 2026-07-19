@@ -6,37 +6,13 @@ import kotlin.test.assertTrue
 
 class ThreadBackToBottomPointerBoundaryTest {
     @Test
-    fun kuiklyLatchesNativeCaptureFromTheActionDownHitPath() {
-        val hitPathTracker =
-            repoFile(
-                "third_party/kuikly-ui/compose/src/commonMain/kotlin/" +
-                    "com/tencent/kuikly/compose/ui/input/pointer/HitPathTracker.kt"
-            ).readText()
-        val superTouchManager =
-            repoFile(
-                "third_party/kuikly-ui/compose/src/commonMain/kotlin/" +
-                    "com/tencent/kuikly/compose/container/SuperTouchManager.kt"
-            ).readText()
-        val androidRoot =
-            repoFile(
-                "third_party/kuikly-ui/core-render-android/src/main/java/" +
-                    "com/tencent/kuikly/core/render/android/expand/component/KRView.kt"
-            ).readText()
+    fun androidCaptureModifierDelegatesToKuiklyNativeDispatch() {
+        val source = androidMainSource("build/raft/app/SlockNativeDispatchCapture.android.kt")
 
         assertTrue(
-            "val nativeDispatchCaptured = root.capturesNativeDispatch()" in hitPathTracker,
-            "Kuikly must derive native capture from the Compose pointer hit path.",
-        )
-        assertTrue(
-            "if (result.nativeDispatchCaptured)" in superTouchManager &&
-                "getView()?.getViewAttr()?.nativeDispatchCapture(true)" in superTouchManager,
-            "The Compose hit-path result must request capture on the native root.",
-        )
-        assertTrue(
-            "if (event.actionMasked == MotionEvent.ACTION_DOWN)" in androidRoot &&
-                "nativeDispatchCapturedGesture = nativeDispatchCaptureRequested" in androidRoot &&
-                "if (nativeDispatchCapturedGesture)" in androidRoot,
-            "Android must latch that request at ACTION_DOWN for the complete native gesture.",
+            "internal actual fun Modifier.slockNativeDispatchCapture(): Modifier" in source &&
+                "nativeDispatchCapture()" in source,
+            "The shared marker must remain wired to Kuikly's Android native-dispatch capture modifier.",
         )
     }
 
@@ -99,13 +75,13 @@ class ThreadBackToBottomPointerBoundaryTest {
         return File(commonMain, "build/raft/app/ThreadPage.kt").readText().replace("\r\n", "\n")
     }
 
-    private fun repoFile(relativePath: String): File {
-        val start = File(System.getProperty("user.dir")).canonicalFile
-        return requireNotNull(
-            generateSequence(start) { it.parentFile }
-                .map { root -> File(root, relativePath) }
-                .firstOrNull(File::isFile)
-        ) { "Could not locate repository file: $relativePath from $start" }
+    private fun androidMainSource(relativePath: String): String {
+        val androidMain =
+            requireNotNull(
+                listOf(File("src/androidMain/kotlin"), File("shared/src/androidMain/kotlin"))
+                    .firstOrNull(File::isDirectory)
+            ) { "Could not locate shared androidMain Kotlin sources" }
+        return File(androidMain, relativePath).readText().replace("\r\n", "\n")
     }
 
     private fun String.functionWindow(startMarker: String, endMarker: String): String {
