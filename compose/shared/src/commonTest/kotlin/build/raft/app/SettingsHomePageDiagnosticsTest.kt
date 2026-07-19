@@ -448,12 +448,15 @@ class SettingsHomePageDiagnosticsTest {
 
     @Test
     fun feedbackFailurePresentationKeepsServerCodeOutOfUserFacingCopy() {
+        val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(200L * 1024L * 1024L)
         val copy =
             SettingsQuiverFeedbackCopy(
                 submissionFailedTitle = "发送失败",
                 submissionFailedBody = "暂时无法发送反馈，请重试。",
                 submissionNetworkBody = "无法连接 Hands，请检查网络后重试。",
-                submissionAttachmentTooLargeBody = "附件过大，请移除或选择更小的文件。",
+                submissionAttachmentTooLargeBody =
+                    "附件超过 %1${'$'}s 上限，请移除或选择更小的文件。"
+                        .replaceLocalizedFormatArgs(attachmentMaxLabel),
                 submissionPermissionTitle = "需要权限",
                 submissionPermissionBody = "你没有发送反馈的权限。"
             )
@@ -465,7 +468,7 @@ class SettingsHomePageDiagnosticsTest {
         assertTrue(networkFailure.retryable)
 
         val attachmentFailure = copy.submissionFailure("settings_feedback_attachment_too_large")
-        assertEquals("附件过大，请移除或选择更小的文件。", attachmentFailure.body)
+        assertEquals("附件超过 200 MB 上限，请移除或选择更小的文件。", attachmentFailure.body)
         assertFalse(attachmentFailure.retryable)
 
         val permissionFailure = copy.submissionPermissionFailure()

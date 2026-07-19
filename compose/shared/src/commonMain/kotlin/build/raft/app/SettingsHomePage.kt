@@ -10156,7 +10156,9 @@ private fun SharedQuiverFeedbackContent(
     visualFixture: SettingsQuiverFeedbackVisualFixture? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    val copy = settingsQuiverFeedbackCopy()
+    val attachmentMaxBytes = slockFeedbackAttachmentMaxBytes()
+    val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(attachmentMaxBytes)
+    val copy = settingsQuiverFeedbackCopy(attachmentMaxLabel)
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
@@ -10212,8 +10214,6 @@ private fun SharedQuiverFeedbackContent(
     // large-file upload; the per-file byte cap is platform-dependent (OHOS SDK
     // still caps at 50MB).
     val attachmentLimit = 9
-    val attachmentMaxBytes = slockFeedbackAttachmentMaxBytes()
-    val attachmentMaxLabel = "${attachmentMaxBytes / (1024L * 1024L)} MB"
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
 
@@ -10690,8 +10690,11 @@ internal fun SettingsQuiverFeedbackCopy.submissionPermissionFailure(): SettingsQ
         retryable = false
     )
 
+internal fun settingsFeedbackAttachmentMaxLabel(maxBytes: Long): String =
+    "${maxBytes / (1024L * 1024L)} MB"
+
 @Composable
-private fun settingsQuiverFeedbackCopy(): SettingsQuiverFeedbackCopy {
+private fun settingsQuiverFeedbackCopy(attachmentMaxLabel: String): SettingsQuiverFeedbackCopy {
     val attachmentLimitReachedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_reached)
     val attachmentTooLargeTemplate = stringResource(MR.strings.settings_feedback_attachment_too_large)
     val attachmentLimitTrimmedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_trimmed)
@@ -10713,7 +10716,9 @@ private fun settingsQuiverFeedbackCopy(): SettingsQuiverFeedbackCopy {
         submissionNetworkBody = stringResource(MR.strings.settings_feedback_submission_network_body),
         submissionRateLimitedBody = stringResource(MR.strings.settings_feedback_submission_rate_limited_body),
         submissionAttachmentReadBody = stringResource(MR.strings.settings_feedback_submission_attachment_read_body),
-        submissionAttachmentTooLargeBody = stringResource(MR.strings.settings_feedback_submission_attachment_too_large_body),
+        submissionAttachmentTooLargeBody =
+            stringResource(MR.strings.settings_feedback_submission_attachment_too_large_body)
+                .replaceLocalizedFormatArgs(attachmentMaxLabel),
         submissionAuthBody = stringResource(MR.strings.settings_feedback_submission_auth_body),
         submissionPermissionTitle = stringResource(MR.strings.settings_feedback_submission_permission_title),
         submissionPermissionBody = stringResource(MR.strings.settings_feedback_submission_permission_body),
