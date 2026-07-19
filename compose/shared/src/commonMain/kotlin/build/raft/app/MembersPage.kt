@@ -1696,20 +1696,20 @@ private class MemberDetailRouteProvider(
     ): MemberDetailRouteState.Agent? {
         if (identity.kind != MemberKind.Agent) return null
         val session = authStore.readSession() ?: return null
-        if (!identity.memberDetailAccessMode(session.currentServerId).allowsPrivateAgentSurfaces) return null
+        val serverId = session.currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (!identity.memberDetailAccessMode(serverId).allowsPrivateAgentSurfaces) return null
         val selectedId = identity.memberId
         val state = agentDetailStore.state.value
         val detail = state.detail
         if (
             state.agentId != selectedId ||
-            state.detailServerId?.value?.trim() != session.currentServerId.trim() ||
+            state.detailServerId?.value?.trim() != serverId ||
             detail == null ||
             detail.agentId != selectedId ||
             detail.summary?.id?.trim()?.takeIf { it.isNotBlank() }?.let { it != selectedId.value } == true
         ) {
             return null
         }
-        val serverId = session.currentServerId
         val server = session.servers.firstOrNull { it.id == serverId }?.toServerSummary() ?: return null
         return MemberDetailRouteState.Agent(
             server = server,
