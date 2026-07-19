@@ -623,6 +623,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-file-preview-image-editor")
+                    .put("visualFixture", "pencil_options")
                     .put("safeAreaBottom", "24")
                     .put("slockHostExcludesNavigationBar", false),
             crop = FULL_VIEWPORT_CROP,

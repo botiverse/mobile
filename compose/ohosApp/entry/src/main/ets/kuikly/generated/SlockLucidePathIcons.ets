@@ -125,6 +125,7 @@ export const SlockLucidePathIconNames: string[] = [
   'funnel',
   'git-branch',
   'globe',
+  'grid-3x3',
   'grip-vertical',
   'hash',
   'heart',
@@ -168,6 +169,7 @@ export const SlockLucidePathIconNames: string[] = [
   'plus',
   'presentation',
   'refresh-cw',
+  'redo-2',
   'rotate-ccw',
   'rotate-cw',
   'route',
@@ -192,6 +194,7 @@ export const SlockLucidePathIconNames: string[] = [
   'trash',
   'trash-2',
   'type',
+  'undo-2',
   'unlink',
   'upload',
   'user',
@@ -5172,6 +5175,69 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       viewportHeight: 24,
     }
       ];
+    case 'grid-3x3':
+      return [
+    {
+      commands: 'M 5 3 H 19 A 2 2 0 0 1 21 5 V 19 A 2 2 0 0 1 19 21 H 5 A 2 2 0 0 1 3 19 V 5 A 2 2 0 0 1 5 3 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 3 9 h 18',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 3 15 h 18',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 9 3 v 18',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 15 3 v 18',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
     case 'grip-vertical':
       return [
     {
@@ -6921,6 +6987,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       viewportHeight: 24,
     }
       ];
+    case 'redo-2':
+      return [
+    {
+      commands: 'm 15 14 5 -5 -5 -5',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 20 9 H 9.5 A 5.5 5.5 0 0 0 4 14.5 A 5.5 5.5 0 0 0 9.5 20 H 13',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
     case 'rotate-ccw':
       return [
     {
@@ -7858,6 +7951,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 9 20 h 6',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'undo-2':
+      return [
+    {
+      commands: 'M 9 14 4 9 l 5 -5',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 4 9 h 10.5 a 5.5 5.5 0 0 1 5.5 5.5 a 5.5 5.5 0 0 1 -5.5 5.5 H 11',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
