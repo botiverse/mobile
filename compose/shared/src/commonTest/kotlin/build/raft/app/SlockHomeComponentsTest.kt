@@ -292,6 +292,15 @@ class SlockHomeComponentsTest {
                 drawerIsOpen = false
             )
         )
+        assertFalse(
+            shouldAcceptHomeServerDrawerInteractiveMarker(
+                activeOpenGeneration = null,
+                markerGeneration = 3,
+                commandFence = closedDuringHydrationFrame,
+                storeExpanded = false,
+                drawerIsOpen = false
+            )
+        )
 
         val reopened = closedDuringHydrationFrame.next(desiredOpen = true)
         assertTrue(
@@ -300,6 +309,67 @@ class SlockHomeComponentsTest {
                 commandGeneration = reopened.generation,
                 storeExpanded = true,
                 drawerIsOpen = true
+            )
+        )
+        assertTrue(
+            shouldAcceptHomeServerDrawerInteractiveMarker(
+                activeOpenGeneration = reopened.generation,
+                markerGeneration = reopened.generation,
+                commandFence = reopened,
+                storeExpanded = true,
+                drawerIsOpen = true
+            )
+        )
+    }
+
+    @Test
+    fun homeServerDrawerInteractiveMarkerGateClaimsEachGenerationExactlyOnce() {
+        val gate = HomeServerDrawerInteractiveMarkerGate()
+
+        assertTrue(gate.claim(7))
+        assertFalse(gate.claim(7))
+        assertTrue(gate.claim(8))
+        assertFalse(gate.claim(8))
+        assertFalse(gate.claim(7))
+
+        gate.reset()
+        assertTrue(gate.claim(8))
+    }
+
+    @Test
+    fun homeServerDrawerHydrationStaggerUsesOneAbsoluteWindow() {
+        val startedAtMillis = 1_000L
+
+        assertEquals(
+            80L,
+            homeServerDrawerRemainingHydrationDelayMillis(
+                hydrationStartedAtMillis = startedAtMillis,
+                hydrationOrder = 5,
+                nowMillis = startedAtMillis
+            )
+        )
+        assertEquals(
+            16L,
+            homeServerDrawerRemainingHydrationDelayMillis(
+                hydrationStartedAtMillis = startedAtMillis,
+                hydrationOrder = 1,
+                nowMillis = startedAtMillis
+            )
+        )
+        assertEquals(
+            0L,
+            homeServerDrawerRemainingHydrationDelayMillis(
+                hydrationStartedAtMillis = startedAtMillis,
+                hydrationOrder = 48,
+                nowMillis = startedAtMillis + 768L
+            )
+        )
+        assertEquals(
+            0L,
+            homeServerDrawerRemainingHydrationDelayMillis(
+                hydrationStartedAtMillis = startedAtMillis,
+                hydrationOrder = 80,
+                nowMillis = startedAtMillis + 1_000L
             )
         )
     }

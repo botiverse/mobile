@@ -5089,6 +5089,7 @@ private fun AppShellServerDrawerHost(
         var drawerOpenInFlight by remember(drawerState) { mutableStateOf(false) }
         var drawerCloseInFlight by remember(drawerState) { mutableStateOf(false) }
         var drawerContentReady by remember(drawerState) { mutableStateOf(false) }
+        var drawerContentGeneration by remember(drawerState) { mutableStateOf<Int?>(null) }
         var drawerNativeJobOwnership by remember(drawerState) {
             mutableStateOf(HomeServerDrawerNativeJobOwnership<Job>())
         }
@@ -5168,7 +5169,7 @@ private fun AppShellServerDrawerHost(
                     )
                     if (
                         settled &&
-                        !drawerContentReady &&
+                        drawerContentGeneration != commandGeneration &&
                         shouldHydrateHomeServerDrawerContent(
                             commandFence = drawerCommandFence,
                             commandGeneration = commandGeneration,
@@ -5189,6 +5190,7 @@ private fun AppShellServerDrawerHost(
                                 "server_drawer_content_hydration source=$source " +
                                     "generation=$commandGeneration phase=requested"
                             )
+                            drawerContentGeneration = commandGeneration
                             drawerContentReady = true
                         } else {
                             bridge.log(
@@ -5224,6 +5226,7 @@ private fun AppShellServerDrawerHost(
                 drawerNativeJobOwnership.supersede(commandGeneration)
             drawerNativeJobOwnership = nextNativeJobOwnership
             supersededNativeJobs.forEach { it.cancel() }
+            drawerContentGeneration = null
             drawerOpenInFlight = false
             drawerCloseInFlight = true
             bridge.log(
@@ -5311,51 +5314,53 @@ private fun AppShellServerDrawerHost(
             MoveableDrawer(
                 state = drawerState,
                 drawerContent = {
-                    if (drawerContentReady) {
-                        HomeServerDrawerPanel(
-                            rows = drawerRows,
-                            labels = labels,
-                            userHeader = userHeader,
-                            topSafeArea = topSafeArea,
-                            bottomSafeArea = bottomSafeArea,
-                            serverMembersStore = serverMembersStore,
-                            onlyUnread = onlyUnread,
-                            onOnlyUnreadChange = onOnlyUnreadChange,
-                            onSectionToggle = { serverId ->
-                                homeShellStore.dispatch(
-                                    SharedHomeShellIntent.Home(
-                                        SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId))
-                                    )
+                    HomeServerDrawerPanel(
+                        rows = drawerRows,
+                        labels = labels,
+                        userHeader = userHeader,
+                        topSafeArea = topSafeArea,
+                        bottomSafeArea = bottomSafeArea,
+                        serverMembersStore = serverMembersStore,
+                        onlyUnread = onlyUnread,
+                        contentReady = drawerContentReady,
+                        activeOpenGeneration = drawerContentGeneration,
+                        onOnlyUnreadChange = onOnlyUnreadChange,
+                        onSectionToggle = { serverId ->
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(
+                                    SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId))
                                 )
-                            },
-                            onRetry = { serverId ->
-                                homeShellStore.dispatch(
-                                    SharedHomeShellIntent.Home(
-                                        SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId))
-                                    )
+                            )
+                        },
+                        onRetry = { serverId ->
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(
+                                    SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId))
                                 )
-                            },
-                            onConversationClick = onConversationClick,
-                            onDismissBySwipe = {
-                                requestDrawerClose("drawer_left_swipe")
-                                homeShellStore.dispatch(
-                                    SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
+                            )
+                        },
+                        onConversationClick = onConversationClick,
+                        onDismissBySwipe = {
+                            requestDrawerClose("drawer_left_swipe")
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
+                            )
+                        },
+                        onContentInteractive = { generation ->
+                            val markerAccepted =
+                                shouldAcceptHomeServerDrawerInteractiveMarker(
+                                    activeOpenGeneration = drawerContentGeneration,
+                                    markerGeneration = generation,
+                                    commandFence = drawerCommandFence,
+                                    storeExpanded = homeShellStore.state.value.home.serverSwitcherExpanded,
+                                    drawerIsOpen = drawerState.isOpen
                                 )
-                            },
-                            onContentInteractive = {
-                                bridge.log(
-                                    "server_drawer_content_hydration source=panel " +
-                                        "generation=${drawerCommandFence.generation} phase=interactive"
-                                )
-                            }
-                        )
-                    } else {
-                        HomeServerDrawerColdStartPanel(
-                            userHeader = userHeader,
-                            topSafeArea = topSafeArea,
-                            bottomSafeArea = bottomSafeArea
-                        )
-                    }
+                            bridge.log(
+                                "server_drawer_content_hydration source=panel " +
+                                    "generation=$generation phase=${if (markerAccepted) "interactive" else "interactive_canceled"}"
+                            )
+                        }
+                    )
                 },
                 content = content
             )

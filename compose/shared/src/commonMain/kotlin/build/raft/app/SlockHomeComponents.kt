@@ -80,6 +80,7 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -2723,6 +2724,26 @@ internal fun shouldOpenHomeServerDrawerOnEdgeSwipe(
     thresholdDp: Float = HomeServerDrawerSwipeDismissThreshold.value
 ): Boolean = horizontalDragDp >= thresholdDp
 
+internal class HomeServerDrawerInteractiveMarkerGate {
+    private val reportedGenerations = mutableSetOf<Int>()
+
+    fun claim(generation: Int): Boolean = reportedGenerations.add(generation)
+
+    fun reset() {
+        reportedGenerations.clear()
+    }
+}
+
+internal fun homeServerDrawerRemainingHydrationDelayMillis(
+    hydrationStartedAtMillis: Long,
+    hydrationOrder: Int,
+    nowMillis: Long
+): Long {
+    val boundedOrder = hydrationOrder.coerceIn(0, 48)
+    val targetAtMillis = hydrationStartedAtMillis + boundedOrder * 16L
+    return (targetAtMillis - nowMillis).coerceAtLeast(0L)
+}
+
 internal data class HomeServerDrawerCommandFence(
     val generation: Int = 0,
     val desiredOpen: Boolean = false
@@ -2743,6 +2764,21 @@ internal fun shouldHydrateHomeServerDrawerContent(
     commandFence.accepts(commandGeneration, commandDesiredOpen = true) &&
         storeExpanded &&
         drawerIsOpen
+
+internal fun shouldAcceptHomeServerDrawerInteractiveMarker(
+    activeOpenGeneration: Int?,
+    markerGeneration: Int,
+    commandFence: HomeServerDrawerCommandFence,
+    storeExpanded: Boolean,
+    drawerIsOpen: Boolean
+): Boolean =
+    activeOpenGeneration == markerGeneration &&
+        shouldHydrateHomeServerDrawerContent(
+            commandFence = commandFence,
+            commandGeneration = markerGeneration,
+            storeExpanded = storeExpanded,
+            drawerIsOpen = drawerIsOpen
+        )
 
 internal data class HomeServerDrawerNativeJobOwnership<T>(
     val generation: Int = 0,
@@ -3510,42 +3546,234 @@ internal fun HomeInlineErrorCard(
 }
 
 @Composable
-internal fun HomeServerDrawerColdStartPanel(
+internal fun HomeServerDrawerPanel(
+    rows: List<SlockHomeServerDrawerRow>,
+    labels: SlockHomeShellLabels,
     userHeader: SlockServerDrawerUserHeader,
     topSafeArea: Dp,
-    bottomSafeArea: Dp
+    bottomSafeArea: Dp,
+    serverMembersStore: SharedServerMembersStore?,
+    onlyUnread: Boolean,
+    contentReady: Boolean,
+    activeOpenGeneration: Int?,
+    onOnlyUnreadChange: (Boolean) -> Unit,
+    onSectionToggle: (String) -> Unit,
+    onRetry: (String) -> Unit,
+    onConversationClick: (String, String) -> Unit,
+    onDismissBySwipe: () -> Unit,
+    onContentInteractive: (Int) -> Unit
 ) {
+    val interactiveMarkerGate = remember { HomeServerDrawerInteractiveMarkerGate() }
+    var collapsedSectionKeys by remember { mutableStateOf(emptySet<String>()) }
+    var hydrationStartedAtMillis by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(contentReady) {
+        if (!contentReady) {
+            interactiveMarkerGate.reset()
+            hydrationStartedAtMillis = null
+        } else if (hydrationStartedAtMillis == null) {
+            hydrationStartedAtMillis = defaultNowMillis()
+        }
+    }
+    val visibleRows =
+        remember(rows, collapsedSectionKeys) {
+            homeServerDrawerVisibleRows(rows, collapsedSectionKeys)
+        }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        HomeServerDrawerPanelMeasured(
+            visibleRows = visibleRows,
+            labels = labels,
+            userHeader = userHeader,
+            viewportHeight = maxHeight,
+            topSafeArea = topSafeArea,
+            bottomSafeArea = bottomSafeArea,
+            serverMembersStore = serverMembersStore,
+            onlyUnread = onlyUnread,
+            contentReady = contentReady,
+            activeOpenGeneration = activeOpenGeneration,
+            hydrationStartedAtMillis = hydrationStartedAtMillis,
+            interactiveMarkerGate = interactiveMarkerGate,
+            collapsedSectionKeys = collapsedSectionKeys,
+            onCollapsedSectionKeysChange = { collapsedSectionKeys = it },
+            onOnlyUnreadChange = onOnlyUnreadChange,
+            onSectionToggle = onSectionToggle,
+            onRetry = onRetry,
+            onConversationClick = onConversationClick,
+            onDismissBySwipe = onDismissBySwipe,
+            onContentInteractive = onContentInteractive
+        )
+    }
+}
+
+@Composable
+private fun HomeServerDrawerPanelMeasured(
+    visibleRows: List<SlockHomeServerDrawerRow>,
+    labels: SlockHomeShellLabels,
+    userHeader: SlockServerDrawerUserHeader,
+    viewportHeight: Dp,
+    topSafeArea: Dp,
+    bottomSafeArea: Dp,
+    serverMembersStore: SharedServerMembersStore?,
+    onlyUnread: Boolean,
+    contentReady: Boolean,
+    activeOpenGeneration: Int?,
+    hydrationStartedAtMillis: Long?,
+    interactiveMarkerGate: HomeServerDrawerInteractiveMarkerGate,
+    collapsedSectionKeys: Set<String>,
+    onCollapsedSectionKeysChange: (Set<String>) -> Unit,
+    onOnlyUnreadChange: (Boolean) -> Unit,
+    onSectionToggle: (String) -> Unit,
+    onRetry: (String) -> Unit,
+    onConversationClick: (String, String) -> Unit,
+    onDismissBySwipe: () -> Unit,
+    onContentInteractive: (Int) -> Unit
+) {
+    val interactiveLayoutModifier =
+        if (contentReady && activeOpenGeneration != null) {
+            Modifier.onGloballyPositioned {
+                val generation = activeOpenGeneration
+                if (generation != null && interactiveMarkerGate.claim(generation)) {
+                    onContentInteractive(generation)
+                }
+            }
+        } else {
+            Modifier
+        }
+    HomeServerDrawerPanelSurface(
+        visibleRows = visibleRows,
+        labels = labels,
+        userHeader = userHeader,
+        viewportHeight = viewportHeight,
+        topSafeArea = topSafeArea,
+        bottomSafeArea = bottomSafeArea,
+        serverMembersStore = serverMembersStore,
+        onlyUnread = onlyUnread,
+        contentReady = contentReady,
+        activeOpenGeneration = activeOpenGeneration,
+        hydrationStartedAtMillis = hydrationStartedAtMillis,
+        collapsedSectionKeys = collapsedSectionKeys,
+        interactiveLayoutModifier = interactiveLayoutModifier,
+        drawerBeyondBoundsItemCount = homeListInitialBeyondBoundsItemCount(),
+        onCollapsedSectionKeysChange = onCollapsedSectionKeysChange,
+        onOnlyUnreadChange = onOnlyUnreadChange,
+        onSectionToggle = onSectionToggle,
+        onRetry = onRetry,
+        onConversationClick = onConversationClick,
+        onDismissBySwipe = onDismissBySwipe
+    )
+}
+
+@Composable
+private fun HomeServerDrawerPanelSurface(
+    visibleRows: List<SlockHomeServerDrawerRow>,
+    labels: SlockHomeShellLabels,
+    userHeader: SlockServerDrawerUserHeader,
+    viewportHeight: Dp,
+    topSafeArea: Dp,
+    bottomSafeArea: Dp,
+    serverMembersStore: SharedServerMembersStore?,
+    onlyUnread: Boolean,
+    contentReady: Boolean,
+    activeOpenGeneration: Int?,
+    hydrationStartedAtMillis: Long?,
+    collapsedSectionKeys: Set<String>,
+    interactiveLayoutModifier: Modifier,
+    drawerBeyondBoundsItemCount: Int,
+    onCollapsedSectionKeysChange: (Set<String>) -> Unit,
+    onOnlyUnreadChange: (Boolean) -> Unit,
+    onSectionToggle: (String) -> Unit,
+    onRetry: (String) -> Unit,
+    onConversationClick: (String, String) -> Unit,
+    onDismissBySwipe: () -> Unit
+) {
+    val density = LocalDensity.current
+    val currentOnDismissBySwipe by rememberUpdatedState(onDismissBySwipe)
     Column(
         modifier =
             Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .height(viewportHeight)
                 .background(SlockColor.SurfaceWhite)
+                .pointerInput(Unit) {
+                    var horizontalDragPx = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { horizontalDragPx = 0f },
+                        onDragEnd = {
+                            val horizontalDragDp = horizontalDragPx / density.density
+                            if (shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp)) {
+                                currentOnDismissBySwipe()
+                            }
+                            horizontalDragPx = 0f
+                        },
+                        onDragCancel = { horizontalDragPx = 0f }
+                    ) { _, dragAmount -> horizontalDragPx += dragAmount }
+                }
+    ) {
+        HomeServerDrawerPanelHeader(
+            userHeader = userHeader,
+            topSafeArea = topSafeArea,
+            onlyUnread = onlyUnread,
+            contentReady = contentReady,
+            onOnlyUnreadChange = onOnlyUnreadChange
+        )
+        HomeServerDrawerPanelBody(
+            visibleRows = visibleRows,
+            labels = labels,
+            serverMembersStore = serverMembersStore,
+            contentReady = contentReady,
+            activeOpenGeneration = activeOpenGeneration,
+            hydrationStartedAtMillis = hydrationStartedAtMillis,
+            collapsedSectionKeys = collapsedSectionKeys,
+            interactiveLayoutModifier = interactiveLayoutModifier,
+            drawerBeyondBoundsItemCount = drawerBeyondBoundsItemCount,
+            onCollapsedSectionKeysChange = onCollapsedSectionKeysChange,
+            onSectionToggle = onSectionToggle,
+            onRetry = onRetry,
+            onConversationClick = onConversationClick
+        )
+        Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
+    }
+}
+
+@Composable
+private fun HomeServerDrawerPanelHeader(
+    userHeader: SlockServerDrawerUserHeader,
+    topSafeArea: Dp,
+    onlyUnread: Boolean,
+    contentReady: Boolean,
+    onOnlyUnreadChange: (Boolean) -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(homeServerDrawerHeaderHeight(topSafeArea))
+                .background(SlockColor.BrandYellow)
     ) {
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(homeServerDrawerHeaderHeight(topSafeArea))
-                    .background(SlockColor.BrandYellow)
+                    .height(SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+                    .align(Alignment.BottomCenter)
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(homeServerDrawerHeaderHeight(topSafeArea) - SlockStroke.Default)
+                    .padding(top = topSafeArea)
+                    .padding(horizontal = SlockSpacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(SlockStroke.Default)
-                        .background(SlockColor.BorderBlack)
-                        .align(Alignment.BottomCenter)
-            )
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(homeServerDrawerHeaderHeight(topSafeArea) - SlockStroke.Default)
-                        .padding(top = topSafeArea)
-                        .padding(horizontal = SlockSpacing.Md),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
+            if (contentReady) {
+                SlockAvatar(
+                    avatarWireValue = userHeader.avatarWireValue,
+                    label = userHeader.avatarLabel,
+                    avatarSize = 32.dp
+                )
+            } else {
                 Box(
                     modifier =
                         Modifier
@@ -3561,14 +3789,48 @@ internal fun HomeServerDrawerColdStartPanel(
                         maxLines = 1
                     )
                 }
-                Text(
-                    text = userHeader.displayName,
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            }
+            Text(
+                text = userHeader.displayName,
+                style = SlockType.ButtonBold,
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (contentReady) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(width = 56.dp, height = 40.dp)
+                            .semantics {
+                                contentDescription = "Only show unread"
+                                stateDescription = if (onlyUnread) "On" else "Off"
+                            }
+                            .clickable(
+                                role = Role.Switch,
+                                onClick = { onOnlyUnreadChange(!onlyUnread) }
+                            ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        Text(
+                            text = "UNREAD",
+                            style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 9.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1
+                        )
+                        SlockSwitchButton(
+                            checked = onlyUnread,
+                            enabled = true,
+                            modifier = Modifier.size(width = 42.dp, height = 24.dp)
+                        )
+                    }
+                }
+            } else {
                 SlockLucideIcon(
                     SlockLucideIconName.LoaderCircle,
                     modifier = Modifier.size(18.dp),
@@ -3577,221 +3839,162 @@ internal fun HomeServerDrawerColdStartPanel(
                 )
             }
         }
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(top = SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            repeat(6) {
-                HomeSidebarSkeletonRow(
-                    modifier =
-                        Modifier.padding(
-                            horizontal = HomeListHorizontalPadding,
-                            vertical = SlockSpacing.Xs
-                        )
-                )
-            }
-        }
-        Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
     }
 }
 
 @Composable
-internal fun HomeServerDrawerPanel(
-    rows: List<SlockHomeServerDrawerRow>,
+private fun ColumnScope.HomeServerDrawerPanelBody(
+    visibleRows: List<SlockHomeServerDrawerRow>,
     labels: SlockHomeShellLabels,
-    userHeader: SlockServerDrawerUserHeader,
-    topSafeArea: Dp,
-    bottomSafeArea: Dp,
     serverMembersStore: SharedServerMembersStore?,
-    onlyUnread: Boolean,
-    onOnlyUnreadChange: (Boolean) -> Unit,
+    contentReady: Boolean,
+    activeOpenGeneration: Int?,
+    hydrationStartedAtMillis: Long?,
+    collapsedSectionKeys: Set<String>,
+    interactiveLayoutModifier: Modifier,
+    drawerBeyondBoundsItemCount: Int,
+    onCollapsedSectionKeysChange: (Set<String>) -> Unit,
     onSectionToggle: (String) -> Unit,
     onRetry: (String) -> Unit,
-    onConversationClick: (String, String) -> Unit,
-    onDismissBySwipe: () -> Unit,
-    onContentInteractive: () -> Unit
+    onConversationClick: (String, String) -> Unit
 ) {
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        onContentInteractive()
+    if (contentReady && visibleRows.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxWidth().weight(1f).then(interactiveLayoutModifier),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+        }
+        return
     }
-    var collapsedSectionKeys by remember { mutableStateOf(emptySet<String>()) }
-    val visibleRows =
-        remember(rows, collapsedSectionKeys) {
-            homeServerDrawerVisibleRows(rows, collapsedSectionKeys)
+    val interactiveRowIndex =
+        if (contentReady) {
+            visibleRows.indexOfFirst { row -> row !is SlockHomeServerDrawerRow.Skeleton }
+        } else {
+            -1
         }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val density = LocalDensity.current
-        val currentOnDismissBySwipe by rememberUpdatedState(onDismissBySwipe)
-        val targetDrawerBeyondBoundsItemCount =
-            homeListBeyondBoundsItemCount(
-                itemCount = visibleRows.size,
-                viewportHeightDp = maxHeight.value
+    LazyColumn(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        beyondBoundsItemCount = drawerBeyondBoundsItemCount
+    ) {
+        val itemCount = if (contentReady) visibleRows.size else 6
+        items(
+            itemCount,
+            key = { index -> if (contentReady) visibleRows[index].key else "cold-skeleton:$index" }
+        ) { index ->
+            HomeServerDrawerPanelRow(
+                row = visibleRows.getOrNull(index),
+                labels = labels,
+                serverMembersStore = serverMembersStore,
+                contentReady = contentReady,
+                activeOpenGeneration = activeOpenGeneration,
+                hydrationStartedAtMillis = hydrationStartedAtMillis,
+                hydrationOrder = index,
+                interactiveLayoutModifier =
+                    if (index == interactiveRowIndex) interactiveLayoutModifier else Modifier,
+                collapsedSectionKeys = collapsedSectionKeys,
+                onCollapsedSectionKeysChange = onCollapsedSectionKeysChange,
+                onSectionToggle = onSectionToggle,
+                onRetry = onRetry,
+                onConversationClick = onConversationClick
             )
-        var drawerBeyondBoundsItemCount by remember { mutableStateOf(homeListInitialBeyondBoundsItemCount()) }
-        LaunchedEffect(visibleRows.size, targetDrawerBeyondBoundsItemCount) {
-            drawerBeyondBoundsItemCount = homeListInitialBeyondBoundsItemCount()
-            while (drawerBeyondBoundsItemCount < targetDrawerBeyondBoundsItemCount) {
-                withFrameNanos { }
-                drawerBeyondBoundsItemCount =
-                    homeListNextServerSwitchBeyondBoundsItemCount(
-                        current = drawerBeyondBoundsItemCount,
-                        target = targetDrawerBeyondBoundsItemCount
-                    )
-            }
         }
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(maxHeight)
-                    .background(SlockColor.SurfaceWhite)
-                    .pointerInput(Unit) {
-                        var horizontalDragPx = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { horizontalDragPx = 0f },
-                            onDragEnd = {
-                                val horizontalDragDp = horizontalDragPx / density.density
-                                if (shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp)) {
-                                    currentOnDismissBySwipe()
-                                }
-                                horizontalDragPx = 0f
-                            },
-                            onDragCancel = { horizontalDragPx = 0f }
-                        ) { _, dragAmount ->
-                            horizontalDragPx += dragAmount
-                        }
-                    }
-            ) {
-            Box(
+    }
+}
+
+@Composable
+private fun HomeServerDrawerPanelRow(
+    row: SlockHomeServerDrawerRow?,
+    labels: SlockHomeShellLabels,
+    serverMembersStore: SharedServerMembersStore?,
+    contentReady: Boolean,
+    activeOpenGeneration: Int?,
+    hydrationStartedAtMillis: Long?,
+    hydrationOrder: Int,
+    interactiveLayoutModifier: Modifier,
+    collapsedSectionKeys: Set<String>,
+    onCollapsedSectionKeysChange: (Set<String>) -> Unit,
+    onSectionToggle: (String) -> Unit,
+    onRetry: (String) -> Unit,
+    onConversationClick: (String, String) -> Unit
+) {
+    var hydrated by remember(row?.key) { mutableStateOf(false) }
+    LaunchedEffect(contentReady, activeOpenGeneration, hydrationStartedAtMillis, hydrationOrder, row?.key) {
+        if (!contentReady) {
+            hydrated = false
+            return@LaunchedEffect
+        }
+        val startedAtMillis = hydrationStartedAtMillis
+        if (row == null || activeOpenGeneration == null || startedAtMillis == null || hydrated) {
+            return@LaunchedEffect
+        }
+        val remainingDelayMillis =
+            homeServerDrawerRemainingHydrationDelayMillis(
+                hydrationStartedAtMillis = startedAtMillis,
+                hydrationOrder = hydrationOrder,
+                nowMillis = defaultNowMillis()
+            )
+        if (remainingDelayMillis > 0L) delay(remainingDelayMillis)
+        hydrated = true
+    }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .then(if (hydrated) interactiveLayoutModifier else Modifier)
+    ) {
+        if (!hydrated || row == null) {
+            HomeSidebarSkeletonRow(
                 modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(homeServerDrawerHeaderHeight(topSafeArea))
-                        .background(SlockColor.BrandYellow)
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(SlockStroke.Default)
-                            .background(SlockColor.BorderBlack)
-                            .align(Alignment.BottomCenter)
-                )
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(homeServerDrawerHeaderHeight(topSafeArea) - SlockStroke.Default)
-                            .padding(top = topSafeArea)
-                            .padding(horizontal = SlockSpacing.Md),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-                ) {
-                    SlockAvatar(
-                        avatarWireValue = userHeader.avatarWireValue,
-                        label = userHeader.avatarLabel,
-                        avatarSize = 32.dp
+                    Modifier.padding(
+                        horizontal = HomeListHorizontalPadding,
+                        vertical = SlockSpacing.Xs
                     )
-                    Text(
-                        text = userHeader.displayName,
-                        style = SlockType.ButtonBold,
-                        color = SlockColor.TextBlack,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            )
+        } else {
+            when (row) {
+                is SlockHomeServerDrawerRow.ServerHeader ->
+                    HomeServerDrawerServerHeader(
+                        section = row.section,
+                        onClick = { onSectionToggle(row.section.server.id) }
                     )
-                    Box(
+                is SlockHomeServerDrawerRow.SectionHeader ->
+                    HomeServerDrawerSectionHeader(
+                        section = row.section,
+                        count = row.count,
+                        labels = labels,
+                        expanded = homeServerDrawerSectionKey(row.serverId, row.section) !in collapsedSectionKeys,
+                        onExpandedChange = { expanded ->
+                            val key = homeServerDrawerSectionKey(row.serverId, row.section)
+                            onCollapsedSectionKeysChange(
+                                if (expanded) collapsedSectionKeys - key else collapsedSectionKeys + key
+                            )
+                        }
+                    )
+                is SlockHomeServerDrawerRow.Conversation ->
+                    HomeServerDrawerConversationRow(
+                        row = row,
+                        serverMembersStore = serverMembersStore,
+                        onClick = { onConversationClick(row.serverId, row.item.id) }
+                    )
+                is SlockHomeServerDrawerRow.Skeleton ->
+                    HomeSidebarSkeletonRow(
                         modifier =
-                            Modifier
-                                .size(width = 56.dp, height = 40.dp)
-                                .semantics {
-                                    contentDescription = "Only show unread"
-                                    stateDescription = if (onlyUnread) "On" else "Off"
-                                }
-                                .clickable(
-                                    role = Role.Switch,
-                                    onClick = { onOnlyUnreadChange(!onlyUnread) }
-                                ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(1.dp)
-                        ) {
-                            Text(
-                                text = "UNREAD",
-                                style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 9.sp),
-                                color = SlockColor.TextBlack,
-                                maxLines = 1
+                            Modifier.padding(
+                                horizontal = HomeListHorizontalPadding,
+                                vertical = SlockSpacing.Xs
                             )
-                            SlockSwitchButton(
-                                checked = onlyUnread,
-                                enabled = true,
-                                modifier = Modifier.size(width = 42.dp, height = 24.dp)
-                            )
-                        }
-                    }
-                }
+                    )
+                is SlockHomeServerDrawerRow.Error ->
+                    HomeServerDrawerErrorRow(
+                        row = row,
+                        onRetry = { onRetry(row.serverId) }
+                    )
+                is SlockHomeServerDrawerRow.FilterEmpty -> HomeServerDrawerFilterEmptyRow()
             }
-            if (visibleRows.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray)
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    beyondBoundsItemCount = drawerBeyondBoundsItemCount
-                ) {
-                    items(visibleRows.size, key = { index -> visibleRows[index].key }) { index ->
-                        when (val row = visibleRows[index]) {
-                            is SlockHomeServerDrawerRow.ServerHeader ->
-                                HomeServerDrawerServerHeader(
-                                    section = row.section,
-                                    onClick = { onSectionToggle(row.section.server.id) }
-                                )
-                            is SlockHomeServerDrawerRow.SectionHeader ->
-                                HomeServerDrawerSectionHeader(
-                                    section = row.section,
-                                    count = row.count,
-                                    labels = labels,
-                                    expanded = homeServerDrawerSectionKey(row.serverId, row.section) !in collapsedSectionKeys,
-                                    onExpandedChange = { expanded ->
-                                        val key = homeServerDrawerSectionKey(row.serverId, row.section)
-                                        collapsedSectionKeys =
-                                            if (expanded) collapsedSectionKeys - key else collapsedSectionKeys + key
-                                    }
-                                )
-                            is SlockHomeServerDrawerRow.Conversation ->
-                                HomeServerDrawerConversationRow(
-                                    row = row,
-                                    serverMembersStore = serverMembersStore,
-                                    onClick = { onConversationClick(row.serverId, row.item.id) }
-                                )
-                            is SlockHomeServerDrawerRow.Skeleton ->
-                                HomeSidebarSkeletonRow(
-                                    modifier =
-                                        Modifier.padding(
-                                            horizontal = HomeListHorizontalPadding,
-                                            vertical = SlockSpacing.Xs
-                                        )
-                                )
-                            is SlockHomeServerDrawerRow.Error ->
-                                HomeServerDrawerErrorRow(
-                                    row = row,
-                                    onRetry = { onRetry(row.serverId) }
-                                )
-                            is SlockHomeServerDrawerRow.FilterEmpty ->
-                                HomeServerDrawerFilterEmptyRow()
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
         }
     }
 }
@@ -3924,7 +4127,10 @@ private fun HomeServerDrawerConversationRow(
             contentAlignment = Alignment.Center
         ) {
             if (isDirectMessage) {
-                SlockAvatar(avatarWireValue, item.avatarLabel)
+                SlockAvatar(
+                    avatarWireValue,
+                    item.avatarLabel
+                )
             } else {
                 when (val symbol = item.homeChannelSymbol()) {
                     "#" ->

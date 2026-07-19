@@ -80,11 +80,13 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         assertContains(drawerHost, ".width(32.dp)")
         assertContains(drawerHost, ".background(Color.Transparent)")
         assertContains(drawerHost, "server_drawer_open_first_visible")
-        assertContains(drawerHost, "HomeServerDrawerColdStartPanel(")
+        assertContains(drawerHost, "contentReady = drawerContentReady")
+        assertFalse(drawerHost.contains("HomeServerDrawerColdStartPanel("))
         assertContains(drawerHost, "server_drawer_content_hydration")
         assertContains(drawerHost, "shouldHydrateHomeServerDrawerContent(")
         assertContains(drawerHost, "phase=canceled")
-        assertContains(drawerHost, "phase=interactive")
+        assertContains(drawerHost, "markerGeneration = generation")
+        assertContains(drawerHost, "if (markerAccepted) \"interactive\" else \"interactive_canceled\"")
         assertTrue(
             drawerHost.indexOf("server_drawer_open_end") <
                 drawerHost.indexOf("server_drawer_content_hydration")
@@ -133,10 +135,10 @@ class HomeServerDrawerOptInProductionCallsiteTest {
     @Test
     fun enabledDrawerReusesHomeRowsResolversSafeAreaAndPremeasureRamp() {
         val source = homeComponentsSource()
-        val coldPanel =
+        val panelEntry =
             source.substring(
-                startIndex = source.indexOf("internal fun HomeServerDrawerColdStartPanel(").also { assertFalse(it < 0) },
-                endIndex = source.indexOf("internal fun HomeServerDrawerPanel(").also { assertFalse(it < 0) }
+                startIndex = source.indexOf("internal fun HomeServerDrawerPanel(").also { assertFalse(it < 0) },
+                endIndex = source.indexOf("private fun HomeServerDrawerPanelMeasured(").also { assertFalse(it < 0) }
             )
         val panel =
             source.substring(
@@ -144,17 +146,43 @@ class HomeServerDrawerOptInProductionCallsiteTest {
                 endIndex = source.indexOf("private fun HomeServerDrawerErrorRow(").also { assertFalse(it < 0) }
             )
 
+        assertContains(panelEntry, "HomeServerDrawerPanelMeasured(")
+        assertFalse(panelEntry.contains("LazyColumn("))
+        assertFalse(panelEntry.contains("SlockAvatar("))
+        assertContains(panel, "private fun HomeServerDrawerPanelSurface(")
+        assertContains(panel, "private fun HomeServerDrawerPanelHeader(")
+        assertContains(panel, "private fun ColumnScope.HomeServerDrawerPanelBody(")
+        assertContains(panel, "private fun HomeServerDrawerPanelRow(")
         assertContains(panel, "homeServerDrawerHeaderHeight(topSafeArea)")
-        assertContains(panel, "LaunchedEffect(Unit)")
-        assertContains(panel, "onContentInteractive()")
-        assertContains(coldPanel, "homeServerDrawerHeaderHeight(topSafeArea)")
-        assertContains(coldPanel, "repeat(6)")
-        assertContains(coldPanel, "HomeSidebarSkeletonRow(")
-        assertContains(coldPanel, "SlockLucideIconName.LoaderCircle")
-        assertFalse(coldPanel.contains("SlockAvatar("))
+        assertContains(panel, "contentReady: Boolean")
+        assertContains(panel, "Modifier.onGloballyPositioned")
+        assertContains(panel, "onContentInteractive: (Int) -> Unit")
+        assertContains(panel, "onContentInteractive(generation)")
+        assertFalse(panel.contains("LaunchedEffect(Unit)"))
+        assertContains(panel, "if (contentReady) visibleRows.size else 6")
+        assertContains(panel, "cold-skeleton:\$index")
+        assertFalse(panel.contains("homeServerDrawerInitialInteractiveRowCount("))
+        assertFalse(panel.contains("homeServerDrawerRetainedHydratedRowKeys("))
+        assertFalse(panel.contains("homeServerDrawerNextHydratedRowKeys("))
+        assertFalse(panel.contains("rows.map { row -> row.key }"))
+        assertContains(panel, "LaunchedEffect(contentReady)")
+        assertContains(panel, "activeOpenGeneration: Int?")
+        assertContains(panel, "remember { HomeServerDrawerInteractiveMarkerGate() }")
+        assertContains(panel, "interactiveMarkerGate.claim(generation)")
+        assertContains(panel, "interactiveMarkerGate.reset()")
+        assertContains(panel, "val interactiveRowIndex =")
+        assertContains(panel, "row !is SlockHomeServerDrawerRow.Skeleton")
+        assertContains(panel, "hydrationStartedAtMillis = defaultNowMillis()")
+        assertContains(panel, "hydrationOrder = index")
+        assertContains(panel, "homeServerDrawerRemainingHydrationDelayMillis(")
+        assertContains(panel, "if (remainingDelayMillis > 0L) delay(remainingDelayMillis)")
+        assertContains(panel, ".then(if (hydrated) interactiveLayoutModifier else Modifier)")
+        assertContains(panel, "if (!hydrated || row == null)")
+        assertContains(panel, "SlockLucideIconName.LoaderCircle")
+        assertContains(panel, "if (contentReady) {")
         assertContains(panel, "Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))")
         assertContains(panel, "homeListInitialBeyondBoundsItemCount()")
-        assertContains(panel, "homeListNextServerSwitchBeyondBoundsItemCount(")
+        assertFalse(panel.contains("homeListNextServerSwitchBeyondBoundsItemCount("))
         assertFalse(panel.contains("sharedListBeyondBoundsItemCount(rows.size)"))
         assertContains(panel, "ServerSwitcherRow(")
         assertContains(panel, "SlockCollapsibleSectionHeader(")
@@ -171,6 +199,9 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         assertFalse(panel.contains("collectIsHoveredAsState"))
         assertFalse(panel.contains("detectDragGesturesAfterLongPress"))
         assertFalse(panel.contains("homeRowAnchorCapture"))
+        assertContains(settingsHomePageSource(), "drawerContentGeneration = null")
+        assertContains(settingsHomePageSource(), "shouldAcceptHomeServerDrawerInteractiveMarker(")
+        assertContains(settingsHomePageSource(), "interactive_canceled")
         assertContains(panel, "userHeader.displayName")
         assertContains(panel, "userHeader.avatarWireValue")
         assertContains(panel, "overflow = TextOverflow.Ellipsis")
