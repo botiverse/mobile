@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-19T22:07:50.353Z",
+  "generatedAt": "2026-07-19T22:11:47.011Z",
   "runId": "6249daf-20260719220554",
   "commit": "6249daf-20260719220554",
   "commitSubject": "fix: rework image editor controls (#1313)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 83,
-        "ready": 74,
-        "pending": 9
+        "ready": 82,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 83,
-        "ready": 72,
-        "pending": 11
+        "ready": 77,
+        "pending": 6
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 83,
-        "ready": 67,
-        "pending": 16
+        "ready": 76,
+        "pending": 7
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 83,
-    "ready": 74,
-    "pending": 9
+    "ready": 82,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 111,

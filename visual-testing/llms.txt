@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-19 22:07:50 UTC
+Generated: 2026-07-19 22:11:47 UTC
 Latest run: 6249daf-20260719220554
 Latest commit: 6249daf-20260719220554
 Commit subject: fix: rework image editor controls (#1313)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 83, same 0, pass 0, basic-pass 1, different 81, missing 1
-AI analysis: ready 74 / total 83, pending 9
+AI analysis: ready 82 / total 83, pending 1
 Visual coverage matrix: active 92 / total 111, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

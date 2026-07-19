@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>6249daf-20260719220554</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-19T22:07:50.353Z" data-timestamp="2026-07-19T22:07:50.353Z" title="2026-07-19T22:07:50.353Z">2026-07-19 22:07:50 UTC</time></p>
+    <p class="runMeta"><code>6249daf-20260719220554</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-19T22:11:47.011Z" data-timestamp="2026-07-19T22:11:47.011Z" title="2026-07-19T22:11:47.011Z">2026-07-19 22:11:47 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 83</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 1</span>
       <span class="pill">Different 81</span>
       <span class="pill">Missing 1</span>
-      <span class="pill">AI 74/83 ready</span>
+      <span class="pill">AI 82/83 ready</span>
       <span class="pill">Matrix 92/111 active</span>
       <span class="pill">Components Parity 81/85 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2474,7 +2474,12 @@
       <p><code>RGB 88.7%</code><br/><code>Pixel 75.11%</code><br/><code>Mismatch 24.89%</code><br/><code>Raw 1026×1176 / 1026×1182</code><br/><code>Canvas 1026×1182</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×392 / component-bounds 342×394</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-chat</summary>
+    <ul><li>Android capture uses a monospace typeface for the body, author/username, and metadata text, while React uses a proportional sans-serif, causing different line wrapping and right-edge clipping.</li><li>React renders a richer message header line (avatar + 'Cindy', a longer username excerpt, and full timestamp '06/22 03:30 PM'); Android truncates the username earlier and the timestamp is clipped on the right ('06/22 23' visible, rest cut off).</li><li>Inline tag/mention chips (#design, @artin, #222) differ slightly in size, padding, and border weight between platforms; on Android they appear marginally larger and more rectangular.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Switch the Android rich-content TextView/Spannable rendering to the design-system proportional font (matching React's typeface) and verify line metrics.</li><li>Re-tune header row layout: allow more width or shrink avatar padding so the full username and '06/22 03:30 PM' timestamp render without clipping.</li><li>Normalize tag/mention chip dimensions across platforms (same padding, border radius, font weight) so #design, @artin, and #222 visually match.</li><li>Align attachment card preview affordance labels and metadata separator (use consistent 'Document preview' / 'HTML preview' copy and bullet style on Android).</li><li>Make the action chip row wrap consistently across platforms (either both stack or both inline) to keep bounds and total height predictable.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.rich-content.png" data-current-src="android/components.thread.message-row.rich-content.png" data-overlay-width="1026" data-overlay-height="1182">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2533,7 +2538,12 @@
       <p><code>RGB 82.0%</code><br/><code>Pixel 49.06%</code><br/><code>Mismatch 50.94%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / component-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android</summary>
+    <ul><li>Android uses a wider available text width for inline code blocks compared to React, producing different line-wrap counts and overall vertical extent of code lines.</li><li>Android uses a monospace font with narrower character cells than React's inline-code font, so code tokens wrap into more lines per block (e.g. 'raft.build.markdown.inlineCode', the long 'reply/channel-markdown/...' path, and the gradlew command).</li><li>React applies the inline-code yellow-fill background to entire contiguous code runs across wrap lines, while Android appears to render each wrapped fragment as a separate bordered pill with visible gaps/borders between fragments, breaking the continuous highlight.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Standardize inline-code rendering so the yellow fill + black border is continuous across wrap lines (no per-line gaps) on Android, matching React.</li><li>Align Android monospace font and metrics (family, size, line-height, letter-spacing) to the React baseline or to a shared design token.</li><li>Match the available content width used for inline-code wrapping between Android and React (verify avatar gutter and message padding).</li><li>Recapture the Android baseline after fixes and verify pixel-perfect similarity improves for this case; re-run the long-inline-code visual test.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.long-inline-code.png" data-current-src="android/components.thread.message-row.long-inline-code.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2592,7 +2602,12 @@
       <p><code>RGB 85.5%</code><br/><code>Pixel 23.24%</code><br/><code>Mismatch 76.76%</code><br/><code>Raw 1170×678 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×226 / component-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-ui</summary>
+    <ul><li>Android rendering is scaled to fill full 390×844 viewport instead of 390×226 component bounds, causing the message bubble to occupy a much taller area.</li><li>Avatar has a small yellow status dot on React baseline that is absent on Android.</li><li>Timestamp format differs: React shows '01:03 PM' while Android shows '07/19 13:03'.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align both crops to component-bounds so the comparison canvas matches the actual message row size.</li><li>Remove full-viewport background fill from the Android message-row container or constrain it to wrap content.</li><li>Re-add the online/status indicator dot on the avatar or intentionally document its removal as a platform difference.</li><li>Unify timestamp formatting across platforms (consider sharing the formatter logic).</li><li>Verify Chinese text line-break rules: either use the same wrapping engine on Android or force consistent break points via CSS-equivalent line-break settings.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-latest-release.png" data-current-src="android/components.thread.message-row.md-latest-release.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2651,7 +2666,12 @@
       <p><code>RGB 84.3%</code><br/><code>Pixel 66.04%</code><br/><code>Mismatch 33.96%</code><br/><code>Raw 780×2532 / 780×2532</code><br/><code>Canvas 780×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 260×844 / component-bounds 260×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android</summary>
+    <ul><li>Body text wraps differently: Android wraps Chinese punctuation (——，: 等) onto new lines while React keeps them attached to preceding text, reducing line count and shifting content vertically.</li><li>Timestamp rendering differs: React shows '07/13 05:55 AM' on a single line with AM suffix; Android shows '07/13 05:55' without AM and uses an abbreviated user label ('Kee…') instead of full name spacing.</li><li>Inline code highlight blocks have inconsistent widths/padding: Android code chips (e.g. 'realtimeStatePreservesPartialSummaryAndReconcilesAcceptedRewind', 'sync_core_messages_v0') are wider, break lines more aggressively, and visually crowd adjacent CJK text.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Apply CJK-friendly break rules: use breakStrategy='balanced' or set wordBreakStyle so em-dash, comma, colon do not trigger wraps; pin breakIterator to simple for CJK runs.</li><li>Unify inline-code chip styling: match React's chip padding, max-width and background token; ensure monospace font has consistent glyph width between platforms.</li><li>Normalize timestamp formatting helper to always emit 'MM/DD HH:mm AM/PM' (or match locale) across platforms; drop the 'Kee…' truncation fallback or apply the same fallback on web.</li><li>Increase bullet/list left padding and paragraph vertical spacing on Android to match React's measurements (use 8dp / 4dp baseline grid).</li><li>Audit mention/highlight color tokens (e.g. '@Mahua', pink raft-mobile-reconcile) to ensure Android resolves the same semantic color as React's theme.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-wrap-slice1.png" data-current-src="android/components.thread.message-row.md-wrap-slice1.png" data-overlay-width="780" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2710,7 +2730,12 @@
       <p><code>RGB 86.1%</code><br/><code>Pixel 44.53%</code><br/><code>Mismatch 55.47%</code><br/><code>Raw 780×1134 / 780×2532</code><br/><code>Canvas 780×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 260×378 / component-bounds 260×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · android-ui</summary>
+    <ul><li>Avatar on Android is smaller and shifted further right from the name versus React, increasing the gap between avatar and message text.</li><li>Android header row adds a truncated 'Kee…' badge between the avatar/name and timestamp that does not exist in React.</li><li>React timestamp reads '07/13 05:56 AM' (12-hour with AM); Android shows '07/13 05:56' (24-hour, no AM/PM suffix).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Cap the Android element-bounds rect to actual content height (≈378px) or align column width so container height matches React baseline.</li><li>Preserve spaces between CJK and Latin runs in Markdown rendering (set word-wrap / break-word behavior or use a pre-processed string with NBSPs) to match React spacing.</li><li>Remove the 'Kee…' badge from the header or render it identically on React; ensure it has a fixed max-width with ellipsis instead of overflowing into the timestamp.</li><li>Format the timestamp using a locale that emits 'AM/PM' (e.g., en-US 12-hour) to match React.</li><li>Match avatar dimensions between web and Android tokens (likely 32–36px on React vs smaller on Android).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-wrap-clarify.png" data-current-src="android/components.thread.message-row.md-wrap-clarify.png" data-overlay-width="780" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2833,7 +2858,12 @@
       <p><code>RGB 85.0%</code><br/><code>Pixel 28.91%</code><br/><code>Mismatch 71.09%</code><br/><code>Raw 1170×966 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×322 / component-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android</summary>
+    <ul><li>Message body text appears more compact/wrapped on Android, resulting in different line break points and slightly tighter line-height.</li><li>Android shows a noticeably taller empty area below the message row, likely due to different container/component bounds (Android canvas is 390×844 vs React 390×322).</li><li>Long hex/hash tokens (e.g., db01c5e5b91f3696bfda64edde2fc31b3a4...) break differently and wrap onto more lines on Android.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Match Android line-height and font-size to React's typography tokens for the message body.</li><li>Normalize text-wrap behavior (e.g., wordBreak / overflowWrap) so long hex strings and CJK characters break consistently.</li><li>Unify inline-chip padding and border-radius between React and Android renderers.</li><li>Align the header label's available width so truncation of 'Keeps visual testing …' is identical.</li><li>Recapture Android crop using component-bounds of the message row itself (≈322 tall) instead of a manual 390×844 rect to avoid extra blank space.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-wrap-status606.png" data-current-src="android/components.thread.message-row.md-wrap-status606.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -2892,7 +2922,12 @@
       <p><code>RGB 86.2%</code><br/><code>Pixel 36.00%</code><br/><code>Mismatch 64.00%</code><br/><code>Raw 780×864 / 780×2532</code><br/><code>Canvas 780×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 260×288 / component-bounds 260×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · android-chat-components</summary>
+    <ul><li>Android viewport height is 844px vs React's 288px, causing Android to show large empty space below the message row.</li><li>Timestamp formatting differs: React shows '07/13 05:57 AM' in monospace; Android shows 'Kee... 07/13 05:57' with an additional truncated 'Kee…' label between author and date.</li><li>Avatar presence: React shows a square pixel-art avatar with an orange status dot at bottom-right; Android avatar appears without the orange status dot.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Crop Android snapshot to element bounds (260×288) so vertical sizing matches React for fair comparison.</li><li>Re-add orange online-status dot to the avatar in Android MessageRow.</li><li>Restore pill background (yellow for @mention, pink for #reference) with correct corner radius in Android Compose styling.</li><li>Normalize timestamp formatter to output 'MM/dd hh:mm a' format without leading weekday abbreviation, matching React.</li><li>Tune Android text wrapping (line-breaks, breakStrategy, or max width) to match React's wrapping; ensure CJK punctuation does not force orphan breaks.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-wrap-task607.png" data-current-src="android/components.thread.message-row.md-wrap-task607.png" data-overlay-width="780" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">
@@ -5066,7 +5101,12 @@
       <p><code>RGB 94.9%</code><br/><code>Pixel 90.55%</code><br/><code>Mismatch 9.45%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · Design Systems / Mobile Platform team</summary>
+    <ul><li>Avatar placeholder differs: React shows solid cyan square, Android shows a mosaic/QR-like pattern with cyan and black blocks.</li><li>Header subtitle text differs: React shows truncated 'Turns product feedback, s…' while Android shows longer truncated 'Turns product feedback, screensho…' (slightly wider truncation).</li><li>Activity tab button on Android is shorter/wider with yellow fill extending across the button, React version has the yellow highlight constrained within the tab bounds.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify avatar placeholder rendering by using a shared design-token-driven avatar component across web and Android.</li><li>Standardize the Copy button label to a single canonical string (e.g., 'Copy diagnostic info') and apply consistent padding/border-radius from the shared token.</li><li>Adopt a single row layout for activity entries (decide inline vs stacked) and codify it in the design system spec; ensure both platforms implement the same template.</li><li>Normalize time format to a single locale-aware formatter (e.g., always 24h or always 12h with AM/PM) and apply consistently across platforms.</li><li>Define a shared status indicator palette (colors for Working/Thinking/Running command/Posted status update) and ensure identical hex values on both platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.members.agent-detail.activity.png" data-current-src="android/screens.members.agent-detail.activity.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

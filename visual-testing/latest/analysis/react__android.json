@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-19T22:07:43.163Z",
+  "generatedAt": "2026-07-19T22:11:39.842Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 83,
-    "ready": 74,
-    "pending": 9
+    "ready": 82,
+    "pending": 1
   },
   "cases": [
     {
@@ -1193,7 +1193,7 @@
       "id": "components.thread.forward-modal",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T22:07:42.206Z",
+      "generatedAt": "2026-07-19T22:11:38.860Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2316,15 +2316,36 @@
     },
     {
       "id": "screens.members.agent-detail.activity",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe17fc80100030801000000000000000000000010053e0000271fef87e71fef006719ef8fe707ef0fe707ef84e780ef03e703ef0127002f9827cfef8be7ffef01e7ffef8467ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-19T22:07:42.919Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:39.229Z",
+      "severity": "medium",
+      "summary": [
+        "Avatar placeholder differs: React shows solid cyan square, Android shows a mosaic/QR-like pattern with cyan and black blocks.",
+        "Header subtitle text differs: React shows truncated 'Turns product feedback, s…' while Android shows longer truncated 'Turns product feedback, screensho…' (slightly wider truncation).",
+        "Activity tab button on Android is shorter/wider with yellow fill extending across the button, React version has the yellow highlight constrained within the tab bounds.",
+        "'Copy Diagnostic Info' button on React vs 'Copy info' on Android — Android label is shorter and button is smaller/narrower with reduced padding.",
+        "Activity entry row layout differs: React uses a single-line inline format (bold label followed by body text on same line), Android uses a stacked two-line layout (bold label on top, body indented below)."
+      ],
+      "likelyCauses": [
+        "Platform-specific component implementations (React web vs Android native) using different default typography, spacing, and layout primitives.",
+        "Different date/time formatting locale or formatter (Intl.DateTimeFormat vs SimpleDateFormat with 12h vs 24h default).",
+        "Avatar asset or placeholder rendering differs between web (CSS background) and Android (vector/bitmap drawable).",
+        "Copy button label string is not shared via design tokens — React uses full label while Android uses abbreviated label.",
+        "Activity list item uses different row templates (inline vs stacked) across platforms, possibly due to platform-specific ListItem/Row components."
+      ],
+      "suggestedOwner": "Design Systems / Mobile Platform team",
+      "suggestedFixes": [
+        "Unify avatar placeholder rendering by using a shared design-token-driven avatar component across web and Android.",
+        "Standardize the Copy button label to a single canonical string (e.g., 'Copy diagnostic info') and apply consistent padding/border-radius from the shared token.",
+        "Adopt a single row layout for activity entries (decide inline vs stacked) and codify it in the design system spec; ensure both platforms implement the same template.",
+        "Normalize time format to a single locale-aware formatter (e.g., always 24h or always 12h with AM/PM) and apply consistently across platforms.",
+        "Define a shared status indicator palette (colors for Working/Thinking/Running command/Posted status update) and ensure identical hex values on both platforms."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09449305302385869
     },
     {
@@ -2501,67 +2522,174 @@
     },
     {
       "id": "components.thread.message-row.rich-content",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e002e003f000e03ee000fffef3fee03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03efffef2fefffefffef01efffefffefffefffee002f3fee002fbfeeffee000fffee00200000e00fff81fffffffffff",
-      "generatedAt": "2026-07-19T22:07:42.972Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:39.335Z",
+      "severity": "medium",
+      "summary": [
+        "Android capture uses a monospace typeface for the body, author/username, and metadata text, while React uses a proportional sans-serif, causing different line wrapping and right-edge clipping.",
+        "React renders a richer message header line (avatar + 'Cindy', a longer username excerpt, and full timestamp '06/22 03:30 PM'); Android truncates the username earlier and the timestamp is clipped on the right ('06/22 23' visible, rest cut off).",
+        "Inline tag/mention chips (#design, @artin, #222) differ slightly in size, padding, and border weight between platforms; on Android they appear marginally larger and more rectangular.",
+        "Android shows a 'Text preview' affordance inside the second attachment card with an eye icon, whereas React renders a 'Document preview' row without that label; the file metadata format also differs ('HTML preview · 32 KB' on Android vs 'HTML preview · 32 KB' with different layout on React).",
+        "Action chip row is wrapped to two lines on React (#222 @Cindy, 7 replies·2 new, 👍 3, + stacked vertically) but laid out on a single row on Android with the + button beside the reactions, changing the overall component height."
+      ],
+      "likelyCauses": [
+        "Android client maps the rich-text renderer to a monospace system font instead of the design-system proportional font used on web/React.",
+        "Truncation/ellipsis policy for the username and timestamp row is configured with a smaller available width or earlier break point on Android.",
+        "Attachment card component variant differs between platforms (different preview affordance labels and metadata separator styling).",
+        "Action chip row uses a flex layout on Android that fits horizontally, while React stacks chips vertically due to wrap behavior or container width."
+      ],
+      "suggestedOwner": "android-chat",
+      "suggestedFixes": [
+        "Switch the Android rich-content TextView/Spannable rendering to the design-system proportional font (matching React's typeface) and verify line metrics.",
+        "Re-tune header row layout: allow more width or shrink avatar padding so the full username and '06/22 03:30 PM' timestamp render without clipping.",
+        "Normalize tag/mention chip dimensions across platforms (same padding, border radius, font weight) so #design, @artin, and #222 visually match.",
+        "Align attachment card preview affordance labels and metadata separator (use consistent 'Document preview' / 'HTML preview' copy and bullet style on Android).",
+        "Make the action chip row wrap consistently across platforms (either both stack or both inline) to keep bounds and total height predictable."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24887856509105066
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffe7ffe1fffffff05ff9fffffff9d7feffffbffefffe2efec3fe3ffe001e01fe0cfefffc039fd47e1ffe00febffe03fe07fe67feffff81fe3ffffffe163efffe007e007e003e037e003e0ffe003e003e003e007e007e007e003e003e003e003efffe003e01fe103e003e1ffe001e003e001e003e001e003e03fe003ffffffff",
-      "generatedAt": "2026-07-19T22:07:43.047Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:39.394Z",
+      "severity": "medium",
+      "summary": [
+        "Android uses a wider available text width for inline code blocks compared to React, producing different line-wrap counts and overall vertical extent of code lines.",
+        "Android uses a monospace font with narrower character cells than React's inline-code font, so code tokens wrap into more lines per block (e.g. 'raft.build.markdown.inlineCode', the long 'reply/channel-markdown/...' path, and the gradlew command).",
+        "React applies the inline-code yellow-fill background to entire contiguous code runs across wrap lines, while Android appears to render each wrapped fragment as a separate bordered pill with visible gaps/borders between fragments, breaking the continuous highlight.",
+        "Line spacing within multi-line code blocks is tighter on React and looser on Android, increasing total block height on Android.",
+        "Body text and timestamp typography appear visually consistent between platforms; differences are concentrated in the inline-code rendering, not the surrounding paragraph text."
+      ],
+      "likelyCauses": [
+        "Different inline-code layout implementation between React web (continuous inline background spanning wraps) and Android (segmented span background per line/break).",
+        "Monospace font metrics differ across web and Android (different family, weight, or letter-spacing), altering wrap behavior at the same nominal width.",
+        "Available content width inside the message row differs between platforms, possibly due to padding/margin or avatar column width discrepancies.",
+        "Lack of a shared design-token for inline-code max-width, line-height, and font-family between React and Android implementations."
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Standardize inline-code rendering so the yellow fill + black border is continuous across wrap lines (no per-line gaps) on Android, matching React.",
+        "Align Android monospace font and metrics (family, size, line-height, letter-spacing) to the React baseline or to a shared design token.",
+        "Match the available content width used for inline-code wrapping between Android and React (verify avatar gutter and message padding).",
+        "Recapture the Android baseline after fixes and verify pixel-perfect similarity improves for this case; re-run the long-inline-code visual test."
+      ],
+      "intentional": [
+        "#520 is rendered as a task chip on Android but as plain text on React (platform-difference: Android tags every bare #number; React gates on known refs)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.5094044098783435
     },
     {
       "id": "components.thread.message-row.md-latest-release",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00fc00fc07fe7ffe000007fec0000000c0006000c00e6000c00a6002c000600240fe6002be02e03efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffa1fff",
-      "generatedAt": "2026-07-19T22:07:43.051Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:39.406Z",
+      "severity": "medium",
+      "summary": [
+        "Android rendering is scaled to fill full 390×844 viewport instead of 390×226 component bounds, causing the message bubble to occupy a much taller area.",
+        "Avatar has a small yellow status dot on React baseline that is absent on Android.",
+        "Timestamp format differs: React shows '01:03 PM' while Android shows '07/19 13:03'.",
+        "Inline code highlight color appears slightly more saturated/warmer on Android.",
+        "Text wrapping/line breaks differ: Android breaks Chinese punctuation onto its own line (e.g., '打开\\n永远展示') vs React's layout."
+      ],
+      "likelyCauses": [
+        "Crop mismatch: baseline uses element-bounds crop (226px tall) while current uses full manual-rect (844px), inflating the comparison canvas.",
+        "Android thread message-row component sets min-height or background fill to full screen height instead of intrinsic content height.",
+        "Avatar component on Android missing the online/presence indicator dot.",
+        "Timestamp formatter on Android uses locale-specific pattern (yyyy/MM/dd HH:mm) instead of the 12-hour AM/PM format used by React."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Align both crops to component-bounds so the comparison canvas matches the actual message row size.",
+        "Remove full-viewport background fill from the Android message-row container or constrain it to wrap content.",
+        "Re-add the online/status indicator dot on the avatar or intentionally document its removal as a platform difference.",
+        "Unify timestamp formatting across platforms (consider sharing the formatter logic).",
+        "Verify Chinese text line-break rules: either use the same wrapping engine on Android or force consistent break points via CSS-equivalent line-break settings."
+      ],
+      "intentional": [
+        "Timestamp locale formatting difference may be intentional for Android regional settings."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.7676013691416534
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffc0ffc83feffff800389fff01f800ff077f81ff801f813f801fc03f801f803f803f803fa07f807fc0bf81ff91ffc0ff803fc0ff807fd77f84ff807f81ff807f803f87ff803f837fa07fdfff803f803fbfff807f803f807f803fd67f9c3f887fbfffcfff807f803fa83f81ff9fffdeff00ffcc7f003f8fff006f802ffffffff",
-      "generatedAt": "2026-07-19T22:07:43.064Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:39.390Z",
+      "severity": "high",
+      "summary": [
+        "Body text wraps differently: Android wraps Chinese punctuation (——，: 等) onto new lines while React keeps them attached to preceding text, reducing line count and shifting content vertically.",
+        "Timestamp rendering differs: React shows '07/13 05:55 AM' on a single line with AM suffix; Android shows '07/13 05:55' without AM and uses an abbreviated user label ('Kee…') instead of full name spacing.",
+        "Inline code highlight blocks have inconsistent widths/padding: Android code chips (e.g. 'realtimeStatePreservesPartialSummaryAndReconcilesAcceptedRewind', 'sync_core_messages_v0') are wider, break lines more aggressively, and visually crowd adjacent CJK text.",
+        "Bullet list indentation is shallower on Android; bullets appear closer to the left edge and bullets/items have less horizontal separation from the avatar/header column.",
+        "Code chip background color and border appear slightly more saturated/pinker on Android (e.g. '#raft-mobile-reconcile' reads pink vs React's pale yellow), and the '@Mahua' mention highlight is missing/dimmer on Android."
+      ],
+      "likelyCauses": [
+        "Markdown renderer on Android uses different CJK line-break/opacity rules (e.g. lineBreakStrategy 'simple' vs 'high quality'), causing punctuation to wrap as break opportunities.",
+        "Android TextView measures inline code spans with extra padding and a different monospace font metrics, increasing chip width.",
+        "Different handling of user mentions/code chip background tint tokens between web (React) and Android Compose/View styles.",
+        "Avatar row and message body are in separate columns on React but stacked with reduced indentation on Android.",
+        "Android applies a denser line-height/multiplier to body text than the web baseline."
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Apply CJK-friendly break rules: use breakStrategy='balanced' or set wordBreakStyle so em-dash, comma, colon do not trigger wraps; pin breakIterator to simple for CJK runs.",
+        "Unify inline-code chip styling: match React's chip padding, max-width and background token; ensure monospace font has consistent glyph width between platforms.",
+        "Normalize timestamp formatting helper to always emit 'MM/DD HH:mm AM/PM' (or match locale) across platforms; drop the 'Kee…' truncation fallback or apply the same fallback on web.",
+        "Increase bullet/list left padding and paragraph vertical spacing on Android to match React's measurements (use 8dp / 4dp baseline grid).",
+        "Audit mention/highlight color tokens (e.g. '@Mahua', pink raft-mobile-reconcile) to ensure Android resolves the same semantic color as React's theme."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3396306760643254
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:207c007c83fe7ffe80068986f04e8106f002f15ef00ef0fef000f006f000f01ef002f80af000f002f002f00ef002f002f000f002f04af01e807ef00efffff016fffff006fffff01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000ffff7fff",
-      "generatedAt": "2026-07-19T22:07:43.071Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:39.398Z",
+      "severity": "high",
+      "summary": [
+        "Avatar on Android is smaller and shifted further right from the name versus React, increasing the gap between avatar and message text.",
+        "Android header row adds a truncated 'Kee…' badge between the avatar/name and timestamp that does not exist in React.",
+        "React timestamp reads '07/13 05:56 AM' (12-hour with AM); Android shows '07/13 05:56' (24-hour, no AM/PM suffix).",
+        "React breaks the message into multiple lines with frequent soft-wrap and visible spaces inside inline code (e.g., '(read- state→Activity'); Android collapses spaces and wraps differently, producing longer lines and fewer breaks.",
+        "React preserves Latin/CJK spacing (visible space between Chinese and English words like 'activity 没刷新\"'); Android removes these inter-script spaces, tightening the text."
+      ],
+      "likelyCauses": [
+        "Different container width / column constraint passed to the Android component, producing a taller element-bounds box.",
+        "Android text engine (likely SpannableString/Markdown) applies whitespace collapsing rules and removes spaces between CJK and Latin runs.",
+        "Locale/time formatting on Android is using 24-hour pattern without AM/PM, while React uses en-US 12-hour locale.",
+        "Android header layout inserts a status/badge chip ('Kee…') not rendered in React, likely a role/keep/badge indicator with missing max-width handling.",
+        "Missing border style on the Android component wrapper."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Cap the Android element-bounds rect to actual content height (≈378px) or align column width so container height matches React baseline.",
+        "Preserve spaces between CJK and Latin runs in Markdown rendering (set word-wrap / break-word behavior or use a pre-processed string with NBSPs) to match React spacing.",
+        "Remove the 'Kee…' badge from the header or render it identically on React; ensure it has a fixed max-width with ellipsis instead of overflowing into the timestamp.",
+        "Format the timestamp using a locale that emits 'AM/PM' (e.g., en-US 12-hour) to match React.",
+        "Match avatar dimensions between web and Android tokens (likely 32–36px on React vs smaller on Android)."
+      ],
+      "intentional": [
+        "Height difference may be a deliberate canvas/column resize; verify with design before treating as a regression."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.5547155385425527
     },
     {
@@ -2602,28 +2730,72 @@
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fe03fc07fe7ffe00030036c03e1006c000e001c0004001e0064006c01e6006c006600ee0026006e0066002e0866002007ceceefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000ffff3fff",
-      "generatedAt": "2026-07-19T22:07:43.133Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:47.520Z",
+      "severity": "medium",
+      "summary": [
+        "Message body text appears more compact/wrapped on Android, resulting in different line break points and slightly tighter line-height.",
+        "Android shows a noticeably taller empty area below the message row, likely due to different container/component bounds (Android canvas is 390×844 vs React 390×322).",
+        "Long hex/hash tokens (e.g., db01c5e5b91f3696bfda64edde2fc31b3a4...) break differently and wrap onto more lines on Android.",
+        "Avatar and header (Cindy / Keeps visual testing … / timestamp) spacing differs: Android has the timestamp on the same line as the truncated 'Keeps visual testing …' label, while React places it on a separate visual line with the label truncated as 'Keeps vis…'.",
+        "The header label truncation differs: React clips to 'Keeps vis…', Android clips to 'Keeps visual testing …' (different truncation width / available horizontal space)."
+      ],
+      "likelyCauses": [
+        "Different default font metrics (font family, size, or line-height) between web (React) and native (Android) text rendering.",
+        "Different text-wrap / line-breaking policies for mixed CJK + Latin + long hex tokens.",
+        "Inconsistent horizontal/vertical padding inside the message row container across platforms.",
+        "Component bounds mismatch: Android snapshot is cropped/measured to a larger height (844) than React (322), exposing extra whitespace.",
+        "Header truncation width (maxWidth on the secondary label) differs between platforms."
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Match Android line-height and font-size to React's typography tokens for the message body.",
+        "Normalize text-wrap behavior (e.g., wordBreak / overflowWrap) so long hex strings and CJK characters break consistently.",
+        "Unify inline-chip padding and border-radius between React and Android renderers.",
+        "Align the header label's available width so truncation of 'Keeps visual testing …' is identical.",
+        "Recapture Android crop using component-bounds of the message row itself (≈322 tall) instead of a manual 390×844 rect to avoid extra blank space."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.7108626672607715
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:203c003c03fe7ffe800680fef0008006f0007002f00277fef0027006f0007006f0007002f0007002f3fe70060004f002fffff006fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe0fff",
-      "generatedAt": "2026-07-19T22:07:43.122Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:49.441Z",
+      "severity": "medium",
+      "summary": [
+        "Android viewport height is 844px vs React's 288px, causing Android to show large empty space below the message row.",
+        "Timestamp formatting differs: React shows '07/13 05:57 AM' in monospace; Android shows 'Kee... 07/13 05:57' with an additional truncated 'Kee…' label between author and date.",
+        "Avatar presence: React shows a square pixel-art avatar with an orange status dot at bottom-right; Android avatar appears without the orange status dot.",
+        "Inline mention pills render differently: Android's '@artin' appears as plain bold underlined text rather than a filled yellow rounded pill, and '#607' / '#对话流专修' lose their pink rounded-pill backgrounds, appearing as boxed text or bare hashtags.",
+        "Line wrapping/break behavior differs — Android breaks '我已 claim) —slice-1 那个' across more lines with different whitespace and breaks after Chinese punctuation more aggressively than React."
+      ],
+      "likelyCauses": [
+        "Android component uses a manual-rect crop (260×844) instead of element-bounds, inflating the visible canvas and adding empty space below the message.",
+        "Avatar status-indicator overlay missing in Android implementation.",
+        "Mention/reference token styling (pill background, border-radius, fill color) not ported to Android markup styles.",
+        "Date locale formatter outputs a short weekday prefix ('Kee…') before the date on Android, likely due to a different locale/format string.",
+        "Text wrapping uses a wider measure or different break rules on Android (possibly due to font metrics differing from web monospace fallback)."
+      ],
+      "suggestedOwner": "android-chat-components",
+      "suggestedFixes": [
+        "Crop Android snapshot to element bounds (260×288) so vertical sizing matches React for fair comparison.",
+        "Re-add orange online-status dot to the avatar in Android MessageRow.",
+        "Restore pill background (yellow for @mention, pink for #reference) with correct corner radius in Android Compose styling.",
+        "Normalize timestamp formatter to output 'MM/dd hh:mm a' format without leading weekday abbreviation, matching React.",
+        "Tune Android text wrapping (line-breaks, breakStrategy, or max width) to match React's wrapping; ensure CJK punctuation does not force orphan breaks."
+      ],
+      "intentional": [
+        "Difference in overall canvas height (288 vs 844) is likely a test crop artifact, not an intentional design change."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.6400443553287155
     },
     {

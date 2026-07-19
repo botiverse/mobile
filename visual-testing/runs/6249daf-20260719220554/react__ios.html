@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>6249daf-20260719220554</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-19T22:07:50.353Z" data-timestamp="2026-07-19T22:07:50.353Z" title="2026-07-19T22:07:50.353Z">2026-07-19 22:07:50 UTC</time></p>
+    <p class="runMeta"><code>6249daf-20260719220554</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-19T22:11:47.011Z" data-timestamp="2026-07-19T22:11:47.011Z" title="2026-07-19T22:11:47.011Z">2026-07-19 22:11:47 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 83</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 10</span>
       <span class="pill">Different 54</span>
       <span class="pill">Missing 6</span>
-      <span class="pill">AI 72/83 ready</span>
+      <span class="pill">AI 77/83 ready</span>
       <span class="pill">Matrix 92/111 active</span>
       <span class="pill">Components Parity 81/85 active</span><span class="pill">Screens Parity 11/26 active</span>
     </div>
@@ -2573,7 +2573,12 @@
       <p><code>RGB 81.9%</code><br/><code>Pixel 62.96%</code><br/><code>Mismatch 37.04%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · ios-message-rendering</summary>
+    <ul><li>iOS renders the entire message body at a noticeably larger/looser line-height and font scale, causing each paragraph to occupy more vertical space and fewer characters per line versus React (e.g. 'Plain text baseline before bold.' fits on one line on React but wraps on iOS).</li><li>Long inline code spans on iOS are clipped/cropped at the right edge of the message bubble: 'CODE_SPAN', 'raft.build.markdown.inlineCode', and the long path all extend past the visible bounds and lose their right portion (e.g. 'inlineCode' becomes 'inl…ineCode' with the trailing characters missing), while React wraps the same content fully inside the bounds.</li><li>The yellow-fill / black-frame inline-code treatment uses thinner/narrower borders on iOS, so the rectangular code frame is visually less prominent and breaks earlier, contributing to the right-edge clipping of long tokens.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Match iOS message-row base font size and line-height to React's MessageItem defaults so paragraph density is comparable.</li><li>Ensure long inline-code spans are allowed to soft-wrap (or apply text-break/opacity-safe overflow) within the message bubble's content width instead of being clipped at the right edge.</li><li>Increase inline-code horizontal padding on iOS and re-measure the chip/code width against the bubble's inner bounds.</li><li>Align iOS header truncation width and time formatter ('h:mm a') with React so 'Keeps visual testing…' and '06/25 05:55 AM' render consistently.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.long-inline-code.png" data-current-src="ios/components.thread.message-row.long-inline-code.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2632,7 +2637,12 @@
       <p><code>RGB 86.4%</code><br/><code>Pixel 90.81%</code><br/><code>Mismatch 9.19%</code><br/><code>Raw 1170×678 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×226 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · Messaging component owner (cross-platform MessageRow)</summary>
+    <ul><li>Avatar in iOS has no yellow presence status dot (visible in React baseline at bottom-right of avatar).</li><li>Timestamp format differs: React shows '01:03 PM' (12-hour), iOS shows '07/19 13:03' (locale-specific, with date prefix).</li><li>Snippet text differs: React uses 'Keeps visual te...' (truncated), iOS uses 'Keeps visual testing…' — also iOS snippet ends with an ellipsis character '…' instead of '...'.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add or re-add the yellow presence dot to the iOS MessageRow avatar to match the React baseline.</li><li>Unify timestamp rendering behind a shared formatter (e.g., always show 'hh:mm AM/PM' or always show locale date+time) controlled by a prop.</li><li>Match snippet ellipsis style ('...' vs '…') via a single text-truncation helper on both platforms.</li><li>Align the hairline divider thickness/color beneath the avatar/name/timestamp row to a shared token.</li><li>Sync body max-width / horizontal padding so paragraph wrapping matches line widths.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-latest-release.png" data-current-src="ios/components.thread.message-row.md-latest-release.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2691,7 +2701,12 @@
       <p><code>RGB 85.7%</code><br/><code>Pixel 79.93%</code><br/><code>Mismatch 20.07%</code><br/><code>Raw 780×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 260×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-ios / messaging-ui</summary>
+    <ul><li>Avatar on iOS is larger and lacks the yellow notification dot present on React baseline.</li><li>iOS header omits 'AM' in timestamp and replaces the plain timestamp with a 'Kee…' ellipsized prefix between name and date.</li><li>iOS body text wraps to a noticeably narrower column (more line breaks per paragraph) than React, causing different line-break positions and vertical layout shift.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize markdown body max-width and font metrics between React and iOS to align line breaks.</li><li>Port the avatar status indicator (yellow dot) to the iOS MessageRow avatar view.</li><li>Unify header metadata layout: decide whether 'Kee…' indicator or 'AM' suffix is shown and align both platforms.</li><li>Verify iOS markdown wrapper does not truncate trailing inline code spans like '#raft-mobile-reconcile'; ensure scroll/crop region includes full content.</li><li>Match bold font weight scale between React and iOS typography tokens.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-wrap-slice1.png" data-current-src="ios/components.thread.message-row.md-wrap-slice1.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2750,7 +2765,12 @@
       <p><code>RGB 87.8%</code><br/><code>Pixel 90.53%</code><br/><code>Mismatch 9.47%</code><br/><code>Raw 780×1134 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 260×378 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-ios</summary>
+    <ul><li>Timestamp format differs: React shows '07/13 05:56 AM' with AM/PM suffix in monospace, iOS shows '07/13 05:56' in lighter gray sans-serif</li><li>iOS adds a 'Kee…' truncated username/label between author name and timestamp that is absent in React</li><li>Avatar size is larger on iOS; avatar and message column have more horizontal spacing on iOS vs tighter React layout</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align timestamp formatter on iOS to match React output (include AM/PM, same separator and weight) or document the intentional delta</li><li>Suppress or restyle the extra 'Kee…' label on iOS, or add equivalent to React header row for parity</li><li>Tokenize avatar size, body font size/weight, line-height, and inline-code chip padding into shared design tokens and consume on both platforms</li><li>Verify markdown line-break logic produces identical wrap points; consider setting explicit break-word/word-break policy</li><li>Tighten iOS paragraph spacing to match React's vertical rhythm</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-wrap-clarify.png" data-current-src="ios/components.thread.message-row.md-wrap-clarify.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2937,7 +2957,12 @@
       <p><code>RGB 88.0%</code><br/><code>Pixel 93.25%</code><br/><code>Mismatch 6.75%</code><br/><code>Raw 780×864 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 260×288 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-ios</summary>
+    <ul><li>iOS avatar is larger but does not overlap text; React avatar overlaps the timestamp area</li><li>iOS timestamp shows truncated user handle ('Kee…') between name and date; React shows no handle in the meta row</li><li>iOS renders message body with denser line spacing and narrower column width (~70px), while React uses a wider ~170px column with looser spacing</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reuse the shared `MarkdownWrap` MessageRow component contract on iOS so mention chips, timestamps, and avatar bounds match React</li><li>Port the mention/hashtag chip styles (background, border-radius, padding) into the iOS design tokens to match React</li><li>Remove the truncated 'Kee…' handle prefix on iOS or render it on a dedicated meta line so it doesn't crowd the timestamp</li><li>Align iOS body line-height and column width with the shared spec (≈170px text column at baseline, matching line-height)</li><li>Sync avatar size token with the shared spec so it matches React's overlap geometry</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.md-wrap-task607.png" data-current-src="ios/components.thread.message-row.md-wrap-task607.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

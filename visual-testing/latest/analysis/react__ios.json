@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-19T22:07:45.830Z",
+  "generatedAt": "2026-07-19T22:11:42.506Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 83,
-    "ready": 72,
-    "pending": 11
+    "ready": 77,
+    "pending": 6
   },
   "cases": [
     {
@@ -2184,7 +2184,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T22:07:45.496Z",
+      "generatedAt": "2026-07-19T22:11:42.164Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2197,7 +2197,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T22:07:45.496Z",
+      "generatedAt": "2026-07-19T22:11:42.164Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2210,7 +2210,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T22:07:45.496Z",
+      "generatedAt": "2026-07-19T22:11:42.164Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2223,7 +2223,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T22:07:45.496Z",
+      "generatedAt": "2026-07-19T22:11:42.164Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2236,7 +2236,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T22:07:45.496Z",
+      "generatedAt": "2026-07-19T22:11:42.164Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2447,54 +2447,141 @@
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff1fffffff07ff9fffffff9d5feffff3ffefffe2efec3fe3ffe001e01fe0cfefffc039fc07e1ffe00febffe03fe07fe67fefffe01fe3ffffffe163e7ffe007e003e003e0ffe003e0ffe003e003e003e001e007e001e003e001e003e001efffe003e01fe1ffe003e001e001e001e001e001e001e001e03fe00fffffffff",
-      "generatedAt": "2026-07-19T22:07:45.738Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:59.399Z",
+      "severity": "medium",
+      "summary": [
+        "iOS renders the entire message body at a noticeably larger/looser line-height and font scale, causing each paragraph to occupy more vertical space and fewer characters per line versus React (e.g. 'Plain text baseline before bold.' fits on one line on React but wraps on iOS).",
+        "Long inline code spans on iOS are clipped/cropped at the right edge of the message bubble: 'CODE_SPAN', 'raft.build.markdown.inlineCode', and the long path all extend past the visible bounds and lose their right portion (e.g. 'inlineCode' becomes 'inl…ineCode' with the trailing characters missing), while React wraps the same content fully inside the bounds.",
+        "The yellow-fill / black-frame inline-code treatment uses thinner/narrower borders on iOS, so the rectangular code frame is visually less prominent and breaks earlier, contributing to the right-edge clipping of long tokens.",
+        "Spacing between successive tag chips (#42, #43) and between chips and surrounding text differs: iOS leaves larger gaps and pushes #42 onto its own line, while React keeps '#42 and task #43' on the same line.",
+        "Timestamp/header metadata ('Keeps vis…' / 'Keeps visual testing…' and '06/25 05:55 AM' / '06/25 05:55') truncates differently: React truncates the status text aggressively to 'Keeps vis…' while iOS shows more of it ('Keeps visual testing…') but omits the 'AM' suffix."
+      ],
+      "likelyCauses": [
+        "iOS message-row layout uses a larger default font size / line-height multiplier than React's MessageItem renderer.",
+        "iOS inline-code measurement does not account for the right padding of the message bubble, causing overflow clipping instead of word-wrapping inside the code span.",
+        "iOS code-span border/background padding is narrower, reducing the effective inline width available before the bubble edge.",
+        "Status/sub-header truncation logic differs between platforms (iOS uses a wider truncation width and a different time-format string)."
+      ],
+      "suggestedOwner": "ios-message-rendering",
+      "suggestedFixes": [
+        "Match iOS message-row base font size and line-height to React's MessageItem defaults so paragraph density is comparable.",
+        "Ensure long inline-code spans are allowed to soft-wrap (or apply text-break/opacity-safe overflow) within the message bubble's content width instead of being clipped at the right edge.",
+        "Increase inline-code horizontal padding on iOS and re-measure the chip/code width against the bubble's inner bounds.",
+        "Align iOS header truncation width and time formatter ('h:mm a') with React so 'Keeps visual testing…' and '06/25 05:55 AM' render consistently."
+      ],
+      "intentional": [
+        "Bare '#520' renders as plain text on React but as a yellow task chip on iOS — accepted platform-difference per artin's keep-android-tags-everything ruling; same behavior applies to iOS here.",
+        "Self mention '@artin' is a yellow chip on both sides and other mentions (e.g. '@KMP-专家') remain plain text on both — consistent with the updated mention-styling spec."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.37037745912153497
     },
     {
       "id": "components.thread.message-row.md-latest-release",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00fc00fc07fe7ffe000007fec0000000c0004000c00e6000c00a6006c000600240fe60021600e01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
-      "generatedAt": "2026-07-19T22:07:45.752Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:59.405Z",
+      "severity": "medium",
+      "summary": [
+        "Avatar in iOS has no yellow presence status dot (visible in React baseline at bottom-right of avatar).",
+        "Timestamp format differs: React shows '01:03 PM' (12-hour), iOS shows '07/19 13:03' (locale-specific, with date prefix).",
+        "Snippet text differs: React uses 'Keeps visual te...' (truncated), iOS uses 'Keeps visual testing…' — also iOS snippet ends with an ellipsis character '…' instead of '...'.",
+        "Message bubble has a thicker, darker top separator underline in React; iOS shows a much lighter hairline divider beneath the header row.",
+        "Body copy reflows differently: same Chinese text wraps to noticeably shorter line lengths in iOS, producing more lines (different max-width or column constraint)."
+      ],
+      "likelyCauses": [
+        "Locale/time-format settings on iOS rendering date-style timestamps instead of 12-hour time.",
+        "Inconsistent presence-status indicator on user avatar between platforms.",
+        "Different message-row width/lateral padding between web and iOS components causing earlier text wrapping.",
+        "Snippet truncation/ellipsis rendering not unified across platforms.",
+        "Separation between React and iOS design tokens (avatar dot color, divider thickness, type weight)."
+      ],
+      "suggestedOwner": "Messaging component owner (cross-platform MessageRow)",
+      "suggestedFixes": [
+        "Add or re-add the yellow presence dot to the iOS MessageRow avatar to match the React baseline.",
+        "Unify timestamp rendering behind a shared formatter (e.g., always show 'hh:mm AM/PM' or always show locale date+time) controlled by a prop.",
+        "Match snippet ellipsis style ('...' vs '…') via a single text-truncation helper on both platforms.",
+        "Align the hairline divider thickness/color beneath the avatar/name/timestamp row to a shared token.",
+        "Sync body max-width / horizontal padding so paragraph wrapping matches line widths."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09189890765720155
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:65f02ffe87f7ffff800c1fffe07401ffe0df83fff00780fff00780fff007807ff01f80fff41f80fff00f89fff07f83fff017c1fff01788fff03780fff07780fff00f85fff00f81fff03780fff01f80fff6df80fff01fc0fff00f88fff3079ffff6d780fff01780fff01f80fff17f8fffe03780ffe01f83ffe017c4feffffffff",
-      "generatedAt": "2026-07-19T22:07:45.746Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:59.428Z",
+      "severity": "medium",
+      "summary": [
+        "Avatar on iOS is larger and lacks the yellow notification dot present on React baseline.",
+        "iOS header omits 'AM' in timestamp and replaces the plain timestamp with a 'Kee…' ellipsized prefix between name and date.",
+        "iOS body text wraps to a noticeably narrower column (more line breaks per paragraph) than React, causing different line-break positions and vertical layout shift.",
+        "React bullet uses a narrower indent and a tighter column width allowing more text per line; iOS bullets are left-aligned with larger horizontal padding, pushing text wider and breaking earlier.",
+        "Code/inline highlight chip '#raft-mobile-reconcile' present in React baseline does not appear in the visible iOS slice (likely clipped at bottom)."
+      ],
+      "likelyCauses": [
+        "iOS renderer applies different line-break/word-wrap policy and container width for markdown content.",
+        "iOS component uses larger default font size and/or wider container insets for the message body.",
+        "Avatar asset or decoration (status dot) not ported to iOS MessageRow implementation.",
+        "Header metadata composition differs on iOS (presence indicator vs timestamp).",
+        "iOS slice clipped or rendering ends earlier, hiding tail content like '#raft-mobile-reconcile'."
+      ],
+      "suggestedOwner": "mobile-ios / messaging-ui",
+      "suggestedFixes": [
+        "Normalize markdown body max-width and font metrics between React and iOS to align line breaks.",
+        "Port the avatar status indicator (yellow dot) to the iOS MessageRow avatar view.",
+        "Unify header metadata layout: decide whether 'Kee…' indicator or 'AM' suffix is shown and align both platforms.",
+        "Verify iOS markdown wrapper does not truncate trailing inline code spans like '#raft-mobile-reconcile'; ensure scroll/crop region includes full content.",
+        "Match bold font weight scale between React and iOS typography tokens."
+      ],
+      "intentional": [
+        "Differences in absolute canvas size (260×844 vs 1170×2532) are inherent to platform screen captures."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20067511915853153
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00e007fc07f3fffe001410fee13400fee003047ee01700fee00703fee00781fee01700fee00701fee00700fee01300fee00703fee02701fe001700feffff00feffff03fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
-      "generatedAt": "2026-07-19T22:07:45.743Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:59.444Z",
+      "severity": "medium",
+      "summary": [
+        "Timestamp format differs: React shows '07/13 05:56 AM' with AM/PM suffix in monospace, iOS shows '07/13 05:56' in lighter gray sans-serif",
+        "iOS adds a 'Kee…' truncated username/label between author name and timestamp that is absent in React",
+        "Avatar size is larger on iOS; avatar and message column have more horizontal spacing on iOS vs tighter React layout",
+        "Body text wraps at a wider measure on iOS (fewer characters per line) producing different line-break points, e.g., 'state→Activity，我的）和' breaks after '和' on React but after '）和' on iOS",
+        "Inline code chip 'message:new' has noticeably smaller padding on iOS; '#521' chip on iOS appears tighter with less internal padding"
+      ],
+      "likelyCauses": [
+        "iOS renderer uses a different default font (e.g., SF/STHeiti vs web sans-serif) and timestamp locale formatter omitting AM/PM",
+        "React version trims or omits an intermediate label (e.g., 'Keep' or channel/thread title) that iOS surfaces from the message metadata",
+        "Different line-height and inline-code chip padding tokens between web and mobile theme",
+        "Avatar component renders at a larger point size on iOS to match HIG tap-target guidance",
+        "Markdown wrapper applies different break/wrap rules (CSS word-break vs NSAttributedString lineBreakMode)"
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Align timestamp formatter on iOS to match React output (include AM/PM, same separator and weight) or document the intentional delta",
+        "Suppress or restyle the extra 'Kee…' label on iOS, or add equivalent to React header row for parity",
+        "Tokenize avatar size, body font size/weight, line-height, and inline-code chip padding into shared design tokens and consume on both platforms",
+        "Verify markdown line-break logic produces identical wrap points; consider setting explicit break-word/word-break policy",
+        "Tighten iOS paragraph spacing to match React's vertical rhythm"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09468546198404015
     },
     {
@@ -2568,22 +2655,45 @@
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00e007fc03f3fffe00340dfee00400fee003007ee0033ffee01300fee00300fee003007ee00300fee6f300fe000700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
-      "generatedAt": "2026-07-19T22:07:45.815Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-19T22:09:59.542Z",
+      "severity": "medium",
+      "summary": [
+        "iOS avatar is larger but does not overlap text; React avatar overlaps the timestamp area",
+        "iOS timestamp shows truncated user handle ('Kee…') between name and date; React shows no handle in the meta row",
+        "iOS renders message body with denser line spacing and narrower column width (~70px), while React uses a wider ~170px column with looser spacing",
+        "In iOS the username '@artin' and 'task' are not highlighted as chips; React shows both as yellow/orange inline-mention chips",
+        "In iOS '#607' chip and '#对话流专修' mention chip render with smaller padding than React's chips"
+      ],
+      "likelyCauses": [
+        "iOS component rebuilds the message-row layout instead of reusing the React markdown-wrap MessageRow component",
+        "Inline-mention/chip styling tokens (color, border-radius, padding) are defined only in the web/React theme and not ported to iOS SwiftUI/UIKit styles",
+        "User handle label is rendered only on platforms with a dedicated 'last-sender' slot; iOS may be reusing a different header template when the row's authors-count exceeds 1",
+        "Line-height/paragraph-spacing values differ because iOS uses dynamic-type scale while React uses fixed CSS rem values",
+        "Avatar size is driven by a separate iOS design token that hasn't been synced with the shared design spec"
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Reuse the shared `MarkdownWrap` MessageRow component contract on iOS so mention chips, timestamps, and avatar bounds match React",
+        "Port the mention/hashtag chip styles (background, border-radius, padding) into the iOS design tokens to match React",
+        "Remove the truncated 'Kee…' handle prefix on iOS or render it on a dedicated meta line so it doesn't crowd the timestamp",
+        "Align iOS body line-height and column width with the shared spec (≈170px text column at baseline, matching line-height)",
+        "Sync avatar size token with the shared spec so it matches React's overlap geometry"
+      ],
+      "intentional": [
+        "Avatar larger on iOS may be an intentional touch-target size for accessibility on mobile"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.06754027085780645
     },
     {
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T22:07:45.745Z",
+      "generatedAt": "2026-07-19T22:11:42.409Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

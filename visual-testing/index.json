@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-19T22:07:50.353Z",
+  "generatedAt": "2026-07-19T22:11:47.011Z",
   "latestRunId": "6249daf-20260719220554",
   "latest": {
     "runId": "6249daf-20260719220554",
     "commit": "6249daf-20260719220554",
     "commitSubject": "fix: rework image editor controls (#1313)",
-    "generatedAt": "2026-07-19T22:07:50.353Z",
+    "generatedAt": "2026-07-19T22:11:47.011Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 83,
-      "ready": 74,
-      "pending": 9
+      "ready": 82,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "6249daf-20260719220554",
       "commit": "6249daf-20260719220554",
       "commitSubject": "fix: rework image editor controls (#1313)",
-      "generatedAt": "2026-07-19T22:07:50.353Z",
+      "generatedAt": "2026-07-19T22:11:47.011Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 83,
-        "ready": 74,
-        "pending": 9
+        "ready": 82,
+        "pending": 1
       },
       "comparisons": [
         "react__android",
