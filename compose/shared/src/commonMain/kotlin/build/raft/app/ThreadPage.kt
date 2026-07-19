@@ -12698,6 +12698,8 @@ private fun ThreadMessagesList(
     }
     var pendingOlderPageAnchor by remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
+    var olderPageCycleActive by remember(threadInstanceKey) { mutableStateOf(false) }
+    var olderPageSettledUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.messages.size,
@@ -12812,11 +12814,14 @@ private fun ThreadMessagesList(
         renderPayload.canLoadMoreBefore,
         renderPayload.olderMessagesStatus,
         initialBottomAnchorReady,
-        renderPayload.messages.size
+        renderPayload.messages.size,
+        olderPageCycleActive,
+        olderPageSettledUserScrollGeneration
     ) {
         if (!initialBottomAnchorReady ||
             !renderPayload.canLoadMoreBefore ||
-            renderPayload.olderMessagesStatus != "idle"
+            renderPayload.olderMessagesStatus != "idle" ||
+            olderPageCycleActive
         ) {
             return@LaunchedEffect
         }
@@ -12824,7 +12829,8 @@ private fun ThreadMessagesList(
         snapshotFlow {
             listState.isThreadOlderAutoLoadThreshold(
                 boundaryIndex = boundaryIndex,
-                userScrollGeneration = userScrollGeneration.value
+                userScrollGeneration = userScrollGeneration.value,
+                lastSettledUserScrollGeneration = olderPageSettledUserScrollGeneration
             )
         }
             .distinctUntilChanged()
@@ -12845,6 +12851,7 @@ private fun ThreadMessagesList(
     ) {
         val previousStatus = previousOlderMessagesStatus
         if (renderPayload.olderMessagesStatus == "loading" && previousStatus != "loading") {
+            olderPageCycleActive = true
             pendingOlderPageAnchor =
                 listState.threadFirstVisibleMessageAnchor(
                     timelineSlice = renderPayload,
@@ -12888,6 +12895,12 @@ private fun ThreadMessagesList(
                         "currentUserScrollGeneration=${userScrollGeneration.value}"
                 )
             }
+            // A completed prepend consumes every pointer move observed through
+            // that cycle. Require a fresh direct drag before another older page
+            // can start; otherwise the transient top layout after 50 -> 100
+            // rows can immediately cascade into 100 -> 150 without user demand.
+            olderPageSettledUserScrollGeneration = userScrollGeneration.value
+            olderPageCycleActive = false
         }
         previousOlderMessagesStatus = renderPayload.olderMessagesStatus
     }
@@ -14757,7 +14770,8 @@ internal fun shouldRestoreThreadOlderPageAnchor(
 
 private fun LazyListState.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,
-    userScrollGeneration: Int
+    userScrollGeneration: Int,
+    lastSettledUserScrollGeneration: Int
 ): Boolean {
     if (boundaryIndex < 0) return false
     val layoutInfo = layoutInfo
@@ -14766,16 +14780,19 @@ private fun LazyListState.isThreadOlderAutoLoadThreshold(
     return shouldThreadAutoLoadOlderMessages(
         boundaryIndex = boundaryIndex,
         firstVisibleIndex = firstVisibleIndex,
-        userScrollGeneration = userScrollGeneration
+        userScrollGeneration = userScrollGeneration,
+        lastSettledUserScrollGeneration = lastSettledUserScrollGeneration
     )
 }
 
 internal fun shouldThreadAutoLoadOlderMessages(
     boundaryIndex: Int,
     firstVisibleIndex: Int,
-    userScrollGeneration: Int
+    userScrollGeneration: Int,
+    lastSettledUserScrollGeneration: Int = 0
 ): Boolean {
-    if (boundaryIndex < 0 || firstVisibleIndex < 0 || userScrollGeneration <= 0) return false
+    if (boundaryIndex < 0 || firstVisibleIndex < 0) return false
+    if (userScrollGeneration <= lastSettledUserScrollGeneration) return false
     return firstVisibleIndex <= boundaryIndex + ThreadOlderAutoLoadVisibleItemThreshold
 }
 
