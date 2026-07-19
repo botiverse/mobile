@@ -32,6 +32,34 @@ class ThreadBackToBottomPointerBoundaryTest {
         )
     }
 
+    @Test
+    fun floatingButtonKeepsTheCaptureMountedUntilAfterScrollAndRelease() {
+        val source = threadPageSource()
+        val rendering =
+            source.functionWindow(
+                "val shouldShowBackToBottomButton =",
+                "reactionDetails?.let { details ->",
+            )
+
+        val guardStart = rendering.indexOf("backToBottomInteractionGuardActive = true")
+        val scrollStart = rendering.indexOf("coroutineScope.launch", guardStart)
+        val nonCancellableRelease = rendering.indexOf("withContext(NonCancellable)", scrollStart)
+        val guardEnd = rendering.indexOf("backToBottomInteractionGuardActive = false", nonCancellableRelease)
+
+        assertTrue(
+            "shouldKeepThreadBackToBottomOverlayMounted(" in rendering,
+            "Scroll-derived visibility must be ORed with the in-flight interaction guard.",
+        )
+        assertTrue(
+            guardStart >= 0 && scrollStart > guardStart,
+            "The overlay guard must be active before the scroll can hide the button.",
+        )
+        assertTrue(
+            nonCancellableRelease > scrollStart && guardEnd > nonCancellableRelease,
+            "The guard must survive scroll cancellation and release only after the native release grace.",
+        )
+    }
+
     private fun threadPageSource(): String {
         val commonMain =
             requireNotNull(
