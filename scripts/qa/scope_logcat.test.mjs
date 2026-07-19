@@ -20,11 +20,12 @@ test("filters threadtime logcat to observed app pids and injects verdict scope",
     "--verdict", path.join(dir, "verdict.json"),
     "--pids", path.join(dir, "pids.txt"),
     "--package", "build.raft.app.alpha",
+    "--generation", "29600000000:1",
   ]);
   assert.match(fs.readFileSync(path.join(dir, "scoped.txt"), "utf8"), /app line/);
   assert.doesNotMatch(fs.readFileSync(path.join(dir, "scoped.txt"), "utf8"), /unrelated crash/);
   const verdict = JSON.parse(fs.readFileSync(path.join(dir, "verdict.json"), "utf8"));
   assert.deepEqual(verdict.log_scope, {
-    filtered: true, pid: 1234, pids: [1234], package_id: "build.raft.app.alpha",
+    filtered: true, pid: 1234, pids: [1234], package_id: "build.raft.app.alpha", generation: "29600000000:1",
   });
 });

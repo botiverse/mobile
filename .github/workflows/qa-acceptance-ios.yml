@@ -303,7 +303,8 @@ jobs:
           node scripts/qa/scope_logcat.mjs \
             --input qa-evidence/logcat-iosApp.txt --output qa-evidence/logcat.txt \
             --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt \
-            --package "${BUNDLE_ID:-build.raft.app}" --already-filtered true || true
+            --package "${BUNDLE_ID:-build.raft.app}" --generation "${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" \
+            --already-filtered true || true
           # 2) Crash reports (.ips): simulator app crashes land in the SIMULATOR's
           #    own data dir, NOT the host ~/Library/Logs/DiagnosticReports (which is
           #    empty for sim app crashes — the old `cp host/*.ips || true` silently

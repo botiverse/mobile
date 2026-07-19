@@ -12,9 +12,10 @@ const output = arg("--output");
 const verdictPath = arg("--verdict");
 const pidPath = arg("--pids");
 const packageId = arg("--package");
+const generation = arg("--generation");
 const alreadyFiltered = arg("--already-filtered", "false") === "true";
-if (!input || !output || !verdictPath || !pidPath || !packageId) {
-  console.error("usage: scope_logcat.mjs --input full.txt --output logcat.txt --verdict verdict.json --pids app-pids.txt --package id");
+if (!input || !output || !verdictPath || !pidPath || !packageId || !generation) {
+  console.error("usage: scope_logcat.mjs --input full.txt --output logcat.txt --verdict verdict.json --pids app-pids.txt --package id --generation run:attempt");
   process.exit(2);
 }
 
@@ -37,6 +38,7 @@ if (fs.existsSync(verdictPath)) {
     pid: pids[0] ?? null,
     pids,
     package_id: packageId,
+    generation,
   };
   fs.writeFileSync(verdictPath, `${JSON.stringify(verdict, null, 2)}\n`);
 }
