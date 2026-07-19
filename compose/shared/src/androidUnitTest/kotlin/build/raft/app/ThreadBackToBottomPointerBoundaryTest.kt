@@ -6,29 +6,59 @@ import kotlin.test.assertTrue
 
 class ThreadBackToBottomPointerBoundaryTest {
     @Test
-    fun floatingButtonCapturesNativeDispatchBehindItsInteractiveContent() {
+    fun kuiklyLatchesNativeCaptureFromTheActionDownHitPath() {
+        val hitPathTracker =
+            repoFile(
+                "third_party/kuikly-ui/compose/src/commonMain/kotlin/" +
+                    "com/tencent/kuikly/compose/ui/input/pointer/HitPathTracker.kt"
+            ).readText()
+        val superTouchManager =
+            repoFile(
+                "third_party/kuikly-ui/compose/src/commonMain/kotlin/" +
+                    "com/tencent/kuikly/compose/container/SuperTouchManager.kt"
+            ).readText()
+        val androidRoot =
+            repoFile(
+                "third_party/kuikly-ui/core-render-android/src/main/java/" +
+                    "com/tencent/kuikly/core/render/android/expand/component/KRView.kt"
+            ).readText()
+
+        assertTrue(
+            "val nativeDispatchCaptured = root.capturesNativeDispatch()" in hitPathTracker,
+            "Kuikly must derive native capture from the Compose pointer hit path.",
+        )
+        assertTrue(
+            "if (result.nativeDispatchCaptured)" in superTouchManager &&
+                "getView()?.getViewAttr()?.nativeDispatchCapture(true)" in superTouchManager,
+            "The Compose hit-path result must request capture on the native root.",
+        )
+        assertTrue(
+            "if (event.actionMasked == MotionEvent.ACTION_DOWN)" in androidRoot &&
+                "nativeDispatchCapturedGesture = nativeDispatchCaptureRequested" in androidRoot &&
+                "if (nativeDispatchCapturedGesture)" in androidRoot,
+            "Android must latch that request at ACTION_DOWN for the complete native gesture.",
+        )
+    }
+
+    @Test
+    fun floatingButtonCapturesNativeDispatchOnItsInteractiveHitPath() {
         val source = threadPageSource()
         val button =
             source.functionWindow(
                 "private fun ThreadBackToBottomButton(",
-                "private const val ThreadBackToBottomTouchGuardAlpha",
+                "private const val ThreadBackToBottomReleaseGuardMillis",
             )
 
-        val captureIndex = button.indexOf(".slockNativeDispatchCapture()")
         val actionIndex = button.indexOf("SlockBrutalActionButton(")
+        val captureIndex = button.indexOf("modifier = modifier.slockNativeDispatchCapture()", actionIndex)
 
         assertTrue(
-            "Box(modifier = modifier, propagateMinConstraints = true)" in button,
-            "The externally positioned button must own a same-size pointer boundary.",
+            actionIndex >= 0 && captureIndex > actionIndex,
+            "Native dispatch capture must be on the interactive button's own ancestor hit path.",
         )
         assertTrue(
-            ".matchParentSize()" in button &&
-                ".background(SlockColor.SurfaceWhite.copy(alpha = ThreadBackToBottomTouchGuardAlpha))" in button,
-            "The native capture sibling must cover the complete floating button bounds and create a host hit-test node.",
-        )
-        assertTrue(
-            captureIndex >= 0 && actionIndex > captureIndex,
-            "Native dispatch capture must be a sibling behind the interactive button, not a parent that blocks it.",
+            ".matchParentSize()" !in button,
+            "A behind-button sibling is not part of the ACTION_DOWN hit path and must not be used as the capture oracle.",
         )
     }
 
@@ -67,6 +97,15 @@ class ThreadBackToBottomPointerBoundaryTest {
                     .firstOrNull(File::isDirectory)
             ) { "Could not locate shared commonMain Kotlin sources" }
         return File(commonMain, "build/raft/app/ThreadPage.kt").readText().replace("\r\n", "\n")
+    }
+
+    private fun repoFile(relativePath: String): File {
+        val start = File(System.getProperty("user.dir")).canonicalFile
+        return requireNotNull(
+            generateSequence(start) { it.parentFile }
+                .map { root -> File(root, relativePath) }
+                .firstOrNull(File::isFile)
+        ) { "Could not locate repository file: $relativePath from $start" }
     }
 
     private fun String.functionWindow(startMarker: String, endMarker: String): String {

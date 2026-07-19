@@ -14842,40 +14842,32 @@ private fun ThreadBackToBottomButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Box(modifier = modifier, propagateMinConstraints = true) {
-        // The button floats above interactive message rows. Kuikly's native
-        // host can otherwise dispatch the same pointer sequence to the row
-        // behind the button, especially when scrolling to bottom removes the
-        // button during the release frame. Keep capture on a sibling behind
-        // the Compose control: capture on the parent would also block the
-        // button's own pointerInput detector on Android.
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .background(SlockColor.SurfaceWhite.copy(alpha = ThreadBackToBottomTouchGuardAlpha))
-                    .slockNativeDispatchCapture()
-        )
-        SlockBrutalActionButton(
-            label = stringResource(MR.strings.thread_action_back_to_bottom),
-            onClick = onClick,
-            backgroundColor = SlockColor.SurfaceWhite,
-            minWidth = 0.dp,
-            minHeight = 30.dp,
-            shadowOffset = 4.dp,
-            textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-            trailingContent = {
-                SlockLucideIcon(
-                    "chevron-down",
-                    modifier = Modifier.size(14.dp),
-                    color = "#FF000000"
-                )
-            }
-        )
-    }
+    // Kuikly latches native-dispatch capture from the pointer's ACTION_DOWN
+    // hit path. A same-bounds sibling behind this button is not part of that
+    // path, so it cannot reliably prevent the native host from also starting
+    // a gesture on the message row underneath. Put the capture marker on the
+    // interactive button's own ancestor path; Compose still delivers the
+    // gesture to SlockAnchorButton, while Android's native dispatch stays
+    // captured for the complete DOWN..UP sequence.
+    SlockBrutalActionButton(
+        label = stringResource(MR.strings.thread_action_back_to_bottom),
+        onClick = onClick,
+        modifier = modifier.slockNativeDispatchCapture(),
+        backgroundColor = SlockColor.SurfaceWhite,
+        minWidth = 0.dp,
+        minHeight = 30.dp,
+        shadowOffset = 4.dp,
+        textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+        trailingContent = {
+            SlockLucideIcon(
+                "chevron-down",
+                modifier = Modifier.size(14.dp),
+                color = "#FF000000"
+            )
+        }
+    )
 }
 
-private const val ThreadBackToBottomTouchGuardAlpha = 0.01f
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
