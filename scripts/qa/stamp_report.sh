@@ -44,12 +44,13 @@ CLAIM_HEADER="X-Stamp-Claim-Token: $CLAIM_TOKEN"
 # report phase: upload evidence files, then the verdict
 # Freeze the execution identity before any scoped log or verdict write. Stamp
 # accepts an exact repeat idempotently and rejects a conflicting generation.
-if [ -f "$EV/verdict.json" ]; then
-  SCOPE=$(node -e 'const v=require(process.argv[1]); const s=v.log_scope; if(s&&s.filtered===true&&s.package_id&&Array.isArray(s.pids)&&s.generation) process.stdout.write(JSON.stringify({package_id:s.package_id,pids:s.pids,generation:s.generation}))' "$EV/verdict.json")
-  if [ -n "$SCOPE" ]; then
-    curl -sf -X POST "$BASE/execution-scope" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
-      -d "$SCOPE" >/dev/null && echo "stamp: execution scope frozen" || { echo "stamp: execution scope freeze failed" >&2; exit 1; }
+if [ -f "$EV/verdict.json" ] && [ -f "$EV/logcat.txt" ]; then
+  if ! SCOPE=$(node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const s=v.log_scope;if(!(s&&s.filtered===true&&s.package_id&&Array.isArray(s.pids)&&s.pids.length&&s.generation))process.exit(2);process.stdout.write(JSON.stringify({package_id:s.package_id,pids:s.pids,generation:s.generation}))' "$EV/verdict.json"); then
+    echo "stamp: scoped log exists but verdict execution scope is invalid" >&2
+    exit 1
   fi
+  curl -sf -X POST "$BASE/execution-scope" -H "$AUTH" -H "$JOB_HEADER" -H "$CLAIM_HEADER" -H 'content-type: application/json' \
+    -d "$SCOPE" >/dev/null && echo "stamp: execution scope frozen" || { echo "stamp: execution scope freeze failed" >&2; exit 1; }
 fi
 
 seq=0
