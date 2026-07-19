@@ -2734,6 +2734,20 @@ internal data class HomeServerDrawerCommandFence(
         generation == commandGeneration && desiredOpen == commandDesiredOpen
 }
 
+internal data class HomeServerDrawerNativeJobOwnership<T>(
+    val generation: Int = 0,
+    val jobs: List<T> = emptyList()
+) {
+    fun supersede(nextGeneration: Int): Pair<List<T>, HomeServerDrawerNativeJobOwnership<T>> =
+        jobs to HomeServerDrawerNativeJobOwnership(generation = nextGeneration)
+
+    fun register(commandGeneration: Int, job: T): HomeServerDrawerNativeJobOwnership<T> =
+        if (generation == commandGeneration) copy(jobs = jobs + job) else this
+
+    fun release(commandGeneration: Int, releasedJobs: Collection<T>): HomeServerDrawerNativeJobOwnership<T> =
+        if (generation == commandGeneration) copy(jobs = jobs.filterNot { it in releasedJobs }) else this
+}
+
 internal data class SlockServerDrawerUserHeader(
     val displayName: String,
     val avatarWireValue: String?,

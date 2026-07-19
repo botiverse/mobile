@@ -222,6 +222,42 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerDrawerCloseSupersedesPrimaryAndFallbackOpenJobsTogether() {
+        val opening =
+            HomeServerDrawerNativeJobOwnership<String>(generation = 1)
+                .register(commandGeneration = 1, job = "primary-open")
+                .register(commandGeneration = 1, job = "fallback-open")
+
+        val (jobsToCancelAndJoin, closing) = opening.supersede(nextGeneration = 2)
+
+        assertEquals(listOf("primary-open", "fallback-open"), jobsToCancelAndJoin)
+        assertEquals(2, closing.generation)
+        assertTrue(closing.jobs.isEmpty())
+        assertEquals(
+            closing,
+            closing.register(commandGeneration = 1, job = "stale-open-after-close")
+        )
+    }
+
+    @Test
+    fun homeServerDrawerNewOpenSupersedesPrimaryAndRetryCloseJobsTogether() {
+        val closing =
+            HomeServerDrawerNativeJobOwnership<String>(generation = 2)
+                .register(commandGeneration = 2, job = "primary-close")
+                .register(commandGeneration = 2, job = "retry-close")
+
+        val (jobsToCancelAndJoin, reopening) = closing.supersede(nextGeneration = 3)
+
+        assertEquals(listOf("primary-close", "retry-close"), jobsToCancelAndJoin)
+        assertEquals(3, reopening.generation)
+        assertTrue(reopening.jobs.isEmpty())
+        assertEquals(
+            reopening,
+            reopening.register(commandGeneration = 2, job = "stale-close-after-open")
+        )
+    }
+
+    @Test
     fun appUpdateNotificationMovesToDedicatedBanner() {
         val update =
             SlockHomeNotificationItem(

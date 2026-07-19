@@ -488,6 +488,7 @@ import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -4985,6 +4986,9 @@ internal fun SlockAppShellContent(
                 var drawerWasOpen by remember(drawerState) { mutableStateOf(drawerState.isOpen) }
                 var drawerOpenInFlight by remember(drawerState) { mutableStateOf(false) }
                 var drawerCloseInFlight by remember(drawerState) { mutableStateOf(false) }
+                var drawerNativeJobOwnership by remember(drawerState) {
+                    mutableStateOf(HomeServerDrawerNativeJobOwnership<Job>())
+                }
                 var drawerCommandFence by remember(drawerState) {
                     mutableStateOf(
                         HomeServerDrawerCommandFence(desiredOpen = drawerState.progress > 0.01f)
@@ -4997,6 +5001,10 @@ internal fun SlockAppShellContent(
                     val openFence = drawerCommandFence.next(desiredOpen = true)
                     drawerCommandFence = openFence
                     val commandGeneration = openFence.generation
+                    val (supersededNativeJobs, nextNativeJobOwnership) =
+                        drawerNativeJobOwnership.supersede(commandGeneration)
+                    drawerNativeJobOwnership = nextNativeJobOwnership
+                    supersededNativeJobs.forEach { it.cancel() }
                     drawerCloseInFlight = false
                     drawerOpenInFlight = true
                     bridge.log(
@@ -5004,7 +5012,15 @@ internal fun SlockAppShellContent(
                             "storeExpanded=${homeState.serverSwitcherExpanded}"
                     )
                     appShellCoroutineScope.launch {
+                        val ownedNativeJobs = mutableListOf<Job>()
+                        fun launchOwnedNativeJob(block: suspend () -> Unit): Job =
+                            launch { block() }.also { job ->
+                                ownedNativeJobs += job
+                                drawerNativeJobOwnership =
+                                    drawerNativeJobOwnership.register(commandGeneration, job)
+                            }
                         try {
+                            supersededNativeJobs.forEach { it.join() }
                             withFrameNanos {
                                 bridge.log(
                                     "server_drawer_open_command_frame source=$source " +
@@ -5026,7 +5042,7 @@ internal fun SlockAppShellContent(
                             // Wait until the tap's ACTION_UP dispatch has completed before asking
                             // the native pager to animate. Otherwise the pager can settle that same
                             // gesture back to page 1 and erase the direct command.
-                            val openJob = launch { drawerState.open() }
+                            val openJob = launchOwnedNativeJob { drawerState.open() }
                             var firstVisibleLogged = false
                             var storeFallbackIssued = false
                             var settled = false
@@ -5038,7 +5054,8 @@ internal fun SlockAppShellContent(
                                         commandDesiredOpen = true
                                     )
                                 ) {
-                                    openJob.cancel()
+                                    ownedNativeJobs.forEach { it.cancel() }
+                                    ownedNativeJobs.forEach { it.join() }
                                     bridge.log(
                                         "server_drawer_open_canceled source=$source " +
                                             "generation=$commandGeneration phase=progress frame=$frame"
@@ -5071,10 +5088,10 @@ internal fun SlockAppShellContent(
                                         "server_drawer_open_store_fallback source=$source " +
                                             "generation=$commandGeneration frame=$frame"
                                     )
-                                    launch { drawerState.open() }
+                                    launchOwnedNativeJob { drawerState.open() }
                                 }
                             }
-                            openJob.join()
+                            ownedNativeJobs.forEach { it.join() }
                             val finalProgress = drawerState.progress
                             bridge.log(
                                 "server_drawer_open_end source=$source generation=$commandGeneration settled=$settled " +
@@ -5092,6 +5109,10 @@ internal fun SlockAppShellContent(
                                 drawerCommandFence = drawerCommandFence.next(desiredOpen = false)
                             }
                         } finally {
+                            ownedNativeJobs.forEach { it.cancel() }
+                            ownedNativeJobs.forEach { it.join() }
+                            drawerNativeJobOwnership =
+                                drawerNativeJobOwnership.release(commandGeneration, ownedNativeJobs)
                             if (commandGeneration == drawerCommandFence.generation) {
                                 drawerOpenInFlight = false
                             }
@@ -5110,6 +5131,10 @@ internal fun SlockAppShellContent(
                     val closeFence = drawerCommandFence.next(desiredOpen = false)
                     drawerCommandFence = closeFence
                     val commandGeneration = closeFence.generation
+                    val (supersededNativeJobs, nextNativeJobOwnership) =
+                        drawerNativeJobOwnership.supersede(commandGeneration)
+                    drawerNativeJobOwnership = nextNativeJobOwnership
+                    supersededNativeJobs.forEach { it.cancel() }
                     drawerOpenInFlight = false
                     drawerCloseInFlight = true
                     bridge.log(
@@ -5117,7 +5142,15 @@ internal fun SlockAppShellContent(
                             "progress=${drawerState.progress}"
                     )
                     appShellCoroutineScope.launch {
+                        val ownedNativeJobs = mutableListOf<Job>()
+                        fun launchOwnedNativeJob(block: suspend () -> Unit): Job =
+                            launch { block() }.also { job ->
+                                ownedNativeJobs += job
+                                drawerNativeJobOwnership =
+                                    drawerNativeJobOwnership.register(commandGeneration, job)
+                            }
                         try {
+                            supersededNativeJobs.forEach { it.join() }
                             withFrameNanos { }
                             if (
                                 !drawerCommandFence.accepts(
@@ -5125,7 +5158,7 @@ internal fun SlockAppShellContent(
                                     commandDesiredOpen = false
                                 )
                             ) return@launch
-                            val closeJob = launch { drawerState.close() }
+                            launchOwnedNativeJob { drawerState.close() }
                             var closeRetryIssued = false
                             var settled = false
                             for (frame in 0 until 60) {
@@ -5135,7 +5168,11 @@ internal fun SlockAppShellContent(
                                         commandGeneration = commandGeneration,
                                         commandDesiredOpen = false
                                     )
-                                ) break
+                                ) {
+                                    ownedNativeJobs.forEach { it.cancel() }
+                                    ownedNativeJobs.forEach { it.join() }
+                                    break
+                                }
                                 val progress = drawerState.progress
                                 if (progress <= 0.01f) {
                                     settled = true
@@ -5147,16 +5184,20 @@ internal fun SlockAppShellContent(
                                         "server_drawer_close_retry source=$source " +
                                             "generation=$commandGeneration frame=$frame progress=$progress"
                                     )
-                                    launch { drawerState.close() }
+                                    launchOwnedNativeJob { drawerState.close() }
                                 }
                             }
-                            closeJob.join()
+                            ownedNativeJobs.forEach { it.join() }
                             bridge.log(
                                 "server_drawer_close_end source=$source generation=$commandGeneration " +
                                     "settled=$settled progress=${drawerState.progress} " +
                                     "isOpen=${drawerState.isOpen}"
                             )
                         } finally {
+                            ownedNativeJobs.forEach { it.cancel() }
+                            ownedNativeJobs.forEach { it.join() }
+                            drawerNativeJobOwnership =
+                                drawerNativeJobOwnership.release(commandGeneration, ownedNativeJobs)
                             if (commandGeneration == drawerCommandFence.generation) {
                                 drawerCloseInFlight = false
                             }

@@ -79,10 +79,21 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         assertContains(drawerHost, "drawerCommandFence")
         assertContains(drawerHost, "HomeServerDrawerCommandFence")
         assertContains(drawerHost, "server_drawer_open_canceled")
-        assertContains(drawerHost, "val openJob = launch { drawerState.open() }")
+        assertContains(drawerHost, "drawerNativeJobOwnership.supersede(commandGeneration)")
+        assertContains(drawerHost, "supersededNativeJobs.forEach { it.cancel() }")
+        assertContains(drawerHost, "supersededNativeJobs.forEach { it.join() }")
+        assertContains(drawerHost, "val openJob = launchOwnedNativeJob { drawerState.open() }")
+        assertContains(drawerHost, "launchOwnedNativeJob { drawerState.open() }")
+        assertContains(drawerHost, "launchOwnedNativeJob { drawerState.close() }")
+        assertContains(drawerHost, "ownedNativeJobs.forEach { it.cancel() }")
+        assertContains(drawerHost, "ownedNativeJobs.forEach { it.join() }")
         assertTrue(
-            drawerHost.indexOf("val openJob = launch { drawerState.open() }") <
+            drawerHost.indexOf("val openJob = launchOwnedNativeJob { drawerState.open() }") <
                 drawerHost.indexOf("server_drawer_open_first_visible")
+        )
+        assertTrue(
+            drawerHost.indexOf("supersededNativeJobs.forEach { it.join() }") <
+                drawerHost.indexOf("val openJob = launchOwnedNativeJob { drawerState.open() }")
         )
         assertContains(drawerHost, "server_drawer_close_retry")
         assertContains(drawerHost, "onDismissBySwipe")
