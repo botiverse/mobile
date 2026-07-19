@@ -1307,11 +1307,13 @@ private fun SlockFilePreviewImageEditorDoneButton(
         onClick = onDone,
         enabled = !saving && imageAvailable,
         leadingIcon = if (saving) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Check,
+        leadingIconSize = 14.dp,
+        contentSpacing = 8.dp,
         backgroundColor = SlockColor.BrandYellow,
-        minWidth = 72.dp,
-        minHeight = SlockSize.IconButton,
+        minWidth = 0.dp,
+        minHeight = 32.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp),
+        textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 14.sp),
     )
 }
 
@@ -1401,7 +1403,7 @@ private fun SlockFilePreviewImageEditorHistoryActions(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SlockFilePreviewBorderlessIconButton(
-            icon = SlockLucideIconName.RotateCcw,
+            icon = SlockLucideIconName.Undo2,
             label = stringResource(MR.strings.common_undo),
             onClick = state::undo,
             enabled = !saving && state.history.canUndo,
@@ -1409,7 +1411,7 @@ private fun SlockFilePreviewImageEditorHistoryActions(
             iconSize = 17.dp,
         )
         SlockFilePreviewBorderlessIconButton(
-            icon = SlockLucideIconName.RotateCw,
+            icon = SlockLucideIconName.Redo2,
             label = stringResource(MR.strings.common_redo),
             onClick = state::redo,
             enabled = !saving && state.history.canRedo,
@@ -1715,6 +1717,7 @@ private fun SlockFilePreviewComposerImageEditor(
                             .fillMaxWidth()
                             .padding(
                                 start = SlockSpacing.Sm,
+                                top = 6.dp,
                                 end = SlockSpacing.Sm,
                                 bottom = SlockSpacing.Sm,
                             ),
@@ -1778,7 +1781,6 @@ private fun SlockFilePreviewComposerImageEditor(
                         onClick = ::addTextAnnotation,
                         enabled = !saving && textDraft.isNotBlank(),
                         backgroundColor = SlockColor.BrandYellow,
-                        size = SlockSize.IconButton,
                         shadowOffset = 2.dp
                     )
                     Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
@@ -1854,7 +1856,7 @@ private fun SlockFilePreviewImageEditorPrimaryControls(
         )
         SlockFilePreviewEditorToolButton(
             label = stringResource(MR.strings.file_preview_toolbar_mosaic),
-            icon = SlockLucideIconName.Blocks,
+            icon = SlockLucideIconName.Grid3x3,
             selected = tool == SlockComposerImageEditorTool.Mosaic,
             enabled = !saving,
             onClick = { onSelectTool(SlockComposerImageEditorTool.Mosaic) }

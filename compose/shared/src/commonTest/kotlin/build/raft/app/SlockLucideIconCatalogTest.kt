@@ -7,6 +7,13 @@ import kotlin.test.assertTrue
 
 class SlockLucideIconCatalogTest {
     @Test
+    fun imageEditorUsesGeneratedHistoryAndMosaicIcons() {
+        assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Undo2.wireName))
+        assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Redo2.wireName))
+        assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Grid3x3.wireName))
+    }
+
+    @Test
     fun membersAppsIconUsesGeneratedLink2Icon() {
         assertEquals(SlockLucideIconName.Link2, MembersAgentDetailTab.Apps.iconName)
         assertTrue(SlockLucideIcons.Names.contains(SlockLucideIconName.Link2.wireName))
