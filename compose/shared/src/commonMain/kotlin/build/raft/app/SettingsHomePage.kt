@@ -2741,6 +2741,9 @@ internal fun SlockAppShellContent(
                 payloadStore = sharedStores.threadPayloadStore,
                 readReceiptCoordinator = sharedStores.processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = sharedStores::readReceiptOwner,
+                threadPageSizeProvider = { serverId ->
+                    sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
+                },
                 diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity_thread_prewarm")
             )
         }

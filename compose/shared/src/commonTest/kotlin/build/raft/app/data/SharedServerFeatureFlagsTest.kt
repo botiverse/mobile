@@ -46,6 +46,34 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun enabledThreadPageSizeFlagPreservesItsVariant() = runBlocking {
+        val api =
+            FakeApi(
+                ok(
+                    """{"evaluations":[{"key":"$MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY","enabled":true,"variant":"20"}]}"""
+                )
+            )
+        val snapshot = SharedServerFeatureFlags(api).prefetch(server)
+
+        assertTrue(snapshot.isEnabled(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
+        assertEquals("20", snapshot.variant(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
+    }
+
+    @Test
+    fun disabledThreadPageSizeFlagDoesNotExposeItsVariant() = runBlocking {
+        val api =
+            FakeApi(
+                ok(
+                    """{"evaluations":[{"key":"$MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY","enabled":false,"variant":"50"}]}"""
+                )
+            )
+        val snapshot = SharedServerFeatureFlags(api).prefetch(server)
+
+        assertFalse(snapshot.isEnabled(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
+        assertEquals(null, snapshot.variant(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
+    }
+
+    @Test
     fun recoveryFlagForwardsAuthoritativeReasonToPlatformBridge() = runBlocking {
         val evaluations = mutableListOf<String>()
         var observedGeneration = 0L

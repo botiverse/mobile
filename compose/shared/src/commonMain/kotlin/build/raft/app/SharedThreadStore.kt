@@ -43,6 +43,8 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.ServerFeatureFlagSnapshot
+import build.raft.app.data.MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.SlockThreadApi
 import build.raft.app.data.SlockThreadApiClient
@@ -999,6 +1001,11 @@ internal data class MarkdownThreadRefTarget(
     val threadChannelId: String? = null
 )
 
+internal data class SharedThreadPageFetchResult(
+    val payload: KuiklyThreadScreenPayload,
+    val requestedPageSize: Int
+)
+
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
@@ -1016,6 +1023,7 @@ internal class SharedThreadDataSource(
     private val savedStatusRepository: SavedStatusRepository? = null,
     private val readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private val readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
+    private val threadPageSizeProvider: (ServerId?) -> Int? = { null },
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
     /**
      * Task #43: shared create-agent coordinator used by the action-card
@@ -1055,6 +1063,7 @@ internal class SharedThreadDataSource(
         savedStatusRepository: SavedStatusRepository? = null,
         readReceiptCoordinator: ReadReceiptCoordinator? = null,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
+        threadPageSizeProvider: (ServerId?) -> Int? = { null },
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
         diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
     ) : this(
@@ -1074,6 +1083,7 @@ internal class SharedThreadDataSource(
         savedStatusRepository = savedStatusRepository,
         readReceiptCoordinator = readReceiptCoordinator,
         readReceiptOwnerFactory = readReceiptOwnerFactory,
+        threadPageSizeProvider = threadPageSizeProvider,
         diagnosticsLogger = diagnosticsLogger,
         createAgentCoordinator = createAgentCoordinator
     )
@@ -1083,6 +1093,11 @@ internal class SharedThreadDataSource(
     private val replyThreadResolveCache = mutableMapOf<ReplyThreadResolveKey, String>()
     private val cacheServerId = MutableStateFlow("")
     private val cachePrincipalId = MutableStateFlow("")
+
+    private fun threadPageSize(serverId: String?): Int =
+        SharedThreadPaging.resolve(
+            threadPageSizeProvider(serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId))
+        )
 
     suspend fun readSession(): StoredAuthSession? =
         sessionStore.readSession()?.also { session ->
@@ -1774,7 +1789,12 @@ internal class SharedThreadDataSource(
                         ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
                 val response =
                     try {
-                        api.channelMessages(resolvedThreadId, limit = SharedThreadPaging.initialPageSize)
+                        val pageSize = threadPageSize(session.currentServerId)
+                        diagnosticsLogger(
+                            "thread_page_size source=initial_api server=${session.currentServerId.orEmpty()} " +
+                                "pageSize=$pageSize"
+                        )
+                        api.channelMessages(resolvedThreadId, limit = pageSize)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -2354,34 +2374,46 @@ internal class SharedThreadDataSource(
     suspend fun fetchOlderThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
         beforeSeq: Long
-    ): DataResult<KuiklyThreadScreenPayload> =
+    ): DataResult<SharedThreadPageFetchResult> =
         fetchThreadPage(
             basePayload = basePayload,
             source = "older",
-            repositoryCall = { repository, threadId -> repository.loadOlderMessages(threadId, beforeSeq, SharedThreadPaging.pageSize) },
-            call = { threadId -> api.channelMessages(threadId, limit = SharedThreadPaging.pageSize, beforeSeq = beforeSeq) }
+            repositoryCall = { repository, threadId, pageSize ->
+                repository.loadOlderMessages(threadId, beforeSeq, pageSize)
+            },
+            call = { threadId, pageSize ->
+                api.channelMessages(threadId, limit = pageSize, beforeSeq = beforeSeq)
+            }
         )
 
     suspend fun fetchNewerThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
         afterSeq: Long
-    ): DataResult<KuiklyThreadScreenPayload> =
+    ): DataResult<SharedThreadPageFetchResult> =
         fetchThreadPage(
             basePayload = basePayload,
             source = "newer",
-            repositoryCall = { repository, threadId -> repository.loadNewerMessages(threadId, afterSeq, SharedThreadPaging.pageSize) },
-            call = { threadId -> api.channelMessages(threadId, limit = SharedThreadPaging.pageSize, afterSeq = afterSeq) }
+            repositoryCall = { repository, threadId, pageSize ->
+                repository.loadNewerMessages(threadId, afterSeq, pageSize)
+            },
+            call = { threadId, pageSize ->
+                api.channelMessages(threadId, limit = pageSize, afterSeq = afterSeq)
+            }
         )
 
     suspend fun fetchRealtimeGapThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
         sinceSeq: Long
-    ): DataResult<KuiklyThreadScreenPayload> =
+    ): DataResult<SharedThreadPageFetchResult> =
         fetchThreadPage(
             basePayload = basePayload,
             source = "realtime_gap",
-            repositoryCall = { repository, threadId -> repository.syncNewerMessages(threadId, sinceSeq, SharedThreadPaging.pageSize) },
-            call = { threadId -> api.messageSync(threadId, sinceSeq = sinceSeq, limit = SharedThreadPaging.pageSize) }
+            repositoryCall = { repository, threadId, pageSize ->
+                repository.syncNewerMessages(threadId, sinceSeq, pageSize)
+            },
+            call = { threadId, pageSize ->
+                api.messageSync(threadId, sinceSeq = sinceSeq, limit = pageSize)
+            }
         )
 
     suspend fun sendMessage(
@@ -2832,27 +2864,31 @@ internal class SharedThreadDataSource(
     private suspend fun fetchThreadPage(
         basePayload: KuiklyThreadScreenPayload,
         source: String,
-        repositoryCall: suspend (ConversationRepository, ThreadId) -> DataResult<ThreadSnapshot>,
-        call: suspend (threadId: String) -> ThreadApiResult<ThreadMessagesPage>
-    ): DataResult<KuiklyThreadScreenPayload> {
+        repositoryCall: suspend (ConversationRepository, ThreadId, Int) -> DataResult<ThreadSnapshot>,
+        call: suspend (threadId: String, pageSize: Int) -> ThreadApiResult<ThreadMessagesPage>
+    ): DataResult<SharedThreadPageFetchResult> {
         val threadId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val session =
             readSession()
                 ?: return authSessionRequiredResult()
+        val pageSize = threadPageSize(session.currentServerId)
+        diagnosticsLogger(
+            "thread_page_size source=$source server=${session.currentServerId.orEmpty()} pageSize=$pageSize"
+        )
         val result =
             if (conversationRepository != null) {
                 fetchThreadPayloadFromRepository(
                     session = session,
                     fallbackCode = "thread_${source}_network",
-                    call = { repository -> repositoryCall(repository, ThreadId(threadId)) },
+                    call = { repository -> repositoryCall(repository, ThreadId(threadId), pageSize) },
                     transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
                 )
             } else {
                 val response =
                     try {
-                        call(threadId)
+                        call(threadId, pageSize)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -2874,7 +2910,13 @@ internal class SharedThreadDataSource(
                 )
             }
         return when (result) {
-            is DataResult.Content -> DataResult.Content(result.data)
+            is DataResult.Content ->
+                DataResult.Content(
+                    SharedThreadPageFetchResult(
+                        payload = result.data,
+                        requestedPageSize = pageSize
+                    )
+                )
             is DataResult.Empty -> result
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
@@ -2916,10 +2958,15 @@ internal class SharedThreadDataSource(
         }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
+                val pageSize = threadPageSize(session.currentServerId)
+                diagnosticsLogger(
+                    "thread_page_size source=initial_repository server=${session.currentServerId.orEmpty()} " +
+                        "pageSize=$pageSize"
+                )
                 repository.getThread(
                     threadId = threadId,
                     includeFollowedSummaries = includeFollowedSummaries,
-                    limit = SharedThreadPaging.initialPageSize
+                    limit = pageSize
                 )
             }
         val initialData = initialResult as? DataResult.Content
@@ -2933,7 +2980,7 @@ internal class SharedThreadDataSource(
             initialData != null &&
                 basePayload.hasUntrustedReplyThreadStreamHint() &&
                 !initialData.data.parentPairMatchesRoute(basePayload) ->
-                fetchResolvedReplyThreadSnapshot(basePayload).map { (resolvedBase, snapshot) ->
+                fetchResolvedReplyThreadSnapshot(session, basePayload).map { (resolvedBase, snapshot) ->
                     snapshot
                         ?.withReplyParentMessageFromContext(resolvedBase)
                         ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
@@ -3098,11 +3145,16 @@ internal class SharedThreadDataSource(
             }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
+                val pageSize = threadPageSize(session.currentServerId)
+                diagnosticsLogger(
+                    "thread_page_size source=initial_reply server=${session.currentServerId.orEmpty()} " +
+                        "pageSize=$pageSize"
+                )
                 repository.getReplyThread(
                     parentChannelId = ChannelId(parentChannelId),
                     parentMessageId = MessageId(parentMessageId),
                     includeFollowedSummaries = includeFollowedSummaries,
-                    limit = SharedThreadPaging.initialPageSize,
+                    limit = pageSize,
                     priority = requestPriority
                 )
             }
@@ -3344,6 +3396,7 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun fetchResolvedReplyThreadSnapshot(
+        session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload
     ): DataResult<Pair<KuiklyThreadScreenPayload, ThreadSnapshot?>> {
         val resolvedBasePayload =
@@ -3359,10 +3412,15 @@ internal class SharedThreadDataSource(
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val resolvedResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
+                val pageSize = threadPageSize(session.currentServerId)
+                diagnosticsLogger(
+                    "thread_page_size source=resolved_reply server=${session.currentServerId.orEmpty()} " +
+                        "pageSize=$pageSize"
+                )
                 repository.getThread(
                     threadId = ThreadId(resolvedThreadId),
                     includeFollowedSummaries = false,
-                    limit = SharedThreadPaging.initialPageSize
+                    limit = pageSize
                 )
             }
         return when (resolvedResult) {
@@ -3532,9 +3590,20 @@ private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataRe
     }
 
 internal object SharedThreadPaging {
-    const val initialPageSize = 50
-    const val pageSize = initialPageSize
+    const val DefaultPageSize = 30
+    const val MinimumPageSize = 10
+    const val MaximumPageSize = 50
+
+    fun resolve(candidate: Int?): Int =
+        candidate?.takeIf { it in MinimumPageSize..MaximumPageSize } ?: DefaultPageSize
 }
+
+internal fun ServerFeatureFlagSnapshot.mobileThreadPageSize(): Int? =
+    if (isEnabled(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY)) {
+        variant(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY)?.trim()?.toIntOrNull()
+    } else {
+        null
+    }
 private const val SharedThreadFirstFrameDelayMillis = 16L
 private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 private const val ThreadInitialAccessLookupTimeoutMillis = 1_000L
@@ -5092,7 +5161,11 @@ internal class SharedThreadStore(
                 is DataResult.Content -> {
                     val merged =
                         latest
-                        .mergePagedMessages(result.data.messages, before = true)
+                        .mergePagedMessages(
+                            pageMessages = result.data.payload.messages,
+                            before = true,
+                            pageSize = result.data.requestedPageSize
+                        )
                         .preserveStableTimelineFrom(latest)
                     dataSource
                         .cacheCanonicalPayload(merged)
@@ -5190,7 +5263,7 @@ internal class SharedThreadStore(
                 val pageMaxSeq =
                     when (result) {
                         is DataResult.Content ->
-                            result.data.messages.mapNotNull { message -> message.seq }.maxOrNull() ?: afterSeq
+                            result.data.payload.messages.mapNotNull { message -> message.seq }.maxOrNull() ?: afterSeq
                         else -> afterSeq
                     }
                 val nextPayload =
@@ -5198,7 +5271,11 @@ internal class SharedThreadStore(
                         is DataResult.Content -> {
                             val merged =
                                 currentPayload
-                                    .mergePagedMessages(result.data.messages, before = false)
+                                    .mergePagedMessages(
+                                        pageMessages = result.data.payload.messages,
+                                        before = false,
+                                        pageSize = result.data.requestedPageSize
+                                    )
                                     .preserveStableTimelineFrom(currentPayload)
                             dataSource
                                 .cacheCanonicalPayload(merged)
@@ -5469,14 +5546,15 @@ internal class SharedThreadStore(
                     }
                     when (result) {
                         is DataResult.Content -> {
-                            val pageMessages = result.data.messages
+                            val pageMessages = result.data.payload.messages
                             nextSinceSeq =
                                 pageMessages
                                     .mapNotNull { message -> message.seq }
                                     .maxOrNull()
                                     ?: nextRequest.sinceSeq
                             val madeProgress = nextSinceSeq > nextRequest.sinceSeq
-                            val fetchedFullPage = pageMessages.size >= SharedThreadPaging.pageSize
+                            val fetchedFullPage =
+                                pageMessages.size >= result.data.requestedPageSize
                             val targetAdvancedDuringFetch = recovery.targetVersion > requestTargetVersion
                             shouldContinue =
                                 madeProgress &&
@@ -5484,7 +5562,11 @@ internal class SharedThreadStore(
                                 (fetchedFullPage || targetAdvancedDuringFetch)
                             val merged =
                                 currentPayload
-                                    .mergePagedMessages(pageMessages, before = false)
+                                    .mergePagedMessages(
+                                        pageMessages = pageMessages,
+                                        before = false,
+                                        pageSize = result.data.requestedPageSize
+                                    )
                                     .preserveStableTimelineFrom(currentPayload)
                                     .copy(
                                         canLoadMoreAfter = false,
@@ -6689,8 +6771,8 @@ private fun List<KuiklyThreadMessageItem>.shouldRetainExpandedTimelineWindowFrom
     val existingIncomingIds = map { it.id }.filter { it in previousIdSet }
     if (existingIncomingIds.isEmpty()) return false
     if (
-        previous.size >= SharedThreadPaging.initialPageSize &&
-        existingIncomingIds.size < SharedThreadPaging.initialPageSize / 2
+        previous.size >= SharedThreadPaging.DefaultPageSize &&
+        existingIncomingIds.size < SharedThreadPaging.DefaultPageSize / 2
     ) {
         return false
     }
@@ -7160,7 +7242,8 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
 
 private fun KuiklyThreadScreenPayload.mergePagedMessages(
     pageMessages: List<KuiklyThreadMessageItem>,
-    before: Boolean
+    before: Boolean,
+    pageSize: Int
 ): KuiklyThreadScreenPayload {
     val baseMessages = messages.absorbingCanonicalSendEchoes(pageMessages)
     val incoming = pageMessages.filterNot { pageMessage -> baseMessages.any { it.id == pageMessage.id } }
@@ -7170,7 +7253,7 @@ private fun KuiklyThreadScreenPayload.mergePagedMessages(
         } else {
             (baseMessages + incoming).distinctBy { it.id }
         }.sortedByThreadTimeline()
-    val hasMore = incoming.size >= SharedThreadPaging.pageSize
+    val hasMore = incoming.size >= SharedThreadPaging.resolve(pageSize)
     return copy(
         status = "content",
         errorCode = null,

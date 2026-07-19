@@ -170,6 +170,9 @@ internal fun SharedHomeActivityScreen(
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
+                threadPageSizeProvider = { serverId ->
+                    sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
+                },
                 diagnosticsLogger = { message -> bridge.log("shared_activity_thread_prewarm $message") }
             )
         }
