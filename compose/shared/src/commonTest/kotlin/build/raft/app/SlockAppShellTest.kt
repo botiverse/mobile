@@ -1301,6 +1301,34 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun childNavigationKeepsRenderedHomeServerWhileSelectedServerRestores() {
+        assertEquals(
+            "server-rendered",
+            appShellNavigationServerId(
+                selectedServerId = null,
+                renderedHomeServerId = "server-rendered",
+                scopeInitialServerId = null
+            )
+        )
+        assertEquals(
+            "server-selected",
+            appShellNavigationServerId(
+                selectedServerId = "server-selected",
+                renderedHomeServerId = "server-rendered",
+                scopeInitialServerId = "server-initial"
+            )
+        )
+        assertEquals(
+            "server-initial",
+            appShellNavigationServerId(
+                selectedServerId = " ",
+                renderedHomeServerId = null,
+                scopeInitialServerId = "server-initial"
+            )
+        )
+    }
+
+    @Test
     fun homeSurfaceVisibilityDispatchDelaysVisibleProjectionOnly() {
         assertEquals(0L, homeSurfaceVisibilityDispatchDelayMs(false))
         assertEquals(48L, homeSurfaceVisibilityDispatchDelayMs(true))

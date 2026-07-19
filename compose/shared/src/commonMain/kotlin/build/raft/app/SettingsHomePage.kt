@@ -2002,6 +2002,15 @@ internal fun appShellParentShouldStartHome(
         !readyServerId.isNullOrBlank() &&
         sharedHomeShouldStartOnActive(active = true, sessionReady = true, state = state)
 
+internal fun appShellNavigationServerId(
+    selectedServerId: String?,
+    renderedHomeServerId: String?,
+    scopeInitialServerId: String?
+): String? =
+    selectedServerId?.trim()?.takeIf { it.isNotBlank() }
+        ?: renderedHomeServerId?.trim()?.takeIf { it.isNotBlank() }
+        ?: scopeInitialServerId?.trim()?.takeIf { it.isNotBlank() }
+
 private fun sharedHomeContentRenderSummary(content: SharedHomeContentState): String =
     when (content) {
         is SharedHomeContentState.Loading ->
@@ -2369,12 +2378,6 @@ internal fun SlockAppShellContent(
             }
             canonicalFinalLifecycleEffects?.dispose(canonicalFinalDomainHandle)
         }
-    }
-    val navigationStoreScope = remember(storeScope.shellInstanceId, selectedServerId) {
-        SlockShellStoreScope.create(
-            shellInstanceId = storeScope.shellInstanceId,
-            initialServerId = selectedServerId ?: storeScope.initialServerId
-        )
     }
     val authDataSource = remember(sharedStores, storeScope) {
         sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
@@ -2965,6 +2968,23 @@ internal fun SlockAppShellContent(
     val readyServerId = selectedServerId
     val renderedHomeServerId =
         (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+    val navigationStoreScope =
+        remember(
+            storeScope.shellInstanceId,
+            storeScope.initialServerId,
+            selectedServerId,
+            renderedHomeServerId
+        ) {
+            SlockShellStoreScope.create(
+                shellInstanceId = storeScope.shellInstanceId,
+                initialServerId =
+                    appShellNavigationServerId(
+                        selectedServerId = selectedServerId,
+                        renderedHomeServerId = renderedHomeServerId,
+                        scopeInitialServerId = storeScope.initialServerId
+                    )
+            )
+        }
     val latestReadySession by rememberUpdatedState(readySession)
     LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
         val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
@@ -18466,8 +18486,6 @@ internal fun buildAppShellThreadPayload(
         parentSurfaceKind = parentSurfaceKind,
         parentChannelKind = parentChannelKind,
         dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
-        headerTitleSeed = conversation.headerTitleSeed,
-        headerSubtitleSeed = conversation.headerSubtitleSeed,
         memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
@@ -18754,8 +18772,6 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
             },
         parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
         dmPeerIdentity = conversation.dmPeerIdentity.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
-        headerTitleSeed = conversation.headerTitleSeed,
-        headerSubtitleSeed = conversation.headerSubtitleSeed,
         originParentMessageId = if (isReplyThread) parentMessageId else null,
         focusedMessageId = focusedMessageId,
         focusedMessageRequestNonce =

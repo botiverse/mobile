@@ -34,7 +34,6 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarWireValueOrNull
-import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.gravatarAvatarHttpUrlOrNull
 import build.raft.app.model.gravatarHashOrNull
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
@@ -844,18 +843,6 @@ private fun SlockHomeConversationItem.toThreadLaunchConversationIdentity(): Thre
                 null
             },
         kind = conversationKind,
-        headerTitleSeed =
-            conversationSafeDisplayTitleOrNull(name, setOf(cleanId))
-                ?.takeUnless { candidate ->
-                    val generic =
-                        when (conversationKind) {
-                            ConversationKind.DirectMessage -> "Direct Message"
-                            ConversationKind.Thread -> "Thread"
-                            else -> "Channel"
-                        }
-                    candidate.equals(generic, ignoreCase = true)
-                },
-        headerSubtitleSeed = description?.takeIf { it.isNotBlank() },
         dmPeerIdentity =
             if (conversationKind == ConversationKind.DirectMessage) {
                 memberDetailIdentityFromWire(
