@@ -2409,11 +2409,16 @@ class ThreadPayloadTest {
             )
         val payload = buildAppShellThreadPayloadFromSummary(conversation)
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(conversation.toConversationHeaderProjection())
+        val resumeHeaderWithoutDirectory = payload.threadHeaderDisplayModelFromDirectory(null)
 
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
         assertEquals("", payload.title)
         assertEquals("首页专修", headerDisplay.title)
         assertEquals("Home repair", headerDisplay.subtitle)
+        assertEquals("首页专修", payload.headerTitleSeed)
+        assertEquals("Home repair", payload.headerSubtitleSeed)
+        assertEquals("首页专修", resumeHeaderWithoutDirectory.title)
+        assertEquals("Home repair", resumeHeaderWithoutDirectory.subtitle)
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
         assertEquals("Message #首页专修", payload.resolveThreadComposer(displayName = headerDisplay.title).placeholder)
@@ -2471,6 +2476,90 @@ class ThreadPayloadTest {
 
         assertEquals("Channel", headerDisplay.title)
         assertEquals("joint", headerDisplay.channelKind)
+    }
+
+    @Test
+    fun channelHeaderSeedSurvivesEmptyResumeProjectionAndLaterDirectoryWins() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "Channel",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                headerTitleSeed = "cached-room",
+                headerSubtitleSeed = "Cached description"
+            )
+        val input = payload.threadHeaderProjectionInput()
+        val owner = ThreadHeaderProjectionStateOwner(input, emptyMap())
+
+        assertEquals(
+            ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection,
+            owner.accept(emptyMap())
+        )
+        val resumedHeader = input.displayModel(owner.selectedProjection(), payload)
+        assertEquals("cached-room", resumedHeader.title)
+        assertEquals("Cached description", resumedHeader.subtitle)
+
+        val refreshedProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "renamed-room",
+                subtitle = "Fresh description"
+            )
+        assertEquals(
+            ThreadHeaderProjectionAcceptance.AcceptedDisplayValidProjection,
+            owner.accept(mapOf("channel-1" to refreshedProjection))
+        )
+        val refreshedHeader = input.displayModel(owner.selectedProjection(), payload)
+        assertEquals("renamed-room", refreshedHeader.title)
+        assertEquals("Fresh description", refreshedHeader.subtitle)
+    }
+
+    @Test
+    fun channelHeaderRejectsGenericOrIdentityRouteSeeds() {
+        val identity = "123e4567-e89b-12d3-a456-426614174000"
+        val base =
+            KuiklyThreadScreenPayload(
+                sourceThreadId = identity,
+                streamChannelId = identity,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel
+            )
+
+        assertEquals(
+            "Channel",
+            base.copy(headerTitleSeed = "Channel").threadHeaderDisplayModelFromDirectory(null).title
+        )
+        assertEquals(
+            "Channel",
+            base.copy(headerTitleSeed = identity).threadHeaderDisplayModelFromDirectory(null).title
+        )
+    }
+
+    @Test
+    fun standaloneChannelLaunchRoundTripsHeaderSeed() {
+        val launch =
+            WireThreadLaunchPayload(
+                instanceId = "thread-channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                headerTitleSeed = "cached-room",
+                headerSubtitleSeed = "Cached description"
+            )
+
+        val payload = launch.toInitialPayload("fallback")
+        val roundTrip = payload.toWireThreadLaunchPayload()
+
+        assertEquals("cached-room", payload.threadHeaderDisplayModelFromDirectory(null).title)
+        assertEquals("Cached description", payload.threadHeaderDisplayModelFromDirectory(null).subtitle)
+        assertEquals("cached-room", roundTrip.headerTitleSeed)
+        assertEquals("Cached description", roundTrip.headerSubtitleSeed)
     }
 
     @Test

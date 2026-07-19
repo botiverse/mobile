@@ -73,7 +73,9 @@ internal fun KuiklyThreadScreenPayload.threadHeaderProjectionRoutePayload(): Kui
         memberCandidates = emptyList(),
         dmPeerName = null,
         dmPeerAvatarUrl = null,
-        dmPeerAvatarLabel = null
+        dmPeerAvatarLabel = null,
+        headerTitleSeed = null,
+        headerSubtitleSeed = null
     )
 
 internal fun ThreadHeaderProjectionInput.stableProjection(
@@ -251,10 +253,12 @@ internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): Threa
             )
         }
         KuiklyThreadSurfaceKind.Channel -> {
-            val titleCandidate = loadedConversationHeaderTitleOrNull()
+            // A resume-time auth refresh can temporarily empty the directory flow. Keep the
+            // validated route snapshot visible until the authoritative projection arrives.
+            val titleCandidate = seededConversationHeaderTitleOrNull() ?: loadedConversationHeaderTitleOrNull()
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(titleCandidate, surfaceKind),
-                subtitle = loadedConversationHeaderSubtitleOrNull(),
+                subtitle = seededConversationHeaderSubtitleOrNull() ?: loadedConversationHeaderSubtitleOrNull(),
                 surfaceKind = surfaceKind,
                 channelKind = channelKind
             )
@@ -309,6 +313,13 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
             threadHeaderFallbackDisplayModel()
     }
 }
+
+private fun KuiklyThreadScreenPayload.seededConversationHeaderTitleOrNull(): String? =
+    threadHeaderSafeTitleOrNull(headerTitleSeed, conversationHeaderLookupIds().toSet())
+        ?.takeUnless { it.isGenericThreadHeaderFallbackLabel() }
+
+private fun KuiklyThreadScreenPayload.seededConversationHeaderSubtitleOrNull(): String? =
+    headerSubtitleSeed?.trim()?.takeIf { it.isNotBlank() }
 
 private fun KuiklyThreadScreenPayload.loadedConversationHeaderTitleOrNull(): String? {
     if (!hasLoadedConversationHeaderContent()) return null

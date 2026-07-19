@@ -6,6 +6,8 @@ import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
+import build.raft.app.model.conversationSafeDisplayTitleOrNull
+import build.raft.app.model.safeDisplayNameOrNull
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.MessageId
@@ -19,8 +21,35 @@ internal data class ThreadLaunchConversationIdentity(
     val thread: ThreadConversation? = null,
     val threadStreamChannelIdHint: ChannelId? = null,
     val kind: ConversationKind,
-    val dmPeerIdentity: MemberDetailIdentity? = null
-)
+    val dmPeerIdentity: MemberDetailIdentity? = null,
+    // Trusted directory snapshot carried across page mounting/auth refresh. This is display
+    // fallback only; route identity still comes exclusively from the typed ids/kinds above.
+    val headerTitleSeed: String? = null,
+    val headerSubtitleSeed: String? = null
+) {
+    // Display snapshots travel with a launch, but must never change route-identity equality.
+    // Open-request reconciliation deliberately compares this type across directory sources.
+    override fun equals(other: Any?): Boolean =
+        other is ThreadLaunchConversationIdentity &&
+            threadId == other.threadId &&
+            channelId == other.channelId &&
+            channelType == other.channelType &&
+            thread == other.thread &&
+            threadStreamChannelIdHint == other.threadStreamChannelIdHint &&
+            kind == other.kind &&
+            dmPeerIdentity == other.dmPeerIdentity
+
+    override fun hashCode(): Int {
+        var result = threadId.hashCode()
+        result = 31 * result + (channelId?.hashCode() ?: 0)
+        result = 31 * result + (channelType?.hashCode() ?: 0)
+        result = 31 * result + (thread?.hashCode() ?: 0)
+        result = 31 * result + (threadStreamChannelIdHint?.hashCode() ?: 0)
+        result = 31 * result + kind.hashCode()
+        result = 31 * result + (dmPeerIdentity?.hashCode() ?: 0)
+        return result
+    }
+}
 
 internal fun buildThreadLaunchConversationIdentity(
     kind: ConversationKind,
@@ -31,7 +60,9 @@ internal fun buildThreadLaunchConversationIdentity(
     parentMessageId: MessageId? = null,
     parentSurfaceKind: String? = null,
     parentChannelKind: String? = null,
-    dmPeerIdentity: MemberDetailIdentity? = null
+    dmPeerIdentity: MemberDetailIdentity? = null,
+    headerTitleSeed: String? = null,
+    headerSubtitleSeed: String? = null
 ): ThreadLaunchConversationIdentity {
     val isReplyThread = kind == ConversationKind.Thread
     val stableThreadIdentity =
@@ -57,7 +88,9 @@ internal fun buildThreadLaunchConversationIdentity(
                 null
             },
         kind = kind,
-        dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage }
+        dmPeerIdentity = dmPeerIdentity.takeIf { kind == ConversationKind.DirectMessage },
+        headerTitleSeed = headerTitleSeed,
+        headerSubtitleSeed = headerSubtitleSeed
     )
 }
 
@@ -116,7 +149,9 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         parentSurfaceKind = parentKind?.toKuiklySurfaceKind(),
         parentChannelKind = parentKind?.toWireChannelKindOrNull(),
-        dmPeerIdentity = peerIdentity
+        dmPeerIdentity = peerIdentity,
+        headerTitleSeed = conversationSafeDisplayTitleOrNull(title, aliases + canonicalChannelId),
+        headerSubtitleSeed = subtitle?.takeIf { it.isNotBlank() }
     )
 }
 
@@ -146,7 +181,9 @@ internal fun ConversationSummary.toThreadLaunchConversationIdentity(): ThreadLau
         channelType = channelType,
         thread = thread,
         kind = kind,
-        dmPeerIdentity = directMessagePeerIdentity()
+        dmPeerIdentity = directMessagePeerIdentity(),
+        headerTitleSeed = safeDisplayNameOrNull(),
+        headerSubtitleSeed = subtitle?.takeIf { it.isNotBlank() }
     )
 
 internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity =
@@ -156,8 +193,25 @@ internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLau
         channelType = channelType,
         thread = thread,
         kind = kind,
-        dmPeerIdentity = directMessagePeerIdentity()
+        dmPeerIdentity = directMessagePeerIdentity(),
+        headerTitleSeed = safeHeaderTitleSeed(),
+        headerSubtitleSeed = subtitle?.takeIf { it.isNotBlank() }
     )
+
+private fun HomeConversationRow.safeHeaderTitleSeed(): String? {
+    val identityIds =
+        listOfNotNull(threadId.value, channelId?.value, thread?.streamChannelId?.value)
+            .filter { it.isNotBlank() }
+            .toSet()
+    val candidate = conversationSafeDisplayTitleOrNull(name, identityIds) ?: return null
+    val generic =
+        when (kind) {
+            ConversationKind.DirectMessage -> "Direct Message"
+            ConversationKind.Thread -> "Thread"
+            else -> "Channel"
+        }
+    return candidate.takeUnless { it.equals(generic, ignoreCase = true) }
+}
 
 private fun ConversationSummary.directMessagePeerIdentity(): MemberDetailIdentity? =
     directMessagePeerIdentity(kind, presenceMemberId?.value, directMessagePeerType)
