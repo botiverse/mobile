@@ -124,12 +124,9 @@ async function main() {
   saveRecord();
   const data = await stamp(`/api/runs/${runId}`);
   if (!data.run) throw new Error("run not found");
-  if (!["running", "judging", "in_review"].includes(data.run.status)) {
+  const existingReview = (data.reviews || []).find((r) => r.role === "panel" && r.reviewer === reviewer);
+  if (!["running", "judging", "in_review"].includes(data.run.status) && !existingReview) {
     throw new Error(`run is not reviewable: ${data.run.status}`);
-  }
-  if ((data.reviews || []).some((r) => r.role === "panel" && r.reviewer === reviewer)) {
-    console.log(JSON.stringify({ skipped: true, reason: "reviewer already voted", reviewer }));
-    return;
   }
 
   const yamlModule = await import(process.env.SLOCK_YAML_MODULE || "yaml");
@@ -207,6 +204,33 @@ async function main() {
     excluded_evidence: excludedEvidence,
     raw_ui_dump_available: rawDumps.length > 0,
   });
+  if (existingReview) {
+    const existingDetail = typeof existingReview.detail_json === "string" ? JSON.parse(existingReview.detail_json) : existingReview.detail_json;
+    if (!plainObject(existingDetail) || existingDetail.review_input_sha256 !== reviewInputSha256) {
+      throw new Error(`existing vote ${existingReview.id} input hash does not match current frozen review input`);
+    }
+    const reconstructedVote = {
+      verdict: existingReview.verdict,
+      reason: existingReview.comment || "existing panel vote",
+      detail_json: existingDetail.assertions || {},
+      anomalies: existingDetail.anomalies || [],
+    };
+    validateVote(reconstructedVote, cases);
+    saveRecord({
+      stage: "already_submitted",
+      source: "remote_existing_vote",
+      parsed_vote: reconstructedVote,
+      existing_review: {
+        id: existingReview.id,
+        reviewer: existingReview.reviewer,
+        verdict: existingReview.verdict,
+        created_at: existingReview.created_at,
+        review_input_sha256: existingDetail.review_input_sha256,
+      },
+    });
+    console.log(JSON.stringify(record, null, 2));
+    return;
+  }
 
   const prompt = [
     "You are an INDEPENDENT, REFUTE-BIASED QA reviewer.",
@@ -255,24 +279,47 @@ async function main() {
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
   const models = providers.builtinModels();
   const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 180000);
   let response;
-  try {
-    response = await models.complete(model,
-      { messages: [{ role: "user", content, timestamp: Date.now() }] },
-      { apiKey: piKey, maxTokens: 2500, signal: controller.signal, timeoutMs: 180000 });
-  } finally {
-    clearTimeout(timer);
+  let text = "";
+  let vote;
+  const modelAttempts = [];
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 180000);
+    let attemptText = "";
+    let attemptResponse;
+    try {
+      const attemptContent = attempt === 1 ? content : [
+        { type: "text", text: "FORMAT CORRECTION: return exactly one bare JSON object. No prose, no Markdown fence. anomalies must be a top-level array of strings. Include every required assertion." },
+        ...content,
+      ];
+      attemptResponse = await models.complete(model,
+        { messages: [{ role: "user", content: attemptContent, timestamp: Date.now() }] },
+        { apiKey: piKey, maxTokens: 2500, signal: controller.signal, timeoutMs: 180000 });
+      if (attemptResponse.stopReason === "error" || attemptResponse.stopReason === "aborted") {
+        throw new Error(attemptResponse.errorMessage || attemptResponse.stopReason);
+      }
+      attemptText = attemptResponse.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+      const parsed = parseJson(attemptText);
+      validateVote(parsed, cases);
+      response = attemptResponse;
+      text = attemptText;
+      vote = parsed;
+      modelAttempts.push({ attempt, raw_model_output: attemptText, parsed_vote: parsed, validation: { ok: true }, usage: attemptResponse.usage || null });
+      saveRecord({ stage: "model_validated", model_attempts: modelAttempts });
+      break;
+    } catch (error) {
+      lastError = error;
+      modelAttempts.push({ attempt, raw_model_output: attemptText || null, error: error?.stack || String(error), usage: attemptResponse?.usage || null });
+      saveRecord({ stage: "model_invalid", model_attempts: modelAttempts });
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  if (response.stopReason === "error" || response.stopReason === "aborted") {
-    throw new Error(response.errorMessage || response.stopReason);
-  }
-  const text = response.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  if (!vote) throw lastError || new Error("reviewer exhausted strict JSON attempts");
   saveRecord({ stage: "model_returned", raw_model_output: text, usage: response.usage || null });
-  const vote = parseJson(text);
   saveRecord({ stage: "parsed", parsed_vote: vote });
-  validateVote(vote, cases);
   saveRecord({ stage: "validated", validation: { ok: true } });
 
   const detailJson = {

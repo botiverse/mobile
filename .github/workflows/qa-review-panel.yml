@@ -84,10 +84,16 @@ jobs:
             length == 3 and
             ([.[].reviewer] | sort) == ["m3-review-1","m3-review-2","m3-review-3"] and
             ([.[].run_id] | unique) == [env.RUN_ID] and
-            ([.[].stage] | unique) == ["submitted"] and
+            all(.[]; .stage == "submitted" or .stage == "already_submitted") and
+            ([.[] | select(.stage == "submitted")] | length) >= 1 and
             ([.[].evidence_manifest_sha256] | unique | length) == 1 and
             ([.[].review_input_sha256] | unique | length) == 1 and
-            all(.[]; .post_receipt.ok == true and (.parsed_vote.verdict == "passed" or .parsed_vote.verdict == "failed"))
+            all(.[];
+              (.parsed_vote.verdict == "passed" or .parsed_vote.verdict == "failed") and
+              (if .stage == "submitted" then .post_receipt.ok == true
+               else .source == "remote_existing_vote" and ((.existing_review.id | type) == "string") and ((.existing_review.id | length) > 0)
+               end)
+            )
           ' $records
           input_sha=$(jq -rs '.[0].review_input_sha256' $records)
           local_passed=$(jq -rs '[.[].parsed_vote.verdict | select(. == "passed")] | length' $records)
