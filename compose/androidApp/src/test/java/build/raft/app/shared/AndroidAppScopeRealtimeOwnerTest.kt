@@ -28,6 +28,39 @@ import org.junit.Test
 
 class AndroidAppScopeRealtimeOwnerTest {
     @Test
+    fun foregroundEpochAdvancesOnlyOnBackgroundToVisibleTransition() {
+        val first =
+            nextAndroidForegroundEpoch(
+                currentEpoch = 0L,
+                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+                nextHostVisibility = AndroidHostVisibility.Visible
+            )
+        val duplicateVisible =
+            nextAndroidForegroundEpoch(
+                currentEpoch = first,
+                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Foreground,
+                nextHostVisibility = AndroidHostVisibility.Visible
+            )
+        val hidden =
+            nextAndroidForegroundEpoch(
+                currentEpoch = duplicateVisible,
+                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Foreground,
+                nextHostVisibility = AndroidHostVisibility.Hidden
+            )
+        val second =
+            nextAndroidForegroundEpoch(
+                currentEpoch = hidden,
+                currentVisibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+                nextHostVisibility = AndroidHostVisibility.Visible
+            )
+
+        assertEquals(1L, first)
+        assertEquals(1L, duplicateVisible)
+        assertEquals(1L, hidden)
+        assertEquals(2L, second)
+    }
+
+    @Test
     fun hiddenVisibilityClosesReceiptGateBeforeRuntime() {
         val calls = mutableListOf<String>()
 

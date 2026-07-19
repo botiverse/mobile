@@ -3948,6 +3948,11 @@ internal fun SharedThreadRouteContent(
         }
     }
     val coroutineScope = rememberCoroutineScope()
+    LaunchedEffect(sharedStores.activityUnreadSummaryStore, currentSession?.currentServerId) {
+        val serverId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+            ?: return@LaunchedEffect
+        sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
+    }
     val latestCurrentSession by rememberUpdatedState(currentSession)
     // The listener can mount after Activity.onResume. Seed from the authoritative host
     // visibility so the first external-browser return is treated as a subsequent resume
@@ -4027,6 +4032,17 @@ internal fun SharedThreadRouteContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
+                        latestCurrentSession
+                            ?.currentServerId
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { serverId ->
+                                sharedStores.activityUnreadSummaryStore.onForeground(
+                                    serverId = ServerId(serverId),
+                                    epoch = lifecycleData.optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L),
+                                    reason = "thread_$event"
+                                )
+                            }
                         if (threadLifecycleSeen && active) {
                             threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
                             threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)

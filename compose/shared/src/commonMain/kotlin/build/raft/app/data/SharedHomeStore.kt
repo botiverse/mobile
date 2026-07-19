@@ -2646,6 +2646,7 @@ internal fun snapshotToBadgeCount(
     AppBadgeCount(
         count =
             when (snapshot.unreadSource) {
+                AppBadgeSource.ACTIVITY_UNREAD_SUMMARY,
                 AppBadgeSource.SERVER_UNREAD_SUMMARY -> snapshot.unreadTotal
                 AppBadgeSource.DISABLED -> 0
                 AppBadgeSource.CHANNEL_DM_FALLBACK,

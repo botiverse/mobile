@@ -8,6 +8,8 @@ import { SlockOhosApiEnvironmentStore } from '../kuikly/SlockOhosApiEnvironmentS
 const AUTH_SESSION_MMKV_NAMESPACE = 'slockAuthSession';
 const AUTH_SESSION_MMKV_STORAGE_KEY = 'slockAuthSession:session';
 const WIDGET_SERVER_CONFIG_MMKV_NAMESPACE = 'slockWidgetServerConfig';
+const ACTIVITY_UNREAD_MMKV_NAMESPACE = 'slockActivityUnread';
+const ACTIVITY_UNREAD_MMKV_STORAGE_KEY = 'slockActivityUnread:projections';
 const REQUEST_TIMEOUT_MS = 8000;
 
 export const FORM_ACTIVITY_UNREAD = 'activityUnread';
@@ -19,15 +21,33 @@ interface StoredAuthServer {
   slug?: string;
 }
 
+interface StoredAuthUser {
+  id?: string;
+}
+
 interface StoredAuthSession {
+  user?: StoredAuthUser;
   accessToken: string;
   selectedServerId?: string;
   servers?: StoredAuthServer[];
 }
 
-interface ServerUnreadSummary {
+interface InboxUnreadSummary {
+  totalUnreadCount?: number;
+  totalCount?: number;
+}
+
+export interface PersistedActivityUnreadProjection {
+  environmentId?: string;
+  accountId?: string;
   serverId?: string;
-  unreadCount?: number;
+  totalUnreadCount?: number;
+  totalCount?: number;
+  updatedAtMillis?: number;
+}
+
+interface PersistedActivityUnreadProjectionDocument {
+  entries?: PersistedActivityUnreadProjection[];
 }
 
 interface AgentWire {
@@ -86,6 +106,29 @@ export function fallbackActivityUnreadSnapshot(
   };
 }
 
+export function activityUnreadPersistedFallbackCount(
+  persisted: PersistedActivityUnreadProjection | null
+): number | null {
+  if (persisted === null) {
+    return null;
+  }
+  return activityUnreadCountOrNull(persisted.totalUnreadCount);
+}
+
+export function activityUnreadCountOrNull(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.max(0, value);
+}
+
+export function createActivityUnreadWidgetRefreshError(error: Object): Error {
+  if (error instanceof Error && error.message.length > 0) {
+    return new Error(`activity_unread_widget_refresh_failed: ${error.message}`);
+  }
+  return new Error('activity_unread_widget_refresh_failed');
+}
+
 export function fallbackAgentRuntimeSnapshot(
   reason: string = 'Open Raft to sync',
   stateLabel: string = 'Needs app session'
@@ -113,9 +156,29 @@ export async function loadActivityUnreadSnapshot(context: common.Context, formId
   if (server === null) {
     return fallbackActivityUnreadSnapshot('Select a server');
   }
-  const summaries = await requestJson<ServerUnreadSummary[]>(session, server.id, 'servers/unread-summary', context);
-  const match = summaries.find((summary: ServerUnreadSummary) => summary.serverId === server.id);
-  const unread = Math.max(0, Number(match?.unreadCount ?? 0));
+  const persisted = readPersistedActivityUnreadProjection(context, session, server.id);
+  let unread: number;
+  let usedPersisted = false;
+  try {
+    const summary = await requestJson<InboxUnreadSummary>(
+      session,
+      server.id,
+      'channels/inbox?filter=all&limit=1&offset=0',
+      context
+    );
+    const liveUnread = activityUnreadCountOrNull(summary.totalUnreadCount);
+    if (liveUnread === null) {
+      throw new Error('activity_unread_widget_invalid_summary');
+    }
+    unread = liveUnread;
+  } catch (error) {
+    const persistedUnread = activityUnreadPersistedFallbackCount(persisted);
+    if (persistedUnread === null) {
+      throw createActivityUnreadWidgetRefreshError(error);
+    }
+    usedPersisted = true;
+    unread = persistedUnread;
+  }
   return {
     kind: FORM_ACTIVITY_UNREAD,
     title: 'Activity',
@@ -123,11 +186,43 @@ export async function loadActivityUnreadSnapshot(context: common.Context, formId
     primaryLabel: 'Unread',
     secondaryLabel: serverLabel(server),
     accentLabel: unread > 0 ? 'NEW' : 'CLEAR',
-    stateLabel: unread > 0 ? 'Needs attention' : 'All caught up',
+    stateLabel: usedPersisted ? 'Stale projection' : (unread > 0 ? 'Needs attention' : 'All caught up'),
     footerLabel: 'Updated',
     updatedAtLabel: nowLabel(),
     empty: unread === 0
   };
+}
+
+function readPersistedActivityUnreadProjection(
+  context: common.Context,
+  session: StoredAuthSession,
+  serverId: string
+): PersistedActivityUnreadProjection | null {
+  const accountId = session.user?.id?.trim() ?? '';
+  if (accountId.length === 0) {
+    return null;
+  }
+  try {
+    MMKV.initialize(context.getApplicationContext());
+  } catch (_error) {
+    // MMKV may already be initialized by the app process.
+  }
+  try {
+    const encoded = MMKV.mmkvWithID(ACTIVITY_UNREAD_MMKV_NAMESPACE)
+      .decodeString(ACTIVITY_UNREAD_MMKV_STORAGE_KEY);
+    if (!encoded || encoded.length === 0) {
+      return null;
+    }
+    const document = JSON.parse(encoded) as PersistedActivityUnreadProjectionDocument;
+    const environmentId = trimEndSlash(SlockOhosApiEnvironmentStore.currentForContext(context).apiBaseUrl);
+    return document.entries?.find((entry: PersistedActivityUnreadProjection) => {
+      return trimEndSlash(`${entry.environmentId ?? ''}`) === environmentId &&
+        `${entry.accountId ?? ''}` === accountId &&
+        `${entry.serverId ?? ''}` === serverId;
+    }) ?? null;
+  } catch (_error) {
+    return null;
+  }
 }
 
 export async function loadAgentRuntimeSnapshot(context: common.Context, formId: string = ''): Promise<SlockWidgetSnapshot> {
@@ -355,6 +450,10 @@ function nowLabel(): string {
 
 function pad2(value: number): string {
   return value < 10 ? `0${value}` : `${value}`;
+}
+
+function trimEndSlash(value: string): string {
+  return value.replace(/\/+$/, '');
 }
 
 function httpResultToString(result: string | ArrayBuffer | Object): string {

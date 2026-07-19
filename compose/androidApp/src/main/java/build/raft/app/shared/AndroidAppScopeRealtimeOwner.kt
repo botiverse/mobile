@@ -53,6 +53,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private var multiSessionIdentity: MultiSessionIdentity? = null
     private val visibleShellOwners = AndroidVisibleShellOwners()
     private var appVisibility: AppVisibility = AppVisibility.Background
+    private var foregroundEpoch: Long = 0L
     private var lastHiddenAtMillis: Long? = null
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
@@ -64,9 +65,14 @@ internal object AndroidAppScopeRealtimeOwner {
         shellInstanceId: String = "",
         source: String = "unknown"
     ) {
+        val lifecycleForegroundEpoch =
+            synchronized(this) {
+                foregroundEpoch = nextAndroidForegroundEpoch(foregroundEpoch, appVisibility, visibility)
+                foregroundEpoch
+            }
         applyAndroidHostVisibilityTransition(
             visibility = visibility,
-            publishVisibility = { publishHostVisibility(visibility, shellInstanceId) },
+            publishVisibility = { publishHostVisibility(visibility, shellInstanceId, lifecycleForegroundEpoch) },
             applyRuntimeVisibility = {
                 when (visibility) {
                     AndroidHostVisibility.Visible -> onAppShown(context, shellInstanceId, source)
@@ -202,7 +208,11 @@ internal object AndroidAppScopeRealtimeOwner {
         AndroidNetworkPrewarmController.cancel(reason = source)
     }
 
-    private fun publishHostVisibility(visibility: AndroidHostVisibility, shellInstanceId: String) {
+    private fun publishHostVisibility(
+        visibility: AndroidHostVisibility,
+        shellInstanceId: String,
+        lifecycleForegroundEpoch: Long
+    ) {
         updateSlockHostVisibility(
             shellInstanceId = shellInstanceId,
             visible = visibility == AndroidHostVisibility.Visible
@@ -213,6 +223,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 JSONObject()
                     .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionAppLifecycle)
                     .put(SlockRealtimeNotifyContract.KeyLifecycleEvent, visibility.wireValue)
+                    .put(SlockRealtimeNotifyContract.KeyForegroundEpoch, lifecycleForegroundEpoch)
                     .put(SlockRealtimeNotifyContract.KeyPageName, SlockKuiklyActivity.PAGE_APP_SHELL)
                     .put(SlockRealtimeNotifyContract.KeyShellInstanceId, shellInstanceId)
         )
@@ -936,6 +947,20 @@ internal enum class AndroidHostVisibility(val wireValue: String) {
     Visible("resume"),
     Hidden("pause")
 }
+
+internal fun nextAndroidForegroundEpoch(
+    currentEpoch: Long,
+    currentVisibility: AndroidAppScopeRealtimeOwner.AppVisibility,
+    nextHostVisibility: AndroidHostVisibility
+): Long =
+    if (
+        nextHostVisibility == AndroidHostVisibility.Visible &&
+        currentVisibility == AndroidAppScopeRealtimeOwner.AppVisibility.Background
+    ) {
+        currentEpoch + 1L
+    } else {
+        currentEpoch
+    }
 
 internal fun applyAndroidHostVisibilityTransition(
     visibility: AndroidHostVisibility,

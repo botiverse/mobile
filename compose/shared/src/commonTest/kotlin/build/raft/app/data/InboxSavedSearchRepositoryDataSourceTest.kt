@@ -14,6 +14,41 @@ import kotlin.test.assertTrue
 
 class InboxSavedSearchRepositoryDataSourceTest {
     @Test
+    fun processActivityUnreadRepositoryUsesAllFilterForegroundPriorityAndSummaryOnly() = runBlocking {
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """{"items":[],"hasMore":false,"totalCount":12,"totalUnreadCount":7}"""
+            )
+        val repository = ProcessActivityUnreadRepository(sampleStore(), network)
+
+        val result =
+            repository.load(
+                ProcessActivityUnreadOwner(
+                    environmentId = "https://api.example.test",
+                    accountId = "user-1",
+                    serverId = "server-1"
+                ),
+                DataRequestPriority.Foreground
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(ActivityUnreadSummarySnapshot(totalUnreadCount = 7, totalCount = 12), result.data)
+        assertEquals(
+            listOf(
+                InboxCall(
+                    filter = "all",
+                    limit = 1,
+                    offset = 0,
+                    priority = DataRequestPriority.Foreground,
+                    serverId = "server-1"
+                )
+            ),
+            network.inboxCalls
+        )
+    }
+
+    @Test
     fun inboxRepositoryMapsPagingMetadataAndStableThreadKeys() = runBlocking {
         val network =
             FakeInboxNetworkClient(
@@ -567,7 +602,9 @@ class InboxSavedSearchRepositoryDataSourceTest {
                         InboxCall(
                             filter = query.firstValue("filter") ?: "all",
                             limit = query.firstValue("limit")?.toIntOrNull() ?: 30,
-                            offset = query.firstValue("offset")?.toIntOrNull() ?: 0
+                            offset = query.firstValue("offset")?.toIntOrNull() ?: 0,
+                            priority = priority,
+                            serverId = serverIdOverride?.value
                         )
                     ok(inboxJson)
                 }
@@ -616,7 +653,9 @@ class InboxSavedSearchRepositoryDataSourceTest {
     private data class InboxCall(
         val filter: String,
         val limit: Int,
-        val offset: Int
+        val offset: Int,
+        val priority: DataRequestPriority = DataRequestPriority.Visible,
+        val serverId: String? = "server-1"
     )
 
     private data class SearchCall(

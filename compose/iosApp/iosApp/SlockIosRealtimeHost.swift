@@ -54,6 +54,7 @@ final class SlockIosRealtimeHost: NSObject {
     private var runtimes: [String: Runtime] = [:]
     private var processIdentity: ProcessIdentity?
     private var nextGeneration: UInt64 = 0
+    private var foregroundEpoch: Int64 = 0
     private var didInstallObservers = false
 
     var statusLabel: String {
@@ -557,6 +558,7 @@ final class SlockIosRealtimeHost: NSObject {
             for runtime in self.runtimes.values where runtime.state == .disconnected {
                 if let params = runtime.connectParams { self.openSocketLocked(runtime: runtime, params: params) }
             }
+            self.foregroundEpoch += 1
             SlockHostVisibilityKt.updateSlockHostVisibility(shellInstanceId: "legacy-app-shell", visible: true)
             self.sendAppLifecycle(event: "show")
         }
@@ -580,6 +582,7 @@ final class SlockIosRealtimeHost: NSObject {
             userInfo: [
                 GeneratedRealtimeContract.PayloadKey.action: "appLifecycle",
                 "event": event,
+                "foregroundEpoch": foregroundEpoch,
                 "pageName": "compose_slock_app_shell",
             ]
         )

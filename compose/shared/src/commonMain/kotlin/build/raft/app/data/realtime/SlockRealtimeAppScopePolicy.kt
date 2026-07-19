@@ -30,6 +30,7 @@ object SlockRealtimeNotifyContract {
     const val LifecycleHidden = "hide"
     const val LifecycleHiddenKeepAlive = "hide_keep_alive"
     const val KeyLifecycleEvent = "event"
+    const val KeyForegroundEpoch = "foregroundEpoch"
     const val KeyPageName = "pageName"
     const val KeyShellInstanceId = "shellInstanceId"
 }

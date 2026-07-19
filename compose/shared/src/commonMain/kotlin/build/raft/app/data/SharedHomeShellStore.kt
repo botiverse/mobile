@@ -54,6 +54,9 @@ class SharedHomeShellStore(
     private val dispatchActivity: (SharedActivityIntent) -> Unit,
     private val acceptActivityRealtime: suspend (SharedActivityIntent) -> Unit = { intent -> dispatchActivity(intent) },
     private val dispatchSearchSaved: (SharedHomeSearchSavedIntent) -> Unit,
+    private val refreshActivitySummary: (serverId: String?, reason: String) -> Unit = { _, _ ->
+        dispatchActivity(SharedActivityIntent.Refresh)
+    },
     private val resetActivity: () -> Unit = {},
     private val diagnosticsLogger: (String) -> Unit = {},
     private val scope: CoroutineScope
@@ -83,12 +86,12 @@ class SharedHomeShellStore(
                     if (nextServerId != null && previousServerId != nextServerId) {
                         if (previousServerId != null) {
                             clearBadgeSummaries()
-                            refreshActivitySummary()
+                            refreshActivitySummary(nextServerId, "server_switch")
                         }
                         if (summariesCanRefresh) {
                             pendingSavedSummaryRefreshServerId = null
                             if (previousServerId == null) {
-                                refreshBadgeSummaries()
+                                refreshBadgeSummaries(nextServerId, "server_ready")
                             } else {
                                 refreshSavedSummary()
                             }
@@ -214,7 +217,7 @@ class SharedHomeShellStore(
         when (_state.value.destination) {
             null -> {
                 dispatchHome(SharedHomeIntent.ForegroundRefresh)
-                refreshBadgeSummaries()
+                refreshSavedSummary()
             }
             SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
@@ -247,16 +250,12 @@ class SharedHomeShellStore(
         dispatchSearchSaved(SharedHomeSearchSavedIntent.ClearSavedSummary)
     }
 
-    private fun refreshActivitySummary() {
-        dispatchActivity(SharedActivityIntent.Refresh)
-    }
-
     private fun refreshSavedSummary() {
         dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
     }
 
-    private fun refreshBadgeSummaries() {
-        refreshActivitySummary()
+    private fun refreshBadgeSummaries(serverId: String?, reason: String) {
+        refreshActivitySummary(serverId, reason)
         refreshSavedSummary()
     }
 
@@ -267,7 +266,7 @@ class SharedHomeShellStore(
         )
         dispatchHome(intent)
         if (intent == SharedHomeIntent.Refresh) {
-            refreshBadgeSummaries()
+            refreshBadgeSummaries(observedHomeServerId, "manual_home_refresh")
         }
     }
 }

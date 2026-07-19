@@ -9,20 +9,15 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
-import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
-import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
-import build.raft.app.model.TaskCreated
-import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
-import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
 import build.raft.app.data.realtime.PerReceiverReadStateFactResult
@@ -88,6 +83,8 @@ class SharedActivityStore internal constructor(
     private val tailPrewarmDepthCap: Int = SharedActivityTailPrewarmDepthCap,
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
+    onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
+    onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
     private val realtimeReconcileDelayMillis: Long = SharedActivityRealtimeReconcileDelayMillis,
@@ -102,6 +99,8 @@ class SharedActivityStore internal constructor(
     private var loadJob: Job? = null
     private var loadGeneration: Long = 0L
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
+    private var onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = onSummaryFact
+    private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
     private var pendingReadStateFacts: Map<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint> = emptyMap()
@@ -139,6 +138,8 @@ class SharedActivityStore internal constructor(
         readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
         onUnreadCountsChanged: (() -> Unit)? = null,
+        onSummaryFact: ((ActivityUnreadSummaryFact) -> Unit)? = null,
+        onSummaryInvalidated: ((ActivityUnreadSummaryInvalidation) -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ) {
         this.authStore = authStore
@@ -159,6 +160,12 @@ class SharedActivityStore internal constructor(
         this.readReceiptOwnerFactory = readReceiptOwnerFactory
         if (onUnreadCountsChanged != null) {
             this.onUnreadCountsChanged = onUnreadCountsChanged
+        }
+        if (onSummaryFact != null) {
+            this.onSummaryFact = onSummaryFact
+        }
+        if (onSummaryInvalidated != null) {
+            this.onSummaryInvalidated = onSummaryInvalidated
         }
         if (diagnosticsLogger != null) {
             this.diagnosticsLogger = diagnosticsLogger
@@ -874,6 +881,32 @@ class SharedActivityStore internal constructor(
                                     SharedActivityPageSize
                                 )
                             }
+                        val currentSession = authStore.readSession()
+                        val requestSessionStillCurrent =
+                            currentSession != null &&
+                                currentSession.user.id == userId &&
+                                currentSession.currentServerId == serverId.value &&
+                                currentSession.accessToken == session.accessToken
+                        if (!requestSessionStillCurrent) {
+                            synchronized(realtimeOwnerLock) {
+                                if (generation == loadGeneration) {
+                                    val current = _state.value
+                                    reduceState(
+                                        intent,
+                                        current.copy(
+                                            loading = false,
+                                            refreshing = false,
+                                            pullRefreshing = false,
+                                            loadingMore = false
+                                        )
+                                    )
+                                }
+                            }
+                            diagnosticsLogger(
+                                "store_load domain=activity result=stale_session serverId=${serverId.value}"
+                            )
+                            return@launch
+                        }
                         val senderProfiles = loadSenderProfiles(serverId)
                         val applied =
                             synchronized(realtimeOwnerLock) {
@@ -1053,7 +1086,26 @@ class SharedActivityStore internal constructor(
                     )
             }
         acceptCanonicalReplyThreadFacts(nextState)
-        reduceState(intent, nextState)
+        reduceState(
+            intent = intent,
+            nextState = nextState,
+            summaryAuthoritative =
+                !append &&
+                    current.selectedFilter == InboxFilter.All &&
+                    (result is DataResult.Content || result is DataResult.Empty),
+            summaryFactCounts =
+                if (!append && current.selectedFilter == InboxFilter.All) {
+                    when (result) {
+                        is DataResult.Content -> result.data.totalUnreadCount to result.data.totalCount
+                        is DataResult.Empty -> 0 to 0
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> null
+                    }
+                } else {
+                    null
+                },
+            summarySource = "activity_canonical:${current.selectedFilter.wireValue}"
+        )
     }
 
     private fun acceptCanonicalReplyThreadFacts(nextState: SharedActivityState) {
@@ -1406,7 +1458,13 @@ class SharedActivityStore internal constructor(
             )
     }
 
-    private fun reduceState(intent: SharedActivityIntent, nextState: SharedActivityState): Boolean {
+    private fun reduceState(
+        intent: SharedActivityIntent,
+        nextState: SharedActivityState,
+        summaryAuthoritative: Boolean = false,
+        summaryFactCounts: Pair<Int, Int>? = null,
+        summarySource: String = "activity:${intent.activitySummarySource()}"
+    ): Boolean {
         val previousState = _state.value
         val finalState =
             persistSlices.fold(nextState) { state, slice ->
@@ -1417,7 +1475,69 @@ class SharedActivityStore internal constructor(
         persistSlices.forEach { slice ->
             slice.onTransition(previous = previousState, intent = intent, next = finalState)
         }
+        emitSummarySignalIfChanged(
+            intent = intent,
+            previous = previousState,
+            next = finalState,
+            authoritative = summaryAuthoritative,
+            source = summarySource,
+            countOverride = summaryFactCounts
+        )
         return true
+    }
+
+    private fun emitSummarySignalIfChanged(
+        intent: SharedActivityIntent,
+        previous: SharedActivityState,
+        next: SharedActivityState,
+        authoritative: Boolean,
+        source: String,
+        countOverride: Pair<Int, Int>?
+    ) {
+        val serverId = next.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val accountId = next.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return
+        val snapshot = next.snapshot ?: return
+        val summaryChanged =
+            previous.ownerServerId != next.ownerServerId ||
+                previous.ownerUserId != next.ownerUserId ||
+                previous.totalUnreadCount != next.totalUnreadCount ||
+                previous.totalCount != next.totalCount
+        if (!summaryChanged && countOverride == null) return
+        if (next.selectedFilter != InboxFilter.All) {
+            if (!intent.invalidatesGlobalActivitySummary()) return
+            runCatching {
+                onSummaryInvalidated(
+                    ActivityUnreadSummaryInvalidation(
+                        accountId = accountId,
+                        serverId = serverId,
+                        source = source
+                    )
+                )
+            }.onFailure { error ->
+                diagnosticsLogger(
+                    "activity_summary_invalidation result=failure serverId=$serverId source=$source " +
+                        "errorType=${error::class.simpleName.orEmpty()}"
+                )
+            }
+            return
+        }
+        runCatching {
+            onSummaryFact(
+                ActivityUnreadSummaryFact(
+                    accountId = accountId,
+                    serverId = serverId,
+                    totalUnreadCount = countOverride?.first ?: snapshot.totalUnreadCount,
+                    totalCount = countOverride?.second ?: snapshot.totalCount,
+                    authoritative = authoritative,
+                    source = source
+                )
+            )
+        }.onFailure { error ->
+            diagnosticsLogger(
+                "activity_summary_fact result=failure serverId=$serverId source=$source " +
+                    "errorType=${error::class.simpleName.orEmpty()}"
+            )
+        }
     }
 
     private suspend fun currentServerId(): ServerId? =
@@ -1684,25 +1804,49 @@ sealed interface SharedActivityIntent {
     ) : SharedActivityIntent
 }
 
-private fun RealtimeEvent.refreshesActivity(): Boolean =
+private fun SharedActivityIntent.activitySummarySource(): String =
     when (this) {
-        is MessageNew,
-        is MessageUpdated,
-        is DirectMessageCreated,
-        is ThreadUpdated,
-        is TaskCreated,
-        is TaskUpdated,
-        is TaskDeleted,
-        is SyncResumeResponse -> true
-        is RealtimeRefreshRequired ->
-            scope == RealtimeRefreshScope.Home ||
-                scope == RealtimeRefreshScope.ChannelMembers ||
-                scope == RealtimeRefreshScope.ServerMembers ||
-                scope == RealtimeRefreshScope.Agents ||
-                scope == RealtimeRefreshScope.Machines ||
-                scope == RealtimeRefreshScope.Settings
-        else -> false
+        SharedActivityIntent.ClearSummary -> "clear_summary"
+        SharedActivityIntent.LoadInitial -> "load_initial"
+        SharedActivityIntent.Refresh -> "refresh"
+        SharedActivityIntent.PullRefresh -> "pull_refresh"
+        SharedActivityIntent.LoadMore -> "load_more"
+        SharedActivityIntent.MarkAllRead -> "mark_all_read"
+        is SharedActivityIntent.SetFilter -> "set_filter:${filter.wireValue}"
+        is SharedActivityIntent.MarkDone -> "mark_done"
+        is SharedActivityIntent.MarkRead -> "mark_read"
+        is SharedActivityIntent.MarkUnread -> "mark_unread"
+        is SharedActivityIntent.ApplyReadReceiptPrediction -> "read_prediction"
+        is SharedActivityIntent.ApplyReadReceiptFailure -> "read_failure"
+        is SharedActivityIntent.PrewarmVisibleReplyThreads -> "prewarm_visible"
+        is SharedActivityIntent.PrewarmActivityTail -> "prewarm_tail"
+        SharedActivityIntent.DetachPrewarmViewport -> "prewarm_detach"
+        is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
+        is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
     }
+
+private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
+    when (this) {
+        SharedActivityIntent.MarkAllRead,
+        is SharedActivityIntent.MarkDone,
+        is SharedActivityIntent.MarkRead,
+        is SharedActivityIntent.MarkUnread,
+        is SharedActivityIntent.ApplyReadReceiptPrediction,
+        is SharedActivityIntent.ApplyReadReceiptFailure,
+        is SharedActivityIntent.ApplyRealtimeEvent,
+        is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
+        SharedActivityIntent.ClearSummary,
+        SharedActivityIntent.LoadInitial,
+        SharedActivityIntent.Refresh,
+        SharedActivityIntent.PullRefresh,
+        SharedActivityIntent.LoadMore,
+        is SharedActivityIntent.SetFilter,
+        is SharedActivityIntent.PrewarmVisibleReplyThreads,
+        is SharedActivityIntent.PrewarmActivityTail,
+        SharedActivityIntent.DetachPrewarmViewport -> false
+    }
+
+private fun RealtimeEvent.refreshesActivity(): Boolean = affectsActivityContent()
 
 private fun InboxItem.replyThreadPrewarmKey(serverId: String): ActivityReplyThreadPrewarmKey? {
     if (kind != InboxItemKind.Thread) return null

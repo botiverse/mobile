@@ -2924,6 +2924,12 @@ internal fun SlockAppShellContent(
                 dispatchActivity = homeActivityStore::dispatch,
                 acceptActivityRealtime = homeActivityStore::acceptRealtime,
                 dispatchSearchSaved = homeSearchSavedViewModel::dispatch,
+                refreshActivitySummary = { serverId, reason ->
+                    serverId
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { sharedStores.activityUnreadSummaryStore.refresh(ServerId(it), reason) }
+                },
                 resetActivity = homeActivityStore::reset,
                 diagnosticsLogger = slockLogger("SlockHomeShell", "shared_home_shell"),
                 scope = appShellCoroutineScope
@@ -2938,19 +2944,6 @@ internal fun SlockAppShellContent(
     val homeSearchSavedState = homeShellState.searchSaved
     val selectedHomeDestination = homeShellState.destination
     val selectedHomeConversationId = homeShellState.selectedConversationId
-    // #81: forward the typed selected-server badge projection to the host
-    // bridge. The host platform MUST use `count` for the system badge
-    // and `source` only for diagnostics / logging. See
-    // [build.raft.app.base.BridgeModule.appBadge] and
-    // [build.raft.app.data.AppBadgeCount] for the contract.
-    LaunchedEffect(homeState.appBadgeCount) {
-        val badge = homeState.appBadgeCount
-        bridge.appBadge(
-            count = badge.count,
-            source = badge.source.wire,
-            isStale = badge.isStale
-        )
-    }
     val tasksViewModel: SharedTasksViewModel =
         viewModel(key = "shared-tasks") {
             SharedTasksViewModel(
@@ -2973,6 +2966,38 @@ internal fun SlockAppShellContent(
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
+    val activityUnreadServerId = remember(readyServerId) { ServerId(readyServerId.orEmpty()) }
+    val activityUnreadSummaryFlow =
+        remember(sharedStores.activityUnreadSummaryStore, activityUnreadServerId) {
+            sharedStores.activityUnreadSummaryStore.projectionFlow(activityUnreadServerId)
+        }
+    val activityUnreadSummary by activityUnreadSummaryFlow.collectAsState(
+        sharedStores.activityUnreadSummaryStore.currentProjection(activityUnreadServerId)
+    )
+    // Forward the process-owned selected-server Activity projection to the host badge. Source is
+    // diagnostics-only; hosts display count and must not branch on provenance.
+    LaunchedEffect(homeState.appBadgeCount, activityUnreadSummary) {
+        val fallback = homeState.appBadgeCount
+        bridge.appBadge(
+            count = if (activityUnreadSummary.hasValue) activityUnreadSummary.totalUnreadCount else fallback.count,
+            source =
+                if (activityUnreadSummary.hasValue) {
+                    build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
+                } else {
+                    fallback.source.wire
+                },
+            isStale =
+                if (activityUnreadSummary.hasValue) {
+                    activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
+                } else {
+                    fallback.isStale
+                }
+        )
+    }
+    LaunchedEffect(sharedStores.activityUnreadSummaryStore, readyServerId) {
+        val serverId = readyServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "app_shell_server_ready")
+    }
     val renderedHomeServerId =
         (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
     val navigationStoreScope =
@@ -4100,6 +4125,17 @@ internal fun SlockAppShellContent(
                                 ) &&
                             latestReadySession != null
                         ) {
+                            latestReadySession
+                                ?.currentServerId
+                                ?.trim()
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { serverId ->
+                                    sharedStores.activityUnreadSummaryStore.onForeground(
+                                        serverId = ServerId(serverId),
+                                        epoch = eventData.optLong(SlockRealtimeNotifyContract.KeyForegroundEpoch, 0L),
+                                        reason = "app_shell_$event"
+                                    )
+                                }
                             refreshVisibleAppShellRoute(
                                 reason = "app_lifecycle_$event",
                                 signal = AppShellVisibleRefreshSignal.Lifecycle,
@@ -4476,8 +4512,8 @@ internal fun SlockAppShellContent(
                                 sessionReady = readyServerId?.isNotBlank() == true,
                                 draftPersistSlice = composerDraftPersistSlice,
                                 conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
-                                activityUnreadCount = homeActivityState.totalUnreadCount,
-                                activityTotalCount = homeActivityState.totalCount,
+                                activityUnreadCount = activityUnreadSummary.totalUnreadCount,
+                                activityTotalCount = activityUnreadSummary.totalCount,
                                 savedCount = homeSearchSavedState.saved.totalCount,
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,

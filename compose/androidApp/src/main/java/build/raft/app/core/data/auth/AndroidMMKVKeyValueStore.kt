@@ -5,6 +5,7 @@ import build.raft.app.core.data.diagnostics.SlockAndroidLocalDiagnostics
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
+import build.raft.app.data.SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SlockKeyValueStore
 import build.raft.app.data.SlockLocalPreferenceStore
@@ -198,12 +199,16 @@ fun androidMMKVNetworkRecoveryKeyValueStore(context: Context): SlockKeyValueStor
 fun androidMMKVApiEnvironmentKeyValueStore(context: Context): SlockKeyValueStore =
     AndroidAppScopeKeyValueStores.get(context, SharedApiEnvironmentStore.Namespace)
 
+fun androidMMKVActivityUnreadKeyValueStore(context: Context): SlockKeyValueStore =
+    AndroidAppScopeKeyValueStores.get(context, SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE)
+
 fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
     val appContext = context.applicationContext
     listOf(
         SLOCK_AUTH_SESSION_MMKV_NAMESPACE,
         SlockLocalPreferenceStore.KuiklyNamespace,
-        SharedApiEnvironmentStore.Namespace
+        SharedApiEnvironmentStore.Namespace,
+        SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE
     ).forEach { namespace ->
         SlockSharedKeyValueStoreProvider.installAppScopeFactory(namespace) {
             AndroidAppScopeKeyValueStores.get(appContext, namespace)

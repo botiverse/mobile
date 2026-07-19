@@ -177,6 +177,47 @@ class RealInboxRepository(
     }
 }
 
+internal class ProcessActivityUnreadRepository(
+    private val sessionStore: SlockAuthSessionStore,
+    private val networkClient: SlockNetworkClient,
+    private val logger: (String) -> Unit = {},
+    private val warningLogger: (String) -> Unit = {}
+) {
+    suspend fun load(
+        owner: ProcessActivityUnreadOwner,
+        priority: DataRequestPriority
+    ): DataResult<ActivityUnreadSummarySnapshot> {
+        val serverId = ServerId(owner.serverId)
+        val session = sessionStore.readSession() ?: return authRequired()
+        if (session.user.id.trim() != owner.accountId.trim()) return authRequired()
+        if (session.servers.none { server -> server.id == owner.serverId }) return authRequired()
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = {
+                networkClient.inbox(
+                    priority = priority,
+                    filter = InboxFilter.All,
+                    limit = 1,
+                    offset = 0,
+                    serverId = serverId
+                )
+            },
+            source = "process_activity_unread",
+            mapOnDefault = false,
+            diagnosticsLogger = logger,
+            warningLogger = warningLogger,
+            mapper = { bodyText ->
+                val parsed = parseSharedInboxSnapshot(bodyText)
+                    ?: throw IllegalStateException("Activity unread response missing summary")
+                ActivityUnreadSummarySnapshot(
+                    totalUnreadCount = parsed.totalUnreadCount,
+                    totalCount = parsed.totalCount
+                )
+            }
+        )
+    }
+}
+
 class RealSavedRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,

@@ -11,6 +11,12 @@ import {
   SlockOhosPreparedDiagnosticEntry,
   SlockOhosRawAsyncDiagnosticEntry,
 } from '../main/ets/kuikly/SlockOhosDiagnosticsQueue';
+import { nextSlockOhosForegroundEpoch } from '../main/ets/kuikly/SlockOhosRealtimeHostContext';
+import {
+  activityUnreadCountOrNull,
+  activityUnreadPersistedFallbackCount,
+  createActivityUnreadWidgetRefreshError,
+} from '../main/ets/forms/SlockWidgetData';
 
 function diagnosticEntry(seq: number, level: string = 'info'): SlockOhosRawAsyncDiagnosticEntry {
   return {
@@ -66,6 +72,46 @@ export default function localUnitTest() {
       // Defines a variety of assertion methods, which are used to declare expected boolean conditions.
       expect(a).assertContain(b);
       expect(a).assertEqual(a);
+    });
+    it('foregroundEpochAdvancesOnlyOnHiddenToVisibleLeadingEdge', 0, () => {
+      const first = nextSlockOhosForegroundEpoch(0, false, true);
+      const duplicateShow = nextSlockOhosForegroundEpoch(first, true, true);
+      const hidden = nextSlockOhosForegroundEpoch(duplicateShow, true, false);
+      const duplicateHidden = nextSlockOhosForegroundEpoch(hidden, false, false);
+      const second = nextSlockOhosForegroundEpoch(duplicateHidden, false, true);
+
+      expect(first).assertEqual(1);
+      expect(duplicateShow).assertEqual(1);
+      expect(hidden).assertEqual(1);
+      expect(duplicateHidden).assertEqual(1);
+      expect(second).assertEqual(2);
+    });
+    it('activityUnreadWidgetAcceptsOnlyFiniteLiveCounts', 0, () => {
+      expect(activityUnreadCountOrNull(4)).assertEqual(4);
+      expect(activityUnreadCountOrNull(-2)).assertEqual(0);
+      expect(activityUnreadCountOrNull(undefined)).assertNull();
+      expect(activityUnreadCountOrNull(Number.NaN)).assertNull();
+      expect(activityUnreadCountOrNull(Number.POSITIVE_INFINITY)).assertNull();
+      expect(activityUnreadCountOrNull(Number.NEGATIVE_INFINITY)).assertNull();
+    });
+    it('activityUnreadWidgetUsesOnlyValidPersistedProjectionAsStaleFallback', 0, () => {
+      expect(activityUnreadPersistedFallbackCount({ totalUnreadCount: 4 })).assertEqual(4);
+      expect(activityUnreadPersistedFallbackCount({ totalUnreadCount: -2 })).assertEqual(0);
+      expect(activityUnreadPersistedFallbackCount({})).assertNull();
+      expect(activityUnreadPersistedFallbackCount({ totalUnreadCount: Number.NaN })).assertNull();
+      expect(activityUnreadPersistedFallbackCount({ totalUnreadCount: Number.POSITIVE_INFINITY })).assertNull();
+      expect(activityUnreadPersistedFallbackCount({ totalUnreadCount: Number.NEGATIVE_INFINITY })).assertNull();
+      expect(activityUnreadPersistedFallbackCount(null)).assertNull();
+    });
+    it('activityUnreadWidgetCreatesTypedErrorWhenNoFallbackExists', 0, () => {
+      const original = new Error('offline');
+      const normalized = createActivityUnreadWidgetRefreshError(original);
+      const nonError = createActivityUnreadWidgetRefreshError({ reason: 'offline' });
+
+      expect(normalized instanceof Error).assertTrue();
+      expect(normalized.message).assertContain('offline');
+      expect(nonError instanceof Error).assertTrue();
+      expect(nonError.message).assertEqual('activity_unread_widget_refresh_failed');
     });
     it('decodesSocketIoFrames', 0, () => {
       const open = decodeOhosSocketIoFrame('0{"sid":"sid-1","pingInterval":25000,"pingTimeout":20000}');
