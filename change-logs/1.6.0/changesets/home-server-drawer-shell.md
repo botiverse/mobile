@@ -3,4 +3,4 @@ type: feature
 area: home
 ---
 
-Replace the Home server switcher popover with a left-side multi-server drawer that keeps expanded cached server sections visible while they refresh.
+Add an opt-in multi-server left drawer for Home that keeps expanded cached server sections visible while they refresh. The setting is off by default, preserving the current server switcher popover until enabled.

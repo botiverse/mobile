@@ -1014,6 +1014,7 @@ internal fun SlockStructuralHomeShell(
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
+    serverDrawerEnabled: Boolean = false,
     serverDrawerSections: List<SlockHomeServerDrawerSection> = emptyList(),
     pendingServerId: String? = null,
     prefersChineseCommunity: Boolean = false,
@@ -1868,7 +1869,8 @@ internal fun SlockStructuralHomeShell(
                     onDismiss = onServerSwitcherDismiss,
                     dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
                 ) { _ ->
-                    HomeServerDrawerPanel(
+                    if (serverDrawerEnabled) {
+                        HomeServerDrawerPanel(
                         sections =
                             serverDrawerSections.ifEmpty {
                                 servers.map { server ->
@@ -1900,8 +1902,27 @@ internal fun SlockStructuralHomeShell(
                         onDismiss = onServerSwitcherDismiss,
                         onSectionToggle = onServerDrawerSectionToggle,
                         onRetry = onServerDrawerRetry,
-                        onCreateServerClick = onCreateServerClick
-                    )
+                            onCreateServerClick = onCreateServerClick
+                        )
+                    } else {
+                        ServerSwitcherPanel(
+                            servers = servers,
+                            currentServerId = currentServerId,
+                            pendingServerId = pendingServerId,
+                            prefersChineseCommunity = prefersChineseCommunity,
+                            labels = labels,
+                            onServerSelected = onServerSelected,
+                            onServerOrderChange = onServerOrderChange,
+                            onCreateServerClick = onCreateServerClick,
+                            modifier =
+                                Modifier
+                                    .padding(
+                                        top = homeServerSwitcherPanelTopOffset(topSafeArea),
+                                        start = SlockSpacing.Lg
+                                    )
+                                    .clickable(onClick = {})
+                        )
+                    }
                 }
             }
             if (notificationCenterExpanded && visibleNotifications.isNotEmpty()) {

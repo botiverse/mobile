@@ -382,6 +382,7 @@ sealed interface SharedSettingsIntent {
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
     data class SetComposerSendKey(val enabled: Boolean) : SharedSettingsIntent
     data class SetMultiShellHostEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetServerDrawerEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
@@ -972,6 +973,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setServerDrawerEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_server_drawer_unavailable", retryable = false))
+        repository.setServerDrawerEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setThreadRowAffordance(
         affordanceKey: String,
         enabled: Boolean
@@ -1262,6 +1271,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Multiple app windows are not available on this platform."
+                    ),
+            serverDrawer =
+                chatLayout?.toSettingsMobileServerDrawerSnapshot()
+                    ?: serverDrawer.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "The multi-server Home drawer is not available on this platform."
                     ),
             threadRowAffordances =
                 chatLayout?.toSettingsMobileThreadRowAffordancesSnapshot()
@@ -1970,6 +1986,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setMultiShellHostEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_MULTI_SHELL_HOST)
+            }
+            is SharedSettingsIntent.SetServerDrawerEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_SERVER_DRAWER, inProgress = true)
+                    )
+                dataSource.setServerDrawerEnabled(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_SERVER_DRAWER)
             }
             is SharedSettingsIntent.SetThreadRowAffordance -> {
                 _state.value =
@@ -2941,6 +2965,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
             is SharedSettingsIntent.SetComposerSendKey,
             is SharedSettingsIntent.SetMultiShellHostEnabled,
+            is SharedSettingsIntent.SetServerDrawerEnabled,
             is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
@@ -3111,6 +3136,7 @@ internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessage
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
 internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
 internal const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
+internal const val MOBILE_ACTION_SERVER_DRAWER = "serverDrawer"
 internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
@@ -3332,6 +3358,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileMultiShellHostSnapshot(
         available = true,
         statusLabel = if (multiShellHostEnabled) "Enabled" else "Off",
         detail = "Open different workspaces in separate Android app windows. Existing windows remain open until you close them."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileServerDrawerSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = serverDrawerEnabled,
+        available = true,
+        statusLabel = if (serverDrawerEnabled) "Enabled" else "Off",
+        detail = "Use the new multi-server left drawer on Home. When off, keep the current server switcher popover."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadRowAffordancesSnapshot(): SettingsMobileMultiSelectionSnapshot =
