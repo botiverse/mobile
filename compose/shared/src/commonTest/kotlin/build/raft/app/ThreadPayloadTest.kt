@@ -1605,6 +1605,26 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadOlderAutoLoadRequiresFreshDragAfterEachSettledPrepend() {
+        assertFalse(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 0,
+                firstVisibleIndex = 0,
+                userScrollGeneration = 7,
+                lastSettledUserScrollGeneration = 7
+            )
+        )
+        assertTrue(
+            shouldThreadAutoLoadOlderMessages(
+                boundaryIndex = 0,
+                firstVisibleIndex = 0,
+                userScrollGeneration = 8,
+                lastSettledUserScrollGeneration = 7
+            )
+        )
+    }
+
+    @Test
     fun threadOlderPageAnchorRestoresOriginalTopFlingButYieldsToLaterDrag() {
         // The load itself starts while the top fling is still settling. That
         // inertial isScrollInProgress state must not suppress anchor restore;
