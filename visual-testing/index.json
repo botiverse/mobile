@@ -1,27 +1,27 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-19T05:33:26.743Z",
-  "latestRunId": "52bfef4-20260719052734",
+  "generatedAt": "2026-07-19T22:07:50.353Z",
+  "latestRunId": "6249daf-20260719220554",
   "latest": {
-    "runId": "52bfef4-20260719052734",
-    "commit": "52bfef4-20260719052734",
-    "commitSubject": "fix(settings): support large Hands feedback attachments (#1290)",
-    "generatedAt": "2026-07-19T05:33:26.743Z",
+    "runId": "6249daf-20260719220554",
+    "commit": "6249daf-20260719220554",
+    "commitSubject": "fix: rework image editor controls (#1313)",
+    "generatedAt": "2026-07-19T22:07:50.353Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 82,
+      "total": 83,
       "same": 0,
       "pass": 0,
       "basic-pass": 1,
       "different": 81,
-      "missing": 0
+      "missing": 1
     },
     "analysisSummary": {
-      "total": 82,
-      "ready": 82,
-      "pending": 0
+      "total": 83,
+      "ready": 74,
+      "pending": 9
     },
     "comparisons": [
       "react__android",
@@ -29,14 +29,14 @@
       "android__ios"
     ],
     "componentMatrixSummary": {
-      "total": 110,
-      "active": 91,
+      "total": 111,
+      "active": 92,
       "pending": 16,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 84,
-          "active": 80,
+          "total": 85,
+          "active": 81,
           "pending": 2,
           "skipped": 2
         },
@@ -49,22 +49,22 @@
       },
       "providers": {
         "react": {
-          "active": 91,
+          "active": 92,
           "pending": 13,
           "unsupported": 0,
-          "total": 104
+          "total": 105
         },
         "android": {
-          "active": 85,
+          "active": 86,
           "pending": 19,
           "unsupported": 0,
-          "total": 104
+          "total": 105
         },
         "harmony": {
           "active": 0,
-          "pending": 84,
+          "pending": 85,
           "unsupported": 0,
-          "total": 84
+          "total": 85
         },
         "ios": {
           "active": 0,
@@ -74,19 +74,19 @@
         }
       }
     },
-    "href": "runs/52bfef4-20260719052734/",
-    "componentMatrix": "runs/52bfef4-20260719052734/component-matrix.json",
-    "llms": "runs/52bfef4-20260719052734/metadata.json"
+    "href": "runs/6249daf-20260719220554/",
+    "componentMatrix": "runs/6249daf-20260719220554/component-matrix.json",
+    "llms": "runs/6249daf-20260719220554/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 110,
-    "active": 91,
+    "total": 111,
+    "active": 92,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 84,
-        "active": 80,
+        "total": 85,
+        "active": 81,
         "pending": 2,
         "skipped": 2
       },
@@ -99,22 +99,22 @@
     },
     "providers": {
       "react": {
-        "active": 91,
+        "active": 92,
         "pending": 13,
         "unsupported": 0,
-        "total": 104
+        "total": 105
       },
       "android": {
-        "active": 85,
+        "active": 86,
         "pending": 19,
         "unsupported": 0,
-        "total": 104
+        "total": 105
       },
       "harmony": {
         "active": 0,
-        "pending": 84,
+        "pending": 85,
         "unsupported": 0,
-        "total": 84
+        "total": 85
       },
       "ios": {
         "active": 0,
@@ -125,6 +125,81 @@
     }
   },
   "runs": [
+    {
+      "runId": "6249daf-20260719220554",
+      "commit": "6249daf-20260719220554",
+      "commitSubject": "fix: rework image editor controls (#1313)",
+      "generatedAt": "2026-07-19T22:07:50.353Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 83,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 1,
+        "different": 81,
+        "missing": 1
+      },
+      "analysisSummary": {
+        "total": 83,
+        "ready": 74,
+        "pending": 9
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios",
+        "android__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 111,
+        "active": 92,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 85,
+            "active": 81,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 92,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 105
+          },
+          "android": {
+            "active": 86,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 105
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 85,
+            "unsupported": 0,
+            "total": 85
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/6249daf-20260719220554/",
+      "componentMatrix": "runs/6249daf-20260719220554/component-matrix.json",
+      "llms": "runs/6249daf-20260719220554/metadata.json"
+    },
     {
       "runId": "52bfef4-20260719052734",
       "commit": "52bfef4-20260719052734",

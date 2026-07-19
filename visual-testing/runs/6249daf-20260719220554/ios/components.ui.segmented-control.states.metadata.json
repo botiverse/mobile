@@ -1,0 +1,19 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.ui.segmented-control.states",
+  "image": "components.ui.segmented-control.states.png",
+  "pageName": "compose_ui_segmented_control_visual",
+  "pageData": {
+    "pageName": "compose_ui_segmented_control_visual",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}

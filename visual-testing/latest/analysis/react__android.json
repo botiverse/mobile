@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-19T05:33:19.408Z",
+  "generatedAt": "2026-07-19T22:07:43.163Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 82,
-    "ready": 82,
-    "pending": 0
+    "total": 83,
+    "ready": 74,
+    "pending": 9
   },
   "cases": [
     {
@@ -339,7 +339,7 @@
     {
       "id": "components.ui.skeleton.states",
       "status": "ready",
-      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe94fe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe1000000000000000fffffffffff00ffffff81fffffffffff",
+      "imageHash": "p1:000000017ffc7ffc1ffc1ffc1ffe1ffefffefffefffefffefffefffe80fe80fe94fe00fe9ffe17fe83fe83fefffefffefffefffe80008000800080008000800080008000800080008000800080008000fffefffe9ffe9ffe9ffe9ffe003e003e003e003e9ffe9ffe0000000000000000fffffffffff00ffffff81fffffffffff",
       "generatedAt": "2026-07-11T22:10:05.920Z",
       "severity": "low",
       "summary": [
@@ -365,7 +365,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4149707602339181
+      "metricMismatch": 0.41496209659952354
     },
     {
       "id": "components.ui.spinner.states",
@@ -1011,7 +1011,7 @@
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:ffffffff00000000fffcfffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff030f03b307ff07ff1fff3fff00073fff0003000f1fff000fffffefffc000c07fe000c007fffec007e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
+      "imageHash": "p1:ffffffff00000000fffcfffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff030f03b307ff07ff1fff3fff00073fff000300071fff0007ffffefffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
       "generatedAt": "2026-07-11T22:10:16.850Z",
       "severity": "high",
       "summary": [
@@ -1043,7 +1043,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.34117316960454214
+      "metricMismatch": 0.34045520565128407
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1083,7 +1083,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07be800000062000e006803ce07efc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e042803ce07efc1e403efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff01defffe001efffe403efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
       "generatedAt": "2026-07-18T07:39:31.846Z",
       "severity": "medium",
       "summary": [
@@ -1114,12 +1114,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.41879869296930905
+      "metricMismatch": 0.41861674835608487
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:03fe01fc800c7ffe812207be800000062000e0068034e006fd3e401efc0e001efc0c009efc1c27defc1e01defc1e07defc0c07defc0001defc0027deffff03deffff03deffff23deffff03deffff03deffff001efffe543efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00060000fffe7fff",
+      "imageHash": "p1:03fe01fc800c7ffe812207fe800000062000e0468034e006fd3e401efc0e001efc0c009efc1c27defc1e01defc1e07defc0c07defc0001defc0027deffff03deffff03deffff23deffff03deffff03deffff001efffe543efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00060000fffe3fff",
       "generatedAt": "2026-07-18T07:39:31.848Z",
       "severity": "high",
       "summary": [
@@ -1150,7 +1150,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.42990912896126166
+      "metricMismatch": 0.4294868419276002
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1191,37 +1191,16 @@
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "ready",
-      "imageHash": "p1:bffeffff0000dfff00009fff0000bfff0000fffd2ff8dfff3ffcffff29fc97ff0ffcdfff07fcdfff07fc9fff07fcffff00fc9fff3ffcdfff3ffcffff3ffc9fff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff3ffcffff0000ffff3ff0ffff0000ffff0000ffff0000ffff0000ffffffffffff",
-      "generatedAt": "2026-07-13T22:11:22.608Z",
-      "severity": "medium",
-      "summary": [
-        "Android modal uses a full-screen sheet layout with a top app bar and back arrow, while React uses a centered dialog modal with an X close button.",
-        "React shows a two-step flow (search targets + forwarded message preview + compose box + Cancel button); Android shows a single combined screen with search + inline destinations list and no preview/compose area.",
-        "Android destination list cards are taller with subtitle text and a chevron, occupying more vertical space; React target rows are compact single-line items.",
-        "React has a dark gray scrim background behind the modal; Android has no visible scrim (transparent/white background).",
-        "React header reads 'FORWARD' in bold uppercase; Android header reads 'Forward' in title-case with the subtitle '2 messages selected' below it."
-      ],
-      "likelyCauses": [
-        "Different platform design systems and modal paradigms (centered dialog vs bottom/full sheet).",
-        "Intentional platform-specific flow divergence (single-step vs two-step forward).",
-        "Android implementation may be missing the forwarded message preview and compose textarea that React renders."
-      ],
-      "suggestedOwner": "android-thread",
-      "suggestedFixes": [
-        "Verify Android forward modal intentionally omits the forwarded-message preview pane and compose input per the two-step vs single-step divergence.",
-        "If a preview/compose step is expected on Android in a later step, ensure navigation to a compose screen after destination selection.",
-        "Align header treatment or accept the platform-native title casing and app bar layout.",
-        "Ensure Android shows the correct number of selected messages and origin context (e.g., '2 selected from #design') in the header area.",
-        "Confirm scrim/backdrop styling matches the intended Android modal spec."
-      ],
-      "intentional": [
-        "Forward flow differs by platform: Android is a single combined modal with inline destination list; React is a two-step flow (search then preview/compose). Both are accepted platform adaptations."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3907333144299969
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-19T22:07:42.206Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
     },
     {
       "id": "components.thread.comment-anchor",
@@ -1365,12 +1344,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2670423704783894
+      "metricMismatch": 0.26708118983000495
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c0000c1fc00078000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff43ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218000012fc7cfe00fc00fe9e813c00879d3c0000c1fc00078000200fdc009fffffff83ff8001403f8003ffff87ffe3ff87ff41ffdfffffff9fffffffc27fffffffffffffd03fffffc3fffffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:10:21.330Z",
       "severity": "high",
       "summary": [
@@ -1398,7 +1377,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2668465859224153
+      "metricMismatch": 0.26687932920160407
     },
     {
       "id": "components.home.saved.results",
@@ -1465,7 +1444,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.16398006665409037
+      "metricMismatch": 0.1640481879729192
     },
     {
       "id": "components.tasks.panel.states",
@@ -1501,7 +1480,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.20026093355477237
+      "metricMismatch": 0.20001316482359133
     },
     {
       "id": "components.tasks.status-menu",
@@ -1813,7 +1792,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03785798193381129
+      "metricMismatch": 0.03752278527160047
     },
     {
       "id": "components.settings.page.states",
@@ -2263,7 +2242,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05967513266091462
+      "metricMismatch": 0.05969504867609132
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2304,7 +2283,7 @@
     {
       "id": "screens.members.agent-detail.apps",
       "status": "ready",
-      "imageHash": "p1:07fe17fc80100030801000200000000000100000c7fffffefdff0000ffff1efcffff0000ffff03e0ffff23fdffff001dffff3c05ffff007dffff0030ffff0000ffff0000ffff0000ffff07e0ffff0009ffff03fdffff0038ffff0000ffff0000ffff0000fffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
+      "imageHash": "p1:07fe17fc8010003080100020000000008010000083fefffefdff0000ffff1efcffff0000ffff03e0ffff23fdffff001dffff3c05ffff007dffff0030ffff0000ffff0000ffff0000ffff07e0ffff0009ffff03fdffff0038ffff0000ffff0000ffff0000fffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
       "generatedAt": "2026-07-18T07:39:58.524Z",
       "severity": "high",
       "summary": [
@@ -2333,41 +2312,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.12038117227690692
+      "metricMismatch": 0.11944579468276151
     },
     {
       "id": "screens.members.agent-detail.activity",
-      "status": "ready",
-      "imageHash": "p1:07fe17fc80100030801000000000000000000000010053e0000271fef87e71fef006719ef8fe707ef8fa707ef80e780ef83e703ef8027002fc427cfef8be7ffef01e7ffef8067ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-19T05:31:32.462Z",
-      "severity": "medium",
-      "summary": [
-        "Avatar placeholder differs: React shows a solid cyan square, Android shows a pixelated black/white/cyan pattern",
-        "Copy button text differs: React reads 'Copy Diagnostic Info', Android reads 'Copy info' (truncated/shortened)",
-        "Time format differs: React uses 12-hour format with AM/PM (e.g., '12:28:00 PM'), Android uses 24-hour format (e.g., '20:28:00')",
-        "Body text appears in monospaced/code font on React vs proportional sans-serif on Android, causing different line wrapping",
-        "Status indicators (dots) render smaller and tighter on Android; secondary description text wraps tighter due to font differences"
-      ],
-      "likelyCauses": [
-        "Platform-specific text rendering (monospace fallback on React/web vs system font on Android)",
-        "Locale/time-format configuration not aligned across platforms (12h vs 24h)",
-        "Avatar component not ported — fallback placeholder differs between React and Android implementations",
-        "Button label string differs ('Copy Diagnostic Info' vs 'Copy info'); possible truncation or different copy source",
-        "Token/theme values for font size, line-height, and dot indicator size not shared between React and Android design systems"
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "Unify the avatar placeholder across React and Android (single component/token) or accept intentional divergence and add to baseline",
-        "Normalize the Copy button label to 'Copy Diagnostic Info' on Android, or update both to a shared shorter copy",
-        "Align locale/time-format handling (12h vs 24h) via shared user preference so timestamps render identically",
-        "Share typography tokens (font family, size, line-height) for activity items between React and Android to fix wrapping",
-        "Calibrate the status dot size, color, and tab active-state weight to the same design tokens across platforms"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.095736960073453
+      "status": "pending",
+      "imageHash": "p1:07fe17fc80100030801000000000000000000000010053e0000271fef87e71fef006719ef8fe707ef0fe707ef84e780ef03e703ef0127002f9827cfef8be7ffef01e7ffef8467ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-07-19T22:07:42.919Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09449305302385869
     },
     {
       "id": "screens.members.human.profile",
@@ -2473,7 +2431,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2528969363092586
+      "metricMismatch": 0.25289794898799633
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2511,7 +2469,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffec7ff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec1ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffe7fff",
+      "imageHash": "p1:3ffe3ffc000000000000000000000600dffecffecffecffecffecffecffecffedffecfff8ffe9ffefffe9ffec3fe9ffebffe9ffebffedfffbffec3ffc7fe9ffebffe9ffebffe9ffebffefffebffefffebffefffec1fefffe93fefffebffefffebffefffebffe7ffefffefffeffff00000000008b0109000000006044fffeffff",
       "generatedAt": "2026-07-13T22:11:37.533Z",
       "severity": "medium",
       "summary": [
@@ -2539,147 +2497,72 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1568460458270885
+      "metricMismatch": 0.15689195392986865
     },
     {
       "id": "components.thread.message-row.rich-content",
-      "status": "ready",
-      "imageHash": "p1:0ffc0ffc03fe07fcfffeffff07fefffe160287fe00028602e0028000e002f000e003e001e002e00fe003e008e003f000e03ee000fffef3fee03ee3fff27efffffffef03ff1fefffffffefffffffef0ffe03efffff6fefffffffef01ffffefffffffeffffe002f3ffe002ffffeffee000fffee00200000e40fff81fffffffffff",
-      "generatedAt": "2026-07-18T07:40:00.988Z",
-      "severity": "medium",
-      "summary": [
-        "Android layout is shifted right and content is clipped on the right edge (timestamp cut to '23', body text shows 'bod' instead of 'body').",
-        "Avatar presence dot is green on Android vs yellow on React.",
-        "Body text wraps to more lines on Android, pushing attachment cards down; the second attachment shows 'Text preview' on Android vs no preview label on React.",
-        "Plus (+) button on Android is rendered on the same row as the reaction/reply chips, while React stacks it on a new line below.",
-        "React shows a 'document preview' eye icon aligned to the left of the label and uses monospace styling for filenames ('thread-screen-preview....'); Android right-aligns the eye icon and uses regular weight with shorter ellipsis ('thread-screen-preview.h...')."
-      ],
-      "likelyCauses": [
-        "Android container likely lacks a right-side padding equivalent to React's content inset, causing horizontal overflow/clipping.",
-        "Attachment card layout on Android places the preview icon on the trailing edge instead of leading, and omits the secondary 'application/pdf' MIME-type line.",
-        "The trailing action (+) chip is being laid out inline on Android due to missing flex-wrap or different row behavior in the chip row."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Match React's horizontal padding on the message row so wrapped lines and the timestamp are not clipped on the right.",
-        "In the attachment card, left-align the 'Document preview' / 'Text preview' label with the eye icon, and render the MIME type (e.g., 'application/pdf') above the file size to match React.",
-        "Truncate filenames with a middle ellipsis styled in monospace, and ensure consistent label ('Document preview' vs 'Text preview') based on file type.",
-        "Wrap the action chip row so the '+' button drops to a second line beneath '#222 @Cindy', '7 replies · 2 new', and the reaction chip.",
-        "Verify the avatar online indicator color token so Android uses the same status palette (yellow/online vs green) as React."
-      ],
-      "intentional": [
-        "Use of Android Material typography metrics may intentionally differ in line height and cause earlier wrapping."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.25081633864695585
+      "status": "pending",
+      "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e002e003f000e03ee000fffef3fee03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03efffef2fefffefffef01efffefffefffefffee002f3fee002fbfeeffee000fffee00200000e00fff81fffffffffff",
+      "generatedAt": "2026-07-19T22:07:42.972Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.24887856509105066
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "ready",
-      "imageHash": "p1:fffefffe1fffffff07ff9fffffff903fefffe3ffefffe3ffec3fffffe001e01fe0cfffffc039e0cfe1ffe01febffe03fe07fe07feffff87fe3ffe7ffe163e7ffe007e00fe003e003e003e003e003e003e003e003e007e001e003e007e003e003efffe001e01fe001e003e001e001e03fe001f01fe001f40fe03ff803ffffffff",
-      "generatedAt": "2026-07-18T07:40:04.598Z",
-      "severity": "medium",
-      "summary": [
-        "Inline code spans have visibly different widths between React and Android, causing different wrap points and line break counts for long inline code and paths.",
-        "Short inline code segments wrap into more lines on Android (e.g. 'raft.build.markdown.inlineCode' wraps to two lines instead of one; 'go test ./...' breaks separately).",
-        "Long path code block wraps to fewer/fatter lines on Android vs React; the React version produces more wrapped lines with a slimmer measurement, Android collapses segments together.",
-        "Long command (gradle command) wraps to fewer lines on Android and the right edge runs very close to / past the message bounds (near right edge clipping risk).",
-        "Android task chip rendering for bare #number tokens (e.g. #520) renders as a chip/tag, whereas React renders it as plain text."
-      ],
-      "likelyCauses": [
-        "Different inline code measurement / wrapping algorithms between React web and Android Compose TextLayout (e.g. Android breaks at narrower thresholds or uses word-break vs break-word behavior).",
-        "Android uses a different default code-span padding or monospace font metrics, increasing per-token measured width.",
-        "Known intentional platform difference for bare #number task chips: Android tags all bare #numbers while React only tags resolved refs.",
-        "Possible Android message content width differs slightly due to insets/padding or different container padding accounting in thread.MessageRow."
-      ],
-      "suggestedOwner": "android-threading",
-      "suggestedFixes": [
-        "Normalize inline code wrapping behavior: align Android's break strategy (e.g. CSS-equivalent overflow-wrap/word-break) with React so long inline code breaks at the same character boundaries.",
-        "Tune Android monospace font size / padding for inline code spans to match the React render width, or unify the code span style tokens across platforms.",
-        "Verify the message row's content max-width and horizontal padding on Android match React to avoid edge-clipping on long wrapped code.",
-        "If bare #number task chips remain intentional, add a visual regression baseline exclusion so future diffs don't flag them; otherwise gate Android chip rendering on the same known-set as React (MessageItem.tsx)."
-      ],
-      "intentional": [
-        "Bare #number tokens (e.g. #520) render as task chips on Android but as plain text on React due to Android tagging all bare #numbers regardless of resolution — accepted platform divergence."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4994021819851203
+      "status": "pending",
+      "imageHash": "p1:fffe7ffe1fffffff05ff9fffffff9d7feffffbffefffe2efec3fe3ffe001e01fe0cfefffc039fd47e1ffe00febffe03fe07fe67feffff81fe3ffffffe163efffe007e007e003e037e003e0ffe003e003e003e007e007e007e003e003e003e003efffe003e01fe103e003e1ffe001e003e001e003e001e003e03fe003ffffffff",
+      "generatedAt": "2026-07-19T22:07:43.047Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.5094044098783435
+    },
+    {
+      "id": "components.thread.message-row.md-latest-release",
+      "status": "pending",
+      "imageHash": "p1:00fc00fc07fe7ffe000007fec0000000c0006000c00e6000c00a6002c000600240fe6002be02e03efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffa1fff",
+      "generatedAt": "2026-07-19T22:07:43.051Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.7676013691416534
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
-      "status": "ready",
-      "imageHash": "p1:fffc0ffc83feffff800389fff01f800bf077f07ff801f807f801fc03f801f803f803f803fa07f80ffc0bfc0ff91ffc0ff803fc4ff807f817f84ff807f81ff87ff803f86ff803fbfffa07f803f803f803fbfffc3ff803f867f803fc07f9c3f9fffbfff9e7f807fc1ffa83f817f9fff837f00ff81ff003f803f006f802ffffffff",
-      "generatedAt": "2026-07-18T07:40:05.770Z",
-      "severity": "high",
-      "summary": [
-        "Time/identity group on Android shows 'Kee…' truncated chip (React shows bare date '07/13 05:55 AM')",
-        "Avatar block size is identical but Android avatar is rendered smaller / inset differently relative to header baseline",
-        "Inline code blocks wrap differently: Android breaks long tokens earlier (e.g. 'realtimeReadStatePr'/'eservesPartialSummary…') vs React keeps them as single continuous wraps",
-        "Bullet item spacing is visibly tighter on Android, list items run together with reduced vertical gap compared to React",
-        "Inline color chip for '#raft-mobile-reconcile' (pink) visible in React is absent or off-canvas in Android render"
-      ],
-      "likelyCauses": [
-        "Android Compose Markdown renderer applies different word-break and overflow rules (CharSequences/TextOverflow.ELLIPSIZE) than React's markdown-it",
-        "Density-independent pixel (dp) rounding to physical pixels alters avatar glyph bounding and row leading",
-        "Differing default line-height / paragraph spacing between RN Text and Android Text (TextStyle.lineHeight)",
-        "Inline token (code) CSS background uses inline-block on web vs rectangular Box with padding on Android, changing wrap geometry",
-        "Locale-specific chip truncation logic exists only on Android (Kee… suffix) but not on React impl"
-      ],
-      "suggestedOwner": "components-thread (Android markdown renderer owner), cross-check with React parity lead",
-      "suggestedFixes": [
-        "Normalize markdown word-break/overflow-soft-wrap to match React: use WordBreak.NORMAL and avoid ELLIPSIZE for inline-code spans",
-        "Align dp/dp font metrics: set TextStyle lineHeight explicitly to match RN's 1.2em default for the same sp size",
-        "Replicate React avatar header geometry: bind avatar size and top/leading insets to a shared token instead of letting Compose size from typography",
-        "Replace 'Kee…' truncation in Android identity chip with the same render React uses (no truncation, just date) or hide chip entirely when no context",
-        "Audit inline code background: use consistent horizontal padding/inset so tokens wrap at the same character boundaries"
-      ],
-      "intentional": [
-        "Android may intentionally wrap differently due to CJK/EN mixed-script line break heuristics; confirm with design before treating as bug",
-        "Status badge 'ANDROID' vs 'REACT' label top-right is platform metadata, not UI",
-        "If 'Kee…' chip corresponds to a clipped keyboard-name keystroke on Android but full name on web, the truncation may be product-intended"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.32794436343014544
+      "status": "pending",
+      "imageHash": "p1:fffc0ffc83feffff800389fff01f800ff077f81ff801f813f801fc03f801f803f803f803fa07f807fc0bf81ff91ffc0ff803fc0ff807fd77f84ff807f81ff807f803f87ff803f837fa07fdfff803f803fbfff807f803f807f803fd67f9c3f887fbfffcfff807f803fa83f81ff9fffdeff00ffcc7f003f8fff006f802ffffffff",
+      "generatedAt": "2026-07-19T22:07:43.064Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3396306760643254
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
-      "status": "ready",
-      "imageHash": "p1:207c007c83fe7ffe80068986f04e8106f002f04af00ef1fef000f006f000f01ef002f816f000f002f002f006f002f002f000f006f04af006807ef002fffff002fffff01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000ffff7fff",
-      "generatedAt": "2026-07-18T07:40:06.994Z",
-      "severity": "high",
-      "summary": [
-        "Android (right) renders the same message content at a significantly smaller font size, packing text into roughly twice the vertical area (780×2532 vs 780×1134 baseline).",
-        "Avatar is visibly larger on React and has a yellow online-status dot; Android avatar is smaller and lacks the status dot.",
-        "Header metadata differs: React shows '07/13   05:56 AM' with wide spacing and AM suffix; Android shows a 'Kee…' truncation chip and tighter '07/13  05:56' formatting.",
-        "Markdown pill rendering differs: React pills (#31, #521, message:new) wrap inline with text; Android places some pills on dedicated lines, increasing line count and breaking the sentence flow.",
-        "Android adds a large empty cream/beige region below the message body, indicating component bounds are inflated (extra ~600px empty space)."
-      ],
-      "likelyCauses": [
-        "Android text renderer uses a different default font scale (likely sp vs px without density compensation), producing smaller glyphs.",
-        "Avatar size and online-presence indicator not ported to Android Compose view.",
-        "Markdown inline-code/ticket-token pills (e.g. #31, #521) are not being treated as inline elements, forcing line breaks.",
-        "Component bounds include extra trailing padding (likely parent container height not constrained to message content).",
-        "Locale/time formatting differs (AM/PM token and date separators) between React (Intl) and Android formatters."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Match Android body and meta text size/spacing to React baseline using density-independent sp values (e.g. 14sp body, 12sp meta with same letter-spacing).",
-        "Render avatar at the same dp as React and include the online status dot with identical position and color.",
-        "Treat #31, #521, and message:new as inline spans with background pills so they wrap within the sentence instead of forcing new lines.",
-        "Clip/constrain the message row's bottom bound to the last line of text to remove the empty cream region (remove fixed min-height on parent).",
-        "Align time formatting: render 'MM/DD  HH:MM AM' with consistent gaps; remove or match the 'Kee…' truncation affordance on Android."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.5801099769109248
+      "status": "pending",
+      "imageHash": "p1:207c007c83fe7ffe80068986f04e8106f002f15ef00ef0fef000f006f000f01ef002f80af000f002f002f00ef002f002f000f002f04af01e807ef00efffff016fffff006fffff01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000ffff7fff",
+      "generatedAt": "2026-07-19T22:07:43.071Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.5547155385425527
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
@@ -2715,75 +2598,33 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.871729047676915
+      "metricMismatch": 0.8718856753216943
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
-      "status": "ready",
-      "imageHash": "p1:03fe03fc07fe7ffe00030036c03e0006c000e001c0004001e0064002c01e6002c0066006e0026002e0066002e086680a007cfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000ffff3fff",
-      "generatedAt": "2026-07-18T07:40:08.249Z",
-      "severity": "high",
-      "summary": [
-        "Android message row uses a taller component bounds (390×844) versus React's compact (390×322), introducing large empty cream background below the message content.",
-        "Header timestamp and avatar alignment differ: React places avatar tightly beside author name; Android avatar sits lower with a visible gap and the author header line is vertically offset.",
-        "Inline token wrapping behavior differs: Android breaks long hex/code tokens mid-string across lines (e.g., 'db01c5e5b91f3696bfda64edde2fc31b3a40ffe9b50881…'), while React keeps the token on fewer lines with different break points.",
-        "Markdown emphasis rendering differs: Android shows '@artin' as plain underline without bold/mention highlight, whereas React renders '@artin' in bold with a distinct mention color.",
-        "Punctuation and spacing around inline code/highlight chips differ between renders (fullwidth punctuation placement, extra spaces after ':', different line heights)."
-      ],
-      "likelyCauses": [
-        "Android uses a default ScrollView/ConstraintLayout with a fixed/fillViewport height while React constrains the row to its content height (auto sizing).",
-        "Markdown parser/tokenizer on Android splits long unbreakable tokens (hex hashes) using character-level wrapping rules differing from React's CSS word-break behavior.",
-        "Missing mention/bold styling tokens in Android's markdown adapter (e.g., Markwon) — '@artin' not recognized as mention, '@' escape producing literal '@'.",
-        "Different line-height and font metrics between Android (Roboto) and React (system) leading to vertical alignment drift of the avatar row.",
-        "Fullwidth punctuation handling: Android applies CJK punctuation spacing rules differently, causing visible gaps before '：', '，', '。'."
-      ],
-      "suggestedOwner": "android-platform",
-      "suggestedFixes": [
-        "Constrain the message row container to wrap_content height (or set a fixed max height matching React's 322dp) so the empty cream area disappears.",
-        "Update the Android markdown renderer to apply CSS-style overflow-wrap/word-break so long hex/code tokens wrap at the same boundaries as React, or apply break-word on inline code chips.",
-        "Enable mention plugin (or equivalent) in the Android markdown pipeline so '@artin' renders bold with the mention color rather than literal '@' with underline.",
-        "Reconcile font family and line-height (e.g., 1.4–1.5) on Android to match React's metrics, and re-center the avatar vertically against the header baseline.",
-        "Normalize fullwidth punctuation spacing in the Android text engine or strip trailing whitespace before CJK punctuation to match React output."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.7311435843426365
+      "status": "pending",
+      "imageHash": "p1:03fe03fc07fe7ffe00030036c03e1006c000e001c0004001e0064006c01e6006c006600ee0026006e0066002e0866002007ceceefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000ffff3fff",
+      "generatedAt": "2026-07-19T22:07:43.133Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.7108626672607715
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
-      "status": "ready",
-      "imageHash": "p1:203c003c03fe7ffe800680fef0008006f0007002f0027082f0027006f0007002f0007002f000700ef3fe700e0004f006fffff0defffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe0fff",
-      "generatedAt": "2026-07-18T07:40:08.322Z",
-      "severity": "medium",
-      "summary": [
-        "Container height differs significantly: React bounds are 260×288 while Android capture is 260×844, producing extra empty space below the message on Android.",
-        "Avatar is larger and closer to the message text on Android; React has a smaller avatar with more left margin/gap.",
-        "Header metadata is wrapped differently: React shows the timestamp inline next to the name ('Cindy  07/13 05:57 AM'), Android inserts a truncated middle label ('Kee…') between name and timestamp and left-aligns the timestamp on its own line.",
-        "Body text and inline code/mention chips are rendered at a noticeably larger font size on Android, causing the message to wrap into more lines and break earlier (e.g., '(@对话流专修' wraps to the next line, '@Android-Developer-2' wraps onto a separate line).",
-        "Inline mention chips (@artin, #607, #对话流专修) appear taller and have more internal vertical padding on Android, slightly increasing row height."
-      ],
-      "likelyCauses": [
-        "Android component bounds crop rectangle is taller than the actual rendered content (over-sized canvas height of 844 vs React 288).",
-        "Android MessageRow uses different avatar size / left avatar margin tokens than the React web implementation.",
-        "Android text style uses a larger body fontSize or different lineHeight than the React markdown renderer.",
-        "Android header layout places username, an extra truncated middle field, and timestamp in separate TextViews instead of a single inline row.",
-        "Inline code/mention chip vertical padding is larger on Android than the React styled spans."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Constrain the Android snapshot/crop rect to the actual component bounds (≈260×288) to remove the trailing empty area before comparing.",
-        "Match the React avatar size and left margin in the Android MessageRow avatar component (reduce avatar width/height and increase left gutter).",
-        "Inline the username, optional middle label, and timestamp on Android using a single horizontal Row/ConstraintLayout to mirror React's header, or hide the middle label when not present.",
-        "Reduce the Android body TextView font size and tighten lineHeight to align with the React markdown text metrics.",
-        "Decrease vertical padding inside Android inline mention/code chips to match the React chip dimensions."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.6663998258192572
+      "status": "pending",
+      "imageHash": "p1:203c003c03fe7ffe800680fef0008006f0007002f00277fef0027006f0007006f0007002f0007002f3fe70060004f002fffff006fffff3fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe0fff",
+      "generatedAt": "2026-07-19T22:07:43.122Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.6400443553287155
     },
     {
       "id": "screens.settings.connected-apps.full-height",

@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-19T05:33:22.076Z",
+  "generatedAt": "2026-07-19T22:07:45.830Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 82,
-    "ready": 76,
-    "pending": 6
+    "total": 83,
+    "ready": 72,
+    "pending": 11
   },
   "cases": [
     {
@@ -368,7 +368,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.062095097284670775
+      "metricMismatch": 0.062097122642146285
     },
     {
       "id": "components.ui.spinner.states",
@@ -1009,7 +1009,7 @@
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:08040004076e1ffe00000002400000064002c0020000c03efffec07efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
+      "imageHash": "p1:08040004076e1ffe00000002400000024002c0020000c03efffec07efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
       "generatedAt": "2026-07-09T22:21:30.492Z",
       "severity": "medium",
       "summary": [
@@ -1040,7 +1040,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04673681154723808
+      "metricMismatch": 0.04665579724821434
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1080,7 +1080,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07ee800000062000e006803ce07efc1e001efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07ee800000022000e002803ce07efc1e001efc0e001efc00009efc1e27defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff2bdefffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
       "generatedAt": "2026-07-18T07:40:26.057Z",
       "severity": "medium",
       "summary": [
@@ -1111,12 +1111,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09699673242327267
+      "metricMismatch": 0.09683031555069466
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80087ffe802207ee800000062000e0068020e006fc1e001efc0e001efc0c009efc1427defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "imageHash": "p1:01fe01fc80087ffe802207ee800000022000e0028020e006fc1e001efc0e001efc0c009efc1427defc1e019efc1e07defc0c07defc0001defc00239effff03defffe03deffff03deffff039effff03defffe001efffe003efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
       "generatedAt": "2026-07-18T07:40:26.073Z",
       "severity": "medium",
       "summary": [
@@ -1147,7 +1147,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1081412619327311
+      "metricMismatch": 0.10785872456488566
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1354,12 +1354,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2678184199511213
+      "metricMismatch": 0.26784306180040773
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c0000c1cc00078000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff43ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e707fc0007000000070000620f0000380218100012fc7cfe00fc00fe9e803400879d3c0000c1cc00078000200fdc009fffffff83ff8001403f8003ffff83ffe3ff87ff41ffd9ffffff9fffffffc27fffffdbfffffff03fffff83effffffc3ffffff81ffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-11T22:11:11.554Z",
       "severity": "high",
       "summary": [
@@ -1390,12 +1390,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.26760643253534244
+      "metricMismatch": 0.26763107438462885
     },
     {
       "id": "components.home.saved.results",
       "status": "ready",
-      "imageHash": "p1:1ff83ffc87fc0ffe87fc07fe0000000683f107c680310066800d007ec1fdfffefc31ffee80310146801d00668ffd087efcf1fffe81f1fbce801103c6801d0026e3f1007e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
+      "imageHash": "p1:1ff83ffc87fc0ffe87fc07fe0000000681f107c680310066800d007ec1fdfffefc31ffee80310146801d00668ffd087efcf1fffe81f1fbce801103c6801d0026e3f1007e8031fffe8001f07e80fdf07ebef1fffedc71fffe0001fffedefffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe1fff",
       "generatedAt": "2026-07-11T22:11:14.878Z",
       "severity": "medium",
       "summary": [
@@ -1424,7 +1424,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1157906995584721
+      "metricMismatch": 0.11595272815651958
     },
     {
       "id": "components.home.activity.results",
@@ -1453,12 +1453,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0955155209894546
+      "metricMismatch": 0.09555940373475913
     },
     {
       "id": "components.tasks.panel.states",
       "status": "ready",
-      "imageHash": "p1:3ffe3ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ffc87e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0b3e1a00080019fff9fff9fff9ffdfffc807c803cbfe0bff00000ffffffff",
+      "imageHash": "p1:3ffe7ffe0000000000000000801e0006ffffffefef80ffc18f80df809fff9fff9ffc9ffd9ffc9ffc87e487d49ffebffcfff0ffe0bfe0800187ff85ff87ff87ffbffcbffc80368014bff4bfe0ffc08001800187ff8fff8fff9ffc9ffc8efe808cffe0b3e1a00080019fff9fff9fff9ffdfffc807c803cbfe0bff00000ffffffff",
       "generatedAt": "2026-07-09T08:43:43.198Z",
       "severity": "low",
       "summary": [
@@ -1484,7 +1484,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1819436005454963
+      "metricMismatch": 0.18170629616127243
     },
     {
       "id": "components.tasks.status-menu",
@@ -1794,7 +1794,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.036683949717125075
+      "metricMismatch": 0.036323098526889974
     },
     {
       "id": "components.settings.page.states",
@@ -2073,7 +2073,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.17999621933271226
+      "metricMismatch": 0.18001343487125476
     },
     {
       "id": "components.settings.notifications.page",
@@ -2184,7 +2184,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T05:33:21.767Z",
+      "generatedAt": "2026-07-19T22:07:45.496Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2197,7 +2197,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T05:33:21.767Z",
+      "generatedAt": "2026-07-19T22:07:45.496Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2210,7 +2210,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T05:33:21.767Z",
+      "generatedAt": "2026-07-19T22:07:45.496Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2223,7 +2223,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T05:33:21.767Z",
+      "generatedAt": "2026-07-19T22:07:45.496Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2236,7 +2236,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T05:33:21.767Z",
+      "generatedAt": "2026-07-19T22:07:45.496Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2343,7 +2343,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25410404936471287
+      "metricMismatch": 0.25410438692429216
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2381,7 +2381,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffec7fe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffec1ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
+      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffedffe8ffe8ffe9ffefffe9ffec3fe9ffebffe9ffebffebffebffe83ffc7fe9ffebffe9ffebffe9ffebffefffebffe7ffebffe7ffec1fe7ffe93fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffe0000dfba0100199a00002000fffe3fff",
       "generatedAt": "2026-07-19T05:31:52.470Z",
       "severity": "high",
       "summary": [
@@ -2409,12 +2409,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1930739525526255
+      "metricMismatch": 0.1930915056507474
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "ready",
-      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c006e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "imageHash": "p1:03f807fc07fcfffe00050002e0050002e001c002e001c006e03dc006e07dc0fee1fdc0fee1fdfffee07dc17efffdc07ee005fffec005c0064ffdc006f05dfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
       "generatedAt": "2026-07-09T22:22:14.971Z",
       "severity": "medium",
       "summary": [
@@ -2443,116 +2443,64 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10218468559700788
+      "metricMismatch": 0.10204932420572232
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "ready",
-      "imageHash": "p1:fffeffff1fffffff07ff9fffffff983fefffe3ffefffe3fbec3fffffe001e01fe0cfffffc039e0cfe1ffe03febffe03fe07fe47fefffe01fe3ffefffe163e7ffe007e001e003e00fe003e001e003e001e003e001e007e001e003e007e003e003efffe001e01fe001e003e001e001e00fe001f00fe001fe7fe03fe001ffffffff",
-      "generatedAt": "2026-07-18T07:40:48.802Z",
-      "severity": "medium",
-      "summary": [
-        "On iOS, bare #520 renders as a yellow task chip while on React it remains plain text (intentional platform-difference, see below).",
-        "Long inline code blocks break at different word boundaries between platforms — React wraps on shorter lines producing ~12 lines while iOS produces ~7 wider lines, indicating different inline-code wrap / measure widths.",
-        "React's inline code background extends to the container edge (flush with quote block gutter) on the long-path block, while iOS keeps the yellow fill inside the text container with visible left/right gutter padding.",
-        "On iOS the trailing '... and task #43.' line flows inline with the long path text into a new line after #42, while React places '#43.' as a separate wrapped fragment — small layout drift in task-chip placement.",
-        "Quote block content (https://raft.build/visual-testing link, File: line) is visible on iOS but clipped/cropped on React, indicating React may be hiding or not rendering these trailing elements within the component bounds."
-      ],
-      "likelyCauses": [
-        "Different inline-code wrap measurement / max-width constants between React and iOS markdown renderers.",
-        "Different line-break/wrap algorithm for unbreakable long tokens (paths) across platforms.",
-        "React message row container clips or omits trailing quote-block content under the element-bounds crop.",
-        "Task-chip tagging policy divergence between platforms (known-set gate on React vs. tag-everything on iOS).",
-        "Different default inline-code horizontal padding between React and iOS styles."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Unify inline-code max-width and wrap behavior so long paths break at consistent column widths across React and iOS.",
-        "Normalize inline-code background horizontal padding so the yellow fill either flushes or insets consistently on both platforms.",
-        "Verify React MessageRow renders the trailing quote-block (link + File: line) and is not truncated by component-bounds cropping.",
-        "Confirm task-chip gating policy is applied per-platform as designed; document the React known-set behavior in visual baselines.",
-        "Align inline-code font metrics (monospace) so wrap break points match between platforms."
-      ],
-      "intentional": [
-        "Bare '#520' renders as a task chip on iOS but as plain text on React per documented platform-difference (Android/iOS tag-everything vs React known-set gate)."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4015308326919701
+      "status": "pending",
+      "imageHash": "p1:fffeffff1fffffff07ff9fffffff9d5feffff3ffefffe2efec3fe3ffe001e01fe0cfefffc039fc07e1ffe00febffe03fe07fe67fefffe01fe3ffffffe163e7ffe007e003e003e0ffe003e0ffe003e003e003e001e007e001e003e001e003e001efffe003e01fe1ffe003e001e001e001e001e001e001e001e03fe00fffffffff",
+      "generatedAt": "2026-07-19T22:07:45.738Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.37037745912153497
+    },
+    {
+      "id": "components.thread.message-row.md-latest-release",
+      "status": "pending",
+      "imageHash": "p1:00fc00fc07fe7ffe000007fec0000000c0004000c00e6000c00a6006c000600240fe60021600e01efffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "generatedAt": "2026-07-19T22:07:45.752Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09189890765720155
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
-      "status": "ready",
-      "imageHash": "p1:65f02ffe87f7ffff800c1fffe07401ffe0df83fff00780fff007807ff007807ff01f80fff41f81fff00f81fff07f81fff01781fff01780fff03780fff07789fff00f81fff00f80fff03780fff01fc1fff6df81fff01f80fff00f97fff30794fff6d780fff01780fff01f8ffff17f80ffe037807fe01f88ffe0179ffeffffffff",
-      "generatedAt": "2026-07-18T07:40:52.205Z",
-      "severity": "medium",
-      "summary": [
-        "Avatar image is larger and more prominent in iOS (right) compared to React (left).",
-        "iOS shows a 'Kee…' truncated handle next to the author name that is absent in React baseline.",
-        "Timestamp rendering differs: iOS places '07/13 05:55' inline next to a truncated username, while React shows '07/13 05:55 AM' as a separate metadata line.",
-        "Inline code highlight background (yellow) wraps differently due to font/text metric differences — iOS code spans appear wider and break earlier across lines.",
-        "Missing right-side padding/margin on iOS panel — content extends nearly to the crop edge, while React has visible right padding."
-      ],
-      "likelyCauses": [
-        "Different default font (San Francisco on iOS vs system/Inter on React) causing different glyph widths and line breaks.",
-        "iOS uses dynamic-type/font metrics that scale avatars and metadata differently.",
-        "Component reuse on iOS not honoring the same avatar size and metadata row layout as the web spec.",
-        "Line-break wrapping algorithm differs across platforms, causing inline code blocks to reflow."
-      ],
-      "suggestedOwner": "iOS Thread Message component owner",
-      "suggestedFixes": [
-        "Normalize avatar size and metadata-row spacing between web and iOS implementations; pin avatar dimensions explicitly.",
-        "Match timestamp format and placement exactly: keep '07/13 05:55 AM' as a separate trailing metadata line and avoid the truncated 'Kee…' username.",
-        "Increase iOS right padding so content bounds match the React contract.",
-        "Align inline-code highlight rendering: ensure monospace font metrics produce equivalent wrap points; consider wrapping long code spans with break-word.",
-        "Verify line-height and bullet item spacing parity in the iOS MarkdownTextView."
-      ],
-      "intentional": [
-        "None clearly indicated; differences look unintentional given 'status: different' and ~20% pixel mismatch."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.19932926911599902
+      "status": "pending",
+      "imageHash": "p1:65f02ffe87f7ffff800c1fffe07401ffe0df83fff00780fff00780fff007807ff01f80fff41f80fff00f89fff07f83fff017c1fff01788fff03780fff07780fff00f85fff00f81fff03780fff01f80fff6df80fff01fc0fff00f88fff3079ffff6d780fff01780fff01f80fff17f8fffe03780ffe01f83ffe017c4feffffffff",
+      "generatedAt": "2026-07-19T22:07:45.746Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20067511915853153
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
-      "status": "ready",
-      "imageHash": "p1:00e007fc07f3fffe001410fee13400fee00300fee01700fee00703fee00782fee01700fee00701fee00700fee01300fee00703fee02701fe001701feffff007effff07fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
-      "generatedAt": "2026-07-18T07:40:54.386Z",
-      "severity": "medium",
-      "summary": [
-        "iOS timestamp formatting differs: React shows '07/13 05:56 AM' while iOS shows 'Kee… 07/13 05:56' (truncated username/badge prefix replacing AM/PM marker)",
-        "Avatar on iOS is rendered smaller with reduced padding around it; React avatar has a yellow presence dot, iOS avatar does not show presence indicator",
-        "Code chip (#31, #521, #521, message:new) horizontal padding is larger on iOS, producing wider highlight boxes and altering line wrap points",
-        "Body text on iOS wraps at a narrower column, causing different line breaks (e.g., 'gap, 不是重复——Codex' joins a line in iOS while React breaks before 'Codex')",
-        "Overall message row width differs: React column is ~260px wide while iOS column is much wider with smaller relative font size, shifting line counts"
-      ],
-      "likelyCauses": [
-        "Different default font metrics and monospace handling between platforms cause rewrap",
-        "iOS timestamp component prepends a truncated sender alias/shortcut ('Kee…') that React does not render",
-        "Presence/status dot on avatar is implemented only on web/React side",
-        "Code chip styling uses platform-default padding that is not normalized in the design token"
-      ],
-      "suggestedOwner": "design-system / message-row component owner",
-      "suggestedFixes": [
-        "Normalize timestamp rendering so both platforms show 'MM/DD HH:MM AM/PM' without a leading alias prefix",
-        "Add the presence dot to the iOS avatar component or align React to match a shared spec",
-        "Unify code/inline-chip padding via shared design tokens (e.g., horizontalPadding 6/8dp)",
-        "Adjust iOS message bubble max-width and font size to match React baseline metrics",
-        "Add a visual regression snapshot for this component with locked chip and timestamp styling"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.09427195149943968
+      "status": "pending",
+      "imageHash": "p1:00e007fc07f3fffe001410fee13400fee003047ee01700fee00703fee00781fee01700fee00701fee00700fee01300fee00703fee02701fe001700feffff00feffff03fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
+      "generatedAt": "2026-07-19T22:07:45.743Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.09468546198404015
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
       "status": "ready",
-      "imageHash": "p1:0024000401ce4ffe001e00024006001e4006400200006002fffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:0024000401ce4ffe001e00024006001e4006400200006402fffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-13T22:12:13.716Z",
       "severity": "low",
       "summary": [
@@ -2582,12 +2530,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04218144502504695
+      "metricMismatch": 0.042362714519112665
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
       "status": "ready",
-      "imageHash": "p1:03fe03fc07fe7ffe00010026c03e0006c0006000c0006001c0066002c01e6002c0066006e0026002e0066002c086680a0078fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
+      "imageHash": "p1:03fe03fc07fe7ffe00010032c03e0006c0006000c0006001c0066000c01e6000c0066006e0026002e0066002c086680a0078fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fffe3fff",
       "generatedAt": "2026-07-13T22:12:14.773Z",
       "severity": "medium",
       "summary": [
@@ -2616,46 +2564,26 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.12784562725321014
+      "metricMismatch": 0.13003942695885828
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
-      "status": "ready",
-      "imageHash": "p1:00e007fc03f3fffe00340ffee00400fee00300fee00300fee01300fee00300fee00300fee00301fee6f300fe000700feffff95fefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff80fff",
-      "generatedAt": "2026-07-18T07:40:54.789Z",
-      "severity": "medium",
-      "summary": [
-        "iOS renders a truncated author display name \"Kee…\" next to the avatar, while React shows the full author name \"Cindy\" in the same header slot.",
-        "iOS timestamp string is shorter (\"07/13 05:57\") and lacks the explicit \"AM\" meridian shown on React (\"07/13 05:57 AM\").",
-        "iOS omits the yellow status indicator dot on the avatar that is present on the React baseline.",
-        "iOS uses a noticeably larger body font and increased line-height, causing the message body to wrap onto more lines and shift layout density (avatar/name baseline no longer aligns with first line of message).",
-        "iOS avatar is slightly smaller relative to the message block and lacks the outer ring/badge styling visible on React."
-      ],
-      "likelyCauses": [
-        "Author display name field in iOS data model does not include or is not passing the full name; truncation logic (\"Kee…\") is being applied where React renders the full string.",
-        "iOS timestamp formatter is using a 24-hour or locale-default format instead of the \"MM/dd HH:mm a\" format used on React.",
-        "iOS avatar component is not rendering the online/status dot overlay or the avatar size token differs between platforms.",
-        "iOS message text component uses a different body font scale (e.g., Dynamic Type or larger default) and paragraph spacing token than the React web implementation."
-      ],
-      "suggestedOwner": "mobile-ios",
-      "suggestedFixes": [
-        "Pass the full author display name to the iOS message row; if width-constrained, only truncate with ellipsis when measured width exceeds the available header space and verify with a long-name test fixture.",
-        "Update the iOS timestamp DateFormatter to output the same \"MM/dd HH:mm a\" pattern used on React, and unit-test against a fixed Date.",
-        "Add the avatar status-dot overlay (yellow circle) to the iOS Avatar component and ensure z-ordering keeps it above the avatar image.",
-        "Reconcile typography tokens between React and iOS: align body font size, weight, and paragraph line-height to the web baseline (or document intentional platform divergence).",
-        "Verify avatar sizing token matches the React baseline dimensions, and ensure the avatar vertical center aligns with the first line of the message body via the shared layout spec."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.06677839888740367
+      "status": "pending",
+      "imageHash": "p1:00e007fc03f3fffe00340dfee00400fee003007ee0033ffee01300fee00300fee003007ee00300fee6f300fe000700feffff00feffff3ffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefff80000fff81fff",
+      "generatedAt": "2026-07-19T22:07:45.815Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06754027085780645
     },
     {
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-19T05:33:21.999Z",
+      "generatedAt": "2026-07-19T22:07:45.745Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
