@@ -247,6 +247,7 @@ data class ChatLayoutPreferenceSnapshot(
     val multiShellHostEnabled: Boolean = false,
     val serverDrawerEnabled: Boolean = false,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
+    val translationTargetLanguage: String = TranslationTargetLanguages.Browser,
     val supportedTranslationModes: List<TranslationModePreference> =
         TranslationModePreference.entries,
     val threadRowAffordances: Set<ThreadRowAffordancePreference> =
@@ -292,6 +293,9 @@ interface ChatLayoutPreferenceStore {
     fun readTranslationModeSync(): TranslationModePreference
     suspend fun readTranslationMode(): TranslationModePreference
     suspend fun saveTranslationMode(mode: TranslationModePreference)
+    fun readTranslationTargetLanguageSync(): String
+    suspend fun readTranslationTargetLanguage(): String
+    suspend fun saveTranslationTargetLanguage(language: String)
     fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference>
     suspend fun readThreadRowAffordances(): Set<ThreadRowAffordancePreference>
     suspend fun saveThreadRowAffordances(affordances: Set<ThreadRowAffordancePreference>)
@@ -424,6 +428,19 @@ class KeyValueChatLayoutPreferenceStore(
         store.putString(KEY_TRANSLATION_MODE, mode.storageKey)
     }
 
+    override fun readTranslationTargetLanguageSync(): String {
+        val stored = store.getString(KEY_TRANSLATION_TARGET_LANGUAGE)
+        return TranslationTargetLanguages.normalize(stored) ?: TranslationTargetLanguages.Browser
+    }
+
+    override suspend fun readTranslationTargetLanguage(): String =
+        readTranslationTargetLanguageSync()
+
+    override suspend fun saveTranslationTargetLanguage(language: String) {
+        val normalized = TranslationTargetLanguages.normalize(language)
+        store.putString(KEY_TRANSLATION_TARGET_LANGUAGE, normalized ?: TranslationTargetLanguages.Browser)
+    }
+
     override fun readThreadRowAffordancesSync(): Set<ThreadRowAffordancePreference> {
         val stored = store.getString(KEY_THREAD_ROW_AFFORDANCES)
         return if (stored == null) {
@@ -462,6 +479,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
         const val KEY_SERVER_DRAWER_ENABLED = "mobile:server_drawer_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
+        const val KEY_TRANSLATION_TARGET_LANGUAGE = "settings.translationTargetLanguage"
         const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
     }
 }
@@ -484,6 +502,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setServerDrawerEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
+    suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot
     suspend fun setThreadRowAffordance(
         affordance: ThreadRowAffordancePreference,
         enabled: Boolean
@@ -507,6 +526,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
 
@@ -527,6 +547,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -548,6 +569,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -567,6 +589,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -596,6 +619,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -615,6 +639,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -634,6 +659,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
     }
@@ -668,8 +694,14 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = mode,
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
+    }
+
+    override suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot {
+        store.saveTranslationTargetLanguage(language)
+        return getChatLayoutPreference()
     }
 
     override suspend fun setThreadRowAffordance(
@@ -697,6 +729,7 @@ class PersistentChatLayoutPreferenceRepository(
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
             serverDrawerEnabled = store.readServerDrawerEnabled(),
             translationMode = store.readTranslationMode(),
+            translationTargetLanguage = store.readTranslationTargetLanguage(),
             threadRowAffordances = next
         )
     }

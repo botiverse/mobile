@@ -200,7 +200,7 @@ private fun settingsMessageBodyFontSizeLabel(value: String): String =
     }
 
 private fun normalizeSharedLanguageRegionLanguage(value: String?): String? =
-    value?.trim()?.lowercase()?.takeIf { it == "en" }
+    TranslationTargetLanguages.normalize(value)
 
 private fun normalizeSharedLanguageRegionTimezone(value: String?): String? =
     value?.trim()?.takeIf { it.isNotBlank() }

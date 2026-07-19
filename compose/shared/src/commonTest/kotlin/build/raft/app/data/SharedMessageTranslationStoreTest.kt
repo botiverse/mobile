@@ -38,7 +38,6 @@ private class FakeAuthSessionStore(private var session: StoredAuthSession? = tes
 }
 
 private class FakeMessageTranslationApi(
-    var accountBody: String = """{"id":"user-1","email":"user@example.com","name":"User One","preferredLanguage":"en","autoTranslationEnabled":true,"preferredTranslationDisplay":"translated"}""",
     var serverBody: String = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":false}""",
     var batchResponses: MutableList<HomeNetworkResponse> = mutableListOf()
 ) : SlockMessageTranslationApi {
@@ -53,8 +52,6 @@ private class FakeMessageTranslationApi(
         batchCalls += Triple(messageIds, targetLanguage, mode)
         return if (batchResponses.isNotEmpty()) batchResponses.removeAt(0) else HomeNetworkResponse(200, """{"results":[]}""")
     }
-
-    override suspend fun accountPreferences(): HomeNetworkResponse = HomeNetworkResponse(200, accountBody)
 
     override suspend fun serverTranslationSettings(serverId: String): HomeNetworkResponse =
         HomeNetworkResponse(200, serverBody)
@@ -77,6 +74,7 @@ class SharedMessageTranslationStoreTest {
         scope: CoroutineScope,
         authStore: SlockAuthSessionStore = FakeAuthSessionStore(),
         translationMode: () -> TranslationModePreference = { TranslationModePreference.Automatic },
+        translationTargetLanguage: () -> String = { TranslationTargetLanguages.Browser },
         fallbackLanguage: () -> String? = { null }
     ): SharedMessageTranslationStore =
         SharedMessageTranslationStore(
@@ -84,14 +82,15 @@ class SharedMessageTranslationStoreTest {
             api = api,
             scope = scope,
             translationMode = translationMode,
+            translationTargetLanguage = translationTargetLanguage,
             fallbackLanguage = fallbackLanguage
         )
 
     @Test
-    fun ensureSettingsLoadedReadsAccountAndServerSettings() = runBlocking {
+    fun ensureSettingsLoadedReadsLocalTargetAndServerSettings() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi()
-        val store = store(api, scope)
+        val store = store(api, scope, translationTargetLanguage = { "it" })
 
         store.ensureSettingsLoaded()
 
@@ -100,16 +99,14 @@ class SharedMessageTranslationStoreTest {
         assertEquals(TestServerId, settings.serverId)
         assertTrue(settings.available)
         assertEquals(TranslationModePreference.Automatic, settings.translationMode)
-        assertEquals("en", settings.effectiveLanguage)
+        assertEquals("it", settings.effectiveLanguage)
         scope.cancel()
     }
 
     @Test
     fun ensureSettingsLoadedFallsBackToAppLanguageWhenNoPreference() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeMessageTranslationApi(
-            accountBody = """{"id":"user-1","email":"user@example.com","name":"User One","autoTranslationEnabled":true}"""
-        )
+        val api = FakeMessageTranslationApi()
         val store = store(api, scope, fallbackLanguage = { "en" })
 
         store.ensureSettingsLoaded()
@@ -119,18 +116,32 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun nonEnglishFallbackLanguageYieldsNoTargetLanguage() = runBlocking {
+    fun supportedNonEnglishFallbackLanguageBecomesTranslationTarget() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeMessageTranslationApi(
-            accountBody = """{"id":"user-1","email":"user@example.com","name":"User One","autoTranslationEnabled":true}"""
-        )
-        val store = store(api, scope, fallbackLanguage = { "zh" })
+        val api = FakeMessageTranslationApi()
+        val store = store(api, scope, fallbackLanguage = { "zh-Hans" })
 
         store.ensureSettingsLoaded()
         store.requestAutoTranslations(listOf(candidate()))
 
-        assertNull(store.state.value.settings.effectiveLanguage)
-        assertTrue(api.batchCalls.isEmpty())
+        assertEquals("zh-cn", store.state.value.settings.effectiveLanguage)
+        assertEquals("zh-cn", api.batchCalls.single().second)
+        scope.cancel()
+    }
+
+    @Test
+    fun localTargetChangeAppliesWithoutAccountPatchOrSettingsReload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeMessageTranslationApi()
+        var target = "en"
+        val store = store(api, scope, translationTargetLanguage = { target })
+
+        store.ensureSettingsLoaded()
+        target = "ja-JP"
+        store.requestAutoTranslations(listOf(candidate()))
+
+        assertEquals("ja", store.state.value.settings.effectiveLanguage)
+        assertEquals("ja", api.batchCalls.single().second)
         scope.cancel()
     }
 

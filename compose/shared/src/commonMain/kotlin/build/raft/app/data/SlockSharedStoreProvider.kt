@@ -1442,6 +1442,9 @@ internal class SlockSharedStoreProvider private constructor(
                         translationMode = {
                             KeyValueChatLayoutPreferenceStore(sharedPreferenceStore).readTranslationModeSync()
                         },
+                        translationTargetLanguage = {
+                            KeyValueChatLayoutPreferenceStore(sharedPreferenceStore).readTranslationTargetLanguageSync()
+                        },
                         fallbackLanguage = {
                             KeyValueLocalePreferenceStore(sharedPreferenceStore).readLocaleSync().languageTag
                         },

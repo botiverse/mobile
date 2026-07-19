@@ -356,13 +356,16 @@ class SharedSettingsStoreTest {
             )
         )
         store.accept(SharedSettingsIntent.SetTranslationMode("original"))
+        store.accept(SharedSettingsIntent.SetTranslationTargetLanguage("ja-JP"))
         store.accept(SharedSettingsIntent.SetLanguageRegionServerTranslation(false))
 
         val updated = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
         assertEquals("Asia/Tokyo", updated.timezone.selectedKey)
         assertEquals("original", updated.translationDisplay.selectedKey)
+        assertEquals("ja", updated.browserLanguage.selectedKey)
         assertTrue(updated.translationDisplay.available)
         assertEquals(TranslationModePreference.Original, chatLayoutRepository.translationMode)
+        assertEquals("ja", chatLayoutRepository.translationTargetLanguage)
         assertEquals(false, updated.serverTranslation.enabled)
         assertEquals(AppLocale.English, localeRepository.current)
         assertEquals(
@@ -373,6 +376,7 @@ class SharedSettingsStoreTest {
             listOf(
                 "languageRegion",
                 "updateLanguageRegionPreference:timezone=Asia/Tokyo",
+                "languageRegion",
                 "languageRegion",
                 "updateServerTranslation:false",
                 "languageRegion"
@@ -2880,7 +2884,11 @@ class SharedSettingsStoreTest {
                         browserLanguage =
                             when {
                                 request.clearPreferredLanguage ->
-                                    current.browserLanguage.copy(selectedKey = "other", selectedLabel = "Others", statusLabel = "Others")
+                                    current.browserLanguage.copy(
+                                        selectedKey = "browser",
+                                        selectedLabel = "Browser language",
+                                        statusLabel = "Browser language"
+                                    )
                                 request.preferredLanguage != null ->
                                     current.browserLanguage.copy(
                                         selectedKey = request.preferredLanguage,
@@ -3236,6 +3244,7 @@ class SharedSettingsStoreTest {
         var multiShellHostEnabled: Boolean = false,
         var serverDrawerEnabled: Boolean = false,
         var translationMode: TranslationModePreference = TranslationModePreference.Automatic,
+        var translationTargetLanguage: String = TranslationTargetLanguages.Browser,
         var threadRowAffordances: Set<ThreadRowAffordancePreference> =
             ThreadRowAffordancePreference.Default
     ) : ChatLayoutPreferenceRepository {
@@ -3252,6 +3261,7 @@ class SharedSettingsStoreTest {
                 multiShellHostEnabled = multiShellHostEnabled,
                 serverDrawerEnabled = serverDrawerEnabled,
                 translationMode = translationMode,
+                translationTargetLanguage = translationTargetLanguage,
                 threadRowAffordances = threadRowAffordances
             )
 
@@ -3388,6 +3398,11 @@ class SharedSettingsStoreTest {
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
+        }
+
+        override suspend fun setTranslationTargetLanguage(language: String): ChatLayoutPreferenceSnapshot {
+            translationTargetLanguage = TranslationTargetLanguages.normalize(language) ?: TranslationTargetLanguages.Browser
+            return getChatLayoutPreference()
         }
 
         override suspend fun setThreadRowAffordance(
@@ -3579,8 +3594,9 @@ class SharedSettingsStoreTest {
                     detail = "Translation target language.",
                     options =
                         listOf(
-                            SettingsMobileSelectionOptionSnapshot("other", "Others"),
-                            SettingsMobileSelectionOptionSnapshot("en", "English")
+                            SettingsMobileSelectionOptionSnapshot("browser", "Browser language"),
+                            SettingsMobileSelectionOptionSnapshot("en", "English"),
+                            SettingsMobileSelectionOptionSnapshot("ja", "Japanese")
                         )
                 ),
             timezone =

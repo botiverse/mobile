@@ -317,6 +317,7 @@ import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.SettingsPlanUsageSnapshot
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsLanguageRegionSnapshot
+import build.raft.app.data.TranslationTargetLanguages
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.SettingsServerAdminSnapshot
 import build.raft.app.data.SettingsServerAgreementSnapshot
@@ -5330,13 +5331,13 @@ private fun SettingsAppShellContent(
                             if (selectedMode != snapshot.translationDisplay.selectedKey) {
                                 onSettingsIntent(SharedSettingsIntent.SetTranslationMode(selectedMode))
                             }
-                            buildSettingsLanguageRegionPreferenceUpdateRequest(
+                            resolveSettingsTranslationTargetUpdate(
                                 snapshot = snapshot,
                                 languageDraft = languageRegionLanguageDraft,
                                 displayDraft = languageRegionDisplayDraft
-                            )?.let { request ->
+                            )?.let { language ->
                                 onSettingsIntent(
-                                    SharedSettingsIntent.UpdateLanguageRegionPreference(request)
+                                    SharedSettingsIntent.SetTranslationTargetLanguage(language)
                                 )
                             }
                         }
@@ -6553,21 +6554,18 @@ private val LANGUAGE_REGION_LANGUAGE_ACTIONS =
 private val LANGUAGE_REGION_TIME_ACTIONS =
     setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT)
 
-internal fun buildSettingsLanguageRegionPreferenceUpdateRequest(
+internal fun resolveSettingsTranslationTargetUpdate(
     snapshot: SettingsLanguageRegionSnapshot,
     languageDraft: String,
     displayDraft: String
-): SettingsLanguageRegionPreferenceUpdateRequest? {
+): String? {
     val currentDisplay = snapshot.translationDisplay.selectedKey
     val nextDisplay = displayDraft.ifBlank { currentDisplay }
     val currentLanguage = snapshot.browserLanguage.selectedKey
     val nextLanguage = languageDraft.ifBlank { currentLanguage }
     val languageChanged = nextDisplay != "original" && nextLanguage != currentLanguage
     if (!languageChanged) return null
-    return SettingsLanguageRegionPreferenceUpdateRequest(
-        preferredLanguage = nextLanguage.takeIf { languageChanged && it != "other" },
-        clearPreferredLanguage = languageChanged && nextLanguage == "other"
-    )
+    return nextLanguage
 }
 
 private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<SegmentedControlOption> =
@@ -19871,7 +19869,8 @@ private fun settingsVisualLanguageRegionSnapshot(): SettingsLanguageRegionSnapsh
                 selectedKey = "en",
                 selectedLabel = "English",
                 statusLabel = "English",
-                detail = "Stored on this account."
+                detail = "Stored on this account.",
+                options = TranslationTargetLanguages.options.map { it.key to it.label }
             ),
         timezone =
             settingsVisualSelection(
