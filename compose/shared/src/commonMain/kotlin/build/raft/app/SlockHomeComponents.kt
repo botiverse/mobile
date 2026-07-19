@@ -1865,46 +1865,56 @@ internal fun SlockStructuralHomeShell(
             }
             ServerSwitcherAvatarPrewarmSurface(serverSwitcherAvatarPainters)
             if (serverSwitcherExpanded) {
-                SlockFloatingOverlayHost(
-                    onDismiss = onServerSwitcherDismiss,
-                    dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
-                ) { _ ->
-                    if (serverDrawerEnabled) {
-                        HomeServerDrawerPanel(
-                        sections =
-                            serverDrawerSections.ifEmpty {
-                                servers.map { server ->
-                                    SlockHomeServerDrawerSection(
-                                        server = server,
-                                        expanded = server.id == currentServerId,
-                                        status =
-                                            if (server.id == currentServerId) {
-                                                HomeServerDrawerLoadStatus.Loaded
-                                            } else {
-                                                HomeServerDrawerLoadStatus.Unloaded
-                                            },
-                                        channels = if (server.id == currentServerId) channels else emptyList(),
-                                        directMessages = if (server.id == currentServerId) directMessages else emptyList(),
-                                        channelOrder = if (server.id == currentServerId) channelOrder else emptyList(),
-                                        channelSortMode = if (server.id == currentServerId) channelSortMode else "manual",
-                                        dmOrder = if (server.id == currentServerId) dmOrder else emptyList(),
-                                        dmSortMode = if (server.id == currentServerId) dmSortMode else "manual",
-                                        pinnedChannelIds = if (server.id == currentServerId) pinnedChannelIds else emptyList(),
-                                        pinnedAgentIds = if (server.id == currentServerId) pinnedAgentIds else emptyList(),
-                                        pinnedOrder = if (server.id == currentServerId) pinnedOrder else emptyList(),
-                                        pinnedItems = if (server.id == currentServerId) pinnedItems else emptyList(),
-                                        pinnedSortMode = if (server.id == currentServerId) pinnedSortMode else "manual",
-                                        hiddenDmIds = if (server.id == currentServerId) hiddenDmIds else emptyList()
-                                    )
-                                }
-                            },
-                        labels = labels,
+                if (serverDrawerEnabled) {
+                    // The opt-in drawer owns the full screen so its scrim and native
+                    // dispatch barrier also cover the shell bottom surface.
+                    SlockFloatingOverlayHost(
                         onDismiss = onServerSwitcherDismiss,
-                        onSectionToggle = onServerDrawerSectionToggle,
-                        onRetry = onServerDrawerRetry,
+                        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+                    ) { _ ->
+                        HomeServerDrawerPanel(
+                            sections =
+                                serverDrawerSections.ifEmpty {
+                                    servers.map { server ->
+                                        SlockHomeServerDrawerSection(
+                                            server = server,
+                                            expanded = server.id == currentServerId,
+                                            status =
+                                                if (server.id == currentServerId) {
+                                                    HomeServerDrawerLoadStatus.Loaded
+                                                } else {
+                                                    HomeServerDrawerLoadStatus.Unloaded
+                                                },
+                                            channels = if (server.id == currentServerId) channels else emptyList(),
+                                            directMessages = if (server.id == currentServerId) directMessages else emptyList(),
+                                            channelOrder = if (server.id == currentServerId) channelOrder else emptyList(),
+                                            channelSortMode = if (server.id == currentServerId) channelSortMode else "manual",
+                                            dmOrder = if (server.id == currentServerId) dmOrder else emptyList(),
+                                            dmSortMode = if (server.id == currentServerId) dmSortMode else "manual",
+                                            pinnedChannelIds = if (server.id == currentServerId) pinnedChannelIds else emptyList(),
+                                            pinnedAgentIds = if (server.id == currentServerId) pinnedAgentIds else emptyList(),
+                                            pinnedOrder = if (server.id == currentServerId) pinnedOrder else emptyList(),
+                                            pinnedItems = if (server.id == currentServerId) pinnedItems else emptyList(),
+                                            pinnedSortMode = if (server.id == currentServerId) pinnedSortMode else "manual",
+                                            hiddenDmIds = if (server.id == currentServerId) hiddenDmIds else emptyList()
+                                        )
+                                    }
+                                },
+                            labels = labels,
+                            onDismiss = onServerSwitcherDismiss,
+                            onSectionToggle = onServerDrawerSectionToggle,
+                            onRetry = onServerDrawerRetry,
                             onCreateServerClick = onCreateServerClick
                         )
-                    } else {
+                    }
+                } else {
+                    // Preserve the legacy popover boundary when the opt-in is disabled:
+                    // the shell bottom inset/tab surface remains outside the dismiss host.
+                    SlockFloatingOverlayHost(
+                        onDismiss = onServerSwitcherDismiss,
+                        modifier = Modifier.padding(bottom = bottomContentPadding),
+                        dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+                    ) { _ ->
                         ServerSwitcherPanel(
                             servers = servers,
                             currentServerId = currentServerId,
