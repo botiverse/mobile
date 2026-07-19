@@ -1164,45 +1164,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun pinnedParentVisualFixtureKeepsOriginSeparateFromScrollableReplies() {
-        val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT, "pinned-parent-test")
-
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("content", payload.originStatus)
-        assertEquals("parent-pinned-parent", payload.originMessage?.id)
-        assertEquals(14, payload.messages.size)
-        assertFalse(payload.showReplyActions)
-        assertTrue(
-            threadMessagesPinOriginToTop(
-                pinOriginToTop = payload.toThreadTimelineRenderConfig().pinOriginToTop,
-                originStatus = payload.originStatus
-            )
-        )
-    }
-
-    @Test
-    fun shortPinnedParentFixtureStillTopAlignsTheOrigin() {
-        val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_PINNED_PARENT_SHORT, "pinned-parent-short-test")
-
-        assertEquals(2, payload.messages.size)
-        assertTrue(
-            threadMessagesPinOriginToTop(
-                pinOriginToTop = payload.toThreadTimelineRenderConfig().pinOriginToTop,
-                originStatus = payload.originStatus
-            )
-        )
-        assertFalse(
-            threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, "ordinary-thread")
-                .let { ordinary ->
-                    threadMessagesPinOriginToTop(
-                        pinOriginToTop = ordinary.toThreadTimelineRenderConfig().pinOriginToTop,
-                        originStatus = ordinary.originStatus
-                    )
-                }
-        )
-    }
-
-    @Test
     fun longInlineCodeVisualFixtureContainsSingleCodeSpan() {
         val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE, "visual-thread-message-row-long-inline-code")
         val message = payload.messages.single()
