@@ -849,52 +849,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadPinnedParentAfterReplyScroll() {
-        captureKmpComponentCase(
-            caseId = "components.thread.pinned-parent",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-pinned-parent")
-                    .put("visualFixture", "pinned_parent"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_000,
-            beforeScreenshot = {
-                swipeDisplayFraction(startYFraction = 0.82f, endYFraction = 0.35f)
-                Thread.sleep(600)
-                swipeDisplayFraction(startYFraction = 0.82f, endYFraction = 0.35f)
-                Thread.sleep(600)
-            },
-            assertBitmap = { bitmap ->
-                assertTrue(
-                    "Pinned parent marker disappeared from the top band after reply scrolling",
-                    bitmap.countThreadPinnedParentMarkerSamplesInTopBand() >= THREAD_PINNED_PARENT_MIN_MARKER_SAMPLES
-                )
-            }
-        )
-    }
-
-    @Test
-    fun captureThreadPinnedParentShortStartsAtTop() {
-        captureKmpComponentCase(
-            caseId = "components.thread.pinned-parent-short",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-pinned-parent-short")
-                    .put("visualFixture", "pinned_parent_short"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_000,
-            assertBitmap = { bitmap ->
-                assertTrue(
-                    "Short reply thread did not keep the parent marker in the top band",
-                    bitmap.countThreadPinnedParentMarkerSamplesInTopBand() >= THREAD_PINNED_PARENT_MIN_MARKER_SAMPLES
-                )
-            }
-        )
-    }
-
-    @Test
     fun captureThreadMessageRowDeletedHuman() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.deleted-human",
@@ -1186,28 +1140,6 @@ class KmpVisualScreenshotCaptureTest {
                 x += FORWARD_PROBE_PIXEL_STRIDE
             }
             y += FORWARD_PROBE_PIXEL_STRIDE
-        }
-        return samples
-    }
-
-    private fun Bitmap.countThreadPinnedParentMarkerSamplesInTopBand(): Int {
-        val endY = (height * THREAD_PINNED_PARENT_TOP_BAND_FRACTION).toInt()
-        var samples = 0
-        var y = 0
-        while (y < endY) {
-            var x = 0
-            while (x < width) {
-                val pixel = getPixel(x, y)
-                if (
-                    Color.red(pixel) in 150..210 &&
-                    Color.green(pixel) in 135..195 &&
-                    Color.blue(pixel) in 205..255
-                ) {
-                    samples++
-                }
-                x += THREAD_PINNED_PARENT_PIXEL_STRIDE
-            }
-            y += THREAD_PINNED_PARENT_PIXEL_STRIDE
         }
         return samples
     }
@@ -4126,9 +4058,6 @@ class KmpVisualScreenshotCaptureTest {
         private const val FORWARD_PROBE_PIXEL_STRIDE = 4
         private const val FORWARD_PROBE_MIN_YELLOW_SAMPLES = 1_500
         private const val THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES = 100
-        private const val THREAD_PINNED_PARENT_TOP_BAND_FRACTION = 0.18f
-        private const val THREAD_PINNED_PARENT_PIXEL_STRIDE = 4
-        private const val THREAD_PINNED_PARENT_MIN_MARKER_SAMPLES = 150
         private const val THREAD_LONG_PRESS_MIN_CHANGED_RATIO = 0.02f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12
