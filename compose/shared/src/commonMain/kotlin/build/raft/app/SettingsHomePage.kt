@@ -317,6 +317,7 @@ import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.SettingsPlanUsageSnapshot
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsLanguageRegionSnapshot
+import build.raft.app.data.TranslationTargetLanguages
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.SettingsServerAdminSnapshot
 import build.raft.app.data.SettingsServerAgreementSnapshot
@@ -6564,9 +6565,10 @@ internal fun buildSettingsLanguageRegionPreferenceUpdateRequest(
     val nextLanguage = languageDraft.ifBlank { currentLanguage }
     val languageChanged = nextDisplay != "original" && nextLanguage != currentLanguage
     if (!languageChanged) return null
+    val useBrowserLanguage = nextLanguage == "browser" || nextLanguage == "other"
     return SettingsLanguageRegionPreferenceUpdateRequest(
-        preferredLanguage = nextLanguage.takeIf { languageChanged && it != "other" },
-        clearPreferredLanguage = languageChanged && nextLanguage == "other"
+        preferredLanguage = nextLanguage.takeIf { languageChanged && !useBrowserLanguage },
+        clearPreferredLanguage = languageChanged && useBrowserLanguage
     )
 }
 
@@ -19871,7 +19873,8 @@ private fun settingsVisualLanguageRegionSnapshot(): SettingsLanguageRegionSnapsh
                 selectedKey = "en",
                 selectedLabel = "English",
                 statusLabel = "English",
-                detail = "Stored on this account."
+                detail = "Stored on this account.",
+                options = TranslationTargetLanguages.options.map { it.key to it.label }
             ),
         timezone =
             settingsVisualSelection(

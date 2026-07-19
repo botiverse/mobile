@@ -3108,8 +3108,10 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
                 is DataResult.NoPermission -> "You do not have permission to manage server translation settings."
                 is DataResult.Content -> "Server message translation setting loaded."
             }
-    val languageKey = preferredLanguage ?: "other"
-    val languageLabel = languageRegionLanguageOptions.firstOrNull { it.key == languageKey }?.label ?: "Others"
+    val languageKey = preferredLanguage ?: TranslationTargetLanguages.Browser
+    val languageLabel =
+        languageRegionLanguageOptions.firstOrNull { it.key == languageKey }?.label
+            ?: TranslationTargetLanguages.options.first { it.key == TranslationTargetLanguages.Browser }.label
     val timezoneKey = preferredTimezone ?: "UTC"
     val timezoneOptions =
         if (languageRegionTimezoneOptions.any { it.key == timezoneKey }) {
@@ -3196,10 +3198,9 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
 }
 
 private val languageRegionLanguageOptions =
-    listOf(
-        SettingsMobileSelectionOptionSnapshot("other", "System"),
-        SettingsMobileSelectionOptionSnapshot("en", "English")
-    )
+    TranslationTargetLanguages.options.map { option ->
+        SettingsMobileSelectionOptionSnapshot(option.key, option.label)
+    }
 
 private val languageRegionTimeFormatOptions =
     listOf(

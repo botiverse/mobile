@@ -119,18 +119,18 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun nonEnglishFallbackLanguageYieldsNoTargetLanguage() = runBlocking {
+    fun supportedNonEnglishFallbackLanguageBecomesTranslationTarget() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi(
             accountBody = """{"id":"user-1","email":"user@example.com","name":"User One","autoTranslationEnabled":true}"""
         )
-        val store = store(api, scope, fallbackLanguage = { "zh" })
+        val store = store(api, scope, fallbackLanguage = { "zh-Hans" })
 
         store.ensureSettingsLoaded()
         store.requestAutoTranslations(listOf(candidate()))
 
-        assertNull(store.state.value.settings.effectiveLanguage)
-        assertTrue(api.batchCalls.isEmpty())
+        assertEquals("zh-cn", store.state.value.settings.effectiveLanguage)
+        assertEquals("zh-cn", api.batchCalls.single().second)
         scope.cancel()
     }
 

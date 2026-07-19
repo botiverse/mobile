@@ -14,8 +14,8 @@ class SettingsLanguageRegionPreferenceRequestTest {
     fun modeOnlySaveDoesNotBuildAccountRequest() {
         val request =
             buildSettingsLanguageRegionPreferenceUpdateRequest(
-                snapshot = languageRegionSnapshot(language = "other", display = "automatic"),
-                languageDraft = "other",
+                snapshot = languageRegionSnapshot(language = "browser", display = "automatic"),
+                languageDraft = "browser",
                 displayDraft = "manual"
             )
 
@@ -38,7 +38,7 @@ class SettingsLanguageRegionPreferenceRequestTest {
     fun automaticModeCanSubmitChangedLanguageSeparately() {
         val request =
             buildSettingsLanguageRegionPreferenceUpdateRequest(
-                snapshot = languageRegionSnapshot(language = "other", display = "original"),
+                snapshot = languageRegionSnapshot(language = "browser", display = "original"),
                 languageDraft = "en",
                 displayDraft = "automatic"
             )
@@ -46,6 +46,19 @@ class SettingsLanguageRegionPreferenceRequestTest {
         assertNull(request?.preferredTranslationDisplay)
         assertEquals("en", request?.preferredLanguage)
         assertFalse(request?.clearPreferredLanguage == true)
+    }
+
+    @Test
+    fun browserLanguageClearsExplicitTarget() {
+        val request =
+            buildSettingsLanguageRegionPreferenceUpdateRequest(
+                snapshot = languageRegionSnapshot(language = "ja", display = "automatic"),
+                languageDraft = "browser",
+                displayDraft = "automatic"
+            )
+
+        assertNull(request?.preferredLanguage)
+        assertEquals(true, request?.clearPreferredLanguage)
     }
 
     private fun languageRegionSnapshot(
@@ -63,8 +76,9 @@ class SettingsLanguageRegionPreferenceRequestTest {
                     detail = "",
                     options =
                         listOf(
-                            SettingsMobileSelectionOptionSnapshot("other", "System"),
-                            SettingsMobileSelectionOptionSnapshot("en", "English")
+                            SettingsMobileSelectionOptionSnapshot("browser", "Browser language"),
+                            SettingsMobileSelectionOptionSnapshot("en", "English"),
+                            SettingsMobileSelectionOptionSnapshot("ja", "Japanese")
                         )
                 ),
             timezone =

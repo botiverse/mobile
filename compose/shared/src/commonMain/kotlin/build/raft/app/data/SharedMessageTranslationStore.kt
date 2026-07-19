@@ -334,7 +334,7 @@ class SharedMessageTranslationStore internal constructor(
         code == 403 || code == 404 || code == 501
 
     private fun normalizedFallbackLanguage(): String? =
-        fallbackLanguage()?.trim()?.lowercase()?.takeIf { it == "en" }
+        TranslationTargetLanguages.normalize(fallbackLanguage()) ?: TranslationTargetLanguages.Fallback
 
     private suspend fun readSessionOrNull(): StoredAuthSession? =
         try {
