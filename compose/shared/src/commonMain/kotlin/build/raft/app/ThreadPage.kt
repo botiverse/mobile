@@ -261,6 +261,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12302,6 +12303,9 @@ private fun ThreadMessagesList(
     var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
+    var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
+        mutableStateOf(false)
+    }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
     val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
@@ -13680,7 +13684,8 @@ private fun ThreadMessagesList(
                     .zIndex(ThreadInlineSearchBarZIndex)
             )
         }
-        if (!shareSelectionCaptureActive && shouldShowThreadBackToBottomButton(
+        val shouldShowBackToBottomButton =
+            shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
                     initialBottomAnchorReady = initialBottomAnchorReady,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
@@ -13688,10 +13693,25 @@ private fun ThreadMessagesList(
                     latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
                 )
             )
+        if (
+            !shareSelectionCaptureActive &&
+            shouldKeepThreadBackToBottomOverlayMounted(
+                shouldShowButton = shouldShowBackToBottomButton,
+                interactionGuardActive = backToBottomInteractionGuardActive
+            )
         ) {
             ThreadBackToBottomButton(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = SlockSpacing.Md),
-                onClick = {
+                onClick = onClick@{
+                    if (backToBottomInteractionGuardActive) return@onClick
+                    // Keep both the visual button and its native dispatch
+                    // capture sibling mounted until the scroll has settled.
+                    // Removing them from inside the release callback lets the
+                    // host finish the same pointer sequence on the message row
+                    // underneath (Hands 71862159). Activity's "x updates"
+                    // button follows the same lifetime rule: it clears its
+                    // visibility state only after the scroll completes.
+                    backToBottomInteractionGuardActive = true
                     // A focused Activity/message anchor owns the viewport for a
                     // short stabilization session. Back-to-bottom is an
                     // explicit replacement viewport intent, so retire that
@@ -13713,15 +13733,25 @@ private fun ThreadMessagesList(
                             "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null}"
                     )
                     coroutineScope.launch {
-                        allowBottomAutoAnchor = true
-                        repeat(ThreadBackToBottomAnchorAttempts) { attempt ->
-                            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-                            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
-                                listState.isLatestItemAtRenderedBottom(latestItemIndex)
-                            ) {
-                                return@launch
+                        try {
+                            allowBottomAutoAnchor = true
+                            for (attempt in 0 until ThreadBackToBottomAnchorAttempts) {
+                                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+                                if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                                    listState.isLatestItemAtRenderedBottom(latestItemIndex)
+                                ) {
+                                    break
+                                }
+                                delay(16)
                             }
-                            delay(16)
+                        } finally {
+                            // A new user drag can cancel the scroll mutation.
+                            // Always release the guard, but only after Android's
+                            // native release frame can no longer be retargeted.
+                            withContext(NonCancellable) {
+                                delay(ThreadBackToBottomReleaseGuardMillis)
+                                backToBottomInteractionGuardActive = false
+                            }
                         }
                     }
                 }
@@ -14542,6 +14572,11 @@ internal fun shouldShowThreadBackToBottomButton(state: ThreadBackToBottomButtonS
         state.canScrollTowardBottom &&
         state.latestItemOffBottom
 
+internal fun shouldKeepThreadBackToBottomOverlayMounted(
+    shouldShowButton: Boolean,
+    interactionGuardActive: Boolean
+): Boolean = shouldShowButton || interactionGuardActive
+
 internal data class ThreadInitialBottomAnchorState(
     val canScrollToLatest: Boolean,
     val isAtRenderedBottom: Boolean,
@@ -14934,6 +14969,7 @@ private fun ThreadBackToBottomButton(
 }
 
 private const val ThreadBackToBottomTouchGuardAlpha = 0.01f
+private const val ThreadBackToBottomReleaseGuardMillis = 64L
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12

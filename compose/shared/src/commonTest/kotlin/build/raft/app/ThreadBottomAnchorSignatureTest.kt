@@ -1398,6 +1398,31 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun backToBottomOverlay_staysMountedAcrossTheClickReleaseAfterScrollHidesTheButton() {
+        assertEquals(
+            true,
+            shouldKeepThreadBackToBottomOverlayMounted(
+                shouldShowButton = true,
+                interactionGuardActive = false
+            )
+        )
+        assertEquals(
+            true,
+            shouldKeepThreadBackToBottomOverlayMounted(
+                shouldShowButton = false,
+                interactionGuardActive = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldKeepThreadBackToBottomOverlayMounted(
+                shouldShowButton = false,
+                interactionGuardActive = false
+            )
+        )
+    }
+
+    @Test
     fun initialBottomAnchor_revealsOnlyAfterLatestRenderedAtBottom() {
         assertEquals(
             false,
