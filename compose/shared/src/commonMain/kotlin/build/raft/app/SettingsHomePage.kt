@@ -3019,6 +3019,7 @@ internal fun SlockAppShellContent(
     }
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
+    val latestVisibleAppearanceGeneration by rememberUpdatedState(visibleAppearanceGeneration)
     val homeConversationDirectoryFlow =
         remember(homeStore, readyServerId) {
             val serverId = readyServerId?.takeIf { it.isNotBlank() }
@@ -4060,7 +4061,7 @@ internal fun SlockAppShellContent(
         val callbackRef =
             realtimeEvents.addListener { rawEventData ->
                 val eventDataSnapshot = rawEventData.toString()
-                val appearanceGenerationAtDelivery = visibleAppearanceGeneration
+                val appearanceGenerationAtDelivery = latestVisibleAppearanceGeneration
                 appShellCoroutineScope.launch {
                     val eventData = JSONObject(eventDataSnapshot)
                     if (
