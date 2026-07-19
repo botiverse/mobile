@@ -14280,18 +14280,16 @@ private fun SharedMembersScreen(
     when (val current = state) {
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                SlockTopPageHeader(
-                    title = "Members",
-                    subtitle = null,
-                    iconName = SlockLucideIconName.Users
-                )
+                MembersPageHeader(title = "Members")
                 SlockCenteredLoading()
         }
         is SharedMembersUiState.Error ->
             PageErrorContent(
                 title = "Members",
                 subtitle = "Workspace members",
-                iconName = SlockLucideIconName.Users,
+                iconName = null,
+                headerContentStartPadding = MembersListHeaderStartPadding,
+                headerTitleStyle = MembersListHeaderTitleStyle,
                 message = "Could not load members",
                 code = current.code,
                 onRetry = onRetry
@@ -19120,7 +19118,9 @@ private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier
 private fun PageErrorContent(
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName,
+    iconName: SlockLucideIconName?,
+    headerContentStartPadding: Dp = 20.dp,
+    headerTitleStyle: TextStyle = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     message: String,
     code: String,
     retryLabel: String? = "Retry",
@@ -19133,7 +19133,13 @@ private fun PageErrorContent(
                 .background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SlockTopPageHeader(title = title, subtitle = subtitle, iconName = iconName)
+        SlockTopPageHeader(
+            title = title,
+            subtitle = subtitle,
+            iconName = iconName,
+            contentStartPadding = headerContentStartPadding,
+            titleStyle = headerTitleStyle
+        )
         Box(
             modifier =
                 Modifier

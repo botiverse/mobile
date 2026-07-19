@@ -137,6 +137,7 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -213,10 +214,26 @@ const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
-internal val MembersListAvatarSize = 28.dp
-internal val MembersListRowMinHeight = 40.dp
+internal val MembersListHorizontalInset = 8.dp
+internal val MembersListAvatarSize = 18.dp
+internal val MembersListRowMinHeight = 34.dp
+internal val MembersListRowSpacing = 4.dp
+internal val MembersListContentGap = 6.dp
+internal const val MembersListNameMaxWidthFraction = 0.7f
 internal val MembersListNameTextStyle =
     SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 20.sp)
+internal val MembersListDescriptionTextStyle =
+    SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 12.sp, lineHeight = 16.sp)
+internal val MembersListSectionHeaderMinHeight = 24.dp
+internal val MembersListSectionActionSize = 24.dp
+internal val MembersListSectionActionIconSize = 14.dp
+internal val MembersListMachineLabelInset = 12.dp
+internal val MembersListMachineLabelIconSize = 9.dp
+internal val MembersListMachineLabelTextStyle =
+    SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
+internal val MembersListHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+internal val MembersListHeaderStartPadding = 16.dp
+internal val MembersListHeaderIconName: SlockLucideIconName? = null
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 private val MembersAgentActivityTimeColumnWidth = 74.dp
@@ -3238,7 +3255,7 @@ internal fun MembersListContent(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (showPullToRefreshItem) {
@@ -3258,12 +3275,15 @@ internal fun MembersListContent(
                     count = agents.size,
                     expanded = agentsExpanded,
                     onExpandedChange = { agentsExpanded = it },
-                    modifier = Modifier.padding(horizontal = MembersPageInset),
+                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                    minHeight = MembersListSectionHeaderMinHeight,
                     trailingContent = {
                         if (canCreateAgents) {
                             SlockSectionHeaderIconAction(
                                 icon = SlockLucideIconName.Plus,
                                 contentDescription = stringResource(MR.strings.agent_create_action_create),
+                                size = MembersListSectionActionSize,
+                                iconSize = MembersListSectionActionIconSize,
                                 onClick = {
                                     if (createAgentSubmit != null) {
                                         activeCreateAgent = true
@@ -3278,15 +3298,27 @@ internal fun MembersListContent(
             if (agentsExpanded) {
                 groupedAgentMembers(agents).forEach { group ->
                     item("group_${group.label}") {
-                        Text(
-                            text = group.label,
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextMutedGray,
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = MembersPageInset)
-                                .padding(top = SlockSpacing.Xs)
-                        )
+                                .padding(horizontal = MembersListMachineLabelInset)
+                                .padding(top = SlockSpacing.Xs),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                        ) {
+                            SlockLucideIcon(
+                                SlockLucideIconName.Monitor,
+                                modifier = Modifier.size(MembersListMachineLabelIconSize),
+                                color = SlockColor.TextMutedGrayArgb
+                            )
+                            Text(
+                                text = membersListMachineLabel(group.label),
+                                style = MembersListMachineLabelTextStyle,
+                                color = SlockColor.TextMutedGray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                     items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
                         val member = group.members[index]
@@ -3294,7 +3326,7 @@ internal fun MembersListContent(
                             member = member,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
-                            modifier = Modifier.padding(horizontal = MembersPageInset),
+                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
                             onClick = { onOpenMember(member) }
                         )
                     }
@@ -3307,12 +3339,15 @@ internal fun MembersListContent(
                     count = humans.size,
                     expanded = humansExpanded,
                     onExpandedChange = { humansExpanded = it },
-                    modifier = Modifier.padding(horizontal = MembersPageInset),
+                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
+                    minHeight = MembersListSectionHeaderMinHeight,
                     trailingContent = {
                         if (canInviteHumans) {
                             SlockSectionHeaderIconAction(
                                 icon = SlockLucideIconName.Plus,
                                 contentDescription = stringResource(MR.strings.member_action_invite_human),
+                                size = MembersListSectionActionSize,
+                                iconSize = MembersListSectionActionIconSize,
                                 onClick = { activeInviteHuman = true }
                             )
                         }
@@ -3326,7 +3361,7 @@ internal fun MembersListContent(
                         member = member,
                         agentStatusResolver = agentStatusResolver,
                         memberAvatarResolver = memberAvatarResolver,
-                        modifier = Modifier.padding(horizontal = MembersPageInset),
+                        modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
                         onClick = { onOpenMember(member) }
                     )
                 }
@@ -9546,7 +9581,7 @@ private fun MembersDetailField(label: String, value: String) {
 }
 
 @Composable
-private fun MembersPageHeader(
+internal fun MembersPageHeader(
     title: String,
     refreshing: Boolean = false,
     onBack: (() -> Unit)? = null
@@ -9554,7 +9589,9 @@ private fun MembersPageHeader(
     SlockTopPageHeader(
         title = title,
         subtitle = null,
-        iconName = SlockLucideIconName.Users,
+        iconName = MembersListHeaderIconName,
+        contentStartPadding = MembersListHeaderStartPadding,
+        titleStyle = MembersListHeaderTitleStyle,
         refreshing = refreshing,
         leadingContent = if (onBack != null) {
             {
@@ -9565,6 +9602,8 @@ private fun MembersPageHeader(
         }
     )
 }
+
+internal fun membersListMachineLabel(label: String): String = label.lowercase()
 
 @Composable
 private fun MembersListRow(
@@ -9587,7 +9626,7 @@ private fun MembersListRow(
             .clickable(onClick = onClick)
             .padding(vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(MembersListContentGap)
     ) {
         MembersAvatar(
             member = member,
@@ -9595,27 +9634,29 @@ private fun MembersListRow(
             statusIndicatorState = agentStatusDisplayState,
             memberAvatarResolver = memberAvatarResolver
         )
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-        ) {
-            Text(
-                text = member.displayName,
-                style = MembersListNameTextStyle,
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(0.5f, fill = false)
-            )
-            Text(
-                text = member.description ?: member.handle,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 20.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+        BoxWithConstraints(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                Text(
+                    text = member.displayName,
+                    style = MembersListNameTextStyle,
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = maxWidth * MembersListNameMaxWidthFraction)
+                )
+                Text(
+                    text = member.description ?: member.handle,
+                    style = MembersListDescriptionTextStyle,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
         if (member.kind == MemberKind.Agent) {
             SlockStatusIndicator(
