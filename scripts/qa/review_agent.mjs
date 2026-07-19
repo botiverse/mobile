@@ -19,10 +19,16 @@ const outPath = arg("--out", process.env.STAMP_REVIEW_OUT || `panel-review-${rev
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
 const stampToken = process.env.STAMP_TOKEN || "";
 const piKey = process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
+const record = { run_id: runId, reviewer, stage: "init" };
 
 if (!runId || !reviewer) throw new Error("--run-id and --reviewer are required");
 if (!stampToken) throw new Error("STAMP_TOKEN is required");
 if (!piKey) throw new Error("PI_API_KEY/MINIMAX_API_KEY is required");
+
+function saveRecord(patch = {}) {
+  Object.assign(record, patch);
+  fs.writeFileSync(outPath, JSON.stringify(record, null, 2));
+}
 
 async function stamp(path, init = {}) {
   const res = await fetch(`${stampUrl}${path}`, {
@@ -59,9 +65,49 @@ function evenly(items, limit) {
 }
 
 function parseJson(text) {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text)?.[1];
-  const candidate = fenced || /\{[\s\S]*\}/.exec(text)?.[0] || text;
-  return JSON.parse(candidate);
+  return JSON.parse(text.trim());
+}
+
+function plainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function validateVote(vote, cases) {
+  if (!plainObject(vote)) throw new Error("review output must be a JSON object");
+  if (!["passed", "failed"].includes(vote.verdict)) throw new Error(`invalid reviewer verdict: ${vote.verdict}`);
+  if (typeof vote.reason !== "string" || !vote.reason.trim()) throw new Error("review reason must be non-empty");
+  if (!plainObject(vote.detail_json)) throw new Error("detail_json must be an object keyed by case and assertion id");
+  if (!Array.isArray(vote.anomalies) || vote.anomalies.some((x) => typeof x !== "string")) {
+    throw new Error("anomalies must be an array of strings");
+  }
+  let failedAssertions = 0;
+  for (const c of cases) {
+    const details = vote.detail_json[c.case_id];
+    if (!plainObject(details)) throw new Error(`detail_json.${c.case_id} is required`);
+    for (const assertionId of c.assertion_ids) {
+      const result = details[assertionId];
+      if (!plainObject(result) || typeof result.ok !== "boolean" || typeof result.note !== "string" || !result.note.trim()) {
+        throw new Error(`detail_json.${c.case_id}.${assertionId} requires boolean ok and non-empty note`);
+      }
+      if (!result.ok) failedAssertions++;
+    }
+  }
+  if (vote.verdict === "passed" && (failedAssertions || vote.anomalies.length)) {
+    throw new Error("passed vote requires every assertion ok=true and anomalies=[]");
+  }
+  if (vote.verdict === "failed" && !failedAssertions && !vote.anomalies.length) {
+    throw new Error("failed vote requires at least one failed assertion or anomaly");
+  }
+}
+
+function sanitizedEvidenceText(bytes, limit = 120000) {
+  return bytes.toString("utf8")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "<redacted-email>")
+    .replace(/(sk_(?:agent|machine)_)[A-Za-z0-9_-]+/g, "$1<redacted>")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "<redacted-jwt>")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1<redacted>")
+    .replace(/((?:password|passwd|token|authorization)["'=:\s]+)[^\s"']+/gi, "$1<redacted>")
+    .slice(0, limit);
 }
 
 function scanLog(text) {
@@ -75,6 +121,7 @@ function scanLog(text) {
 }
 
 async function main() {
+  saveRecord();
   const data = await stamp(`/api/runs/${runId}`);
   if (!data.run) throw new Error("run not found");
   if (!["running", "judging", "in_review"].includes(data.run.status)) {
@@ -85,39 +132,80 @@ async function main() {
     return;
   }
 
+  const yamlModule = await import(process.env.SLOCK_YAML_MODULE || "yaml");
+  const parseYaml = yamlModule.parse || yamlModule.default?.parse;
+  const stringifyYaml = yamlModule.stringify || yamlModule.default?.stringify;
+  if (typeof parseYaml !== "function" || typeof stringifyYaml !== "function") throw new Error("YAML parser unavailable");
+  const platform = String(data.run.app_slug || "").includes("ios") ? "ios" : String(data.run.app_slug || "").includes("ohos") ? "ohos" : "android";
   const cases = [];
   for (const rc of data.cases || []) {
     const current = await stamp(`/api/cases/${encodeURIComponent(rc.case_id)}`);
     if (Number(current.revision) !== Number(rc.case_revision)) {
       throw new Error(`case ${rc.case_id} revision drift: run=${rc.case_revision} current=${current.revision}; frozen-spec API required`);
     }
+    const spec = parseYaml(current.spec_yaml || "");
+    const assertionIds = Array.isArray(spec?.assertions) ? spec.assertions.map((a) => a?.id).filter((id) => typeof id === "string" && id) : [];
+    if (!assertionIds.length) throw new Error(`case ${rc.case_id} has no stable assertion ids`);
+    const reviewSpec = { id: spec.id, title: spec.title, goal: spec.goal, tier: spec.tier, assertions: spec.assertions, [platform]: spec[platform] };
     cases.push({
       run_case_id: rc.id,
       case_id: rc.case_id,
       title: rc.title,
-      platform: String(data.run.app_slug || "").includes("ios") ? "ios" : String(data.run.app_slug || "").includes("ohos") ? "ohos" : "android",
+      platform,
       frozen_revision: rc.case_revision,
       current_revision: current.revision,
       spec_yaml: current.spec_yaml,
+      review_spec_yaml: stringifyYaml(reviewSpec),
+      spec_sha256: crypto.createHash("sha256").update(current.spec_yaml || "").digest("hex"),
+      assertion_ids: assertionIds,
     });
   }
 
+  const excludedEvidence = (data.evidence || [])
+    .filter((e) => !["screenshot", "ui_dump", "dump_layout", "logcat", "system_log"].includes(e.kind))
+    .map((e) => ({ id: e.id, kind: e.kind, reason: "not in raw-evidence allowlist" }));
   const rawShots = evenly(
-    (data.evidence || []).filter((e) => e.kind === "screenshot").sort((a, b) => (a.captured_at || a.created_at) - (b.captured_at || b.created_at)),
+    (data.evidence || []).filter((e) => e.kind === "screenshot").sort((a, b) => Number(a.captured_at || a.created_at || 0) - Number(b.captured_at || b.created_at || 0)),
     12,
   );
   if (!rawShots.length) throw new Error("no raw screenshot evidence; refusing to review annotated/self-reported evidence only");
 
+  const rawDumps = (data.evidence || []).filter((e) => e.kind === "ui_dump" || e.kind === "dump_layout");
+  const rawLogs = (data.evidence || []).filter((e) => e.kind === "logcat" || e.kind === "system_log");
+  const byteCache = new Map();
+  const bytesFor = async (ev) => {
+    if (!byteCache.has(ev.id)) byteCache.set(ev.id, await evidenceBytes(ev));
+    return byteCache.get(ev.id);
+  };
   const logScans = [];
-  for (const ev of (data.evidence || []).filter((e) => e.kind === "logcat" || e.kind === "system_log")) {
-    const bytes = await evidenceBytes(ev);
+  for (const ev of rawLogs) {
+    const bytes = await bytesFor(ev);
     logScans.push({ evidence_id: ev.id, kind: ev.kind, ...scanLog(bytes.toString("utf8")) });
   }
 
-  const reviewedEvidence = [...rawShots, ...(data.evidence || []).filter((e) => e.kind === "logcat" || e.kind === "system_log")]
+  const reviewedEvidence = [...rawShots, ...rawDumps, ...rawLogs]
     .sort((a, b) => a.id.localeCompare(b.id));
   const evidenceManifest = reviewedEvidence.map((e) => ({ id: e.id, kind: e.kind, sha256: e.sha256 }));
   const evidenceManifestSha256 = crypto.createHash("sha256").update(JSON.stringify(evidenceManifest)).digest("hex");
+  const reviewInput = {
+    run_id: runId,
+    app_slug: data.run.app_slug,
+    source_commit: data.run.source_commit || null,
+    apk_sha256: data.run.apk_sha256 || null,
+    cases: cases.map((c) => ({ case_id: c.case_id, revision: c.frozen_revision, spec_sha256: c.spec_sha256, assertion_ids: c.assertion_ids })),
+    evidence_manifest_sha256: evidenceManifestSha256,
+  };
+  const reviewInputSha256 = crypto.createHash("sha256").update(JSON.stringify(reviewInput)).digest("hex");
+  saveRecord({
+    stage: "input_verified",
+    evidence_manifest_sha256: evidenceManifestSha256,
+    review_input_sha256: reviewInputSha256,
+    review_input: reviewInput,
+    evidence_manifest: evidenceManifest,
+    included_evidence: reviewedEvidence.map((e) => ({ id: e.id, kind: e.kind })),
+    excluded_evidence: excludedEvidence,
+    raw_ui_dump_available: rawDumps.length > 0,
+  });
 
   const prompt = [
     "You are an INDEPENDENT, REFUTE-BIASED QA reviewer.",
@@ -135,22 +223,32 @@ async function main() {
     "Frozen case requirements (YAML; review only the platform variant named above):",
     ...cases.flatMap((c) => [
       `--- CASE ${c.case_id} (${c.title || ""}), platform=${c.platform}, frozen revision=${c.frozen_revision} ---`,
-      c.spec_yaml || "(spec unavailable)",
+      c.review_spec_yaml || "(spec unavailable)",
     ]),
     "",
     `Mechanical error scan (counts only; inspect screenshots too): ${JSON.stringify(logScans)}`,
     "",
     `Evidence manifest SHA-256: ${evidenceManifestSha256}`,
+    `Complete review input SHA-256: ${reviewInputSha256}`,
     "Return STRICT JSON only with this shape:",
     '{"verdict":"passed|failed","reason":"one concrete overall reason","detail_json":{"case-id":{"stable-assertion-id":{"ok":true|false,"note":"concrete evidence or insufficiency"}}},"anomalies":["..."]}',
   ].join("\n");
 
   const content = [{ type: "text", text: prompt }];
   for (const ev of rawShots) {
-    const bytes = await evidenceBytes(ev);
+    const bytes = await bytesFor(ev);
     const rc = cases.find((c) => c.run_case_id === ev.run_case_id);
     content.push({ type: "text", text: `RAW SCREENSHOT evidence=${ev.id} case=${rc?.case_id || ev.run_case_id} seq=${ev.seq} captured_at=${ev.captured_at || "unknown"}` });
     content.push({ type: "image", data: bytes.toString("base64"), mimeType: "image/png" });
+  }
+  for (const ev of rawDumps) {
+    const bytes = await bytesFor(ev);
+    content.push({ type: "text", text: `RAW UI DUMP evidence=${ev.id}\n${sanitizedEvidenceText(bytes)}` });
+  }
+  for (const ev of rawLogs) {
+    const bytes = await bytesFor(ev);
+    const scan = logScans.find((x) => x.evidence_id === ev.id);
+    content.push({ type: "text", text: `RAW LOG evidence=${ev.id} scan=${JSON.stringify(scan)} (credential-scrubbed, capped)\n${sanitizedEvidenceText(bytes)}` });
   }
 
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
@@ -170,13 +268,17 @@ async function main() {
     throw new Error(response.errorMessage || response.stopReason);
   }
   const text = response.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  saveRecord({ stage: "model_returned", raw_model_output: text, usage: response.usage || null });
   const vote = parseJson(text);
-  if (!['passed', 'failed'].includes(vote.verdict)) throw new Error(`invalid reviewer verdict: ${vote.verdict}`);
+  saveRecord({ stage: "parsed", parsed_vote: vote });
+  validateVote(vote, cases);
+  saveRecord({ stage: "validated", validation: { ok: true } });
 
   const detailJson = {
     assertions: vote.detail_json || {},
     anomalies: vote.anomalies || [],
     evidence_manifest_sha256: evidenceManifestSha256,
+    review_input_sha256: reviewInputSha256,
     evidence_manifest: evidenceManifest,
     raw_evidence_ids: rawShots.map((e) => e.id),
     log_scans: logScans,
@@ -192,24 +294,14 @@ async function main() {
       detail_json: detailJson,
     }),
   });
-  const output = {
-    run_id: runId,
-    reviewer,
-    evidence_manifest_sha256: evidenceManifestSha256,
-    evidence_manifest: evidenceManifest,
-    raw_model_output: text,
-    parsed_vote: vote,
-    post_receipt: posted,
-    usage: response.usage || null,
-  };
-  fs.writeFileSync(outPath, JSON.stringify(output, null, 2));
-  console.log(JSON.stringify(output, null, 2));
+  saveRecord({ stage: "submitted", post_receipt: posted });
+  console.log(JSON.stringify(record, null, 2));
 }
 
 main().catch((error) => {
   const message = error?.stack || String(error);
   try {
-    fs.writeFileSync(outPath, JSON.stringify({ run_id: runId, reviewer, error: message }, null, 2));
+    saveRecord({ stage: "error", error: message });
   } catch {}
   console.error(message);
   process.exit(1);
