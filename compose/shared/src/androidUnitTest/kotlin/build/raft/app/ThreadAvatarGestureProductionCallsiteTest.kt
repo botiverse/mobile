@@ -32,6 +32,37 @@ class ThreadAvatarGestureProductionCallsiteTest {
         )
     }
 
+    @Test
+    fun threadOpenUsesRowSurfaceWhileAvatarKeepsProfileAndMentionGestures() {
+        val source = threadPageSource()
+        val card = source.functionWindow("private fun ThreadMessageCard(", "internal fun threadMessageFocusHighlightColor(")
+        val gesture = source.functionWindow(
+            "private fun Modifier.threadMessageLongPressActions(",
+            "internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue()",
+        )
+
+        assertTrue("onTap = rowTapAction" in card)
+        assertEquals(
+            2,
+            card.occurrences("onClick = { openAuthorProfile(\"avatar\") }"),
+            "Both avatar placements must keep their profile action instead of opening the thread.",
+        )
+        assertEquals(
+            2,
+            card.occurrences("onLongPress = { onMentionAuthor(message) }"),
+            "Both avatar placements must keep their mention action.",
+        )
+        assertFalse("bodyTapAction" in card, "A nested body tap detector cancels the row press visual.")
+        assertTrue("ThreadMessageTapMovementGate()" in gesture)
+        assertTrue("val decision = tapMovementGate.decision()" in gesture)
+        assertTrue("currentOnTapRejected(decision)" in gesture)
+        assertTrue(".pointerInput(messageId, pointerSessionKey)" in gesture)
+        assertTrue("onLongPress = { localOffset ->" in gesture)
+        assertTrue("threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)" in source)
+        assertTrue("LocalThreadMessagePointerSessionKey provides threadPointerSessionKey" in source)
+        assertTrue("mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))" in source)
+    }
+
     private fun threadPageSource(): String {
         val commonMain = requireNotNull(
             listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))

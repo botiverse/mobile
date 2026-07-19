@@ -184,6 +184,8 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
+import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
 import com.tencent.kuikly.compose.foundation.layout.FlowRow
@@ -3897,9 +3899,17 @@ internal fun SharedThreadRouteContent(
     }
     val coroutineScope = rememberCoroutineScope()
     val latestCurrentSession by rememberUpdatedState(currentSession)
-    var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
+    // The listener can mount after Activity.onResume. Seed from the authoritative host
+    // visibility so the first external-browser return is treated as a subsequent resume
+    // and rotates stale pointer registrations instead of merely marking lifecycle as seen.
+    var threadLifecycleSeen by remember(threadInstanceKey, storeScope.shellInstanceId) {
+        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+    }
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+    }
+    var threadPointerSessionKey by remember(threadInstanceKey, storeScope.shellInstanceId) {
+        mutableStateOf(0)
     }
     val latestForegroundRejoinRoomIds by rememberUpdatedState(payload.activeRealtimeRoomIds())
     val latestCoreThreadRealtimeEventHandler by rememberUpdatedState<suspend (RealtimeEvent) -> Unit>(
@@ -3968,6 +3978,7 @@ internal fun SharedThreadRouteContent(
                         event == SlockRealtimeNotifyContract.LifecycleVisibleShow
                     ) {
                         if (threadLifecycleSeen && active) {
+                            threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
                             threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
                             realtimeEvents.rejoinChannels(
                                 latestForegroundRejoinRoomIds,
@@ -5850,7 +5861,8 @@ internal fun SharedThreadRouteContent(
                     state = inlineImageFallbackState,
                     requestFallback = ::requestInlineImageFallback
                 ),
-            LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver
+            LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
+            LocalThreadMessagePointerSessionKey provides threadPointerSessionKey
         ) {
             ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
@@ -6069,6 +6081,13 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
+                    if (threadMessageOpenIgnoredForSurface(renderedThread.surfaceKind)) {
+                        bridge.log(
+                            "thread_reply_open result=ignored_already_in_reply_thread " +
+                                "messageId=$itemId instance=${renderedThread.instanceId}"
+                        )
+                        return@ThreadPageContent
+                    }
                     val parentMessage =
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
@@ -15131,6 +15150,7 @@ private fun ThreadMessageCard(
         }
     val localizedTimestampLabel = localizedThreadTimestampLabel(timestampLabel)
     val localizedCompactTimestampLabel = localizedThreadTimestampLabel(compactTimestampLabel)
+    val pointerSessionKey = LocalThreadMessagePointerSessionKey.current
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
@@ -15170,17 +15190,10 @@ private fun ThreadMessageCard(
     )
     var pressed by remember(message.id) { mutableStateOf(false) }
     var pressRippleOrigin by remember(message.id) { mutableStateOf<Offset?>(null) }
-    var suppressBodyTapAfterLongPress by remember(message.id) { mutableStateOf(false) }
     LaunchedEffect(message.id, pressed) {
         if (!pressed && pressRippleOrigin != null) {
             delay(ThreadMessageRippleFadeMs.toLong() + ThreadMessageRippleResetMarginMs)
             pressRippleOrigin = null
-        }
-    }
-    LaunchedEffect(message.id, suppressBodyTapAfterLongPress) {
-        if (suppressBodyTapAfterLongPress) {
-            delay(ThreadBodyTapAfterLongPressSuppressionMs)
-            suppressBodyTapAfterLongPress = false
         }
     }
     val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
@@ -15204,6 +15217,18 @@ private fun ThreadMessageCard(
         remember(message.id, messageIndex) {
             threadMessagePerformanceKey(message.id, messageIndex)
         }
+    val rowTapAction =
+        if (
+            threadMessageTapOpensThread(
+                showReplyAction = showReplyAction,
+                shareSelectionActive = shareSelectionActive,
+                hasLocalSendState = message.hasLocalSendState()
+            )
+        ) {
+            { onOpenThread(message.id) }
+        } else {
+            null
+        }
     Box(
         modifier =
             Modifier
@@ -15213,11 +15238,17 @@ private fun ThreadMessageCard(
                     if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
                             messageId = message.id,
+                            pointerSessionKey = pointerSessionKey,
                             captureLongPressAnchor = captureLongPressAnchor,
-                            onShowActions = { anchor ->
-                                suppressBodyTapAfterLongPress = true
-                                onShowActions(anchor)
+                            onTap = rowTapAction,
+                            onTapRejected = { decision ->
+                                diagnosticsLogger(
+                                    "thread_message_row_tap_rejected messageId=${message.id} " +
+                                        "reason=${decision.reason} movement=${decision.maxDistance} " +
+                                        "touchSlop=${decision.touchSlop} pointers=${decision.pointerCount}"
+                                )
                             },
+                            onShowActions = onShowActions,
                             onPressChanged = { isPressed, position ->
                                 pressed = isPressed
                                 if (position != null) {
@@ -15285,13 +15316,12 @@ private fun ThreadMessageCard(
                         horizontalAlignment = contentAlignment
                     ) {
                         if (showAuthorChrome) {
-                            Button(
+                            Box(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .padding(end = if (reserveInlineTrailingSpace) 30.dp else 0.dp)
-                                        .background(Color.Transparent),
-                                pressFeedback = false
+                                        .background(Color.Transparent)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -15378,24 +15408,6 @@ private fun ThreadMessageCard(
                                     } else {
                                         renderedBody
                                     }
-                                val bodyTapAction =
-                                    if (
-                                        threadMessageTapOpensThread(
-                                            showReplyAction = showReplyAction,
-                                            shareSelectionActive = shareSelectionActive,
-                                            hasLocalSendState = message.hasLocalSendState()
-                                        )
-                                    ) {
-                                        {
-                                            if (suppressBodyTapAfterLongPress) {
-                                                suppressBodyTapAfterLongPress = false
-                                            } else {
-                                                onOpenThread(message.id)
-                                            }
-                                        }
-                                    } else {
-                                        null
-                                    }
                                 if (translation?.pendingPlaceholder == true) {
                                     ThreadMessageTranslationPendingPlaceholder()
                                 } else if (showLongMessageToggle && !longMessageExpanded) {
@@ -15405,7 +15417,7 @@ private fun ThreadMessageCard(
                                         color = SlockColor.TextBlack,
                                         maxLines = ThreadLongMessagePreviewLineLimit,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = if (bodyTapAction != null) Modifier.clickable(onClick = bodyTapAction) else Modifier
+                                        modifier = Modifier
                                     )
                                 } else if (richContentEnabled) {
                                     val markdownRenderSignature =
@@ -15429,7 +15441,6 @@ private fun ThreadMessageCard(
                                     key(markdownRenderSignature) {
                                         SlockMarkdownBody(
                                             body = bodyForRender,
-                                            onClick = bodyTapAction,
                                             textStyle = ThreadMessageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
@@ -15447,7 +15458,7 @@ private fun ThreadMessageCard(
                                         text = bodyForRender,
                                         style = ThreadMessageBodyTextStyle,
                                         color = SlockColor.TextBlack,
-                                        modifier = if (bodyTapAction != null) Modifier.clickable(onClick = bodyTapAction) else Modifier
+                                        modifier = Modifier
                                     )
                                 }
                                 if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
@@ -16553,7 +16564,6 @@ private const val ThreadMessagePressIndicationDelayMs = 120L
 private const val ThreadMessageRippleExpandMs = 260
 private const val ThreadMessageRippleFadeMs = 240
 private const val ThreadMessageRippleResetMarginMs = 60L
-private const val ThreadBodyTapAfterLongPressSuppressionMs = 1_000L
 private const val ThreadMessageRippleAlpha = 0.10f
 private val ThreadMessageRippleMinRadius = 24.dp
 
@@ -16566,6 +16576,9 @@ internal fun threadMessageTapOpensThread(
     hasLocalSendState: Boolean
 ): Boolean =
     showReplyAction && !shareSelectionActive && !hasLocalSendState
+
+internal fun threadMessageOpenIgnoredForSurface(surfaceKind: String): Boolean =
+    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
 
 @Composable
 private fun BoxScope.ThreadMessagePressRipple(
@@ -16612,17 +16625,38 @@ internal fun threadMessageRippleRadius(
 @Composable
 private fun Modifier.threadMessageLongPressActions(
     messageId: String,
+    pointerSessionKey: Int,
     captureLongPressAnchor: () -> Boolean = { true },
+    onTap: (() -> Unit)? = null,
+    onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
     onShowActions: (Offset) -> Unit,
     onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
+    val currentOnTap by rememberUpdatedState(onTap)
+    val currentOnTapRejected by rememberUpdatedState(onTapRejected)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
     val currentCaptureLongPressAnchor by rememberUpdatedState(captureLongPressAnchor)
     val rootPos = remember(messageId) { SlockMutableOffsetRef() }
+    val tapMovementGate = remember(messageId) { ThreadMessageTapMovementGate() }
     return this
         .onGloballyPositioned { rootPos.update(it.positionInRoot()) }
-        .pointerInput(messageId) {
+        .pointerInput("thread-message-tap-movement-$messageId-$pointerSessionKey") {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                tapMovementGate.begin(down.position)
+                do {
+                    val event = awaitPointerEvent()
+                    val activeChange = event.changes.firstOrNull { it.id == down.id }
+                    tapMovementGate.observe(
+                        position = activeChange?.position,
+                        pointerCount = event.changes.size,
+                        touchSlop = viewConfiguration.touchSlop
+                    )
+                } while (event.changes.any { it.pressed })
+            }
+        }
+        .pointerInput(messageId, pointerSessionKey) {
             detectTapGestures(
                 onPress = { downPosition ->
                     var indicated = false
@@ -16640,6 +16674,14 @@ private fun Modifier.threadMessageLongPressActions(
                         }
                     }
                 },
+                onTap = {
+                    val decision = tapMovementGate.decision()
+                    if (decision.allowed) {
+                        currentOnTap?.invoke()
+                    } else if (currentOnTap != null) {
+                        currentOnTapRejected(decision)
+                    }
+                },
                 onLongPress = { localOffset ->
                     if (currentCaptureLongPressAnchor()) {
                         val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
@@ -16648,6 +16690,71 @@ private fun Modifier.threadMessageLongPressActions(
                 }
             )
         }
+}
+
+internal data class ThreadMessageTapMovementDecision(
+    val allowed: Boolean,
+    val reason: String,
+    val maxDistance: Float,
+    val touchSlop: Float,
+    val pointerCount: Int
+)
+
+internal val LocalThreadMessagePointerSessionKey = compositionLocalOf { 0 }
+
+internal fun nextThreadPointerSessionKey(current: Int): Int =
+    if (current == Int.MAX_VALUE) 0 else current + 1
+
+internal class ThreadMessageTapMovementGate {
+    private var downPosition: Offset? = null
+    private var canceled: Boolean = false
+    private var reason: String = "none"
+    private var maxDistance: Float = 0f
+    private var touchSlop: Float = 0f
+    private var pointerCount: Int = 1
+
+    fun begin(position: Offset) {
+        downPosition = position
+        canceled = false
+        reason = "none"
+        maxDistance = 0f
+        touchSlop = 0f
+        pointerCount = 1
+    }
+
+    fun observe(
+        position: Offset?,
+        pointerCount: Int,
+        touchSlop: Float
+    ) {
+        this.touchSlop = touchSlop
+        this.pointerCount = pointerCount
+        val down = downPosition
+        if (down == null || position == null) {
+            canceled = true
+            reason = "missing_pointer"
+            return
+        }
+        if (pointerCount != 1) {
+            canceled = true
+            reason = "multi_touch"
+            return
+        }
+        maxDistance = maxOf(maxDistance, (position - down).getDistance())
+        if (maxDistance > touchSlop) {
+            canceled = true
+            reason = "movement"
+        }
+    }
+
+    fun decision(): ThreadMessageTapMovementDecision =
+        ThreadMessageTapMovementDecision(
+            allowed = downPosition != null && !canceled,
+            reason = reason,
+            maxDistance = maxDistance,
+            touchSlop = touchSlop,
+            pointerCount = pointerCount
+        )
 }
 
 internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
