@@ -14278,18 +14278,11 @@ private fun SharedMembersScreen(
     when (val current = state) {
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                SlockTopPageHeader(
-                    title = "Members",
-                    subtitle = null,
-                    iconName = SlockLucideIconName.Users
-                )
+                MembersPageHeader(title = "Members")
                 SlockCenteredLoading()
         }
         is SharedMembersUiState.Error ->
-            PageErrorContent(
-                title = "Members",
-                subtitle = "Workspace members",
-                iconName = SlockLucideIconName.Users,
+            MembersPageErrorContent(
                 message = "Could not load members",
                 code = current.code,
                 onRetry = onRetry
@@ -19118,7 +19111,9 @@ private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier
 private fun PageErrorContent(
     title: String,
     subtitle: String,
-    iconName: SlockLucideIconName,
+    iconName: SlockLucideIconName?,
+    headerContentStartPadding: Dp = 20.dp,
+    headerTitleStyle: TextStyle = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     message: String,
     code: String,
     retryLabel: String? = "Retry",
@@ -19131,27 +19126,68 @@ private fun PageErrorContent(
                 .background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SlockTopPageHeader(title = title, subtitle = subtitle, iconName = iconName)
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(SlockSpacing.Md)
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Md)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                Text(text = message, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
-                Text(text = settingsUserFacingErrorCodeMessage(code), style = SlockType.Caption, color = SlockColor.AccentRed)
-                if (retryLabel != null && onRetry != null) {
-                    SlockBrutalActionButton(
-                        label = retryLabel,
-                        onClick = onRetry,
-                        leadingIcon = SlockLucideIconName.RefreshCw,
-                        backgroundColor = SlockColor.SurfaceWhite
-                    )
-                }
+        SlockTopPageHeader(
+            title = title,
+            subtitle = subtitle,
+            iconName = iconName,
+            contentStartPadding = headerContentStartPadding,
+            titleStyle = headerTitleStyle
+        )
+        PageErrorBody(
+            message = message,
+            code = code,
+            retryLabel = retryLabel,
+            onRetry = onRetry
+        )
+    }
+}
+
+@Composable
+private fun MembersPageErrorContent(
+    message: String,
+    code: String,
+    onRetry: (() -> Unit)?
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        MembersPageHeader(title = "Members")
+        PageErrorBody(
+            message = message,
+            code = code,
+            retryLabel = "Retry",
+            onRetry = onRetry
+        )
+    }
+}
+
+@Composable
+private fun PageErrorBody(
+    message: String,
+    code: String,
+    retryLabel: String?,
+    onRetry: (() -> Unit)?
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(SlockSpacing.Md)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Md)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+            Text(text = message, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
+            Text(text = settingsUserFacingErrorCodeMessage(code), style = SlockType.Caption, color = SlockColor.AccentRed)
+            if (retryLabel != null && onRetry != null) {
+                SlockBrutalActionButton(
+                    label = retryLabel,
+                    onClick = onRetry,
+                    leadingIcon = SlockLucideIconName.RefreshCw,
+                    backgroundColor = SlockColor.SurfaceWhite
+                )
             }
         }
     }
@@ -20886,10 +20922,10 @@ internal fun SettingsHomeContent(
             Modifier
         }
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
+        SlockMainTabPageHeader(
+            surface = SlockMainTabHeaderSurface.Settings,
             title = payload.title,
             subtitle = null,
-            iconName = SlockLucideIconName.Settings,
             modifier = headerModifier,
             applyTopSafeArea = applyTopSafeArea
         )

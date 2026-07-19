@@ -36,6 +36,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -47,6 +48,20 @@ private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
 private val PullRefreshCarrierColor = SlockColor.SurfaceWhite
+internal val SlockCollapsibleSectionContentGap = 4.dp
+internal val SlockCollapsibleSectionCountTextStyle =
+    SlockType.SectionLabel.copy(fontFamily = SlockMonoFamily, letterSpacing = 0.sp)
+internal val SlockCollapsibleSectionCountColor = SlockColor.TextBlack.copy(alpha = 0.4f)
+internal val SlockMainTabHeaderStartPadding = 8.dp
+internal val SlockMainTabHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
+
+internal enum class SlockMainTabHeaderSurface(
+    val iconName: SlockLucideIconName
+) {
+    Members(SlockLucideIconName.Users),
+    Tasks(SlockLucideIconName.SquareCheckBig),
+    Settings(SlockLucideIconName.Settings)
+}
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -63,6 +78,8 @@ internal fun SlockTopPageHeader(
     modifier: Modifier = Modifier,
     applyTopSafeArea: Boolean = true,
     headerHeight: Dp = SlockSize.PageHeaderHeight,
+    contentStartPadding: Dp = 20.dp,
+    titleStyle: TextStyle = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
     refreshing: Boolean = false,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
@@ -82,7 +99,7 @@ internal fun SlockTopPageHeader(
                     Modifier
                         .fillMaxWidth()
                         .height(topSafeArea + contentHeight)
-                        .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
+                        .padding(start = contentStartPadding, top = topSafeArea, end = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -113,7 +130,7 @@ internal fun SlockTopPageHeader(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = title,
-                        style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                        style = titleStyle,
                         color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -145,6 +162,29 @@ internal fun SlockTopPageHeader(
         }
         SlockAppShellBodyTopBanner()
     }
+}
+
+@Composable
+internal fun SlockMainTabPageHeader(
+    surface: SlockMainTabHeaderSurface,
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+    applyTopSafeArea: Boolean = true,
+    refreshing: Boolean = false,
+    leadingContent: (@Composable BoxScope.() -> Unit)? = null
+) {
+    SlockTopPageHeader(
+        title = title,
+        subtitle = subtitle,
+        iconName = surface.iconName,
+        modifier = modifier,
+        applyTopSafeArea = applyTopSafeArea,
+        contentStartPadding = SlockMainTabHeaderStartPadding,
+        titleStyle = SlockMainTabHeaderTitleStyle,
+        refreshing = refreshing,
+        leadingContent = leadingContent
+    )
 }
 
 @Composable
@@ -290,6 +330,7 @@ internal fun SlockCollapsibleSectionHeader(
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     showCollapsedUnreadDot: Boolean = false,
+    minHeight: Dp = 30.dp,
     sortContentDescription: String? = null,
     onSortClick: ((Offset) -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
@@ -297,10 +338,10 @@ internal fun SlockCollapsibleSectionHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 30.dp)
+            .heightIn(min = minHeight)
             .clickable { onExpandedChange(!expanded) },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        horizontalArrangement = Arrangement.spacedBy(SlockCollapsibleSectionContentGap)
     ) {
         SlockLucideIcon(
             SlockLucideIconName.ChevronRight,
@@ -311,14 +352,12 @@ internal fun SlockCollapsibleSectionHeader(
         Text(
             label.uppercase(),
             style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack,
-            modifier = Modifier.padding(start = SlockSpacing.Xs)
+            color = SlockColor.TextBlack
         )
         Text(
             count.toString(),
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray,
-            modifier = Modifier.padding(start = SlockSpacing.Xs)
+            style = SlockCollapsibleSectionCountTextStyle,
+            color = SlockCollapsibleSectionCountColor
         )
         if (!expanded && showCollapsedUnreadDot) {
             SlockStatusIndicator(
@@ -347,7 +386,9 @@ internal fun SlockSectionHeaderIconAction(
     icon: SlockLucideIconName,
     contentDescription: String,
     onClick: () -> Unit = {},
-    onClick2: (Offset) -> Unit = {}
+    onClick2: (Offset) -> Unit = {},
+    size: Dp = SectionHeaderActionSize,
+    iconSize: Dp = SectionHeaderActionIconSize
 ) {
     var anchor by remember { mutableStateOf(Offset.Zero) }
     Button(
@@ -357,13 +398,13 @@ internal fun SlockSectionHeaderIconAction(
         },
         modifier =
             Modifier
-                .size(SectionHeaderActionSize)
+                .size(size)
                 .onGloballyPositioned { coords ->
                     val root = coords.positionInRoot()
                     anchor = Offset(root.x, root.y + coords.size.height.toFloat())
                 }
     ) {
-        SlockLucideIcon(icon, Modifier.size(SectionHeaderActionIconSize))
+        SlockLucideIcon(icon, Modifier.size(iconSize))
     }
 }
 
