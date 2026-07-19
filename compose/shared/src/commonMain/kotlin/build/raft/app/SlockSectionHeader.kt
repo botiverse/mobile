@@ -48,6 +48,10 @@ private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
 private val PullRefreshCarrierColor = SlockColor.SurfaceWhite
+internal val SlockCollapsibleSectionContentGap = 4.dp
+internal val SlockCollapsibleSectionCountTextStyle =
+    SlockType.SectionLabel.copy(fontFamily = SlockMonoFamily, letterSpacing = 0.sp)
+internal val SlockCollapsibleSectionCountColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 internal val SlockMainTabHeaderStartPadding = 8.dp
 internal val SlockMainTabHeaderTitleStyle = SlockType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
 
@@ -337,7 +341,7 @@ internal fun SlockCollapsibleSectionHeader(
             .heightIn(min = minHeight)
             .clickable { onExpandedChange(!expanded) },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        horizontalArrangement = Arrangement.spacedBy(SlockCollapsibleSectionContentGap)
     ) {
         SlockLucideIcon(
             SlockLucideIconName.ChevronRight,
@@ -348,14 +352,12 @@ internal fun SlockCollapsibleSectionHeader(
         Text(
             label.uppercase(),
             style = SlockType.SectionLabel,
-            color = SlockColor.TextBlack,
-            modifier = Modifier.padding(start = SlockSpacing.Xs)
+            color = SlockColor.TextBlack
         )
         Text(
             count.toString(),
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray,
-            modifier = Modifier.padding(start = SlockSpacing.Xs)
+            style = SlockCollapsibleSectionCountTextStyle,
+            color = SlockCollapsibleSectionCountColor
         )
         if (!expanded && showCollapsedUnreadDot) {
             SlockStatusIndicator(
