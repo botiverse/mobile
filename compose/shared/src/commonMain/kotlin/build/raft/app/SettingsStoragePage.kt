@@ -264,7 +264,7 @@ private fun SettingsStorageButton(
         minWidth = 0.dp,
         minHeight = 44.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+        textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
     )
 }
 

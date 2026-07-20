@@ -3169,7 +3169,7 @@ private fun ComposerTextChip(
         minWidth = 0.dp,
         minHeight = 26.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.Caption.copy(color = SlockColor.TextBlack)
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
     )
 }
 

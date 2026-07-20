@@ -4382,7 +4382,7 @@ private fun SlockFilePreviewDownloadControls(
             minWidth = 92.dp,
             minHeight = 34.dp,
             shadowOffset = 2.dp,
-            textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
         )
         SlockBrutalActionButton(
             label = stringResource(MR.strings.common_stop),
@@ -4391,7 +4391,7 @@ private fun SlockFilePreviewDownloadControls(
             minWidth = 82.dp,
             minHeight = 34.dp,
             shadowOffset = 2.dp,
-            textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
         )
     }
 }
