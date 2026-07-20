@@ -739,7 +739,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityUpdateTrackingRetiresHeadUpdatesAlreadyVisibleAfterSnapshotRender() {
+    fun activityUpdateTrackingKeepsOrderChangesPendingUntilExplicitReveal() {
         InboxFilter.entries.forEach { filter ->
             val old = activityItem(key = "channel:old", latestActivityMessageId = "message:old", unreadCount = 1)
             val visibleArrivals =
@@ -758,31 +758,81 @@ class SharedInboxPanelTest {
                     .recordSnapshot(filter, current)
             assertEquals(8, pending.pendingCount, "$filter records the arrivals before layout catches up")
 
-            val stillHidden =
-                pending.reconcileVisibleSnapshot(
-                    nextFilter = filter,
-                    currentItems = current,
-                    visibleItemKeys = listOf(old.key)
-                )
-            assertEquals(8, stillHidden.pendingCount, "$filter keeps the batch while its new head is outside the viewport")
-
             val reconciled =
-                pending.reconcileVisibleSnapshot(
+                pending.reconcileCanonicalSnapshot(
                     nextFilter = filter,
-                    currentItems = current,
-                    visibleItemKeys = listOf(visibleArrivals.first().key)
+                    currentItems = current
                 )
-
-            assertEquals(0, reconciled.pendingCount, "$filter must retire the batch once its new head is visible")
+            assertEquals(8, reconciled.pendingCount, "$filter keeps order changes pending until the user reveals them")
+            assertEquals(0, reconciled.consumePending().pendingCount, "$filter explicit reveal consumes the batch")
 
             val refreshedWithoutArrivals =
-                pending.reconcileVisibleSnapshot(
+                pending.reconcileCanonicalSnapshot(
                     nextFilter = filter,
-                    currentItems = listOf(old),
-                    visibleItemKeys = listOf(old.key)
+                    currentItems = listOf(old)
                 )
             assertEquals(0, refreshedWithoutArrivals.pendingCount, "$filter refresh must drop markers absent from its baseline")
         }
+    }
+
+    @Test
+    fun activityPresentedOrderKeepsLowerReplyInItsOriginalSlotUntilReveal() {
+        val first = activityItem(key = "channel:first", latestActivityMessageId = "message:first")
+        val lower = activityItem(key = "channel:lower", latestActivityMessageId = "message:old")
+        val third = activityItem(key = "channel:third", latestActivityMessageId = "message:third")
+        val updatedLower = lower.copy(latestActivityMessageId = MessageId("message:new"), unreadCount = 1)
+        val canonical = listOf(updatedLower, first, third)
+
+        val held =
+            activityItemsPreservingPresentedOrder(
+                presentedItems = listOf(first, lower, third),
+                canonicalItems = canonical
+            )
+
+        assertEquals(listOf(first.key, lower.key, third.key), held.map(InboxItem::key))
+        assertEquals(MessageId("message:new"), held[1].latestActivityMessageId)
+        assertEquals(1, held.count { it.key == lower.key })
+        assertEquals(listOf(lower.key, first.key, third.key), canonical.map(InboxItem::key))
+    }
+
+    @Test
+    fun activityPresentedOrderWithholdsBrandNewHeadUntilReveal() {
+        val first = activityItem(key = "channel:first")
+        val second = activityItem(key = "channel:second")
+        val newHead = activityItem(key = "channel:new", latestActivityMessageId = "message:new")
+
+        val held =
+            activityItemsPreservingPresentedOrder(
+                presentedItems = listOf(first, second),
+                canonicalItems = listOf(newHead, first, second)
+            )
+
+        assertEquals(listOf(first.key, second.key), held.map(InboxItem::key))
+        assertEquals(listOf(newHead.key, first.key, second.key), listOf(newHead, first, second).map(InboxItem::key))
+    }
+
+    @Test
+    fun activityPresentationGenerationChangesOnlyWhenVisibleKeyOrderCommits() {
+        val first = activityItem(key = "channel:first")
+        val second = activityItem(key = "channel:second")
+        val updatedSecond = second.copy(latestActivityMessageId = MessageId("message:new"))
+
+        assertEquals(
+            7,
+            activityNextPresentationGeneration(
+                currentGeneration = 7,
+                presentedItems = listOf(first, second),
+                nextPresentedItems = listOf(first, updatedSecond)
+            )
+        )
+        assertEquals(
+            8,
+            activityNextPresentationGeneration(
+                currentGeneration = 7,
+                presentedItems = listOf(first, second),
+                nextPresentedItems = listOf(updatedSecond, first)
+            )
+        )
     }
 
     @Test
@@ -1238,6 +1288,26 @@ class SharedInboxPanelTest {
             )
 
         assertEquals(base.inboxItemOpenGestureKey(), updated.inboxItemOpenGestureKey())
+    }
+
+    @Test
+    fun activityOpenGestureKeyChangesWhenPresentedOrderGenerationChanges() {
+        val item = activityItem(key = "channel:stable", latestActivityMessageId = "message:old", unreadCount = 0)
+        val updatedSameSlot =
+            item.copy(
+                latestActivityMessageId = MessageId("message:new"),
+                firstUnreadMessageId = MessageId("message:new"),
+                unreadCount = 3
+            )
+
+        assertEquals(
+            item.activityOpenGestureKey(presentationGeneration = 3),
+            updatedSameSlot.activityOpenGestureKey(presentationGeneration = 3)
+        )
+        assertNotEquals(
+            item.activityOpenGestureKey(presentationGeneration = 3),
+            item.activityOpenGestureKey(presentationGeneration = 4)
+        )
     }
 
     @Test

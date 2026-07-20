@@ -659,10 +659,13 @@ private fun SharedActivityList(
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
     var updateTracking by remember(selectedFilter) { mutableStateOf(ActivityUpdateTrackingState(filter = selectedFilter)) }
     var revealRequest by remember(selectedFilter) { mutableStateOf(0) }
+    var presentedItems by remember(selectedFilter) { mutableStateOf(snapshot.items) }
+    var presentationGeneration by remember(selectedFilter) { mutableStateOf(0) }
+    var authoritativeRefreshInFlight by remember(selectedFilter) { mutableStateOf(false) }
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
-    LaunchedEffect(snapshot.items) {
+    LaunchedEffect(presentedItems) {
         val visibleItemKeys =
             listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
                 itemInfo.key as? String
@@ -671,47 +674,66 @@ private fun SharedActivityList(
             activityListShouldRecoverVisibleContent(
                 firstVisibleItemIndex = listState.firstVisibleItemIndex,
                 visibleItemKeys = visibleItemKeys,
-                currentItemKeys = snapshot.items.map(InboxItem::key)
+                currentItemKeys = presentedItems.map(InboxItem::key)
             )
         ) {
             updateTracking = updateTracking.consumePending()
             listState.scrollToItem(0)
         }
     }
-    LaunchedEffect(snapshot.items) {
+    LaunchedEffect(presentedItems) {
         val selected = selectedItemKey
-        if (selected != null && snapshot.items.none { it.key == selected }) {
+        if (selected != null && presentedItems.none { it.key == selected }) {
             selectedItemKey = null
         }
     }
     LaunchedEffect(selectedFilter, snapshot.items, refreshing, pullRefreshing) {
-        // Realtime arrivals never take ownership of the Activity viewport, even
-        // while it is parked away from the new head. Once the rendered viewport
-        // already contains that head, however, the batch has been shown and the
-        // banner must retire synchronously instead of advertising visible rows.
-        // Refresh transitions re-run the same reconciliation so a stale marker
-        // cannot survive a pull refresh. Filter changes establish a fresh
-        // baseline: All, Unread and Mentions never classify one another's
-        // membership changes as arrivals.
-        updateTracking =
+        if (refreshing || pullRefreshing) {
+            authoritativeRefreshInFlight = true
+        }
+        val authoritativeRefreshCompleted =
+            authoritativeRefreshInFlight && !refreshing && !pullRefreshing
+        var nextTracking =
             updateTracking
                 .recordSnapshot(selectedFilter, snapshot.items)
-                .reconcileVisibleSnapshot(
+                .reconcileCanonicalSnapshot(
                     nextFilter = selectedFilter,
-                    currentItems = snapshot.items,
-                    visibleItemKeys =
-                        listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
-                            itemInfo.key as? String
-                        }
+                    currentItems = snapshot.items
                 )
+        val nextPresentedItems =
+            when {
+                authoritativeRefreshCompleted -> snapshot.items
+                nextTracking.pendingCount > 0 ->
+                    // Realtime/background snapshots may advance content for a
+                    // stable row, but they do not own its visible slot. Keep
+                    // every presented key in place and withhold new keys until
+                    // the user explicitly consumes the update banner.
+                    activityItemsPreservingPresentedOrder(
+                        presentedItems = presentedItems,
+                        canonicalItems = snapshot.items
+                    )
+                else -> snapshot.items
+            }
+        presentationGeneration =
+            activityNextPresentationGeneration(
+                currentGeneration = presentationGeneration,
+                presentedItems = presentedItems,
+                nextPresentedItems = nextPresentedItems
+            )
+        presentedItems = nextPresentedItems
+        if (authoritativeRefreshCompleted) {
+            nextTracking = nextTracking.consumePending()
+            authoritativeRefreshInFlight = false
+        }
+        updateTracking = nextTracking
     }
     LaunchedEffect(selectedFilter, revealRequest) {
         if (revealRequest > 0) {
             listState.animateScrollToTopExpressive()
         }
     }
-    LaunchedEffect(listState, selectedFilter, snapshot.server.id, snapshot.items) {
-        val activityItemsByKey = snapshot.items.associateBy(InboxItem::key)
+    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems) {
+        val activityItemsByKey = presentedItems.associateBy(InboxItem::key)
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
                 .mapNotNull { itemInfo ->
@@ -721,15 +743,6 @@ private fun SharedActivityList(
         }
             .distinctUntilChanged()
             .collect { visibleItemKeys ->
-                // layoutInfo is updated after remeasure. This is the decisive
-                // signal for prepended rows: if the new head is now in the
-                // viewport, the corresponding update batch is already visible.
-                updateTracking =
-                    updateTracking.reconcileVisibleSnapshot(
-                        nextFilter = selectedFilter,
-                        currentItems = snapshot.items,
-                        visibleItemKeys = visibleItemKeys
-                    )
                 val markers =
                     visibleItemKeys
                         .mapNotNull { key ->
@@ -760,8 +773,8 @@ private fun SharedActivityList(
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) }
                 )
             }
-            items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
-                val item = snapshot.items[index]
+            items(presentedItems.size, key = { index -> presentedItems[index].key }) { index ->
+                val item = presentedItems[index]
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
@@ -770,12 +783,13 @@ private fun SharedActivityList(
                     timeContext = timeContext,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     captureMenuAnchor = !listState.isScrollInProgress,
+                    presentationGeneration = presentationGeneration,
                     onOpen = {
                         selectedItemKey = item.key
                         onIntent(
                             SharedActivityIntent.PrewarmActivityTail(
                                 activityReplyThreadPrewarmNextAfterClick(
-                                    items = snapshot.items,
+                                    items = presentedItems,
                                     clickedIndex = index,
                                     serverId = snapshot.server.id.value
                                 )
@@ -834,6 +848,13 @@ private fun SharedActivityList(
                     // marker and remains actionable; animation completion never
                     // clears work that arrived after this click.
                     updateTracking = updateTracking.consumePending()
+                    presentationGeneration =
+                        activityNextPresentationGeneration(
+                            currentGeneration = presentationGeneration,
+                            presentedItems = presentedItems,
+                            nextPresentedItems = snapshot.items
+                        )
+                    presentedItems = snapshot.items
                     revealRequest += 1
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
@@ -964,11 +985,15 @@ private fun SharedActivityRow(
     timeContext: SlockTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
+    presentationGeneration: Int = 0,
     onOpen: () -> Unit,
     onDone: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ) {
-    val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
+    val openGestureKey =
+        remember(item, presentationGeneration) {
+            item.activityOpenGestureKey(presentationGeneration)
+        }
     val mutedPrimaryContent = item.activityPrimaryContentMuted()
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
@@ -984,7 +1009,12 @@ private fun SharedActivityRow(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+                            .activityRowGestures(
+                                openGestureKey,
+                                captureMenuAnchor,
+                                onOpen,
+                                onOpenMenu
+                            )
                             .padding(start = 12.dp, top = 12.dp)
                 ) {
                 // Tag + timestamp share the top row — artin's ruling on #1039
@@ -1090,7 +1120,12 @@ private fun SharedActivityRow(
                 Modifier
                     .fillMaxWidth()
                     .height(12.dp)
-                    .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+                    .activityRowGestures(
+                        openGestureKey,
+                        captureMenuAnchor,
+                        onOpen,
+                        onOpenMenu
+                    )
             )
         }
     }
@@ -1143,6 +1178,13 @@ internal fun InboxItem.inboxItemOpenGestureKey(): String =
         resolveInboxAnchorMessageId()?.value.orEmpty(),
         unreadCount.toString()
     ).joinToString("|")
+
+internal fun InboxItem.activityOpenGestureKey(presentationGeneration: Int): String =
+    // The Activity pointer owner follows the stable presented slot, not the
+    // latest anchor/unread fields. rememberUpdatedState supplies the newest
+    // row payload to the callback; only a committed order generation change
+    // may cancel a DOWN→UP gesture that started on this slot.
+    "activity-open:$key|presentation:$presentationGeneration"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -1609,6 +1651,30 @@ internal fun activityListShouldRecoverVisibleContent(
     return visibleItemKeys.none(currentKeys::contains)
 }
 
+internal fun activityItemsPreservingPresentedOrder(
+    presentedItems: List<InboxItem>,
+    canonicalItems: List<InboxItem>
+): List<InboxItem> {
+    // Stable LazyColumn keys preserve node identity only when the business list
+    // also preserves slots. Reordering the backing list between DOWN and UP can
+    // otherwise let a new coordinate occupant receive the gesture on affected
+    // Kuikly runtimes. Update fields in place and reveal canonical order later.
+    if (presentedItems.isEmpty() || canonicalItems.isEmpty()) return presentedItems
+    val canonicalByKey = canonicalItems.associateBy(InboxItem::key)
+    return presentedItems.map { presented -> canonicalByKey[presented.key] ?: presented }
+}
+
+internal fun activityNextPresentationGeneration(
+    currentGeneration: Int,
+    presentedItems: List<InboxItem>,
+    nextPresentedItems: List<InboxItem>
+): Int =
+    if (presentedItems.map(InboxItem::key) == nextPresentedItems.map(InboxItem::key)) {
+        currentGeneration
+    } else {
+        currentGeneration + 1
+    }
+
 internal data class ActivityUpdateMarker(
     val filter: InboxFilter,
     val itemKey: String,
@@ -1677,10 +1743,9 @@ internal data class ActivityUpdateTrackingState(
     fun consumePending(): ActivityUpdateTrackingState =
         copy(pendingUpdates = pendingUpdates.consumePending())
 
-    fun reconcileVisibleSnapshot(
+    fun reconcileCanonicalSnapshot(
         nextFilter: InboxFilter,
-        currentItems: List<InboxItem>,
-        visibleItemKeys: Collection<String>
+        currentItems: List<InboxItem>
     ): ActivityUpdateTrackingState {
         if (filter != nextFilter || pendingUpdates.pendingMarkers.isEmpty()) return this
 
@@ -1692,19 +1757,8 @@ internal data class ActivityUpdateTrackingState(
                     latestActivityMessageId = item.latestActivityMessageId?.value
                 )
             }
-        var reconciled =
+        val reconciled =
             pendingUpdates.retire(pendingUpdates.pendingMarkers - currentMarkers)
-        val leadingPendingMarker =
-            currentItems.firstNotNullOfOrNull { item ->
-                ActivityUpdateMarker(
-                    filter = nextFilter,
-                    itemKey = item.key,
-                    latestActivityMessageId = item.latestActivityMessageId?.value
-                ).takeIf(reconciled.pendingMarkers::contains)
-            }
-        if (leadingPendingMarker != null && leadingPendingMarker.itemKey in visibleItemKeys) {
-            reconciled = reconciled.consumePending()
-        }
         return if (reconciled == pendingUpdates) this else copy(pendingUpdates = reconciled)
     }
 }
