@@ -1,16 +1,28 @@
 package build.raft.app
 
 import build.raft.app.data.ActivityUnreadSummaryProjection
+import build.raft.app.data.ActivityPendingUpdateLedger
+import build.raft.app.data.ActivityUpdateMarker
+import build.raft.app.data.ActivityUpdatePresentation
+import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.SharedActivityState
+import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedActivitySenderProfile
+import build.raft.app.data.SharedActivityPresentationCheckpoint
+import build.raft.app.data.SharedActivityPresentationStore
+import build.raft.app.data.activityPendingUpdateIncrement
+import build.raft.app.data.activityPendingUpdateMarkers
+import build.raft.app.data.activityUpdatePresentation
+import build.raft.app.data.activityUpdateRevisionMessageId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
@@ -861,6 +873,165 @@ class SharedInboxPanelTest {
                 pullRefreshCompleted = false
             )
         )
+    }
+
+    @Test
+    fun activityRouteRecreationRestoresPresentedOrderBeforeRecordingSelfSend() {
+        val filter = InboxFilter.All
+        val serverId = "server:route-retained"
+        val first = activityItem(key = "thread:first", latestActivityMessageId = "message:first", kind = InboxItemKind.Thread)
+        val lower = activityItem(key = "thread:lower", latestActivityMessageId = "message:old", kind = InboxItemKind.Thread)
+        val third = activityItem(key = "thread:third", latestActivityMessageId = "message:third", kind = InboxItemKind.Thread)
+        val baseline = listOf(first, lower, third)
+        val selfSend = lower.copy(latestActivityMessageId = MessageId("message:self-send"))
+        val canonicalAfterRouteReturn = listOf(third, first, selfSend)
+        val presentationStore = SharedActivityPresentationStore()
+
+        val beforeRoute = presentationStore.restoreOrCreate("account:one", serverId, filter, baseline)
+        presentationStore.save(
+            "account:one",
+            serverId,
+            filter,
+            SharedActivityPresentationCheckpoint(
+                presentedItems = beforeRoute.presentedItems,
+                updateTracking = beforeRoute.updateTracking
+            )
+        )
+
+        val restored = presentationStore.restoreOrCreate("account:one", serverId, filter, canonicalAfterRouteReturn)
+        val trackingAfterReturn =
+            restored.updateTracking
+                .recordSnapshot(filter, canonicalAfterRouteReturn)
+                .reconcileCanonicalSnapshot(filter, canonicalAfterRouteReturn)
+        val held = activityItemsPreservingPresentedOrder(restored.presentedItems, canonicalAfterRouteReturn)
+
+        assertEquals(listOf(first.key, lower.key, third.key), restored.presentedItems.map(InboxItem::key))
+        assertEquals(1, trackingAfterReturn.pendingCount)
+        assertEquals(listOf(first.key, lower.key, third.key), held.map(InboxItem::key))
+        assertEquals(MessageId("message:self-send"), held[1].latestActivityMessageId)
+        assertFalse(activityShouldAdoptCanonicalOrder(trackingAfterReturn.pendingCount, pullRefreshCompleted = false))
+    }
+
+    @Test
+    fun activityRoutePresentationIsIsolatedByAccountServerAndFilter() {
+        val store = SharedActivityPresentationStore()
+        val accountOne = listOf(activityItem(key = "thread:account-one"))
+        val accountTwo = listOf(activityItem(key = "thread:account-two"))
+
+        store.save(
+            accountId = "account:one",
+            serverId = "server:shared",
+            filter = InboxFilter.All,
+            checkpoint =
+                SharedActivityPresentationCheckpoint(
+                    presentedItems = accountOne,
+                    updateTracking =
+                        ActivityUpdateTrackingState(
+                            filter = InboxFilter.All,
+                            previousItems = accountOne,
+                            pendingUpdates =
+                                ActivityPendingUpdateLedger(
+                                    pendingMarkers =
+                                        setOf(
+                                            ActivityUpdateMarker(
+                                                filter = InboxFilter.All,
+                                                itemKey = accountOne.single().key,
+                                                latestActivityMessageId = "message:account-one"
+                                            )
+                                        )
+                                )
+                        ),
+                    presentationGeneration = 9,
+                    pullRefreshInFlight = true
+                )
+        )
+
+        val accountTwoRestored = store.restoreOrCreate("account:two", "server:shared", InboxFilter.All, accountTwo)
+        assertEquals(accountTwo.map(InboxItem::key), accountTwoRestored.presentedItems.map(InboxItem::key))
+        assertEquals(0, accountTwoRestored.updateTracking.pendingCount)
+        assertEquals(0, accountTwoRestored.presentationGeneration)
+        assertFalse(accountTwoRestored.pullRefreshInFlight)
+        assertEquals(
+            accountTwo.map(InboxItem::key),
+            store.restoreOrCreate("account:one", "server:other", InboxFilter.All, accountTwo).presentedItems.map(InboxItem::key)
+        )
+        assertEquals(
+            accountTwo.map(InboxItem::key),
+            store.restoreOrCreate("account:one", "server:shared", InboxFilter.Unread, accountTwo).presentedItems.map(InboxItem::key)
+        )
+
+        val missingOwner = store.restoreOrCreate("", "server:shared", InboxFilter.All, accountTwo)
+        assertEquals(accountTwo.map(InboxItem::key), missingOwner.presentedItems.map(InboxItem::key))
+        assertEquals(accountTwo.map(InboxItem::key), store.restoreOrCreate("account:one", "server:shared", InboxFilter.All, accountTwo).presentedItems.map(InboxItem::key))
+    }
+
+    @Test
+    fun activityStableOrderFlagDefaultsOffAndOffRestoresImmediateCanonicalOrder() {
+        val first = activityItem(key = "thread:first")
+        val lower = activityItem(key = "thread:lower")
+        val canonical = listOf(lower, first)
+
+        assertFalse(ServerFeatureFlagSnapshot.Unresolved.isEnabled(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY))
+        assertEquals(
+            canonical.map(InboxItem::key),
+            activityItemsAfterCanonicalSnapshot(
+                stableOrderEnabled = false,
+                pendingCount = 1,
+                pullRefreshCompleted = false,
+                presentedItems = listOf(first, lower),
+                canonicalItems = canonical
+            ).map(InboxItem::key)
+        )
+        assertEquals(
+            listOf(first.key, lower.key),
+            activityItemsAfterCanonicalSnapshot(
+                stableOrderEnabled = true,
+                pendingCount = 1,
+                pullRefreshCompleted = false,
+                presentedItems = listOf(first, lower),
+                canonicalItems = canonical
+            ).map(InboxItem::key)
+        )
+    }
+
+    @Test
+    fun activityStableOrderFlagOffClearsAllOwnerFilterCheckpoints() {
+        val store = SharedActivityPresentationStore()
+        val filters = listOf(InboxFilter.All, InboxFilter.Unread, InboxFilter.Mentions)
+        filters.forEachIndexed { index, filter ->
+            val retained = listOf(activityItem(key = "thread:retained:$filter"))
+            store.save(
+                accountId = "account:one",
+                serverId = "server:one",
+                filter = filter,
+                checkpoint =
+                    SharedActivityPresentationCheckpoint(
+                        presentedItems = retained,
+                        updateTracking =
+                            ActivityUpdateTrackingState(
+                                filter = filter,
+                                previousItems = retained,
+                                pendingUpdates =
+                                    ActivityPendingUpdateLedger(
+                                        pendingMarkers = setOf(ActivityUpdateMarker(filter, retained.single().key, "message:$index"))
+                                    )
+                            ),
+                        presentationGeneration = index + 1,
+                        pullRefreshInFlight = true
+                    )
+            )
+        }
+
+        store.clearOwner("account:one", "server:one")
+
+        filters.forEach { filter ->
+            val canonical = listOf(activityItem(key = "thread:canonical:$filter"))
+            val restored = store.restoreOrCreate("account:one", "server:one", filter, canonical)
+            assertEquals(canonical.map(InboxItem::key), restored.presentedItems.map(InboxItem::key))
+            assertEquals(0, restored.updateTracking.pendingCount)
+            assertEquals(0, restored.presentationGeneration)
+            assertFalse(restored.pullRefreshInFlight)
+        }
     }
 
     @Test
