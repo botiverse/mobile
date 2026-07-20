@@ -1250,10 +1250,12 @@ class RealSettingsRepository(
 
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
         sessionStore.readSession() ?: return authRequired()
-        val serverMute =
+        val serverNotificationPreferences =
             selectedServerId()?.let { serverId ->
-                fetchServerMute(serverId)
+                fetchServerNotificationPreferences(serverId)
             } ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val serverNotificationMode =
+            (serverNotificationPreferences as? DataResult.Content)?.data?.mode ?: ServerPushMode.All
         return DataResult.Content(
             SettingsMobileSnapshot(
                 pushNotifications = SettingsMobileToggleSnapshot(
@@ -1263,22 +1265,31 @@ class RealSettingsRepository(
                     detail = "Notifications can arrive while Raft is in the background. Use a test notification to verify this device."
                 ),
                 muteServer = SettingsMobileToggleSnapshot(
-                    enabled = (serverMute as? DataResult.Content)?.data ?: false,
-                    available = serverMute !is DataResult.NoPermission && serverMute !is DataResult.Error && serverMute !is DataResult.Empty,
+                    enabled = serverNotificationMode == ServerPushMode.None,
+                    available = serverNotificationPreferences is DataResult.Content,
                     statusLabel =
-                        if ((serverMute as? DataResult.Content)?.data == true) {
+                        if (serverNotificationMode == ServerPushMode.None) {
                             "Muted"
                         } else {
                             "Not muted"
                         },
                     detail =
-                        when (serverMute) {
+                        when (serverNotificationPreferences) {
                             is DataResult.Content -> "Stops push notifications from the currently selected workspace."
                             is DataResult.NoPermission -> "You do not have permission to read workspace notification settings."
-                            is DataResult.Error -> "Workspace notification settings failed to load: ${serverMute.error.code}"
+                            is DataResult.Error -> "Workspace notification settings failed to load: ${serverNotificationPreferences.error.code}"
                             is DataResult.Empty -> "Workspace notification settings are unavailable."
                         }
                 ),
+                serverNotificationMode =
+                    serverNotificationMode.toSettingsMobileSelectionSnapshot(
+                        available = serverNotificationPreferences is DataResult.Content,
+                        mentionsSupported =
+                            (serverNotificationPreferences as? DataResult.Content)
+                                ?.data
+                                ?.canonicalModeSupported == true,
+                        detail = "Choose all messages, only direct mentions, or no push notifications for this workspace."
+                    ),
                 sendTestEnabled = true
             )
         )
@@ -1329,15 +1340,37 @@ class RealSettingsRepository(
         }
     }
 
-    override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+    override suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> {
         val serverId = selectedServerId() ?: return serverRequired()
-        return when (val result = settingsUpdateServerMute(serverId, enabled)) {
+        val current = fetchServerNotificationPreferences(serverId)
+        val preferences = (current as? DataResult.Content)?.data
+            ?: return when (current) {
+                is DataResult.Empty -> current
+                is DataResult.Error -> current
+                is DataResult.NoPermission -> current
+                is DataResult.Content -> error("unreachable")
+            }
+        if (mode == ServerPushMode.Mentions && !preferences.canonicalModeSupported) {
+            return DataResult.Error(
+                ScreenError(code = "settings_server_notification_mentions_unsupported", retryable = false)
+            )
+        }
+        return when (
+            val result = settingsUpdateServerNotificationMode(
+                serverId = serverId,
+                mode = mode,
+                canonicalModeSupported = preferences.canonicalModeSupported
+            )
+        ) {
             is DataResult.Content -> getMobileSettings()
             is DataResult.Empty -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
         }
     }
+
+    override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> =
+        setServerNotificationMode(if (enabled) ServerPushMode.None else ServerPushMode.All)
 
     private suspend fun settingsComputers(
         serverId: String,
@@ -1873,13 +1906,13 @@ class RealSettingsRepository(
         }
     }
 
-    private suspend fun fetchServerMute(serverId: String): DataResult<Boolean> =
+    private suspend fun fetchServerNotificationPreferences(serverId: String): DataResult<SettingsServerNotificationPreferences> =
         executeTypedSettings(
             source = "settings_server_notification_settings",
             contractCode = "settings_server_notification_settings_contract_mismatch",
             block = { networkClient.settingsNotificationSettings(DataRequestPriority.Visible, serverId) },
             mapper = { bodyText ->
-                parseSharedSettingsServerNotificationSettings(bodyText)
+                parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
                     ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
             }
         )
@@ -2047,7 +2080,11 @@ class RealSettingsRepository(
             }
         )
 
-    private suspend fun settingsUpdateServerMute(serverId: String, enabled: Boolean): DataResult<Boolean> =
+    private suspend fun settingsUpdateServerNotificationMode(
+        serverId: String,
+        mode: ServerPushMode,
+        canonicalModeSupported: Boolean
+    ): DataResult<SettingsServerNotificationPreferences> =
         executeTypedSettings(
             source = "settings_server_notification_settings_update",
             contractCode = "settings_server_notification_settings_contract_mismatch",
@@ -2055,11 +2092,15 @@ class RealSettingsRepository(
                 networkClient.updateSettingsNotificationSettings(
                     DataRequestPriority.Foreground,
                     serverId,
-                    buildSharedSettingsServerMuteBody(enabled)
+                    if (canonicalModeSupported) {
+                        buildSharedSettingsServerNotificationModeBody(mode)
+                    } else {
+                        buildSharedSettingsLegacyServerMuteBody(mode == ServerPushMode.None)
+                    }
                 )
             },
             mapper = { bodyText ->
-                parseSharedSettingsServerNotificationSettings(bodyText)
+                parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
                     ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
             }
         )
@@ -3044,12 +3085,23 @@ fun buildSharedSettingsServerMemberRoleUpdateBody(role: String): String =
     settingsRepositoryJson.encodeToString(SettingsServerMemberRoleUpdateRequestBody(role = role))
 
 @Serializable
-data class SettingsServerMuteRequestBody(
+data class SettingsServerNotificationModeRequestBody(
+    val serverPushMode: String
+)
+
+fun buildSharedSettingsServerNotificationModeBody(mode: ServerPushMode): String =
+    settingsRepositoryJson.encodeToString(SettingsServerNotificationModeRequestBody(serverPushMode = mode.wireName))
+
+fun buildSharedSettingsServerMuteBody(enabled: Boolean): String =
+    buildSharedSettingsServerNotificationModeBody(if (enabled) ServerPushMode.None else ServerPushMode.All)
+
+@Serializable
+private data class SettingsLegacyServerMuteRequestBody(
     val serverPushMuted: Boolean
 )
 
-fun buildSharedSettingsServerMuteBody(enabled: Boolean): String =
-    settingsRepositoryJson.encodeToString(SettingsServerMuteRequestBody(serverPushMuted = enabled))
+private fun buildSharedSettingsLegacyServerMuteBody(enabled: Boolean): String =
+    settingsRepositoryJson.encodeToString(SettingsLegacyServerMuteRequestBody(serverPushMuted = enabled))
 
 fun buildSharedLanguageRegionPreferenceUpdateBody(
     request: SettingsLanguageRegionPreferenceUpdateRequest

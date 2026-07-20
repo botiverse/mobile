@@ -7,6 +7,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import com.tencent.kuikly.compose.profiler.RecompositionReport
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.CompletableDeferred
@@ -879,7 +880,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun mobileServerMuteIntentUsesSettingsRepository() = runBlocking {
+    fun mobileServerNotificationModeIntentUsesSettingsRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
         val store =
@@ -896,12 +897,12 @@ class SharedSettingsStoreTest {
             )
 
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
-        store.accept(SharedSettingsIntent.SetServerMute(true))
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.Mentions.wireName))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(true, mobile.muteServer.enabled)
-        assertEquals("Muted", mobile.muteServer.statusLabel)
-        assertEquals(listOf("setServerMute:true"), repository.calls)
+        assertEquals(false, mobile.muteServer.enabled)
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
         scope.cancel()
     }
 
@@ -1415,6 +1416,40 @@ class SharedSettingsStoreTest {
         assertEquals(listOf("computerDetail:machine-42"), repository.calls)
         // Detail state must remain Content (not flipped to Loading/Error).
         assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeServerNotificationModeReloadsOpenNotificationsPage() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    ServerNotificationPreferencesChanged(
+                        serverId = ServerId("server-1"),
+                        serverPushMode = ServerPushMode.Mentions.wireName,
+                        prefsVersion = 2
+                    )
+            )
+        )
+        yield()
+
+        assertEquals(listOf("mobile"), repository.calls)
+        assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile)
         scope.cancel()
     }
 
@@ -2948,6 +2983,24 @@ class SharedSettingsStoreTest {
                                 available = true,
                                 statusLabel = if (enabled) "Muted" else "Not muted"
                             )
+                    )
+                )
+            return mobileResult
+        }
+
+        override suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> {
+            calls += "setServerNotificationMode:${mode.wireName}"
+            val current = (mobileResult as? DataResult.Content)?.data ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            mobileResult =
+                DataResult.Content(
+                    current.copy(
+                        muteServer =
+                            current.muteServer.copy(
+                                enabled = mode == ServerPushMode.None,
+                                available = true,
+                                statusLabel = if (mode == ServerPushMode.None) "Muted" else "Not muted"
+                            ),
+                        serverNotificationMode = mode.toSettingsMobileSelectionSnapshot()
                     )
                 )
             return mobileResult

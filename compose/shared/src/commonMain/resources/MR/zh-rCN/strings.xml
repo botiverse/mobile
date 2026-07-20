@@ -1395,6 +1395,12 @@
     <string name="settings_notifications_request_permission">请求权限</string>
     <string name="settings_notifications_workspace">工作区</string>
     <string name="settings_notifications_mute_workspace">静音此工作区</string>
+    <string name="settings_notifications_mode_all">所有消息</string>
+    <string name="settings_notifications_mode_all_detail">此工作区中所有你有资格接收的消息都会发送通知。</string>
+    <string name="settings_notifications_mode_mentions">仅提及</string>
+    <string name="settings_notifications_mode_mentions_detail">仅当消息直接提及你时通知，包括展开后的群组提及。</string>
+    <string name="settings_notifications_mode_none">不通知</string>
+    <string name="settings_notifications_mode_none_detail">此工作区不发送推送通知，即使消息提及你也不通知。</string>
     <string name="settings_computers_loading">正在加载电脑</string>
     <string name="settings_computers_loading_detail">正在从此服务器获取已连接的电脑。</string>
     <string name="settings_computers_error_load">无法加载电脑</string>

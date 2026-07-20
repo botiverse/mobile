@@ -17,6 +17,7 @@ import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
@@ -980,6 +981,73 @@ class RealtimeEventMapperTest {
         assertEquals(900L, changed.preference.muteFromSeq)
         assertTrue(changed.preference.activityMuteSupported)
         assertEquals(2L, changed.prefsVersion)
+    }
+
+    @Test
+    fun serverNotificationPrefsUpdatedMapsOnlyMentionsMode() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPrefsUpdated,
+                """
+                {
+                  "serverId": "server-1",
+                  "scopeId": "server-1",
+                  "prefs": {
+                    "serverPushMuted": false,
+                    "serverPushMentionsOnly": true,
+                    "serverPushMode": "mentions"
+                  },
+                  "prefsVersion": 4
+                }
+                """.trimIndent()
+            )
+
+        val changed = assertIs<ServerNotificationPreferencesChanged>(event)
+        assertEquals("server-1", changed.serverId.value)
+        assertEquals("mentions", changed.serverPushMode)
+        assertEquals(4L, changed.prefsVersion)
+    }
+
+    @Test
+    fun serverNotificationPrefsUpdatedRejectsPresentUnknownCanonicalMode() {
+        val diagnostics = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = diagnostics::add).map(
+                RealtimeSocketEvents.NotificationPrefsUpdated,
+                """
+                {
+                  "serverId": "server-1",
+                  "scopeId": "server-1",
+                  "prefs": {
+                    "serverPushMuted": false,
+                    "serverPushMode": "future_restrictive"
+                  },
+                  "prefsVersion": 5
+                }
+                """.trimIndent()
+            )
+
+        assertNull(event)
+        assertTrue(diagnostics.any { it.contains("realtime_server_notification") && it.contains("server_push_mode") })
+    }
+
+    @Test
+    fun serverNotificationPrefsUpdatedFallsBackOnlyWhenCanonicalModeIsAbsent() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPrefsUpdated,
+                """
+                {
+                  "serverId": "server-1",
+                  "scopeId": "server-1",
+                  "prefs": { "serverPushMuted": true },
+                  "prefsVersion": 6
+                }
+                """.trimIndent()
+            )
+
+        val changed = assertIs<ServerNotificationPreferencesChanged>(event)
+        assertEquals("none", changed.serverPushMode)
     }
 
     @Test

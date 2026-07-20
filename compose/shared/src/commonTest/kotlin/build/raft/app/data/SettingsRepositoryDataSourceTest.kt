@@ -4,6 +4,7 @@ import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -568,6 +569,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(true, mobile.data.pushNotifications.available)
         assertEquals(true, mobile.data.muteServer.available)
         assertEquals("Not muted", mobile.data.muteServer.statusLabel)
+        assertEquals(ServerPushMode.All.wireName, mobile.data.serverNotificationMode.selectedKey)
         assertEquals(true, mobile.data.sendTestEnabled)
     }
 
@@ -575,14 +577,14 @@ class SettingsRepositoryDataSourceTest {
     fun mobileMuteInviteAndJoinLinkActionsUseConfirmedContracts() = runBlocking {
         val network =
             FakeSettingsNetworkClient(
-                notificationSettingsJson = """{"serverPushMuted":false}""",
+                notificationSettingsJson = """{"serverPushMuted":false,"serverPushMentionsOnly":false,"serverPushMode":"all"}""",
                 inviteDeleteJson = """{"ok":true}""",
                 createJoinLinkJson = """{"token":"created-token","link":{"id":"join-2","createdAt":"2026-05-09T00:00:00Z","expiresAt":"2026-06-01T00:00:00Z","maxUses":5,"useCount":0}}""",
                 joinLinkDeleteJson = """{"ok":true}"""
             )
         val repository = RealSettingsRepository(sampleStore(), network)
 
-        val muted = repository.setServerMute(true)
+        val mentionsOnly = repository.setServerNotificationMode(ServerPushMode.Mentions)
         val revokedInvite = repository.revokeServerInvite("invite-1")
         val createdJoinLink = repository.createServerJoinLink(
             SettingsServerJoinLinkCreateRequest(
@@ -592,9 +594,10 @@ class SettingsRepositoryDataSourceTest {
         )
         val revokedJoinLink = repository.revokeServerJoinLink("join-2")
 
-        assertTrue(muted is DataResult.Content)
-        assertEquals(true, muted.data.muteServer.enabled)
-        assertEquals("""{"serverPushMuted":true}""", network.notificationSettingsBodies.single())
+        assertTrue(mentionsOnly is DataResult.Content)
+        assertEquals(false, mentionsOnly.data.muteServer.enabled)
+        assertEquals(ServerPushMode.Mentions.wireName, mentionsOnly.data.serverNotificationMode.selectedKey)
+        assertEquals("""{"serverPushMode":"mentions"}""", network.notificationSettingsBodies.single())
         assertTrue(revokedInvite is DataResult.Content)
         assertEquals("invite-1", network.deletedInviteId)
         assertTrue(createdJoinLink is DataResult.Content)
@@ -602,6 +605,36 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("""{"expiresAt":"2026-06-01T00:00:00Z","maxUses":5}""", network.joinLinkBodies.single())
         assertTrue(revokedJoinLink is DataResult.Content)
         assertEquals("join-2", network.deletedJoinLinkId)
+    }
+
+    @Test
+    fun legacyServerKeepsAllAndNoneButDoesNotExposeMentions() = runBlocking {
+        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false}""")
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val initial = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
+        assertEquals(listOf("all", "none"), initial.serverNotificationMode.options.map { it.key })
+
+        val unsupported = repository.setServerNotificationMode(ServerPushMode.Mentions)
+        assertIs<DataResult.Error>(unsupported)
+        assertEquals("settings_server_notification_mentions_unsupported", unsupported.error.code)
+        assertTrue(network.notificationSettingsBodies.isEmpty())
+
+        assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.setServerNotificationMode(ServerPushMode.None))
+        assertEquals("""{"serverPushMuted":true}""", network.notificationSettingsBodies.single())
+    }
+
+    @Test
+    fun presentUnknownCanonicalServerModeFailsClosedWithoutLegacyFallback() {
+        val diagnostics = mutableListOf<String>()
+        val parsed = parseSharedSettingsServerNotificationSettings(
+            """{"serverPushMuted":false,"serverPushMode":"future_restrictive"}""",
+            diagnostics::add
+        )
+
+        assertEquals(null, parsed)
+        assertEquals(1, diagnostics.size)
+        assertTrue(diagnostics.single().contains("server_push_mode"))
     }
 
     @Test
@@ -1020,7 +1053,13 @@ class SettingsRepositoryDataSourceTest {
         private val responseCode: Int = 200
     ) : SlockNetworkClient {
         private var currentConnectedAppClientsJson = connectedAppClientsJson
-        private var currentServerPushMuted = notificationSettingsJson.contains("true")
+        private var currentServerPushMode =
+            when {
+                notificationSettingsJson.contains("mentions") -> "mentions"
+                notificationSettingsJson.contains("true") -> "none"
+                else -> "all"
+            }
+        private val canonicalNotificationModeSupported = notificationSettingsJson.contains("serverPushMode")
         var machinesServerId: String? = null
             private set
         var workspacesMachineId: String? = null
@@ -1212,11 +1251,24 @@ class SettingsRepositoryDataSourceTest {
                     response(serverOrderUpdateJson)
                 }
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "GET" ->
-                    response("""{"serverPushMuted":$currentServerPushMuted}""")
+                    response(if (canonicalNotificationModeSupported) {
+                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"}"""
+                    } else {
+                        """{"serverPushMuted":${currentServerPushMode == "none"}}"""
+                    })
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "PATCH" -> {
                     notificationSettingsBodies += bodyText.orEmpty()
-                    currentServerPushMuted = bodyText?.contains("true") == true
-                    response("""{"serverPushMuted":$currentServerPushMuted}""")
+                    currentServerPushMode =
+                        when {
+                            bodyText?.contains("\"mentions\"") == true -> "mentions"
+                            bodyText?.contains("\"none\"") == true || bodyText?.contains("true") == true -> "none"
+                            else -> "all"
+                        }
+                    response(if (canonicalNotificationModeSupported) {
+                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"}"""
+                    } else {
+                        """{"serverPushMuted":${currentServerPushMode == "none"}}"""
+                    })
                 }
                 normalized.matches(Regex("""servers/[^/]+""")) && method == "PATCH" -> {
                     val serverId = normalized.split("/")[1]

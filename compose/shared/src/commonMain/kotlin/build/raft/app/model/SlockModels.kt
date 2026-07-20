@@ -642,6 +642,13 @@ data class PerReceiverNotificationPrefsChanged(
     val prefsVersion: Long
 ) : RealtimeEvent
 
+@Serializable
+data class ServerNotificationPreferencesChanged(
+    val serverId: ServerId,
+    val serverPushMode: String,
+    val prefsVersion: Long
+) : RealtimeEvent
+
 /**
  * Per-receiver pinned sidebar update. The wire event is emitted to the
  * receiving user's room; the receiving member is inferred from the active
