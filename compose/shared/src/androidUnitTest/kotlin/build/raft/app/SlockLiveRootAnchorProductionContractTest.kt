@@ -222,12 +222,15 @@ class SlockLiveRootAnchorProductionContractTest {
             renderInOverlayOccurrences.joinToString("\n")
         )
 
-        val rawLayoutCoordinateFunctionType = Regex("\\([^)]*LayoutCoordinates[^)]*\\)->")
+        val productionSources =
+            relevantProductionSourceFiles().associate { file ->
+                file.relativeTo(composeRoot()).invariantSeparatorsPath to file.readText()
+            }
+        val rawLayoutCoordinateTypeNames = rawLayoutCoordinateTypeNames(productionSources.values)
         val rawCaptureCallbackDeclarations =
-            relevantProductionSourceFiles().mapNotNull { file ->
-                val whitespaceIndependentSource = file.readText().filterNot(Char::isWhitespace)
-                if (rawLayoutCoordinateFunctionType.containsMatchIn(whitespaceIndependentSource)) {
-                    file.relativeTo(composeRoot()).invariantSeparatorsPath
+            productionSources.mapNotNull { (path, source) ->
+                if (sourceExposesRawLayoutCoordinateCallback(source, rawLayoutCoordinateTypeNames)) {
+                    path
                 } else {
                     null
                 }
@@ -237,6 +240,75 @@ class SlockLiveRootAnchorProductionContractTest {
             rawCaptureCallbackDeclarations,
             "The live-anchor modifier must never export its raw LayoutCoordinates capability"
         )
+    }
+
+    @Test
+    fun rawLayoutCoordinateCallbackGateRejectsImportAliasesAndTypealiases() {
+        val directSource =
+            """
+            import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
+
+            fun DirectLeak(onCaptured: ((LayoutCoordinates) -> Unit)? = null) = Unit
+            """.trimIndent()
+        val importAliasSource =
+            """
+            import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates as LiveCoordinates
+
+            fun ImportAliasLeak(onCaptured: ((LiveCoordinates) -> Unit)? = null) = Unit
+            """.trimIndent()
+        val typealiasDeclarationSource =
+            """
+            import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates as InternalCoordinates
+
+            typealias AnchorCoordinates = InternalCoordinates
+            """.trimIndent()
+        val typealiasConsumerSource =
+            """
+            fun TypealiasLeak(onCaptured: ((AnchorCoordinates) -> Unit)? = null) = Unit
+            """.trimIndent()
+        val chainedTypealiasSource =
+            """
+            typealias NestedAnchorCoordinates = AnchorCoordinates
+            fun ChainedTypealiasLeak(onCaptured: ((NestedAnchorCoordinates) -> Unit)? = null) = Unit
+            """.trimIndent()
+        val importedTypealiasSource =
+            """
+            import build.raft.app.AnchorCoordinates as ImportedAnchorCoordinates
+
+            fun ImportedTypealiasLeak(onCaptured: ((ImportedAnchorCoordinates) -> Unit)? = null) = Unit
+            """.trimIndent()
+        val safeSource =
+            """
+            import com.tencent.kuikly.compose.ui.unit.IntSize as CapturedSize
+
+            typealias AnchorSize = CapturedSize
+            fun SafeProducer(onCaptured: ((AnchorSize) -> Unit)? = null) = Unit
+            """.trimIndent()
+        val allSources =
+            listOf(
+                directSource,
+                importAliasSource,
+                typealiasDeclarationSource,
+                typealiasConsumerSource,
+                chainedTypealiasSource,
+                importedTypealiasSource,
+                safeSource
+            )
+        val rawTypeNames = rawLayoutCoordinateTypeNames(allSources)
+
+        listOf(
+            directSource,
+            importAliasSource,
+            typealiasConsumerSource,
+            chainedTypealiasSource,
+            importedTypealiasSource
+        ).forEach { source ->
+            assertTrue(
+                sourceExposesRawLayoutCoordinateCallback(source, rawTypeNames),
+                "Raw LayoutCoordinates callback alias escaped the gate:\n$source"
+            )
+        }
+        assertFalse(sourceExposesRawLayoutCoordinateCallback(safeSource, rawTypeNames))
     }
 
     @Test
@@ -354,4 +426,60 @@ class SlockLiveRootAnchorProductionContractTest {
         walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .joinToString(separator = "\n") { it.readText() }
+
+    private fun rawLayoutCoordinateTypeNames(sources: Collection<String>): Set<String> {
+        val typealiasDefinitions =
+            sources.flatMap { source ->
+                val importAliases = importAliases(source)
+                TypealiasDefinitionRegex.findAll(source).map { match ->
+                    val alias = match.groupValues[1]
+                    val declaredTarget = match.groupValues[2].substringAfterLast('.')
+                    alias to (importAliases[declaredTarget]?.substringAfterLast('.') ?: declaredTarget)
+                }.toList()
+            }
+        val rawTypeNames = mutableSetOf("LayoutCoordinates")
+        var changed: Boolean
+        do {
+            changed = false
+            typealiasDefinitions.forEach { (alias, target) ->
+                if (target in rawTypeNames && rawTypeNames.add(alias)) changed = true
+            }
+        } while (changed)
+        return rawTypeNames
+    }
+
+    private fun sourceExposesRawLayoutCoordinateCallback(
+        source: String,
+        globalRawTypeNames: Set<String>
+    ): Boolean {
+        val localRawTypeNames = globalRawTypeNames.toMutableSet()
+        importAliases(source).forEach { (alias, importedType) ->
+            if (importedType.substringAfterLast('.') in globalRawTypeNames) {
+                localRawTypeNames += alias
+            }
+        }
+        val rawTypePattern =
+            localRawTypeNames
+                .sortedByDescending(String::length)
+                .joinToString(separator = "|") { name -> Regex.escape(name) }
+        val whitespaceIndependentSource = source.filterNot(Char::isWhitespace)
+        val rawParameterCallback =
+            Regex("\\([^)]*(?<![A-Za-z0-9_])(?:$rawTypePattern)(?![A-Za-z0-9_])[^)]*\\)->")
+        val rawReceiverCallback =
+            Regex("(?<![A-Za-z0-9_])(?:$rawTypePattern)(?![A-Za-z0-9_])\\.\\([^)]*\\)->")
+        return rawParameterCallback.containsMatchIn(whitespaceIndependentSource) ||
+            rawReceiverCallback.containsMatchIn(whitespaceIndependentSource)
+    }
+
+    private fun importAliases(source: String): Map<String, String> =
+        ImportAliasRegex.findAll(source).associate { match ->
+            match.groupValues[2] to match.groupValues[1]
+        }
+
+    private companion object {
+        val ImportAliasRegex =
+            Regex("(?m)^\\s*import\\s+([A-Za-z_][A-Za-z0-9_.]*)\\s+as\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*$")
+        val TypealiasDefinitionRegex =
+            Regex("(?m)^\\s*typealias\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_.]*)\\??")
+    }
 }
