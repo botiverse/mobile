@@ -661,7 +661,7 @@ private fun SharedActivityList(
     var revealRequest by remember(selectedFilter) { mutableStateOf(0) }
     var presentedItems by remember(selectedFilter) { mutableStateOf(snapshot.items) }
     var presentationGeneration by remember(selectedFilter) { mutableStateOf(0) }
-    var authoritativeRefreshInFlight by remember(selectedFilter) { mutableStateOf(false) }
+    var pullRefreshInFlight by remember(selectedFilter) { mutableStateOf(false) }
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
@@ -688,11 +688,10 @@ private fun SharedActivityList(
         }
     }
     LaunchedEffect(selectedFilter, snapshot.items, refreshing, pullRefreshing) {
-        if (refreshing || pullRefreshing) {
-            authoritativeRefreshInFlight = true
+        if (pullRefreshing) {
+            pullRefreshInFlight = true
         }
-        val authoritativeRefreshCompleted =
-            authoritativeRefreshInFlight && !refreshing && !pullRefreshing
+        val pullRefreshCompleted = pullRefreshInFlight && !pullRefreshing
         var nextTracking =
             updateTracking
                 .recordSnapshot(selectedFilter, snapshot.items)
@@ -702,17 +701,22 @@ private fun SharedActivityList(
                 )
         val nextPresentedItems =
             when {
-                authoritativeRefreshCompleted -> snapshot.items
-                nextTracking.pendingCount > 0 ->
+                activityShouldAdoptCanonicalOrder(
+                    pendingCount = nextTracking.pendingCount,
+                    pullRefreshCompleted = pullRefreshCompleted
+                ) -> snapshot.items
+                else ->
                     // Realtime/background snapshots may advance content for a
-                    // stable row, but they do not own its visible slot. Keep
-                    // every presented key in place and withhold new keys until
-                    // the user explicitly consumes the update banner.
+                    // stable row, and route-return/foreground reconciliation
+                    // may confirm a self-authored send, but neither owns its
+                    // visible slot. Keep every presented key in place and
+                    // withhold new keys until the user explicitly consumes the
+                    // update banner. A pull refresh remains an explicit order
+                    // adoption gesture.
                     activityItemsPreservingPresentedOrder(
                         presentedItems = presentedItems,
                         canonicalItems = snapshot.items
                     )
-                else -> snapshot.items
             }
         presentationGeneration =
             activityNextPresentationGeneration(
@@ -721,9 +725,9 @@ private fun SharedActivityList(
                 nextPresentedItems = nextPresentedItems
             )
         presentedItems = nextPresentedItems
-        if (authoritativeRefreshCompleted) {
+        if (pullRefreshCompleted) {
             nextTracking = nextTracking.consumePending()
-            authoritativeRefreshInFlight = false
+            pullRefreshInFlight = false
         }
         updateTracking = nextTracking
     }
@@ -1664,6 +1668,11 @@ internal fun activityItemsPreservingPresentedOrder(
     return presentedItems.map { presented -> canonicalByKey[presented.key] ?: presented }
 }
 
+internal fun activityShouldAdoptCanonicalOrder(
+    pendingCount: Int,
+    pullRefreshCompleted: Boolean
+): Boolean = pendingCount == 0 || pullRefreshCompleted
+
 internal fun activityNextPresentationGeneration(
     currentGeneration: Int,
     presentedItems: List<InboxItem>,
@@ -1754,7 +1763,7 @@ internal data class ActivityUpdateTrackingState(
                 ActivityUpdateMarker(
                     filter = nextFilter,
                     itemKey = item.key,
-                    latestActivityMessageId = item.latestActivityMessageId?.value
+                    latestActivityMessageId = item.activityUpdateRevisionMessageId()
                 )
             }
         val reconciled =
@@ -1794,8 +1803,9 @@ internal fun activityUpdatePresentation(
 //  1. fresh rows that sorted in above every previously known row (the feed is
 //     newest-first, so real arrivals enter at the top; rows revealed from
 //     below the tracked window sit under a known key and don't count);
-//  2. known conversations whose latest activity MESSAGE changed — read-state
-//     and task-status mutations never touch latestActivityMessageId.
+//  2. known conversations whose latest activity MESSAGE changed — Thread rows
+//     advance latestActivityMessageId, while Channel/DM rows advance
+//     lastMessageId. Read-state and task-status mutations touch neither.
 internal fun activityPendingUpdateIncrement(
     previousItems: List<InboxItem>,
     currentItems: List<InboxItem>,
@@ -1817,18 +1827,27 @@ internal fun activityPendingUpdateMarkers(
     val advancedKnownRows =
         currentWindow.filter { current ->
             val previous = previousByKey[current.key] ?: return@filter false
-            val currentLatest = current.latestActivityMessageId?.value
-            currentLatest != null && currentLatest != previous.latestActivityMessageId?.value
+            val currentLatest = current.activityUpdateRevisionMessageId()
+            currentLatest != null && currentLatest != previous.activityUpdateRevisionMessageId()
         }
     return (freshTopRows + advancedKnownRows)
         .mapTo(linkedSetOf()) { item ->
             ActivityUpdateMarker(
                 filter = filter,
                 itemKey = item.key,
-                latestActivityMessageId = item.latestActivityMessageId?.value
+                latestActivityMessageId = item.activityUpdateRevisionMessageId()
             )
         }
 }
+
+internal fun InboxItem.activityUpdateRevisionMessageId(): String? =
+    when (kind) {
+        InboxItemKind.Thread -> latestActivityMessageId?.value
+        InboxItemKind.Channel,
+        InboxItemKind.DirectMessage -> lastMessageId?.value ?: latestActivityMessageId?.value
+        InboxItemKind.MentionAction,
+        InboxItemKind.System -> latestActivityMessageId?.value ?: lastMessageId?.value
+    }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = resolveInboxStreamChannelId()
