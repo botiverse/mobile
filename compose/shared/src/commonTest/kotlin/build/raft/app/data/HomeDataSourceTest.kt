@@ -72,7 +72,7 @@ class HomeDataSourceTest {
         val computersApi = ConcurrentComputersApi(CompletableDeferred(Unit))
         val source =
             SharedHomeDataSource(
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "admin")),
                 api = FakeHomeApi(),
                 announcementsApi =
                     object : SlockAnnouncementsRemindersApi {
@@ -95,6 +95,35 @@ class HomeDataSourceTest {
 
         val notifications = (result as DataResult.Content).data
         assertEquals(listOf("machine-offline:machine-1"), notifications.map { it.id })
+    }
+
+    @Test
+    fun machineNotificationsRequireManageMachinesPermissionWithoutHidingAppUpdates() = runBlocking {
+        val computersApi = RejectingComputersApi()
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "member")),
+                api = FakeHomeApi(),
+                computersApi = computersApi,
+                appUpdateStatusProvider = {
+                    DataResult.Content(
+                        SharedSettingsUpdateCheckSnapshot(
+                            supported = true,
+                            updateAvailable = true,
+                            currentVersionCode = 1L,
+                            latestVersionCode = 2L
+                        )
+                    )
+                },
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        val notifications = (source.loadNotifications() as DataResult.Content).data
+
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), notifications.map { it.id })
+        assertEquals(0, computersApi.machineCalls)
     }
 
     @Test
@@ -662,6 +691,33 @@ class HomeDataSourceTest {
             error("unused")
     }
 
+    private class RejectingComputersApi : SlockComputersApi {
+        var machineCalls: Int = 0
+
+        override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
+            machineCalls += 1
+            error("Members without manageMachines must not load machine notifications")
+        }
+
+        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
+
+        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
+
+        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+
+        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+
+        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+
+        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse = error("unused")
+
+        override suspend fun deleteMachineWorkspace(
+            serverId: ServerId,
+            machineId: String,
+            directoryName: String
+        ): HomeNetworkResponse = error("unused")
+    }
+
     private class ThrowingHomeApi : SlockHomeApi {
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
             throw IllegalStateException("offline")
@@ -803,13 +859,13 @@ class HomeDataSourceTest {
             error("unused")
     }
 
-    private fun sampleSession(): StoredAuthSession =
+    private fun sampleSession(role: String? = "owner"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
             accessToken = "token-a",
             refreshToken = "token-r",
             selectedServerId = "server-1",
-            servers = listOf(StoredAuthServer(id = "server-1", name = "Slock Community"))
+            servers = listOf(StoredAuthServer(id = "server-1", name = "Slock Community", role = role))
         )
 
     private fun sampleHome(serverId: ServerId): HomeSnapshot =

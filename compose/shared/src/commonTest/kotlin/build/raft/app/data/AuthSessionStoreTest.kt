@@ -16,6 +16,23 @@ import kotlin.test.assertTrue
 
 class AuthSessionStoreTest {
     @Test
+    fun serverPermissionProjectionMatchesMachineManagementCapability() {
+        fun permissions(role: String?) =
+            StoredAuthServer(id = "server-1", name = "Server One", role = role)
+                .toServerSummary()
+                .permissions
+
+        assertTrue(permissions("owner").canManageMachines)
+        assertTrue(permissions("owner").canManageSettings)
+        assertTrue(permissions("admin").canManageMachines)
+        assertTrue(permissions("admin").canManageSettings)
+        assertFalse(permissions("member").canManageMachines)
+        assertFalse(permissions("member").canManageSettings)
+        assertFalse(permissions(null).canManageMachines)
+        assertFalse(permissions("unknown").canManageMachines)
+    }
+
+    @Test
     fun storedSessionExposesSharedSnapshotAndAuthTokens() = runBlocking {
         val store = InMemorySlockAuthSessionStore(sampleSession())
 

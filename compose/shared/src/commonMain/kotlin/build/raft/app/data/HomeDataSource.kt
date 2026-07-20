@@ -211,6 +211,14 @@ class SharedHomeDataSource(
             ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
         val serverId = session.currentServerId?.let(::ServerId)
             ?: return DataResult.Content(emptyList())
+        val canManageMachines =
+            session
+                .toSessionSnapshot()
+                ?.availableServers
+                ?.firstOrNull { it.id == serverId }
+                ?.permissions
+                ?.canManageMachines == true
+        if (!canManageMachines) return DataResult.Content(emptyList())
         return when (val result = client.machines(serverId)) {
             is DataResult.Content -> DataResult.Content(result.data.toSharedHomeMachineNotifications())
             is DataResult.Empty -> DataResult.Content(emptyList())

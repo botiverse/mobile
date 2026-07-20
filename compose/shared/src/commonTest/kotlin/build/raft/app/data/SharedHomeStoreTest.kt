@@ -3208,7 +3208,7 @@ class SharedHomeStoreTest {
             error("not reached")
     }
 
-    private fun sampleSession(): StoredAuthSession =
+    private fun sampleSession(role: String? = "owner"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
             accessToken = "token-a",
@@ -3216,8 +3216,8 @@ class SharedHomeStoreTest {
             selectedServerId = "server-1",
             servers =
                 listOf(
-                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock"),
-                    StoredAuthServer(id = "server-2", name = "Work", slug = "work")
+                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock", role = role),
+                    StoredAuthServer(id = "server-2", name = "Work", slug = "work", role = role)
                 )
         )
 

@@ -32,8 +32,18 @@ data class ServerSummary(
 data class ServerPermissions(
     val canCreateChannel: Boolean = true,
     val canInviteMember: Boolean = true,
-    val canManageSettings: Boolean = false
+    val canManageSettings: Boolean = false,
+    val canManageMachines: Boolean = false
 )
+
+internal fun serverPermissionsForRole(role: String?): ServerPermissions {
+    val normalizedRole = role?.trim()?.lowercase()
+    val canAdministerServer = normalizedRole == "owner" || normalizedRole == "admin"
+    return ServerPermissions(
+        canManageSettings = canAdministerServer,
+        canManageMachines = canAdministerServer
+    )
+}
 
 // Conversation Models
 @Serializable
