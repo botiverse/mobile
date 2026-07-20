@@ -63,12 +63,25 @@ class SlockImageEditorProductionContractTest {
             )
 
         assertContains(dispatch, "allFilesAreImages =")
-        assertContains(dispatch, "files.all { file ->")
-        assertContains(dispatch, "slockFilePreviewIsImageAttachment(")
+        assertContains(dispatch, "slockComposerImagePickerFilesAreStrictImages(files)")
         assertTrue(
             "ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->" in dispatch,
             "Only the fail-closed resolver result may enter the image editor.",
         )
+    }
+
+    @Test
+    fun activeMosaicUsesTheSameNewTileDeltaAsCommit() {
+        val source = commonMainSource("build/raft/app/SlockFilePreview.kt")
+        val editor =
+            source.window(
+                "private fun SlockFilePreviewComposerImageEditor(",
+                "private fun SlockFilePreviewImageEditorPrimaryControls(",
+            )
+        val activeDraw = editor.window("activeMosaicRevision", "activeStrokePoints.windowed(2)")
+
+        assertContains(activeDraw, "slockComposerImageActiveMosaicTiles(")
+        assertContains(activeDraw, "committedTiles = state.history.content.mosaicTiles")
     }
 
     private fun commonMainSource(path: String): String {

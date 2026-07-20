@@ -328,6 +328,15 @@ internal fun resolveThreadPickedAttachmentComposerAction(
         else -> ThreadPickedAttachmentComposerAction.UploadToComposer
     }
 }
+
+internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean =
+    files.isNotEmpty() &&
+        files.all { file ->
+            slockComposerImagePickerIsStrictImage(
+                fileName = file.fileName,
+                mimeType = file.mimeType.orEmpty(),
+            )
+        }
 private val ThreadMessageBodyTextStyle =
     SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
 
@@ -7322,13 +7331,7 @@ internal fun SharedThreadRouteContent(
                                 action = action,
                                 fileCount = files.size,
                                 imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled(),
-                                allFilesAreImages =
-                                    files.all { file ->
-                                        slockFilePreviewIsImageAttachment(
-                                            fileName = file.fileName,
-                                            mimeType = file.mimeType.orEmpty(),
-                                        )
-                                    },
+                                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files),
                             )
                         ) {
                             ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->

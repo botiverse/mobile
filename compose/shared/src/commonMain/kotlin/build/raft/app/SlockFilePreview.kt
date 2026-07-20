@@ -1782,7 +1782,11 @@ private fun SlockFilePreviewComposerImageEditor(
                 activeStrokeRevision
                 drawSlockComposerImageMosaic(
                     image = mosaicImage,
-                    tiles = activeMosaicTiles,
+                    tiles =
+                        slockComposerImageActiveMosaicTiles(
+                            touchedTiles = activeMosaicTiles,
+                            committedTiles = state.history.content.mosaicTiles,
+                        ),
                 )
                 activeStrokePoints.windowed(2).forEach { segment ->
                     drawLine(
@@ -2410,6 +2414,11 @@ internal fun slockComposerImageCommitMosaicGesture(
         )
     )
 }
+
+internal fun slockComposerImageActiveMosaicTiles(
+    touchedTiles: Set<SlockComposerImageMosaicTile>,
+    committedTiles: Set<SlockComposerImageMosaicTile>,
+): Set<SlockComposerImageMosaicTile> = touchedTiles - committedTiles
 
 internal fun SlockComposerImageEditorContent.slockComposerImageAppendStroke(
     stroke: SlockComposerImageStroke,
@@ -4544,6 +4553,17 @@ internal fun slockFilePreviewIsImageAttachment(fileName: String, mimeType: Strin
 
 private val SlockFilePreviewImageExtensions =
     setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "svg", "webp")
+
+internal fun slockComposerImagePickerIsStrictImage(fileName: String, mimeType: String): Boolean {
+    val mime = mimeType.substringBefore(';').trim().lowercase()
+    val extension =
+        fileName
+            .substringBefore('?')
+            .substringBefore('#')
+            .substringAfterLast('.', missingDelimiterValue = "")
+            .lowercase()
+    return mime.startsWith("image/") && extension in SlockFilePreviewImageExtensions
+}
 
 private val SlockFilePreviewVideoExtensions =
     setOf("3gp", "avi", "flv", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "webm", "wmv")

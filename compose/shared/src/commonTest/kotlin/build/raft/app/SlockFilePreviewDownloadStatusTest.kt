@@ -355,6 +355,53 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun composerImageActiveMosaicMatchesThePostCommitDeltaOverExistingLayers() {
+        val existingTile = SlockComposerImageMosaicTile(column = 2, row = 2)
+        val newTile = SlockComposerImageMosaicTile(column = 3, row = 3)
+        val stroke = SlockComposerImageStroke(points = listOf(Offset(0f, 0f), Offset(40f, 40f)))
+        val before =
+            slockComposerImageCommitMosaicGesture(
+                history = SlockComposerImageEditorHistory(),
+                tiles = setOf(existingTile),
+            ).let { history ->
+                history.copy(content = history.content.slockComposerImageAppendStroke(stroke))
+            }
+        val touched = setOf(existingTile, newTile)
+
+        val activeDelta =
+            slockComposerImageActiveMosaicTiles(
+                touchedTiles = touched,
+                committedTiles = before.content.mosaicTiles,
+            )
+        val after = slockComposerImageCommitMosaicGesture(history = before, tiles = touched)
+
+        assertEquals(setOf(newTile), activeDelta)
+        assertEquals(
+            before.content.slockComposerImageResolvedDrawOperations() +
+                SlockComposerImageDrawOperation.Mosaic(activeDelta),
+            after.content.slockComposerImageResolvedDrawOperations(),
+        )
+    }
+
+    @Test
+    fun composerImageFullyOverlappingMosaicIsInvisibleAndDoesNotCreateHistory() {
+        val tile = SlockComposerImageMosaicTile(column = 2, row = 2)
+        val before =
+            slockComposerImageCommitMosaicGesture(
+                history = SlockComposerImageEditorHistory(),
+                tiles = setOf(tile),
+            )
+
+        assertTrue(
+            slockComposerImageActiveMosaicTiles(
+                touchedTiles = setOf(tile),
+                committedTiles = before.content.mosaicTiles,
+            ).isEmpty()
+        )
+        assertEquals(before, slockComposerImageCommitMosaicGesture(history = before, tiles = setOf(tile)))
+    }
+
+    @Test
     fun composerImageEraseRetainsOnlyVisibleDrawOperationFragments() {
         val firstStroke = SlockComposerImageStroke(points = listOf(Offset(0f, 0f), Offset(5f, 5f)))
         val secondStroke = SlockComposerImageStroke(points = listOf(Offset(50f, 50f), Offset(60f, 60f)))
