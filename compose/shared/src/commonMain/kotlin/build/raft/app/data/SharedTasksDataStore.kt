@@ -174,8 +174,38 @@ internal class SharedTasksDataStore(
                         } else {
                             nextProjectionRevision
                         }
+                    val serverSnapshot =
+                        (current.serverSnapshots[normalizedServerId]
+                            ?: TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap()))
+                            .replaceChannel(scope.channelId, snapshotToCommit)
+                    val serverSnapshotStatus =
+                        current.serverSnapshotStatuses[normalizedServerId]
+                            ?: SharedTasksDataStoreStatus.Partial
+                    // Exact channel responses feed every task surface. Do not promote a response
+                    // whose request predates a mutation that cannot be attributed to this channel.
+                    val reconciledServerSnapshots =
+                        if (hasUnroutableMutationAfterRequest) {
+                            current.serverSnapshots
+                        } else {
+                            current.serverSnapshots + (normalizedServerId to serverSnapshot)
+                        }
+                    val reconciledServerSnapshotStatuses =
+                        if (hasUnroutableMutationAfterRequest) {
+                            current.serverSnapshotStatuses
+                        } else {
+                            current.serverSnapshotStatuses + (normalizedServerId to serverSnapshotStatus)
+                        }
+                    val reconciledServerSnapshotRevisions =
+                        if (hasUnroutableMutationAfterRequest) {
+                            current.serverSnapshotRevisions
+                        } else {
+                            current.serverSnapshotRevisions + (normalizedServerId to nextProjectionRevision)
+                        }
                     committedSnapshot = snapshotToCommit
                     current.copy(
+                        serverSnapshots = reconciledServerSnapshots,
+                        serverSnapshotStatuses = reconciledServerSnapshotStatuses,
+                        serverSnapshotRevisions = reconciledServerSnapshotRevisions,
                         channelSnapshots =
                             current.channelSnapshots +
                                 (channelKey to snapshotToCommit),
@@ -617,6 +647,12 @@ private fun SharedTasksProjectionSlice.loadedSnapshotOrNull(): TaskSnapshot? =
     } else {
         null
     }
+
+private fun TaskSnapshot.replaceChannel(channelId: ChannelId, replacement: TaskSnapshot): TaskSnapshot {
+    val retained = tasks.filterNot { task -> task.channelId == channelId }
+    val merged = (replacement.tasks + retained).distinctBy { task -> task.id }
+    return copy(tasks = merged, summaryCounts = merged.summaryCounts())
+}
 
 private fun String?.normalizedTasksStoreId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }

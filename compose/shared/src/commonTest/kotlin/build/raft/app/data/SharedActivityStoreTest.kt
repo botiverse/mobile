@@ -2576,6 +2576,52 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun activityThreadRowsReplaceStaleEmbeddedStatusWithSharedTaskProjection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val tasksDataStore = SharedTasksDataStore()
+        tasksDataStore.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("parent-channel")),
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            TaskSummary(
+                                id = TaskId("task-339"),
+                                title = "Canonical task",
+                                status = TaskStatus.Done,
+                                taskNumber = 339,
+                                messageId = MessageId("parent-message"),
+                                channelId = ChannelId("parent-channel"),
+                                updatedAtLabel = "now"
+                            )
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+        val staleRow =
+            threadItem("thread-channel-1").copy(
+                taskNumber = 339,
+                taskStatus = TaskStatus.InProgress,
+                taskClaimedByName = "stale assignee"
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(staleRow)))),
+                tasksDataStore = tasksDataStore
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        val item = store.state.value.items.single()
+        assertEquals(339, item.taskNumber)
+        assertEquals(TaskStatus.Done, item.taskStatus)
+        assertEquals(null, item.taskClaimedByName)
+        scope.cancel()
+    }
+
+    @Test
     fun persistedActivityRowsUseMemberStoreSenderNamesBeforeRefreshCompletes() = runBlocking {
         val persistStorage = InMemoryPersistStorage()
         val persistSlice = createSharedActivityPersistSlice(persistStorage)

@@ -7427,32 +7427,17 @@ class ThreadPayloadTest {
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = null, taskChannelId = taskChannelId))
         assertTrue(shouldStartThreadTasksLoad(contentPayload, taskChannelId = taskChannelId))
         assertTrue(
-            shouldBackfillThreadTasksProjection(
+            shouldRefreshThreadTasksProjection(
                 payload = contentPayload,
                 taskChannelId = taskChannelId,
-                projection = SharedTasksProjectionSlice()
+                refreshStarted = false
             )
         )
         assertFalse(
-            shouldBackfillThreadTasksProjection(
+            shouldRefreshThreadTasksProjection(
                 payload = contentPayload,
                 taskChannelId = taskChannelId,
-                projection =
-                    SharedTasksProjectionSlice(
-                        status = SharedTasksDataStoreStatus.Loaded,
-                        isExactScopeLoaded = true
-                    )
-            )
-        )
-        assertTrue(
-            shouldBackfillThreadTasksProjection(
-                payload = contentPayload,
-                taskChannelId = taskChannelId,
-                projection =
-                    SharedTasksProjectionSlice(
-                        status = SharedTasksDataStoreStatus.Loaded,
-                        isExactScopeLoaded = false
-                    )
+                refreshStarted = true
             )
         )
         assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
@@ -7472,10 +7457,10 @@ class ThreadPayloadTest {
             )
         )
         assertFalse(
-            shouldBackfillThreadTasksProjection(
+            shouldRefreshThreadTasksProjection(
                 payload = contentPayload.copy(selectedTab = "tasks"),
                 taskChannelId = taskChannelId,
-                projection = SharedTasksProjectionSlice(status = SharedTasksDataStoreStatus.Partial)
+                refreshStarted = false
             )
         )
     }

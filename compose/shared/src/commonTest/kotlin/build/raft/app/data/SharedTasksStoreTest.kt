@@ -316,6 +316,44 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun authoritativeChannelRefreshReconcilesServerProjectionWithoutDroppingOtherChannels() = runBlocking {
+        val store = SharedTasksDataStore()
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            task("task-339", TaskStatus.InProgress, channelId = ChannelId("channel-1")),
+                            task("task-other", TaskStatus.Todo, channelId = ChannelId("channel-2"))
+                        ),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-339", TaskStatus.Done, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val serverProjection = store.projection("server-1", SharedTasksScope.Server)
+        assertEquals(SharedTasksDataStoreStatus.Loaded, serverProjection.status)
+        assertEquals(
+            listOf(
+                "task-339" to TaskStatus.Done,
+                "task-other" to TaskStatus.Todo
+            ),
+            serverProjection.tasks.map { task -> task.id.value to task.status }
+        )
+    }
+
+    @Test
     fun sharedTasksDataStoreLoadsExactChannelBehindLoadedServerProjection() = runBlocking {
         val store = SharedTasksDataStore()
         store.publishSnapshot(
