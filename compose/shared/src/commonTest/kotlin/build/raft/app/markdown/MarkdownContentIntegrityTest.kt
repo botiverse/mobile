@@ -240,15 +240,15 @@ class MarkdownContentIntegrityTest {
         val base = "https://xxx.com/xx/asd"
         val contexts =
             listOf<Pair<(String) -> String, Boolean>>(
-                ({ url -> url }) to false,
-                ({ url -> "$url." }) to false,
-                ({ url -> "$url, next" }) to false,
-                ({ url -> "See $url now" }) to false,
-                ({ url -> "See ($url) now" }) to false,
+                ({ url: String -> url }) to false,
+                ({ url: String -> "$url." }) to false,
+                ({ url: String -> "$url, next" }) to false,
+                ({ url: String -> "See $url now" }) to false,
+                ({ url: String -> "See ($url) now" }) to false,
                 // `[url]` is also valid unresolved-reference syntax. GFM may
                 // suppress the nested autolink, but it must never create a
                 // target outside the generated URL slice.
-                ({ url -> "See [$url] now" }) to true,
+                ({ url: String -> "See [$url] now" }) to true,
             )
         return generatedBalancedUrlTargets(base).flatMap { url ->
             contexts.map { (context, linkMayBeSuppressed) ->
