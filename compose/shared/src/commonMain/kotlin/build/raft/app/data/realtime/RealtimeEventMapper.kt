@@ -258,7 +258,7 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.PinnedUpdated ->
                 decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPush ->
-                decodeOrNull(NotificationPushDto.serializer(), element)?.toDomainOrNull()
+                decodeOrNull(NotificationPushDto.serializer(), element)?.toDomainOrNull(diagnosticsLogger)
             else -> null
         }
     } catch (_: SerializationException) {
@@ -585,6 +585,8 @@ private data class NotificationPushDto(
     val serverName: String? = null,
     val channelName: String? = null,
     val parentChannelKind: String? = null,
+    val senderId: String? = null,
+    val senderType: String? = null,
     val senderName: String? = null,
     val messagePreview: String? = null,
     val mentioned: Boolean? = null,
@@ -1278,7 +1280,9 @@ private fun PinnedUpdatedDto.toDomain(): PerReceiverPinnedChanged? {
 // Fail-closed per kind: a thread notification without its parent pair (or a
 // channel/dm one without a channel id) cannot yield a provable open target —
 // drop it rather than let a guessed surface reach the banner (#434/#441).
-private fun NotificationPushDto.toDomainOrNull(): NotificationPushReceived? {
+private fun NotificationPushDto.toDomainOrNull(
+    diagnostics: (String) -> Unit,
+): NotificationPushReceived? {
     val cleanServerId = serverId.takeIf { it.isNotBlank() } ?: return null
     val cleanMessageId = messageId.takeIf { it.isNotBlank() } ?: return null
     val parsedKind = parseConversationKindOrNull(kind) ?: return null
@@ -1294,6 +1298,21 @@ private fun NotificationPushDto.toDomainOrNull(): NotificationPushReceived? {
         ConversationKind.DirectMessage ->
             if (cleanChannelId == null) return null
         else -> return null
+    }
+    val cleanSenderId = senderId?.trim()?.takeIf { it.isNotBlank() }
+    val cleanSenderType = senderType?.trim()?.takeIf { it.isNotBlank() }
+    val senderKind =
+        if (cleanSenderId != null && cleanSenderType != null) {
+            cleanSenderType.strictMemberKindOrNull(
+                source = "notification_push_sender",
+                diagnostics = diagnostics,
+                contract = MemberKindWireContract.InternalActor,
+            )
+        } else {
+            null
+        }
+    if ((cleanSenderId == null) != (cleanSenderType == null)) {
+        diagnostics("projection_value_rejected source=notification_push_sender field=member_identity value=incomplete")
     }
     return NotificationPushReceived(
         serverId = ServerId(cleanServerId),
@@ -1312,6 +1331,8 @@ private fun NotificationPushDto.toDomainOrNull(): NotificationPushReceived? {
             parentChannelKind
                 ?.let(::parseConversationKindOrNull)
                 ?.takeIf { it == ConversationKind.Channel || it == ConversationKind.Joint || it == ConversationKind.DirectMessage },
+        senderId = cleanSenderId?.takeIf { senderKind != null }?.let(::MemberId),
+        senderKind = senderKind,
         senderName = senderName?.takeIf { it.isNotBlank() },
         messagePreview = messagePreview?.takeIf { it.isNotBlank() },
         mentioned = mentioned

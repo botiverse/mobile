@@ -1155,6 +1155,8 @@ class RealtimeEventMapperTest {
                   "serverName": "Raft",
                   "channelName": "home-fixes",
                   "parentChannelKind": "channel",
+                  "senderId": "agent-cindy",
+                  "senderType": "agent",
                   "senderName": "Cindy",
                   "messagePreview": "hello",
                   "mentioned": false,
@@ -1175,6 +1177,8 @@ class RealtimeEventMapperTest {
         assertEquals("Raft", push.serverName)
         assertEquals("home-fixes", push.channelName)
         assertEquals(ConversationKind.Channel, push.parentChannelKind)
+        assertEquals("agent-cindy", push.senderId?.value)
+        assertEquals(MemberKind.Agent, push.senderKind)
         assertEquals("Cindy", push.senderName)
         assertEquals("hello", push.messagePreview)
         assertEquals(false, push.mentioned)
@@ -1218,11 +1222,44 @@ class RealtimeEventMapperTest {
         val event =
             RealtimeEventMapper().map(
                 RealtimeSocketEvents.NotificationPush,
-                """{ "serverId": "server-1", "kind": "dm", "channelId": "dm-1", "messageId": "m-2", "title": "DM · Raft", "body": "Cindy: hi", "tag": "message:m-2" }"""
+                """{ "serverId": "server-1", "kind": "dm", "channelId": "dm-1", "messageId": "m-2", "title": "DM · Raft", "body": "Cindy: hi", "tag": "message:m-2", "senderId": "user-cindy", "senderType": "user" }"""
             )
 
         val push = assertIs<NotificationPushReceived>(event)
         assertEquals(ConversationKind.DirectMessage, push.kind)
         assertEquals("dm-1", push.channelId?.value)
+        assertEquals("user-cindy", push.senderId?.value)
+        assertEquals(MemberKind.Human, push.senderKind)
+    }
+
+    @Test
+    fun notificationPushIncompleteSenderIdentityFallsBackWithoutGuessingByName() {
+        val logs = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "serverId": "server-1", "kind": "channel", "channelId": "c-1", "messageId": "m-1", "senderId": "user-1", "senderName": "Duplicate Name" }"""
+            )
+
+        val push = assertIs<NotificationPushReceived>(event)
+        assertNull(push.senderId)
+        assertNull(push.senderKind)
+        assertEquals("Duplicate Name", push.senderName)
+        assertTrue(logs.any { "source=notification_push_sender" in it && "value=incomplete" in it })
+    }
+
+    @Test
+    fun notificationPushUnknownSenderTypeFallsBackWithoutUsingSenderId() {
+        val logs = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "serverId": "server-1", "kind": "channel", "channelId": "c-1", "messageId": "m-1", "senderId": "member-1", "senderType": "bot" }"""
+            )
+
+        val push = assertIs<NotificationPushReceived>(event)
+        assertNull(push.senderId)
+        assertNull(push.senderKind)
+        assertTrue(logs.any { "source=notification_push_sender" in it && "field=member_kind" in it })
     }
 }
