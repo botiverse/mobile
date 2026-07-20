@@ -236,9 +236,12 @@ class SettingsHomePageDiagnosticsTest {
 
         assertEquals("Auth, sanitized app diagnostics, and Kuikly profiler status", payload.detail)
         assertEquals(
-            listOf("Recomposition profiler", "Actions"),
+            listOf("Read-state v1 diagnostic override", "Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
         )
+        val overrideRows =
+            payload.sections.first { it.title == "Read-state v1 diagnostic override" }.rows.associateBy { it.key }
+        assertFalse(overrideRows.getValue("readStateV1ForceOnExactScope").enabled)
         val profilerRows = payload.sections.first { it.title == "Recomposition profiler" }.rows.associateBy { it.key }
         assertFalse(profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).enabled)
         assertEquals("Debug only", profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).status)
@@ -276,7 +279,7 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Environment", "Recomposition profiler", "Actions"),
+            listOf("Environment", "Read-state v1 diagnostic override", "Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
         )
         val environmentRows = payload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
@@ -745,7 +748,7 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Recomposition profiler", "Actions"),
+            listOf("Read-state v1 diagnostic override", "Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
         )
         val switchRow =
