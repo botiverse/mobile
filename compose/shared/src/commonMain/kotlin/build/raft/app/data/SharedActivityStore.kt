@@ -40,6 +40,9 @@ import kotlinx.serialization.Serializable
 import kotlin.time.TimeSource
 
 private const val SharedActivityPageSize = 30
+private const val SharedActivityRefreshPageLimit = 100
+private const val SharedActivityRefreshContinuationSlack = 2
+private const val SharedActivityRefreshMaxNoProgressPages = 2
 private const val SharedActivityReplyPrewarmConcurrency = 2
 private const val SharedActivityTailPrewarmDepthCap = 20
 private const val SharedActivityRealtimeReconcileDelayMillis = 150L
@@ -656,9 +659,9 @@ class SharedActivityStore internal constructor(
             )
     }
 
-    private fun scheduleRealtimeReconcileLocked() {
+    private fun scheduleRealtimeReconcileLocked(): Job {
         realtimeReconcileDirty = true
-        if (realtimeReconcileJob != null) return
+        realtimeReconcileJob?.let { return it }
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 delay(realtimeReconcileDelayMillis.coerceAtLeast(0L))
@@ -683,6 +686,7 @@ class SharedActivityStore internal constructor(
                 }
             }
         realtimeReconcileJob = job
+        return job
     }
 
     private suspend fun awaitCurrentLoadIdle() {
@@ -725,7 +729,7 @@ class SharedActivityStore internal constructor(
         val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
         var shouldReconcile = false
         var acceptedHere = false
-        synchronized(realtimeOwnerLock) {
+        val reconcileJob = synchronized(realtimeOwnerLock) {
             event.scopes.forEach { readScope ->
                 val maxReadSeq = readScope.maxReadSeq ?: return@forEach
                 val projectionKey =
@@ -760,11 +764,23 @@ class SharedActivityStore internal constructor(
                 }
                 acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
             }
+            if (shouldReconcile) {
+                // A read-state fact is a canonical fence, not merely a hint. Invalidate any
+                // request that may have started before the fact, then share the same debounced
+                // reconcile owner as message realtime. Further facts only dirty this owner;
+                // they do not create parallel refresh jobs.
+                loadGeneration += 1L
+                loadJob?.cancel()
+                scheduleRealtimeReconcileLocked()
+            } else {
+                null
+            }
         }
         if (shouldReconcile) {
             diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
             if (acceptedHere) onUnreadCountsChanged()
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            reconcileJob?.start()
+            reconcileJob?.join()
             awaitCurrentLoadIdle()
         }
     }
@@ -777,6 +793,16 @@ class SharedActivityStore internal constructor(
         val job =
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
+                val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
+                if (
+                    refresh &&
+                    !pullRefresh &&
+                    intent == SharedActivityIntent.Refresh &&
+                    inFlightLoad != null &&
+                    (current.loading || current.refreshing)
+                ) {
+                    return@synchronized null
+                }
                 if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) {
                     return@synchronized null
                 }
@@ -786,6 +812,7 @@ class SharedActivityStore internal constructor(
                     val startedAt = TimeSource.Monotonic.markNow()
                     val previous = _state.value
                     val filter = previous.selectedFilter
+                    var refreshLimit = SharedActivityPageSize
                     try {
                         val session = authStore.readSession()
                         if (session == null) {
@@ -842,6 +869,12 @@ class SharedActivityStore internal constructor(
                                 } else {
                                     stateBeforeOwner
                                 }
+                            refreshLimit =
+                                maxOf(
+                                    SharedActivityPageSize,
+                                    stateForOwner.nextOffset ?: 0,
+                                    stateForOwner.items.size
+                                )
                             reduceState(
                                 intent,
                                 stateForOwner.copy(
@@ -872,7 +905,7 @@ class SharedActivityStore internal constructor(
                         }
                         val result =
                             if (refresh) {
-                                inboxRepository.loadInitial(serverId, filter, SharedActivityPageSize)
+                                loadCanonicalDepth(serverId, filter, refreshLimit)
                             } else {
                                 inboxRepository.loadMore(
                                     serverId,
@@ -961,6 +994,72 @@ class SharedActivityStore internal constructor(
                 }.also { loadJob = it }
             }
         job?.start()
+    }
+
+    private suspend fun loadCanonicalDepth(
+        serverId: ServerId,
+        filter: InboxFilter,
+        depth: Int
+    ): DataResult<InboxSnapshot> {
+        val targetDepth = depth.coerceAtLeast(SharedActivityPageSize)
+        val initial = inboxRepository.loadInitial(serverId, filter, minOf(targetDepth, SharedActivityRefreshPageLimit))
+        if (initial !is DataResult.Content) return initial
+
+        var combined = initial.data.copy(items = initial.data.items.dedupeActivityItems())
+        val seenOffsets = mutableSetOf<Int>()
+        val maxContinuationRequests = targetDepth.toLong() + SharedActivityRefreshContinuationSlack
+        var continuationRequests = 0
+        var consecutiveNoProgressPages = 0
+        while (combined.items.size < targetDepth && combined.hasMore) {
+            val offset = combined.nextOffset ?: combined.items.size
+            if (!seenOffsets.add(offset) || continuationRequests.toLong() >= maxContinuationRequests) {
+                return DataResult.Error(ScreenError("activity_pagination_stalled"))
+            }
+            continuationRequests += 1
+            val remaining = targetDepth - combined.items.size
+            when (
+                val page = inboxRepository.loadMore(
+                    serverId,
+                    filter,
+                    offset,
+                    minOf(remaining, SharedActivityRefreshPageLimit)
+                )
+            ) {
+                is DataResult.Content -> {
+                    val inferredNextOffset = offset.toLong() + page.data.items.size.toLong()
+                    val nextOffset = page.data.nextOffset ?: inferredNextOffset.takeIf { it <= Int.MAX_VALUE }?.toInt()
+                    val mergedItems = (combined.items + page.data.items).dedupeActivityItems()
+                    consecutiveNoProgressPages =
+                        if (mergedItems.size == combined.items.size) {
+                            consecutiveNoProgressPages + 1
+                        } else {
+                            0
+                        }
+                    val invalidNonTerminalPage =
+                        page.data.hasMore &&
+                            (page.data.items.isEmpty() || nextOffset == null || nextOffset <= offset)
+                    val exhaustedNoProgressBudget =
+                        page.data.hasMore &&
+                            mergedItems.size < targetDepth &&
+                            consecutiveNoProgressPages > SharedActivityRefreshMaxNoProgressPages
+                    if (invalidNonTerminalPage || exhaustedNoProgressBudget) {
+                        return DataResult.Error(ScreenError("activity_pagination_stalled"))
+                    }
+                    combined =
+                        page.data.copy(
+                            items = mergedItems,
+                            nextOffset = nextOffset
+                        )
+                }
+                is DataResult.Empty -> {
+                    combined = combined.copy(hasMore = false, nextOffset = null)
+                    break
+                }
+                is DataResult.Error -> return page
+                is DataResult.NoPermission -> return page
+            }
+        }
+        return DataResult.Content(combined)
     }
 
     private fun completeReadStateReconcileLocked(successful: Boolean) {
