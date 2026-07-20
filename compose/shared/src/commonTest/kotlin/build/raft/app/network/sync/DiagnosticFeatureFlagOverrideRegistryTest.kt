@@ -154,4 +154,68 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         assertEquals(DiagnosticFeatureFlagOverrideMode.Server, restarted.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).mode)
         assertEquals("process_start", restarted.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).clearReason)
     }
+
+    @Test
+    fun `replaced expiry callback cannot clear same millisecond successor and early fire reschedules`() {
+        val scheduler = CapturingDiagnosticExpiryScheduler()
+        val isolated =
+            DiagnosticFeatureFlagOverrideRegistry(
+                nowMillis = { now },
+                readStateController = ReadStateV1DiagnosticOverrideController { now },
+                expiryScheduler = scheduler,
+            )
+        isolated.configureEntitlement(true)
+        isolated.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
+        isolated.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        isolated.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+
+        scheduler.fire(index = 0, evenIfCancelled = true)
+        assertEquals(
+            DiagnosticFeatureFlagOverrideMode.ForceOff,
+            isolated.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).mode,
+        )
+
+        now += 100L
+        scheduler.fire(index = 1, evenIfCancelled = true)
+        assertEquals(
+            DiagnosticFeatureFlagOverrideMode.ForceOff,
+            isolated.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).mode,
+        )
+        assertEquals(DIAGNOSTIC_FEATURE_FLAG_OVERRIDE_TTL_MILLIS - 100L, scheduler.entries.last().delayMillis)
+
+        now = 1_000L + DIAGNOSTIC_FEATURE_FLAG_OVERRIDE_TTL_MILLIS
+        scheduler.fire(index = 2)
+        assertEquals(
+            DiagnosticFeatureFlagOverrideMode.Server,
+            isolated.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).mode,
+        )
+        assertEquals("expired", isolated.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).clearReason)
+    }
+}
+
+private class CapturingDiagnosticExpiryScheduler : DiagnosticFeatureFlagExpiryScheduler {
+    data class Entry(
+        val delayMillis: Long,
+        val callback: () -> Unit,
+        var cancelled: Boolean = false,
+    )
+
+    val entries = mutableListOf<Entry>()
+
+    override fun schedule(
+        delayMillis: Long,
+        onExpired: () -> Unit,
+    ): DiagnosticFeatureFlagExpiryHandle {
+        val entry = Entry(delayMillis, onExpired)
+        entries += entry
+        return DiagnosticFeatureFlagExpiryHandle { entry.cancelled = true }
+    }
+
+    fun fire(
+        index: Int,
+        evenIfCancelled: Boolean = false,
+    ) {
+        val entry = entries[index]
+        if (evenIfCancelled || !entry.cancelled) entry.callback()
+    }
 }

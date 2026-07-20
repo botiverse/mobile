@@ -1052,6 +1052,10 @@ class SharedInboxPanelTest {
         assertEquals(0, checkpoint.updateTracking.pendingCount)
         assertEquals(5, checkpoint.presentationGeneration)
         assertFalse(checkpoint.pullRefreshInFlight)
+        assertNotEquals(
+            first.activityOpenGestureKey(4),
+            first.activityOpenGestureKey(checkpoint.presentationGeneration),
+        )
     }
 
     @Test

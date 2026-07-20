@@ -114,6 +114,7 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
     override val scopeKind: DiagnosticFeatureFlagScopeKind = DiagnosticFeatureFlagScopeKind.ServerExact
 
     private data class ActiveOverride(
+        val token: Long,
         val mode: DiagnosticFeatureFlagOverrideMode,
         val scope: DiagnosticFeatureFlagScope,
         val expiresAtMillis: Long,
@@ -123,6 +124,7 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
     private var entitled = false
     private var observedScope: DiagnosticFeatureFlagScope? = null
     private var activeOverride: ActiveOverride? = null
+    private var nextOverrideToken = 0L
     private var expiryHandle: DiagnosticFeatureFlagExpiryHandle? = null
     private var lastDecision: DiagnosticFeatureFlagDecision? = null
     private var clearReason: String? = "process_start"
@@ -166,8 +168,10 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
                 else -> {
                     expiryHandle?.cancel()
                     expiryHandle = null
+                    nextOverrideToken += 1L
                     activeOverride =
                         ActiveOverride(
+                            token = nextOverrideToken,
                             mode = mode,
                             scope = requireNotNull(observedScope),
                             expiresAtMillis = nowMillis() + DIAGNOSTIC_FEATURE_FLAG_OVERRIDE_TTL_MILLIS,
@@ -177,10 +181,8 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
                 }
             }
         }
-        (result as? DiagnosticFeatureFlagOverrideMutationResult.Applied)
-            ?.snapshot
-            ?.expiresAtMillis
-            ?.let(::scheduleExpiry)
+        synchronized(lock) { activeOverride }
+            ?.let { active -> scheduleExpiry(active.token, active.expiresAtMillis) }
         if (result is DiagnosticFeatureFlagOverrideMutationResult.Applied) onChanged()
         return result
     }
@@ -281,22 +283,32 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
     private fun rejected(code: String): DiagnosticFeatureFlagOverrideMutationResult.Rejected =
         DiagnosticFeatureFlagOverrideMutationResult.Rejected(code, snapshotLocked())
 
-    private fun scheduleExpiry(expiresAtMillis: Long) {
+    private fun scheduleExpiry(
+        token: Long,
+        expiresAtMillis: Long,
+    ) {
         val handle =
             expiryScheduler.schedule((expiresAtMillis - nowMillis()).coerceAtLeast(0L)) {
-                val changed = synchronized(lock) {
+                val outcome = synchronized(lock) {
                     val active = activeOverride
-                    if (active?.expiresAtMillis == expiresAtMillis && nowMillis() >= expiresAtMillis) {
-                        clearLocked("expired")
-                        true
-                    } else {
-                        false
+                    when {
+                        active?.token != token || active.expiresAtMillis != expiresAtMillis -> ExpiryOutcome.Stale
+                        nowMillis() < expiresAtMillis -> ExpiryOutcome.Reschedule
+                        else -> {
+                            clearLocked("expired")
+                            ExpiryOutcome.Expired
+                        }
                     }
                 }
-                if (changed) onChanged()
+                when (outcome) {
+                    ExpiryOutcome.Expired -> onChanged()
+                    ExpiryOutcome.Reschedule -> scheduleExpiry(token, expiresAtMillis)
+                    ExpiryOutcome.Stale -> Unit
+                }
             }
         synchronized(lock) {
-            if (activeOverride?.expiresAtMillis == expiresAtMillis) {
+            if (activeOverride?.token == token && activeOverride?.expiresAtMillis == expiresAtMillis) {
+                expiryHandle?.cancel()
                 expiryHandle = handle
             } else {
                 handle.cancel()
@@ -317,6 +329,12 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
             lastDecision = lastDecision,
             clearReason = clearReason,
         )
+
+    private enum class ExpiryOutcome {
+        Expired,
+        Reschedule,
+        Stale,
+    }
 }
 
 private class ReadStateV1DiagnosticFeatureFlagConsumer(

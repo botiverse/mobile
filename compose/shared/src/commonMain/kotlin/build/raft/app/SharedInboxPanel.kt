@@ -736,7 +736,7 @@ private fun SharedActivityList(
 ) {
     val presentationServerId = snapshot.server.id.value
     val restoredPresentation =
-        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
             if (stableOrderEnabled) {
                 presentationStore.restoreOrCreate(
                     accountId = presentationAccountId,
@@ -755,22 +755,22 @@ private fun SharedActivityList(
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
-    var updateTracking by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
+    var updateTracking by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.updateTracking)
     }
     var revealRequest by remember(selectedFilter) { mutableStateOf(0) }
-    var presentedItems by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
+    var presentedItems by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.presentedItems)
     }
-    var presentationGeneration by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
+    var presentationGeneration by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.presentationGeneration)
     }
-    var pullRefreshInFlight by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
+    var pullRefreshInFlight by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.pullRefreshInFlight)
     }
-    var appliedStableOrderDecisionRevision by
-        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
-            mutableStateOf(stableOrderDecisionRevision)
+    var appliedStableOrderDecision by
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+            mutableStateOf(ActivityStableOrderDecisionVersion(stableOrderEnabled, stableOrderDecisionRevision))
         }
     fun savePresentation() {
         if (!stableOrderEnabled) return
@@ -821,7 +821,9 @@ private fun SharedActivityList(
         stableOrderEnabled,
         stableOrderDecisionRevision,
     ) {
-        if (appliedStableOrderDecisionRevision != stableOrderDecisionRevision) {
+        val nextStableOrderDecision =
+            ActivityStableOrderDecisionVersion(stableOrderEnabled, stableOrderDecisionRevision)
+        if (appliedStableOrderDecision != nextStableOrderDecision) {
             presentationStore.clearOwner(presentationAccountId, presentationServerId)
             val canonicalCheckpoint =
                 activityCanonicalCheckpointAfterStableOrderDecisionChange(
@@ -834,7 +836,7 @@ private fun SharedActivityList(
             updateTracking = canonicalCheckpoint.updateTracking
             presentationGeneration = canonicalCheckpoint.presentationGeneration
             pullRefreshInFlight = false
-            appliedStableOrderDecisionRevision = stableOrderDecisionRevision
+            appliedStableOrderDecision = nextStableOrderDecision
             if (stableOrderEnabled) {
                 presentationStore.save(
                     accountId = presentationAccountId,
@@ -1859,6 +1861,11 @@ internal fun activityCanonicalCheckpointAfterStableOrderDecisionChange(
             ),
         pullRefreshInFlight = false,
     )
+
+internal data class ActivityStableOrderDecisionVersion(
+    val enabled: Boolean,
+    val revision: Long,
+)
 
 internal fun activityShouldAdoptCanonicalOrder(
     pendingCount: Int,
