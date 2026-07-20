@@ -179,6 +179,43 @@ class ReadStateV1ProductionBindingTest {
     }
 
     @Test
+    fun revokeFirstRejectsStaleIncompleteAndFailedPreparedHomePublications() = runBlocking {
+        suspend fun assertRejectedAfterRevoke(
+            prepare: suspend (Fixture) -> ReadStateV1ProductionDisposition,
+        ) {
+            val fixture = fixture()
+            fixture.canary.applyHydrate(owner, "channel-1", 3, 9)
+            val disposition = prepare(fixture)
+            val publication =
+                when (disposition) {
+                    is ReadStateV1ProductionDisposition.Selected -> disposition.preparedPublication
+                    is ReadStateV1ProductionDisposition.SelectedFailure -> disposition.preparedPublication
+                    ReadStateV1ProductionDisposition.Legacy -> null
+                }
+            val preparedPublication =
+                requireNotNull(publication) {
+                    "every selected hydrate adjudication must carry its original witness"
+                }
+
+            fixture.canary.revoke(owner)
+            var writeCount = 0
+            assertFalse(fixture.canary.completePreparedPublication(preparedPublication) { writeCount += 1 })
+            assertEquals(0, writeCount)
+        }
+
+        assertRejectedAfterRevoke { fixture ->
+            fixture.canary.prepareHydrate(owner, "channel-1", 2, 99)
+        }
+        assertRejectedAfterRevoke { fixture ->
+            fixture.canary.prepareHydrate(owner, "channel-1", null, 99)
+        }
+        assertRejectedAfterRevoke { fixture ->
+            fixture.store.failCommit = true
+            fixture.canary.prepareHydrate(owner, "channel-1", 4, 10)
+        }
+    }
+
+    @Test
     fun publicationFirstMakesOwnerRevokeWaitAndNoOldCallbackRunsAfterReturn() = runBlocking {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -239,14 +276,11 @@ class ReadStateV1ProductionBindingTest {
         assertEquals(listOf("channel-1"), rebaselines)
 
         val barrier = canary.prepareHydrate(owner, "channel-1", 4, 40)
-        assertEquals(
-            ReadStateV1ProductionDisposition.Selected(
-                ReadStateV1GenerationResult.Committed,
-                ReadStateV1Fact("channel-1", 4, 40),
-                requiresProjectionConfirmation = true,
-            ),
-            barrier,
-        )
+        val selectedBarrier = assertIs<ReadStateV1ProductionDisposition.Selected>(barrier)
+        assertEquals(ReadStateV1GenerationResult.Committed, selectedBarrier.result)
+        assertEquals(ReadStateV1Fact("channel-1", 4, 40), selectedBarrier.projectedFact)
+        assertTrue(selectedBarrier.requiresProjectionConfirmation)
+        assertTrue(selectedBarrier.preparedPublication != null)
         assertTrue(canary.completePreparedHydrateProjection(owner, ReadStateV1Fact("channel-1", 4, 40)))
         assertIs<ReadStateV1ProductionDisposition.Legacy>(
             canary.applyOwnerRealtime(owner, "channel-1", 5, 50),

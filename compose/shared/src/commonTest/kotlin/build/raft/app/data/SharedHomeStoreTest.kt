@@ -254,6 +254,107 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun staleSelectedRefreshCannotRepublishStateIdentitySidebarOrBackgroundCacheAfterRevoke() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val owner = ReadStateV1ProductionOwner("production", "user-1", "server-1")
+        val api = RecordingHomeApi()
+        var networkSnapshot =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "good-name").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(3, 9),
+                        )
+                    ),
+                serverUnreadCounts = mapOf("server-1" to 0, "server-2" to 3),
+                sidebarOrder = SettingsServerSidebarOrderSnapshot(channelOrder = listOf("good-order")),
+            )
+        val dataSource =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = api,
+                parseHome = { _, _ -> DataResult.Content(networkSnapshot) },
+            )
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = TestReadStateV1Store(),
+                onProjection = { _, _, _ -> },
+                onRebaseline = { _, _, _ -> },
+            )
+        var revokeBeforePublication = false
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = dataSource,
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("production", accountId, serverId)
+                },
+                readStateV1Canary = canary,
+                nowMillis = {
+                    if (revokeBeforePublication) {
+                        revokeBeforePublication = false
+                        canary.revoke(owner)
+                    }
+                    42L
+                },
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        val acceptedSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        val acceptedIdentity = store.resolveProjection(ServerId("server-1"), "channel-1")
+        val backgroundMessage =
+            MessageNew(
+                Message(
+                    id = MessageId("background-101"),
+                    threadId = ThreadId("channel-b"),
+                    channelId = ChannelId("channel-b"),
+                    seq = 101,
+                    author = sampleMember().copy(id = MemberId("member-2"), displayName = "Cindy"),
+                    timestampLabel = "12:01",
+                    body = "background update",
+                )
+            )
+        store.accept(SharedHomeIntent.ApplyBackgroundServerUnreadEvent("server-2", backgroundMessage))
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
+        networkSnapshot =
+            networkSnapshot.copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "stale-name").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(2, 99),
+                        )
+                    ),
+                sidebarOrder = SettingsServerSidebarOrderSnapshot(channelOrder = listOf("stale-order")),
+            )
+        revokeBeforePublication = true
+        store.accept(SharedHomeIntent.ForegroundRefresh)
+
+        assertEquals(acceptedSnapshot, (store.state.value.content as SharedHomeContentState.Content).snapshot)
+        assertEquals(acceptedIdentity, store.resolveProjection(ServerId("server-1"), "channel-1"))
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
+        networkSnapshot =
+            networkSnapshot.copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "good-name").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(3, 9),
+                        )
+                    ),
+                sidebarOrder = null,
+            )
+        store.accept(SharedHomeIntent.ForegroundRefresh)
+
+        val recovered = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(listOf("good-order"), recovered.sidebarOrder?.channelOrder)
+        assertEquals("good-name", store.resolveProjection(ServerId("server-1"), "channel-1")?.title)
+        scope.cancel()
+    }
+
+    @Test
     fun selectedReadStateRealtimeCommitsBeforeHomeProjectionWithoutWritingLegacyCheckpoint() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val owner = ReadStateV1ProductionOwner("production", "user-1", "server-1")

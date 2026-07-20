@@ -17,10 +17,19 @@ sealed interface ReadStateV1ProductionDisposition {
         val result: ReadStateV1GenerationResult,
         val projectedFact: ReadStateV1Fact? = null,
         val requiresProjectionConfirmation: Boolean = false,
+        val preparedPublication: ReadStateV1PreparedPublication? = null,
     ) : ReadStateV1ProductionDisposition
 
-    data object SelectedFailure : ReadStateV1ProductionDisposition
+    data class SelectedFailure(
+        val preparedPublication: ReadStateV1PreparedPublication? = null,
+    ) : ReadStateV1ProductionDisposition
 }
+
+class ReadStateV1PreparedPublication internal constructor(
+    internal val owner: ReadStateV1ProductionOwner,
+    internal val channelId: String,
+    internal val witness: ReadStateV1GrantWitness,
+)
 
 class ReadStateV1ProductionCanary(
     private val isEnabledForServer: (String) -> Boolean,
@@ -136,38 +145,57 @@ class ReadStateV1ProductionCanary(
         fact: ReadStateV1Fact,
         publishContent: () -> Unit = {},
     ): Boolean {
-        val selected = synchronized(lock) {
+        val publication = synchronized(lock) {
             selection?.takeIf {
                 it.owner == owner && it.channelId == fact.channelId && it.pendingPreparedFact == fact
+            }?.let(::preparedPublication)
+        } ?: return false
+        return completePreparedPublication(publication, fact, publishContent)
+    }
+
+    fun completePreparedPublication(
+        publication: ReadStateV1PreparedPublication,
+        projectionFact: ReadStateV1Fact? = null,
+        publishContent: () -> Unit = {},
+    ): Boolean {
+        val selected = synchronized(lock) {
+            selection?.takeIf {
+                it.owner == publication.owner &&
+                    it.channelId == publication.channelId &&
+                    it.witness === publication.witness &&
+                    (projectionFact == null || it.pendingPreparedFact == projectionFact)
             }
         } ?: return false
         return try {
+            var completedInsideFence = false
             val published = selected.witness.publicationFence.publishIfActive {
                 val exact = synchronized(lock) {
-                    selection === selected && selected.pendingPreparedFact == fact
+                    selection === selected &&
+                        (projectionFact == null || selected.pendingPreparedFact == projectionFact)
                 }
                 if (!exact) return@publishIfActive
                 publishContent()
-                onProjection(owner, selected.witness, fact)
-                synchronized(lock) {
-                    if (selection === selected && selected.pendingPreparedFact == fact) {
-                        selected.projectedFact = fact
-                        selected.pendingPreparedFact = null
-                        selected.requiresSnapshotBarrier = false
-                        selected.offBarrierRequested = false
+                if (projectionFact != null) {
+                    onProjection(publication.owner, selected.witness, projectionFact)
+                    synchronized(lock) {
+                        if (selection === selected && selected.pendingPreparedFact == projectionFact) {
+                            selected.projectedFact = projectionFact
+                            selected.pendingPreparedFact = null
+                            selected.requiresSnapshotBarrier = false
+                            selected.offBarrierRequested = false
+                        }
                     }
                 }
+                completedInsideFence = true
             }
-            val completed = published && synchronized(lock) {
-                selection === selected && selected.pendingPreparedFact == null && selected.projectedFact == fact
-            }
-            if (!completed) return false
-            releaseAfterCompletedBarrier(selected)
+            if (!published || !completedInsideFence) return false
+            if (projectionFact != null) releaseAfterCompletedBarrier(selected)
             true
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             logger(
-                "projection_failed source=hydrate serverId=${owner.serverId} channelId=${fact.channelId} " +
+                "publication_failed source=hydrate serverId=${publication.owner.serverId} " +
+                    "channelId=${publication.channelId} " +
                     "reason=${error::class.simpleName ?: "unknown"}"
             )
             false
@@ -198,7 +226,11 @@ class ReadStateV1ProductionCanary(
         val enabled = isEnabledForServer(owner.serverId)
         var barrierRequested = false
         if (!enabled && !selected.releaseAfterSnapshotBarrier) {
-            val barrier = replaceWithSnapshotBarrier(selected) ?: return ReadStateV1ProductionDisposition.SelectedFailure
+            val barrier =
+                replaceWithSnapshotBarrier(selected)
+                    ?: return ReadStateV1ProductionDisposition.SelectedFailure(
+                        preparedPublication = if (deferProjection) preparedPublication(selected) else null,
+                    )
             selected = barrier.selection
             barrierRequested = barrier.requested
         }
@@ -291,6 +323,7 @@ class ReadStateV1ProductionCanary(
                     result = result,
                     projectedFact = preparedFact ?: selected.projectedFact,
                     requiresProjectionConfirmation = preparedFact != null,
+                    preparedPublication = if (deferProjection) preparedPublication(selected) else null,
                 )
             if (preparedFact != null) return disposition
             if (result in setOf(ReadStateV1GenerationResult.Committed, ReadStateV1GenerationResult.Current)) {
@@ -315,9 +348,14 @@ class ReadStateV1ProductionCanary(
                 "apply_failed source=${source.name.lowercase()} serverId=${owner.serverId} channelId=$channelId " +
                     "reason=${error::class.simpleName ?: "unknown"}"
             )
-            ReadStateV1ProductionDisposition.SelectedFailure
+            ReadStateV1ProductionDisposition.SelectedFailure(
+                preparedPublication = if (deferProjection) preparedPublication(selected) else null,
+            )
         }
     }
+
+    private fun preparedPublication(selected: Selection): ReadStateV1PreparedPublication =
+        ReadStateV1PreparedPublication(selected.owner, selected.channelId, selected.witness)
 
     private fun select(
         owner: ReadStateV1ProductionOwner,

@@ -86,8 +86,9 @@ the legacy read-state path; enabling this flag does not enable Message V2 or any
 The selected scope is sole-apply for trusted complete pairs:
 
 - Home hydrate preserves the wire pair in a transient carrier, durably adjudicates it before first content,
-  strips the carrier before final state/equality/persistence, and performs the final Home state write inside
-  the original witness publication fence;
+  strips the carrier before final state/equality/persistence, and performs every selected adjudication's final
+  Home state/cache publication inside the original witness publication fence, including stale, rejected, and
+  failure-dark results that do not project a new durable fact;
 - mutation acknowledgements and owner realtime apply only after a baseline, commit durably before projection,
   and never write the legacy checkpoint for the selected scope;
 - Home and Activity verify the full environment/account/server owner before a final projection; Activity keeps

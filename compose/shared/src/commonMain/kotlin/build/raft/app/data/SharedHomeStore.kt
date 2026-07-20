@@ -12,6 +12,7 @@ import build.raft.app.network.sync.ReadStateSyncApplyResult
 import build.raft.app.network.sync.ReadStateSyncEvent
 import build.raft.app.network.sync.ReadStateSyncState
 import build.raft.app.network.sync.ReadStateV1Fact
+import build.raft.app.network.sync.ReadStateV1PreparedPublication
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1ProductionDisposition
 import build.raft.app.network.sync.ReadStateV1ProductionOwner
@@ -771,7 +772,9 @@ internal class SharedHomeStore(
 
     private data class PreparedReadStateV1Hydrates(
         val snapshot: HomeSnapshot,
-        val confirmations: List<Pair<ReadStateV1ProductionOwner, ReadStateV1Fact>> = emptyList(),
+        val selectedAdjudication: Boolean = false,
+        val publication: ReadStateV1PreparedPublication? = null,
+        val projectionFact: ReadStateV1Fact? = null,
     )
 
     private suspend fun prepareReadStateV1Hydrates(snapshot: HomeSnapshot): PreparedReadStateV1Hydrates {
@@ -782,24 +785,30 @@ internal class SharedHomeStore(
                 ?.toReadStateV1ProductionOwner()
                 ?: return PreparedReadStateV1Hydrates(snapshot)
         val projectedFacts = mutableMapOf<ChannelId, ReadStateV1Fact?>()
-        val confirmations = mutableListOf<Pair<ReadStateV1ProductionOwner, ReadStateV1Fact>>()
+        var selectedAdjudication = false
+        var publication: ReadStateV1PreparedPublication? = null
+        var projectionFact: ReadStateV1Fact? = null
         (snapshot.channels + snapshot.directMessages).forEach { row ->
             val hydrate = row.readStateV1Hydrate ?: return@forEach
             val channelId = row.channelId?.value ?: return@forEach
             when (val disposition = canary.prepareHydrate(owner, channelId, hydrate.readStateVersion, hydrate.maxReadSeq)) {
                 is ReadStateV1ProductionDisposition.Selected -> {
+                    selectedAdjudication = true
+                    publication = disposition.preparedPublication
                     projectedFacts[ChannelId(channelId)] = disposition.projectedFact
                     if (disposition.requiresProjectionConfirmation && disposition.projectedFact != null) {
-                        confirmations.clear()
-                        confirmations += owner to disposition.projectedFact
+                        projectionFact = disposition.projectedFact
                     }
                 }
-                ReadStateV1ProductionDisposition.SelectedFailure ->
+                is ReadStateV1ProductionDisposition.SelectedFailure -> {
+                    selectedAdjudication = true
+                    publication = disposition.preparedPublication
                     projectedFacts[ChannelId(channelId)] = null
+                }
                 ReadStateV1ProductionDisposition.Legacy -> Unit
             }
         }
-        if (projectedFacts.isEmpty()) return PreparedReadStateV1Hydrates(snapshot)
+        if (projectedFacts.isEmpty() && !selectedAdjudication) return PreparedReadStateV1Hydrates(snapshot)
         return PreparedReadStateV1Hydrates(
             snapshot =
                 snapshot.copy(
@@ -814,7 +823,9 @@ internal class SharedHomeStore(
                             else row.copy(readStateMaxReadSeq = projectedFacts[row.channelId]?.maxReadSeq)
                         },
                 ),
-            confirmations = confirmations,
+            selectedAdjudication = selectedAdjudication,
+            publication = publication,
+            projectionFact = projectionFact,
         )
     }
 
@@ -1624,12 +1635,12 @@ internal class SharedHomeStore(
                     serverUnreadCounts = freshSnapshot?.serverUnreadCounts ?: _state.value.serverUnreadCounts,
                     appBadgeCount = nextBadge
                 )
-            val confirmation = preparedHydrates?.confirmations?.singleOrNull()
             val published =
-                if (confirmation != null) {
-                    readStateV1Canary?.completePreparedHydrateProjection(
-                        owner = confirmation.first,
-                        fact = confirmation.second,
+                if (preparedHydrates?.selectedAdjudication == true) {
+                    val publication = preparedHydrates.publication
+                    publication != null && readStateV1Canary?.completePreparedPublication(
+                        publication = publication,
+                        projectionFact = preparedHydrates.projectionFact,
                         publishContent = { publishLoadedHomeState(nextState, freshSnapshot) },
                     ) == true
                 } else {
