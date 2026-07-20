@@ -21,6 +21,10 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.network.sync.ReadStateV1Fact
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1ProductionDisposition
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -79,6 +83,7 @@ class SharedActivityStore internal constructor(
     private val perReceiverStateVersionStore: PerReceiverStateVersionStore,
     private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
+    private var readStateV1Canary: ReadStateV1ProductionCanary? = null,
     private var prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
@@ -138,6 +143,7 @@ class SharedActivityStore internal constructor(
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
         readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
+        readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
         onUnreadCountsChanged: (() -> Unit)? = null,
         onSummaryFact: ((ActivityUnreadSummaryFact) -> Unit)? = null,
         onSummaryInvalidated: ((ActivityUnreadSummaryInvalidation) -> Unit)? = null,
@@ -159,6 +165,7 @@ class SharedActivityStore internal constructor(
         this.persistSlices = persistSlices
         this.readReceiptCoordinator = readReceiptCoordinator
         this.readReceiptOwnerFactory = readReceiptOwnerFactory
+        this.readStateV1Canary = readStateV1Canary
         if (onUnreadCountsChanged != null) {
             this.onUnreadCountsChanged = onUnreadCountsChanged
         }
@@ -748,8 +755,24 @@ class SharedActivityStore internal constructor(
         if (event.serverId != null && event.serverId != serverId) return
         val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
         var acceptedHere = false
-        synchronized(realtimeOwnerLock) {
-            event.scopes.forEach { readScope ->
+        event.scopes.forEach { readScope ->
+            val productionOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(serverId.value, memberId.value)
+                    ?.toReadStateV1ProductionOwner()
+            if (productionOwner != null) {
+                val disposition =
+                    readStateV1Canary?.applyOwnerRealtime(
+                        owner = productionOwner,
+                        channelId = readScope.scopeId.value,
+                        readStateVersion = readScope.readStateVersion,
+                        maxReadSeq = readScope.maxReadSeq,
+                    )
+                if (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy) {
+                    return@forEach
+                }
+            }
+            synchronized(realtimeOwnerLock) {
                 val maxReadSeq = readScope.maxReadSeq ?: return@forEach
                 val result =
                     perReceiverStateVersionStore.applyOrObserveReadStateFact(
@@ -770,6 +793,43 @@ class SharedActivityStore internal constructor(
             diagnosticsLogger("activity_read_state_patch result=checkpoint_only reason=identity_only_event")
             onUnreadCountsChanged()
         }
+    }
+
+    internal fun applyReadStateV1Projection(owner: ReadStateV1ProductionOwner, fact: ReadStateV1Fact) {
+        val accepted = synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val serverId = current.ownerServerId ?: return@synchronized false
+            val userId = current.ownerUserId ?: return@synchronized false
+            val currentOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(serverId, userId)
+                    ?.toReadStateV1ProductionOwner()
+                    ?: return@synchronized false
+            if (currentOwner != owner) return@synchronized false
+            diagnosticsLogger(
+                "activity_read_state_patch result=durable_v1_projection scopeId=${fact.channelId} " +
+                    "version=${fact.readStateVersion} maxReadSeq=${fact.maxReadSeq}"
+            )
+            true
+        }
+        if (accepted) onUnreadCountsChanged()
+    }
+
+    internal fun requestReadStateV1Rebaseline(owner: ReadStateV1ProductionOwner, channelId: String) {
+        val accepted = synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val serverId = current.ownerServerId ?: return@synchronized false
+            val userId = current.ownerUserId ?: return@synchronized false
+            val currentOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(serverId, userId)
+                    ?.toReadStateV1ProductionOwner()
+                    ?: return@synchronized false
+            if (currentOwner != owner) return@synchronized false
+            diagnosticsLogger("activity_read_state_patch result=rebaseline_requested scopeId=$channelId")
+            true
+        }
+        if (accepted) onUnreadCountsChanged()
     }
 
     private fun load(
@@ -1376,7 +1436,26 @@ class SharedActivityStore internal constructor(
             val serverId = currentServerId()
             val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
-            if (result is DataResult.Content || result is DataResult.Empty) {
+            val owner =
+                readReceiptOwnerFactory
+                    ?.invoke(previous.ownerServerId.orEmpty(), previous.ownerUserId.orEmpty())
+                    ?.toReadStateV1ProductionOwner()
+            var selected = false
+            if (result is DataResult.Content && owner != null) {
+                result.data.scopes.forEach { ack ->
+                    val disposition =
+                        readStateV1Canary?.applyMutationAck(
+                            owner = owner,
+                            channelId = ack.channelId.value,
+                            readStateVersion = ack.readStateVersion,
+                            maxReadSeq = ack.maxReadSeq,
+                        )
+                    selected = selected || (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy)
+                }
+            }
+            if (selected) {
+                onUnreadCountsChanged()
+            } else if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
             } else {
                 forgetUnreadCleared(snapshot.items)
@@ -1591,7 +1670,24 @@ class SharedActivityStore internal constructor(
         )
         scope.launch {
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
-            if (result is DataResult.Content || result is DataResult.Empty) {
+            val owner =
+                readReceiptOwnerFactory
+                    ?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
+                    ?.toReadStateV1ProductionOwner()
+            val disposition =
+                if (result is DataResult.Content && owner != null) {
+                    readStateV1Canary?.applyMutationAck(
+                        owner = owner,
+                        channelId = targetChannelId.value,
+                        readStateVersion = result.data.readStateVersion,
+                        maxReadSeq = result.data.maxReadSeq,
+                    )
+                } else {
+                    null
+                }
+            if (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy) {
+                onUnreadCountsChanged()
+            } else if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
             } else {
                 onUnreadCountsChanged()

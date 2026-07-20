@@ -31,6 +31,9 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.network.sync.ReadStateV1Fact
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -57,6 +60,129 @@ import kotlin.test.assertTrue
 private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
 
 class SharedActivityStoreTest {
+    @Test
+    fun flagOffActivityFinalStateCheckpointAndEffectTraceMatchLegacy() = runBlocking {
+        val legacyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val canaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val legacyInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
+        val canaryInbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
+        val legacyVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val canaryVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        var legacyEffects = 0
+        var canaryEffects = 0
+        val legacy =
+            activityStore(
+                scope = legacyScope,
+                inboxRepository = legacyInbox,
+                perReceiverStateVersionStore = legacyVersionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                onUnreadCountsChanged = { legacyEffects += 1 },
+            )
+        val flagOff =
+            activityStore(
+                scope = canaryScope,
+                inboxRepository = canaryInbox,
+                perReceiverStateVersionStore = canaryVersionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary =
+                    ReadStateV1ProductionCanary(
+                        isEnabledForServer = { false },
+                        store = TestReadStateV1Store(),
+                        onProjection = { _, _, _ -> },
+                        onRebaseline = { _, _, _ -> },
+                    ),
+                onUnreadCountsChanged = { canaryEffects += 1 },
+            )
+        legacy.dispatch(SharedActivityIntent.LoadInitial)
+        flagOff.dispatch(SharedActivityIntent.LoadInitial)
+        val event =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                PerReceiverReadStateChanged(
+                    ServerId("server-1"),
+                    listOf(PerReceiverReadStateScope(ChannelId("channel-1"), 5, 2)),
+                )
+            )
+
+        legacy.acceptRealtime(event)
+        flagOff.acceptRealtime(event)
+
+        assertEquals(legacy.state.value, flagOff.state.value)
+        assertEquals(legacyEffects, canaryEffects)
+        assertEquals(
+            legacyVersionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
+            canaryVersionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
+        )
+        assertEquals(legacyInbox.initialLoadCount, canaryInbox.initialLoadCount)
+        legacyScope.cancel()
+        canaryScope.cancel()
+    }
+
+    @Test
+    fun selectedReadStateRealtimeUsesSynchronousPatchOnlyProjectionWithoutLegacyCheckpoint() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()), snapshot(emptyList())))
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            ServerId("server-1"),
+            MemberId("user-1"),
+            ChannelId("channel-1"),
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+        )
+        lateinit var store: SharedActivityStore
+        var project = false
+        var projectionNotifications = 0
+        val durable = TestReadStateV1Store()
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = durable,
+                onProjection = { owner, _, fact -> if (project) store.applyReadStateV1Projection(owner, fact) },
+                onRebaseline = { owner, _, channelId -> store.requestReadStateV1Rebaseline(owner, channelId) },
+            )
+        store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                perReceiverStateVersionStore = versionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary = canary,
+                onUnreadCountsChanged = { projectionNotifications += 1 },
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.applyReadStateV1Projection(
+            ReadStateV1ProductionOwner("staging", "user-1", "server-1"),
+            ReadStateV1Fact("channel-1", 50, 50),
+        )
+        assertEquals(0, projectionNotifications)
+        canary.applyHydrate(ReadStateV1ProductionOwner("production", "user-1", "server-1"), "channel-1", 1, 10)
+        project = true
+
+        store.acceptRealtime(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                PerReceiverReadStateChanged(
+                    ServerId("server-1"),
+                    listOf(PerReceiverReadStateScope(ChannelId("channel-1"), 5, 2)),
+                )
+            )
+        )
+
+        assertEquals(ReadStateV1Fact("channel-1", 2, 5), durable.facts.values.single())
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
+        )
+        assertEquals(1, projectionNotifications)
+        assertEquals(1, inbox.initialLoadCount, "read-state projection must not own a full-list refresh")
+
+        store.requestReadStateV1Rebaseline(
+            ReadStateV1ProductionOwner("production", "user-1", "server-1"),
+            "channel-1",
+        )
+        assertEquals(2, projectionNotifications)
+        assertEquals(1, inbox.initialLoadCount, "rebaseline emission must preserve visible patch-only Activity")
+        scope.cancel()
+    }
+
     @Test
     fun visibleReplyPrewarmDedupesStableGenerationAndRefetchesAfterLedgerAdvance() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -3392,6 +3518,7 @@ class SharedActivityStoreTest {
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
         tailPrewarmDepthCap: Int = 20,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
+        readStateV1Canary: ReadStateV1ProductionCanary? = null,
         onUnreadCountsChanged: () -> Unit = {},
         onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
         onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
@@ -3414,6 +3541,7 @@ class SharedActivityStoreTest {
             replyThreadFreshnessLedger = replyThreadFreshnessLedger,
             tailPrewarmDepthCap = tailPrewarmDepthCap,
             readReceiptOwnerFactory = readReceiptOwnerFactory,
+            readStateV1Canary = readStateV1Canary,
             onUnreadCountsChanged = onUnreadCountsChanged,
             onSummaryFact = onSummaryFact,
             onSummaryInvalidated = onSummaryInvalidated,
