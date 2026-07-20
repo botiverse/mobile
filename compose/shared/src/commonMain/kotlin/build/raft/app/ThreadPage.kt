@@ -318,11 +318,12 @@ internal enum class ThreadPickedAttachmentComposerAction {
 internal fun resolveThreadPickedAttachmentComposerAction(
     action: String,
     fileCount: Int,
-    imageAnnotationEnabled: Boolean
+    imageAnnotationEnabled: Boolean,
+    allFilesAreImages: Boolean = true,
 ): ThreadPickedAttachmentComposerAction {
     return when {
         fileCount <= 0 -> ThreadPickedAttachmentComposerAction.None
-        action == "attachImage" && imageAnnotationEnabled ->
+        action == "attachImage" && imageAnnotationEnabled && allFilesAreImages ->
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation
         else -> ThreadPickedAttachmentComposerAction.UploadToComposer
     }
@@ -7320,7 +7321,14 @@ internal fun SharedThreadRouteContent(
                             resolveThreadPickedAttachmentComposerAction(
                                 action = action,
                                 fileCount = files.size,
-                                imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled()
+                                imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled(),
+                                allFilesAreImages =
+                                    files.all { file ->
+                                        slockFilePreviewIsImageAttachment(
+                                            fileName = file.fileName,
+                                            mimeType = file.mimeType.orEmpty(),
+                                        )
+                                    },
                             )
                         ) {
                             ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->

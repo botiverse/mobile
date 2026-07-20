@@ -339,6 +339,19 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun pickedVideoNeverOpensImageAnnotationEvenFromImagePickerAction() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.UploadToComposer,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = 1,
+                imageAnnotationEnabled = true,
+                allFilesAreImages = false,
+            )
+        )
+    }
+
+    @Test
     fun pickedFileDoesNotOpenImageAnnotation() {
         assertEquals(
             ThreadPickedAttachmentComposerAction.UploadToComposer,

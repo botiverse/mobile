@@ -1306,8 +1306,8 @@ private val SlockComposerImageEditorPenColors =
         Color(0xFF34C759),
         Color(0xFF32ADE6),
     )
-private const val SlockComposerImageMosaicTileSizePx = 24f
-private const val SlockComposerImageMosaicBrushRadius = 2
+private const val SlockComposerImageMosaicTileSizePx = 18f
+private const val SlockComposerImageMosaicBrushRadius = 1
 
 @Composable
 private fun SlockFilePreviewImageEditorDoneButton(
@@ -1360,10 +1360,17 @@ internal data class SlockComposerImageMosaicSample(
     val destinationHeight: Int,
 )
 
+internal sealed interface SlockComposerImageDrawOperation {
+    data class Mosaic(val tiles: Set<SlockComposerImageMosaicTile>) : SlockComposerImageDrawOperation
+
+    data class Pencil(val stroke: SlockComposerImageStroke) : SlockComposerImageDrawOperation
+}
+
 internal data class SlockComposerImageEditorContent(
     val strokes: List<SlockComposerImageStroke> = emptyList(),
     val mosaicTiles: Set<SlockComposerImageMosaicTile> = emptySet(),
     val textAnnotations: List<SlockComposerImageTextAnnotation> = emptyList(),
+    val drawOperations: List<SlockComposerImageDrawOperation> = emptyList(),
 )
 
 internal data class SlockComposerImageEditorHistory(
@@ -1467,7 +1474,6 @@ private fun SlockFilePreviewComposerImageEditor(
     var eraseGestureOrigin by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
     var textGestureOrigin by remember(payload.imageUrl) { mutableStateOf<SlockComposerImageEditorContent?>(null) }
     var activeTextAnnotationId by remember(payload.imageUrl) { mutableStateOf<Int?>(null) }
-    var activeTextGrabOffset by remember(payload.imageUrl) { mutableStateOf(Offset.Zero) }
     var textDraft by remember(payload.imageUrl) { mutableStateOf("") }
     var textPosition by remember(payload.imageUrl) { mutableStateOf(Offset(32f, 32f)) }
     var editorCanvasSize by remember(payload.imageUrl) { mutableStateOf(IntSize(0, 0)) }
@@ -1522,11 +1528,16 @@ private fun SlockFilePreviewComposerImageEditor(
             activeMosaicTiles.addAll(nextActiveMosaicTiles)
             activeMosaicRevision += 1
         }
-        return content.copy(
-            strokes = nextStrokes,
-            mosaicTiles = nextMosaicTiles,
-            textAnnotations = nextTexts,
-        )
+        return content
+            .copy(
+                strokes = nextStrokes,
+                mosaicTiles = nextMosaicTiles,
+                textAnnotations = nextTexts,
+            )
+            .slockComposerImageRetainDrawOperations(
+                strokes = nextStrokes,
+                mosaicTiles = nextMosaicTiles,
+            )
     }
     fun eraseAt(point: Offset, recordHistory: Boolean) {
         val nextContent = erasedContentAt(point)
@@ -1600,13 +1611,11 @@ private fun SlockFilePreviewComposerImageEditor(
                                     } else {
                                         state.update(
                                             state.history.apply(
-                                                state.history.content.copy(
-                                                    strokes =
-                                                        state.history.content.strokes +
-                                                            SlockComposerImageStroke(
-                                                                points = listOf(position, position),
-                                                                color = selectedPenColor,
-                                                            )
+                                                state.history.content.slockComposerImageAppendStroke(
+                                                    SlockComposerImageStroke(
+                                                        points = listOf(position, position),
+                                                        color = selectedPenColor,
+                                                    )
                                                 )
                                             )
                                         )
@@ -1624,6 +1633,7 @@ private fun SlockFilePreviewComposerImageEditor(
                         }
                     }
                     .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
+                        if (tool == SlockComposerImageEditorTool.Text) return@pointerInput
                         detectDragGestures(
                             onDragStart = { start ->
                                 when (tool) {
@@ -1637,22 +1647,8 @@ private fun SlockFilePreviewComposerImageEditor(
                                             eraseAt(start, recordHistory = false)
                                         }
                                     SlockComposerImageEditorTool.Text -> {
-                                        val annotation =
-                                            slockComposerImageTopmostTextAnnotationAt(
-                                                annotations = state.history.content.textAnnotations,
-                                                point = start,
-                                                layoutSizes = textAnnotationSizes,
-                                                densityScale = editorDensity.density,
-                                                fontScale = editorDensity.fontScale,
-                                            )
-                                        if (annotation == null) {
-                                            activeTextAnnotationId = null
-                                            textPosition = start
-                                        } else {
-                                            textGestureOrigin = state.history.content
-                                            activeTextAnnotationId = annotation.id
-                                            activeTextGrabOffset = start - annotation.position
-                                        }
+                                        activeTextAnnotationId = null
+                                        textPosition = start
                                     }
                                     SlockComposerImageEditorTool.Mosaic -> {
                                         activeMosaicTiles.clear()
@@ -1674,13 +1670,11 @@ private fun SlockFilePreviewComposerImageEditor(
                                             }
                                         state.update(
                                             state.history.apply(
-                                                state.history.content.copy(
-                                                    strokes =
-                                                        state.history.content.strokes +
-                                                            SlockComposerImageStroke(
-                                                                points = committedPoints,
-                                                                color = selectedPenColor,
-                                                            )
+                                                state.history.content.slockComposerImageAppendStroke(
+                                                    SlockComposerImageStroke(
+                                                        points = committedPoints,
+                                                        color = selectedPenColor,
+                                                    )
                                                 )
                                             )
                                         )
@@ -1738,35 +1732,7 @@ private fun SlockFilePreviewComposerImageEditor(
                                     } else {
                                         eraseAt(change.position, recordHistory = false)
                                     }
-                                SlockComposerImageEditorTool.Text -> {
-                                    val annotationId = activeTextAnnotationId
-                                    if (annotationId == null) {
-                                        textPosition = change.position
-                                    } else {
-                                        val annotation =
-                                            state.history.content.textAnnotations.firstOrNull { it.id == annotationId }
-                                        val nextPosition = change.position - activeTextGrabOffset
-                                        state.update(
-                                            state.history.replaceWithoutHistory(
-                                                slockComposerImageMoveTextAnnotation(
-                                                    content = state.history.content,
-                                                    annotationId = annotationId,
-                                                    position = slockComposerImageClampTextPosition(
-                                                        position = nextPosition,
-                                                        annotationSize =
-                                                            textAnnotationSizes[annotationId]
-                                                                ?: slockComposerImageTextFallbackSize(
-                                                                    text = annotation?.text.orEmpty(),
-                                                                    densityScale = editorDensity.density,
-                                                                    fontScale = editorDensity.fontScale,
-                                                                ),
-                                                        canvasSize = editorCanvasSize,
-                                                    ),
-                                                )
-                                            )
-                                        )
-                                    }
-                                }
+                                SlockComposerImageEditorTool.Text -> textPosition = change.position
                                 SlockComposerImageEditorTool.Mosaic ->
                                     if (slockComposerImageAccumulateMosaicTiles(activeMosaicTiles, change.position)) {
                                         activeMosaicRevision += 1
@@ -1787,21 +1753,27 @@ private fun SlockFilePreviewComposerImageEditor(
                     showLoadingIndicator = true
                 )
             }
-            val committedContent = state.history.content
             Canvas(modifier = Modifier.fillMaxSize()) {
-                drawSlockComposerImageMosaic(
-                    image = mosaicImage,
-                    tiles = committedContent.mosaicTiles,
-                )
-                committedContent.strokes.forEach { stroke ->
-                    stroke.points.windowed(2).forEach { segment ->
-                        drawLine(
-                            color = stroke.color,
-                            start = segment[0],
-                            end = segment[1],
-                            strokeWidth = 6f,
-                            cap = StrokeCap.Round
-                        )
+                // Read history inside the draw callback. Kuikly observes draw-time state reads to
+                // invalidate and reset the retained native Canvas; capturing this value during
+                // composition leaves stale pixels behind after Undo/Redo.
+                state.history.content.slockComposerImageResolvedDrawOperations().forEach { operation ->
+                    when (operation) {
+                        is SlockComposerImageDrawOperation.Mosaic ->
+                            drawSlockComposerImageMosaic(
+                                image = mosaicImage,
+                                tiles = operation.tiles,
+                            )
+                        is SlockComposerImageDrawOperation.Pencil ->
+                            operation.stroke.points.windowed(2).forEach { segment ->
+                                drawLine(
+                                    color = operation.stroke.color,
+                                    start = segment[0],
+                                    end = segment[1],
+                                    strokeWidth = 6f,
+                                    cap = StrokeCap.Round
+                                )
+                            }
                     }
                 }
             }
@@ -1822,7 +1794,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     )
                 }
             }
-            committedContent.textAnnotations.forEach { annotation ->
+            state.history.content.textAnnotations.forEach { annotation ->
                 Box(
                     modifier =
                         Modifier
@@ -1849,6 +1821,54 @@ private fun SlockFilePreviewComposerImageEditor(
                                                 content = state.history.content,
                                                 annotationId = annotation.id,
                                                 position = clampedPosition,
+                                            )
+                                        )
+                                    )
+                                }
+                            }
+                            .pointerInput(payload.imageUrl, annotation.id, tool) {
+                                if (tool != SlockComposerImageEditorTool.Text) return@pointerInput
+                                detectDragGestures(
+                                    onDragStart = {
+                                        textGestureOrigin = state.history.content
+                                        activeTextAnnotationId = annotation.id
+                                    },
+                                    onDragEnd = {
+                                        textGestureOrigin?.let { origin ->
+                                            state.update(state.history.commitTransaction(origin))
+                                        }
+                                        textGestureOrigin = null
+                                        activeTextAnnotationId = null
+                                    },
+                                    onDragCancel = {
+                                        textGestureOrigin?.let { origin ->
+                                            state.update(state.history.replaceWithoutHistory(origin))
+                                        }
+                                        textGestureOrigin = null
+                                        activeTextAnnotationId = null
+                                    },
+                                ) { _, dragAmount ->
+                                    val annotationId = activeTextAnnotationId ?: return@detectDragGestures
+                                    val current =
+                                        state.history.content.textAnnotations.firstOrNull { it.id == annotationId }
+                                            ?: return@detectDragGestures
+                                    val nextPosition = current.position + dragAmount
+                                    state.update(
+                                        state.history.replaceWithoutHistory(
+                                            slockComposerImageMoveTextAnnotation(
+                                                content = state.history.content,
+                                                annotationId = annotationId,
+                                                position = slockComposerImageClampTextPosition(
+                                                    position = nextPosition,
+                                                    annotationSize =
+                                                        textAnnotationSizes[annotationId]
+                                                            ?: slockComposerImageTextFallbackSize(
+                                                                text = current.text,
+                                                                densityScale = editorDensity.density,
+                                                                fontScale = editorDensity.fontScale,
+                                                            ),
+                                                    canvasSize = editorCanvasSize,
+                                                ),
                                             )
                                         )
                                     )
@@ -2378,8 +2398,56 @@ internal fun slockComposerImageCommitMosaicGesture(
     tiles: Collection<SlockComposerImageMosaicTile>,
 ): SlockComposerImageEditorHistory {
     if (tiles.isEmpty()) return history
-    val nextTiles = history.content.mosaicTiles + tiles
-    return history.apply(history.content.copy(mosaicTiles = nextTiles))
+    val committedTiles = tiles.toSet() - history.content.mosaicTiles
+    if (committedTiles.isEmpty()) return history
+    val nextTiles = history.content.mosaicTiles + committedTiles
+    return history.apply(
+        history.content.copy(
+            mosaicTiles = nextTiles,
+            drawOperations =
+                history.content.slockComposerImageResolvedDrawOperations() +
+                    SlockComposerImageDrawOperation.Mosaic(committedTiles),
+        )
+    )
+}
+
+internal fun SlockComposerImageEditorContent.slockComposerImageAppendStroke(
+    stroke: SlockComposerImageStroke,
+): SlockComposerImageEditorContent =
+    copy(
+        strokes = strokes + stroke,
+        drawOperations =
+            slockComposerImageResolvedDrawOperations() +
+                SlockComposerImageDrawOperation.Pencil(stroke),
+    )
+
+internal fun SlockComposerImageEditorContent.slockComposerImageResolvedDrawOperations():
+    List<SlockComposerImageDrawOperation> =
+    if (drawOperations.isNotEmpty()) {
+        drawOperations
+    } else {
+        buildList {
+            if (mosaicTiles.isNotEmpty()) add(SlockComposerImageDrawOperation.Mosaic(mosaicTiles))
+            strokes.forEach { add(SlockComposerImageDrawOperation.Pencil(it)) }
+        }
+    }
+
+internal fun SlockComposerImageEditorContent.slockComposerImageRetainDrawOperations(
+    strokes: List<SlockComposerImageStroke>,
+    mosaicTiles: Set<SlockComposerImageMosaicTile>,
+): SlockComposerImageEditorContent {
+    val retained =
+        slockComposerImageResolvedDrawOperations().mapNotNull { operation ->
+            when (operation) {
+                is SlockComposerImageDrawOperation.Mosaic ->
+                    (operation.tiles intersect mosaicTiles)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(SlockComposerImageDrawOperation::Mosaic)
+                is SlockComposerImageDrawOperation.Pencil ->
+                    operation.takeIf { operation.stroke in strokes }
+            }
+        }
+    return copy(drawOperations = retained)
 }
 
 internal fun slockComposerImageAccumulateMosaicTiles(
