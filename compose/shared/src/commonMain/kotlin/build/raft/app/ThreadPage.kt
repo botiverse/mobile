@@ -11663,7 +11663,7 @@ private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
         minWidth = 0.dp,
         minHeight = 30.dp,
         shadowOffset = 2.dp,
-        textStyle = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
     )
 }
 
@@ -15146,7 +15146,7 @@ private fun ThreadInlineActionRow(
         minHeight = 36.dp,
         leadingIcon = leadingIcon,
         shadowOffset = 2.dp,
-        textStyle = SlockType.Button.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
+        textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, color = SlockColor.TextBlack)
     )
 }
 
@@ -15995,7 +15995,7 @@ private fun ThreadActionCardView(
                 minWidth = 0.dp,
                 minHeight = 34.dp,
                 shadowOffset = 2.dp,
-                textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
             )
         }
     }
@@ -19627,7 +19627,7 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
             minWidth = 0.dp,
             minHeight = 40.dp,
             leadingIcon = SlockLucideIconName.LogIn,
-            textStyle = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+            textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
         )
     }
 }

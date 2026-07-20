@@ -796,7 +796,7 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
                         backgroundColor = SlockColor.AccentRed,
                         minWidth = 0.dp,
                         minHeight = 44.dp,
-                        textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+                        textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
                     )
                 }
             } else {
@@ -807,7 +807,7 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
                     backgroundColor = SlockColor.AccentRed,
                     minWidth = 0.dp,
                     minHeight = 48.dp,
-                    textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+                    textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
                 )
             }
         }

@@ -8910,7 +8910,7 @@ private fun MembersAgentActivityTab(
                 minHeight = 32.dp,
                 minWidth = 72.dp,
                 shadowOffset = 2.dp,
-                textStyle = SlockType.Button.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
                 onClick = onCopyDiagnostics
             )
         }
