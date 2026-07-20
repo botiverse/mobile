@@ -5,9 +5,15 @@ import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.defaultNowMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 internal const val DIAGNOSTIC_FEATURE_FLAG_OVERRIDE_TTL_MILLIS: Long = 15L * 60L * 1000L
 
@@ -79,6 +85,14 @@ sealed interface DiagnosticFeatureFlagOverrideMutationResult {
         DiagnosticFeatureFlagOverrideMutationResult
 }
 
+fun interface DiagnosticFeatureFlagExpiryHandle {
+    fun cancel()
+}
+
+fun interface DiagnosticFeatureFlagExpiryScheduler {
+    fun schedule(delayMillis: Long, onExpired: () -> Unit): DiagnosticFeatureFlagExpiryHandle
+}
+
 private interface DiagnosticFeatureFlagOverrideConsumer {
     val key: String
     val scopeKind: DiagnosticFeatureFlagScopeKind
@@ -94,6 +108,7 @@ private interface DiagnosticFeatureFlagOverrideConsumer {
 private class ServerExactDiagnosticFeatureFlagConsumer(
     override val key: String,
     private val nowMillis: () -> Long,
+    private val expiryScheduler: DiagnosticFeatureFlagExpiryScheduler,
     private val onChanged: () -> Unit,
 ) : DiagnosticFeatureFlagOverrideConsumer {
     override val scopeKind: DiagnosticFeatureFlagScopeKind = DiagnosticFeatureFlagScopeKind.ServerExact
@@ -108,6 +123,7 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
     private var entitled = false
     private var observedScope: DiagnosticFeatureFlagScope? = null
     private var activeOverride: ActiveOverride? = null
+    private var expiryHandle: DiagnosticFeatureFlagExpiryHandle? = null
     private var lastDecision: DiagnosticFeatureFlagDecision? = null
     private var clearReason: String? = "process_start"
 
@@ -148,6 +164,8 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
                 }
                 observedScope == null -> rejected("diagnostic_feature_flag_override_scope_unobserved")
                 else -> {
+                    expiryHandle?.cancel()
+                    expiryHandle = null
                     activeOverride =
                         ActiveOverride(
                             mode = mode,
@@ -159,6 +177,10 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
                 }
             }
         }
+        (result as? DiagnosticFeatureFlagOverrideMutationResult.Applied)
+            ?.snapshot
+            ?.expiresAtMillis
+            ?.let(::scheduleExpiry)
         if (result is DiagnosticFeatureFlagOverrideMutationResult.Applied) onChanged()
         return result
     }
@@ -246,6 +268,8 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
     }
 
     private fun clearLocked(reason: String) {
+        expiryHandle?.cancel()
+        expiryHandle = null
         activeOverride = null
         lastDecision = null
         clearReason = reason
@@ -256,6 +280,29 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
 
     private fun rejected(code: String): DiagnosticFeatureFlagOverrideMutationResult.Rejected =
         DiagnosticFeatureFlagOverrideMutationResult.Rejected(code, snapshotLocked())
+
+    private fun scheduleExpiry(expiresAtMillis: Long) {
+        val handle =
+            expiryScheduler.schedule((expiresAtMillis - nowMillis()).coerceAtLeast(0L)) {
+                val changed = synchronized(lock) {
+                    val active = activeOverride
+                    if (active?.expiresAtMillis == expiresAtMillis && nowMillis() >= expiresAtMillis) {
+                        clearLocked("expired")
+                        true
+                    } else {
+                        false
+                    }
+                }
+                if (changed) onChanged()
+            }
+        synchronized(lock) {
+            if (activeOverride?.expiresAtMillis == expiresAtMillis) {
+                expiryHandle = handle
+            } else {
+                handle.cancel()
+            }
+        }
+    }
 
     private fun snapshotLocked(): DiagnosticFeatureFlagOverrideSnapshot =
         DiagnosticFeatureFlagOverrideSnapshot(
@@ -320,10 +367,10 @@ private class ReadStateV1DiagnosticFeatureFlagConsumer(
 class DiagnosticFeatureFlagOverrideRegistry(
     nowMillis: () -> Long,
     readStateController: ReadStateV1DiagnosticOverrideController,
+    expiryScheduler: DiagnosticFeatureFlagExpiryScheduler = NoOpDiagnosticFeatureFlagExpiryScheduler,
 ) {
-    private val _revision = MutableStateFlow(0L)
-    val revision: StateFlow<Long> = _revision.asStateFlow()
     private val registryLock = SynchronizedObject()
+    private val keyRevisions = mutableMapOf<String, MutableStateFlow<Long>>()
     private val unsupportedKeys = mutableSetOf<String>()
 
     private val consumers: Map<String, DiagnosticFeatureFlagOverrideConsumer> =
@@ -332,7 +379,8 @@ class DiagnosticFeatureFlagOverrideRegistry(
             ServerExactDiagnosticFeatureFlagConsumer(
                 key = MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
                 nowMillis = nowMillis,
-                onChanged = ::bumpRevision,
+                expiryScheduler = expiryScheduler,
+                onChanged = { bumpRevision(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY) },
             ),
         ).associateBy { it.key }
 
@@ -340,8 +388,12 @@ class DiagnosticFeatureFlagOverrideRegistry(
 
     fun configureEntitlement(enabled: Boolean) {
         consumers.values.forEach { it.configureEntitlement(enabled) }
-        bumpRevision()
     }
+
+    fun revisionFor(key: String): StateFlow<Long> =
+        synchronized(registryLock) {
+            keyRevisions.getOrPut(key) { MutableStateFlow(0L) }.asStateFlow()
+        }
 
     fun observe(key: String, scope: DiagnosticFeatureFlagScope) {
         consumers[key]?.observe(scope)
@@ -383,7 +435,7 @@ class DiagnosticFeatureFlagOverrideRegistry(
                 )
             }
         val result = consumer.setMode(mode)
-        if (result is DiagnosticFeatureFlagOverrideMutationResult.Applied) bumpRevision()
+        if (result is DiagnosticFeatureFlagOverrideMutationResult.Applied) bumpRevision(key)
         return result
     }
 
@@ -401,7 +453,7 @@ class DiagnosticFeatureFlagOverrideRegistry(
 
     fun clearAll(reason: String) {
         consumers.values.forEach { it.clear(reason) }
-        bumpRevision()
+        supportedKeys.forEach(::bumpRevision)
     }
 
     private fun unsupportedSnapshot(key: String): DiagnosticFeatureFlagOverrideSnapshot =
@@ -421,11 +473,14 @@ class DiagnosticFeatureFlagOverrideRegistry(
     private fun rememberUnsupportedKey(key: String) {
         if (!key.matches(ValidKeyRegex)) return
         val changed = synchronized(registryLock) { unsupportedKeys.add(key) }
-        if (changed) bumpRevision()
+        if (changed) bumpRevision(key)
     }
 
-    private fun bumpRevision() {
-        _revision.value = _revision.value + 1L
+    private fun bumpRevision(key: String) {
+        synchronized(registryLock) {
+            val flow = keyRevisions.getOrPut(key) { MutableStateFlow(0L) }
+            flow.value = flow.value + 1L
+        }
     }
 
     private companion object {
@@ -434,11 +489,27 @@ class DiagnosticFeatureFlagOverrideRegistry(
 }
 
 object ProcessDiagnosticFeatureFlagOverrides {
+    private val expiryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val registry: DiagnosticFeatureFlagOverrideRegistry =
         DiagnosticFeatureFlagOverrideRegistry(
             nowMillis = ::defaultNowMillis,
             readStateController = ProcessReadStateV1DiagnosticOverride.controller,
+            expiryScheduler =
+                DiagnosticFeatureFlagExpiryScheduler { delayMillis, onExpired ->
+                    val job: Job = expiryScope.launch {
+                        delay(delayMillis)
+                        onExpired()
+                    }
+                    DiagnosticFeatureFlagExpiryHandle { job.cancel() }
+                },
         )
+}
+
+private object NoOpDiagnosticFeatureFlagExpiryScheduler : DiagnosticFeatureFlagExpiryScheduler {
+    override fun schedule(
+        delayMillis: Long,
+        onExpired: () -> Unit,
+    ): DiagnosticFeatureFlagExpiryHandle = DiagnosticFeatureFlagExpiryHandle {}
 }
 
 private fun DiagnosticFeatureFlagScope.toReadStateOwner(): ReadStateV1ProductionOwner =

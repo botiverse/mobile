@@ -1035,6 +1035,55 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityStableOrderDecisionChangeAdoptsCanonicalAndClearsPendingPresentationState() {
+        val first = activityItem(key = "thread:first")
+        val second = activityItem(key = "thread:second")
+        val promoted = activityItem(key = "thread:promoted")
+
+        val checkpoint =
+            activityCanonicalCheckpointAfterStableOrderDecisionChange(
+                selectedFilter = InboxFilter.All,
+                canonicalItems = listOf(promoted, first, second),
+                previousPresentedItems = listOf(first, second),
+                previousPresentationGeneration = 4,
+            )
+
+        assertEquals(listOf(promoted.key, first.key, second.key), checkpoint.presentedItems.map(InboxItem::key))
+        assertEquals(0, checkpoint.updateTracking.pendingCount)
+        assertEquals(5, checkpoint.presentationGeneration)
+        assertFalse(checkpoint.pullRefreshInFlight)
+    }
+
+    @Test
+    fun activityStableOrderEnableStartsAtCanonicalThenHoldsTheNextUpdate() {
+        val first = activityItem(key = "thread:first")
+        val second = activityItem(key = "thread:second")
+        val enabledCheckpoint =
+            activityCanonicalCheckpointAfterStableOrderDecisionChange(
+                selectedFilter = InboxFilter.All,
+                canonicalItems = listOf(first, second),
+                previousPresentedItems = listOf(second, first),
+                previousPresentationGeneration = 2,
+            )
+        val newHead = activityItem(key = "thread:new")
+        val nextCanonical = listOf(newHead, first, second)
+        val nextTracking =
+            enabledCheckpoint.updateTracking.recordSnapshot(InboxFilter.All, nextCanonical)
+
+        assertEquals(1, nextTracking.pendingCount)
+        assertEquals(
+            listOf(first.key, second.key),
+            activityItemsAfterCanonicalSnapshot(
+                stableOrderEnabled = true,
+                pendingCount = nextTracking.pendingCount,
+                pullRefreshCompleted = false,
+                presentedItems = enabledCheckpoint.presentedItems,
+                canonicalItems = nextCanonical,
+            ).map(InboxItem::key),
+        )
+    }
+
+    @Test
     fun activityChannelAndDmLastMessageRevisionRemainHeldUntilReveal() {
         listOf(InboxItemKind.Channel, InboxItemKind.DirectMessage).forEach { kind ->
             val filter = InboxFilter.All

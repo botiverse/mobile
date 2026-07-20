@@ -67,7 +67,7 @@ class ReadStateV1DiagnosticOverrideBoundaryTest {
 
         assertTrue(provider.contains("ProcessReadStateV1DiagnosticOverride.controller.runPublicationIfEffective"))
         assertTrue(activity.contains("resolveActivityStableOrderEnabled("))
-        assertTrue(activity.contains("ProcessDiagnosticFeatureFlagOverrides.registry.revision.collectAsState()"))
+        assertTrue(activity.contains("revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY)"))
         assertTrue(registry.contains("SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY"))
         assertTrue(registry.contains("MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY"))
     }

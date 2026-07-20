@@ -221,7 +221,9 @@ internal fun SharedHomeActivityScreen(
             projectActivityStateWithProcessSummary(state, activitySummary)
         }
     val diagnosticOverrideRevision by
-        ProcessDiagnosticFeatureFlagOverrides.registry.revision.collectAsState()
+        ProcessDiagnosticFeatureFlagOverrides.registry
+            .revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY)
+            .collectAsState()
     val stableOrderEnabledAtRouteEntry =
         remember(activityStore, state.ownerUserId, activitySummaryServerId, diagnosticOverrideRevision) {
             val serverEffective =
@@ -317,6 +319,7 @@ internal fun SharedHomeActivityScreen(
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
+        stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
         modifier = modifier
     )
@@ -397,6 +400,7 @@ internal fun SharedHomeActivityScreen(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
+    stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     modifier: Modifier = Modifier
 ) {
@@ -413,6 +417,7 @@ internal fun SharedHomeActivityScreen(
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
         stableOrderEnabled = stableOrderEnabled,
+        stableOrderDecisionRevision = stableOrderDecisionRevision,
         presentationStore = presentationStore,
         modifier = modifier
     )
@@ -433,6 +438,7 @@ internal fun SharedHomeActivityPanel(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
     stableOrderEnabled: Boolean = true,
+    stableOrderDecisionRevision: Long = 0L,
     presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     modifier: Modifier = Modifier
 ) {
@@ -454,6 +460,7 @@ internal fun SharedHomeActivityPanel(
             draftProjection = draftProjection,
             onTitleClick = onTitleClick,
             stableOrderEnabled = stableOrderEnabled,
+            stableOrderDecisionRevision = stableOrderDecisionRevision,
             presentationStore = presentationStore,
             modifier = modifier
         )
@@ -474,6 +481,7 @@ private fun SharedActivityPanelContent(
     draftProjection: SharedThreadComposerDraftProjection,
     onTitleClick: (() -> Unit)?,
     stableOrderEnabled: Boolean,
+    stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
     modifier: Modifier = Modifier
 ) {
@@ -507,6 +515,7 @@ private fun SharedActivityPanelContent(
             draftProjection = draftProjection,
             presentationAccountId = state.ownerUserId.orEmpty(),
             stableOrderEnabled = stableOrderEnabled,
+            stableOrderDecisionRevision = stableOrderDecisionRevision,
             presentationStore = presentationStore,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
@@ -525,6 +534,7 @@ private fun SharedActivityBodyContent(
     draftProjection: SharedThreadComposerDraftProjection,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
+    stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore,
     modifier: Modifier = Modifier
 ) {
@@ -594,6 +604,7 @@ private fun SharedActivityBodyContent(
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
+                    stableOrderDecisionRevision = stableOrderDecisionRevision,
                     presentationStore = presentationStore
                 )
         }
@@ -720,6 +731,7 @@ private fun SharedActivityList(
     activityTaskStatusBadgesEnabled: Boolean,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
+    stableOrderDecisionRevision: Long,
     presentationStore: SharedActivityPresentationStore
 ) {
     val presentationServerId = snapshot.server.id.value
@@ -743,19 +755,23 @@ private fun SharedActivityList(
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
-    var updateTracking by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+    var updateTracking by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
         mutableStateOf(restoredPresentation.updateTracking)
     }
     var revealRequest by remember(selectedFilter) { mutableStateOf(0) }
-    var presentedItems by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+    var presentedItems by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
         mutableStateOf(restoredPresentation.presentedItems)
     }
-    var presentationGeneration by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+    var presentationGeneration by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
         mutableStateOf(restoredPresentation.presentationGeneration)
     }
-    var pullRefreshInFlight by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+    var pullRefreshInFlight by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
         mutableStateOf(restoredPresentation.pullRefreshInFlight)
     }
+    var appliedStableOrderDecisionRevision by
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
+            mutableStateOf(stableOrderDecisionRevision)
+        }
     fun savePresentation() {
         if (!stableOrderEnabled) return
         presentationStore.save(
@@ -797,7 +813,38 @@ private fun SharedActivityList(
             selectedItemKey = null
         }
     }
-    LaunchedEffect(selectedFilter, snapshot.items, refreshing, pullRefreshing) {
+    LaunchedEffect(
+        selectedFilter,
+        snapshot.items,
+        refreshing,
+        pullRefreshing,
+        stableOrderEnabled,
+        stableOrderDecisionRevision,
+    ) {
+        if (appliedStableOrderDecisionRevision != stableOrderDecisionRevision) {
+            presentationStore.clearOwner(presentationAccountId, presentationServerId)
+            val canonicalCheckpoint =
+                activityCanonicalCheckpointAfterStableOrderDecisionChange(
+                    selectedFilter = selectedFilter,
+                    canonicalItems = snapshot.items,
+                    previousPresentedItems = presentedItems,
+                    previousPresentationGeneration = presentationGeneration,
+                )
+            presentedItems = canonicalCheckpoint.presentedItems
+            updateTracking = canonicalCheckpoint.updateTracking
+            presentationGeneration = canonicalCheckpoint.presentationGeneration
+            pullRefreshInFlight = false
+            appliedStableOrderDecisionRevision = stableOrderDecisionRevision
+            if (stableOrderEnabled) {
+                presentationStore.save(
+                    accountId = presentationAccountId,
+                    serverId = presentationServerId,
+                    filter = selectedFilter,
+                    checkpoint = canonicalCheckpoint,
+                )
+            }
+            return@LaunchedEffect
+        }
         if (!stableOrderEnabled) {
             val nextPresentedItems =
                 activityItemsAfterCanonicalSnapshot(
@@ -1792,6 +1839,26 @@ internal fun activityItemsPreservingPresentedOrder(
     val canonicalByKey = canonicalItems.associateBy(InboxItem::key)
     return presentedItems.map { presented -> canonicalByKey[presented.key] ?: presented }
 }
+
+internal fun activityCanonicalCheckpointAfterStableOrderDecisionChange(
+    selectedFilter: InboxFilter,
+    canonicalItems: List<InboxItem>,
+    previousPresentedItems: List<InboxItem>,
+    previousPresentationGeneration: Int,
+): SharedActivityPresentationCheckpoint =
+    SharedActivityPresentationCheckpoint(
+        presentedItems = canonicalItems,
+        updateTracking =
+            ActivityUpdateTrackingState(selectedFilter)
+                .recordSnapshot(selectedFilter, canonicalItems),
+        presentationGeneration =
+            activityNextPresentationGeneration(
+                currentGeneration = previousPresentationGeneration,
+                presentedItems = previousPresentedItems,
+                nextPresentedItems = canonicalItems,
+            ),
+        pullRefreshInFlight = false,
+    )
 
 internal fun activityShouldAdoptCanonicalOrder(
     pendingCount: Int,

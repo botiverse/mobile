@@ -92,6 +92,21 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
     }
 
     @Test
+    fun `read state mutation does not publish an activity presentation revision`() {
+        registry.configureEntitlement(true)
+        registry.observe(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, channelScope)
+        val activityRevision = registry.revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).value
+
+        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+
+        assertEquals(
+            activityRevision,
+            registry.revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).value,
+        )
+        assertTrue(registry.revisionFor(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY).value > 0L)
+    }
+
+    @Test
     fun `activity identity transition clears only its exact binding`() {
         registry.configureEntitlement(true)
         registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
