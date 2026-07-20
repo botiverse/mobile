@@ -1433,7 +1433,7 @@ private fun SlockFilePreviewImageEditorHistoryActions(
     saving: Boolean,
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SlockFilePreviewBorderlessIconButton(
@@ -1441,16 +1441,16 @@ private fun SlockFilePreviewImageEditorHistoryActions(
             label = stringResource(MR.strings.common_undo),
             onClick = state::undo,
             enabled = !saving && state.history.canUndo,
-            size = 24.dp,
-            iconSize = 17.dp,
+            size = 32.dp,
+            iconSize = 22.dp,
         )
         SlockFilePreviewBorderlessIconButton(
             icon = SlockLucideIconName.Redo2,
             label = stringResource(MR.strings.common_redo),
             onClick = state::redo,
             enabled = !saving && state.history.canRedo,
-            size = 24.dp,
-            iconSize = 17.dp,
+            size = 32.dp,
+            iconSize = 22.dp,
         )
         Box(modifier = Modifier.size(width = 12.dp, height = 1.dp))
     }

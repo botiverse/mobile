@@ -7,6 +7,26 @@ import kotlin.test.assertTrue
 
 class SlockImageEditorProductionContractTest {
     @Test
+    fun historyActionsUseLargerSeparatedTouchTargets() {
+        val source = commonMainSource("build/raft/app/SlockFilePreview.kt")
+        val historyActions =
+            source.window(
+                "private fun SlockFilePreviewImageEditorHistoryActions(",
+                "private fun SlockFilePreviewComposerImageEditor(",
+            )
+
+        assertContains(historyActions, "horizontalArrangement = Arrangement.spacedBy(8.dp)")
+        assertTrue(
+            "size = 32.dp".toRegex().findAll(historyActions).count() == 2,
+            "Undo and Redo must both expose the enlarged 32dp touch target.",
+        )
+        assertTrue(
+            "iconSize = 22.dp".toRegex().findAll(historyActions).count() == 2,
+            "Undo and Redo must both use the enlarged 22dp glyph.",
+        )
+    }
+
+    @Test
     fun committedCanvasRemountsAndReplaysForEveryContentRevision() {
         val source = commonMainSource("build/raft/app/SlockFilePreview.kt")
         val editor =
