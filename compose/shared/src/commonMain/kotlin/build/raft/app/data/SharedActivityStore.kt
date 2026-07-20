@@ -1959,13 +1959,12 @@ private fun List<InboxItem>.withActivityThreadTaskProjection(
 
 private fun InboxItem.withActivityThreadTaskProjection(tasksByMessageId: Map<String, TaskSummary>): InboxItem {
     if (kind != InboxItemKind.Thread) return this
-    if (taskNumber != null && taskStatus != null) return this
     val parentMessageKey = parentMessageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return this
     val task = tasksByMessageId[parentMessageKey] ?: return this
     return copy(
-        taskNumber = taskNumber ?: task.taskNumber,
-        taskStatus = taskStatus ?: task.status,
-        taskClaimedByName = taskClaimedByName ?: task.assignee?.displayName?.takeIf { it.isNotBlank() }
+        taskNumber = task.taskNumber ?: taskNumber,
+        taskStatus = task.status,
+        taskClaimedByName = task.assignee?.displayName?.takeIf { it.isNotBlank() }
     )
 }
 

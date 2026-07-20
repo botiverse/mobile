@@ -1938,14 +1938,14 @@ internal fun shouldStartThreadTasksLoad(
         payload.supportsChannelTasks() &&
         payload.resolvedTaskLookupChannelId()?.let { it == taskChannelId.value } == true
 
-internal fun shouldBackfillThreadTasksProjection(
+internal fun shouldRefreshThreadTasksProjection(
     payload: KuiklyThreadScreenPayload,
     taskChannelId: ChannelId?,
-    projection: SharedTasksProjectionSlice
+    refreshStarted: Boolean
 ): Boolean =
     shouldStartThreadTasksLoad(payload, taskChannelId) &&
         KuiklyThreadTab.fromWireValue(payload.selectedTab) == KuiklyThreadTab.Chat &&
-        !projection.isExactScopeLoaded
+        !refreshStarted
 
 internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     val timelineChannelId = resolveThreadRouteIdentity().timelineChannelId ?: return null
@@ -4569,29 +4569,32 @@ internal fun SharedThreadRouteContent(
             ?.distinctUntilChanged()
             ?: MutableStateFlow(SharedTasksProjectionSlice())
     }.collectAsState(SharedTasksProjectionSlice())
+    var refreshedTaskProjectionChannelId by remember(threadInstanceKey, currentServerId) {
+        mutableStateOf<String?>(null)
+    }
     LaunchedEffect(
         currentServerId,
         taskChannelId?.value,
         selectedThreadTab,
         payload.status,
-        taskProjectionSlice.status,
-        taskProjectionSlice.isExactScopeLoaded
+        refreshedTaskProjectionChannelId
     ) {
         val serverId = currentServerId ?: return@LaunchedEffect
         val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
         val sharedStore = tasksDataStore ?: return@LaunchedEffect
         val currentPayload = payload.copy(selectedTab = selectedThreadTab.wireValue)
         if (
-            !shouldBackfillThreadTasksProjection(
+            !shouldRefreshThreadTasksProjection(
                 payload = currentPayload,
                 taskChannelId = resolvedTaskChannelId,
-                projection = taskProjectionSlice
+                refreshStarted = refreshedTaskProjectionChannelId == resolvedTaskChannelId.value
             )
         ) {
             return@LaunchedEffect
         }
+        refreshedTaskProjectionChannelId = resolvedTaskChannelId.value
         bridge.log(
-            "thread_tasks_projection_backfill_start threadId=${payload.sourceThreadId.orEmpty()} " +
+            "thread_tasks_projection_refresh_start threadId=${payload.sourceThreadId.orEmpty()} " +
                 "channelId=${resolvedTaskChannelId.value} status=${taskProjectionSlice.status.name} " +
                 "exactLoaded=${taskProjectionSlice.isExactScopeLoaded}"
         )
@@ -4610,24 +4613,24 @@ internal fun SharedThreadRouteContent(
         ) {
             is DataResult.Content -> {
                 bridge.log(
-                    "thread_tasks_projection_backfill_result result=content " +
+                    "thread_tasks_projection_refresh_result result=content " +
                         "channelId=${resolvedTaskChannelId.value} tasks=${result.data.tasks.size}"
                 )
             }
             is DataResult.Empty -> {
                 bridge.log(
-                    "thread_tasks_projection_backfill_result result=empty " +
+                    "thread_tasks_projection_refresh_result result=empty " +
                         "channelId=${resolvedTaskChannelId.value}"
                 )
             }
             is DataResult.Error ->
                 bridge.log(
-                    "thread_tasks_projection_backfill_result result=error " +
+                    "thread_tasks_projection_refresh_result result=error " +
                         "channelId=${resolvedTaskChannelId.value} code=${result.error.code}"
                 )
             is DataResult.NoPermission ->
                 bridge.log(
-                    "thread_tasks_projection_backfill_result result=no_permission " +
+                    "thread_tasks_projection_refresh_result result=no_permission " +
                         "channelId=${resolvedTaskChannelId.value} code=${result.blocker.code}"
                 )
         }
