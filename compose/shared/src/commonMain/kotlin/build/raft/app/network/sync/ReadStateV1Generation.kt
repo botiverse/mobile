@@ -5,34 +5,62 @@ import kotlinx.atomicfu.locks.synchronized
 
 class ReadStateV1GrantWitness internal constructor(
     val scope: ReadStateV1Scope,
-)
+) {
+    internal val publicationFence = ReadStateV1PublicationFence()
+}
 
-class ReadStateV1GrantAuthority {
+/**
+ * Exact-witness destination barrier for a final projection write or rebaseline emission.
+ *
+ * The callback is the linearized destination operation. It must not call back into grant
+ * issue/revoke or this fence: replacement/revoke waits for a callback that already entered,
+ * while a callback arriving after replacement/revoke observes the closed fence and does nothing.
+ */
+internal class ReadStateV1PublicationFence {
     private val lock = SynchronizedObject()
-    private val current = mutableMapOf<ReadStateV1Scope, ReadStateV1GrantWitness>()
+    private var active = true
 
-    fun issue(scope: ReadStateV1Scope): ReadStateV1GrantWitness = synchronized(lock) {
-        ReadStateV1GrantWitness(scope).also { current[scope] = it }
+    fun publishIfActive(block: () -> Unit): Boolean = synchronized(lock) {
+        if (!active) return@synchronized false
+        block()
+        true
     }
 
-    fun revoke(witness: ReadStateV1GrantWitness) = synchronized(lock) {
-        if (current[witness.scope] === witness) current.remove(witness.scope)
+    fun revoke() = synchronized(lock) {
+        active = false
+    }
+}
+
+class ReadStateV1GrantAuthority {
+    private val mutationLock = SynchronizedObject()
+    private val currentLock = SynchronizedObject()
+    private val current = mutableMapOf<ReadStateV1Scope, ReadStateV1GrantWitness>()
+
+    fun issue(scope: ReadStateV1Scope): ReadStateV1GrantWitness = synchronized(mutationLock) {
+        val previous = synchronized(currentLock) { current[scope] }
+        previous?.publicationFence?.revoke()
+        ReadStateV1GrantWitness(scope).also { witness ->
+            synchronized(currentLock) { current[scope] = witness }
+        }
+    }
+
+    fun revoke(witness: ReadStateV1GrantWitness) = synchronized(mutationLock) {
+        val matches = synchronized(currentLock) { current[witness.scope] === witness }
+        if (!matches) return@synchronized Unit
+        witness.publicationFence.revoke()
+        synchronized(currentLock) {
+            if (current[witness.scope] === witness) current.remove(witness.scope)
+        }
         Unit
     }
 
-    fun isCurrent(witness: ReadStateV1GrantWitness): Boolean = synchronized(lock) {
+    fun isCurrent(witness: ReadStateV1GrantWitness): Boolean = synchronized(currentLock) {
         current[witness.scope] === witness
-    }
-
-    fun publishIfCurrent(witness: ReadStateV1GrantWitness, block: () -> Unit): Boolean = synchronized(lock) {
-        if (current[witness.scope] !== witness) return@synchronized false
-        block()
-        true
     }
 }
 
 fun interface ReadStateV1ProjectionObserver {
-    fun onCommitted(scope: ReadStateV1Scope, fact: ReadStateV1Fact)
+    fun onCommitted(witness: ReadStateV1GrantWitness, fact: ReadStateV1Fact)
 }
 
 fun interface ReadStateV1RebaselineRequester {
@@ -75,9 +103,9 @@ class ReadStateV1GenerationEngine(
         if (committed != ReadStateV1StoreResult.Accepted) {
             return committed.toGenerationResult()
         }
-        if (!authority.publishIfCurrent(witness) {
+        if (!witness.publicationFence.publishIfActive {
                 synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
-                projectionObserver.onCommitted(witness.scope, fact)
+                projectionObserver.onCommitted(witness, fact)
             }
         ) return ReadStateV1GenerationResult.RejectedCurrentGrant
         return ReadStateV1GenerationResult.Committed
@@ -104,8 +132,8 @@ class ReadStateV1GenerationEngine(
             ReadStateV1CommitGuard { authority.isCurrent(witness) },
         )
         when (committed) {
-            ReadStateV1StoreResult.Accepted -> if (!authority.publishIfCurrent(witness) {
-                    projectionObserver.onCommitted(witness.scope, fact)
+            ReadStateV1StoreResult.Accepted -> if (!witness.publicationFence.publishIfActive {
+                    projectionObserver.onCommitted(witness, fact)
                 }
             ) {
                 return ReadStateV1GenerationResult.RejectedCurrentGrant
@@ -126,9 +154,9 @@ class ReadStateV1GenerationEngine(
         } catch (_: ReadStateV1StoredFactCorrupt) {
             return requestBaseline(witness)
         } ?: return requestBaseline(witness)
-        if (!authority.publishIfCurrent(witness) {
+        if (!witness.publicationFence.publishIfActive {
                 synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
-                projectionObserver.onCommitted(witness.scope, fact)
+                projectionObserver.onCommitted(witness, fact)
             }
         ) return ReadStateV1GenerationResult.RejectedCurrentGrant
         return ReadStateV1GenerationResult.Committed
@@ -154,7 +182,7 @@ class ReadStateV1GenerationEngine(
 
     private fun requestBaseline(witness: ReadStateV1GrantWitness): ReadStateV1GenerationResult {
         var requested = false
-        val published = authority.publishIfCurrent(witness) {
+        val published = witness.publicationFence.publishIfActive {
             requested = synchronized(lock) {
                 val old = baselines[witness.scope]
                 baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
@@ -167,7 +195,7 @@ class ReadStateV1GenerationEngine(
     }
 
     private fun emitRebaselineRequest(witness: ReadStateV1GrantWitness): Boolean =
-        authority.publishIfCurrent(witness) {
+        witness.publicationFence.publishIfActive {
             val requested = synchronized(lock) {
                 val old = baselines[witness.scope]
                 if (old?.witness === witness && old.requestInFlight) return@synchronized false

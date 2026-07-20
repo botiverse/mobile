@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ReadStateV1ContractTest {
@@ -57,7 +58,7 @@ class ReadStateV1ContractTest {
     fun generationHoldsBeforeBaselineThenCommitsBeforeProjection() = runBlocking {
         val events = mutableListOf<String>()
         val store = FakeStore(events)
-        val requests = mutableListOf<ReadStateV1Scope>()
+        val requests = mutableListOf<ReadStateV1GrantWitness>()
         val authority = ReadStateV1GrantAuthority()
         val engine = engine(authority, store, events, requests)
         val witness = authority.issue(scope)
@@ -71,6 +72,7 @@ class ReadStateV1ContractTest {
             engine.applyIncremental(witness, candidate(ReadStateV1FactSource.OwnerRealtime, 3, 30)),
         )
         assertEquals(1, requests.size)
+        assertSame(witness, requests.single(), "rebaseline must retain the original opaque witness")
         assertEquals(emptyList(), store.commits)
 
         assertEquals(
@@ -90,7 +92,7 @@ class ReadStateV1ContractTest {
     fun restoreEstablishesBaselineAndConflictRequestsRebaseline() = runBlocking {
         val events = mutableListOf<String>()
         val store = FakeStore(events, restored = ReadStateV1Fact(scope.channelId, 7, 70))
-        val requests = mutableListOf<ReadStateV1Scope>()
+        val requests = mutableListOf<ReadStateV1GrantWitness>()
         val authority = ReadStateV1GrantAuthority()
         val engine = engine(authority, store, events, requests)
         val witness = authority.issue(scope)
@@ -213,12 +215,12 @@ class ReadStateV1ContractTest {
         authority: ReadStateV1GrantAuthority,
         store: FakeStore,
         events: MutableList<String>,
-        requests: MutableList<ReadStateV1Scope>,
+        requests: MutableList<ReadStateV1GrantWitness>,
     ) = ReadStateV1GenerationEngine(
         authority = authority,
         store = store,
         projectionObserver = ReadStateV1ProjectionObserver { _, fact -> events += "project:${fact.readStateVersion}" },
-        rebaselineRequester = ReadStateV1RebaselineRequester { requests += it.scope },
+        rebaselineRequester = ReadStateV1RebaselineRequester { requests += it },
     )
 
     private fun candidate(source: ReadStateV1FactSource, version: Long, seq: Long) =
