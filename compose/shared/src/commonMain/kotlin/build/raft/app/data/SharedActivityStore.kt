@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +44,7 @@ private const val SharedActivityRefreshContinuationSlack = 2
 private const val SharedActivityRefreshMaxNoProgressPages = 2
 private const val SharedActivityReplyPrewarmConcurrency = 2
 private const val SharedActivityTailPrewarmDepthCap = 20
+private const val SharedActivityRealtimeBackgroundReconcileDelayMillis = 150L
 
 private data class ActivityRealtimeHighWater(
     val marker: MessageId?,
@@ -87,6 +89,7 @@ class SharedActivityStore internal constructor(
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
+    private val realtimeBackgroundReconcileDelayMillis: Long = SharedActivityRealtimeBackgroundReconcileDelayMillis,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
@@ -114,8 +117,11 @@ class SharedActivityStore internal constructor(
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
     private var tailDrainBarrier: Job? = null
+    private var realtimeBackgroundReconcileJob: Job? = null
+    private var realtimeBackgroundReconcileDirty = false
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
-    // One owner for live row patches, version-ledger changes, and canonical load folds.
+    // One owner for live row patches, version-ledger changes, background reconcile scheduling,
+    // and canonical load folds.
     private val realtimeOwnerLock = SynchronizedObject()
 
     internal fun updateRuntimeIntegrations(
@@ -199,6 +205,8 @@ class SharedActivityStore internal constructor(
         when (intent) {
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 applyRealtimeEvent(intent)
+                synchronized(realtimeOwnerLock) { realtimeBackgroundReconcileJob }?.join()
+                awaitCurrentLoadIdle()
             }
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
@@ -212,6 +220,9 @@ class SharedActivityStore internal constructor(
             loadGeneration += 1L
             loadJob?.cancel()
             loadJob = null
+            realtimeBackgroundReconcileJob?.cancel()
+            realtimeBackgroundReconcileJob = null
+            realtimeBackgroundReconcileDirty = false
             realtimeHighWater.clear()
             owner
         }
@@ -505,12 +516,13 @@ class SharedActivityStore internal constructor(
     }
 
     private fun applyRealtimeEventImmediately(intent: SharedActivityIntent.ApplyRealtimeEvent) {
-        synchronized(realtimeOwnerLock) { applyRealtimeEventLocked(intent) }
+        val reconcileJob = synchronized(realtimeOwnerLock) { applyRealtimeEventLocked(intent) }
+        reconcileJob?.start()
     }
 
-    private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent) {
+    private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Job? {
         val event = intent.event
-        if (!event.refreshesActivity()) return
+        if (!event.refreshesActivity()) return null
         when (event) {
             is MessageUpdated -> acceptMessageUpdatedFreshness(event.message)
             is SyncResumeResponse ->
@@ -529,13 +541,19 @@ class SharedActivityStore internal constructor(
                     else -> Unit
                 }
             }
-            return
+            // Match Web's Activity ownership: realtime first applies every safe
+            // narrow patch, then schedules one debounced background canonical
+            // projection. This admits brand-new rows and filter membership
+            // changes without showing foreground refresh chrome or requiring a
+            // pull gesture. Read-state and broad identity-only events never use
+            // this owner.
+            return scheduleRealtimeBackgroundReconcileLocked()
         }
         // Activity is snapshot-on-entry and patch-while-visible. Events whose
         // identity-only payload cannot safely produce a narrow row patch are
-        // folded by their domain owners and become visible on the next route
-        // baseline or explicit pull refresh. They must never take full-list
-        // refresh ownership while the user is reading Activity.
+        // folded by their domain owners. They must never take full-list refresh
+        // ownership while the user is reading Activity.
+        return null
     }
 
     private fun applyMessageNewPatch(
@@ -635,6 +653,46 @@ class SharedActivityStore internal constructor(
             )
     }
 
+    private fun scheduleRealtimeBackgroundReconcileLocked(): Job {
+        realtimeBackgroundReconcileDirty = true
+        realtimeBackgroundReconcileJob?.let { return it }
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                delay(realtimeBackgroundReconcileDelayMillis.coerceAtLeast(0L))
+                while (true) {
+                    val shouldReconcile =
+                        synchronized(realtimeOwnerLock) {
+                            if (realtimeBackgroundReconcileDirty) {
+                                realtimeBackgroundReconcileDirty = false
+                                true
+                            } else {
+                                realtimeBackgroundReconcileJob = null
+                                false
+                            }
+                        }
+                    if (!shouldReconcile) return@launch
+                    awaitCurrentLoadIdle()
+                    load(
+                        refresh = true,
+                        pullRefresh = false,
+                        backgroundRefresh = true,
+                        intent = SharedActivityIntent.Refresh
+                    )
+                    awaitCurrentLoadIdle()
+                }
+            }
+        realtimeBackgroundReconcileJob = job
+        return job
+    }
+
+    private suspend fun awaitCurrentLoadIdle() {
+        while (true) {
+            val observed = synchronized(realtimeOwnerLock) { loadJob }
+            observed?.join()
+            if (synchronized(realtimeOwnerLock) { loadJob === observed }) return
+        }
+    }
+
     private suspend fun applyRealtimeSummaryEvent(
         event: RealtimeEvent,
         activeConversationId: String?
@@ -693,12 +751,14 @@ class SharedActivityStore internal constructor(
     private fun load(
         refresh: Boolean,
         pullRefresh: Boolean = false,
+        backgroundRefresh: Boolean = false,
         intent: SharedActivityIntent
     ) {
         val job =
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
                 val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
+                if (backgroundRefresh && inFlightLoad != null) return@synchronized null
                 if (
                     refresh &&
                     !pullRefresh &&
@@ -722,7 +782,7 @@ class SharedActivityStore internal constructor(
                         val session = authStore.readSession()
                         if (session == null) {
                             synchronized(realtimeOwnerLock) {
-                                setLoadError("unauthenticated", append = !refresh)
+                                if (!backgroundRefresh) setLoadError("unauthenticated", append = !refresh)
                             }
                             logActivityLoad(
                                 result = "error",
@@ -730,6 +790,7 @@ class SharedActivityStore internal constructor(
                                 refresh = refresh,
                                 append = !refresh,
                                 filter = filter,
+                                backgroundRefresh = backgroundRefresh,
                                 durationMs = startedAt.elapsedNow().inWholeMilliseconds
                             )
                             return@launch
@@ -737,7 +798,7 @@ class SharedActivityStore internal constructor(
                         val serverId = session.currentServerId?.let(::ServerId)
                         if (serverId == null) {
                             synchronized(realtimeOwnerLock) {
-                                setLoadError("server_missing", append = !refresh)
+                                if (!backgroundRefresh) setLoadError("server_missing", append = !refresh)
                             }
                             logActivityLoad(
                                 result = "error",
@@ -745,6 +806,7 @@ class SharedActivityStore internal constructor(
                                 refresh = refresh,
                                 append = !refresh,
                                 filter = filter,
+                                backgroundRefresh = backgroundRefresh,
                                 durationMs = startedAt.elapsedNow().inWholeMilliseconds
                             )
                             return@launch
@@ -753,7 +815,7 @@ class SharedActivityStore internal constructor(
                         val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         if (server == null) {
                             synchronized(realtimeOwnerLock) {
-                                setLoadError("server_missing", append = !refresh)
+                                if (!backgroundRefresh) setLoadError("server_missing", append = !refresh)
                             }
                             return@launch
                         }
@@ -796,17 +858,21 @@ class SharedActivityStore internal constructor(
                                 } else {
                                     stateBeforeRequest
                                 }
-                            reduceState(
-                                intent,
-                                stateWithLocalProfiles.copy(
-                                    loading = refresh && stateWithLocalProfiles.snapshot == null,
-                                    refreshing = refresh && stateWithLocalProfiles.snapshot != null,
-                                    pullRefreshing = refresh && pullRefresh && stateWithLocalProfiles.snapshot != null,
-                                    loadingMore = !refresh,
-                                    errorCode = null,
-                                    loadMoreErrorCode = null
+                            if (backgroundRefresh) {
+                                reduceState(intent, stateWithLocalProfiles)
+                            } else {
+                                reduceState(
+                                    intent,
+                                    stateWithLocalProfiles.copy(
+                                        loading = refresh && stateWithLocalProfiles.snapshot == null,
+                                        refreshing = refresh && stateWithLocalProfiles.snapshot != null,
+                                        pullRefreshing = refresh && pullRefresh && stateWithLocalProfiles.snapshot != null,
+                                        loadingMore = !refresh,
+                                        errorCode = null,
+                                        loadMoreErrorCode = null
+                                    )
                                 )
-                            )
+                            }
                         }
                         val result =
                             if (refresh) {
@@ -827,7 +893,7 @@ class SharedActivityStore internal constructor(
                                 currentSession.accessToken == session.accessToken
                         if (!requestSessionStillCurrent) {
                             synchronized(realtimeOwnerLock) {
-                                if (generation == loadGeneration) {
+                                if (generation == loadGeneration && !backgroundRefresh) {
                                     val current = _state.value
                                     reduceState(
                                         intent,
@@ -856,7 +922,8 @@ class SharedActivityStore internal constructor(
                                         server = server,
                                         append = !refresh,
                                         senderProfiles = senderProfiles,
-                                        intent = intent
+                                        intent = intent,
+                                        backgroundRefresh = backgroundRefresh
                                     )
                                     true
                                 }
@@ -868,6 +935,7 @@ class SharedActivityStore internal constructor(
                             refresh = refresh,
                             append = !refresh,
                             filter = filter,
+                            backgroundRefresh = backgroundRefresh,
                             durationMs = startedAt.elapsedNow().inWholeMilliseconds
                         )
                     } catch (cancellation: CancellationException) {
@@ -878,7 +946,7 @@ class SharedActivityStore internal constructor(
                                 if (generation != loadGeneration) {
                                     false
                                 } else {
-                                    setLoadError("activity_network", append = !refresh)
+                                    if (!backgroundRefresh) setLoadError("activity_network", append = !refresh)
                                     true
                                 }
                             }
@@ -889,6 +957,7 @@ class SharedActivityStore internal constructor(
                             refresh = refresh,
                             append = !refresh,
                             filter = filter,
+                            backgroundRefresh = backgroundRefresh,
                             durationMs = startedAt.elapsedNow().inWholeMilliseconds
                         )
                     }
@@ -969,10 +1038,11 @@ class SharedActivityStore internal constructor(
         refresh: Boolean,
         append: Boolean,
         filter: InboxFilter,
+        backgroundRefresh: Boolean = false,
         durationMs: Long
     ) {
         diagnosticsLogger(
-            "store_load domain=activity refresh=$refresh append=$append filter=${filter.name} " +
+            "store_load domain=activity refresh=$refresh background=$backgroundRefresh append=$append filter=${filter.name} " +
                 "result=$result code=${code.orEmpty()} durationMs=$durationMs"
         )
     }
@@ -982,7 +1052,8 @@ class SharedActivityStore internal constructor(
         server: ServerSummary,
         append: Boolean,
         senderProfiles: Map<String, SharedActivitySenderProfile>,
-        intent: SharedActivityIntent
+        intent: SharedActivityIntent,
+        backgroundRefresh: Boolean = false
     ) {
         val current = _state.value
         val nextState =
@@ -1059,23 +1130,31 @@ class SharedActivityStore internal constructor(
                     nextState
                 }
                 is DataResult.Error ->
-                    current.copy(
-                        loading = false,
-                        refreshing = false,
-                        pullRefreshing = false,
-                        loadingMore = false,
-                        errorCode = if (append) null else result.error.code,
-                        loadMoreErrorCode = if (append) result.error.code else null
-                    )
+                    if (backgroundRefresh) {
+                        current
+                    } else {
+                        current.copy(
+                            loading = false,
+                            refreshing = false,
+                            pullRefreshing = false,
+                            loadingMore = false,
+                            errorCode = if (append) null else result.error.code,
+                            loadMoreErrorCode = if (append) result.error.code else null
+                        )
+                    }
                 is DataResult.NoPermission ->
-                    current.copy(
-                        loading = false,
-                        refreshing = false,
-                        pullRefreshing = false,
-                        loadingMore = false,
-                        errorCode = if (append) null else result.blocker.code,
-                        loadMoreErrorCode = if (append) result.blocker.code else null
-                    )
+                    if (backgroundRefresh) {
+                        current
+                    } else {
+                        current.copy(
+                            loading = false,
+                            refreshing = false,
+                            pullRefreshing = false,
+                            loadingMore = false,
+                            errorCode = if (append) null else result.blocker.code,
+                            loadMoreErrorCode = if (append) result.blocker.code else null
+                        )
+                    }
             }
         acceptCanonicalReplyThreadFacts(nextState)
         reduceState(
