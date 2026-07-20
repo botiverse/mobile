@@ -13,7 +13,6 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.awaitEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
@@ -22,7 +21,6 @@ import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.zIndex
 
 internal expect fun Modifier.slockNativeDispatchCapture(): Modifier
@@ -39,15 +37,9 @@ internal enum class SlockFloatingVerticalPlacement {
     Auto
 }
 
-internal data class SlockAnchoredPopoverPosition(
-    val offset: Offset,
-    val localAnchor: Offset,
-    val overlayLayout: SlockFloatingOverlayLayout
-)
-
 @Composable
 internal fun SlockModalAnchoredPopover(
-    anchor: Offset,
+    anchor: SlockPopoverAnchor,
     contentSize: Size,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -57,7 +49,7 @@ internal fun SlockModalAnchoredPopover(
     verticalOffsetAbove: Float = verticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
     horizontalAutoFlip: Boolean = false,
-    content: @Composable (Modifier, SlockAnchoredPopoverPosition) -> Unit
+    content: @Composable () -> Unit
 ) {
     Modal(onWillDismiss = { onDismiss() }) {
         SlockAnchoredPopover(
@@ -78,7 +70,7 @@ internal fun SlockModalAnchoredPopover(
 
 @Composable
 internal fun SlockAnchoredPopover(
-    anchor: Offset,
+    anchor: SlockPopoverAnchor,
     contentSize: Size,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -91,35 +83,20 @@ internal fun SlockAnchoredPopover(
     // there is no room on the right. Used by SlockBaseMenuOverlay so
     // long-press menus don't run off the screen's right edge.
     horizontalAutoFlip: Boolean = false,
-    content: @Composable (Modifier, SlockAnchoredPopoverPosition) -> Unit
+    content: @Composable () -> Unit
 ) {
-    SlockFloatingOverlayHost(
+    anchor.renderInOverlay(
+        contentSize = contentSize,
         onDismiss = onDismiss,
-        modifier = modifier
-    ) { overlayLayout ->
-        val popoverOffset = overlayLayout.positionContent(
-            anchor = anchor,
-            contentSize = contentSize,
-            viewportGap = viewportGap,
-            horizontalOffset = horizontalOffset,
-            verticalOffset = verticalOffset,
-            verticalOffsetAbove = verticalOffsetAbove,
-            verticalPlacement = verticalPlacement,
-            horizontalAutoFlip = horizontalAutoFlip
-        ) ?: return@SlockFloatingOverlayHost
-        val position = SlockAnchoredPopoverPosition(
-            offset = popoverOffset,
-            localAnchor = Offset(anchor.x - overlayLayout.origin.x, anchor.y - overlayLayout.origin.y),
-            overlayLayout = overlayLayout
-        )
-        // Use IntOffset to keep units in px (Modifier.offset(Dp, Dp) does
-        // px→dp→px round trip which loses the integer offset). The host
-        // fills its parent and the popoverOffset is already in px.
-        content(
-            Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) },
-            position
-        )
-    }
+        modifier = modifier,
+        viewportGap = viewportGap,
+        horizontalOffset = horizontalOffset,
+        verticalOffset = verticalOffset,
+        verticalOffsetAbove = verticalOffsetAbove,
+        verticalPlacement = verticalPlacement,
+        horizontalAutoFlip = horizontalAutoFlip,
+        content = content
+    )
 }
 
 @Composable

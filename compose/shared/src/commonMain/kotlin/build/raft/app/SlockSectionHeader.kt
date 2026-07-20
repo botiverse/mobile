@@ -327,7 +327,7 @@ internal fun SlockCollapsibleSectionHeader(
     showCollapsedUnreadDot: Boolean = false,
     minHeight: Dp = 30.dp,
     sortContentDescription: String? = null,
-    onSortClick: ((Offset) -> Unit)? = null,
+    onSortClick: ((SlockPopoverAnchor) -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
     Row(
@@ -381,17 +381,15 @@ internal fun SlockSectionHeaderIconAction(
     icon: SlockLucideIconName,
     contentDescription: String,
     onClick: () -> Unit = {},
-    onClick2: (Offset) -> Unit = {},
+    onClick2: (SlockPopoverAnchor) -> Unit = {},
     size: Dp = SectionHeaderActionSize,
     iconSize: Dp = SectionHeaderActionIconSize
 ) {
-    val anchorRef = remember { SlockLiveRootAnchorRef() }
+    val anchorRef = remember(contentDescription) { SlockLiveRootAnchorRef(identity = contentDescription) }
     Button(
         onClick = {
             onClick()
-            anchorRef.resolve { coordinatesSize ->
-                Offset(x = 0f, y = coordinatesSize.height.toFloat())
-            }?.let(onClick2)
+            anchorRef.resolve(SlockPopoverLocalPoint.BottomStart)?.let(onClick2)
         },
         modifier =
             Modifier

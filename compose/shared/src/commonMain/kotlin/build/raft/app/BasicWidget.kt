@@ -636,15 +636,18 @@ fun Modifier.dragEnable(enable: Boolean): Modifier {
 @Composable
 internal fun Button(
     onClick: () -> Unit = {},
-    onClick2: ((Offset) -> Unit)? = null,
+    onClick2: ((SlockPopoverAnchor) -> Unit)? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     pressFeedback: Boolean = true,
     pressOffset: Dp = SlockPressTokens.ButtonOffset,
     clickIdentity: Any? = null,
+    anchorOwnerIdentity: Any? = null,
     content: (@Composable () -> Unit) = {}
 ) {
-    val rootAnchor = remember(clickIdentity) { SlockLiveRootAnchorRef() }
+    val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "button"
+    val rootAnchor =
+        remember(resolvedAnchorOwnerIdentity) { SlockLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
     var pressed by remember { mutableStateOf(false) }
     val onClickUpdate = rememberUpdatedState(onClick)
     val onClick2Update = rememberUpdatedState(onClick2)
@@ -682,7 +685,7 @@ internal fun Button(
                     onTap = { offset ->
                         if (enabledUpdate.value) {
                             onClickUpdate.value.invoke()
-                            rootAnchor.resolve(offset)?.let { anchor ->
+                            rootAnchor.resolve(SlockPopoverLocalPoint.Exact(offset))?.let { anchor ->
                                 onClick2Update.value?.invoke(anchor)
                             }
                         }

@@ -62,7 +62,7 @@ internal enum class SlockMenuSelectedIndicatorPlacement {
 
 @Composable
 internal fun SlockBaseMenuOverlay(
-    anchor: Offset,
+    anchor: SlockPopoverAnchor,
     items: List<SlockBaseMenuItem>,
     selectedId: String,
     onDismiss: () -> Unit,
@@ -119,9 +119,9 @@ internal fun SlockBaseMenuOverlay(
         horizontalAutoFlip = true,
         onDismiss = onDismiss,
         modifier = modifier
-    ) { popoverModifier, _ ->
+    ) {
         Box(
-            modifier = popoverModifier
+            modifier = Modifier
                 .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
             if (shadowOffset > 0.dp) {
@@ -182,7 +182,7 @@ internal fun SlockBaseMenuOverlay(
  */
 @Composable
 internal fun SlockTaskStatusMenuOverlay(
-    anchor: Offset,
+    anchor: SlockPopoverAnchor,
     items: List<SlockBaseMenuItem>,
     selectedId: String,
     onDismiss: () -> Unit,

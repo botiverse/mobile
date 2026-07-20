@@ -7,11 +7,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
-import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import org.json.JSONObject
@@ -40,6 +41,7 @@ class SlockTaskListStatusMenuConnectedTest {
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
+            instrumentation.dismissCompatibilityDialogIfPresent()
             scenario.onActivity { activity -> activity.hideSystemBarsForTaskListStatusTest() }
             instrumentation.waitForIdleSync()
             SystemClock.sleep(RenderSettleMs)
@@ -108,33 +110,36 @@ class SlockTaskListStatusMenuConnectedTest {
         val x = capture.screenX + capture.bitmap.width * 0.5f
         val startY = capture.screenY + capture.bitmap.height * 0.78f
         val endY = capture.screenY + capture.bitmap.height * 0.28f
-        val downTime = SystemClock.uptimeMillis()
-        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, startY, 0))
-        repeat(SwipeSteps) { step ->
-            val fraction = (step + 1f) / SwipeSteps
-            val y = startY + (endY - startY) * fraction
-            instrumentation.sendPointerSync(
-                MotionEvent.obtain(
-                    downTime,
-                    downTime + (SwipeDurationMs * fraction).toLong(),
-                    MotionEvent.ACTION_MOVE,
-                    x,
-                    y,
-                    0
-                )
-            )
-        }
-        instrumentation.sendPointerSync(
-            MotionEvent.obtain(downTime, downTime + SwipeDurationMs, MotionEvent.ACTION_UP, x, endY, 0)
+        instrumentation.runShellInput(
+            "input swipe ${x.toInt()} ${startY.toInt()} ${x.toInt()} ${endY.toInt()} $SwipeDurationMs"
         )
         instrumentation.waitForIdleSync()
     }
 
     private fun tapScreenPoint(instrumentation: Instrumentation, x: Float, y: Float) {
-        val downTime = SystemClock.uptimeMillis()
-        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0))
-        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime + TapDurationMs, MotionEvent.ACTION_UP, x, y, 0))
+        instrumentation.runShellInput("input tap ${x.toInt()} ${y.toInt()}")
         instrumentation.waitForIdleSync()
+    }
+
+    private fun Instrumentation.runShellInput(command: String) {
+        ParcelFileDescriptor.AutoCloseInputStream(uiAutomation.executeShellCommand(command)).use { input ->
+            input.readBytes()
+        }
+    }
+
+    private fun Instrumentation.dismissCompatibilityDialogIfPresent() {
+        repeat(5) {
+            val dismiss =
+                uiAutomation.rootInActiveWindow
+                    ?.findAccessibilityNodeInfosByText("Don't Show Again")
+                    ?.firstOrNull()
+            if (dismiss?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) {
+                waitForIdleSync()
+                SystemClock.sleep(300L)
+                return
+            }
+            SystemClock.sleep(200L)
+        }
     }
 
     private fun captureActivity(scenario: ActivityScenario<SlockKuiklyActivity>): RootCapture {
@@ -300,9 +305,7 @@ class SlockTaskListStatusMenuConnectedTest {
         private const val RenderSettleMs = 2_000L
         private const val ScrollSettleMs = 350L
         private const val MenuSettleMs = 600L
-        private const val TapDurationMs = 80L
         private const val SwipeDurationMs = 360L
-        private const val SwipeSteps = 12
         private const val MaxScrollAttempts = 8
         private const val StatusRowCount = 5
         private const val InProgressRowIndex = 1

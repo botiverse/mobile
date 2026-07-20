@@ -15911,19 +15911,40 @@ private fun SharedHomeSearchPanel(
     }
     var openFilterId by remember(initialOpenFilterId) { mutableStateOf<String?>(null) }
     var pendingInitialOpenFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
-    var scopeAnchor by remember { mutableStateOf(Offset.Zero) }
-    var senderAnchor by remember { mutableStateOf(Offset.Zero) }
-    var channelAnchor by remember { mutableStateOf(Offset.Zero) }
-    var timeAnchor by remember { mutableStateOf(Offset.Zero) }
-    var sortAnchor by remember { mutableStateOf(Offset.Zero) }
+    var scopeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var senderAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var channelAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var timeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var sortAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var scopeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var senderAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var channelAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var timeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var sortAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSearch)
     }
-    LaunchedEffect(initialOpenFilterId, scopeAnchor, senderAnchor, channelAnchor, timeAnchor, sortAnchor) {
+    LaunchedEffect(
+        initialOpenFilterId,
+        scopeAnchorResolver,
+        senderAnchorResolver,
+        channelAnchorResolver,
+        timeAnchorResolver,
+        sortAnchorResolver
+    ) {
         val pending = pendingInitialOpenFilterId ?: return@LaunchedEffect
-        if (homeSearchFilterAnchorReady(pending, scopeAnchor, senderAnchor, channelAnchor, timeAnchor, sortAnchor)) {
+        val resolved =
+            when (pending) {
+                "scope" -> scopeAnchorResolver?.resolve()?.also { scopeAnchor = it }
+                "sender" -> senderAnchorResolver?.resolve()?.also { senderAnchor = it }
+                "channel" -> channelAnchorResolver?.resolve()?.also { channelAnchor = it }
+                "time" -> timeAnchorResolver?.resolve()?.also { timeAnchor = it }
+                "sort" -> sortAnchorResolver?.resolve()?.also { sortAnchor = it }
+                else -> null
+            }
+        if (resolved != null) {
             openFilterId = pending
             pendingInitialOpenFilterId = null
         }
@@ -15955,12 +15976,21 @@ private fun SharedHomeSearchPanel(
             SharedHomeSearchFilters(
                 state = state,
                 channelFilters = channelFilters,
-                scopeAnchorChanged = { scopeAnchor = it },
-                senderAnchorChanged = { senderAnchor = it },
-                channelAnchorChanged = { channelAnchor = it },
-                timeAnchorChanged = { timeAnchor = it },
-                sortAnchorChanged = { sortAnchor = it },
-                onOpenFilter = { openFilterId = it },
+                scopeAnchorChanged = { scopeAnchorResolver = it },
+                senderAnchorChanged = { senderAnchorResolver = it },
+                channelAnchorChanged = { channelAnchorResolver = it },
+                timeAnchorChanged = { timeAnchorResolver = it },
+                sortAnchorChanged = { sortAnchorResolver = it },
+                onOpenFilter = { id, anchor ->
+                    when (id) {
+                        "scope" -> scopeAnchor = anchor
+                        "sender" -> senderAnchor = anchor
+                        "channel" -> channelAnchor = anchor
+                        "time" -> timeAnchor = anchor
+                        "sort" -> sortAnchor = anchor
+                    }
+                    openFilterId = id
+                },
                 onIntent = onIntent,
                 showSenderFilter = showSenderFilter
             )
@@ -16206,23 +16236,6 @@ private fun SharedHomeSearchDivider() {
                 .background(SlockColor.BorderBlack)
     )
 }
-
-private fun homeSearchFilterAnchorReady(
-    filterId: String,
-    scopeAnchor: Offset,
-    senderAnchor: Offset,
-    channelAnchor: Offset,
-    timeAnchor: Offset,
-    sortAnchor: Offset
-): Boolean =
-    when (filterId) {
-        "scope" -> scopeAnchor != Offset.Zero
-        "sender" -> senderAnchor != Offset.Zero
-        "channel" -> channelAnchor != Offset.Zero
-        "time" -> timeAnchor != Offset.Zero
-        "sort" -> sortAnchor != Offset.Zero
-        else -> false
-    }
 
 @Composable
 private fun SharedHomeSearchToolbar(
@@ -16476,7 +16489,7 @@ private const val SharedHomeSavedMenuActionRemove = "remove"
 
 private data class SharedHomeSavedContextMenuState(
     val item: InboxItem,
-    val anchor: Offset
+    val anchor: SlockPopoverAnchor
 )
 
 internal fun sharedHomeSavedPermalink(
@@ -16672,12 +16685,12 @@ private fun SharedHomePanelSearchField(
 private fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
     channelFilters: List<SearchChannelFilterItem>,
-    scopeAnchorChanged: (Offset) -> Unit,
-    senderAnchorChanged: (Offset) -> Unit,
-    channelAnchorChanged: (Offset) -> Unit,
-    timeAnchorChanged: (Offset) -> Unit,
-    sortAnchorChanged: (Offset) -> Unit,
-    onOpenFilter: (String) -> Unit,
+    scopeAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    senderAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    channelAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    timeAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    sortAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    onOpenFilter: (String, SlockPopoverAnchor) -> Unit,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     showSenderFilter: Boolean = true
 ) {
@@ -16706,6 +16719,7 @@ private fun SharedHomeSearchFilters(
                         HomeSearchFilter.Sender ->
                             SlockAnchoredToolbarChip(
                                 label = state.localizedSenderFilterLabel(),
+                                anchorIdentity = "search_filter:sender",
                                 active = senderActive,
                                 enabled = true,
                                 uppercase = !senderActive,
@@ -16715,13 +16729,13 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = senderAnchorChanged,
                                 onClick = { anchor ->
-                                    senderAnchorChanged(anchor)
-                                    onOpenFilter("sender")
+                                    onOpenFilter("sender", anchor)
                                 }
                             )
                         HomeSearchFilter.Scope ->
                             SlockAnchoredToolbarChip(
                                 label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
+                                anchorIdentity = "search_filter:scope",
                                 active = scopeActive,
                                 enabled = true,
                                 uppercase = !scopeActive,
@@ -16731,13 +16745,13 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = scopeAnchorChanged,
                                 onClick = { anchor ->
-                                    scopeAnchorChanged(anchor)
-                                    onOpenFilter("scope")
+                                    onOpenFilter("scope", anchor)
                                 }
                             )
                         HomeSearchFilter.Channel ->
                             SlockAnchoredToolbarChip(
                                 label = selectedChannel?.label ?: channelLabel,
+                                anchorIdentity = "search_filter:channel",
                                 active = channelActive,
                                 enabled = true,
                                 uppercase = selectedChannel == null,
@@ -16747,13 +16761,13 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = channelAnchorChanged,
                                 onClick = { anchor ->
-                                    channelAnchorChanged(anchor)
-                                    onOpenFilter("channel")
+                                    onOpenFilter("channel", anchor)
                                 }
                             )
                         HomeSearchFilter.Time ->
                             SlockAnchoredToolbarChip(
                                 label = state.timeRange.localizedSearchLabel(),
+                                anchorIdentity = "search_filter:time",
                                 active = timeActive,
                                 enabled = true,
                                 uppercase = false,
@@ -16763,8 +16777,7 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = timeAnchorChanged,
                                 onClick = { anchor ->
-                                    timeAnchorChanged(anchor)
-                                    onOpenFilter("time")
+                                    onOpenFilter("time", anchor)
                                 }
                             )
                     }
@@ -16773,6 +16786,7 @@ private fun SharedHomeSearchFilters(
             item {
                 SlockAnchoredToolbarChip(
                     label = state.sort.localizedSearchLabel(),
+                    anchorIdentity = "search_filter:sort",
                     active = sortActive,
                     enabled = true,
                     uppercase = false,
@@ -16782,8 +16796,7 @@ private fun SharedHomeSearchFilters(
                     reserveActiveShadowSpace = true,
                     onAnchorChanged = sortAnchorChanged,
                     onClick = { anchor ->
-                        sortAnchorChanged(anchor)
-                        onOpenFilter("sort")
+                        onOpenFilter("sort", anchor)
                     }
                 )
             }
@@ -16953,7 +16966,7 @@ private fun SharedHomeSavedResultCard(
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onUnsave: () -> Unit,
     onOpen: () -> Unit,
-    onContextMenu: (Offset) -> Unit,
+    onContextMenu: (SlockPopoverAnchor) -> Unit,
     timeContext: AppShellThreadTimeContext? = null
 ) {
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
@@ -16969,7 +16982,7 @@ private fun SharedHomeSavedResultCard(
             item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
-    val contentAnchor = remember(openGestureKey) { SlockLiveRootAnchorRef() }
+    val contentAnchor = remember(openGestureKey) { SlockLiveRootAnchorRef(identity = openGestureKey) }
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier =
@@ -16993,7 +17006,7 @@ private fun SharedHomeSavedResultCard(
                             detectTapGestures(
                                 onTap = { currentOnOpen() },
                                 onLongPress = { localOffset ->
-                                    contentAnchor.resolve(localOffset)?.let(currentOnContextMenu)
+                                    contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnContextMenu)
                                 }
                             )
                         },

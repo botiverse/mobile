@@ -68,7 +68,7 @@ internal data class SlockFilterOption(
  */
 @Composable
 internal fun SlockFilterPopover(
-    anchor: Offset,
+    anchor: SlockPopoverAnchor?,
     title: String,
     searchPlaceholder: String,
     searchText: String,
@@ -89,6 +89,7 @@ internal fun SlockFilterPopover(
     showClearWhenSelected: Boolean = multiSelect,
     headerSlot: (@Composable () -> Unit)? = null
 ) {
+    if (anchor == null) return
     val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
     val popoverWidth = widthDp.dp
@@ -116,9 +117,9 @@ internal fun SlockFilterPopover(
         // instead of flipping the popover entirely to the chip's left.
         horizontalAutoFlip = false,
         verticalPlacement = SlockFloatingVerticalPlacement.Auto
-    ) { popoverModifier, _ ->
+    ) {
         Box(
-            modifier = popoverModifier
+            modifier = Modifier
                 .padding(end = shadowOffset, bottom = shadowOffset)
         ) {
             if (shadowOffset > 0.dp) {

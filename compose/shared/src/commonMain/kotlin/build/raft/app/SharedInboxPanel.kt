@@ -603,7 +603,7 @@ private fun SharedActivityList(
     activityTaskStatusBadgesEnabled: Boolean
 ) {
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
-    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
     var previousItems by remember { mutableStateOf<List<InboxItem>>(emptyList()) }
     var pendingUpdateCount by remember { mutableStateOf(0) }
@@ -767,8 +767,9 @@ private fun SharedActivityList(
             )
         }
         activeMenuItem?.let { item ->
+            val resolvedMenuAnchor = menuAnchor ?: return@let
             SlockBaseMenuOverlay(
-                anchor = menuAnchor,
+                anchor = resolvedMenuAnchor,
                 items =
                     listOf(
                         SlockBaseMenuItem(
@@ -889,7 +890,7 @@ private fun SharedActivityRow(
     captureMenuAnchor: Boolean = true,
     onOpen: () -> Unit,
     onDone: () -> Unit,
-    onOpenMenu: (Offset) -> Unit
+    onOpenMenu: (SlockPopoverAnchor) -> Unit
 ) {
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
     val mutedPrimaryContent = item.activityPrimaryContentMuted()
@@ -1029,11 +1030,11 @@ private fun Modifier.activityRowGestures(
     gestureKey: String,
     captureMenuAnchor: Boolean,
     onClick: () -> Unit,
-    onOpenMenu: (Offset) -> Unit
+    onOpenMenu: (SlockPopoverAnchor) -> Unit
 ): Modifier {
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnOpenMenu by rememberUpdatedState(onOpenMenu)
-    val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef() }
+    val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef(identity = gestureKey) }
     return this
         .then(
             if (captureMenuAnchor) {
@@ -1046,7 +1047,7 @@ private fun Modifier.activityRowGestures(
             detectTapGestures(
                 onTap = { currentOnClick() },
                 onLongPress = { localOffset ->
-                    rootAnchor.resolve(localOffset)?.let(currentOnOpenMenu)
+                    rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnOpenMenu)
                 }
             )
         }

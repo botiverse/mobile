@@ -230,6 +230,8 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
@@ -2809,6 +2811,7 @@ private fun ThreadMessageVisualScreenContent() {
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
     val menuVariant = params.optString("menuVariant")
+    val interactionProbe = params.optString("interactionProbe")
     val instanceId = params.optString("instanceId")
     val singleTapOpensThreadEnabled = params.optBoolean("singleTapOpensThreadEnabled", false)
     val payload =
@@ -2951,8 +2954,12 @@ private fun ThreadMessageVisualScreenContent() {
     }
     val baseMessage = payload.toThreadTimelineSlice().messages.firstOrNull()
     val message =
-        remember(baseMessage, menuVariant) {
-            if (baseMessage != null && menuVariant == "task" && baseMessage.taskId == null) {
+        remember(baseMessage, menuVariant, interactionProbe) {
+            if (
+                baseMessage != null &&
+                (menuVariant == "task" || interactionProbe == "task-status-owner") &&
+                baseMessage.taskId == null
+            ) {
                 baseMessage.copy(
                     taskId = "task-menu-246",
                     taskNumber = 246,
@@ -2964,6 +2971,10 @@ private fun ThreadMessageVisualScreenContent() {
                 baseMessage
             }
         }
+    if (message != null && interactionProbe == "task-status-owner") {
+        ThreadTaskStatusOwnerAnchorVisualProbe(message)
+        return
+    }
     var actionsMenuVisible by remember(visualFixture, menuVariant) { mutableStateOf(menuVariant.isNotBlank()) }
     val menuActions =
         remember(message, menuVariant, actionsMenuVisible, visualReplyMetadataByParentId) {
@@ -3137,6 +3148,47 @@ private fun ThreadMessageVisualScreenContent() {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ThreadTaskStatusOwnerAnchorVisualProbe(message: KuiklyThreadMessageItem) {
+    var result by remember(message.id) { mutableStateOf<Boolean?>(null) }
+    Column(
+        modifier =
+            Modifier
+                .width(390.dp)
+                .background(SlockColor.SurfaceWhite)
+                .padding(SlockSpacing.Md)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(
+                        when (result) {
+                            true -> Color(0xFF10B981)
+                            false -> Color(0xFFEF4444)
+                            null -> Color(0xFFFFF7E6)
+                        }
+                    )
+        )
+        Spacer(Modifier.height(SlockSpacing.Md))
+        ThreadMessageFooterMeta(
+            message = message,
+            showReplyAction = false,
+            taskOpenEnabled = false,
+            taskStatusActionsEnabled = true,
+            resolvedTaskAssigneeName = message.taskAssigneeName,
+            alignEnd = false,
+            onOpenThread = {},
+            onOpenTask = {},
+            onShowActions = {},
+            onOpenTaskStatusMenu = { anchor ->
+                result = anchor.belongsTo(threadMessageMenuOwnerIdentity(message.id))
+            }
+        )
     }
 }
 
@@ -8027,7 +8079,7 @@ private fun ThreadImagePreviewOverlay(
             56.dp.toPx()
         }
     var menuOpen by remember { mutableStateOf(false) }
-    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     SlockBackHandler(
         enabled = !menuOpen,
         label = "thread_image_preview",
@@ -8160,10 +8212,10 @@ private fun ThreadImagePreviewOverlay(
                 }
             }
         }
-        if (menuOpen) {
+        if (menuOpen && menuAnchor != null) {
             SlockRaftUiControlledMenu(
                 expanded = menuOpen,
-                anchor = menuAnchor,
+                anchor = menuAnchor!!,
                 items =
                     listOf(
                         SlockRaftUiMenuItem(
@@ -12352,11 +12404,11 @@ private fun ThreadMessagesList(
             0
         }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
+    var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
     // task #569: long-press on a reaction chip shows who reacted.
     var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
+    var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<SlockPopoverAnchor?>(null) }
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
         mutableStateOf(true)
     }
@@ -13390,9 +13442,7 @@ private fun ThreadMessagesList(
                         onShowActions = { message, anchor ->
                             actionMenuAnchor = anchor
                             actionMessageId = message.id
-                            diagnosticsLogger(
-                                "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                            )
+                            diagnosticsLogger("thread_origin_menu_tap messageId=${message.id}")
                         },
                         onOpenTaskStatusMenu = { message, anchor ->
                             taskStatusMenuMessageId = message.id
@@ -13651,9 +13701,7 @@ private fun ThreadMessagesList(
                                     if (!message.hasLocalSendState() || message.isFailedLocalSend() || message.isSendingLocalSend()) {
                                         actionMenuAnchor = anchor
                                         actionMessageId = message.id
-                                        diagnosticsLogger(
-                                            "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                                        )
+                                        diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
                                     }
                                 },
                                 onOpenMember = onOpenMember,
@@ -13855,6 +13903,9 @@ private fun ThreadMessagesList(
             )
         }
         actionMessageId?.let { messageId ->
+            val resolvedActionAnchor =
+                actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
+                    ?: return@let
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val isFailedLocalSend = message.isFailedLocalSend()
                 val isSendingLocalSend = message.isSendingLocalSend()
@@ -13862,7 +13913,7 @@ private fun ThreadMessagesList(
                 ThreadMessageActionMenu(
                     message = message,
                     replyMetadata = replyMetadata,
-                    anchor = actionMenuAnchor,
+                    anchor = resolvedActionAnchor,
                     showReplyAction = renderPayload.showReplyActions && !message.hasLocalSendState(),
                     showSaveAction = renderPayload.showMessageSaveAction && !message.hasLocalSendState(),
                     showTaskStatusAction = renderPayload.showTaskStatusActions && !message.hasLocalSendState(),
@@ -13938,10 +13989,13 @@ private fun ThreadMessagesList(
             }
         }
         taskStatusMenuMessageId?.let { messageId ->
+            val resolvedTaskStatusAnchor =
+                taskStatusMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
+                    ?: return@let
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
                 SlockTaskStatusMenuOverlay(
-                    anchor = taskStatusMenuAnchor,
+                    anchor = resolvedTaskStatusAnchor,
                     items = ThreadTaskStatusMenuItems,
                     selectedId = selectedStatus.key,
                     onDismiss = { taskStatusMenuMessageId = null },
@@ -15269,13 +15323,13 @@ private fun ThreadMessageCard(
     activeMarkdownTagKey: String? = null,
     timestampLabel: String = message.timestampLabel,
     compactTimestampLabel: String = timestampLabel,
-    onShowActions: (Offset) -> Unit,
+    onShowActions: (SlockPopoverAnchor) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onOpenThread: (String) -> Unit,
     onOpenTask: (String) -> Unit,
-    onOpenTaskStatusMenu: (Offset) -> Unit,
+    onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
     onToggleReaction: (String) -> Unit,
-    onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null,
+    onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
     onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     attachmentCommentsEnabled: Boolean = false,
@@ -16565,9 +16619,12 @@ private fun threadCreateAgentMachinesErrorCopy(code: String): String =
 @Composable
 private fun ThreadReactionChip(
     reaction: KuiklyThreadReactionItem,
+    interactionIdentity: Any = "reaction:${reaction.emoji}",
     onClick: (() -> Unit)? = null,
-    onLongPress: ((Offset) -> Unit)? = null
+    onLongPress: ((SlockPopoverAnchor) -> Unit)? = null
 ) {
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
     // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
     val background = if (reaction.selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color(0xFFEEEDE6)
     val chipModifier = Modifier
@@ -16595,15 +16652,18 @@ private fun ThreadReactionChip(
         // reactor tooltip. Both live on one gesture detector so the long
         // press cannot fire a toggle. The anchor is reported in root pixels
         // (same contract as the message long-press menu).
-        val rootAnchor = remember(reaction.emoji) { SlockLiveRootAnchorRef() }
+        val rootAnchor =
+            remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
         Box(
             modifier = Modifier
                 .slockCaptureLiveRootAnchor(rootAnchor)
-                .pointerInput(reaction.emoji, onClick != null) {
+                .pointerInput(interactionIdentity, onClick != null) {
                     detectTapGestures(
-                        onTap = { onClick?.invoke() },
+                        onTap = { currentOnClick?.invoke() },
                         onLongPress = { localOffset ->
-                            rootAnchor.resolve(localOffset)?.let(onLongPress)
+                            rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let { anchor ->
+                                currentOnLongPress?.invoke(anchor)
+                            }
                         }
                     )
                 }
@@ -16636,7 +16696,7 @@ internal data class ThreadReactionDetailsRequest(
     val emoji: String,
     val names: List<String>,
     val count: Int,
-    val anchor: Offset
+    val anchor: SlockPopoverAnchor
 )
 
 // Label formatting for the reactor tooltip: first N names + "+K" for the
@@ -16660,10 +16720,19 @@ internal fun threadReactionDetailsLabel(
 internal const val ThreadReactionDetailsMaxNames = 4
 
 @Composable
-private fun ThreadReactionAddChip(onClick: (Offset) -> Unit) {
+private fun ThreadReactionAddChip(
+    messageId: String,
+    onClick: (SlockPopoverAnchor) -> Unit
+) {
+    val addReactionDescription = stringResource(MR.strings.common_add)
     Button(
         onClick2 = onClick,
-        modifier = Modifier.background(Color.Transparent)
+        clickIdentity = "thread_reaction_add:$messageId",
+        anchorOwnerIdentity = threadMessageMenuOwnerIdentity(messageId),
+        modifier =
+            Modifier
+                .semantics { contentDescription = addReactionDescription }
+                .background(Color.Transparent)
     ) {
         ThreadReactionAddChipChrome()
     }
@@ -16693,9 +16762,9 @@ private fun ThreadReactionDetailsTooltip(
         contentSize = estimatedSize,
         onDismiss = onDismiss,
         verticalPlacement = SlockFloatingVerticalPlacement.Auto
-    ) { popoverModifier, _ ->
+    ) {
         Row(
-            modifier = popoverModifier
+            modifier = Modifier
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .slockFloatingContentClickTarget()
@@ -16830,7 +16899,7 @@ private fun Modifier.threadMessageLongPressActions(
     captureLongPressAnchor: () -> Boolean = { true },
     onTap: (() -> Unit)? = null,
     onTapRejected: (ThreadMessageTapMovementDecision) -> Unit = {},
-    onShowActions: (Offset) -> Unit,
+    onShowActions: (SlockPopoverAnchor) -> Unit,
     onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
@@ -16838,7 +16907,8 @@ private fun Modifier.threadMessageLongPressActions(
     val currentOnTapRejected by rememberUpdatedState(onTapRejected)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
     val currentCaptureLongPressAnchor by rememberUpdatedState(captureLongPressAnchor)
-    val rootAnchor = remember(messageId) { SlockLiveRootAnchorRef() }
+    val rootAnchor =
+        remember(messageId) { SlockLiveRootAnchorRef(identity = threadMessageMenuOwnerIdentity(messageId)) }
     val tapDispatchScope = rememberCoroutineScope()
     tapMovementGate.activatePointerSession(pointerSessionKey)
     return this
@@ -16893,7 +16963,7 @@ private fun Modifier.threadMessageLongPressActions(
                 },
                 onLongPress = { localOffset ->
                     if (currentCaptureLongPressAnchor()) {
-                        rootAnchor.resolve(localOffset)?.let(currentOnShowActions)
+                        rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnShowActions)
                     }
                 }
             )
@@ -17348,12 +17418,12 @@ private fun ThreadMessageFooterMeta(
     alignEnd: Boolean,
     onOpenThread: () -> Unit,
     onOpenTask: (String) -> Unit,
-    onShowActions: (Offset) -> Unit,
-    onOpenTaskStatusMenu: (Offset) -> Unit,
+    onShowActions: (SlockPopoverAnchor) -> Unit,
+    onOpenTaskStatusMenu: (SlockPopoverAnchor) -> Unit,
     showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
-    onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null
+    onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null
 ) {
     val hasTask = message.hasThreadTaskFooterMeta()
     val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
@@ -17371,7 +17441,7 @@ private fun ThreadMessageFooterMeta(
         if (hasTask) {
             val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
-            val taskChipClick: ((Offset) -> Unit)? =
+            val taskChipClick: ((SlockPopoverAnchor) -> Unit)? =
                 when {
                     taskStatusActionsEnabled -> onOpenTaskStatusMenu
                     taskOpenEnabled -> { _ -> message.taskId?.let(onOpenTask) }
@@ -17391,6 +17461,7 @@ private fun ThreadMessageFooterMeta(
                 color = selectedStatus.color,
                 modifier = Modifier.weight(1f, fill = false).widthIn(max = 260.dp),
                 clickIdentity = taskClickIdentity,
+                anchorOwnerIdentity = threadMessageMenuOwnerIdentity(message.id),
                 onClick = taskChipClick
             )
         }
@@ -17442,6 +17513,7 @@ private fun ThreadMessageFooterMeta(
                 key("reaction:${message.id}:${reaction.emoji}") {
                     ThreadReactionChip(
                         reaction = reaction,
+                        interactionIdentity = "thread_reaction:${message.id}:${reaction.emoji}",
                         onClick = onToggleReaction?.let { callback -> { callback(reaction.emoji) } },
                         onLongPress =
                             onShowReactionDetails?.let { callback ->
@@ -17452,7 +17524,7 @@ private fun ThreadMessageFooterMeta(
             }
         }
         if (showReactionAddChip) {
-            ThreadReactionAddChip(onClick = onShowActions)
+            ThreadReactionAddChip(messageId = message.id, onClick = onShowActions)
         }
     }
 }
@@ -17571,6 +17643,8 @@ internal fun threadTaskStatusChipClickIdentity(
 ): String =
     "thread-task-status:${message.id}:${message.taskId.orEmpty()}:" +
         "${selectedStatus.key}:$taskStatusActionsEnabled:$taskOpenEnabled"
+
+internal fun threadMessageMenuOwnerIdentity(messageId: String): String = "thread_message:$messageId"
 
 internal fun String?.threadTaskStatusOption(): SharedTaskStatusChipMeta =
     sharedTaskStatusChipMetaOrDefault()
@@ -17872,7 +17946,7 @@ internal fun threadMessageMenuActions(
 private fun ThreadMessageActionMenu(
     message: KuiklyThreadMessageItem,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
-    anchor: Offset,
+    anchor: SlockPopoverAnchor,
     showReplyAction: Boolean,
     showSaveAction: Boolean,
     showTaskStatusAction: Boolean,
@@ -17980,14 +18054,10 @@ private fun ThreadMessageActionMenu(
         verticalOffset = anchorGapPx,
         horizontalAutoFlip = true,
         verticalPlacement = SlockFloatingVerticalPlacement.Auto
-    ) { popoverModifier, position ->
-        LaunchedEffect(message.id, anchor, position) {
+    ) {
+        LaunchedEffect(message.id, anchor) {
             diagnosticsLogger(
-                "thread_message_menu_position messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y} " +
-                    "overlayX=${position.overlayLayout.origin.x} overlayY=${position.overlayLayout.origin.y} " +
-                    "localX=${position.localAnchor.x} localY=${position.localAnchor.y} " +
-                    "overlayW=${position.overlayLayout.size.width} overlayH=${position.overlayLayout.size.height} " +
-                    "menuW=$menuWidth menuH=$menuHeight finalX=${position.offset.x} finalY=${position.offset.y}"
+                "thread_message_menu_positioned messageId=${message.id} menuW=$menuWidth menuH=$menuHeight"
             )
         }
         ThreadMessageMenuChrome(
@@ -17995,7 +18065,7 @@ private fun ThreadMessageActionMenu(
             showReactionActions = showReactionActions,
             reactionAtlasImage = reactionAtlasImage,
             onReact = onReact,
-            modifier = popoverModifier
+            modifier = Modifier
         )
     }
 }
@@ -18318,9 +18388,9 @@ private fun ThreadOriginCard(
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
-    onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
-    onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
-    onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null,
+    onShowActions: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
+    onOpenTaskStatusMenu: (KuiklyThreadMessageItem, SlockPopoverAnchor) -> Unit,
+    onShowReactionDetails: ((KuiklyThreadReactionItem, SlockPopoverAnchor) -> Unit)? = null,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,

@@ -6,6 +6,9 @@ import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockLiveRootAnchorRef
+import build.raft.app.SlockPopoverAnchor
+import build.raft.app.SlockPopoverAnchorResolver
+import build.raft.app.SlockPopoverLocalPoint
 import build.raft.app.SlockModalDismissBarrier
 import build.raft.app.SlockShadow
 import build.raft.app.SlockSpacing
@@ -21,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -109,31 +113,12 @@ internal enum class SlockAnchorPlacement {
     BottomEnd
 }
 
-internal fun slockAnchoredChipGeometryAnchor(
-    root: Offset,
-    width: Float,
-    height: Float,
-    placement: SlockAnchorPlacement
-): Offset =
-    when (placement) {
-        SlockAnchorPlacement.Tap -> root
-        SlockAnchorPlacement.BottomStart -> Offset(root.x, root.y + height)
-        SlockAnchorPlacement.BottomEnd -> Offset(root.x + width, root.y + height)
-    }
-
-internal fun slockAnchoredTriggerGeometryAnchor(
-    root: Offset,
-    width: Float,
-    height: Float,
-    placement: SlockAnchorPlacement
-): Offset = slockAnchoredChipGeometryAnchor(root, width, height, placement)
-
 @Composable
 internal fun SlockAnchoredMetaChip(
     label: String,
     iconName: SlockLucideIconName?,
     color: Color,
-    onClick: ((com.tencent.kuikly.compose.ui.geometry.Offset) -> Unit)?,
+    onClick: ((SlockPopoverAnchor) -> Unit)?,
     modifier: Modifier = Modifier,
     iconSize: Dp = 10.dp,
     iconColorArgb: String = SlockColor.TextBlackArgb,
@@ -148,9 +133,12 @@ internal fun SlockAnchoredMetaChip(
     labelLineHeight: TextUnit = 12.sp,
     pressFeedback: Boolean = onClick != null,
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
-    clickIdentity: Any? = null
+    clickIdentity: Any? = null,
+    anchorOwnerIdentity: Any? = null
 ) {
-    val geometryAnchor = remember(clickIdentity) { SlockLiveRootAnchorRef() }
+    val resolvedAnchorOwnerIdentity = anchorOwnerIdentity ?: clickIdentity ?: "anchored_meta_chip:$label"
+    val geometryAnchor =
+        remember(resolvedAnchorOwnerIdentity) { SlockLiveRootAnchorRef(identity = resolvedAnchorOwnerIdentity) }
     val chipModifier =
         modifier
             .heightIn(min = minHeight)
@@ -171,19 +159,16 @@ internal fun SlockAnchoredMetaChip(
                 when (anchorPlacement) {
                     SlockAnchorPlacement.Tap -> tapAnchor
                     SlockAnchorPlacement.BottomStart ->
-                        geometryAnchor.resolve { size ->
-                            Offset(x = 0f, y = size.height.toFloat())
-                        }
+                        geometryAnchor.resolve(SlockPopoverLocalPoint.BottomStart)
                     SlockAnchorPlacement.BottomEnd ->
-                        geometryAnchor.resolve { size ->
-                            Offset(x = size.width.toFloat(), y = size.height.toFloat())
-                        }
+                        geometryAnchor.resolve(SlockPopoverLocalPoint.BottomEnd)
                 }
             anchor?.let { onClick?.invoke(it) }
         },
         enabled = onClick != null,
         pressFeedback = pressFeedback,
         clickIdentity = clickIdentity,
+        anchorOwnerIdentity = resolvedAnchorOwnerIdentity,
         modifier = chipModifier
     ) {
         Row(
@@ -1105,7 +1090,8 @@ internal fun SlockToolbarChip(
 @Composable
 internal fun SlockAnchoredToolbarChip(
     label: String,
-    onClick: (Offset) -> Unit,
+    onClick: (SlockPopoverAnchor) -> Unit,
+    anchorIdentity: Any,
     modifier: Modifier = Modifier,
     iconName: SlockLucideIconName? = null,
     trailingIconName: SlockLucideIconName? = SlockLucideIconName.ChevronDown,
@@ -1120,21 +1106,18 @@ internal fun SlockAnchoredToolbarChip(
     activeShadowOffset: Dp = 0.dp,
     reserveActiveShadowSpace: Boolean = false,
     activeShadowColor: Color = SlockColor.ShadowBlack,
-    onAnchorChanged: ((Offset) -> Unit)? = null
+    onAnchorChanged: ((SlockPopoverAnchorResolver) -> Unit)? = null
 ) {
-    val anchor = remember { SlockLiveRootAnchorRef() }
-    val lastNotifiedAnchor = remember { mutableStateOf<Offset?>(null) }
+    val currentOnAnchorChanged by rememberUpdatedState(onAnchorChanged)
+    val anchor = remember(anchorIdentity) { SlockLiveRootAnchorRef(identity = anchorIdentity) }
+    val anchorResolver = remember(anchor) { anchor.resolver(SlockPopoverLocalPoint.BottomStart) }
+    var resolverNotified by remember(anchorResolver) { mutableStateOf(false) }
     Box(
         modifier =
-            modifier.onGloballyPositioned { coords ->
-                anchor.update(coords)
-                anchor.resolve { size ->
-                    Offset(x = 0f, y = size.height.toFloat())
-                }?.let { next ->
-                    if (lastNotifiedAnchor.value != next) {
-                        lastNotifiedAnchor.value = next
-                        onAnchorChanged?.invoke(next)
-                    }
+            modifier.slockCaptureLiveRootAnchor(anchor) {
+                if (!resolverNotified) {
+                    resolverNotified = true
+                    currentOnAnchorChanged?.invoke(anchorResolver)
                 }
             }
     ) {
@@ -1154,9 +1137,7 @@ internal fun SlockAnchoredToolbarChip(
             reserveActiveShadowSpace = reserveActiveShadowSpace,
             activeShadowColor = activeShadowColor,
             onClick = {
-                anchor.resolve { size ->
-                    Offset(x = 0f, y = size.height.toFloat())
-                }?.let(onClick)
+                anchor.resolve(SlockPopoverLocalPoint.BottomStart)?.let(onClick)
             }
         )
     }

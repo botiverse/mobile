@@ -478,7 +478,7 @@ private fun SharedTasksLoadedBodyContent(
     // coordinate after a LazyColumn scroll; reconstructing it from item layout offsets
     // moves the menu away from the chip and can leave the menu under the touch barrier.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
-    var statusMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var statusMenuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     val listModeListState =
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
@@ -499,9 +499,9 @@ private fun SharedTasksLoadedBodyContent(
     }
 
     // Filter popover anchors. Resolved from each chip's live coordinates when opened.
-    var channelAnchor by remember { mutableStateOf(Offset.Zero) }
-    var creatorAnchor by remember { mutableStateOf(Offset.Zero) }
-    var assigneeAnchor by remember { mutableStateOf(Offset.Zero) }
+    var channelAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var creatorAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var assigneeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var createDialogOpen by remember { mutableStateOf(false) }
     val channelFilterOptions = remember(visibleContent.channelOptions) {
         visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = SlockLucideIconName.Hash) }
@@ -705,8 +705,8 @@ private fun SharedTasksLoadedBodyContent(
         // capture overlay too (otherwise the dim layer would swallow taps).
         when (presentationState.openFilterId) {
             "channel" ->
-                SlockFilterPopover(
-                    anchor = channelAnchor,
+                channelAnchor?.let { anchor -> SlockFilterPopover(
+                    anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_channel),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_channels),
                     searchText = presentationState.channelSearch,
@@ -716,10 +716,10 @@ private fun SharedTasksLoadedBodyContent(
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels) },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                )
+                ) }
             "creator" ->
-                SlockFilterPopover(
-                    anchor = creatorAnchor,
+                creatorAnchor?.let { anchor -> SlockFilterPopover(
+                    anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_creator),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_creators),
                     searchText = presentationState.creatorSearch,
@@ -729,10 +729,10 @@ private fun SharedTasksLoadedBodyContent(
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearCreators) },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                )
+                ) }
             "assignee" ->
-                SlockFilterPopover(
-                    anchor = assigneeAnchor,
+                assigneeAnchor?.let { anchor -> SlockFilterPopover(
+                    anchor = anchor,
                     title = stringResource(MR.strings.tasks_filter_assignee),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
                     searchText = presentationState.assigneeSearch,
@@ -742,13 +742,16 @@ private fun SharedTasksLoadedBodyContent(
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees) },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                )
+                ) }
             else -> Unit
         }
 
         statusMenuTask?.let { task ->
+            val resolvedStatusAnchor =
+                statusMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
+                    ?: return@let
             SlockTaskStatusMenuOverlay(
-                anchor = statusMenuAnchor,
+                anchor = resolvedStatusAnchor,
                 items = TaskStatus.values().map { next ->
                     SlockBaseMenuItem(id = next.name, label = next.localizedLabel())
                 },
@@ -817,9 +820,9 @@ private fun SharedTasksToolbar(
     openFilterId: String?,
     showCreateButton: Boolean,
     onModeSelected: (TasksViewMode) -> Unit,
-    onChannelChipClick: (Offset) -> Unit,
-    onCreatorChipClick: (Offset) -> Unit,
-    onAssigneeChipClick: (Offset) -> Unit,
+    onChannelChipClick: (SlockPopoverAnchor) -> Unit,
+    onCreatorChipClick: (SlockPopoverAnchor) -> Unit,
+    onAssigneeChipClick: (SlockPopoverAnchor) -> Unit,
     onClearAll: () -> Unit,
     onCreateClick: () -> Unit
 ) {
@@ -830,6 +833,7 @@ private fun SharedTasksToolbar(
     val channelChip: @Composable () -> Unit = {
         SlockAnchoredToolbarChip(
             label = if (selectedChannels.isEmpty()) channelLabel else "$channelLabel · ${selectedChannels.size}",
+            anchorIdentity = "tasks_filter:channel",
             iconName = SlockLucideIconName.Hash,
             // react filter chips are Title case (no uppercase transform) — task #373.
             uppercase = false,
@@ -841,6 +845,7 @@ private fun SharedTasksToolbar(
     val creatorChip: @Composable () -> Unit = {
         SlockAnchoredToolbarChip(
             label = if (selectedCreatorIds.isEmpty()) creatorLabel else "$creatorLabel · ${selectedCreatorIds.size}",
+            anchorIdentity = "tasks_filter:creator",
             iconName = SlockLucideIconName.CircleUser,
             uppercase = false,
             active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
@@ -851,6 +856,7 @@ private fun SharedTasksToolbar(
     val assigneeChip: @Composable () -> Unit = {
         SlockAnchoredToolbarChip(
             label = if (selectedAssigneeIds.isEmpty()) assigneeLabel else "$assigneeLabel · ${selectedAssigneeIds.size}",
+            anchorIdentity = "tasks_filter:assignee",
             iconName = SlockLucideIconName.User,
             uppercase = false,
             active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
@@ -984,8 +990,8 @@ private fun SharedTasksBoardColumn(
     onToggleCollapsed: () -> Unit,
     onOpenTask: ((TaskSummary) -> Unit)?,
     timeContext: SlockTimeContext?,
-    onStatusBadgeClick: (TaskSummary, Offset) -> Unit,
-    onLongPressTask: (TaskSummary, Offset) -> Unit,
+    onStatusBadgeClick: (TaskSummary, SlockPopoverAnchor) -> Unit,
+    onLongPressTask: (TaskSummary, SlockPopoverAnchor) -> Unit,
     bottomContentPadding: Dp,
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
@@ -1101,11 +1107,12 @@ private fun SharedTaskCard(
     captureLongPressAnchor: Boolean = true,
     timeContext: SlockTimeContext? = null,
     onClick: () -> Unit,
-    onStatusBadgeClick: (Offset) -> Unit,
-    onLongPress: (Offset) -> Unit
+    onStatusBadgeClick: (SlockPopoverAnchor) -> Unit,
+    onLongPress: (SlockPopoverAnchor) -> Unit
 ) {
     // Keep a live card coordinate so long-press conversion remains correct after scrolling.
-    val rootAnchor = remember(task.id.value) { SlockLiveRootAnchorRef() }
+    val rootAnchor =
+        remember(task.id.value) { SlockLiveRootAnchorRef(identity = tasksStatusMenuOwnerIdentity(task.id.value)) }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
     val description = task.description?.takeIf { it.isNotBlank() }
@@ -1140,7 +1147,7 @@ private fun SharedTaskCard(
                         onTap = { if (!updating) currentOnClick() },
                         onLongPress = { localOffset ->
                             if (!updating) {
-                                rootAnchor.resolve(localOffset)?.let(currentOnLongPress)
+                                rootAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnLongPress)
                             }
                         }
                     )
@@ -1234,6 +1241,7 @@ private fun SharedTaskCard(
                     color = task.status.color,
                     onClick = if (updating) null else onStatusBadgeClick,
                     clickIdentity = tasksStatusChipClickIdentity(task.id.value, task.status),
+                    anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
                     trailingIconName = SlockLucideIconName.Pencil.takeIf { !updating },
                     // react's card status badge (InlineBadgeEditor, text-xs/leading-4 +
@@ -1253,6 +1261,8 @@ private fun SharedTaskCard(
 
 internal fun tasksStatusChipClickIdentity(taskId: String, status: TaskStatus): String =
     "tasks-status:$taskId:${status.name}"
+
+internal fun tasksStatusMenuOwnerIdentity(taskId: String): String = "task:$taskId"
 
 @Composable
 private fun SharedTasksStatusLabel(

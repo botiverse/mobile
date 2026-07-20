@@ -65,4 +65,10 @@ class ThreadMessageMenuLayoutTest {
             )?.y
         )
     }
+
+    @Test
+    fun threadMenuOwnerIdentityIsMessageScoped() {
+        assertEquals("thread_message:message-1", threadMessageMenuOwnerIdentity("message-1"))
+        assertEquals("thread_message:message-2", threadMessageMenuOwnerIdentity("message-2"))
+    }
 }

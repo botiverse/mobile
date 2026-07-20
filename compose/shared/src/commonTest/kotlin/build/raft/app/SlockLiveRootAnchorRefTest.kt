@@ -7,21 +7,24 @@ import com.tencent.kuikly.compose.ui.layout.LayoutCoordinates
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class SlockLiveRootAnchorRefTest {
     @Test
     fun retainedCoordinatesResolveCurrentPlacementWithoutAnotherUpdate() {
         val coordinates = FakeLayoutCoordinates(root = Offset(10f, 20f), scale = 2f)
-        val anchorRef = SlockLiveRootAnchorRef()
+        val anchorRef = SlockLiveRootAnchorRef(identity = "channel:alpha")
 
-        anchorRef.update(coordinates)
-        assertEquals(Offset(18f, 32f), anchorRef.resolve(Offset(4f, 6f)))
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        assertNotNull(anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset(4f, 6f))))
+        assertEquals(Offset(4f, 6f), coordinates.lastLocalToRootInput)
 
         coordinates.root = Offset(100f, 200f)
         coordinates.scale = 3f
 
-        assertEquals(Offset(112f, 218f), anchorRef.resolve(Offset(4f, 6f)))
+        assertNotNull(anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset(4f, 6f))))
+        assertEquals(Offset(4f, 6f), coordinates.lastLocalToRootInput)
         assertEquals(2, coordinates.localToRootCalls)
     }
 
@@ -33,30 +36,107 @@ class SlockLiveRootAnchorRefTest {
                 measuredSize = IntSize(width = 30, height = 20),
                 scale = 2f
             )
-        val anchorRef = SlockLiveRootAnchorRef()
-        anchorRef.update(coordinates)
+        val anchorRef = SlockLiveRootAnchorRef(identity = "sort")
+        anchorRef.captureFromLayoutCoordinates(coordinates)
 
         coordinates.root = Offset(20f, 40f)
         coordinates.measuredSize = IntSize(width = 50, height = 35)
 
-        assertEquals(
-            Offset(120f, 110f),
-            anchorRef.resolve { size ->
-                Offset(size.width.toFloat(), size.height.toFloat())
-            }
-        )
+        assertNotNull(anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd))
+        assertEquals(Offset(50f, 35f), coordinates.lastLocalToRootInput)
+    }
+
+    @Test
+    fun bottomAtXUsesGestureXAndCurrentHeight() {
+        val coordinates =
+            FakeLayoutCoordinates(
+                root = Offset(20f, 40f),
+                measuredSize = IntSize(width = 50, height = 35),
+                scale = 2f
+            )
+        val anchorRef = SlockLiveRootAnchorRef(identity = "dm:beta")
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+
+        assertNotNull(anchorRef.resolve(SlockPopoverLocalPoint.BottomAtX(12f)))
+        assertEquals(Offset(12f, 35f), coordinates.lastLocalToRootInput)
+    }
+
+    @Test
+    fun typedResolverDefersRootConversionUntilOpenAndKeepsIdentity() {
+        val coordinates =
+            FakeLayoutCoordinates(
+                root = Offset(10f, 20f),
+                measuredSize = IntSize(width = 40, height = 30)
+            )
+        val anchorRef = SlockLiveRootAnchorRef(identity = "search:sender")
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        val resolver = anchorRef.resolver(SlockPopoverLocalPoint.BottomStart)
+
+        assertEquals(0, coordinates.localToRootCalls)
+        coordinates.root = Offset(100f, 200f)
+
+        assertEquals("search:sender", resolver.identity)
+        assertNotNull(resolver.resolve())
+        assertEquals(Offset(0f, 30f), coordinates.lastLocalToRootInput)
+        assertEquals(1, coordinates.localToRootCalls)
+    }
+
+    @Test
+    fun resolvedAnchorRejectsLazyReuseIdentityMismatch() {
+        val anchorRef = SlockLiveRootAnchorRef(identity = "task:one")
+        anchorRef.captureFromLayoutCoordinates(FakeLayoutCoordinates(root = Offset.Zero))
+        val anchor = requireNotNull(anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero)))
+
+        assertEquals(true, anchor.belongsTo("task:one"))
+        assertEquals(false, anchor.belongsTo("task:two"))
     }
 
     @Test
     fun detachedCoordinatesFailClosedWithoutConversion() {
         val coordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
-        val anchorRef = SlockLiveRootAnchorRef()
-        anchorRef.update(coordinates)
+        val anchorRef = SlockLiveRootAnchorRef(identity = "detached")
+        anchorRef.captureFromLayoutCoordinates(coordinates)
         coordinates.attached = false
 
-        assertNull(anchorRef.resolve(Offset(4f, 6f)))
-        assertNull(anchorRef.resolve { size -> Offset(0f, size.height.toFloat()) })
+        assertNull(anchorRef.resolve(SlockPopoverLocalPoint.Exact(Offset(4f, 6f))))
+        assertNull(anchorRef.resolve(SlockPopoverLocalPoint.BottomStart))
         assertEquals(0, coordinates.localToRootCalls)
+    }
+
+    @Test
+    fun invalidatedCaptureLeaseCannotResolveAfterCoordinatesAreReused() {
+        val coordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val anchorRef = SlockLiveRootAnchorRef(identity = "lazy:item-a")
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        val oldResolver = anchorRef.resolver(SlockPopoverLocalPoint.BottomStart)
+
+        anchorRef.invalidate()
+        coordinates.root = Offset(300f, 400f)
+        anchorRef.captureFromLayoutCoordinates(coordinates)
+        val newResolver = anchorRef.resolver(SlockPopoverLocalPoint.BottomStart)
+
+        assertNull(oldResolver.resolve())
+        assertEquals(false, oldResolver.wasInvalidatedByCaptureReuse())
+        assertNotNull(newResolver.resolve())
+        assertEquals(Offset(0f, 10f), coordinates.lastLocalToRootInput)
+    }
+
+    @Test
+    fun coordinateSlotClaimByNewIdentityPermanentlyInvalidatesOldResolver() {
+        val reusedCoordinates = FakeLayoutCoordinates(root = Offset(10f, 20f))
+        val oldRef = SlockLiveRootAnchorRef(identity = "lazy:A")
+        oldRef.captureFromLayoutCoordinates(reusedCoordinates)
+        val oldResolver = oldRef.resolver(SlockPopoverLocalPoint.BottomStart)
+
+        val newRef = SlockLiveRootAnchorRef(identity = "lazy:B")
+        reusedCoordinates.root = Offset(300f, 400f)
+        newRef.captureFromLayoutCoordinates(reusedCoordinates)
+        val newResolver = newRef.resolver(SlockPopoverLocalPoint.BottomStart)
+
+        assertNull(oldResolver.resolve())
+        assertEquals(true, oldResolver.wasInvalidatedByCaptureReuse())
+        assertNotNull(newResolver.resolve())
+        assertEquals(Offset(0f, 10f), reusedCoordinates.lastLocalToRootInput)
     }
 }
 
@@ -67,6 +147,8 @@ private class FakeLayoutCoordinates(
     var attached: Boolean = true
 ) : LayoutCoordinates {
     var localToRootCalls: Int = 0
+        private set
+    var lastLocalToRootInput: Offset? = null
         private set
 
     override val size: IntSize
@@ -87,6 +169,7 @@ private class FakeLayoutCoordinates(
 
     override fun localToRoot(relativeToLocal: Offset): Offset {
         localToRootCalls += 1
+        lastLocalToRootInput = relativeToLocal
         return Offset(
             x = root.x + relativeToLocal.x * scale,
             y = root.y + relativeToLocal.y * scale

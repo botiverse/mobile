@@ -5,15 +5,16 @@ overlays, dropdowns, context menus, and anchored popovers.
 
 ## Rule
 
-Anchor and overlay geometry for `SlockAnchoredPopover` is always in pixels.
+Overlay geometry is always in pixels, but feature code must not exchange those
+pixels as a raw `Offset`.
 
 - `onGloballyPositioned { coords -> coords.positionInRoot() }` returns root
   coordinates in pixels.
 - `coords.size.width` and `coords.size.height` are pixels.
 - `SlockFloatingOverlayLayout.origin` and `SlockFloatingOverlayLayout.size` are
   pixels.
-- `SlockAnchoredPopover(anchor = ...)` expects the anchor in that same pixel
-  coordinate system.
+- `SlockAnchoredPopover(anchor = ...)` accepts a typed `SlockPopoverAnchor`.
+  Its opaque root pixels are unwrapped only by the shared overlay layout.
 - `SlockFloatingOverlayLayout.positionContent(...)` returns a pixel offset,
   consumed by `Modifier.offset { IntOffset(...) }`.
 
@@ -25,17 +26,26 @@ Use dp only for visual dimensions and spacing passed into Compose layout
 modifiers, such as `width(220.dp)`, `padding(8.dp)`, or API parameters that are
 explicitly named `*Dp`.
 
-## Correct Bottom-Edge Anchor Pattern
+## Correct Live Anchor Pattern
 
 ```kotlin
-modifier.onGloballyPositioned { coords ->
-    val root = coords.positionInRoot()
-    val anchor = Offset(root.x, root.y + coords.size.height.toFloat())
-}
+val anchorRef = remember(identity) { SlockLiveRootAnchorRef(identity) }
+
+Modifier.slockCaptureLiveRootAnchor(anchorRef)
+
+// Resolve at the click/long-press that opens the popover.
+anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
 ```
 
-This places a dropdown relative to the trigger's bottom edge. The popover may
-then apply its own pixel `verticalOffset`.
+For a programmatic open, retain a typed `SlockPopoverAnchorResolver` and call
+`resolve()` only when opening. The resolver keeps current coordinates, size,
+translation, and scale; detached coordinates fail closed. Every resolver owns a
+stable identity so a Lazy item cannot reuse another item's anchor.
+
+Available local-point policies are `Exact`, `BottomStart`, `BottomEnd`, and
+`BottomAtX`. Do not add feature callbacks such as `(Offset) -> Unit` for popup
+anchors, store `positionInRoot()` snapshots, or construct root offsets in
+business screens.
 
 ## Known Regression Class
 
@@ -44,14 +54,15 @@ converted `positionInRoot()` and the trigger height to dp before opening the
 Home Search / Tasks filter dropdowns. Android then aligned the dropdown around
 the trigger's top instead of opening from the trigger bottom.
 
-The fix was to pass the bottom-edge anchor in pixels:
+The original fix resolved the bottom edge in pixels. The hardened contract now
+keeps that calculation behind the typed live resolver:
 
 ```kotlin
-val root = coords.positionInRoot()
-val next = Offset(root.x, root.y + coords.size.height.toFloat())
+anchorRef.resolve(SlockPopoverLocalPoint.BottomStart)
 ```
 
 ## Relevant Code
 
 - `compose/shared/src/commonMain/kotlin/build/raft/app/SlockFloatingOverlay.kt`
+- `compose/shared/src/commonMain/kotlin/build/raft/app/SlockLiveRootAnchorRef.kt`
 - `compose/shared/src/commonMain/kotlin/build/raft/app/components/SlockBrutalComponents.kt`

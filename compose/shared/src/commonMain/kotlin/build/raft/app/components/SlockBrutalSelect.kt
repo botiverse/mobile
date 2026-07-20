@@ -6,10 +6,13 @@ import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockLiveRootAnchorRef
+import build.raft.app.SlockPopoverAnchor
+import build.raft.app.SlockPopoverLocalPoint
 import build.raft.app.SlockModalAnchoredPopover
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
+import build.raft.app.slockCaptureLiveRootAnchor
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,7 +41,6 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -89,9 +91,9 @@ internal fun SlockBrutalSelectField(
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
     val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
-    var triggerRootOffset by remember { mutableStateOf(Offset.Zero) }
+    var triggerAnchorValue by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var triggerRootWidthPx by remember { mutableStateOf(0f) }
-    val triggerAnchor = remember { SlockLiveRootAnchorRef() }
+    val triggerAnchor = remember { SlockLiveRootAnchorRef(identity = "brutal_select") }
     val density = LocalDensity.current
     val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
     val menuShadowOffset = SlockShadow.Brutal
@@ -102,9 +104,8 @@ internal fun SlockBrutalSelectField(
                 Modifier
                     .fillMaxWidth()
                     .height(triggerHeight + shadowOffset)
-                    .onGloballyPositioned { coords ->
-                        triggerAnchor.update(coords)
-                        triggerRootWidthPx = coords.size.width.toFloat()
+                    .slockCaptureLiveRootAnchor(triggerAnchor) { size ->
+                        triggerRootWidthPx = size.width.toFloat()
                     }
         ) {
             if (enabled) {
@@ -128,8 +129,8 @@ internal fun SlockBrutalSelectField(
                             if (expanded) {
                                 expanded = false
                             } else {
-                                triggerAnchor.resolve(Offset.Zero)?.let { anchor ->
-                                    triggerRootOffset = anchor
+                                triggerAnchor.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.let { anchor ->
+                                    triggerAnchorValue = anchor
                                     expanded = true
                                 }
                             }
@@ -153,7 +154,7 @@ internal fun SlockBrutalSelectField(
                 )
             }
         }
-        if (expanded && enabled) {
+        if (expanded && enabled && triggerAnchorValue != null) {
             val contentSize =
                 with(density) {
                     Size(
@@ -162,21 +163,21 @@ internal fun SlockBrutalSelectField(
                     )
                 }
             SlockModalAnchoredPopover(
-                anchor = triggerRootOffset,
+                anchor = triggerAnchorValue!!,
                 contentSize = contentSize,
                 onDismiss = { expanded = false },
                 viewportGap = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() },
                 verticalOffset = with(density) { (triggerHeight + shadowOffset).toPx() },
                 verticalOffsetAbove = with(density) { shadowOffset.toPx() },
                 verticalPlacement = SlockFloatingVerticalPlacement.Auto
-            ) { popoverModifier, _ ->
+            ) {
                 SlockBrutalSelectMenu(
                     options = options,
                     selectedId = selectedId,
                     enabled = enabled,
                     rowHeight = rowHeight,
                     listHeight = listHeight,
-                    modifier = popoverModifier.width(menuWidth),
+                    modifier = Modifier.width(menuWidth),
                     onSelect = { option ->
                         expanded = false
                         onSelect(option)

@@ -17,15 +17,17 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.geometry.Offset
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
@@ -227,7 +229,8 @@ internal fun TasksStatusMenuVisualContent() {
     // anchor is the chip's bottom-left in root PIXELS (SlockFloatingOverlay works in
     // px; react's chip box is x 16dp, y 18..42dp and the menu opens 4dp below it at
     // (16, 46)dp — task #370).
-    val density = LocalDensity.current
+    val anchorRef = remember { SlockLiveRootAnchorRef(identity = "tasks_status_menu_fixture") }
+    var anchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     Box(
         modifier =
             Modifier
@@ -240,29 +243,42 @@ internal fun TasksStatusMenuVisualContent() {
         // params mirror the product status chip (SharedTasksPage task card) and the
         // box is pinned to react's measured chip border-box, 98x24dp at (16,18)dp —
         // the 10sp/20dp-min defaults rendered an 80x20dp chip (task #370).
-        SlockAnchoredMetaChip(
-            label = TaskStatus.InProgress.localizedLabel(),
-            iconName = null,
-            color = SlockColor.AccentCyan,
-            onClick = {},
-            modifier = Modifier.offset(x = 16.dp, y = 18.dp).width(98.dp).height(24.dp),
-            trailingIconName = SlockLucideIconName.Pencil,
-            minHeight = 22.dp,
-            horizontalPadding = 8.dp,
-            labelFontSize = 12.sp,
-            labelLineHeight = 14.sp,
-            borderWidth = SlockStroke.Default,
-            anchorPlacement = SlockAnchorPlacement.BottomEnd
-        )
-        SlockTaskStatusMenuOverlay(
-            anchor = with(density) { Offset(16.dp.toPx(), 42.dp.toPx()) },
-            items =
-                TaskStatus.entries.map { status ->
-                    SlockBaseMenuItem(id = status.name, label = status.localizedLabel())
-                },
-            selectedId = TaskStatus.InProgress.name,
-            onDismiss = {},
-            onSelect = {}
-        )
+        Box(
+            modifier =
+                Modifier
+                    .offset(x = 16.dp, y = 18.dp)
+                    .width(98.dp)
+                    .height(24.dp)
+                    .slockCaptureLiveRootAnchor(anchorRef) {
+                        anchor = anchorRef.resolve(SlockPopoverLocalPoint.BottomEnd)
+                    }
+        ) {
+            SlockAnchoredMetaChip(
+                label = TaskStatus.InProgress.localizedLabel(),
+                iconName = null,
+                color = SlockColor.AccentCyan,
+                onClick = {},
+                modifier = Modifier.fillMaxSize(),
+                trailingIconName = SlockLucideIconName.Pencil,
+                minHeight = 22.dp,
+                horizontalPadding = 8.dp,
+                labelFontSize = 12.sp,
+                labelLineHeight = 14.sp,
+                borderWidth = SlockStroke.Default,
+                anchorPlacement = SlockAnchorPlacement.BottomEnd
+            )
+        }
+        anchor?.let { resolvedAnchor ->
+            SlockTaskStatusMenuOverlay(
+                anchor = resolvedAnchor,
+                items =
+                    TaskStatus.entries.map { status ->
+                        SlockBaseMenuItem(id = status.name, label = status.localizedLabel())
+                    },
+                selectedId = TaskStatus.InProgress.name,
+                onDismiss = {},
+                onSelect = {}
+            )
+        }
     }
 }

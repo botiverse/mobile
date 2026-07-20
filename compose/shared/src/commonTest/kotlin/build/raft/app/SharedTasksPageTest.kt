@@ -138,4 +138,14 @@ class SharedTasksPageTest {
         assertEquals(first, tasksStatusChipClickIdentity("task-1", TaskStatus.Todo))
     }
 
+    @Test
+    fun tasksStatusMenuOwnerIdentityStaysSemanticAcrossStatusChanges() {
+        val owner = tasksStatusMenuOwnerIdentity("task-1")
+
+        assertEquals("task:task-1", owner)
+        assertNotEquals(owner, tasksStatusChipClickIdentity("task-1", TaskStatus.Todo))
+        assertNotEquals(owner, tasksStatusChipClickIdentity("task-1", TaskStatus.InProgress))
+        assertEquals(owner, tasksStatusMenuOwnerIdentity("task-1"))
+    }
+
 }

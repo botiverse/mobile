@@ -519,7 +519,7 @@ private data class ChannelRowInteraction(
     val state: ChannelRowInteractionState = ChannelRowInteractionState.Default,
     val captureLongPressAnchor: Boolean = true,
     val onClick: (() -> Unit)? = null,
-    val onLongPress: ((Offset) -> Unit)? = null,
+    val onLongPress: ((SlockPopoverAnchor) -> Unit)? = null,
     val onPress: (() -> Unit)? = null,
     val onPressEnd: (() -> Unit)? = null
 )
@@ -1052,7 +1052,7 @@ internal fun SlockStructuralHomeShell(
     onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onChannelClick: (String) -> Unit = {},
     onPinnedMemberClick: (MemberDetailIdentity) -> Unit = {},
-    onChannelLongPress: (String, Offset) -> Unit = { _, _ -> },
+    onChannelLongPress: (String, SlockPopoverAnchor) -> Unit = { _, _ -> },
     onPinToggle: (String) -> Unit = {},
     onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
     onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
@@ -1086,10 +1086,10 @@ internal fun SlockStructuralHomeShell(
     var directMessageSortMode by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(dmSortMode)) }
     var pinnedSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(pinnedSortMode)) }
     var activeSortMenu by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
-    var sortMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
+    var sortMenuAnchor by remember(currentServerId) { mutableStateOf<SlockPopoverAnchor?>(null) }
     var activePinMenuConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var activePinnedMemberMenuKey by remember(currentServerId) { mutableStateOf<String?>(null) }
-    var pinMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
+    var pinMenuAnchor by remember(currentServerId) { mutableStateOf<SlockPopoverAnchor?>(null) }
     LaunchedEffect(currentServerId, channelSortMode, dmSortMode, pinnedSortMode) {
         channelSortModeState = SlockSidebarSortMode.fromWireValue(channelSortMode)
         directMessageSortMode = SlockSidebarSortMode.fromWireValue(dmSortMode)
@@ -1362,7 +1362,7 @@ internal fun SlockStructuralHomeShell(
         dismissNotificationCenterForFocusLoss()
         onChannelClick(conversationId)
     }
-    val onChannelLongPressWithDismiss: (String, Offset) -> Unit = { conversationId, anchor ->
+    val onChannelLongPressWithDismiss: (String, SlockPopoverAnchor) -> Unit = { conversationId, anchor ->
         dismissNotificationCenterForFocusLoss()
         onChannelLongPress(conversationId, anchor)
     }
@@ -1562,7 +1562,7 @@ internal fun SlockStructuralHomeShell(
                                             pressedRowKey == "pinned:${pinnedRow.key}" -> ChannelRowInteractionState.Pressed
                                             else -> ChannelRowInteractionState.Default
                                         }
-                                        val handleLongPress: (Offset) -> Unit = { anchor ->
+                                        val handleLongPress: (SlockPopoverAnchor) -> Unit = { anchor ->
                                             when {
                                                 pinned != null -> {
                                                     onChannelLongPressWithDismiss(pinned.id, anchor)
@@ -1944,8 +1944,9 @@ internal fun SlockStructuralHomeShell(
                 }
             }
             activeSortMenu?.let { section ->
+                val resolvedSortAnchor = sortMenuAnchor ?: return@let
                 SlockBaseMenuOverlay(
-                    anchor = sortMenuAnchor,
+                    anchor = resolvedSortAnchor,
                     items = slockHomeSortMenuItems(labels),
                     selectedId = when (section) {
                         SlockHomeSortSection.Channels, SlockHomeSortSection.JointChannels -> channelSortModeState.wireValue
@@ -2007,8 +2008,10 @@ internal fun SlockStructuralHomeShell(
                 )
             }
             if (activeConversationId != null && pinMenuItems != null) {
+                val resolvedPinAnchor = pinMenuAnchor
+                if (resolvedPinAnchor != null) {
                 SlockBaseMenuOverlay(
-                    anchor = pinMenuAnchor,
+                    anchor = resolvedPinAnchor,
                     items = pinMenuItems,
                     selectedId = "",
                     onDismiss = {
@@ -2031,10 +2034,13 @@ internal fun SlockStructuralHomeShell(
                         activePinMenuConversationId = null
                     }
                 )
+                }
             }
             if (activePinnedMemberMenuKey != null) {
+                val resolvedPinAnchor = pinMenuAnchor
+                if (resolvedPinAnchor != null) {
                 SlockBaseMenuOverlay(
-                    anchor = pinMenuAnchor,
+                    anchor = resolvedPinAnchor,
                     items = slockHomePinnedMemberMenuItems(labels),
                     selectedId = "",
                     onDismiss = {
@@ -2048,6 +2054,7 @@ internal fun SlockStructuralHomeShell(
                         activePinnedMemberMenuKey = null
                     }
                 )
+                }
             }
             sortOverlaySection?.let { section ->
                 val sortItems =
@@ -4218,6 +4225,7 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
     }
 }
 
+@Composable
 private fun Modifier.homeRowAnchorCapture(
     enabled: Boolean,
     anchorRef: SlockLiveRootAnchorRef
@@ -4226,10 +4234,8 @@ private fun Modifier.homeRowAnchorCapture(
 private fun homeRowLongPressAnchor(
     rowAnchor: SlockLiveRootAnchorRef,
     pressOffset: Offset
-): Offset? =
-    rowAnchor.resolve { size ->
-        Offset(x = pressOffset.x, y = size.height.toFloat())
-    }
+): SlockPopoverAnchor? =
+    rowAnchor.resolve(SlockPopoverLocalPoint.BottomAtX(pressOffset.x))
 
 @Composable
 private fun ChannelRow(
@@ -4273,7 +4279,7 @@ private fun ChannelRow(
     }
     val titleColor = homeConversationTitleColor(muted = content.muted, joined = content.joined)
     val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(content.muted)
-    val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef() }
+    val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val currentOnClick by rememberUpdatedState(interaction.onClick)
@@ -4799,7 +4805,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionIdentity: String = "dm:${memberId.orEmpty()}:$name", interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionIdentity: String = "dm:${memberId.orEmpty()}:$name", interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((SlockPopoverAnchor) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -4827,7 +4833,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef() }
+    val rowAnchor = remember(interactionIdentity) { SlockLiveRootAnchorRef(identity = interactionIdentity) }
     var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val currentOnClick by rememberUpdatedState(onClick)
