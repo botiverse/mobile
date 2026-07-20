@@ -45,7 +45,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -97,6 +96,7 @@ import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
 private const val ActivityUpdateTrackingWindow = 20
+private const val ActivityRetiredUpdateTrackingWindow = ActivityUpdateTrackingWindow * 5
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -608,8 +608,8 @@ private fun SharedActivityList(
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
     var previousItems by remember { mutableStateOf<List<InboxItem>>(emptyList()) }
-    var pendingUpdateCount by remember { mutableStateOf(0) }
-    val scrollScope = rememberCoroutineScope()
+    var pendingUpdates by remember { mutableStateOf(ActivityPendingUpdateLedger()) }
+    var revealRequest by remember { mutableStateOf(0) }
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
@@ -625,7 +625,7 @@ private fun SharedActivityList(
                 currentItemKeys = snapshot.items.map(InboxItem::key)
             )
         ) {
-            pendingUpdateCount = 0
+            pendingUpdates = pendingUpdates.consumePending()
             listState.scrollToItem(0)
         }
     }
@@ -646,10 +646,13 @@ private fun SharedActivityList(
                 previousItems = previousItems,
                 currentItems = snapshot.items
             )
-        if (update.pendingIncrement > 0) {
-            pendingUpdateCount += update.pendingIncrement
-        }
+        pendingUpdates = pendingUpdates.record(update.pendingMarkers)
         previousItems = snapshot.items.take(ActivityUpdateTrackingWindow)
+    }
+    LaunchedEffect(revealRequest) {
+        if (revealRequest > 0) {
+            listState.animateScrollToTopExpressive()
+        }
     }
     LaunchedEffect(listState, snapshot.server.id, snapshot.items) {
         val activityItemsByKey = snapshot.items.associateBy(InboxItem::key)
@@ -749,17 +752,19 @@ private fun SharedActivityList(
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
         }
-        if (pendingUpdateCount > 0) {
+        if (pendingUpdates.count > 0) {
             SlockBrutalActionButton(
                 label = stringResource(
-                    if (pendingUpdateCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
-                    pendingUpdateCount
+                    if (pendingUpdates.count == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
+                    pendingUpdates.count
                 ),
                 onClick = {
-                    scrollScope.launch {
-                        listState.animateScrollToTopExpressive()
-                        pendingUpdateCount = 0
-                    }
+                    // Retire exactly the snapshot represented by this button
+                    // before scrolling. A later realtime arrival gets its own
+                    // marker and remains actionable; animation completion never
+                    // clears work that arrived after this click.
+                    pendingUpdates = pendingUpdates.consumePending()
+                    revealRequest += 1
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
                 minHeight = 30.dp,
@@ -1535,9 +1540,40 @@ internal fun activityListShouldRecoverVisibleContent(
     return visibleItemKeys.none(currentKeys::contains)
 }
 
-internal data class ActivityUpdatePresentation(
-    val pendingIncrement: Int
+internal data class ActivityUpdateMarker(
+    val itemKey: String,
+    val latestActivityMessageId: String?
 )
+
+internal data class ActivityPendingUpdateLedger(
+    val pendingMarkers: Set<ActivityUpdateMarker> = emptySet(),
+    val retiredMarkers: Set<ActivityUpdateMarker> = emptySet()
+) {
+    val count: Int
+        get() = pendingMarkers.size
+
+    fun record(markers: Set<ActivityUpdateMarker>): ActivityPendingUpdateLedger {
+        val genuinelyPending = markers - retiredMarkers
+        if (genuinelyPending.isEmpty()) return this
+        return copy(pendingMarkers = pendingMarkers + genuinelyPending)
+    }
+
+    fun consumePending(): ActivityPendingUpdateLedger {
+        if (pendingMarkers.isEmpty()) return this
+        val retired =
+            (retiredMarkers + pendingMarkers)
+                .takeLast(ActivityRetiredUpdateTrackingWindow)
+                .toSet()
+        return copy(pendingMarkers = emptySet(), retiredMarkers = retired)
+    }
+}
+
+internal data class ActivityUpdatePresentation(
+    val pendingMarkers: Set<ActivityUpdateMarker>
+) {
+    val pendingIncrement: Int
+        get() = pendingMarkers.size
+}
 
 internal fun activityUpdatePresentation(
     previousItems: List<InboxItem>,
@@ -1546,13 +1582,13 @@ internal fun activityUpdatePresentation(
     // A data arrival is not a viewport-replacement intent. Always accumulate
     // genuine head changes behind the explicit reveal action; do not silently
     // scroll just because the current viewport happens to be near the top.
-    val topUpdateCount =
-        activityPendingUpdateIncrement(
+    val pendingMarkers =
+        activityPendingUpdateMarkers(
             previousItems = previousItems,
             currentItems = currentItems,
             nearTop = false
         )
-    return ActivityUpdatePresentation(pendingIncrement = topUpdateCount)
+    return ActivityUpdatePresentation(pendingMarkers = pendingMarkers)
 }
 
 // "↑ x new" counts ONLY genuinely new activity, never the user's own actions.
@@ -1567,19 +1603,31 @@ internal fun activityPendingUpdateIncrement(
     previousItems: List<InboxItem>,
     currentItems: List<InboxItem>,
     nearTop: Boolean
-): Int {
-    if (nearTop || previousItems.isEmpty()) return 0
+): Int = activityPendingUpdateMarkers(previousItems, currentItems, nearTop).size
+
+internal fun activityPendingUpdateMarkers(
+    previousItems: List<InboxItem>,
+    currentItems: List<InboxItem>,
+    nearTop: Boolean
+): Set<ActivityUpdateMarker> {
+    if (nearTop || previousItems.isEmpty()) return emptySet()
     val previousByKey = previousItems.associateBy { it.key }
     val currentWindow = currentItems.take(ActivityUpdateTrackingWindow)
-    if (currentWindow.isEmpty()) return 0
-    val freshTopRows = currentWindow.takeWhile { it.key !in previousByKey }.count()
+    if (currentWindow.isEmpty()) return emptySet()
+    val freshTopRows = currentWindow.takeWhile { it.key !in previousByKey }
     val advancedKnownRows =
-        currentWindow.count { current ->
-            val previous = previousByKey[current.key] ?: return@count false
+        currentWindow.filter { current ->
+            val previous = previousByKey[current.key] ?: return@filter false
             val currentLatest = current.latestActivityMessageId?.value
             currentLatest != null && currentLatest != previous.latestActivityMessageId?.value
         }
-    return freshTopRows + advancedKnownRows
+    return (freshTopRows + advancedKnownRows)
+        .mapTo(linkedSetOf()) { item ->
+            ActivityUpdateMarker(
+                itemKey = item.key,
+                latestActivityMessageId = item.latestActivityMessageId?.value
+            )
+        }
 }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
