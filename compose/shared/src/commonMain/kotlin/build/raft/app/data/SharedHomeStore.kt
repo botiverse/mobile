@@ -11,6 +11,10 @@ import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.network.sync.ReadStateSyncApplyResult
 import build.raft.app.network.sync.ReadStateSyncEvent
 import build.raft.app.network.sync.ReadStateSyncState
+import build.raft.app.network.sync.ReadStateV1Fact
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1ProductionDisposition
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import build.raft.app.network.sync.reduceReadStateSyncState
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberId
@@ -102,6 +106,7 @@ internal class SharedHomeStore(
         PerReceiverStateVersionStore(InMemorySlockKeyValueStore()),
     private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
+    private var readStateV1Canary: ReadStateV1ProductionCanary? = null,
     /**
      * #211: callback invoked when a pin/unpin or pinned-sort-mode PATCH
      * fails. The host (SettingsHomePage) typically wires this to
@@ -190,6 +195,7 @@ internal class SharedHomeStore(
         },
         readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
+        readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
         pinUpdateFailureCallback: (String) -> Unit = {}
     ) {
         loadJob?.cancel()
@@ -211,6 +217,7 @@ internal class SharedHomeStore(
         this.setChannelActivityMuted = setChannelActivityMuted
         this.readReceiptCoordinator = readReceiptCoordinator
         this.readReceiptOwnerFactory = readReceiptOwnerFactory
+        this.readStateV1Canary = readStateV1Canary
         this.pinUpdateFailureCallback = pinUpdateFailureCallback
         diagnosticsLogger("home_runtime_integrations_updated")
     }
@@ -701,7 +708,7 @@ internal class SharedHomeStore(
     // whoever this session is. Enrich with the current snapshot's identity and
     // hand each scope to the version-gated applier; a mismatched or stale
     // scope is a per-scope no-op there, never a batch failure.
-    private fun applyPerReceiverReadStateChanged(
+    private suspend fun applyPerReceiverReadStateChanged(
         serverId: ServerId,
         event: PerReceiverReadStateChanged
     ) {
@@ -710,6 +717,22 @@ internal class SharedHomeStore(
         val eventServerId = event.serverId ?: serverId
         var needsReconcile = false
         event.scopes.forEach { scope ->
+            val productionOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(eventServerId.value, memberId.value)
+                    ?.toReadStateV1ProductionOwner()
+            if (productionOwner != null) {
+                val disposition =
+                    readStateV1Canary?.applyOwnerRealtime(
+                        owner = productionOwner,
+                        channelId = scope.scopeId.value,
+                        readStateVersion = scope.readStateVersion,
+                        maxReadSeq = scope.maxReadSeq,
+                    )
+                if (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy) {
+                    return@forEach
+                }
+            }
             val outcome =
                 applyPerReceiverReadState(
                     PerReceiverReadStateUpdate(
@@ -728,6 +751,41 @@ internal class SharedHomeStore(
             needsReconcile = needsReconcile || outcome == HomeReadStateApplyOutcome.AcceptedNeedsReconcile
         }
         if (needsReconcile) scheduleReadStateReconcile()
+    }
+
+    private suspend fun applyReadStateV1Hydrates(snapshot: HomeSnapshot) {
+        val canary = readStateV1Canary ?: return
+        val owner =
+            readReceiptOwnerFactory
+                ?.invoke(snapshot.server.id.value, snapshot.currentMember.id.value)
+                ?.toReadStateV1ProductionOwner()
+                ?: return
+        (snapshot.channels + snapshot.directMessages).forEach { row ->
+            val hydrate = row.readStateV1Hydrate ?: return@forEach
+            val channelId = row.channelId?.value ?: return@forEach
+            canary.applyHydrate(owner, channelId, hydrate.readStateVersion, hydrate.maxReadSeq)
+        }
+    }
+
+    internal fun applyReadStateV1Projection(owner: ReadStateV1ProductionOwner, fact: ReadStateV1Fact) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        if (content.snapshot.server.id.value != owner.serverId || content.snapshot.currentMember.id.value != owner.accountId) {
+            return
+        }
+        synchronized(readProjectionOwnerLock) {
+            applyHomeSnapshotLocally { snapshot ->
+                snapshot.withPerReceiverReadState(
+                    PerReceiverReadStateUpdate(
+                        serverId = snapshot.server.id,
+                        memberId = snapshot.currentMember.id,
+                        channelId = ChannelId(fact.channelId),
+                        version = fact.readStateVersion,
+                        maxReadSeq = fact.maxReadSeq,
+                    )
+                )
+            }
+        }
+        scheduleReadStateReconcile()
     }
 
     private fun scheduleReadStateReconcile() {
@@ -1510,6 +1568,7 @@ internal class SharedHomeStore(
                     appBadgeCount = nextBadge
                 )
             )
+            if (freshSnapshot != null) applyReadStateV1Hydrates(freshSnapshot)
             if (refreshNotificationsAfterLoad) {
                 loadNotifications()
             } else {
@@ -2137,8 +2196,21 @@ internal class SharedHomeStore(
         val channelId = target.messageStreamChannelId()
         val nextUnread = target.unreadCount.takeIf { it > 0 } ?: 1
         applyHomeSnapshotLocally { it.withConversationUnread(conversationId, nextUnread) }
-        when (markChannelUnread(channelId)) {
-            is DataResult.Content,
+        when (val result = markChannelUnread(channelId)) {
+            is DataResult.Content -> {
+                val owner =
+                    readReceiptOwnerFactory
+                        ?.invoke(current.snapshot.server.id.value, current.snapshot.currentMember.id.value)
+                        ?.toReadStateV1ProductionOwner()
+                if (owner != null) {
+                    readStateV1Canary?.applyMutationAck(
+                        owner = owner,
+                        channelId = channelId.value,
+                        readStateVersion = result.data.readStateVersion,
+                        maxReadSeq = result.data.maxReadSeq,
+                    )
+                }
+            }
             is DataResult.Empty -> Unit
             is DataResult.Error,
             is DataResult.NoPermission -> {

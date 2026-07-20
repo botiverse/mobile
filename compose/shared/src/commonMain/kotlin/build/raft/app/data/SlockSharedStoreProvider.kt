@@ -61,6 +61,8 @@ import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.SqlDelightReadStateV1Store
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
@@ -355,6 +357,24 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
     private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
     private val homeActivityStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
+    private val processReadStateV1Canary: ReadStateV1ProductionCanary by lazy {
+        ReadStateV1ProductionCanary(
+            isEnabledForServer = { serverId ->
+                serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY)
+            },
+            store = SqlDelightReadStateV1Store(sqlDatabase, now = ::defaultNowMillis),
+            onProjection = { owner, fact ->
+                homeStores.entries().forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
+                homeActivityStores.entries().forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
+            },
+            onRebaseline = { owner, _ ->
+                homeStores.entries().forEach { (_, store) -> store.dispatch(SharedHomeIntent.ForegroundRefresh) }
+                homeActivityStores.entries().forEach { (_, store) -> store.dispatch(SharedActivityIntent.Refresh) }
+                sharedInfoLogger("ReadStateV1Canary", "rebaseline")("serverId=${owner.serverId}")
+            },
+            logger = sharedInfoLogger("ReadStateV1Canary", "production_canary"),
+        )
+    }
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
@@ -718,6 +738,7 @@ internal class SlockSharedStoreProvider private constructor(
                 setChannelActivityMuted = setChannelActivityMuted,
                 readReceiptCoordinator = processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = ::readReceiptOwner,
+                readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback
             )
             return store
@@ -742,6 +763,7 @@ internal class SlockSharedStoreProvider private constructor(
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 readReceiptCoordinator = processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = ::readReceiptOwner,
+                readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
                 persistSlices = listOf(homeIdentityPersistSlice)
             )
@@ -771,6 +793,7 @@ internal class SlockSharedStoreProvider private constructor(
                     persistSlices = listOf(activityPersistSlice),
                     readReceiptCoordinator = processReadReceiptCoordinator(),
                     readReceiptOwnerFactory = ::readReceiptOwner,
+                    readStateV1Canary = processReadStateV1Canary,
                     prewarmReplyThread = prewarmReplyThread,
                     replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                     onUnreadCountsChanged = onUnreadCountsChanged,
@@ -792,6 +815,7 @@ internal class SlockSharedStoreProvider private constructor(
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 readReceiptCoordinator = processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = ::readReceiptOwner,
+                readStateV1Canary = processReadStateV1Canary,
                 persistSlices = listOf(activityPersistSlice),
                 prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
                 replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
@@ -859,6 +883,17 @@ internal class SlockSharedStoreProvider private constructor(
                 }
             },
             onResult = { request, result ->
+                val content = result as? DataResult.Content
+                if (request.owner != ReadReceiptOwner.Legacy && content != null) {
+                    threadSendScope.launch {
+                        processReadStateV1Canary.applyMutationAck(
+                            owner = request.owner.toReadStateV1ProductionOwner(),
+                            channelId = request.channelId.value,
+                            readStateVersion = content.data.readStateVersion,
+                            maxReadSeq = content.data.maxReadSeq,
+                        )
+                    }
+                }
                 activityUnreadSummaryStore.invalidate(
                     request.owner.toProcessActivityUnreadOwner(),
                     reason = "read_result:${request.revision}"
@@ -868,6 +903,9 @@ internal class SlockSharedStoreProvider private constructor(
                         "channelId=${request.channelId.value} revision=${request.revision} " +
                         "result=${result::class.simpleName.orEmpty()}"
                 )
+            },
+            onOwnerRevoked = { owner ->
+                if (owner != ReadReceiptOwner.Legacy) processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
             },
             onFailure = { request, result ->
                 activityUnreadSummaryStore.invalidate(
@@ -908,6 +946,7 @@ internal class SlockSharedStoreProvider private constructor(
                 processReadReceiptCoordinator
             }
         coordinator?.clear()
+        processReadStateV1Canary.clear()
     }
 
     fun readReceiptOwner(

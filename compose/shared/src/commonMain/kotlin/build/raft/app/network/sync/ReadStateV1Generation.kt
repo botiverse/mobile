@@ -72,7 +72,7 @@ class ReadStateV1GenerationEngine(
             ReadStateV1CommitMode.Snapshot,
             ReadStateV1CommitGuard { authority.isCurrent(witness) },
         )
-        if (committed != ReadStateV1StoreResult.Accepted) {
+        if (committed !in setOf(ReadStateV1StoreResult.Accepted, ReadStateV1StoreResult.Current)) {
             return committed.toGenerationResult()
         }
         if (!authority.publishIfCurrent(witness) {
@@ -80,7 +80,7 @@ class ReadStateV1GenerationEngine(
                 projectionObserver.onCommitted(witness.scope, fact)
             }
         ) return ReadStateV1GenerationResult.RejectedCurrentGrant
-        return ReadStateV1GenerationResult.Committed
+        return committed.toGenerationResult()
     }
 
     suspend fun applyIncremental(

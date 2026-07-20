@@ -64,6 +64,7 @@ sealed interface HomeConversationRow {
     val lastMessageSeq: Long?
     val firstUnreadMessageId: MessageId?
     val readStateMaxReadSeq: Long?
+    val readStateV1Hydrate: ReadStateV1HydrateCarrier?
     val lastMessagePreview: String?
     val lastMessageAt: String?
     val lastMessageSenderName: String?
@@ -108,6 +109,7 @@ data class HomeChannelRow(
     override val lastMessageSeq: Long? = null,
     override val firstUnreadMessageId: MessageId? = null,
     override val readStateMaxReadSeq: Long? = null,
+    override val readStateV1Hydrate: ReadStateV1HydrateCarrier? = null,
     override val lastMessagePreview: String? = null,
     override val lastMessageAt: String? = null,
     override val lastMessageSenderName: String? = null,
@@ -146,6 +148,7 @@ data class HomeDirectMessageRow(
     override val lastMessageSeq: Long? = null,
     override val firstUnreadMessageId: MessageId? = null,
     override val readStateMaxReadSeq: Long? = null,
+    override val readStateV1Hydrate: ReadStateV1HydrateCarrier? = null,
     override val lastMessagePreview: String? = null,
     override val lastMessageAt: String? = null,
     override val lastMessageSenderName: String? = null,
@@ -699,8 +702,24 @@ data class ChannelUnreadSnapshot(
 data class ReadReceiptResult(
     val channelId: ChannelId? = null,
     val seq: Long? = null,
+    val readStateVersion: Long? = null,
+    val maxReadSeq: Long? = null,
+    val scopes: List<ReadStateV1AckScope> = emptyList(),
     val unreadCount: Int = 0,
     val changed: Boolean = true
+)
+
+@Serializable
+data class ReadStateV1AckScope(
+    val channelId: ChannelId,
+    val readStateVersion: Long? = null,
+    val maxReadSeq: Long? = null,
+)
+
+@Serializable
+data class ReadStateV1HydrateCarrier(
+    val readStateVersion: Long? = null,
+    val maxReadSeq: Long? = null,
 )
 
 data class DirectMessageSnapshot(

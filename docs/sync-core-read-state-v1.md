@@ -1,10 +1,11 @@
 # Sync Core read-state v1
 
-Status: dormant contract and durable seam. Production activation and rollout are explicitly out of scope.
+Status: selected-scope production canary. Broad rollout remains explicitly out of scope.
 
 ## Durable identity
 
-The consumer is exactly `sync-core.read-state.v1`. Its canonical key is
+The consumer is exactly `sync-core.read-state.v1`. Production derives `principalId` from the exact
+`(environmentId, accountId)` pair before using the durable key
 `(serverId, principalId, consumerId, channelId)`, where `consumerId` is fixed to that value. It is an
 independent fact family: it does not share the `sync-core.messages.v2` partition and it does not treat the
 presentation-oriented `channelReadStateEntity` as canonical authority.
@@ -44,6 +45,25 @@ Peer `scope_read:updated` receipts are a different derived family and are reject
 4. **Revoke barrier:** revocation invalidates the baseline, rolls back a write whose grant changes before
    commit, and clears only that owner's read-receipt pending overlay.
 
+## Production canary binding
+
+The independent server feature flag is exactly `sync_core_read_state_v1` and defaults OFF. OFF keeps the
+legacy Home, Activity, realtime, mutation, persistence, and UI projection paths authoritative. ON leases the
+first exact `(environment, account, server, channel)` scope that presents a complete valid owner fact in the
+process; empty version-zero or incomplete hydrate carriers do not seize the lease. Every other scope remains
+legacy. The lease is revoked with its read-receipt owner and a later exact scope may then be selected.
+
+Channel-list, channel-detail, and DM hydrate responses carry the two nullable wire members in a dedicated
+`ReadStateV1HydrateCarrier`. That carrier is not the legacy `readStateMaxReadSeq` field and is never consumed by
+the legacy reducer or persisted slice. Missing either member stays incomplete and dark. Mutation responses
+preserve the server's acknowledgement pair; the optimistic prediction remains UI-only. Owner realtime is the
+existing `user:<id>` full-pair event. For the selected scope, all three sources enter the generation engine and
+legacy apply is suppressed even when candidate validation, commit, or rebaseline fails.
+
+Only the generation engine's post-commit observer may project a selected fact into Home and Activity. Those
+projections do not write the legacy version checkpoint; the durable v1 row remains sole authority. A verified
+hydrate equal to the durable pair establishes the baseline and projects it without rewriting the row.
+
 ## Persistence and recovery
 
 `syncReadStateFactEntity` stores one complete pair per durable identity. Snapshot commit still obeys version
@@ -57,6 +77,6 @@ section, so revoke cannot publish a hydrate request for an old owner.
 
 ## HOLD boundary
 
-This phase deliberately adds no production provider, realtime subscription, feature flag, sole-apply switch,
-or rollout. It also adds no seen-by behavior, latest-three thread generation, peer-receipt authority, or Message
-V2 schema/consumer change.
+This phase deliberately adds no broad rollout, new realtime subscription, seen-by behavior, latest-three thread
+generation, peer-receipt authority, or Message V2 schema/consumer change. It does not change server behavior,
+visuals, text, attachment comments, or thread-scope generation.

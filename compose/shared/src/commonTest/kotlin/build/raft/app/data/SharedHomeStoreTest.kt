@@ -29,6 +29,8 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +52,61 @@ import kotlin.test.assertTrue
 import kotlin.concurrent.Volatile
 
 class SharedHomeStoreTest {
+    @Test
+    fun selectedReadStateRealtimeCommitsBeforeHomeProjectionWithoutWritingLegacyCheckpoint() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val owner = ReadStateV1ProductionOwner("production", "user-1", "server-1")
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            ServerId("server-1"),
+            MemberId("user-1"),
+            ChannelId("channel-1"),
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+        )
+        lateinit var store: SharedHomeStore
+        var project = false
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = TestReadStateV1Store(),
+                onProjection = { projectedOwner, fact ->
+                    if (project) store.applyReadStateV1Projection(projectedOwner, fact)
+                },
+                onRebaseline = { _, _ -> },
+            )
+        store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary = canary,
+            )
+        store.accept(SharedHomeIntent.Start)
+        canary.applyHydrate(owner, "channel-1", 1, 10)
+        project = true
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                "server-1",
+                PerReceiverReadStateChanged(
+                    ServerId("server-1"),
+                    listOf(PerReceiverReadStateScope(ChannelId("channel-1"), 5, 2)),
+                ),
+            )
+        )
+
+        val row = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels
+            .first { it.channelId == ChannelId("channel-1") }
+        assertEquals(5, row.readStateMaxReadSeq)
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
+        )
+        scope.cancel()
+    }
+
     @Test
     fun startLoadsHomeThroughCommonStateFlow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

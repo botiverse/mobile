@@ -55,6 +55,8 @@ data class HomeChannelWireDto(
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
+    val maxReadSeq: Long? = null,
+    val readStateVersion: Long? = null,
 )
 
 @Serializable
@@ -72,7 +74,9 @@ data class HomeDirectMessageWireDto(
     val peerAvatarUrl: String? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
-    val activityMuteSupported: Boolean = false
+    val activityMuteSupported: Boolean = false,
+    val maxReadSeq: Long? = null,
+    val readStateVersion: Long? = null,
 )
 
 @Serializable
@@ -99,6 +103,8 @@ private data class HomeChannelDetailWireDto(
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
+    val maxReadSeq: Long? = null,
+    val readStateVersion: Long? = null,
 )
 
 internal fun parseSlockChannelDetail(
@@ -126,7 +132,9 @@ internal fun parseSlockChannelDetail(
             peerAvatarUrl = wire.peerAvatarUrl,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
-            activityMuteSupported = wire.activityMuteSupported
+            activityMuteSupported = wire.activityMuteSupported,
+            maxReadSeq = wire.maxReadSeq,
+            readStateVersion = wire.readStateVersion,
         ).toDirectMessageRow(warningLogger)
     } else {
         HomeChannelWireDto(
@@ -145,7 +153,9 @@ internal fun parseSlockChannelDetail(
             jointPeerStatus = wire.jointPeerStatus,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
-            activityMuteSupported = wire.activityMuteSupported
+            activityMuteSupported = wire.activityMuteSupported,
+            maxReadSeq = wire.maxReadSeq,
+            readStateVersion = wire.readStateVersion,
         ).toChannelRow()
     }
 }
@@ -307,6 +317,7 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         joined = joined,
         archived = archivedAt != null,
         lastMessageAt = lastMessageAt,
+        readStateV1Hydrate = readStateV1HydrateCarrier(),
         jointChannelId = jointChannelId?.takeIf { it.isNotBlank() },
         jointRole = jointRole?.takeIf { it.isNotBlank() },
         jointPeerServerId = jointPeerServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
@@ -346,6 +357,7 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
         directMessagePeerType = peerType.takeIf { it.isNotBlank() },
         presenceMemberId = MemberId(peerId),
         lastMessageAt = lastMessageAt,
+        readStateV1Hydrate = readStateV1HydrateCarrier(),
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,
@@ -354,6 +366,12 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
             )
     )
 }
+
+private fun HomeChannelWireDto.readStateV1HydrateCarrier(): ReadStateV1HydrateCarrier? =
+    if (readStateVersion == null && maxReadSeq == null) null else ReadStateV1HydrateCarrier(readStateVersion, maxReadSeq)
+
+private fun HomeDirectMessageWireDto.readStateV1HydrateCarrier(): ReadStateV1HydrateCarrier? =
+    if (readStateVersion == null && maxReadSeq == null) null else ReadStateV1HydrateCarrier(readStateVersion, maxReadSeq)
 
 internal fun HomeNetworkPayload.directMessagePeerProfiles(
     serverId: ServerId,

@@ -31,6 +31,9 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.network.sync.ReadStateV1Fact
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -57,6 +60,57 @@ import kotlin.test.assertTrue
 private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
 
 class SharedActivityStoreTest {
+    @Test
+    fun selectedReadStateRealtimeUsesDurableProjectionWithoutWritingLegacyCheckpoint() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()), snapshot(emptyList())))
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            ServerId("server-1"),
+            MemberId("user-1"),
+            ChannelId("channel-1"),
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+        )
+        lateinit var store: SharedActivityStore
+        var project = false
+        val durable = TestReadStateV1Store()
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = durable,
+                onProjection = { owner, fact -> if (project) store.applyReadStateV1Projection(owner, fact) },
+                onRebaseline = { _, _ -> },
+            )
+        store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                perReceiverStateVersionStore = versionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary = canary,
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        canary.applyHydrate(ReadStateV1ProductionOwner("production", "user-1", "server-1"), "channel-1", 1, 10)
+        project = true
+
+        store.acceptRealtime(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                PerReceiverReadStateChanged(
+                    ServerId("server-1"),
+                    listOf(PerReceiverReadStateScope(ChannelId("channel-1"), 5, 2)),
+                )
+            )
+        )
+
+        assertEquals(ReadStateV1Fact("channel-1", 2, 5), durable.facts.values.single())
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
+        )
+        assertTrue(inbox.initialLoadCount >= 2)
+        scope.cancel()
+    }
+
     @Test
     fun visibleReplyPrewarmDedupesStableGenerationAndRefetchesAfterLedgerAdvance() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -2812,6 +2866,7 @@ class SharedActivityStoreTest {
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
         tailPrewarmDepthCap: Int = 20,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
+        readStateV1Canary: ReadStateV1ProductionCanary? = null,
         onUnreadCountsChanged: () -> Unit = {},
         onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
         onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
@@ -2833,6 +2888,7 @@ class SharedActivityStoreTest {
             replyThreadFreshnessLedger = replyThreadFreshnessLedger,
             tailPrewarmDepthCap = tailPrewarmDepthCap,
             readReceiptOwnerFactory = readReceiptOwnerFactory,
+            readStateV1Canary = readStateV1Canary,
             onUnreadCountsChanged = onUnreadCountsChanged,
             onSummaryFact = onSummaryFact,
             onSummaryInvalidated = onSummaryInvalidated,
