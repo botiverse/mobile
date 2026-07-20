@@ -1292,11 +1292,17 @@ class SharedInboxPanelTest {
 
     @Test
     fun activityOpenGestureKeyChangesWhenPresentedOrderGenerationChanges() {
-        val item = activityItem(key = "channel:stable")
+        val item = activityItem(key = "channel:stable", latestActivityMessageId = "message:old", unreadCount = 0)
+        val updatedSameSlot =
+            item.copy(
+                latestActivityMessageId = MessageId("message:new"),
+                firstUnreadMessageId = MessageId("message:new"),
+                unreadCount = 3
+            )
 
         assertEquals(
             item.activityOpenGestureKey(presentationGeneration = 3),
-            item.activityOpenGestureKey(presentationGeneration = 3)
+            updatedSameSlot.activityOpenGestureKey(presentationGeneration = 3)
         )
         assertNotEquals(
             item.activityOpenGestureKey(presentationGeneration = 3),

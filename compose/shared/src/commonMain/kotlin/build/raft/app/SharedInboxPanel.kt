@@ -1182,7 +1182,11 @@ internal fun InboxItem.inboxItemOpenGestureKey(): String =
     ).joinToString("|")
 
 internal fun InboxItem.activityOpenGestureKey(presentationGeneration: Int): String =
-    "${inboxItemOpenGestureKey()}|presentation:$presentationGeneration"
+    // The Activity pointer owner follows the stable presented slot, not the
+    // latest anchor/unread fields. rememberUpdatedState supplies the newest
+    // row payload to the callback; only a committed order generation change
+    // may cancel a DOWN→UP gesture that started on this slot.
+    "activity-open:$key|presentation:$presentationGeneration"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
