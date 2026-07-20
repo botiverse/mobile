@@ -236,7 +236,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityPullRefreshKeepsRowsStationaryAndMovesProgressToHeader() {
+    fun activityOnlyExplicitPullRefreshOwnsVisibleHeaderProgress() {
         assertEquals(
             ActivityRefreshPresentation(
                 headerRefreshing = true,
@@ -246,7 +246,7 @@ class SharedInboxPanelTest {
         )
         assertEquals(
             ActivityRefreshPresentation(
-                headerRefreshing = true,
+                headerRefreshing = false,
                 pullRefreshing = false
             ),
             activityRefreshPresentation(refreshing = true, pullRefreshing = false)
