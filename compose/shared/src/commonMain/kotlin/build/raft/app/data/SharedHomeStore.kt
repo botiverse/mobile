@@ -54,6 +54,12 @@ internal enum class SharedConversationIdentitySupplementSource(val precedence: I
     ForegroundBanner(50)
 }
 
+private data class HomeNotificationAuthority(
+    val accountId: String?,
+    val serverId: String?,
+    val canManageMachines: Boolean
+)
+
 internal class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private var dataSource: SharedHomeDataSource,
@@ -120,7 +126,8 @@ internal class SharedHomeStore(
      */
     private val nowMillis: () -> Long = { defaultNowMillis() },
     private val beforeRealtimeHomeStateCommit: () -> Unit = {},
-    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
+    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {},
+    private val beforeNotificationPublicationCommit: suspend () -> Unit = {}
 ) : SharedConversationIdentityProvider {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -133,6 +140,8 @@ internal class SharedHomeStore(
     private var loadJob: Job? = null
     private var agentDirectMessageStatusJob: Job? = null
     private var serverOrderLoadJob: Job? = null
+    private var notificationRequestGeneration: Long = 0L
+    private val notificationOwnerLock = SynchronizedObject()
     private val contentByServer = linkedMapOf<ServerId, SharedHomeContentState.Content>()
     private val serverDrawerLoadJobs = linkedMapOf<ServerId, Job>()
     private val serverDrawerRequestGenerations = linkedMapOf<ServerId, Long>()
@@ -194,6 +203,7 @@ internal class SharedHomeStore(
     ) {
         loadJob?.cancel()
         agentDirectMessageStatusJob?.cancel()
+        supersedeNotificationRequests()
         serverDrawerLoadJobs.values.forEach { it.cancel() }
         serverDrawerLoadJobs.clear()
         serverDrawerRequestGenerations.clear()
@@ -266,6 +276,7 @@ internal class SharedHomeStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        supersedeNotificationRequests()
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob = null
         serverDrawerLoadJobs.values.forEach { it.cancel() }
@@ -431,6 +442,7 @@ internal class SharedHomeStore(
                 )
             is SharedHomeIntent.SelectServer -> {
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+                reconcileNotificationAuthority(authStore.readSession(), intent.serverId)
                 supersedeServerDrawerRequest(ServerId(intent.serverId))
                 val nextSwitch =
                     if (intent.serverId == currentServerId) {
@@ -1373,6 +1385,7 @@ internal class SharedHomeStore(
 
             val activeSession = authStore.readSession() ?: session
             val activeServerId = requestedServerId ?: activeSession.currentServerId
+            reconcileNotificationAuthority(activeSession, activeServerId)
             reduceState(
                 _state.value.copy(
                     content =
@@ -1648,18 +1661,84 @@ internal class SharedHomeStore(
     }
 
     private suspend fun loadNotifications() {
-        when (val result = dataSource.loadNotifications()) {
-            is DataResult.Content ->
-                reduceState(
-                    _state.value.copy(
-                        notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
-                    )
-                )
-            is DataResult.Empty ->
-                reduceState(_state.value.copy(notifications = emptyList()))
-            is DataResult.Error,
-            is DataResult.NoPermission -> Unit
+        val requestGeneration = beginNotificationRequest()
+        val requestAuthority = authStore.readSession().notificationAuthority()
+        val result = dataSource.loadNotifications()
+        val latestAuthority = authStore.readSession().notificationAuthority()
+        beforeNotificationPublicationCommit()
+        val commitResult =
+            synchronized(notificationOwnerLock) {
+                val latestGeneration = notificationRequestGeneration
+                if (
+                    requestGeneration != latestGeneration ||
+                    requestAuthority != latestAuthority
+                ) {
+                    false to latestGeneration
+                } else {
+                    when (result) {
+                        is DataResult.Content ->
+                            reduceState(
+                                _state.value.copy(
+                                    notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
+                                )
+                            )
+                        is DataResult.Empty ->
+                            reduceState(_state.value.copy(notifications = emptyList()))
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> Unit
+                    }
+                    true to latestGeneration
+                }
+            }
+        if (!commitResult.first) {
+            diagnosticsLogger(
+                "home_notifications_publish_skip reason=stale_authority " +
+                    "requestGeneration=$requestGeneration latestGeneration=${commitResult.second} " +
+                    "requestServerId=${requestAuthority.serverId.orEmpty()} " +
+                    "latestServerId=${latestAuthority.serverId.orEmpty()}"
+            )
         }
+    }
+
+    private fun beginNotificationRequest(): Long =
+        synchronized(notificationOwnerLock) {
+            notificationRequestGeneration += 1L
+            notificationRequestGeneration
+        }
+
+    private fun supersedeNotificationRequests() {
+        synchronized(notificationOwnerLock) {
+            notificationRequestGeneration += 1L
+        }
+    }
+
+    private fun reconcileNotificationAuthority(
+        session: StoredAuthSession?,
+        targetServerId: String?
+    ) {
+        synchronized(notificationOwnerLock) {
+            notificationRequestGeneration += 1L
+            val currentServerId =
+                (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+            val authority = session.notificationAuthority(targetServerId)
+            if (currentServerId == authority.serverId && authority.canManageMachines) return@synchronized
+            val retained = _state.value.notifications.filterNot { it.id.isMachineHomeNotificationId() }
+            if (retained != _state.value.notifications) {
+                reduceState(_state.value.copy(notifications = retained))
+            }
+        }
+    }
+
+    private fun StoredAuthSession?.notificationAuthority(
+        selectedServerId: String? = this?.currentServerId
+    ): HomeNotificationAuthority {
+        val normalizedServerId = selectedServerId?.trim()?.takeIf { it.isNotBlank() }
+        val server = this?.servers?.firstOrNull { it.id == normalizedServerId }
+        return HomeNotificationAuthority(
+            accountId = this?.user?.id?.trim()?.takeIf { it.isNotBlank() },
+            serverId = normalizedServerId,
+            canManageMachines = server?.toServerSummary()?.permissions?.canManageMachines == true
+        )
     }
 
     /**

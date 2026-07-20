@@ -2317,6 +2317,230 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun machineNotificationsFollowStoreRoleAuthority() = runBlocking {
+        listOf(
+            "owner" to true,
+            "admin" to true,
+            "member" to false,
+            "unknown" to false,
+            null to false
+        ).forEach { (role, expectedMachineNotification) ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = role))
+            val computersApi = RecordingComputersApi()
+            val store =
+                SharedHomeStore(
+                    authStore = sessionStore,
+                    dataSource =
+                        source(
+                            api = RecordingHomeApi(),
+                            computersApi = computersApi,
+                            sessionStore = sessionStore
+                        ),
+                    scope = scope
+                )
+
+            store.accept(SharedHomeIntent.Start)
+
+            assertEquals(
+                expectedMachineNotification,
+                store.state.value.notifications.any { it.id.isMachineHomeNotificationId() },
+                "role=$role"
+            )
+            assertEquals(
+                if (expectedMachineNotification) listOf("GET machines:server-1") else emptyList(),
+                computersApi.calls,
+                "role=$role"
+            )
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun missingSelectedServerDoesNotCallMachineSource() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession(role = "owner").copy(selectedServerId = "missing-server")
+            )
+        val computersApi = RecordingComputersApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = RecordingHomeApi(),
+                        computersApi = computersApi,
+                        sessionStore = sessionStore
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+
+        assertFalse(store.state.value.notifications.any { it.id.isMachineHomeNotificationId() })
+        assertEquals(emptyList(), computersApi.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun sameServerDemotionClearsOnlyMachineNotificationsBeforeNetworkCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "owner"))
+        val homeApi = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = homeApi,
+                        computersApi = RecordingComputersApi(),
+                        sessionStore = sessionStore
+                    ),
+                scope = scope
+            )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.UpsertNotification(appUpdateNotification()))
+        store.accept(SharedHomeIntent.UpsertNotification(otherNotification()))
+        sessionStore.saveSession(sampleSession(role = "member"))
+        val blockedLoad = homeApi.blockNextChannels("server-1")
+
+        val demotion = launch { store.accept(SharedHomeIntent.Refresh) }
+        blockedLoad.awaitStarted()
+
+        assertEquals(
+            setOf(APP_UPDATE_HOME_NOTIFICATION_ID, "announcement:other"),
+            store.state.value.notifications.mapTo(mutableSetOf()) { it.id }
+        )
+        blockedLoad.release()
+        demotion.join()
+        scope.cancel()
+    }
+
+    @Test
+    fun serverSwitchClearsOnlyMachineNotificationsBeforeNetworkCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession(role = "owner", secondServerRole = "member")
+            )
+        val homeApi = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = homeApi,
+                        computersApi = RecordingComputersApi(),
+                        sessionStore = sessionStore
+                    ),
+                scope = scope
+            )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.UpsertNotification(appUpdateNotification()))
+        store.accept(SharedHomeIntent.UpsertNotification(otherNotification()))
+        val blockedLoad = homeApi.blockNextChannels("server-2")
+
+        val switch = launch { store.accept(SharedHomeIntent.SelectServer("server-2")) }
+        blockedLoad.awaitStarted()
+
+        assertEquals(
+            setOf(APP_UPDATE_HOME_NOTIFICATION_ID, "announcement:other"),
+            store.state.value.notifications.mapTo(mutableSetOf()) { it.id }
+        )
+        blockedLoad.release()
+        switch.join()
+        scope.cancel()
+    }
+
+    @Test
+    fun staleOwnerMachineRequestCannotPublishAfterSwitchOrDemotion() = runBlocking {
+        listOf("switch", "demotion").forEach { transition ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val initialSession =
+                sampleSession(role = "owner", secondServerRole = "member")
+            val sessionStore = InMemorySlockAuthSessionStore(initialSession)
+            val computersApi = BlockingComputersApi()
+            val store =
+                SharedHomeStore(
+                    authStore = sessionStore,
+                    dataSource =
+                        source(
+                            api = RecordingHomeApi(),
+                            computersApi = computersApi,
+                            sessionStore = sessionStore,
+                            appUpdateStatusProvider = { DataResult.Content(updateAvailableSnapshot()) }
+                        ),
+                    scope = scope
+                )
+
+            val oldOwnerLoad = launch { store.accept(SharedHomeIntent.Start) }
+            computersApi.awaitStarted()
+            when (transition) {
+                "switch" -> store.accept(SharedHomeIntent.SelectServer("server-2"))
+                else -> {
+                    sessionStore.saveSession(sampleSession(role = "member", secondServerRole = "member"))
+                    store.accept(SharedHomeIntent.Refresh)
+                }
+            }
+            assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+
+            computersApi.release()
+            oldOwnerLoad.join()
+
+            assertEquals(
+                listOf(APP_UPDATE_HOME_NOTIFICATION_ID),
+                store.state.value.notifications.map { it.id },
+                "transition=$transition"
+            )
+            assertEquals(1, computersApi.calls, "transition=$transition")
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun ownerRequestThatPassedNetworkCannotPublishAfterCommitTimeServerSwitch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession(role = "owner", secondServerRole = "member")
+            )
+        val homeApi = RecordingHomeApi()
+        val publicationBarrier = NotificationPublicationBarrier()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = homeApi,
+                        computersApi = RecordingComputersApi(),
+                        sessionStore = sessionStore,
+                        appUpdateStatusProvider = { DataResult.Content(updateAvailableSnapshot()) }
+                    ),
+                scope = scope,
+                beforeNotificationPublicationCommit = publicationBarrier::intercept
+            )
+        store.accept(SharedHomeIntent.Start)
+        assertTrue(store.state.value.notifications.any { it.id.isMachineHomeNotificationId() })
+        publicationBarrier.arm()
+
+        val oldOwnerRefresh = launch { store.accept(SharedHomeIntent.RefreshNotifications) }
+        publicationBarrier.awaitStarted()
+        val blockedSwitch = homeApi.blockNextChannels("server-2")
+        val switch = launch { store.accept(SharedHomeIntent.SelectServer("server-2")) }
+        blockedSwitch.awaitStarted()
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+
+        publicationBarrier.release()
+        oldOwnerRefresh.join()
+
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+        blockedSwitch.release()
+        switch.join()
+        scope.cancel()
+    }
+
+    @Test
     fun startLoadsOutdatedMachinesIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val computersApi =
@@ -2784,13 +3008,15 @@ class SharedHomeStoreTest {
         api: SlockHomeApi,
         announcementsApi: SlockAnnouncementsRemindersApi? = null,
         computersApi: SlockComputersApi? = null,
-        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null
     ): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
             api = api,
             announcementsApi = announcementsApi,
             computersApi = computersApi,
+            appUpdateStatusProvider = appUpdateStatusProvider,
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
         )
 
@@ -3208,7 +3434,71 @@ class SharedHomeStoreTest {
             error("not reached")
     }
 
-    private fun sampleSession(): StoredAuthSession =
+    private class BlockingComputersApi : SlockComputersApi {
+        private val started = CompletableDeferred<Unit>()
+        private val released = CompletableDeferred<Unit>()
+        var calls: Int = 0
+            private set
+
+        suspend fun awaitStarted() = started.await()
+
+        fun release() {
+            released.complete(Unit)
+        }
+
+        override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
+            calls += 1
+            started.complete(Unit)
+            released.await()
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """{"machines":[{"id":"machine-1","name":"Old owner machine","status":"offline","statusVersion":1}]}"""
+            )
+        }
+
+        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("not reached")
+        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("not reached")
+        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse = error("not reached")
+        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("not reached")
+        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("not reached")
+        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse = error("not reached")
+        override suspend fun deleteMachineWorkspace(
+            serverId: ServerId,
+            machineId: String,
+            directoryName: String
+        ): HomeNetworkResponse = error("not reached")
+    }
+
+    private class NotificationPublicationBarrier {
+        private var armed = false
+        private var started = CompletableDeferred<Unit>()
+        private var released = CompletableDeferred<Unit>()
+
+        fun arm() {
+            armed = true
+            started = CompletableDeferred()
+            released = CompletableDeferred()
+        }
+
+        suspend fun intercept() {
+            if (!armed) return
+            armed = false
+            started.complete(Unit)
+            released.await()
+        }
+
+        suspend fun awaitStarted() = started.await()
+
+        fun release() {
+            released.complete(Unit)
+        }
+    }
+
+    private fun sampleSession(
+        role: String? = "owner",
+        secondServerRole: String? = role
+    ): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
             accessToken = "token-a",
@@ -3216,9 +3506,29 @@ class SharedHomeStoreTest {
             selectedServerId = "server-1",
             servers =
                 listOf(
-                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock"),
-                    StoredAuthServer(id = "server-2", name = "Work", slug = "work")
+                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock", role = role),
+                    StoredAuthServer(id = "server-2", name = "Work", slug = "work", role = secondServerRole)
                 )
+        )
+
+    private fun updateAvailableSnapshot(): SharedSettingsUpdateCheckSnapshot =
+        SharedSettingsUpdateCheckSnapshot(
+            supported = true,
+            updateAvailable = true,
+            currentVersionCode = 1L,
+            latestVersionCode = 2L
+        )
+
+    private fun appUpdateNotification(): SharedHomeNotification =
+        updateAvailableSnapshot().toSharedHomeAppUpdateNotification()!!
+
+    private fun otherNotification(): SharedHomeNotification =
+        SharedHomeNotification(
+            id = "announcement:other",
+            title = "Other notification",
+            body = "Must survive machine authority changes.",
+            actionLabel = "View",
+            targetId = "other"
         )
 
     private fun sampleHome(serverId: ServerId): HomeSnapshot =

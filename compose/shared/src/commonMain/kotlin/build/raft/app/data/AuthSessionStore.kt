@@ -6,9 +6,9 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
-import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SessionSnapshot
+import build.raft.app.model.serverPermissionsForRole
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -280,10 +280,7 @@ data class StoredAuthServer(
             onboardingAgentId = onboardingAgentId,
             description = slug?.let { "/$it" },
             avatarUrl = avatarUrl,
-            permissions =
-                ServerPermissions(
-                    canManageSettings = role == "owner" || role == "admin"
-                )
+            permissions = serverPermissionsForRole(role)
         )
 }
 
