@@ -62,6 +62,7 @@ import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1DestinationPublication
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
 import build.raft.app.network.sync.SqlDelightReadStateV1Store
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
@@ -403,14 +404,25 @@ internal class SlockSharedStoreProvider private constructor(
                     .finalEffective
             },
             store = SqlDelightReadStateV1Store(sqlDatabase, now = ::defaultNowMillis),
-            onProjection = { owner, _, fact ->
+            onProjection = { _, _, _ -> },
+            onProjectionWithEvidence = { owner, _, fact ->
                 val currentHomeStores = homeStores.entries()
                 val currentActivityStores = homeActivityStores.entries()
                 currentHomeStores.forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
                 currentActivityStores.forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
-                ProcessReadStateV1DiagnosticOverride.controller.recordPublication(
+                ReadStateV1DestinationPublication(
                     homeStoreCount = currentHomeStores.size,
                     activityStoreCount = currentActivityStores.size,
+                )
+            },
+            publicationGate = { owner, channelId, publish ->
+                val serverEffective =
+                    serverFeatureFlags.isEnabled(ServerId(owner.serverId), SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY)
+                ProcessReadStateV1DiagnosticOverride.controller.runPublicationIfEffective(
+                    serverEffective = serverEffective,
+                    owner = owner,
+                    channelId = channelId,
+                    publish = publish,
                 )
             },
             onRebaseline = { owner, _, channelId ->

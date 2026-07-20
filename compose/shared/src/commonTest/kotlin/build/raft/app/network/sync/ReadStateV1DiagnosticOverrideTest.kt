@@ -100,7 +100,7 @@ class ReadStateV1DiagnosticOverrideTest {
     fun `destination publication records actual store counts and witness generation`() {
         controller.recordSelection(owner, "channel-a", generation = 9L)
 
-        controller.recordPublication(homeStoreCount = 0, activityStoreCount = 1)
+        controller.recordPublication(homeStoreCount = 0, activityStoreCount = 1, generation = 9L)
 
         assertEquals("home=0 activity=1 generation=9", controller.snapshot().destinationPublication)
     }
@@ -120,6 +120,9 @@ class ReadStateV1DiagnosticOverrideTest {
                 onProjection = { _, _, _ -> },
                 onRebaseline = { _, _, channelId -> barriers += channelId },
                 diagnostics = controller,
+                publicationGate = { candidateOwner, channelId, publish ->
+                    controller.runPublicationIfEffective(false, candidateOwner, channelId, publish)
+                },
             )
         controller.setOnChanged(canary::refreshEffectiveState)
         val prepared =
@@ -151,6 +154,9 @@ class ReadStateV1DiagnosticOverrideTest {
                 onProjection = { _, _, _ -> },
                 onRebaseline = { _, _, channelId -> barriers += channelId },
                 diagnostics = controller,
+                publicationGate = { candidateOwner, channelId, publish ->
+                    controller.runPublicationIfEffective(false, candidateOwner, channelId, publish)
+                },
             )
         controller.setOnChanged(canary::refreshEffectiveState)
         val prepared =
@@ -165,6 +171,72 @@ class ReadStateV1DiagnosticOverrideTest {
         assertEquals(listOf("channel-a"), barriers)
         assertEquals("expired", controller.snapshot().clearReason)
         assertEquals(1L, controller.snapshot().stalePublicationRejectedCount)
+    }
+
+    @Test
+    fun `publication final gate rejects expiry crossed after entry precheck`() = runBlocking {
+        controller.configureEntitlement(true)
+        controller.observe(owner, "channel-a")
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope, ttlMillis = 10L)
+        val barriers = mutableListOf<String>()
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { candidateOwner, channelId ->
+                    controller.decide(false, candidateOwner, channelId).finalEffective
+                },
+                store = AcceptingReadStateV1Store(),
+                onProjection = { _, _, _ -> },
+                onRebaseline = { _, _, channelId -> barriers += channelId },
+                diagnostics = controller,
+                publicationGate = { candidateOwner, channelId, publish ->
+                    now += 1L
+                    controller.runPublicationIfEffective(false, candidateOwner, channelId, publish)
+                },
+            )
+        controller.setOnChanged(canary::refreshEffectiveState)
+        val prepared =
+            assertIs<ReadStateV1ProductionDisposition.Selected>(
+                canary.prepareHydrate(owner, "channel-a", readStateVersion = 1L, maxReadSeq = 7L)
+            ).preparedPublication
+        assertTrue(prepared != null)
+        now = 1_009L
+
+        assertFalse(canary.completePreparedPublication(prepared))
+        assertEquals(listOf("channel-a"), barriers)
+        assertEquals("expired", controller.snapshot().clearReason)
+    }
+
+    @Test
+    fun `snapshot barrier publication records barrier selection generation`() = runBlocking {
+        controller.configureEntitlement(true)
+        controller.observe(owner, "channel-a")
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope)
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { candidateOwner, channelId ->
+                    controller.decide(false, candidateOwner, channelId).finalEffective
+                },
+                store = AcceptingReadStateV1Store(),
+                onProjection = { _, _, _ -> },
+                onProjectionWithEvidence = { _, _, _ -> ReadStateV1DestinationPublication(1, 1) },
+                onRebaseline = { _, _, _ -> },
+                diagnostics = controller,
+                publicationGate = { candidateOwner, channelId, publish ->
+                    controller.runPublicationIfEffective(false, candidateOwner, channelId, publish)
+                },
+            )
+        controller.setOnChanged(canary::refreshEffectiveState)
+        assertIs<ReadStateV1ProductionDisposition.Selected>(
+            canary.applyHydrate(owner, "channel-a", readStateVersion = 1L, maxReadSeq = 7L)
+        )
+        assertEquals("home=1 activity=1 generation=1", controller.snapshot().destinationPublication)
+
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOff)
+        assertIs<ReadStateV1ProductionDisposition.Selected>(
+            canary.applyHydrate(owner, "channel-a", readStateVersion = 2L, maxReadSeq = 8L)
+        )
+
+        assertEquals("home=1 activity=1 generation=2", controller.snapshot().destinationPublication)
     }
 }
 

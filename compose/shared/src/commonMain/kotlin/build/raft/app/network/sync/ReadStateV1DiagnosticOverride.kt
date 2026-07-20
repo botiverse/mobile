@@ -178,10 +178,35 @@ class ReadStateV1DiagnosticOverrideController(
         }
     }
 
-    fun recordPublication(homeStoreCount: Int, activityStoreCount: Int) {
+    fun runPublicationIfEffective(
+        serverEffective: Boolean,
+        owner: ReadStateV1ProductionOwner,
+        channelId: String,
+        publish: () -> Unit,
+    ): Boolean = synchronized(lock) {
+        expireLocked()
+        val scope = owner.toDiagnosticScope(channelId) ?: return@synchronized false
+        val activeScope = activeOverride?.scope
+        if (activeScope != null && !activeScope.hasSameIdentity(scope)) {
+            clearLocked("identity_changed")
+        }
+        observedScope = scope
+        val active = activeOverride.takeIf { entitled }
+        val exactMatch = active?.scope != null && active.scope == scope
+        val effective =
+            when {
+                active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOff -> false
+                active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOnExactScope && exactMatch -> true
+                else -> serverEffective
+            }
+        if (effective) publish()
+        effective
+    }
+
+    fun recordPublication(homeStoreCount: Int, activityStoreCount: Int, generation: Long) {
         synchronized(lock) {
             destinationPublication =
-                "home=$homeStoreCount activity=$activityStoreCount generation=${witnessGeneration ?: 0L}"
+                "home=$homeStoreCount activity=$activityStoreCount generation=$generation"
         }
     }
 
