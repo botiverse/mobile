@@ -590,6 +590,8 @@ jobs:
             grep -Fq 'TASK2_RUNTIME scenario=whole_timeout' attachment-download-runtime-instrumentation.txt
             grep -Fq 'TASK2_RUNTIME scenario=publishing_replacement' attachment-download-runtime-instrumentation.txt
             grep -Fq 'TASK2_RUNTIME scenario=generation_safety' attachment-download-runtime-instrumentation.txt
+            adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.PerformanceTraceFeedbackArchiveConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee performance-trace-feedback-instrumentation.txt
+            grep -Fq 'OK (1 test)' performance-trace-feedback-instrumentation.txt
 
       - name: Upload instrumentation output
         if: always()
@@ -600,6 +602,7 @@ jobs:
             first-character-baseline-instrumentation.txt
             attachment-atomic-sink-instrumentation.txt
             attachment-download-runtime-instrumentation.txt
+            performance-trace-feedback-instrumentation.txt
           if-no-files-found: warn
           retention-days: 7
 

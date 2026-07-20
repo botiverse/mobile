@@ -521,6 +521,7 @@ open class SlockKuiklyActivity :
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeSlockInputFontBridge()
+        SlockPerformanceDiagnostics.uninstall(window)
         if (shouldReleaseAndroidShellWindow(isFinishing, isChangingConfigurations)) {
             androidShellLaunchTarget?.let { target ->
                 AndroidShellWindowRegistry.unregister(target.shellInstanceId)
@@ -2777,6 +2778,7 @@ internal class SlockKuiklyBridgeModule(
                 } else {
                     null
                 }
+        val metadata = request.optJSONObject("metadata")
         SlockPerformanceDiagnostics.recordMarker(
                 view = container,
                 routeName = routeName,
@@ -2784,7 +2786,8 @@ internal class SlockKuiklyBridgeModule(
                 event = request.optString("event").trim(),
                 sceneId = request.optString("sceneId").trim(),
                 durationMs = durationMs,
-                metadata = request.optJSONObject("metadata").toStableLogText()
+                metadata = metadata.toStableLogText(),
+                performanceMetadata = metadata.toStableStringMap()
         )
     }
 
@@ -5587,4 +5590,15 @@ private fun JSONObject?.toStableLogText(): String {
         }
     }
     return parts.sorted().joinToString(separator = ",")
+}
+
+private fun JSONObject?.toStableStringMap(): Map<String, String> {
+    this ?: return emptyMap()
+    val result = linkedMapOf<String, String>()
+    val keys = keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        if (key.isNotBlank()) result[key] = optString(key)
+    }
+    return result
 }

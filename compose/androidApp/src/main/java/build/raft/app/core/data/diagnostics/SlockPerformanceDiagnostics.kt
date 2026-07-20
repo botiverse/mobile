@@ -1,13 +1,19 @@
 package build.raft.app.core.data.diagnostics
 
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.Trace
+import android.view.FrameMetrics
 import android.view.View
 import android.view.Window
 import androidx.metrics.performance.JankStats
 import androidx.metrics.performance.PerformanceMetricsState
+import build.raft.app.BuildConfig
+import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.ceil
 
 object SlockPerformanceDiagnostics {
     private const val Tag = "SlockPerf"
@@ -18,6 +24,7 @@ object SlockPerformanceDiagnostics {
     private const val ThreadHostFrameTraceCount = 10
     private const val ThreadHostTraversalTraceCount = 40
     private const val TraceNameLimit = 120
+    private const val DefaultRefreshRateHz = 60f
 
     private val route = AtomicReference("unknown")
     private val operation = AtomicReference("idle")
@@ -27,37 +34,75 @@ object SlockPerformanceDiagnostics {
     private val pendingThreadHostTraversalTrace = AtomicReference<ThreadHostTraversalTrace?>(null)
     private val jankFrameCount = AtomicInteger(0)
     private val longestFrameMs = AtomicLong(0L)
-    private var jankStats: JankStats? = null
+    private val windowTrackings = IdentityHashMap<Window, WindowTracking>()
+    private var frameMetricsThread: HandlerThread? = null
 
     @Synchronized
     fun install(window: Window) {
-        if (jankStats != null) return
-        jankStats =
+        if (windowTrackings.containsKey(window)) return
+        SlockPerformanceTraceRing.configure(BuildConfig.PERFORMANCE_TRACE_RING_ENABLED)
+        if (!SlockPerformanceTraceRing.isEnabled()) {
+            windowTrackings[window] = WindowTracking(jankStats = null, frameMetricsListener = null)
+            SlockAppLog.d(Tag, "performance_tracking_disabled windows=${windowTrackings.size}")
+            return
+        }
+        val jankStats =
                 JankStats.createAndTrack(window) { frameData ->
                     val durationMs = frameData.frameDurationUiNanos / 1_000_000L
+                    val detailedJank = frameData.isJank && shouldLogDetailedJankFrame(durationMs)
+                    val needsStates =
+                            detailedJank ||
+                                    pendingTabSwitchFrameTrace.get() != null ||
+                                    pendingThreadHostFrameTrace.get() != null
+                    val states =
+                            if (needsStates) {
+                                frameData.states.joinToString(separator = "|")
+                            } else {
+                                ""
+                            }
                     recordTabSwitchFrame(
                             durationMs = durationMs,
                             isJank = frameData.isJank,
-                            states = frameData.states.joinToString(separator = "|")
+                            states = states
                     )
                     recordThreadHostFrame(
                             durationMs = durationMs,
                             isJank = frameData.isJank,
-                            states = frameData.states.joinToString(separator = "|")
+                            states = states
                     )
                     if (!frameData.isJank) return@createAndTrack
                     val total = jankFrameCount.incrementAndGet()
                     updateLongestFrame(durationMs)
-                    SlockAppLog.w(
-                            Tag,
-                            "jank_frame route=${route.get()} operation=${operation.get()} " +
-                                    "durationMs=$durationMs totalJank=$total " +
-                                    "longestFrameMs=${longestFrameMs.get()} " +
-                                    "states=${frameData.states.joinToString(separator = "|")}"
-                    )
+                    if (detailedJank) {
+                        SlockAppLog.w(
+                                Tag,
+                                "jank_frame route=${route.get()} operation=${operation.get()} " +
+                                        "durationMs=$durationMs totalJank=$total " +
+                                        "longestFrameMs=${longestFrameMs.get()} " +
+                                        "states=$states"
+                        )
+                    }
                 }
-        jankStats?.isTrackingEnabled = true
-        SlockAppLog.d(Tag, "jankstats_enabled")
+        jankStats.isTrackingEnabled = true
+        val frameMetricsListener = installFrameMetrics(window)
+        windowTrackings[window] = WindowTracking(jankStats, frameMetricsListener)
+        SlockAppLog.d(
+                Tag,
+                "jankstats_enabled traceRing=${SlockPerformanceTraceRing.isEnabled()} windows=${windowTrackings.size}"
+        )
+    }
+
+    @Synchronized
+    fun uninstall(window: Window) {
+        val tracking = windowTrackings.remove(window) ?: return
+        tracking.jankStats?.isTrackingEnabled = false
+        tracking.frameMetricsListener?.let { listener ->
+            runCatching { window.removeOnFrameMetricsAvailableListener(listener) }
+        }
+        if (windowTrackings.isEmpty()) {
+            frameMetricsThread?.quitSafely()
+            frameMetricsThread = null
+        }
     }
 
     fun updateRoute(view: View, nextRoute: String) {
@@ -92,12 +137,22 @@ object SlockPerformanceDiagnostics {
             event: String,
             sceneId: String,
             durationMs: Long?,
-            metadata: String
+            metadata: String,
+            performanceMetadata: Map<String, String> = emptyMap()
     ) {
         val sanitizedRoute = routeName.takeIf { it.isNotBlank() } ?: "unknown"
         val sanitizedPhase = phase.takeIf { it.isNotBlank() } ?: "marker"
         val sanitizedEvent = event.takeIf { it.isNotBlank() } ?: "instant"
         val sanitizedSceneId = sceneId.takeIf { it.isNotBlank() } ?: sanitizedRoute
+        if (sanitizedRoute == "kuikly_thread") {
+            SlockPerformanceTraceRing.recordThreadMarker(
+                    phase = sanitizedPhase,
+                    event = sanitizedEvent,
+                    durationMs = durationMs,
+                    metadataFields = performanceMetadata
+            )
+            if (sanitizedPhase.isThreadGenerationRingOnlyPhase()) return
+        }
         if (sanitizedPhase.startsWith("bottom_tab_")) {
             val now = System.currentTimeMillis()
             pendingTabSwitchOperation.set(
@@ -236,6 +291,43 @@ object SlockPerformanceDiagnostics {
         }
     }
 
+    private fun installFrameMetrics(window: Window): Window.OnFrameMetricsAvailableListener? {
+        if (!SlockPerformanceTraceRing.isEnabled()) return null
+        val refreshRate = window.decorView.display?.refreshRate?.takeIf { it > 0f } ?: DefaultRefreshRateHz
+        val frameIntervalNanos = (1_000_000_000.0 / refreshRate.toDouble()).toLong().coerceAtLeast(1L)
+        val thread =
+                frameMetricsThread
+                        ?: HandlerThread("slock-frame-metrics").apply {
+                            start()
+                            frameMetricsThread = this
+                        }
+        val listener =
+                Window.OnFrameMetricsAvailableListener { _, metrics, droppedSinceLastInvocation ->
+                    val totalNanos = metrics.getMetric(FrameMetrics.TOTAL_DURATION).coerceAtLeast(0L)
+                    val missedVsyncCount =
+                            (ceil(totalNanos.toDouble() / frameIntervalNanos.toDouble()).toInt() - 1)
+                                    .coerceAtLeast(0)
+                    val detailed =
+                            SlockPerformanceTraceRing.recordFrame(
+                                    totalDurationNanos = totalNanos,
+                                    missedVsyncCount = missedVsyncCount,
+                                    droppedReportCount = droppedSinceLastInvocation,
+                                    layoutMeasureNanos = metrics.getMetric(FrameMetrics.LAYOUT_MEASURE_DURATION),
+                                    drawNanos = metrics.getMetric(FrameMetrics.DRAW_DURATION)
+                            )
+                    if (detailed) {
+                        SlockAppLog.w(
+                                Tag,
+                                "frame_metrics route=${route.get()} operation=${operation.get()} " +
+                                        "durationMs=${totalNanos / 1_000_000L} missedVsync=$missedVsyncCount " +
+                                        "droppedReports=$droppedSinceLastInvocation"
+                        )
+                    }
+                }
+        window.addOnFrameMetricsAvailableListener(listener, Handler(thread.looper))
+        return listener
+    }
+
     private fun effectiveOperation(nextOperation: String): String {
         if (nextOperation != "scene_enter") return nextOperation
         val pending = pendingTabSwitchOperation.get() ?: return nextOperation
@@ -321,4 +413,15 @@ object SlockPerformanceDiagnostics {
             val remainingEvents: Int,
             val expiresAtMs: Long
     )
+
+    private data class WindowTracking(
+            val jankStats: JankStats?,
+            val frameMetricsListener: Window.OnFrameMetricsAvailableListener?
+    )
 }
+
+internal fun shouldLogDetailedJankFrame(durationMs: Long): Boolean =
+        durationMs >= 64L
+
+private fun String.isThreadGenerationRingOnlyPhase(): Boolean =
+        this == "thread_reconcile_generation" || this == "thread_layout_generation"

@@ -2000,6 +2000,38 @@ internal const val ThreadPayloadReadyBudgetMs = 1_500L
 internal const val ThreadFirstLayoutBudgetMs = 100L
 internal const val ThreadFirstDrawBudgetMs = 100L
 
+internal class ThreadPerformanceGenerationCounter {
+    private var reconcileGeneration = 0L
+    private var layoutGeneration = 0L
+    private var lastLayoutReconcileGeneration = -1L
+    private var lastWidth = -1
+    private var lastHeight = -1
+
+    fun nextReconcile(): Long = ++reconcileGeneration
+
+    fun nextLayout(width: Int, height: Int): ThreadLayoutGeneration? {
+        if (
+            lastLayoutReconcileGeneration == reconcileGeneration &&
+            lastWidth == width &&
+            lastHeight == height
+        ) {
+            return null
+        }
+        lastLayoutReconcileGeneration = reconcileGeneration
+        lastWidth = width
+        lastHeight = height
+        return ThreadLayoutGeneration(
+            generation = ++layoutGeneration,
+            reconcileGeneration = reconcileGeneration
+        )
+    }
+}
+
+internal data class ThreadLayoutGeneration(
+    val generation: Long,
+    val reconcileGeneration: Long
+)
+
 internal data class ThreadFirstContentPerformanceBudgetResult(
     val payloadReadyWithinBudget: Boolean?,
     val layoutWithinBudget: Boolean?,
@@ -5368,6 +5400,9 @@ internal fun SharedThreadRouteContent(
     // Members / settings / actions / realtime metadata / files payload
     // are intentionally excluded so they do not retrigger the render log.
     // See ThreadRenderSignature / Test.
+    val performanceGenerationCounter = remember(threadInstanceKey) {
+        ThreadPerformanceGenerationCounter()
+    }
     val renderSignature = remember(
         renderedThread.instanceId,
         renderedThread.sourceThreadId,
@@ -5382,7 +5417,21 @@ internal fun SharedThreadRouteContent(
             selectedTab = renderedThread.selectedTab
         )
     }
-    LaunchedEffect(renderSignature) {
+    val reconcileGeneration = remember(renderSignature) {
+        performanceGenerationCounter.nextReconcile()
+    }
+    LaunchedEffect(renderSignature, reconcileGeneration) {
+        bridge.performanceMarker(
+            phase = "thread_reconcile_generation",
+            routeName = "kuikly_thread",
+            threadId = renderSignature.sourceThreadId,
+            metadata =
+                mapOf(
+                    "generation" to reconcileGeneration.toString(),
+                    "status" to renderSignature.status,
+                    "messages" to renderSignature.messagesSize.toString()
+                )
+        )
         bridge.log(
             "thread_render instanceId=${renderSignature.instanceId} status=${renderSignature.status} tab=${renderSignature.selectedTab} " +
                 "messages=${renderSignature.messagesSize} " +
@@ -5436,11 +5485,7 @@ internal fun SharedThreadRouteContent(
                     "asTask" to context.asTask.toString(),
                     "attachments" to context.attachmentIds.size.toString(),
                     "hasText" to context.body.isNotBlank().toString(),
-                    "bodyLength" to context.body.length.toString(),
-                    "localMessageId" to localMessageId,
-                    "parentMessageId" to context.parentMessageId.orEmpty(),
-                    "streamChannelId" to context.streamChannelId.orEmpty(),
-                    "mentionChannelId" to context.mentionChannelId.orEmpty()
+                    "bodyLength" to context.body.length.toString()
                 )
         )
         threadSendScope.launch {
@@ -5505,8 +5550,7 @@ internal fun SharedThreadRouteContent(
                                 "result" to "exception",
                                 "code" to errorCode,
                                 "errorType" to errorType,
-                                "attempt" to attempt.toString(),
-                                "localMessageId" to localMessageId
+                                "attempt" to attempt.toString()
                             )
                     )
                     markFailed(errorCode, threadSendExceptionErrorMessage(sendException))
@@ -5544,8 +5588,7 @@ internal fun SharedThreadRouteContent(
                                         "httpCode" to sendResponse.code.toString(),
                                         "contractCode" to sendResponse.contractCode.orEmpty(),
                                         "errorBytes" to (sendResponse.errorBodyText?.length ?: 0).toString(),
-                                        "attempt" to attempt.toString(),
-                                        "localMessageId" to localMessageId
+                                        "attempt" to attempt.toString()
                                     )
                             )
                             markFailed(errorCode, errorMessage)
@@ -5568,7 +5611,7 @@ internal fun SharedThreadRouteContent(
                         event = "end",
                         threadId = context.channelId,
                         durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                        metadata = mapOf("result" to "empty", "attempt" to attempt.toString(), "localMessageId" to localMessageId)
+                        metadata = mapOf("result" to "empty", "attempt" to attempt.toString())
                     )
                     markFailed("empty_response")
                     return@launch
@@ -5589,8 +5632,7 @@ internal fun SharedThreadRouteContent(
                         mapOf(
                             "result" to "success",
                             "messages" to sentPage.messages.size.toString(),
-                            "attempt" to attempt.toString(),
-                            "localMessageId" to localMessageId
+                            "attempt" to attempt.toString()
                         )
                 )
                 val pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }
@@ -5986,6 +6028,22 @@ internal fun SharedThreadRouteContent(
             agentStatusResolver = agentStatusResolver,
             memberAvatarResolver = memberAvatarResolver,
             diagnosticsLogger = { bridge.log(it) },
+            onLayoutGeneration = { width, height ->
+                performanceGenerationCounter.nextLayout(width, height)?.let { generation ->
+                    bridge.performanceMarker(
+                        phase = "thread_layout_generation",
+                        routeName = "kuikly_thread",
+                        threadId = renderedThread.sourceThreadId,
+                        metadata =
+                            mapOf(
+                                "generation" to generation.generation.toString(),
+                                "reconcileGeneration" to generation.reconcileGeneration.toString(),
+                                "width" to width.toString(),
+                                "height" to height.toString()
+                            )
+                    )
+                }
+            },
             pendingActionCardIds = pendingActionCardIds,
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             attachmentOpenStates = attachmentOpenStates,
@@ -10215,6 +10273,7 @@ private fun ThreadPageContent(
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     diagnosticsLogger: (String) -> Unit = {},
+    onLayoutGeneration: (width: Int, height: Int) -> Unit = { _, _ -> },
     pendingActionCardIds: Set<String> = emptySet(),
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -10828,7 +10887,15 @@ private fun ThreadPageContent(
             }
         }
     }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .onGloballyPositioned { coordinates ->
+                    onLayoutGeneration(coordinates.size.width, coordinates.size.height)
+                }
+    ) {
         Column(
             modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
         ) {
