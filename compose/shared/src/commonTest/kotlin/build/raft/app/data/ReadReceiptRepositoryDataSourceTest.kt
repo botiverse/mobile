@@ -40,6 +40,8 @@ class ReadReceiptRepositoryDataSourceTest {
 
         assertTrue(allResult is DataResult.Content)
         assertTrue(seqResult is DataResult.Content)
+        assertEquals(ReadReceiptResult(ChannelId("channel-1"), seq = 44, readStateVersion = 9, maxReadSeq = 44), allResult.data)
+        assertEquals(ReadReceiptResult(ChannelId("channel-1"), seq = 42, readStateVersion = 10, maxReadSeq = 42), seqResult.data)
         assertEquals(
             listOf(
                 ReadReceiptNetworkCall("POST", "channels/channel-1/read-all", ServerId("server-b"), null),
@@ -66,7 +68,13 @@ class ReadReceiptRepositoryDataSourceTest {
             bodyText: String?
         ): HomeNetworkResponse {
             calls += ReadReceiptNetworkCall(method, path, serverIdOverride, bodyText)
-            return HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+            val response =
+                if (path.endsWith("read-all")) {
+                    """{"ok":true,"seq":44,"readStateVersion":9}"""
+                } else {
+                    """{"ok":true,"maxReadSeq":42,"readStateVersion":10}"""
+                }
+            return HomeNetworkResponse(code = 200, bodyText = response)
         }
     }
 

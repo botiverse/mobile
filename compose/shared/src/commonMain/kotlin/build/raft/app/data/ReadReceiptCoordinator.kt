@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CompletableDeferred
@@ -21,6 +22,12 @@ data class ReadReceiptOwner(
         val Legacy = ReadReceiptOwner("legacy", "legacy", "legacy")
     }
 }
+
+internal fun ReadReceiptOwner.toReadStateV1ProductionOwner(): ReadStateV1ProductionOwner =
+    ReadStateV1ProductionOwner(environmentId, accountId, serverId)
+
+internal fun ReadStateV1ProductionOwner.toReadReceiptOwner(): ReadReceiptOwner =
+    ReadReceiptOwner(environmentId, accountId, serverId)
 
 sealed interface ReadReceiptTarget {
     data object All : ReadReceiptTarget

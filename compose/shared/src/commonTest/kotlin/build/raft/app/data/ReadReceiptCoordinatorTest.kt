@@ -18,6 +18,29 @@ import kotlin.test.assertTrue
 
 class ReadReceiptCoordinatorTest {
     @Test
+    fun onResultPreservesAuthoritativeAckPairAfterOptimisticPrediction() = runBlocking {
+        val ack = ReadReceiptResult(ChannelId("channel-ack"), seq = 40, readStateVersion = 7, maxReadSeq = 41)
+        val repository = FakeReadReceiptRepository(nextResult = DataResult.Content(ack))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val predictions = mutableListOf<ReadReceiptPrediction>()
+        val results = mutableListOf<DataResult<ReadReceiptResult>>()
+        val coordinator =
+            ReadReceiptCoordinator(
+                scope = scope,
+                repository = repository,
+                onPrediction = predictions::add,
+                onResult = { _, result -> results += result },
+            )
+
+        coordinator.markReadToSeq(ChannelId("channel-ack"), 40)
+        repository.completeNext()
+
+        assertEquals(ReadReceiptTarget.ToSeq(40), predictions.single().target)
+        assertEquals(DataResult.Content(ack), results.single())
+        scope.cancel()
+    }
+
+    @Test
     fun markReadToSeqKeepsSingleFlightAndFollowsWithHighestPendingSeq() = runBlocking {
         val repository = FakeReadReceiptRepository()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

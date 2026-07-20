@@ -19,6 +19,87 @@ class HomeParserTest {
     }
 
     @Test
+    fun preservesReadStateV1HydrateCarrierForChannelListDmAndDetailWithoutTouchingLegacyCursor() {
+        val result =
+            parseSlockHome(
+                payload =
+                    homePayload(
+                        channels =
+                            listOf(
+                                HomeChannelWireDto(
+                                    id = "channel-1",
+                                    name = "native",
+                                    type = "channel",
+                                    maxReadSeq = 41,
+                                    readStateVersion = 7,
+                                )
+                            ),
+                        directMessages =
+                            listOf(
+                                HomeDirectMessageWireDto(
+                                    id = "dm-1",
+                                    name = "peer",
+                                    type = "dm",
+                                    peerType = "agent",
+                                    peerId = "agent-1",
+                                    peerName = "peer",
+                                    maxReadSeq = 42,
+                                    readStateVersion = 8,
+                                )
+                            ),
+                    ),
+                session = sampleSession(),
+            )
+
+        assertTrue(result is DataResult.Content)
+        val channel = result.data.channels.single()
+        val dm = result.data.directMessages.single()
+        assertEquals(ReadStateV1HydrateCarrier(7, 41), channel.readStateV1Hydrate)
+        assertEquals(ReadStateV1HydrateCarrier(8, 42), dm.readStateV1Hydrate)
+        assertNull(channel.readStateMaxReadSeq)
+        assertNull(dm.readStateMaxReadSeq)
+
+        val detail =
+            parseSlockChannelDetail(
+                """{"id":"channel-1","name":"native","type":"channel","maxReadSeq":43,"readStateVersion":9}"""
+            )
+        requireNotNull(detail)
+        assertEquals(ReadStateV1HydrateCarrier(9, 43), detail.readStateV1Hydrate)
+        assertNull(detail.readStateMaxReadSeq)
+    }
+
+    @Test
+    fun preservesIncompleteHydrateMembersWithoutFillingFromLegacyCursor() {
+        val result =
+            parseSlockHome(
+                payload =
+                    homePayload(
+                        channels =
+                            listOf(
+                                HomeChannelWireDto(
+                                    id = "missing-version",
+                                    name = "missing-version",
+                                    type = "channel",
+                                    maxReadSeq = 41,
+                                ),
+                                HomeChannelWireDto(
+                                    id = "missing-watermark",
+                                    name = "missing-watermark",
+                                    type = "channel",
+                                    readStateVersion = 7,
+                                ),
+                            ),
+                    ),
+                session = sampleSession(),
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(ReadStateV1HydrateCarrier(null, 41), result.data.channels[0].readStateV1Hydrate)
+        assertEquals(ReadStateV1HydrateCarrier(7, null), result.data.channels[1].readStateV1Hydrate)
+        assertTrue(result.data.channels.all { it.readStateMaxReadSeq == null })
+    }
+
+    @Test
     fun parsesTypedChannelsDmsAndUnreadCounts() {
         val payload =
             homePayload(
