@@ -9072,15 +9072,28 @@ private fun MembersAgentActivityRow(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Text(
-                text = activity.title,
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = activity.title,
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                activity.membersActivitySubagentBadgeLabel()?.let { subagentLabel ->
+                    SlockBrutalBadge(
+                        label = subagentLabel,
+                        tone = SlockBrutalTone.White,
+                        uppercase = false
+                    )
+                }
+            }
             if (displayBody.isNotBlank()) {
                 // #64 owner override (artin 06-23 17:41): '改成用 SlockMarkdownBody
                 // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
@@ -10201,10 +10214,25 @@ private fun String.toMembersDisplayLabel(): String =
         .replace("-", " ")
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
+internal fun AgentActivityEntry.membersActivitySecondaryText(): String? =
+    when (type) {
+        // Web renders a tool's display label plus only its real input. The
+        // "Tool" detail is metadata for diagnostics, not visible secondary
+        // content; falling back to it produced Check messages/check_messages.
+        "tool_start" -> toolInput?.takeIf { it.isNotBlank() }
+            ?: body?.takeIf { it.isNotBlank() }
+        else -> body?.takeIf { it.isNotBlank() }
+            ?: statusDetail?.takeIf { it.isNotBlank() }
+            ?: details.firstOrNull()?.let { (_, value) -> value.takeIf { it.isNotBlank() } }
+    }
+
+internal fun AgentActivityEntry.membersActivitySubagentBadgeLabel(): String? {
+    if (!isSubagent || (type != "tool_start" && type != "status")) return null
+    return subagentType?.takeIf { it.isNotBlank() }?.let { "Subagent: $it" } ?: "Subagent"
+}
+
 private fun AgentActivityEntry.activityPrimaryDetail(): String? =
-    body?.takeIf { it.isNotBlank() }
-        ?: statusDetail?.takeIf { it.isNotBlank() }
-        ?: details.firstOrNull()?.let { (_, value) -> value.takeIf { it.isNotBlank() } }
+    membersActivitySecondaryText()
 
 private fun AgentActivityEntry.activityTimelineKey(): String =
     id.ifBlank { "${type}:${timestamp.orEmpty()}:${body.orEmpty()}:${toolName.orEmpty()}" }

@@ -315,7 +315,9 @@ private data class WireActivityLogEntry(
 private data class WireActivityEntry(
     val kind: String,
     val activity: String? = null,
+    val activityKind: String? = null,
     val detail: String? = null,
+    val detailKind: String? = null,
     val summary: String? = null,
     val toolName: String? = null,
     val toolInput: JsonElement? = null,
@@ -323,6 +325,12 @@ private data class WireActivityEntry(
     val message: String? = null,
     val title: String? = null,
     val text: String? = null,
+    val subagent: WireSubagentLineage? = null,
+)
+
+@Serializable
+private data class WireSubagentLineage(
+    val subagentType: String? = null,
 )
 
 fun parseSharedAgentActivity(
@@ -344,6 +352,8 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
                 type = "thinking",
                 title = "Thinking",
                 body = entry.text,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
                 expandable = true
             )
         "tool_start" -> {
@@ -362,7 +372,9 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
                         input?.let { "Input" to it },
                     ),
                     toolName = toolName.takeIf { it.isNotBlank() },
-                    toolInput = input
+                    toolInput = input,
+                    isSubagent = entry.subagent != null,
+                    subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() }
                 )
             }
         }
@@ -372,6 +384,8 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
                 type = "text",
                 title = "Output",
                 body = entry.text,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
                 expandable = true
             )
         "slock_action" ->
@@ -405,14 +419,20 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
                 title = "Context Compaction Finished"
             )
         "status", "agent_status" -> {
-            val display = resolveTrajectoryStatusDisplay(entry.activity, entry.detail.orEmpty())
+            val display = resolveTrajectoryStatusDisplay(
+                activity = entry.activityKind ?: entry.activity,
+                detail = entry.detail.orEmpty(),
+                detailKind = entry.detailKind,
+            )
             trajectoryEntry(
                 index = index,
                 type = "status",
                 title = display.first,
                 body = display.second.takeIf { it.isNotBlank() },
-                statusActivity = entry.activity,
+                statusActivity = entry.activityKind ?: entry.activity,
                 statusDetail = entry.detail,
+                isSubagent = entry.subagent != null,
+                subagentType = entry.subagent?.subagentType?.takeIf { it.isNotBlank() },
                 refTextEnabled = true
             )
         }
@@ -439,6 +459,8 @@ private fun WireActivityLogEntry.trajectoryEntry(
     toolInput: String? = null,
     statusActivity: String? = null,
     statusDetail: String? = null,
+    isSubagent: Boolean = false,
+    subagentType: String? = null,
     expandable: Boolean = false,
     refTextEnabled: Boolean = false
 ): AgentActivityEntry =
@@ -453,6 +475,8 @@ private fun WireActivityLogEntry.trajectoryEntry(
         toolInput = toolInput?.sanitizeActivityText(),
         statusActivity = statusActivity,
         statusDetail = statusDetail,
+        isSubagent = isSubagent,
+        subagentType = subagentType,
         expandable = expandable,
         refTextEnabled = refTextEnabled
     )
@@ -807,22 +831,42 @@ private val AgentStatus.activityWireValue: String
 private val WireAgent.isDeletedAgent: Boolean
     get() = !deletedAt.isNullOrBlank()
 
-private fun resolveTrajectoryStatusDisplay(activity: String?, detail: String): Pair<String, String> {
-    if (activity == "working" && detail == "Starting…") return "Starting" to ""
+private fun resolveTrajectoryStatusDisplay(
+    activity: String?,
+    detail: String,
+    detailKind: String? = null,
+): Pair<String, String> {
+    if (activity == "working" && (detailKind == "starting" || detail == "Starting…")) {
+        return "Starting" to ""
+    }
+    if (activity == "online") {
+        val lifecycleTitle = when (detailKind) {
+            "computer_started" -> "Started"
+            "computer_restarted" -> "Restarted"
+            "computer_upgraded" -> "Upgraded"
+            else -> null
+        }
+        if (lifecycleTitle != null) return lifecycleTitle to detail
+    }
+    if (activity == "error" && detailKind == "computer_operation_failed") {
+        return "Computer operation failed" to detail
+    }
     if (activity == "offline") {
         val primary =
             when {
+                detailKind == "stopped" -> "Stopped"
+                detailKind == "machine_disconnected" -> "Disconnected"
+                detailKind == "runtime_crashed" -> "Crashed"
                 detail == "Stopped" -> "Stopped"
                 detail == "Machine disconnected" -> "Disconnected"
                 detail.startsWith("Crashed") -> "Crashed"
                 else -> "Offline"
             }
-        val secondary =
-            if (primary == "Crashed") {
-                detail.removePrefix("Crashed").trim().removeSurrounding("(", ")")
-            } else {
-                ""
-            }
+        val secondary = when {
+            primary == "Crashed" -> detail.removePrefix("Crashed").trim().removeSurrounding("(", ")")
+            primary == "Stopped" && detail.isNotBlank() && detail != "Stopped" -> detail
+            else -> ""
+        }
         return primary to secondary
     }
     val primary =

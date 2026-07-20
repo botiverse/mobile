@@ -1084,7 +1084,7 @@ class SharedMembersParserTest {
                 [
                   {"timestamp":1710000000000,"entry":{"kind":"thinking","text":"Checking plan"}},
                   {"timestamp":1710000001000,"entry":{"kind":"tool_start","toolName":"mcp__slock__send_message","toolInput":"hello"}},
-                  {"timestamp":1710000002000,"entry":{"kind":"tool_start","toolName":"mcp__fs__read_file","toolInput":{"path":"/repo/README.md","authorization":"Bearer secret"}}},
+                  {"timestamp":1710000002000,"entry":{"kind":"tool_start","toolName":"mcp__fs__read_file","toolInput":{"path":"/repo/README.md","authorization":"Bearer secret"},"subagent":{"parentToolUseId":"toolu-1","subagentType":"Explore","phase":"active"}}},
                   {"timestamp":1710000003000,"entry":{"kind":"text","text":"free-form #1 output"}},
                   {"timestamp":1710000004000,"entry":{"kind":"slock_action","title":"Claimed task","text":"task #32 in #members专修:fbd27c76"}},
                   {"timestamp":1710000005000,"entry":{"kind":"system","title":"Reminder","text":"Check #all:aa97eb79"}},
@@ -1103,6 +1103,8 @@ class SharedMembersParserTest {
         assertEquals("Thinking", entries[0].title)
         assertEquals("Read file", entries[1].title)
         assertEquals("Structured input: path", entries[1].body)
+        assertEquals(true, entries[1].isSubagent)
+        assertEquals("Explore", entries[1].subagentType)
         assertEquals("Output", entries[2].title)
         assertEquals(false, entries[2].refTextEnabled)
         assertEquals("Claimed task", entries[3].title)
@@ -1110,6 +1112,85 @@ class SharedMembersParserTest {
         assertEquals("Disconnected", entries[5].title)
         assertEquals("Context Compaction Started", entries[6].title)
         assertEquals("Subagent started", entries[7].title)
+    }
+
+    @Test
+    fun agentActivityToolSecondaryUsesOnlyRealInputAndPreservesMetadata() {
+        val noInput =
+            parseSharedAgentActivity(
+                """[{"timestamp":1710000000000,"entry":{"kind":"tool_start","toolName":"check_messages"}}]""",
+                MemberId("agent-1"),
+            )?.activity?.single() ?: error("Expected one parsed tool_start row")
+        val withInput =
+            AgentActivityEntry(
+                id = "tool-2",
+                type = "tool_start",
+                title = "Search messages",
+                body = "assignee=agent-1",
+                details = listOf("Tool" to "search_messages", "Input" to "assignee=agent-1"),
+                toolName = "search_messages",
+                toolInput = "assignee=agent-1",
+            )
+        val mobileOnlyAction =
+            AgentActivityEntry(
+                id = "action-1",
+                type = "slock_action",
+                title = "Claimed 1 task",
+                body = "target: dm:@artin",
+                refTextEnabled = true,
+            )
+
+        assertEquals(null, noInput.membersActivitySecondaryText())
+        assertEquals(listOf("Tool" to "check_messages"), noInput.details)
+        assertEquals("assignee=agent-1", withInput.membersActivitySecondaryText())
+        assertEquals("target: dm:@artin", mobileOnlyAction.membersActivitySecondaryText())
+    }
+
+    @Test
+    fun agentActivityParsesWebLifecycleStatusKindsWithoutDroppingMobileDetail() {
+        val entries =
+            parseSharedAgentActivity(
+                """
+                [
+                  {"timestamp":1710000010000,"entry":{"kind":"status","activity":"online","activityKind":"online","detail":"Computer started","detailKind":"computer_started"}},
+                  {"timestamp":1710000011000,"entry":{"kind":"status","activity":"working","detail":"Starting agent","detailKind":"starting"}},
+                  {"timestamp":1710000012000,"entry":{"kind":"status","activity":"error","detail":"Restart failed","detailKind":"computer_operation_failed"}},
+                  {"timestamp":1710000013000,"entry":{"kind":"status","activity":"offline","detail":"Computer shutdown","detailKind":"stopped"}}
+                ]
+                """.trimIndent(),
+                MemberId("agent-1"),
+            )?.activity.orEmpty()
+
+        assertEquals(
+            listOf("Started", "Starting", "Computer operation failed", "Stopped"),
+            entries.map { it.title },
+        )
+        assertEquals("Computer started", entries[0].body)
+        assertEquals(null, entries[1].body)
+        assertEquals("Restart failed", entries[2].body)
+        assertEquals("Computer shutdown", entries[3].body)
+    }
+
+    @Test
+    fun agentActivitySubagentBadgeMatchesWebKindsAndTypeOptionality() {
+        val entries =
+            parseSharedAgentActivity(
+                """
+                [
+                  {"timestamp":1710000020000,"entry":{"kind":"tool_start","toolName":"read_file","subagent":{"parentToolUseId":"toolu-1"}}},
+                  {"timestamp":1710000021000,"entry":{"kind":"status","activity":"working","detail":"Running","subagent":{"subagentType":"Plan"}}},
+                  {"timestamp":1710000022000,"entry":{"kind":"thinking","text":"Plan","subagent":{"subagentType":"Explore"}}},
+                  {"timestamp":1710000023000,"entry":{"kind":"text","text":"Done","subagent":{"subagentType":"Explore"}}}
+                ]
+                """.trimIndent(),
+                MemberId("agent-1"),
+            )?.activity.orEmpty()
+
+        assertEquals(true, entries.all { it.isSubagent })
+        assertEquals("Subagent", entries[0].membersActivitySubagentBadgeLabel())
+        assertEquals("Subagent: Plan", entries[1].membersActivitySubagentBadgeLabel())
+        assertEquals(null, entries[2].membersActivitySubagentBadgeLabel())
+        assertEquals(null, entries[3].membersActivitySubagentBadgeLabel())
     }
 
     private fun seededAgentDetailState(member: MemberProfile): SharedAgentDetailState =

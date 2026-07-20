@@ -870,6 +870,8 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
         toolInput: String? = null,
         statusActivity: String? = null,
         statusDetail: String? = null,
+        isSubagent: Boolean = false,
+        subagentType: String? = null,
         expandable: Boolean = false,
         refTextEnabled: Boolean = false
     ): RealtimeAgentActivityEntry =
@@ -886,6 +888,8 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
             toolInput = toolInput?.sanitizeActivityText(),
             statusActivity = statusActivity,
             statusDetail = statusDetail,
+            isSubagent = isSubagent,
+            subagentType = subagentType,
             expandable = expandable,
             refTextEnabled = refTextEnabled
         )
@@ -895,6 +899,8 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                 type = "thinking",
                 title = "Thinking",
                 body = stringValue("text"),
+                isSubagent = hasSubagentLineage(),
+                subagentType = subagentType(),
                 expandable = true
             )
         "tool_start" -> {
@@ -912,7 +918,9 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                         input?.let { "Input" to it },
                     ),
                     toolName = toolName.takeIf { it.isNotBlank() },
-                    toolInput = input
+                    toolInput = input,
+                    isSubagent = hasSubagentLineage(),
+                    subagentType = subagentType()
                 )
             }
         }
@@ -921,6 +929,8 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                 type = "text",
                 title = "Output",
                 body = stringValue("text"),
+                isSubagent = hasSubagentLineage(),
+                subagentType = subagentType(),
                 expandable = true
             )
         "slock_action" ->
@@ -950,15 +960,21 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
                 title = "Context Compaction Finished"
             )
         "status", "agent_status" -> {
-            val activity = stringValue("activity")
+            val activity = stringValue("activityKind") ?: stringValue("activity")
             val detail = stringValue("detail").orEmpty()
-            val display = resolveTrajectoryStatusDisplay(activity, detail)
+            val display = resolveTrajectoryStatusDisplay(
+                activity = activity,
+                detail = detail,
+                detailKind = stringValue("detailKind"),
+            )
             entry(
                 type = "status",
                 title = display.first,
                 body = display.second.takeIf { it.isNotBlank() },
                 statusActivity = activity,
                 statusDetail = stringValue("detail"),
+                isSubagent = hasSubagentLineage(),
+                subagentType = subagentType(),
                 refTextEnabled = true
             )
         }
@@ -1015,22 +1031,42 @@ private fun JsonElement?.toToolInputPreview(): String? {
     return raw.sanitizeActivityText().takeIf { it.isNotBlank() }
 }
 
-private fun resolveTrajectoryStatusDisplay(activity: String?, detail: String): Pair<String, String> {
-    if (activity == "working" && detail == "Starting…") return "Starting" to ""
+private fun resolveTrajectoryStatusDisplay(
+    activity: String?,
+    detail: String,
+    detailKind: String? = null,
+): Pair<String, String> {
+    if (activity == "working" && (detailKind == "starting" || detail == "Starting…")) {
+        return "Starting" to ""
+    }
+    if (activity == "online") {
+        val lifecycleTitle = when (detailKind) {
+            "computer_started" -> "Started"
+            "computer_restarted" -> "Restarted"
+            "computer_upgraded" -> "Upgraded"
+            else -> null
+        }
+        if (lifecycleTitle != null) return lifecycleTitle to detail
+    }
+    if (activity == "error" && detailKind == "computer_operation_failed") {
+        return "Computer operation failed" to detail
+    }
     if (activity == "offline") {
         val primary =
             when {
+                detailKind == "stopped" -> "Stopped"
+                detailKind == "machine_disconnected" -> "Disconnected"
+                detailKind == "runtime_crashed" -> "Crashed"
                 detail == "Stopped" -> "Stopped"
                 detail == "Machine disconnected" -> "Disconnected"
                 detail.startsWith("Crashed") -> "Crashed"
                 else -> "Offline"
             }
-        val secondary =
-            if (primary == "Crashed") {
-                detail.removePrefix("Crashed").trim().removeSurrounding("(", ")")
-            } else {
-                ""
-            }
+        val secondary = when {
+            primary == "Crashed" -> detail.removePrefix("Crashed").trim().removeSurrounding("(", ")")
+            primary == "Stopped" && detail.isNotBlank() && detail != "Stopped" -> detail
+            else -> ""
+        }
         return primary to secondary
     }
     val primary =
@@ -1046,6 +1082,14 @@ private fun resolveTrajectoryStatusDisplay(activity: String?, detail: String): P
 
 private fun JsonObject.stringValue(key: String): String? =
     (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun JsonObject.subagentType(): String? =
+    (this["subagent"] as? JsonObject)
+        ?.stringValue("subagentType")
+        ?.takeIf { it.isNotBlank() }
+
+private fun JsonObject.hasSubagentLineage(): Boolean =
+    this["subagent"] is JsonObject
 
 private fun String.shouldHideToolStartInActivityLog(): Boolean =
     normalizedToolName() == "send_message"

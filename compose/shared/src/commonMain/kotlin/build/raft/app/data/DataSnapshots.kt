@@ -624,6 +624,8 @@ data class AgentActivityEntry(
     val toolInput: String? = null,
     val statusActivity: String? = null,
     val statusDetail: String? = null,
+    val isSubagent: Boolean = false,
+    val subagentType: String? = null,
     val expandable: Boolean = false,
     val refTextEnabled: Boolean = false
 )
