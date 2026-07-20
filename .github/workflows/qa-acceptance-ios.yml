@@ -365,17 +365,25 @@ jobs:
             | tail -4000 > qa-evidence/system-log-raft.txt || true
           # Stamp's product-judgment log is app-scoped. Keep the broader
           # lifecycle log above in the workflow artifact, but upload only the
-          # iosApp process lane as `logcat` and bind it to the frozen bundle/PID.
-          xcrun simctl spawn "$UDID" launchctl list 2>/dev/null \
-            | grep -F "${BUNDLE_ID:-build.raft.app}" | awk '{print $1}' \
-            | grep -E '^[0-9]+$' > qa-evidence/app-pids.txt || true
+          # iosApp process lane as `logcat` and bind it to PID(s) observed in
+          # THIS run's already-process-filtered NDJSON. Do not use a post-run
+          # launchctl snapshot: a product agent may legitimately exit before
+          # evidence collection, while its unified-log rows remain authoritative.
           xcrun simctl spawn "$UDID" log show --start "$(cat qa-evidence/run-start.txt)" --style ndjson --predicate 'process == "iosApp"' \
             2>/dev/null | tail -4000 > qa-evidence/logcat-iosApp.txt || true
+          set +e
+          node scripts/qa/derive_ios_log_pids.mjs \
+            --input qa-evidence/logcat-iosApp.txt --output qa-evidence/app-pids.txt \
+            --started-at "$(cat qa-evidence/run-start.txt)"
+          ios_pid_rc=$?
           node scripts/qa/scope_logcat.mjs \
             --input qa-evidence/logcat-iosApp.txt --output qa-evidence/logcat.txt \
             --verdict qa-evidence/verdict.json --pids qa-evidence/app-pids.txt \
             --package "${BUNDLE_ID:-build.raft.app}" --generation "${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}" \
-            --format ios-ndjson --started-at "$(cat qa-evidence/run-start.txt)" || true
+            --format ios-ndjson --started-at "$(cat qa-evidence/run-start.txt)"
+          ios_scope_rc=$?
+          set -e
+          printf 'pid_derivation_rc=%s\nlog_scope_rc=%s\n' "$ios_pid_rc" "$ios_scope_rc" > qa-evidence/ios-log-scope-status.txt
           # 2) Crash reports (.ips): simulator app crashes land in the SIMULATOR's
           #    own data dir, NOT the host ~/Library/Logs/DiagnosticReports (which is
           #    empty for sim app crashes — the old `cp host/*.ips || true` silently
@@ -412,6 +420,10 @@ jobs:
           find compose/iosApp/build/DerivedData/Logs/Test -maxdepth 1 -name '*.xcresult' \
             -exec cp -R {} qa-evidence/ \; 2>/dev/null || true
           echo "iOS evidence: system-log-raft.txt=$(wc -l < qa-evidence/system-log-raft.txt 2>/dev/null || echo 0) lines, crashes=$(ls qa-evidence/crashes 2>/dev/null | wc -l | tr -d ' ') .ips, xcresult=$(ls -d qa-evidence/*.xcresult 2>/dev/null | wc -l | tr -d ' ')"
+          if [ "$ios_pid_rc" -ne 0 ] || [ "$ios_scope_rc" -ne 0 ]; then
+            echo "iOS execution-scope collection failed closed (pid_rc=$ios_pid_rc scope_rc=$ios_scope_rc)" >&2
+            exit 1
+          fi
 
       # task #14 iOS v1: self-describing perf.json every run (record-only,
       # advisory). Step timing windows + system-log lifecycle signals; the
