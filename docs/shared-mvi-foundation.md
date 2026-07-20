@@ -5,6 +5,10 @@ KMP/common code. It is intentionally small: feature stores keep their own
 business state and reducers, while the foundation enforces the contracts that
 prevent state churn.
 
+For the lifetime/threading boundary between process-owned domain work and
+shell-owned UI projection, read
+`docs/process-domain-core-shell-projection.md`.
+
 ## Goals
 
 - Keep business facts in shared stores, repositories, and data sources.
