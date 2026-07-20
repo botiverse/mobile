@@ -44,6 +44,27 @@ Peer `scope_read:updated` receipts are a different derived family and are reject
 4. **Revoke barrier:** revocation invalidates the baseline, rolls back a write whose grant changes before
    commit, and clears only that owner's read-receipt pending overlay.
 
+## Exact-witness publication boundary
+
+Every grant issue creates a new opaque witness, including a same-scope replacement. Projection observers and
+rebaseline requesters receive that original witness; a destination must never recover or re-associate a
+publication from the scope alone.
+
+Each witness owns a destination publication fence. Final projection writes and rebaseline emissions linearize
+inside that fence, while authority current-state checks use a separate lock that is never held across the
+destination callback:
+
+- if a final destination operation enters first, revoke/replacement waits for it to finish before returning;
+- if revoke/replacement closes the fence first, the old callback is not invoked;
+- after revoke/replacement returns, the old witness can never perform another projection or rebaseline
+  publication;
+- same-scope replacement closes the old witness before publishing the new witness as current, so at most one
+  generation can publish for that scope.
+
+The fenced callback is limited to the final destination guard and write/emission. It must not re-enter grant
+issue/revoke or its own publication-fence management. Durable store work and candidate normalization remain
+outside the destination fence.
+
 ## Persistence and recovery
 
 `syncReadStateFactEntity` stores one complete pair per durable identity. Snapshot commit still obeys version
