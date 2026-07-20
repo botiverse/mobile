@@ -549,6 +549,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadComposerPendingMentionActions() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.pending-mention-actions",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-pending-mention-actions")
+                    .put("visualFixture", "pending_mention_actions"),
+            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerAsTaskSelected() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.as-task-selected",
@@ -3964,6 +3977,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 100
+            )
+        private val THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 290
             )
         private val THREAD_COMPOSER_SUGGESTIONS_CROP =
             VisualCrop(
