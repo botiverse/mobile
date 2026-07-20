@@ -126,7 +126,8 @@ internal class SharedHomeStore(
      */
     private val nowMillis: () -> Long = { defaultNowMillis() },
     private val beforeRealtimeHomeStateCommit: () -> Unit = {},
-    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
+    private val onReadReceiptPredictionOwnerEntered: () -> Unit = {},
+    private val beforeNotificationPublicationCommit: suspend () -> Unit = {}
 ) : SharedConversationIdentityProvider {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -1664,29 +1665,38 @@ internal class SharedHomeStore(
         val requestAuthority = authStore.readSession().notificationAuthority()
         val result = dataSource.loadNotifications()
         val latestAuthority = authStore.readSession().notificationAuthority()
-        if (
-            !isCurrentNotificationRequest(requestGeneration) ||
-            requestAuthority != latestAuthority
-        ) {
+        beforeNotificationPublicationCommit()
+        val commitResult =
+            synchronized(notificationOwnerLock) {
+                val latestGeneration = notificationRequestGeneration
+                if (
+                    requestGeneration != latestGeneration ||
+                    requestAuthority != latestAuthority
+                ) {
+                    false to latestGeneration
+                } else {
+                    when (result) {
+                        is DataResult.Content ->
+                            reduceState(
+                                _state.value.copy(
+                                    notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
+                                )
+                            )
+                        is DataResult.Empty ->
+                            reduceState(_state.value.copy(notifications = emptyList()))
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> Unit
+                    }
+                    true to latestGeneration
+                }
+            }
+        if (!commitResult.first) {
             diagnosticsLogger(
                 "home_notifications_publish_skip reason=stale_authority " +
-                    "requestGeneration=$requestGeneration latestGeneration=${currentNotificationRequestGeneration()} " +
+                    "requestGeneration=$requestGeneration latestGeneration=${commitResult.second} " +
                     "requestServerId=${requestAuthority.serverId.orEmpty()} " +
                     "latestServerId=${latestAuthority.serverId.orEmpty()}"
             )
-            return
-        }
-        when (result) {
-            is DataResult.Content ->
-                reduceState(
-                    _state.value.copy(
-                        notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
-                    )
-                )
-            is DataResult.Empty ->
-                reduceState(_state.value.copy(notifications = emptyList()))
-            is DataResult.Error,
-            is DataResult.NoPermission -> Unit
         }
     }
 
@@ -1702,24 +1712,20 @@ internal class SharedHomeStore(
         }
     }
 
-    private fun isCurrentNotificationRequest(generation: Long): Boolean =
-        synchronized(notificationOwnerLock) { notificationRequestGeneration == generation }
-
-    private fun currentNotificationRequestGeneration(): Long =
-        synchronized(notificationOwnerLock) { notificationRequestGeneration }
-
     private fun reconcileNotificationAuthority(
         session: StoredAuthSession?,
         targetServerId: String?
     ) {
-        supersedeNotificationRequests()
-        val currentServerId =
-            (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
-        val authority = session.notificationAuthority(targetServerId)
-        if (currentServerId == authority.serverId && authority.canManageMachines) return
-        val retained = _state.value.notifications.filterNot { it.id.isMachineHomeNotificationId() }
-        if (retained != _state.value.notifications) {
-            reduceState(_state.value.copy(notifications = retained))
+        synchronized(notificationOwnerLock) {
+            notificationRequestGeneration += 1L
+            val currentServerId =
+                (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+            val authority = session.notificationAuthority(targetServerId)
+            if (currentServerId == authority.serverId && authority.canManageMachines) return@synchronized
+            val retained = _state.value.notifications.filterNot { it.id.isMachineHomeNotificationId() }
+            if (retained != _state.value.notifications) {
+                reduceState(_state.value.copy(notifications = retained))
+            }
         }
     }
 

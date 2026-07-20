@@ -2499,6 +2499,48 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun ownerRequestThatPassedNetworkCannotPublishAfterCommitTimeServerSwitch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession(role = "owner", secondServerRole = "member")
+            )
+        val homeApi = RecordingHomeApi()
+        val publicationBarrier = NotificationPublicationBarrier()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = homeApi,
+                        computersApi = RecordingComputersApi(),
+                        sessionStore = sessionStore,
+                        appUpdateStatusProvider = { DataResult.Content(updateAvailableSnapshot()) }
+                    ),
+                scope = scope,
+                beforeNotificationPublicationCommit = publicationBarrier::intercept
+            )
+        store.accept(SharedHomeIntent.Start)
+        assertTrue(store.state.value.notifications.any { it.id.isMachineHomeNotificationId() })
+        publicationBarrier.arm()
+
+        val oldOwnerRefresh = launch { store.accept(SharedHomeIntent.RefreshNotifications) }
+        publicationBarrier.awaitStarted()
+        val blockedSwitch = homeApi.blockNextChannels("server-2")
+        val switch = launch { store.accept(SharedHomeIntent.SelectServer("server-2")) }
+        blockedSwitch.awaitStarted()
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+
+        publicationBarrier.release()
+        oldOwnerRefresh.join()
+
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+        blockedSwitch.release()
+        switch.join()
+        scope.cancel()
+    }
+
+    @Test
     fun startLoadsOutdatedMachinesIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val computersApi =
@@ -3426,6 +3468,31 @@ class SharedHomeStoreTest {
             machineId: String,
             directoryName: String
         ): HomeNetworkResponse = error("not reached")
+    }
+
+    private class NotificationPublicationBarrier {
+        private var armed = false
+        private var started = CompletableDeferred<Unit>()
+        private var released = CompletableDeferred<Unit>()
+
+        fun arm() {
+            armed = true
+            started = CompletableDeferred()
+            released = CompletableDeferred()
+        }
+
+        suspend fun intercept() {
+            if (!armed) return
+            armed = false
+            started.complete(Unit)
+            released.await()
+        }
+
+        suspend fun awaitStarted() = started.await()
+
+        fun release() {
+            released.complete(Unit)
+        }
     }
 
     private fun sampleSession(
