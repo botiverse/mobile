@@ -1761,10 +1761,11 @@ class KmpVisualScreenshotCaptureTest {
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500,
             beforeScreenshot = {
-                // The first row's bordered surface ends at y=257dp in this
-                // fixed 342x620 fixture. y=251dp is intentionally inside the
-                // bottom 12dp white padding and outside the text/footer tree.
-                tapDp(xDp = 170f, yDp = 251f)
+                // The first row's bordered surface currently ends at y=274dp
+                // in this fixed 342x620 fixture. Keep the probe in the dedicated
+                // bottom 12dp spacer instead of the footer chips above it; the
+                // old y=251dp point moved into footer content as the row grew.
+                tapDp(xDp = 170f, yDp = 268f)
                 val root =
                     requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow) {
                         "Activity fixture accessibility root is unavailable"
@@ -3363,8 +3364,14 @@ class KmpVisualScreenshotCaptureTest {
         val x = xDp * density
         val y = yDp * density
         val downTime = SystemClock.uptimeMillis()
-        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0))
-        instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0))
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0),
+            true
+        )
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0),
+            true
+        )
         waitForIdleBounded()
     }
 
