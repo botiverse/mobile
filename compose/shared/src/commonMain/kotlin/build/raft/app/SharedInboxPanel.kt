@@ -680,32 +680,59 @@ private fun SharedActivityList(
             selectedItemKey = null
         }
     }
-    LaunchedEffect(selectedFilter, snapshot.items) {
+    LaunchedEffect(selectedFilter, snapshot.items, refreshing, pullRefreshing) {
         // Realtime arrivals never take ownership of the Activity viewport, even
-        // while it is parked at the top. Stable item keys retain the row under
-        // the user's finger and the explicit "x new" action owns revealing the
-        // new head. Filter changes establish a fresh baseline: All, Unread and
-        // Mentions never classify one another's membership changes as arrivals.
-        updateTracking = updateTracking.recordSnapshot(selectedFilter, snapshot.items)
+        // while it is parked away from the new head. Once the rendered viewport
+        // already contains that head, however, the batch has been shown and the
+        // banner must retire synchronously instead of advertising visible rows.
+        // Refresh transitions re-run the same reconciliation so a stale marker
+        // cannot survive a pull refresh. Filter changes establish a fresh
+        // baseline: All, Unread and Mentions never classify one another's
+        // membership changes as arrivals.
+        updateTracking =
+            updateTracking
+                .recordSnapshot(selectedFilter, snapshot.items)
+                .reconcileVisibleSnapshot(
+                    nextFilter = selectedFilter,
+                    currentItems = snapshot.items,
+                    visibleItemKeys =
+                        listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
+                            itemInfo.key as? String
+                        }
+                )
     }
     LaunchedEffect(selectedFilter, revealRequest) {
         if (revealRequest > 0) {
             listState.animateScrollToTopExpressive()
         }
     }
-    LaunchedEffect(listState, snapshot.server.id, snapshot.items) {
+    LaunchedEffect(listState, selectedFilter, snapshot.server.id, snapshot.items) {
         val activityItemsByKey = snapshot.items.associateBy(InboxItem::key)
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
                 .mapNotNull { itemInfo ->
-                    (itemInfo.key as? String)
-                        ?.let(activityItemsByKey::get)
-                        ?.toReplyThreadPrewarmMarker(snapshot.server.id.value)
+                    itemInfo.key as? String
                 }
                 .toSet()
         }
             .distinctUntilChanged()
-            .collect { markers ->
+            .collect { visibleItemKeys ->
+                // layoutInfo is updated after remeasure. This is the decisive
+                // signal for prepended rows: if the new head is now in the
+                // viewport, the corresponding update batch is already visible.
+                updateTracking =
+                    updateTracking.reconcileVisibleSnapshot(
+                        nextFilter = selectedFilter,
+                        currentItems = snapshot.items,
+                        visibleItemKeys = visibleItemKeys
+                    )
+                val markers =
+                    visibleItemKeys
+                        .mapNotNull { key ->
+                            activityItemsByKey[key]
+                                ?.toReplyThreadPrewarmMarker(snapshot.server.id.value)
+                        }
+                        .toSet()
                 onIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(markers))
             }
     }
@@ -1597,16 +1624,19 @@ internal data class ActivityPendingUpdateLedger(
         return copy(pendingMarkers = pendingMarkers + genuinelyPending)
     }
 
-    fun consumePending(): ActivityPendingUpdateLedger {
-        if (pendingMarkers.isEmpty()) return this
-        val allRetired = (retiredMarkers + pendingMarkers).toList()
+    fun retire(markers: Set<ActivityUpdateMarker>): ActivityPendingUpdateLedger {
+        val retiring = pendingMarkers intersect markers
+        if (retiring.isEmpty()) return this
+        val allRetired = (retiredMarkers + retiring).toList()
         val retainedFrom = (allRetired.size - ActivityRetiredUpdateTrackingWindow).coerceAtLeast(0)
         val retired =
             allRetired
                 .subList(retainedFrom, allRetired.size)
                 .toSet()
-        return copy(pendingMarkers = emptySet(), retiredMarkers = retired)
+        return copy(pendingMarkers = pendingMarkers - retiring, retiredMarkers = retired)
     }
+
+    fun consumePending(): ActivityPendingUpdateLedger = retire(pendingMarkers)
 }
 
 internal data class ActivityUpdateTrackingState(
@@ -1642,6 +1672,37 @@ internal data class ActivityUpdateTrackingState(
 
     fun consumePending(): ActivityUpdateTrackingState =
         copy(pendingUpdates = pendingUpdates.consumePending())
+
+    fun reconcileVisibleSnapshot(
+        nextFilter: InboxFilter,
+        currentItems: List<InboxItem>,
+        visibleItemKeys: Collection<String>
+    ): ActivityUpdateTrackingState {
+        if (filter != nextFilter || pendingUpdates.pendingMarkers.isEmpty()) return this
+
+        val currentMarkers =
+            currentItems.mapTo(linkedSetOf()) { item ->
+                ActivityUpdateMarker(
+                    filter = nextFilter,
+                    itemKey = item.key,
+                    latestActivityMessageId = item.latestActivityMessageId?.value
+                )
+            }
+        var reconciled =
+            pendingUpdates.retire(pendingUpdates.pendingMarkers - currentMarkers)
+        val leadingPendingMarker =
+            currentItems.firstNotNullOfOrNull { item ->
+                ActivityUpdateMarker(
+                    filter = nextFilter,
+                    itemKey = item.key,
+                    latestActivityMessageId = item.latestActivityMessageId?.value
+                ).takeIf(reconciled.pendingMarkers::contains)
+            }
+        if (leadingPendingMarker != null && leadingPendingMarker.itemKey in visibleItemKeys) {
+            reconciled = reconciled.consumePending()
+        }
+        return if (reconciled == pendingUpdates) this else copy(pendingUpdates = reconciled)
+    }
 }
 
 internal data class ActivityUpdatePresentation(

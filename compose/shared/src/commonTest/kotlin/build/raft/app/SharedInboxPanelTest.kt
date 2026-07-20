@@ -739,6 +739,53 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityUpdateTrackingRetiresHeadUpdatesAlreadyVisibleAfterSnapshotRender() {
+        InboxFilter.entries.forEach { filter ->
+            val old = activityItem(key = "channel:old", latestActivityMessageId = "message:old", unreadCount = 1)
+            val visibleArrivals =
+                (1..8).map { index ->
+                    activityItem(
+                        key = "channel:new-$index",
+                        latestActivityMessageId = "message:new-$index",
+                        unreadCount = 1
+                    )
+                }
+            val current = visibleArrivals + old
+
+            val pending =
+                ActivityUpdateTrackingState(filter)
+                    .recordSnapshot(filter, listOf(old))
+                    .recordSnapshot(filter, current)
+            assertEquals(8, pending.pendingCount, "$filter records the arrivals before layout catches up")
+
+            val stillHidden =
+                pending.reconcileVisibleSnapshot(
+                    nextFilter = filter,
+                    currentItems = current,
+                    visibleItemKeys = listOf(old.key)
+                )
+            assertEquals(8, stillHidden.pendingCount, "$filter keeps the batch while its new head is outside the viewport")
+
+            val reconciled =
+                pending.reconcileVisibleSnapshot(
+                    nextFilter = filter,
+                    currentItems = current,
+                    visibleItemKeys = listOf(visibleArrivals.first().key)
+                )
+
+            assertEquals(0, reconciled.pendingCount, "$filter must retire the batch once its new head is visible")
+
+            val refreshedWithoutArrivals =
+                pending.reconcileVisibleSnapshot(
+                    nextFilter = filter,
+                    currentItems = listOf(old),
+                    visibleItemKeys = listOf(old.key)
+                )
+            assertEquals(0, refreshedWithoutArrivals.pendingCount, "$filter refresh must drop markers absent from its baseline")
+        }
+    }
+
+    @Test
     fun activityTimeLabelFormatsLatestActivityBeforeRendering() {
         val item =
             activityItem(
