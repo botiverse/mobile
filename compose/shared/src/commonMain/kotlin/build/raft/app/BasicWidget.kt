@@ -26,7 +26,6 @@ import com.tencent.kuikly.compose.foundation.gestures.awaitFirstDown
 import com.tencent.kuikly.compose.foundation.gestures.calculatePan
 import com.tencent.kuikly.compose.foundation.gestures.calculateZoom
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.gestures.forEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -61,6 +60,7 @@ import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.input.pointer.PointerId
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
+import com.tencent.kuikly.compose.ui.input.pointer.positionChangedIgnoreConsumed
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.boundsInRoot
 import com.tencent.kuikly.compose.ui.layout.layout
@@ -503,37 +503,49 @@ fun Modifier.willAppear(onAppear: () -> Unit): Modifier {
     }
 }
 
+/**
+ * Observes one pointer sequence without consuming it.
+ *
+ * The callback stays current without restarting [pointerInput], and consumed
+ * position deltas remain visible so a scrollable cannot hide the rest of a
+ * physical drag after touch slop.
+ */
+@Composable
 fun Modifier.touchListener(
     onTouchEvent: (type: TouchType, position: Offset) -> Unit
-) = pointerInput(onTouchEvent) {
-    forEachGesture {
-        awaitPointerEventScope {
-            // 初始化触控点跟踪
-            var currentPointerId: PointerId? = null
+): Modifier =
+    touchListenerWithConfiguration { type, position, _ ->
+        onTouchEvent(type, position)
+    }
+
+/**
+ * [touchListener] plus the platform drag threshold for consumers that must
+ * distinguish deliberate scrolling from tap/long-press pointer jitter.
+ */
+@Composable
+internal fun Modifier.touchListenerWithConfiguration(
+    onTouchEvent: (type: TouchType, position: Offset, touchSlop: Float) -> Unit
+): Modifier {
+    val currentOnTouchEvent by rememberUpdatedState(onTouchEvent)
+    return pointerInput(Unit) {
+        awaitEachGesture {
+            val tracker = SlockTouchSequenceTracker<PointerId>()
 
             while (true) {
                 val event = awaitPointerEvent()
                 event.changes.forEach { change ->
-                    when {
-                        // 按下事件
-                        change.pressed && currentPointerId == null -> {
-                            currentPointerId = change.id
-                            onTouchEvent(TouchType.Down, change.position)
-                        }
-
-                        // 移动事件（需匹配当前跟踪的指针）
-                        change.id == currentPointerId && change.positionChanged() -> {
-                            onTouchEvent(TouchType.Move, change.position)
-                        }
-
-                        // 抬起/取消事件
-                        !change.pressed && change.id == currentPointerId -> {
-                            onTouchEvent(TouchType.Up, change.position)
-                            currentPointerId = null
-                            return@awaitPointerEventScope
+                    val type =
+                        tracker.onChange(
+                            pointerId = change.id,
+                            pressed = change.pressed,
+                            positionChanged = change.positionChangedIgnoreConsumed()
+                        )
+                    if (type != null) {
+                        currentOnTouchEvent(type, change.position, viewConfiguration.touchSlop)
+                        if (type == TouchType.Up) {
+                            return@awaitEachGesture
                         }
                     }
-//                    change.consume() // 阻止事件冒泡
                 }
             }
         }
@@ -541,6 +553,39 @@ fun Modifier.touchListener(
 }
 
 enum class TouchType { Down, Move, Up }
+
+/**
+ * Tracks one pointer for [touchListener] without consuming the gesture.
+ *
+ * Release/cancel must win over position change: Android commonly reports a
+ * final changed position on ACTION_UP. Treating that event as Move leaves the
+ * old pointer id latched and makes every later gesture invisible.
+ */
+internal class SlockTouchSequenceTracker<T : Any> {
+    private var currentPointerId: T? = null
+
+    fun onChange(
+        pointerId: T,
+        pressed: Boolean,
+        positionChanged: Boolean
+    ): TouchType? {
+        val trackedPointerId = currentPointerId
+        return when {
+            trackedPointerId == pointerId && !pressed -> {
+                currentPointerId = null
+                TouchType.Up
+            }
+
+            trackedPointerId == null && pressed -> {
+                currentPointerId = pointerId
+                TouchType.Down
+            }
+
+            trackedPointerId == pointerId && positionChanged -> TouchType.Move
+            else -> null
+        }
+    }
+}
 
 private object SlockPressTokens {
     val ButtonOffset = 2.dp

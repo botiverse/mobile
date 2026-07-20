@@ -6136,6 +6136,9 @@ internal fun SharedThreadRouteContent(
             onFirstContentReady = {
                 threadViewModel.dispatch(SharedThreadIntent.FirstContentReady)
             },
+            onLoadNewer = {
+                threadViewModel.accept(SharedThreadIntent.LoadNewer)
+            },
             onBack = onBack,
             onUpdateChannelProfile = { channelId, originalName, originalDescription, name, description ->
                 threadViewModel.dispatch(
@@ -10342,6 +10345,7 @@ private fun ThreadPageContent(
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onFirstContentReady: () -> Unit = {},
+    onLoadNewer: suspend () -> Unit,
     onBack: () -> Unit,
     onUpdateChannelProfile: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onClearChannelProfileUpdateStatus: () -> Unit = {},
@@ -10844,6 +10848,7 @@ private fun ThreadPageContent(
                         resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         activeMarkdownTagKey = activeMarkdownTagKey,
                         onThreadEvent = onThreadEvent,
+                        onLoadNewer = onLoadNewer,
                         onOpenMember = onOpenMemberProfile,
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
@@ -11863,6 +11868,7 @@ private fun ThreadChatTab(
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onLoadNewer: suspend () -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -11940,6 +11946,7 @@ private fun ThreadChatTab(
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
+                    onLoadNewer = onLoadNewer,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -12004,6 +12011,7 @@ private fun ThreadChatTab(
                     resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     activeMarkdownTagKey = activeMarkdownTagKey,
                     onThreadEvent = onThreadEvent,
+                    onLoadNewer = onLoadNewer,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -12058,6 +12066,7 @@ private fun ThreadChatTab(
                 markdownTagContextSignature = markdownTagContextSignature,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onThreadEvent = onThreadEvent,
+                onLoadNewer = onLoadNewer,
                 onOpenMember = onOpenMember,
                 onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -12355,6 +12364,7 @@ private fun ThreadMessagesList(
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onLoadNewer: suspend () -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -12772,6 +12782,7 @@ private fun ThreadMessagesList(
     }
     val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
+    val currentThreadInstanceKeyState = rememberUpdatedState(threadInstanceKey)
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
@@ -12847,6 +12858,115 @@ private fun ThreadMessagesList(
     var previousOlderMessagesStatus by remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     var olderPageCycleActive by remember(threadInstanceKey) { mutableStateOf(false) }
     var olderPageSettledUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    val newerGestureDemandTracker =
+        remember(threadInstanceKey) { ThreadNewerGestureDemandTracker() }
+    var newerDemandGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    var lastSettledNewerDemandGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
+    var nextNewerPageCycleId by remember(threadInstanceKey) { mutableStateOf(0L) }
+    var newerPageCycle by remember(threadInstanceKey) { mutableStateOf<ThreadNewerPageCycle?>(null) }
+    val newerPageCycleActive = newerPageCycle != null
+    val latestMessageListItemIndex = renderPayload.latestMessageListItemIndex()
+    suspend fun settleNewerPageCycle(cycleId: Long) {
+        val cycle = newerPageCycle?.takeIf { active -> active.id == cycleId } ?: return
+        if (!shouldSettleThreadNewerPageCycle(
+                cycleThreadInstanceKey = cycle.threadInstanceKey,
+                currentThreadInstanceKey = currentThreadInstanceKeyState.value,
+                cycleId = cycleId,
+                activeCycleId = newerPageCycle?.id
+            )
+        ) {
+            diagnosticsLogger(
+                "thread_newer_page_cycle result=skipped_stale_route " +
+                    "cycleInstance=${cycle.threadInstanceKey} " +
+                    "currentInstance=${currentThreadInstanceKeyState.value} cycleId=$cycleId"
+            )
+            return
+        }
+        allowBottomAutoAnchor = false
+        withFrameNanos { }
+        val anchor = cycle.anchor
+        if (anchor != null) {
+            listState.awaitThreadMessagesLayoutFrame()
+        }
+        if (!shouldSettleThreadNewerPageCycle(
+                cycleThreadInstanceKey = cycle.threadInstanceKey,
+                currentThreadInstanceKey = currentThreadInstanceKeyState.value,
+                cycleId = cycleId,
+                activeCycleId = newerPageCycle?.id
+            )
+        ) {
+            return
+        }
+        val focusedViewportOwnerActive =
+            focusedMessageAnchorOwnsViewport(
+                pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+            )
+        if (
+            anchor != null &&
+            shouldRestoreThreadNewerPageAnchor(
+                capturedUserScrollGeneration = anchor.userScrollGeneration,
+                currentUserScrollGeneration = userScrollGeneration.value,
+                focusedViewportOwnerActive = focusedViewportOwnerActive
+            )
+        ) {
+            val targetIndex = currentPayloadState.value.threadMessageListItemIndex(anchor.messageId)
+            if (targetIndex >= 0) {
+                listState.scrollToItem(targetIndex, -anchor.offset)
+                diagnosticsLogger(
+                    "thread_newer_anchor_restore result=restored messageId=${anchor.messageId} " +
+                        "targetIndex=$targetIndex offset=${anchor.offset} " +
+                        "userScrollGeneration=${userScrollGeneration.value}"
+                )
+            }
+        } else if (anchor != null) {
+            diagnosticsLogger(
+                "thread_newer_anchor_restore result=skipped_viewport_owner messageId=${anchor.messageId} " +
+                    "capturedUserScrollGeneration=${anchor.userScrollGeneration} " +
+                    "currentUserScrollGeneration=${userScrollGeneration.value} " +
+                    "focusedViewportOwnerActive=$focusedViewportOwnerActive"
+            )
+        }
+        // Consume every newer-directed gesture observed through this request,
+        // including a second gesture while the page was in flight. Only a
+        // fresh Down -> upward Move after settlement may authorize another page.
+        lastSettledNewerDemandGeneration = newerDemandGeneration
+        newerPageCycle = null
+    }
+    val requestNewerPage: (String) -> Unit = request@{ event ->
+        if (newerPageCycle != null || !renderPayload.canLoadMoreAfter) {
+            return@request
+        }
+        val anchor =
+            listState.threadFirstVisibleMessageAnchor(
+                timelineSlice = renderPayload,
+                userScrollGeneration = userScrollGeneration.value
+            )
+        val cycleId = nextNewerPageCycleId + 1L
+        nextNewerPageCycleId = cycleId
+        newerPageCycle =
+            ThreadNewerPageCycle(
+                id = cycleId,
+                threadInstanceKey = threadInstanceKey,
+                anchor = anchor
+            )
+        allowBottomAutoAnchor = false
+        diagnosticsLogger(
+            "thread_newer_page_cycle result=requested event=$event " +
+                "demandGeneration=$newerDemandGeneration " +
+                "messageId=${anchor?.messageId.orEmpty()} offset=${anchor?.offset ?: 0} " +
+                "userScrollGeneration=${anchor?.userScrollGeneration ?: userScrollGeneration.value}"
+        )
+        coroutineScope.launch {
+            try {
+                onLoadNewer()
+            } finally {
+                settleNewerPageCycle(cycleId)
+            }
+        }
+    }
     LaunchedEffect(
         threadInstanceKey,
         renderPayload.messages.size,
@@ -12899,28 +13019,39 @@ private fun ThreadMessagesList(
             delay(ThreadLayoutStabilityFrameDelayMs)
         }
     }
-    LaunchedEffect(threadInstanceKey, latestItemIndex, shareSelectionCaptureActive) {
+    LaunchedEffect(
+        threadInstanceKey,
+        latestItemIndex,
+        shareSelectionCaptureActive,
+        newerPageCycleActive
+    ) {
         if (shareSelectionCaptureActive) {
             allowBottomAutoAnchor = false
             return@LaunchedEffect
         }
         snapshotFlow {
-            ThreadBottomAutoAnchorAvailabilityState(
-                currentAllow = allowBottomAutoAnchor,
-                isScrollInProgress = listState.isScrollInProgress,
-                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
-                focusedAnchorOwnsViewport =
-                    focusedMessageAnchorOwnsViewport(
-                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
-                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
-                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
-                        yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
-                    )
-            )
+            newerPageCycleActive to
+                ThreadBottomAutoAnchorAvailabilityState(
+                    currentAllow = allowBottomAutoAnchor,
+                    isScrollInProgress = listState.isScrollInProgress,
+                    isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                    focusedAnchorOwnsViewport =
+                        focusedMessageAnchorOwnsViewport(
+                            pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                            consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                            scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                            yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+                        )
+                )
         }
             .distinctUntilChanged()
-            .collect { state ->
-                val nextAllow = resolveThreadBottomAutoAnchorAllowed(state)
+            .collect { (cycleActive, state) ->
+                val nextAllow =
+                    if (cycleActive) {
+                        false
+                    } else {
+                        resolveThreadBottomAutoAnchorAllowed(state)
+                    }
                 if (allowBottomAutoAnchor != nextAllow) {
                     allowBottomAutoAnchor = nextAllow
                 }
@@ -12930,28 +13061,30 @@ private fun ThreadMessagesList(
         threadInstanceKey,
         latestItemIndex,
         initialBottomAnchorReady,
-        shareSelectionCaptureActive
+        shareSelectionCaptureActive,
+        newerPageCycleActive
     ) {
         if (shareSelectionCaptureActive || latestItemIndex < 0 || !initialBottomAnchorReady) {
             return@LaunchedEffect
         }
         snapshotFlow {
-            ThreadBottomAnchorCorrectionState(
-                allowBottomAutoAnchor = allowBottomAutoAnchor,
-                isScrollInProgress = listState.isScrollInProgress,
-                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
-                focusedAnchorOwnsViewport =
-                    focusedMessageAnchorOwnsViewport(
-                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
-                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
-                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
-                        yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
-                    )
-            )
+            newerPageCycleActive to
+                ThreadBottomAnchorCorrectionState(
+                    allowBottomAutoAnchor = allowBottomAutoAnchor,
+                    isScrollInProgress = listState.isScrollInProgress,
+                    isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                    focusedAnchorOwnsViewport =
+                        focusedMessageAnchorOwnsViewport(
+                            pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                            consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                            scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                            yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+                        )
+                )
         }
             .distinctUntilChanged()
-            .collect { state ->
-                if (shouldAutoCorrectThreadBottomAnchor(state)) {
+            .collect { (cycleActive, state) ->
+                if (!cycleActive && shouldAutoCorrectThreadBottomAnchor(state)) {
                     listState.scrollLatestItemToRenderedBottom(latestItemIndex)
                 }
             }
@@ -13051,7 +13184,47 @@ private fun ThreadMessagesList(
         }
         previousOlderMessagesStatus = renderPayload.olderMessagesStatus
     }
-    LaunchedEffect(threadInstanceKey, latestLocalSendBottomAnchorKey, latestItemIndex) {
+    LaunchedEffect(
+        threadInstanceKey,
+        initialBottomAnchorReady,
+        renderPayload.canLoadMoreAfter,
+        renderPayload.newerMessagesStatus,
+        newerPageCycleActive,
+        newerDemandGeneration,
+        lastSettledNewerDemandGeneration,
+        latestMessageListItemIndex
+    ) {
+        snapshotFlow {
+            val lastVisibleIndex =
+                listState.layoutInfo.visibleItemsInfo.maxOfOrNull { item -> item.index } ?: -1
+            shouldThreadAutoLoadNewerMessages(
+                initialBottomAnchorReady = initialBottomAnchorReady,
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                newerMessagesStatus = renderPayload.newerMessagesStatus,
+                newerPageCycleActive = newerPageCycleActive,
+                lastVisibleIndex = lastVisibleIndex,
+                latestMessageListItemIndex = latestMessageListItemIndex,
+                newerDemandGeneration = newerDemandGeneration,
+                lastSettledNewerDemandGeneration = lastSettledNewerDemandGeneration
+            )
+        }
+            .distinctUntilChanged()
+            .collect { shouldLoad ->
+                if (shouldLoad) {
+                    requestNewerPage("loadNewer")
+                }
+            }
+    }
+    LaunchedEffect(
+        threadInstanceKey,
+        latestLocalSendBottomAnchorKey,
+        latestItemIndex,
+        newerPageCycleActive
+    ) {
+        if (newerPageCycleActive) {
+            allowBottomAutoAnchor = false
+            return@LaunchedEffect
+        }
         if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
             return@LaunchedEffect
         }
@@ -13295,9 +13468,14 @@ private fun ThreadMessagesList(
         focusedMessageTargetSignature,
         latestMessageLayoutKey,
         latestItemIndex,
-        shareSelectionCaptureActive
+        shareSelectionCaptureActive,
+        newerPageCycleActive
     ) {
         if (shareSelectionCaptureActive || latestItemIndex < 0) return@LaunchedEffect
+        if (newerPageCycleActive) {
+            allowBottomAutoAnchor = false
+            return@LaunchedEffect
+        }
         val focusedMessageTargetIndex =
             renderPayload.focusedMessageListItemIndex()
         if (focusedMessageTargetIndex >= 0) {
@@ -13411,7 +13589,18 @@ private fun ThreadMessagesList(
                 "items=${threadLazyWindowConsumerCounts.listBeyondBoundsItems}"
         )
     }
-    LaunchedEffect(threadInstanceKey, composerKeyboardInsetDp, latestItemIndex) {
+    LaunchedEffect(
+        threadInstanceKey,
+        composerKeyboardInsetDp,
+        latestItemIndex,
+        newerPageCycleActive
+    ) {
+        if (newerPageCycleActive) {
+            lastComposerKeyboardInsetDp = composerKeyboardInsetDp
+            pendingKeyboardBottomAnchor = false
+            allowBottomAutoAnchor = false
+            return@LaunchedEffect
+        }
         val shouldAnchor =
             shouldAnchorThreadKeyboardBottomOnInsetChange(
                 ThreadKeyboardBottomAnchorState(
@@ -13451,7 +13640,13 @@ private fun ThreadMessagesList(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
-                    .touchListener { type, _ ->
+                    .touchListenerWithConfiguration { type, position, touchSlop ->
+                        newerDemandGeneration =
+                            newerGestureDemandTracker.onTouch(
+                                type = type,
+                                pointerY = position.y,
+                                touchSlop = touchSlop
+                            )
                         if (shouldDismissThreadComposerOnTimelineTouch(type)) {
                             focusManager.clearFocus(force = true)
                         }
@@ -13849,18 +14044,9 @@ private fun ThreadMessagesList(
             }
             if (renderPayload.canLoadMoreAfter) {
                 item(key = ThreadNewerMessagesListItemKey) {
-                    val actionSpec = threadNewerMessagesActionSpec(renderPayload.newerMessagesStatus)
-                    ThreadInlineActionRow(
-                        label = actionSpec.label.localized(),
-                        leadingIcon = actionSpec.leadingIcon,
-                        onClick = {
-                            onThreadEvent(
-                                actionSpec.event,
-                                null,
-                                null,
-                                null
-                            )
-                        }
+                    ThreadNewerMessagesBoundaryRow(
+                        newerMessagesStatus = renderPayload.newerMessagesStatus,
+                        onRetry = { requestNewerPage("retryLoadNewer") }
                     )
                 }
             }
@@ -13920,6 +14106,7 @@ private fun ThreadMessagesList(
             )
         if (
             !shareSelectionCaptureActive &&
+            (!newerPageCycleActive || backToBottomInteractionGuardActive) &&
             shouldKeepThreadBackToBottomOverlayMounted(
                 shouldShowButton = shouldShowBackToBottomButton,
                 interactionGuardActive = backToBottomInteractionGuardActive
@@ -14164,12 +14351,13 @@ private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 private val ThreadBottomScrollPaddingHeight = 16.dp
+private val ThreadNewerMessagesBoundaryHeight = 36.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 private val ThreadInlineSearchBarBottomInset = 58.dp
 private const val ThreadInlineSearchBarZIndex = 2f
 internal data class ThreadInlineActionSpec(
     val label: StringDesc,
-    val event: String,
+    val event: String? = null,
     val leadingIcon: SlockLucideIconName? = null
 )
 
@@ -14305,9 +14493,9 @@ internal fun threadOlderMessagesStatusSpec(
 
 internal fun threadNewerMessagesActionSpec(newerMessagesStatus: String): ThreadInlineActionSpec =
     when (newerMessagesStatus) {
-        "loading" -> ThreadInlineActionSpec(label = MR.strings.thread_state_loading_new.desc(), event = "loadNewer")
+        "loading" -> ThreadInlineActionSpec(label = MR.strings.thread_state_loading_new.desc())
         "error" -> ThreadInlineActionSpec(label = MR.strings.thread_retry_new.desc(), event = "retryLoadNewer")
-        else -> ThreadInlineActionSpec(label = MR.strings.thread_load_new.desc(), event = "loadNewer")
+        else -> ThreadInlineActionSpec(label = MR.strings.thread_load_new.desc())
     }
 
 internal fun threadMessagesLazyItemCount(
@@ -14886,6 +15074,12 @@ private data class ThreadVisibleMessageAnchor(
     val userScrollGeneration: Int
 )
 
+private data class ThreadNewerPageCycle(
+    val id: Long,
+    val threadInstanceKey: String,
+    val anchor: ThreadVisibleMessageAnchor?
+)
+
 private class ThreadUserScrollGeneration(
     var value: Int = 0
 )
@@ -15268,6 +15462,34 @@ private fun ThreadSystemMessageRow(
             overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@Composable
+private fun ThreadNewerMessagesBoundaryRow(
+    newerMessagesStatus: String,
+    onRetry: () -> Unit
+) {
+    val spec = threadNewerMessagesActionSpec(newerMessagesStatus)
+    if (spec.event == "retryLoadNewer") {
+        ThreadInlineActionRow(
+            label = spec.label.localized(),
+            leadingIcon = spec.leadingIcon,
+            onClick = onRetry
+        )
+        return
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().height(ThreadNewerMessagesBoundaryHeight),
+        contentAlignment = Alignment.Center
+    ) {
+        if (newerMessagesStatus == "loading") {
+            Text(
+                text = spec.label.localized(),
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
     }
 }
 
