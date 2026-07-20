@@ -169,8 +169,6 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -4514,7 +4512,7 @@ private fun MembersDetailHeader(
             currentServerId = currentServerId,
             deleted = deleted
         )
-    val threeDotButtonAnchor = remember { SlockMutableOffsetRef() }
+    val threeDotButtonAnchor = remember(member.id.value) { SlockLiveRootAnchorRef() }
     val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     val headerMetaLabel =
         when {
@@ -4607,21 +4605,13 @@ private fun MembersDetailHeader(
                     iconName = SlockLucideIconName.Menu,
                     onClick = {
                         onRequestManagementMenu(
-                            threeDotButtonAnchor.value.takeIf { threeDotButtonAnchor.hasValue }
+                            threeDotButtonAnchor.resolve { size ->
+                                Offset(size.width.toFloat(), size.height.toFloat())
+                            }
                         )
                     },
                     size = MembersActionSize,
-                    modifier = Modifier.onGloballyPositioned { coordinates ->
-                        val pos = coordinates.positionInRoot()
-                        threeDotButtonAnchor.update(
-                            membersManagementMenuAnchor(
-                                buttonLeftPx = pos.x,
-                                buttonTopPx = pos.y,
-                                buttonWidthPx = coordinates.size.width.toFloat(),
-                                buttonHeightPx = coordinates.size.height.toFloat()
-                            )
-                        )
-                    }
+                    modifier = Modifier.slockCaptureLiveRootAnchor(threeDotButtonAnchor)
                 )
             }
         }

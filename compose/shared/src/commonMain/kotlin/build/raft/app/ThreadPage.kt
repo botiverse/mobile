@@ -16595,16 +16595,15 @@ private fun ThreadReactionChip(
         // reactor tooltip. Both live on one gesture detector so the long
         // press cannot fire a toggle. The anchor is reported in root pixels
         // (same contract as the message long-press menu).
-        val rootPos = remember { SlockMutableOffsetRef() }
+        val rootAnchor = remember(reaction.emoji) { SlockLiveRootAnchorRef() }
         Box(
             modifier = Modifier
-                .onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+                .slockCaptureLiveRootAnchor(rootAnchor)
                 .pointerInput(reaction.emoji, onClick != null) {
                     detectTapGestures(
                         onTap = { onClick?.invoke() },
                         onLongPress = { localOffset ->
-                            val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
-                            onLongPress(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                            rootAnchor.resolve(localOffset)?.let(onLongPress)
                         }
                     )
                 }
@@ -16839,11 +16838,11 @@ private fun Modifier.threadMessageLongPressActions(
     val currentOnTapRejected by rememberUpdatedState(onTapRejected)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
     val currentCaptureLongPressAnchor by rememberUpdatedState(captureLongPressAnchor)
-    val rootPos = remember(messageId) { SlockMutableOffsetRef() }
+    val rootAnchor = remember(messageId) { SlockLiveRootAnchorRef() }
     val tapDispatchScope = rememberCoroutineScope()
     tapMovementGate.activatePointerSession(pointerSessionKey)
     return this
-        .onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+        .slockCaptureLiveRootAnchor(rootAnchor)
         .pointerInput("thread-message-tap-movement-$messageId-$pointerSessionKey") {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -16894,8 +16893,7 @@ private fun Modifier.threadMessageLongPressActions(
                 },
                 onLongPress = { localOffset ->
                     if (currentCaptureLongPressAnchor()) {
-                        val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
-                        currentOnShowActions(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                        rootAnchor.resolve(localOffset)?.let(currentOnShowActions)
                     }
                 }
             )

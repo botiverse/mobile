@@ -71,8 +71,6 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
-import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -500,8 +498,7 @@ private fun SharedTasksLoadedBodyContent(
         onDispose { latestOnListPositionSnapshot(listModeListState.toAppShellLazyListPosition()) }
     }
 
-    // Filter popover anchors. Captured via onGloballyPositioned on the chip
-    // so the popover floats just below it.
+    // Filter popover anchors. Resolved from each chip's live coordinates when opened.
     var channelAnchor by remember { mutableStateOf(Offset.Zero) }
     var creatorAnchor by remember { mutableStateOf(Offset.Zero) }
     var assigneeAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -1107,9 +1104,8 @@ private fun SharedTaskCard(
     onStatusBadgeClick: (Offset) -> Unit,
     onLongPress: (Offset) -> Unit
 ) {
-    // Capture the card root so a long-press offset reported in card-local coords can be
-    // converted to root coords for the overlay menu anchor.
-    val rootPos = remember(task.id.value) { SlockMutableOffsetRef() }
+    // Keep a live card coordinate so long-press conversion remains correct after scrolling.
+    val rootAnchor = remember(task.id.value) { SlockLiveRootAnchorRef() }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
     val description = task.description?.takeIf { it.isNotBlank() }
@@ -1119,7 +1115,7 @@ private fun SharedTaskCard(
             .padding(end = 3.dp, bottom = 3.dp)
             .then(
                 if (captureLongPressAnchor) {
-                    Modifier.onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+                    Modifier.slockCaptureLiveRootAnchor(rootAnchor)
                 } else {
                     Modifier
                 }
@@ -1144,8 +1140,7 @@ private fun SharedTaskCard(
                         onTap = { if (!updating) currentOnClick() },
                         onLongPress = { localOffset ->
                             if (!updating) {
-                                val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
-                                currentOnLongPress(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                                rootAnchor.resolve(localOffset)?.let(currentOnLongPress)
                             }
                         }
                     )
