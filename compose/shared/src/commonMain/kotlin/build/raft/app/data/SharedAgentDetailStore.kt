@@ -710,6 +710,8 @@ private fun RealtimeAgentActivityEntry.toAgentActivityEntry(
         toolInput = toolInput,
         statusActivity = statusActivity,
         statusDetail = statusDetail,
+        isSubagent = isSubagent,
+        subagentType = subagentType,
         expandable = expandable,
         refTextEnabled = refTextEnabled
     )

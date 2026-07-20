@@ -858,7 +858,9 @@ class SharedAgentDetailStoreTest {
                                 RealtimeAgentActivityDetail("Input", "Structured input: cmd")
                             ),
                             toolName = "run_command",
-                            toolInput = "Structured input: cmd"
+                            toolInput = "Structured input: cmd",
+                            isSubagent = true,
+                            subagentType = "Plan"
                         )
                     )
                 ),
@@ -873,6 +875,8 @@ class SharedAgentDetailStoreTest {
         assertEquals("Structured input: cmd", rows.single().body)
         assertEquals(listOf("Tool" to "run_command", "Input" to "Structured input: cmd"), rows.single().details)
         assertEquals("run_command", rows.single().toolName)
+        assertEquals(true, rows.single().isSubagent)
+        assertEquals("Plan", rows.single().subagentType)
         assertEquals("1782367200000", rows.single().timestamp)
     }
 }

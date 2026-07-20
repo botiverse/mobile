@@ -605,6 +605,11 @@ class RealtimeEventMapperTest {
                       "toolInput": {
                         "cmd": "echo hello",
                         "token": "secret"
+                      },
+                      "subagent": {
+                        "parentToolUseId": "toolu-outer",
+                        "subagentType": "Plan",
+                        "phase": "active"
                       }
                     },
                     { "kind": "text", "text": "hello" },
@@ -625,12 +630,49 @@ class RealtimeEventMapperTest {
         assertEquals("Run command", rows[0].title)
         assertEquals("Structured input: cmd", rows[0].body)
         assertEquals("run_command", rows[0].toolName)
+        assertEquals(true, rows[0].isSubagent)
+        assertEquals("Plan", rows[0].subagentType)
         assertEquals("1782367200000", rows[0].timestamp)
         assertEquals("Output", rows[1].title)
         assertEquals("hello", rows[1].body)
         assertEquals("Working", rows[2].title)
         assertEquals("Running command", rows[2].body)
         assertEquals("working", rows[2].statusActivity)
+    }
+
+    @Test
+    fun agentActivityPreservesStoppedReasonAndTypelessSubagentLineage() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-1",
+                  "activity": "offline",
+                  "detail": "Computer shutdown",
+                  "entries": [
+                    {
+                      "kind": "tool_start",
+                      "toolName": "check_messages",
+                      "subagent": { "parentToolUseId": "toolu-outer" }
+                    },
+                    {
+                      "kind": "status",
+                      "activity": "offline",
+                      "detail": "Computer shutdown",
+                      "detailKind": "stopped"
+                    }
+                  ]
+                }
+                """.trimIndent()
+            )
+
+        val rows = assertIs<MemberPresenceUpdated>(event).activityEntries
+        assertEquals(2, rows.size)
+        assertEquals(true, rows[0].isSubagent)
+        assertEquals(null, rows[0].subagentType)
+        assertEquals("Stopped", rows[1].title)
+        assertEquals("Computer shutdown", rows[1].body)
     }
 
     @Test
