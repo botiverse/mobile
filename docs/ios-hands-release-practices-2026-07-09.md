@@ -75,6 +75,13 @@ helper fails fast if the installed CLI package does not expose
 artifacts, so the CI side is not blocked by the Hands receiver rollout or npm
 publication timing.
 
+Reviewed bilingual release notes live at
+`change-logs/<version>/ios/{zh-CN,en}.md`. The workflow sends both files to
+Hands when the pair exists, falls back to the historical root-level pair for
+older versions, and uses the generated git history only when neither reviewed
+pair is available. The platform directory already supplies the context, so
+individual bullets do not repeat "iOS".
+
 The Hands CLI package is `@botiverse/hands-cli` and the binary is `hands`.
 CI sets `HANDS_API=https://hands.build` so large IPA uploads go directly to
 Hands instead of through the legacy Quiver reverse proxy. CI continues to use

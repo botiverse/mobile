@@ -10,6 +10,7 @@ on:
       - "scripts/validate_ohos_hap_resources.sh"
       - "scripts/validate_ohos_app_pack.sh"
       - "docs/ohos-release-ci.md"
+      - "change-logs/**/ohos/*.md"
   workflow_dispatch:
     inputs:
       version_major:
@@ -671,6 +672,9 @@ jobs:
           metadata="$RUNNER_TEMP/ohos-release/ohos-release-metadata.json"
           test -n "$app" && test -n "$hap" && test -s "$metadata"
 
+          platform_changelog_dir="$GITHUB_WORKSPACE/change-logs/$SLOCK_OHOS_VERSION_NAME/ohos"
+          legacy_changelog_dir="$GITHUB_WORKSPACE/change-logs/$SLOCK_OHOS_VERSION_NAME"
+
           args=(
             --json
             builds publish-ohos raft-ohos
@@ -680,7 +684,6 @@ jobs:
             --channel main
             --version-name "$SLOCK_OHOS_VERSION_NAME"
             --version-code "$SLOCK_OHOS_VERSION_CODE"
-            --changelog "Automated OHOS release draft from ${GITHUB_SHA}"
             --source-commit "$GITHUB_SHA"
             --source-branch "$GITHUB_REF_NAME"
             --ci-provider github-actions
@@ -688,6 +691,22 @@ jobs:
             --ci-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             --draft
           )
+          if [[ -s "$platform_changelog_dir/zh-CN.md" && -s "$platform_changelog_dir/en.md" ]]; then
+            args+=(
+              --changelog-file "zh-CN=$platform_changelog_dir/zh-CN.md"
+              --changelog-file "en=$platform_changelog_dir/en.md"
+            )
+            echo "Using reviewed OHOS changelog from change-logs/$SLOCK_OHOS_VERSION_NAME/ohos/"
+          elif [[ -s "$legacy_changelog_dir/zh-CN.md" && -s "$legacy_changelog_dir/en.md" ]]; then
+            args+=(
+              --changelog-file "zh-CN=$legacy_changelog_dir/zh-CN.md"
+              --changelog-file "en=$legacy_changelog_dir/en.md"
+            )
+            echo "Using legacy reviewed changelog from change-logs/$SLOCK_OHOS_VERSION_NAME/"
+          else
+            args+=(--changelog "Automated OHOS release draft from ${GITHUB_SHA}")
+            echo "Reviewed OHOS changelog not found; falling back to the automated draft note."
+          fi
           symbols="$(find "$RUNNER_TEMP/ohos-release" -maxdepth 1 -type f -name 'ohos-symbols-*.tar.gz' -print -quit)"
           if [[ -n "$symbols" ]]; then
             args+=(--symbols "$symbols")

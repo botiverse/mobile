@@ -161,9 +161,13 @@ then create reviewed notes in two files. Do not paste raw commit subjects into
 the release.
 
 ```text
-artifacts/release-notes/1.2.2/zh-CN.md
-artifacts/release-notes/1.2.2/en.md
+change-logs/1.2.2/android/zh-CN.md
+change-logs/1.2.2/android/en.md
 ```
+
+The Android workflow prefers this platform directory. It falls back to the
+historical `change-logs/<version>/{zh-CN,en}.md` layout only for older releases
+that predate platform-specific notes.
 
 Apply the house format from the release-practices document:
 
@@ -245,8 +249,8 @@ scripts/finalize_android_hands_release.sh \
   --version 1.2.2 \
   --build 0 \
   --channel main \
-  --zh-notes artifacts/release-notes/1.2.2/zh-CN.md \
-  --en-notes artifacts/release-notes/1.2.2/en.md \
+  --zh-notes change-logs/1.2.2/android/zh-CN.md \
+  --en-notes change-logs/1.2.2/android/en.md \
   --confirm-publish
 ```
 

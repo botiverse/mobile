@@ -469,14 +469,21 @@ jobs:
         shell: bash
         env:
           SLOCK_RELEASE_CHANGELOG_FILE: ${{ github.workspace }}/changelog.txt
-          SLOCK_RELEASE_CHANGELOG_ZH_FILE: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}/zh-CN.md
-          SLOCK_RELEASE_CHANGELOG_EN_FILE: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}/en.md
+          SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}/android
+          SLOCK_RELEASE_CHANGELOG_LEGACY_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}
         run: |
           set -euo pipefail
-          if [ -s "${SLOCK_RELEASE_CHANGELOG_ZH_FILE}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_EN_FILE}" ]; then
-            echo "Using reviewed bilingual changelog from change-logs/${{ needs.resolve.outputs.version_name }}/"
+          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ]; then
+            export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md"
+            export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md"
+            echo "Using reviewed Android changelog from change-logs/${{ needs.resolve.outputs.version_name }}/android/"
+          elif [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md" ]; then
+            export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md"
+            export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md"
+            echo "Using legacy reviewed changelog from change-logs/${{ needs.resolve.outputs.version_name }}/"
           else
-            echo "Reviewed bilingual changelog not found; falling back to generated git history."
+            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE
+            echo "Reviewed Android changelog not found; falling back to generated git history."
           fi
           # The release helper handles metadata.json generation, channel
           # routing, and Hands CLI invocation. Build + sign were already
@@ -568,7 +575,7 @@ jobs:
               echo
               echo '\`\`\`sh'
               echo "hands releases show raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
-              echo "hands releases update raft-android ${{ steps.publish-quiver-release.outputs.release_id }} --changelog-file zh=zh.md --changelog-file en=en.md"
+              echo "hands releases update raft-android ${{ steps.publish-quiver-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md"
               echo "hands releases publish raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
               echo '\`\`\`'
             fi

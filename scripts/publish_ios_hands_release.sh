@@ -109,6 +109,8 @@ Environment overrides:
   SLOCK_HANDS_DRAFT=1
   SLOCK_IOS_APPSTORE_BUILD_NUMBER=<buildNumber>
   SLOCK_IOS_TESTFLIGHT_STATUS=uploaded
+  SLOCK_RELEASE_CHANGELOG_ZH_FILE=change-logs/1.6.0/ios/zh-CN.md
+  SLOCK_RELEASE_CHANGELOG_EN_FILE=change-logs/1.6.0/ios/en.md
   SLOCK_RELEASE_CHANGELOG_FILE=changelog.txt
   SLOCK_HANDS_DRY_RUN=1
 
@@ -314,7 +316,13 @@ fi
 if [ -n "${TESTFLIGHT_STATUS}" ]; then
   HANDS_ARGS+=(--testflight-status "${TESTFLIGHT_STATUS}")
 fi
-if [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
+if [ -n "${SLOCK_RELEASE_CHANGELOG_ZH_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_ZH_FILE}" ] &&
+  [ -n "${SLOCK_RELEASE_CHANGELOG_EN_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_EN_FILE}" ]; then
+  HANDS_ARGS+=(
+    --changelog-file "zh-CN=${SLOCK_RELEASE_CHANGELOG_ZH_FILE}"
+    --changelog-file "en=${SLOCK_RELEASE_CHANGELOG_EN_FILE}"
+  )
+elif [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
   HANDS_ARGS+=(--changelog-file "${SLOCK_RELEASE_CHANGELOG_FILE}")
 fi
 if [ "${DRAFT}" = "1" ]; then

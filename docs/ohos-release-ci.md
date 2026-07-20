@@ -82,3 +82,10 @@ for 30 days. The workflow uses `hands builds publish-ohos --draft` so the
 `.app`, `.hap`, metadata, and symbols share one Hands build while remaining
 invisible to public update checks until the draft is reviewed and activated.
 Signing material is never uploaded to Hands.
+
+Reviewed bilingual release notes live at
+`change-logs/<version>/ohos/{zh-CN,en}.md`. The workflow sends both files to
+Hands when the pair exists, falls back to the historical root-level pair for
+older versions, and uses its automated draft note only when neither reviewed
+pair is available. The platform directory already supplies the context, so
+individual bullets do not repeat "OHOS" or "HarmonyOS".
