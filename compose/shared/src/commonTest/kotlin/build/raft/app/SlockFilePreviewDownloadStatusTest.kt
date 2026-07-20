@@ -16,6 +16,29 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalSerializationApi::class)
 class SlockFilePreviewDownloadStatusTest {
+    private val englishDownloadTerms =
+        SlockFilePreviewDownloadStatusTerms(
+            downloading = "Downloading",
+            paused = "Paused",
+            saving = "Saving"
+        )
+    private val englishActionTerms =
+        SlockFilePreviewActionTerms(
+            download = "Download",
+            install = "Install",
+            open = "Open",
+            openWith = "Open with..."
+        )
+    private val englishVideoTerms =
+        SlockFilePreviewVideoStateTerms(
+            playing = "Playing",
+            buffering = "Buffering",
+            paused = "Paused",
+            ended = "Ended",
+            playbackFailed = "Playback failed",
+            ready = "Ready"
+        )
+
     @Test
     fun editorSelectedToolUsesTheActiveIconTone() {
         assertEquals(
@@ -424,7 +447,8 @@ class SlockFilePreviewDownloadStatusTest {
                     downloadedBytes = 4L * 1024L * 1024L,
                     totalBytes = 10L * 1024L * 1024L,
                     bytesPerSecond = 512L * 1024L
-                )
+                ),
+                englishDownloadTerms
             )
 
         assertEquals("Downloading 42% · 512 KB/s", label)
@@ -440,7 +464,8 @@ class SlockFilePreviewDownloadStatusTest {
                     downloadedBytes = 4L * 1024L * 1024L,
                     totalBytes = 10L * 1024L * 1024L,
                     bytesPerSecond = null
-                )
+                ),
+                englishDownloadTerms
             )
 
         assertEquals("Paused 42%", label)
@@ -455,7 +480,8 @@ class SlockFilePreviewDownloadStatusTest {
                     downloadedBytes = 1536L,
                     totalBytes = null,
                     bytesPerSecond = null
-                )
+                ),
+                englishDownloadTerms
             )
 
         assertEquals("Downloading 1 KB", label)
@@ -463,7 +489,7 @@ class SlockFilePreviewDownloadStatusTest {
 
     @Test
     fun initialDownloadStatusDoesNotPretendBytesHaveTransferred() {
-        val label = slockFilePreviewDownloadStatusLabel(SlockFilePreviewInitialDownloadProgress)
+        val label = slockFilePreviewDownloadStatusLabel(SlockFilePreviewInitialDownloadProgress, englishDownloadTerms)
 
         assertEquals("Downloading...", label)
     }
@@ -477,10 +503,54 @@ class SlockFilePreviewDownloadStatusTest {
                     percent = 42,
                     downloadedBytes = 420L,
                     totalBytes = 1_000L
-                )
+                ),
+                englishDownloadTerms
             )
 
         assertEquals("Saving 42%", label)
+    }
+
+    @Test
+    fun downloadStatusLabelUsesLocalizedTerms() {
+        val terms =
+            SlockFilePreviewDownloadStatusTerms(
+                downloading = "下载中",
+                paused = "已暂停",
+                saving = "保存中"
+            )
+
+        assertEquals(
+            "下载中 42% · 512 KB/s",
+            slockFilePreviewDownloadStatusLabel(
+                BridgeAttachmentDownloadProgress(
+                    percent = 42,
+                    downloadedBytes = 4L * 1024L * 1024L,
+                    totalBytes = 10L * 1024L * 1024L,
+                    bytesPerSecond = 512L * 1024L
+                ),
+                terms
+            )
+        )
+        assertEquals(
+            "已暂停...",
+            slockFilePreviewActiveDownloadStatusLabel(
+                progress = null,
+                status = "paused",
+                terms = terms
+            )
+        )
+        assertEquals(
+            "保存中 42%",
+            slockFilePreviewDownloadStatusLabel(
+                BridgeAttachmentDownloadProgress(
+                    phase = "export_copy",
+                    percent = 42,
+                    downloadedBytes = 420L,
+                    totalBytes = 1_000L
+                ),
+                terms
+            )
+        )
     }
 
     @Test
@@ -500,28 +570,24 @@ class SlockFilePreviewDownloadStatusTest {
 
     @Test
     fun activeDownloadStatusStaysIndeterminateBeforeNativeProgress() {
-        val label = slockFilePreviewActiveDownloadStatusLabel(progress = null, status = "downloading")
+        val label =
+            slockFilePreviewActiveDownloadStatusLabel(
+                progress = null,
+                status = "downloading",
+                terms = englishDownloadTerms
+            )
 
         assertEquals("Downloading...", label)
     }
 
     @Test
     fun pausedDownloadStatusStaysIndeterminateBeforeNativeProgress() {
-        val label = slockFilePreviewActiveDownloadStatusLabel(progress = null, status = "paused")
-
-        assertEquals("Paused...", label)
-    }
-
-    @Test
-    fun threadAttachmentOpeningStatusUsesIndeterminateFallback() {
-        val label = ThreadAttachmentOpenUiState(status = "downloading").threadAttachmentStatusLabel()
-
-        assertEquals("Downloading...", label)
-    }
-
-    @Test
-    fun threadAttachmentPausedStatusUsesIndeterminateFallback() {
-        val label = ThreadAttachmentOpenUiState(status = "paused").threadAttachmentStatusLabel()
+        val label =
+            slockFilePreviewActiveDownloadStatusLabel(
+                progress = null,
+                status = "paused",
+                terms = englishDownloadTerms
+            )
 
         assertEquals("Paused...", label)
     }
@@ -531,7 +597,8 @@ class SlockFilePreviewDownloadStatusTest {
         val label =
             slockFilePreviewPrimaryActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = false
+                cached = false,
+                terms = englishActionTerms
             )
 
         assertEquals("Download", label)
@@ -542,7 +609,8 @@ class SlockFilePreviewDownloadStatusTest {
         val label =
             slockFilePreviewPrimaryActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = true
+                cached = true,
+                terms = englishActionTerms
             )
 
         assertEquals("Open", label)
@@ -556,7 +624,8 @@ class SlockFilePreviewDownloadStatusTest {
                     externalFileName = "raft.apk",
                     externalMimeType = "application/vnd.android.package-archive"
                 ),
-                cached = true
+                cached = true,
+                terms = englishActionTerms
             )
 
         assertEquals("Install", label)
@@ -567,10 +636,50 @@ class SlockFilePreviewDownloadStatusTest {
         val label =
             slockFilePreviewOverflowActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
-                cached = false
+                cached = false,
+                terms = englishActionTerms
             )
 
         assertEquals("Open with...", label)
+    }
+
+    @Test
+    fun filePreviewActionsUseLocalizedTerms() {
+        val terms =
+            SlockFilePreviewActionTerms(
+                download = "下载",
+                install = "安装",
+                open = "打开",
+                openWith = "打开方式…"
+            )
+
+        assertEquals(
+            "下载",
+            slockFilePreviewPrimaryActionLabel(
+                SlockFilePreviewPayload(externalFileName = "report.pdf"),
+                cached = false,
+                terms = terms
+            )
+        )
+        assertEquals(
+            "安装",
+            slockFilePreviewPrimaryActionLabel(
+                SlockFilePreviewPayload(
+                    externalFileName = "raft.apk",
+                    externalMimeType = "application/vnd.android.package-archive"
+                ),
+                cached = true,
+                terms = terms
+            )
+        )
+        assertEquals(
+            "打开方式…",
+            slockFilePreviewOverflowActionLabel(
+                SlockFilePreviewPayload(externalFileName = "report.pdf"),
+                cached = false,
+                terms = terms
+            )
+        )
     }
 
     @Test
@@ -715,7 +824,8 @@ class SlockFilePreviewDownloadStatusTest {
             slockFilePreviewVideoTimeLabel(
                 currentTimeMs = 12_000,
                 totalTimeMs = 65_000,
-                playState = PlayState.PLAYING
+                playState = PlayState.PLAYING,
+                terms = englishVideoTerms
             )
         )
         assertEquals(
@@ -723,7 +833,40 @@ class SlockFilePreviewDownloadStatusTest {
             slockFilePreviewVideoTimeLabel(
                 currentTimeMs = 0,
                 totalTimeMs = 0,
-                playState = PlayState.ERROR
+                playState = PlayState.ERROR,
+                terms = englishVideoTerms
+            )
+        )
+    }
+
+    @Test
+    fun videoTimeLabelUsesLocalizedStateTerms() {
+        val terms =
+            SlockFilePreviewVideoStateTerms(
+                playing = "播放中",
+                buffering = "缓冲中",
+                paused = "已暂停",
+                ended = "播放结束",
+                playbackFailed = "播放失败",
+                ready = "就绪"
+            )
+
+        assertEquals(
+            "播放中 · 0:12 / 1:05",
+            slockFilePreviewVideoTimeLabel(
+                currentTimeMs = 12_000,
+                totalTimeMs = 65_000,
+                playState = PlayState.PLAYING,
+                terms = terms
+            )
+        )
+        assertEquals(
+            "播放失败 · 0:00",
+            slockFilePreviewVideoTimeLabel(
+                currentTimeMs = 0,
+                totalTimeMs = 0,
+                playState = PlayState.ERROR,
+                terms = terms
             )
         )
     }

@@ -149,16 +149,6 @@ internal data class ThreadAttachmentOpenUiState(
 internal fun ThreadAttachmentOpenUiState?.threadAttachmentIsOpening(): Boolean =
     this?.status == "downloading" || this?.status == "paused"
 
-internal fun ThreadAttachmentOpenUiState?.threadAttachmentStatusLabel(): String? =
-    when (this?.status) {
-        "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(progress, this.status)
-        "cancelled" -> message.ifBlank { "Download stopped" }
-        "no_app" -> "No app can open this file"
-        "storage_failed" -> "Storage unavailable"
-        "failed" -> "Download failed"
-        else -> null
-    }
-
 @Composable
 internal fun ThreadFilesContent(
     payload: KuiklyThreadFilesPayload,
@@ -289,13 +279,14 @@ private fun ThreadFileRow(
 }
 
 @Composable
-private fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel(): String? =
+internal fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel(): String? =
     when (this?.status) {
+        "downloading", "paused" -> slockFilePreviewLocalizedActiveDownloadStatusLabel(progress, this.status)
         "cancelled" -> stringResource(MR.strings.file_preview_download_stopped)
         "no_app" -> stringResource(MR.strings.file_preview_error_no_app)
         "storage_failed" -> stringResource(MR.strings.file_preview_error_storage_unavailable)
         "failed" -> stringResource(MR.strings.file_preview_download_failed)
-        else -> threadAttachmentStatusLabel()
+        else -> null
     }
 
 @Composable

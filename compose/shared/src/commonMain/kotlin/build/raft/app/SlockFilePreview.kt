@@ -372,7 +372,10 @@ private fun SlockFilePreviewStandalonePageContent() {
     var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
     val unableToSendComment = stringResource(MR.strings.file_preview_error_send_comment)
     val unableToResolveComment = stringResource(MR.strings.file_preview_error_resolve_comment)
+    val attachmentFallback = stringResource(MR.strings.file_preview_fallback_attachment)
+    val actionTerms = slockFilePreviewLocalizedActionTerms()
     val downloadStopped = stringResource(MR.strings.file_preview_download_stopped)
+    val downloadFailed = stringResource(MR.strings.file_preview_download_failed)
     val downloadSaved = stringResource(MR.strings.file_preview_download_saved)
     val unableToDownloadAttachment = stringResource(MR.strings.file_preview_error_download_attachment)
     val noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app)
@@ -382,6 +385,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     val unableToDeleteDownload = stringResource(MR.strings.file_preview_error_delete_download)
     val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
     val imageEditorExportFailed = stringResource(MR.strings.file_preview_error_editor_export)
+    val truncatedPreviewHint = stringResource(MR.strings.file_preview_truncated_open_with_hint)
     val attachmentCacheId = payload.attachmentCacheId()
     val attachmentCacheFileName = payload.attachmentCacheFileName()
     LaunchedEffect(downloadProgress?.downloadId, downloadProgress?.downloadedBytes) {
@@ -431,11 +435,11 @@ private fun SlockFilePreviewStandalonePageContent() {
                 attachment =
                     KuiklyThreadAttachmentItem(
                         id = payload.attachmentId,
-                        name = payload.externalFileName.ifBlank { payload.name.ifBlank { "Attachment" } },
+                        name = payload.externalFileName.ifBlank { payload.name.ifBlank { attachmentFallback } },
                         mimeType = payload.externalMimeType
                     ),
                 status = "loading",
-                pendingAnchorLabel = payload.externalFileName.ifBlank { payload.name.ifBlank { "Attachment" } }
+                pendingAnchorLabel = payload.externalFileName.ifBlank { payload.name.ifBlank { attachmentFallback } }
             )
         attachmentCommentsState = state
         loadAttachmentComments(state)
@@ -530,7 +534,12 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
             val resolutionJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val nextPayload = requestPayload.loadThreadAttachmentPreview(threadApi, networkClient) ?: return@launch
+                    val nextPayload =
+                        requestPayload.loadThreadAttachmentPreview(
+                            threadApi = threadApi,
+                            networkClient = networkClient,
+                            truncatedPreviewHint = truncatedPreviewHint
+                        ) ?: return@launch
                     if (
                         !imageGalleryResolutionJobs.ownsImageGalleryResolution(
                             requestPayload.attachmentId,
@@ -600,7 +609,11 @@ private fun SlockFilePreviewStandalonePageContent() {
         val nextPayload =
             when (payload.source) {
                 SlockFilePreviewSourceThreadAttachment ->
-                    payload.loadThreadAttachmentPreview(threadApi, networkClient)
+                    payload.loadThreadAttachmentPreview(
+                        threadApi = threadApi,
+                        networkClient = networkClient,
+                        truncatedPreviewHint = truncatedPreviewHint
+                    )
                 SlockFilePreviewSourceAgentWorkspace ->
                     payload.loadAgentWorkspacePreview(memberRepository)
                 else -> null
@@ -1007,7 +1020,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 if (canOpenComments) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewCommentsActionId,
-                        label = "Comments",
+                        label = stringResource(MR.strings.file_preview_action_comments),
                         icon = SlockLucideIconName.MessageCircle
                     )
                 } else {
@@ -1016,7 +1029,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 if (canOpenWith) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewOpenWithActionId,
-                        label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState),
+                        label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState, actionTerms),
                         icon = SlockLucideIconName.ExternalLink
                     )
                 } else {
@@ -1057,8 +1070,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                     onOpenUrl = {},
                     downloadStatusLabel =
                         when (downloadStatus) {
-                            "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(downloadProgress, downloadStatus)
-                            "failed" -> downloadMessage.ifBlank { "Download failed" }
+                            "downloading", "paused" ->
+                                slockFilePreviewLocalizedActiveDownloadStatusLabel(downloadProgress, downloadStatus)
+                            "failed" -> downloadMessage.ifBlank { downloadFailed }
                             else -> null
                         },
                     downloadInProgress = downloadActive,
@@ -1157,7 +1171,7 @@ internal fun SlockFilePreviewAttachmentCommentsPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "COMMENTS",
+                text = stringResource(MR.strings.thread_comments_title),
                 style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack,
                 modifier = Modifier.weight(1f)
@@ -2185,8 +2199,8 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
             "video" -> MR.strings.file_preview_video.desc()
             else -> MR.strings.file_preview_title.desc()
         },
-        subtitle = name.ifBlank { "Attachment" },
-        name = name.ifBlank { "Attachment" },
+        subtitle = name,
+        name = name,
         path = name,
         meta = genericAttachmentMetaLine(),
         imageUrl =
@@ -2244,7 +2258,8 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Sl
 
 private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    networkClient: SlockNetworkClient
+    networkClient: SlockNetworkClient,
+    truncatedPreviewHint: String
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
     val wantsMarkdown =
@@ -2279,12 +2294,12 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
                 mimeType = externalMimeType
             )
     return when {
-        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
+        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
         wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
-        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
+        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
         else ->
             copy(
                 kind = "unsupported",
@@ -2405,18 +2420,16 @@ private suspend fun fetchServerAttachmentPreview(
     return preview.takeIf { it.isOk }
 }
 
-private const val SlockFilePreviewServerTruncatedNotice =
-    "\n\nPreview truncated. Open with system viewer for the full file."
-
 private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    networkClient: SlockNetworkClient
+    networkClient: SlockNetworkClient,
+    truncatedPreviewHint: String
 ): SlockFilePreviewPayload {
     val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
     val serverText = (serverPreview?.content as? AttachmentPreviewContent.Text)?.text
     if (serverPreview != null && serverText != null) {
         val previewBody =
-            if (serverPreview.truncated) serverText + SlockFilePreviewServerTruncatedNotice else serverText
+            if (serverPreview.truncated) serverText + "\n\n$truncatedPreviewHint" else serverText
         return copy(
             kind = "text",
             titleDesc = MR.strings.file_preview_text.desc(),
@@ -2467,8 +2480,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
     val body = response.bodyText.orEmpty()
     val previewBody =
         if (body.length > SlockFilePreviewTextMaxChars) {
-            body.take(SlockFilePreviewTextMaxChars) +
-                "\n\nPreview truncated. Open with system viewer for the full file."
+            body.take(SlockFilePreviewTextMaxChars) + "\n\n$truncatedPreviewHint"
         } else {
             body
         }
@@ -2485,14 +2497,15 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
 
 private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    networkClient: SlockNetworkClient
+    networkClient: SlockNetworkClient,
+    truncatedPreviewHint: String
 ): SlockFilePreviewPayload {
     val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
     val serverMarkdown = (serverPreview?.content as? AttachmentPreviewContent.Markdown)?.markdown
     if (serverPreview != null && serverMarkdown != null) {
         val previewBody =
             if (serverPreview.truncated) {
-                serverMarkdown + "\n\n_Preview truncated. Open with system viewer for the full file._"
+                serverMarkdown + "\n\n$truncatedPreviewHint"
             } else {
                 serverMarkdown
             }
@@ -2554,8 +2567,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
             )
     val previewBody =
         if (body.length > SlockFilePreviewMarkdownMaxChars) {
-            body.take(SlockFilePreviewMarkdownMaxChars) +
-                "\n\n_Preview truncated. Open with system viewer for the full file._"
+            body.take(SlockFilePreviewMarkdownMaxChars) + "\n\n$truncatedPreviewHint"
         } else {
             body
         }
@@ -2813,6 +2825,8 @@ internal fun SlockFilePreviewPayloadContent(
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
+    val actionTerms = slockFilePreviewLocalizedActionTerms()
+    val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
     if (payload.kind == "loading" && payload.shouldRenderImagePreview()) {
         SlockFilePreviewImageGallerySurface(
             payload = payload,
@@ -2909,7 +2923,10 @@ internal fun SlockFilePreviewPayloadContent(
                         statusLabel = downloadStatusLabel,
                         showProgress = downloadInProgress,
                         progressPercent = downloadProgressPercent,
-                        actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
+                        actionLabel =
+                            onDownload
+                                ?.takeIf { !downloadInProgress }
+                                ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached, actionTerms) },
                         actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
                         actionEnabled = true,
                         onAction = onDownload,
@@ -2986,13 +3003,16 @@ internal fun SlockFilePreviewPayloadContent(
         else ->
             SlockFilePreviewGenericCard(
                 iconName = slockFilePreviewFileIconName(payload),
-                name = payload.name.ifBlank { payload.path.ifBlank { "File" } },
+                name = payload.name.ifBlank { payload.path.ifBlank { fallbackFile } },
                 meta = payload.meta,
                 message = slockFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null).localized(),
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
-                actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
+                actionLabel =
+                    onDownload
+                        ?.takeIf { !downloadInProgress }
+                        ?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached, actionTerms) },
                 actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
                 actionEnabled = true,
                 onAction = onDownload,
@@ -3254,7 +3274,7 @@ private fun SlockFilePreviewVideoControls(
                 backgroundColor = SlockColor.SurfaceWhite
             )
             Text(
-                text = slockFilePreviewVideoTimeLabel(currentTimeMs, totalTimeMs, playState),
+                text = slockFilePreviewLocalizedVideoTimeLabel(currentTimeMs, totalTimeMs, playState),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.SurfaceWhite,
                 maxLines = 1,
@@ -3422,15 +3442,29 @@ private fun com.tencent.kuikly.core.views.VideoAttr.seekToTimeMs(request: SlockF
     setProp(SlockFilePreviewVideoSeekProp, "${request.id}:${request.timeMs}")
 }
 
-internal fun slockFilePreviewVideoTimeLabel(currentTimeMs: Int, totalTimeMs: Int, playState: PlayState): String {
+internal data class SlockFilePreviewVideoStateTerms(
+    val playing: String,
+    val buffering: String,
+    val paused: String,
+    val ended: String,
+    val playbackFailed: String,
+    val ready: String
+)
+
+internal fun slockFilePreviewVideoTimeLabel(
+    currentTimeMs: Int,
+    totalTimeMs: Int,
+    playState: PlayState,
+    terms: SlockFilePreviewVideoStateTerms
+): String {
     val stateLabel =
         when (playState) {
-            PlayState.PLAYING -> "Playing"
-            PlayState.BUFFERING -> "Buffering"
-            PlayState.PAUSED -> "Paused"
-            PlayState.PLAY_END -> "Ended"
-            PlayState.ERROR -> "Playback failed"
-            PlayState.NONE -> "Ready"
+            PlayState.PLAYING -> terms.playing
+            PlayState.BUFFERING -> terms.buffering
+            PlayState.PAUSED -> terms.paused
+            PlayState.PLAY_END -> terms.ended
+            PlayState.ERROR -> terms.playbackFailed
+            PlayState.NONE -> terms.ready
         }
     val current = currentTimeMs.slockFilePreviewVideoDurationLabel()
     val total = totalTimeMs.takeIf { it > 0 }?.slockFilePreviewVideoDurationLabel()
@@ -3440,6 +3474,27 @@ internal fun slockFilePreviewVideoTimeLabel(currentTimeMs: Int, totalTimeMs: Int
         "$stateLabel · $current / $total"
     }
 }
+
+@Composable
+private fun slockFilePreviewLocalizedVideoTimeLabel(
+    currentTimeMs: Int,
+    totalTimeMs: Int,
+    playState: PlayState
+): String =
+    slockFilePreviewVideoTimeLabel(
+        currentTimeMs = currentTimeMs,
+        totalTimeMs = totalTimeMs,
+        playState = playState,
+        terms =
+            SlockFilePreviewVideoStateTerms(
+                playing = stringResource(MR.strings.file_preview_media_playing),
+                buffering = stringResource(MR.strings.file_preview_media_buffering),
+                paused = stringResource(MR.strings.file_preview_media_paused),
+                ended = stringResource(MR.strings.file_preview_media_ended),
+                playbackFailed = stringResource(MR.strings.file_preview_media_playback_failed),
+                ready = stringResource(MR.strings.file_preview_media_ready)
+            )
+    )
 
 internal fun slockFilePreviewVideoProgressPercent(currentTimeMs: Int, totalTimeMs: Int): Int? {
     if (totalTimeMs <= 0) return null
@@ -3693,14 +3748,15 @@ private fun SlockFilePreviewPayload.imageGalleryDragOffsetWithResistance(dragDis
 
 @Composable
 private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
+    val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
     val source =
         name
             .ifBlank { path }
             .ifBlank { externalFileName }
             .ifBlank { title }
             .ifBlank { titleDesc.localized() }
-            .ifBlank { "File" }
-    return source.slockFilePreviewFileName()
+            .ifBlank { fallbackFile }
+    return source.slockFilePreviewFileName(fallbackFile)
 }
 
 @Composable
@@ -3716,7 +3772,7 @@ internal fun SlockFilePreviewPayload.slockFilePreviewVisibleSubtitle(headerTitle
         .firstOrNull { candidate ->
             candidate.isNotBlank() &&
                 candidate != headerTitle &&
-                candidate.slockFilePreviewFileName() != headerTitle &&
+                candidate.slockFilePreviewFileName(fallback = "") != headerTitle &&
                 !candidate.endsWith("preview", ignoreCase = true)
         }
 
@@ -3740,9 +3796,9 @@ private fun String.isMimeTypePresentationSegment(): Boolean {
 private fun SlockFilePreviewPayload.localizedMessage(): String =
     message.ifBlank { messageDesc?.localized().orEmpty() }
 
-private fun String.slockFilePreviewFileName(): String {
+private fun String.slockFilePreviewFileName(fallback: String): String {
     val normalized = trim().replace('\\', '/')
-    return normalized.substringAfterLast('/').ifBlank { normalized.ifBlank { "File" } }
+    return normalized.substringAfterLast('/').ifBlank { normalized.ifBlank { fallback } }
 }
 
 private fun KuiklyThreadAttachmentItem.toSlockFilePreviewGalleryImage(): SlockFilePreviewGalleryImage =
@@ -3758,13 +3814,15 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
     previous: SlockFilePreviewPayload,
     imageGalleryIndex: Int
 ): SlockFilePreviewPayload {
-    val title = name.ifBlank { "Attachment" }
+    val title = name
+    val externalFileName = name.ifBlank { "attachment-${attachmentId.take(8)}" }
     val meta = sizeLabel
     if (previous.composerImageActionId.isNotBlank() && previous.composerImageCanComplete) {
         return previous.copy(
             kind = "image",
             requestedKind = "image",
-            title = "Image preview",
+            title = "",
+            titleDesc = MR.strings.file_preview_image.desc(),
             subtitle = title,
             name = title,
             path = title,
@@ -3773,7 +3831,7 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
             message = "",
             messageDesc = null,
             error = null,
-            externalFileName = title,
+            externalFileName = externalFileName,
             externalMimeType = mimeType,
             source = "",
             attachmentId = "",
@@ -3802,7 +3860,7 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
         error = null,
         externalUrl = null,
         videoUrl = null,
-        externalFileName = title.ifBlank { "attachment-${attachmentId.take(8)}" },
+        externalFileName = externalFileName,
         externalMimeType = mimeType,
         source = SlockFilePreviewSourceThreadAttachment,
         attachmentId = attachmentId,
@@ -3859,15 +3917,24 @@ private fun Long?.slockFilePreviewSizeLabel(): String? {
 private val SlockPresentationMimeTopLevels =
     setOf("application", "audio", "chemical", "example", "font", "image", "message", "model", "multipart", "text", "video")
 
-internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownloadProgress?): String {
+internal data class SlockFilePreviewDownloadStatusTerms(
+    val downloading: String,
+    val paused: String,
+    val saving: String
+)
+
+internal fun slockFilePreviewDownloadStatusLabel(
+    progress: BridgeAttachmentDownloadProgress?,
+    terms: SlockFilePreviewDownloadStatusTerms
+): String {
     val percent = progress?.percent
     val speedLabel = progress?.bytesPerSecond.slockFilePreviewSpeedLabel()
     val downloadedLabel = progress?.downloadedBytes?.takeIf { it > 0L }.slockFilePreviewSizeLabel()
     val verb =
         when {
-            progress?.status == "paused" -> "Paused"
-            progress?.phase?.startsWith("export_") == true -> "Saving"
-            else -> "Downloading"
+            progress?.status == "paused" -> terms.paused
+            progress?.phase?.startsWith("export_") == true -> terms.saving
+            else -> terms.downloading
         }
     val primary =
         when {
@@ -3886,15 +3953,32 @@ internal fun slockAttachmentDownloadControlAllowed(
 
 internal fun slockFilePreviewActiveDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,
-    status: String
+    status: String,
+    terms: SlockFilePreviewDownloadStatusTerms
 ): String {
     val activeProgress =
         progress
             ?: SlockFilePreviewInitialDownloadProgress.copy(
                 status = if (status == "paused") "paused" else "progress"
             )
-    return slockFilePreviewDownloadStatusLabel(activeProgress)
+    return slockFilePreviewDownloadStatusLabel(activeProgress, terms)
 }
+
+@Composable
+internal fun slockFilePreviewLocalizedActiveDownloadStatusLabel(
+    progress: BridgeAttachmentDownloadProgress?,
+    status: String
+): String =
+    slockFilePreviewActiveDownloadStatusLabel(
+        progress = progress,
+        status = status,
+        terms =
+            SlockFilePreviewDownloadStatusTerms(
+                downloading = stringResource(MR.strings.file_preview_download_downloading),
+                paused = stringResource(MR.strings.file_preview_download_paused),
+                saving = stringResource(MR.strings.file_preview_download_saving)
+            )
+    )
 
 internal val SlockFilePreviewInitialDownloadProgress =
     BridgeAttachmentDownloadProgress(
@@ -3908,11 +3992,31 @@ internal val SlockFilePreviewInitialDownloadProgress =
         bytesPerSecond = null
     )
 
-internal fun slockFilePreviewPrimaryActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =
+internal data class SlockFilePreviewActionTerms(
+    val download: String,
+    val install: String,
+    val open: String,
+    val openWith: String
+)
+
+@Composable
+internal fun slockFilePreviewLocalizedActionTerms(): SlockFilePreviewActionTerms =
+    SlockFilePreviewActionTerms(
+        download = stringResource(MR.strings.file_preview_action_download),
+        install = stringResource(MR.strings.file_preview_action_install),
+        open = stringResource(MR.strings.file_preview_action_open),
+        openWith = stringResource(MR.strings.file_preview_action_open_with)
+    )
+
+internal fun slockFilePreviewPrimaryActionLabel(
+    payload: SlockFilePreviewPayload,
+    cached: Boolean,
+    terms: SlockFilePreviewActionTerms
+): String =
     when {
-        !cached -> "Download"
-        payload.isAndroidPackageArchive() -> "Install"
-        else -> "Open"
+        !cached -> terms.download
+        payload.isAndroidPackageArchive() -> terms.install
+        else -> terms.open
     }
 
 internal enum class SlockFilePreviewPrimaryAction {
@@ -3930,10 +4034,14 @@ internal fun slockFilePreviewUnsupportedFileMessage(payload: SlockFilePreviewPay
         else -> payload.messageDesc ?: MR.strings.file_preview_no_preview.desc()
     }
 
-internal fun slockFilePreviewOverflowActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =
+internal fun slockFilePreviewOverflowActionLabel(
+    payload: SlockFilePreviewPayload,
+    cached: Boolean,
+    terms: SlockFilePreviewActionTerms
+): String =
     when {
-        cached && payload.isAndroidPackageArchive() -> "Install"
-        else -> "Open with..."
+        cached && payload.isAndroidPackageArchive() -> terms.install
+        else -> terms.openWith
     }
 
 internal fun slockFilePreviewShouldTrackOpenProgress(cached: Boolean): Boolean = !cached
@@ -4197,7 +4305,7 @@ internal fun SlockFilePreviewGenericCard(
         SlockLucideIcon(iconName, modifier = Modifier.size(72.dp), color = "#FF000000")
         Box(modifier = Modifier.height(SlockSpacing.Md))
         Text(
-            text = name.ifBlank { "File" },
+            text = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
             style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp),
             color = SlockColor.TextBlack,
             maxLines = 2,
@@ -4227,7 +4335,12 @@ internal fun SlockFilePreviewGenericCard(
         if (showProgress) {
             Box(modifier = Modifier.height(SlockSpacing.Md))
             SlockFilePreviewDownloadStatusBar(
-                statusLabel = statusLabel ?: "Downloading 0%",
+                statusLabel =
+                    statusLabel
+                        ?: slockFilePreviewLocalizedActiveDownloadStatusLabel(
+                            progress = SlockFilePreviewInitialDownloadProgress.copy(percent = progressPercent ?: 0),
+                            status = if (downloadPaused) "paused" else "downloading"
+                        ),
                 showProgress = true,
                 progressPercent = progressPercent ?: 0,
                 downloadPaused = downloadPaused,
@@ -4313,7 +4426,12 @@ private fun SlockFilePreviewDownloadStatusOverlay(
         content()
         if (statusLabel != null || showProgress) {
             SlockFilePreviewDownloadStatusBar(
-                statusLabel = statusLabel ?: "Downloading...",
+                statusLabel =
+                    statusLabel
+                        ?: slockFilePreviewLocalizedActiveDownloadStatusLabel(
+                            progress = null,
+                            status = if (downloadPaused) "paused" else "downloading"
+                        ),
                 showProgress = showProgress,
                 progressPercent = progressPercent,
                 downloadPaused = downloadPaused,
@@ -4376,7 +4494,10 @@ private fun SlockFilePreviewDownloadControls(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SlockBrutalActionButton(
-            label = if (paused) "Resume" else "Pause",
+            label =
+                stringResource(
+                    if (paused) MR.strings.file_preview_download_resume else MR.strings.file_preview_download_pause
+                ),
             onClick = onToggle,
             leadingIcon = if (paused) SlockLucideIconName.Play else SlockLucideIconName.Pause,
             minWidth = 92.dp,
@@ -4436,7 +4557,7 @@ internal fun SlockFilePreviewMarkdownPanel(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         SlockFilePreviewPanelHeader(
-            name = name.ifBlank { "Markdown" },
+            name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_markdown) },
             meta = meta,
             statusLabel = statusLabel
         )
@@ -4462,7 +4583,7 @@ internal fun SlockFilePreviewMarkdownPanel(
                 SlockFilePreviewMessage(
                     iconName = SlockLucideIconName.FileText,
                     title = stringResource(MR.strings.file_preview_markdown_unavailable),
-                    detail = error.orEmpty().ifBlank { "Open with system viewer to inspect this file." },
+                    detail = error.orEmpty().ifBlank { stringResource(MR.strings.file_preview_markdown_open_with_hint) },
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
             else ->
@@ -4505,7 +4626,11 @@ internal fun SlockFilePreviewTextPanel(
             .border(SlockStroke.Default, SlockColor.BorderBlack),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        SlockFilePreviewPanelHeader(name = name.ifBlank { "Text file" }, meta = meta, statusLabel = null)
+        SlockFilePreviewPanelHeader(
+            name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_text_file) },
+            meta = meta,
+            statusLabel = null
+        )
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         Box(
             modifier = Modifier
@@ -4531,7 +4656,7 @@ internal fun SlockFilePreviewImagePanel(
     fallbackSource: String? = null,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    placeholderLabel: String = "IMG",
+    placeholderLabel: String? = null,
     backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
     borderWidth: com.tencent.kuikly.compose.ui.unit.Dp = SlockStroke.Default,
     zoomable: Boolean = true
@@ -4540,7 +4665,7 @@ internal fun SlockFilePreviewImagePanel(
         source = source,
         fallbackSource = fallbackSource,
         contentDescription = contentDescription,
-        placeholderLabel = placeholderLabel,
+        placeholderLabel = placeholderLabel ?: stringResource(MR.strings.file_preview_image_placeholder),
         modifier = modifier.fillMaxWidth(),
         backgroundColor = backgroundColor,
         borderWidth = borderWidth,

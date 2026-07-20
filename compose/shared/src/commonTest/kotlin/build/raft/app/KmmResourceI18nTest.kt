@@ -161,6 +161,40 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun filePreviewDownloadStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.file_preview_fallback_file,
+            MR.strings.file_preview_fallback_attachment,
+            MR.strings.file_preview_fallback_markdown,
+            MR.strings.file_preview_fallback_text_file,
+            MR.strings.file_preview_image_placeholder,
+            MR.strings.file_preview_action_comments,
+            MR.strings.file_preview_action_download,
+            MR.strings.file_preview_action_install,
+            MR.strings.file_preview_action_open,
+            MR.strings.file_preview_action_open_with,
+            MR.strings.file_preview_download_downloading,
+            MR.strings.file_preview_download_paused,
+            MR.strings.file_preview_download_saving,
+            MR.strings.file_preview_download_pause,
+            MR.strings.file_preview_download_resume,
+            MR.strings.file_preview_media_playing,
+            MR.strings.file_preview_media_buffering,
+            MR.strings.file_preview_media_paused,
+            MR.strings.file_preview_media_ended,
+            MR.strings.file_preview_media_playback_failed,
+            MR.strings.file_preview_media_ready,
+            MR.strings.file_preview_markdown_open_with_hint,
+            MR.strings.file_preview_truncated_open_with_hint
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "file preview download resources must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun createAndInviteModalStringResourcesAreGenerated() {
         listOf(
             MR.strings.channel_create_title,

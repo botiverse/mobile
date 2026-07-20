@@ -19185,7 +19185,7 @@ private fun ThreadAttachmentChip(
     val isOpening = openState.threadAttachmentIsOpening()
     val canOpenComments = commentsEnabled && !attachment.isImageAttachment() && !attachment.isPdfAttachment()
     val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
-    val statusLabel = openState.threadAttachmentStatusLabel()
+    val statusLabel = openState.localizedThreadAttachmentStatusLabel()
     val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
     val affordanceIcon =
         if (attachment.threadAttachmentUsesPreviewAffordance()) SlockLucideIconName.Eye else SlockLucideIconName.Download
