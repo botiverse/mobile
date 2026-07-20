@@ -107,7 +107,8 @@ class KeyValueStoreTest {
         listOf(
             SLOCK_AUTH_SESSION_MMKV_NAMESPACE to "auth session",
             SlockLocalPreferenceStore.KuiklyNamespace to "shared preference",
-            SharedApiEnvironmentStore.Namespace to "API environment"
+            SharedApiEnvironmentStore.Namespace to "API environment",
+            SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE to "Activity unread summary"
         ).forEach { (namespace, storageName) ->
             if (slockCreatePlatformAppScopeKeyValueStore(namespace) == null) {
                 assertFailsWith<IllegalStateException> {

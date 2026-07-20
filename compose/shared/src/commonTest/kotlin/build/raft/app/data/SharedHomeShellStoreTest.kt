@@ -113,11 +113,11 @@ class SharedHomeShellStoreTest {
         assertEquals(
             listOf<SharedActivityIntent>(
                 SharedActivityIntent.Refresh,
-                SharedActivityIntent.Refresh,
                 SharedActivityIntent.Refresh
             ),
             fixture.activityIntents
         )
+        assertEquals(emptyList<Pair<String?, String>>(), fixture.activitySummaryRefreshes)
         fixture.cancel()
     }
 
@@ -129,7 +129,8 @@ class SharedHomeShellStoreTest {
         store.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
 
         assertEquals(listOf<SharedHomeIntent>(SharedHomeIntent.Refresh), fixture.homeIntents)
-        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+        assertEquals(listOf<Pair<String?, String>>(null to "manual_home_refresh"), fixture.activitySummaryRefreshes)
         assertEquals(
             listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
             fixture.searchSavedIntents
@@ -144,12 +145,10 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2")
 
         assertEquals(
-            listOf<SharedActivityIntent>(
-                SharedActivityIntent.ClearSummary,
-                SharedActivityIntent.Refresh
-            ),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
             fixture.activityIntents
         )
+        assertEquals(listOf<Pair<String?, String>>("server-2" to "server_switch"), fixture.activitySummaryRefreshes)
         assertEquals(
             listOf<SharedHomeSearchSavedIntent>(
                 SharedHomeSearchSavedIntent.ClearSavedSummary,
@@ -167,12 +166,10 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2")
 
         assertEquals(
-            listOf<SharedActivityIntent>(
-                SharedActivityIntent.ClearSummary,
-                SharedActivityIntent.Refresh
-            ),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
             fixture.activityIntents
         )
+        assertEquals(listOf<Pair<String?, String>>("server-2" to "server_switch"), fixture.activitySummaryRefreshes)
         assertEquals(
             listOf<SharedHomeSearchSavedIntent>(
                 SharedHomeSearchSavedIntent.ClearSavedSummary,
@@ -190,12 +187,10 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = loadingHomeStateForServer("server-2")
 
         assertEquals(
-            listOf(
-                SharedActivityIntent.ClearSummary,
-                SharedActivityIntent.Refresh
-            ),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
             fixture.activityIntents
         )
+        assertEquals(listOf<Pair<String?, String>>("server-2" to "server_switch"), fixture.activitySummaryRefreshes)
         assertEquals(
             listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.ClearSavedSummary),
             fixture.searchSavedIntents
@@ -204,10 +199,7 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = true)
 
         assertEquals(
-            listOf(
-                SharedActivityIntent.ClearSummary,
-                SharedActivityIntent.Refresh
-            ),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
             fixture.activityIntents
         )
         assertEquals(
@@ -218,10 +210,7 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = false)
 
         assertEquals(
-            listOf(
-                SharedActivityIntent.ClearSummary,
-                SharedActivityIntent.Refresh
-            ),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
             fixture.activityIntents
         )
         assertEquals(
@@ -240,7 +229,8 @@ class SharedHomeShellStoreTest {
 
         fixture.homeState.value = homeStateForServer("server-1")
 
-        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(emptyList<SharedActivityIntent>(), fixture.activityIntents)
+        assertEquals(listOf<Pair<String?, String>>("server-1" to "server_ready"), fixture.activitySummaryRefreshes)
         assertEquals(
             listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
             fixture.searchSavedIntents
@@ -421,6 +411,7 @@ class SharedHomeShellStoreTest {
         val searchSavedFlow = MutableStateFlow(searchSavedState)
         val homeIntents = mutableListOf<SharedHomeIntent>()
         val activityIntents = mutableListOf<SharedActivityIntent>()
+        val activitySummaryRefreshes = mutableListOf<Pair<String?, String>>()
         val searchSavedIntents = mutableListOf<SharedHomeSearchSavedIntent>()
         val store =
             SharedHomeShellStore(
@@ -430,10 +421,21 @@ class SharedHomeShellStoreTest {
                 dispatchHome = homeIntents::add,
                 dispatchActivity = activityIntents::add,
                 dispatchSearchSaved = searchSavedIntents::add,
+                refreshActivitySummary = { serverId, reason ->
+                    activitySummaryRefreshes += serverId to reason
+                },
                 resetActivity = {},
                 scope = scope
             )
-        return ShellFixture(store, scope, homeFlow, homeIntents, activityIntents, searchSavedIntents)
+        return ShellFixture(
+            store,
+            scope,
+            homeFlow,
+            homeIntents,
+            activityIntents,
+            activitySummaryRefreshes,
+            searchSavedIntents
+        )
     }
 
     private fun loadingHomeStateForServer(serverId: String): SharedHomeState =
@@ -510,6 +512,7 @@ class SharedHomeShellStoreTest {
         val homeState: MutableStateFlow<SharedHomeState>,
         val homeIntents: MutableList<SharedHomeIntent>,
         val activityIntents: MutableList<SharedActivityIntent>,
+        val activitySummaryRefreshes: MutableList<Pair<String?, String>>,
         val searchSavedIntents: MutableList<SharedHomeSearchSavedIntent>
     ) {
         fun cancel() {

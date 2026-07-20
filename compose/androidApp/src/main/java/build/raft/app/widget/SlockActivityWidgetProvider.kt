@@ -3,6 +3,8 @@ package build.raft.app.widget
 import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
+import build.raft.app.core.data.auth.androidMMKVActivityUnreadKeyValueStore
+import build.raft.app.core.data.auth.androidMMKVApiEnvironmentKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.core.data.network.RealSlockNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
@@ -11,10 +13,12 @@ import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.KeyValueAuthSessionStore
+import build.raft.app.data.ProcessActivityUnreadProjectionCache
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
+import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.toConversationSummary
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -132,6 +136,15 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 selectedServerId = selectedServer.id,
                 selectedServerSlug = selectedServer.slug
             )
+            val persistedActivityUnread =
+                ProcessActivityUnreadProjectionCache(androidMMKVActivityUnreadKeyValueStore(context)).read(
+                    environmentId =
+                        SharedApiEnvironmentStore(androidMMKVApiEnvironmentKeyValueStore(context))
+                            .current()
+                            .apiBaseUrl,
+                    accountId = session.user.id,
+                    serverId = selectedServer.id
+                )
             val sessionStore = InMemorySlockAuthSessionStore(scopedSession)
             val serverId = ServerId(selectedServer.id)
             val networkClient = RealSlockNetworkClientFactory.create(sessionStore)
@@ -154,7 +167,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 }.getOrNull()) {
                     is DataResult.Content -> result.data.totalUnreadCount
                     is DataResult.Empty -> 0
-                    else -> previous.activityUnreadCount.coerceAtLeast(home.unreadTotal)
+                    else -> persistedActivityUnread?.totalUnreadCount ?: previous.activityUnreadCount
                 }
             val savedCount =
                 when (val result = runCatching {
@@ -175,7 +188,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             return SlockWidgetState.Content(
                 serverName = home.server.name,
                 unreadCount = home.unreadTotal,
-                activityUnreadCount = maxOf(home.unreadTotal, inboxUnread),
+                activityUnreadCount = inboxUnread,
                 savedCount = savedCount,
                 rows = home.toWidgetRows(context, membersById),
                 lastUpdatedAtMillis = System.currentTimeMillis(),

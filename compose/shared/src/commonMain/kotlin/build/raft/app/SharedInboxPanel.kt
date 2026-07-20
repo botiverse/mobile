@@ -6,11 +6,12 @@ import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.SlockAnchoredMetaChip
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.data.ActivityReplyThreadPrewarmKey
+import build.raft.app.data.ActivityReplyThreadPrewarmMarker
+import build.raft.app.data.ActivityUnreadSummaryProjection
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
-import build.raft.app.data.ActivityReplyThreadPrewarmKey
-import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
@@ -33,6 +34,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
+import build.raft.app.model.ServerId
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
@@ -194,6 +196,21 @@ internal fun SharedHomeActivityScreen(
             )
         }
     val state by activityStore.state.collectAsState()
+    val activitySummaryServerId =
+        remember(state.ownerServerId, state.snapshot?.server?.id?.value) {
+            ServerId(state.ownerServerId ?: state.snapshot?.server?.id?.value.orEmpty())
+        }
+    val activitySummaryFlow =
+        remember(sharedStores.activityUnreadSummaryStore, activitySummaryServerId) {
+            sharedStores.activityUnreadSummaryStore.projectionFlow(activitySummaryServerId)
+        }
+    val activitySummary by activitySummaryFlow.collectAsState(
+        sharedStores.activityUnreadSummaryStore.currentProjection(activitySummaryServerId)
+    )
+    val projectedState =
+        remember(state, activitySummary) {
+            projectActivityStateWithProcessSummary(state, activitySummary)
+        }
     val sharedHomeStore = remember(sharedStores, storeScope) {
         sharedStores.sharedHomeStore(storeScope)
     }
@@ -222,6 +239,14 @@ internal fun SharedHomeActivityScreen(
     LaunchedEffect(activityStore) {
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
+    LaunchedEffect(sharedStores.activityUnreadSummaryStore, activitySummaryServerId) {
+        if (activitySummaryServerId.value.isNotBlank()) {
+            sharedStores.activityUnreadSummaryStore.ensure(
+                activitySummaryServerId,
+                reason = "activity_route_attach"
+            )
+        }
+    }
     LaunchedEffect(sharedHomeStore, state.snapshot) {
         state.snapshot?.let { snapshot ->
             sharedHomeStore?.supplementConversationIdentity(snapshot)
@@ -233,7 +258,7 @@ internal fun SharedHomeActivityScreen(
         }
     }
     SharedActivityPanelContent(
-        state = state,
+        state = projectedState,
         onOpenItem = { item ->
             state.snapshot?.let { snapshot ->
                 sharedHomeStore?.supplementConversationIdentity(snapshot)
@@ -285,6 +310,27 @@ internal fun activityRefreshPresentation(
         headerRefreshing = refreshing || pullRefreshing,
         pullRefreshing = pullRefreshing
     )
+
+internal fun projectActivityStateWithProcessSummary(
+    state: SharedActivityState,
+    activitySummary: ActivityUnreadSummaryProjection
+): SharedActivityState {
+    val snapshot = state.snapshot
+    if (
+        snapshot == null ||
+        state.selectedFilter != InboxFilter.All ||
+        !activitySummary.hasValue
+    ) {
+        return state
+    }
+    return state.copy(
+        snapshot =
+            snapshot.copy(
+                totalUnreadCount = activitySummary.totalUnreadCount,
+                totalCount = activitySummary.totalCount
+            )
+    )
+}
 
 @Composable
 internal fun SharedHomeActivityScreen(

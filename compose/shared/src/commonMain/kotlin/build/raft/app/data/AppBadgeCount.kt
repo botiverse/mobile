@@ -79,6 +79,9 @@ data class AppBadgeCount(
 }
 
 enum class AppBadgeSource(val wire: String) {
+    /** Source = process-owned Activity unread summary for the selected server. */
+    ACTIVITY_UNREAD_SUMMARY("activity_unread_summary"),
+
     /**
      * Source = `servers/unread-summary` `ServerUnreadSummaryDto.unreadCount`
      * (the primary React-aligned server-level unread endpoint). This is
@@ -108,6 +111,7 @@ enum class AppBadgeSource(val wire: String) {
 
     companion object {
         fun fromWire(value: String?): AppBadgeSource = when (value) {
+            "activity_unread_summary" -> ACTIVITY_UNREAD_SUMMARY
             "server_unread_summary" -> SERVER_UNREAD_SUMMARY
             "channel_dm_fallback" -> CHANNEL_DM_FALLBACK
             "disabled" -> DISABLED

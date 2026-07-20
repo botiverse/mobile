@@ -49,6 +49,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 // Mirrors the store's private SharedActivityReplyPrewarmConcurrency (Semaphore(2)); the tail reuses
@@ -2536,6 +2537,68 @@ class SharedActivityStoreTest {
         scopeB.cancel()
     }
 
+    @Test
+    fun canonicalLoadAndOptimisticMutationEmitTypedProcessSummaryFacts() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val facts = mutableListOf<ActivityUnreadSummaryFact>()
+        val item = activityItem("channel-1", unreadCount = 2)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(item)))),
+                onSummaryFact = facts::add
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val canonical = facts.last()
+        assertEquals("user-1", canonical.accountId)
+        assertEquals("server-1", canonical.serverId)
+        assertEquals(2, canonical.totalUnreadCount)
+        assertTrue(canonical.authoritative)
+
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        val optimistic = facts.last()
+        assertEquals(0, optimistic.totalUnreadCount)
+        assertFalse(optimistic.authoritative)
+        assertEquals("activity:mark_read", optimistic.source)
+        scope.cancel()
+    }
+
+    @Test
+    fun nonAllFilterNeverPublishesAbsoluteProcessCountsAndMutationsOnlyInvalidate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val facts = mutableListOf<ActivityUnreadSummaryFact>()
+        val invalidations = mutableListOf<ActivityUnreadSummaryInvalidation>()
+        val allItem = activityItem("channel-all", unreadCount = 9)
+        val mentionItem = activityItem("channel-mention", unreadCount = 2)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(
+                                snapshot(listOf(allItem), totalUnreadCount = 9),
+                                snapshot(listOf(mentionItem), totalUnreadCount = 2)
+                            )
+                    ),
+                onSummaryFact = facts::add,
+                onSummaryInvalidated = invalidations::add
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        assertEquals(9, facts.single().totalUnreadCount)
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
+        assertEquals(9, facts.single().totalUnreadCount)
+        assertTrue(invalidations.isEmpty())
+
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        assertEquals(9, facts.single().totalUnreadCount)
+        assertEquals("activity:mark_read", invalidations.single().source)
+        scope.cancel()
+    }
+
     private fun activityStore(
         scope: CoroutineScope,
         inboxRepository: InboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
@@ -2555,6 +2618,8 @@ class SharedActivityStoreTest {
         tailPrewarmDepthCap: Int = 20,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
         onUnreadCountsChanged: () -> Unit = {},
+        onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
+        onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
         realtimeReconcileDelayMillis: Long = 150L,
         afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
         beforeRealtimeHighWaterFold: () -> Unit = {},
@@ -2576,6 +2641,8 @@ class SharedActivityStoreTest {
             tailPrewarmDepthCap = tailPrewarmDepthCap,
             readReceiptOwnerFactory = readReceiptOwnerFactory,
             onUnreadCountsChanged = onUnreadCountsChanged,
+            onSummaryFact = onSummaryFact,
+            onSummaryInvalidated = onSummaryInvalidated,
             scope = scope,
             realtimeReconcileDelayMillis = realtimeReconcileDelayMillis,
             afterRealtimeReconcileTerminalDecision = afterRealtimeReconcileTerminalDecision,

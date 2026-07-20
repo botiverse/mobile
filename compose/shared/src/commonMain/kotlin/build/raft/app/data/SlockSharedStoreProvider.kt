@@ -318,6 +318,7 @@ internal class SlockSharedStoreProvider private constructor(
     val serverMembersStore: SharedServerMembersStore,
     private val processServerMembersCore: ProcessServerMembersCore,
     private val processMemberPresenceRegistry: ProcessMemberPresenceRegistry,
+    val activityUnreadSummaryStore: ProcessActivityUnreadStore,
     private val presenceOwnerResolver: (String) -> ProcessServerMembersOwner?,
     private val presenceOwnerFlowResolver: (String) -> Flow<ProcessServerMembersOwner?>,
     private val presenceWriteResolver: (String) -> ProcessPresenceWrite?,
@@ -773,6 +774,8 @@ internal class SlockSharedStoreProvider private constructor(
                     prewarmReplyThread = prewarmReplyThread,
                     replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                     onUnreadCountsChanged = onUnreadCountsChanged,
+                    onSummaryFact = activityUnreadSummaryStore::submitFact,
+                    onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                     diagnosticsLogger = diagnosticsLogger
                 )
                 return store
@@ -793,6 +796,8 @@ internal class SlockSharedStoreProvider private constructor(
                 prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
                 replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},
+                onSummaryFact = activityUnreadSummaryStore::submitFact,
+                onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else CoroutineScope(SupervisorJob())
@@ -842,6 +847,10 @@ internal class SlockSharedStoreProvider private constructor(
                     session.servers.any { server -> server.id == owner.serverId }
             },
             onPrediction = { prediction ->
+                activityUnreadSummaryStore.invalidate(
+                    prediction.owner.toProcessActivityUnreadOwner(),
+                    reason = "read_prediction:${prediction.revision}"
+                )
                 homeStores.entries().forEach { (_, store) ->
                     store.dispatch(SharedHomeIntent.ApplyReadReceiptPrediction(prediction))
                 }
@@ -850,6 +859,10 @@ internal class SlockSharedStoreProvider private constructor(
                 }
             },
             onResult = { request, result ->
+                activityUnreadSummaryStore.invalidate(
+                    request.owner.toProcessActivityUnreadOwner(),
+                    reason = "read_result:${request.revision}"
+                )
                 sharedInfoLogger("SlockReadReceipt", "process_read_receipt")(
                     "result owner=${request.owner.serverId}:${request.owner.accountId} " +
                         "channelId=${request.channelId.value} revision=${request.revision} " +
@@ -857,6 +870,10 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             },
             onFailure = { request, result ->
+                activityUnreadSummaryStore.invalidate(
+                    request.owner.toProcessActivityUnreadOwner(),
+                    reason = "read_failure:${request.revision}"
+                )
                 homeStores.entries().forEach { (_, store) ->
                     store.dispatch(SharedHomeIntent.ApplyReadReceiptFailure(request))
                 }
@@ -1179,6 +1196,37 @@ internal class SlockSharedStoreProvider private constructor(
             val resolvePresenceWrite: (String) -> ProcessPresenceWrite? = { rawServerId ->
                 presenceAuthContext.value?.writeFor(rawServerId)
             }
+            val resolveActivityUnreadOwner: (String) -> ProcessActivityUnreadOwner? = { rawServerId ->
+                presenceAuthContext.value?.activityUnreadOwnerFor(rawServerId)
+            }
+            val resolveActivityUnreadOwnerFlow: (String) -> Flow<ProcessActivityUnreadOwner?> = { rawServerId ->
+                presenceAuthContext
+                    .map { context -> context?.activityUnreadOwnerFor(rawServerId) }
+                    .distinctUntilChanged()
+            }
+            val processActivityUnreadRepository =
+                ProcessActivityUnreadRepository(
+                    sessionStore = authStore,
+                    networkClient = networkClient,
+                    logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread_repository"),
+                    warningLogger = sharedWarnLogger("SlockActivityUnread", "process_activity_unread_repository")
+                )
+            val processActivityUnreadProjectionCache =
+                ProcessActivityUnreadProjectionCache(
+                    SlockSharedKeyValueStoreProvider.create(
+                        namespace = SLOCK_ACTIVITY_UNREAD_MMKV_NAMESPACE,
+                        storageName = "Activity unread summary"
+                    ).store
+                )
+            val activityUnreadSummaryStore =
+                ProcessActivityUnreadStore(
+                    fetchSummary = processActivityUnreadRepository::load,
+                    ownerResolver = resolveActivityUnreadOwner,
+                    ownerFlowResolver = resolveActivityUnreadOwnerFlow,
+                    projectionCache = processActivityUnreadProjectionCache,
+                    scope = CoroutineScope(SupervisorJob()),
+                    logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread")
+                )
             // ONE sink instance shared by the legacy and every scoped realtime
             // owner — the single production presence write edge.
             val memberPresenceRealtimeSink =
@@ -1186,6 +1234,12 @@ internal class SlockSharedStoreProvider private constructor(
                     currentPresenceAuthContext = { presenceAuthContext.value },
                     registry = processMemberPresenceRegistry,
                     diagnosticsLogger = sharedInfoLogger("SlockPresence", "presence_write_edge"),
+                )
+            val activityUnreadRealtimeSink =
+                processActivityUnreadRealtimeSink(
+                    currentAuthContext = { presenceAuthContext.value },
+                    store = activityUnreadSummaryStore,
+                    diagnosticsLogger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread_realtime")
                 )
             // Roster invalidation stays on typed auth events. Presence
             // context/clear does NOT live here: it is published exclusively
@@ -1199,9 +1253,15 @@ internal class SlockSharedStoreProvider private constructor(
                 authStore.authSessionEvents.collect { event ->
                     when (event) {
                         is AuthSessionEvent.Authenticated ->
-                            processServerMembersCore.invalidateAll(reason = "authenticated")
+                            {
+                                processServerMembersCore.invalidateAll(reason = "authenticated")
+                                activityUnreadSummaryStore.invalidateAll(reason = "authenticated")
+                            }
                         is AuthSessionEvent.Cleared ->
-                            processServerMembersCore.invalidateAll(reason = "cleared")
+                            {
+                                processServerMembersCore.invalidateAll(reason = "cleared")
+                                activityUnreadSummaryStore.invalidateAll(reason = "cleared")
+                            }
                         is AuthSessionEvent.BindingMetadataChanged,
                         is AuthSessionEvent.TokensRotated -> Unit
                     }
@@ -1405,6 +1465,7 @@ internal class SlockSharedStoreProvider private constructor(
                 serverMembersStore = serverMembersStore,
                 processServerMembersCore = processServerMembersCore,
                 processMemberPresenceRegistry = processMemberPresenceRegistry,
+                activityUnreadSummaryStore = activityUnreadSummaryStore,
                 presenceOwnerResolver = resolvePresenceOwner,
                 presenceOwnerFlowResolver = resolvePresenceOwnerFlow,
                 presenceWriteResolver = resolvePresenceWrite,
@@ -1450,6 +1511,7 @@ internal class SlockSharedStoreProvider private constructor(
                         // ONE production write edge, admission-frozen (see
                         // processMemberPresenceRealtimeSink).
                         owner.installMemberPresenceSink(memberPresenceRealtimeSink)
+                        owner.installActivityUnreadSink(activityUnreadRealtimeSink)
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,
                 messageTranslationStore =
@@ -1517,6 +1579,13 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
         sessionStore = authStore,
         diagnosticsLogger = diagnosticsLogger,
         criticalDiagnosticsLogger = criticalDiagnosticsLogger
+    )
+
+private fun ReadReceiptOwner.toProcessActivityUnreadOwner(): ProcessActivityUnreadOwner =
+    ProcessActivityUnreadOwner(
+        environmentId = environmentId,
+        accountId = accountId,
+        serverId = serverId
     )
 
 internal class AppShellActivePagerOwner {
@@ -1632,9 +1701,14 @@ internal class SharedRealtimeDomainEventOwner(
     // late old-account callback be attributed to the new account). Entry
     // points without a grant have no principal and must NOT write presence.
     private var memberPresenceSink: ((RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit)? = null
+    private var activityUnreadSink: ((ProcessActivityUnreadAdmission, RealtimeEvent) -> Unit)? = null
 
     fun installMemberPresenceSink(sink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit) {
         memberPresenceSink = sink
+    }
+
+    fun installActivityUnreadSink(sink: (ProcessActivityUnreadAdmission, RealtimeEvent) -> Unit) {
+        activityUnreadSink = sink
     }
 
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
@@ -2023,6 +2097,9 @@ internal class SharedRealtimeDomainEventOwner(
                     "presence_write_dropped source=$source serverId=$resolvedServerId reason=no_admission"
                 )
             }
+        }
+        if (admission != null) {
+            activityUnreadSink?.invoke(admission.toActivityUnreadAdmission(), event)
         }
     }
 

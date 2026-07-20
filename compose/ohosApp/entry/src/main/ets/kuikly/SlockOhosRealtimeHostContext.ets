@@ -395,6 +395,8 @@ export class SlockOhosRealtimeHostContext {
   private controller?: KRNativeRenderController;
   private readonly runtimes: Map<string, SlockOhosRealtimeRuntime> = new Map();
   private processIdentity?: RealtimeProcessIdentity;
+  private foregroundEpoch: number = 0;
+  private appVisible: boolean = false;
   private enhancedNotifyCallback?: Callback<emitter.EventData>;
   private enhancedNotifySinkInstalled: boolean = false;
 
@@ -451,11 +453,14 @@ export class SlockOhosRealtimeHostContext {
   }
 
   onPageShow(): void {
+    this.foregroundEpoch = nextSlockOhosForegroundEpoch(this.foregroundEpoch, this.appVisible, true);
+    this.appVisible = true;
     this.runtimes.forEach((runtime) => runtime.onAppShown());
     this.sendAppLifecycleEvent('show');
   }
 
   onPageHide(keepAlive: boolean = false): void {
+    this.appVisible = false;
     this.runtimes.forEach((runtime) => runtime.onAppHidden(keepAlive));
     this.sendAppLifecycleEvent(keepAlive ? 'hide_keep_alive' : 'hide');
   }
@@ -618,6 +623,7 @@ export class SlockOhosRealtimeHostContext {
     this.sendRealtimeNotify({
       action: 'appLifecycle',
       event: event,
+      foregroundEpoch: this.foregroundEpoch,
       pageName: 'compose_slock_app_shell',
     });
   }
@@ -639,6 +645,14 @@ export class SlockOhosRealtimeHostContext {
       left.connectionFamilyId === right.connectionFamilyId &&
       left.accessToken === right.accessToken;
   }
+}
+
+export function nextSlockOhosForegroundEpoch(
+  currentEpoch: number,
+  currentVisible: boolean,
+  nextVisible: boolean
+): number {
+  return nextVisible && !currentVisible ? currentEpoch + 1 : currentEpoch;
 }
 
 export function bootstrapRealtime(hostContext: SlockOhosRealtimeHostContext): SlockOhosRealtimeHostContext {

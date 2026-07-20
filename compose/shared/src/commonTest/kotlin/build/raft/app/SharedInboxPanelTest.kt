@@ -1,8 +1,11 @@
 package build.raft.app
 
+import build.raft.app.data.ActivityUnreadSummaryProjection
+import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.PendingMentionAction
+import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
@@ -255,6 +258,69 @@ class SharedInboxPanelTest {
             ),
             activityRefreshPresentation(refreshing = false, pullRefreshing = false)
         )
+    }
+
+    @Test
+    fun activityAllFilterConsumesProcessUnreadSummary() {
+        val pageState =
+            SharedActivityState(
+                selectedFilter = InboxFilter.All,
+                snapshot =
+                    InboxSnapshot(
+                        server = ServerSummary(ServerId("server-1"), "Raft"),
+                        items = emptyList(),
+                        totalCount = 4,
+                        totalUnreadCount = 1
+                    ),
+                loaded = true
+            )
+
+        val projected =
+            projectActivityStateWithProcessSummary(
+                state = pageState,
+                activitySummary =
+                    ActivityUnreadSummaryProjection(
+                        serverId = "server-1",
+                        totalCount = 12,
+                        totalUnreadCount = 9,
+                        hasValue = true
+                    )
+            )
+
+        assertEquals(12, projected.totalCount)
+        assertEquals(9, projected.totalUnreadCount)
+    }
+
+    @Test
+    fun activityNonAllFilterKeepsPageScopedCounts() {
+        val pageState =
+            SharedActivityState(
+                selectedFilter = InboxFilter.Mentions,
+                snapshot =
+                    InboxSnapshot(
+                        server = ServerSummary(ServerId("server-1"), "Raft"),
+                        items = emptyList(),
+                        totalCount = 3,
+                        totalUnreadCount = 2
+                    ),
+                loaded = true
+            )
+
+        val projected =
+            projectActivityStateWithProcessSummary(
+                state = pageState,
+                activitySummary =
+                    ActivityUnreadSummaryProjection(
+                        serverId = "server-1",
+                        totalCount = 12,
+                        totalUnreadCount = 9,
+                        hasValue = true
+                    )
+            )
+
+        assertEquals(3, projected.totalCount)
+        assertEquals(2, projected.totalUnreadCount)
+        assertEquals(InboxFilter.Mentions, projected.selectedFilter)
     }
 
     @Test
