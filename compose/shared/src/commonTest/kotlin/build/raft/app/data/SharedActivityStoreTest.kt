@@ -793,7 +793,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun realtimeAndReadStateBurstDoesNotTakeCanonicalRefreshOwnershipWhileVisible() = runBlocking {
+    fun realtimeAndReadStateBurstUsesOneBackgroundReconcileWithoutReadStateReload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val head = (1..30).map { index -> activityItem("channel-$index") }
         val tail = (31..60).map { index -> activityItem("channel-$index") }
@@ -809,12 +809,13 @@ class SharedActivityStoreTest {
         val store =
             activityStore(
                 scope = scope,
-                inboxRepository = inbox
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
             )
 
         store.dispatch(SharedActivityIntent.LoadInitial)
         store.dispatch(SharedActivityIntent.LoadMore)
-        store.dispatch(
+        store.acceptRealtime(
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(message("message-burst", channelId = "channel-1"))
             )
@@ -830,8 +831,8 @@ class SharedActivityStoreTest {
             )
         )
 
-        assertEquals(1, inbox.initialLoadCount)
-        assertEquals(listOf(30), inbox.initialLoadLimits)
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(listOf(30, 60), inbox.initialLoadLimits)
         assertEquals(60, store.state.value.items.size)
         assertEquals((31..60).map { index -> "channel:channel-$index" }, store.state.value.items.drop(30).map { it.key })
         scope.cancel()
@@ -1918,44 +1919,154 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun unknownMessageRowWaitsForNextRouteBaselineWithoutRefreshingVisibleActivity() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(
-                        snapshot(listOf(activityItem("channel-1"))),
-                        snapshot(listOf(activityItem("channel-2"), activityItem("channel-1")))
+    fun unknownChannelDmAndThreadRowsEnterThroughBackgroundReconcileWithoutRefreshChrome() = runBlocking {
+        val existing = activityItem("channel-1")
+        val direct =
+            activityItem("dm-2").copy(
+                key = "dm:dm-2",
+                kind = InboxItemKind.DirectMessage,
+                channelKind = ConversationKind.DirectMessage
+            )
+        val cases =
+            listOf(
+                Triple("channel", activityItem("channel-2"), message("message-channel", channelId = "channel-2")),
+                Triple("dm", direct, message("message-dm", channelId = "dm-2")),
+                Triple(
+                    "thread",
+                    threadItem("thread-2"),
+                    message(
+                        "message-thread",
+                        channelId = "thread-2",
+                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
                     )
-            )
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox
+                )
             )
 
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(message("message-new", channelId = "channel-2"))
-            )
-        )
+        cases.forEach { (label, arrived, realtimeMessage) ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val inbox =
+                FakeInboxRepository(
+                    initialSnapshots =
+                        listOf(
+                            snapshot(listOf(existing)),
+                            snapshot(listOf(arrived, existing))
+                        )
+                )
+            val store =
+                activityStore(
+                    scope = scope,
+                    inboxRepository = inbox,
+                    realtimeBackgroundReconcileDelayMillis = 0L
+                )
 
-        assertEquals(1, inbox.initialLoadCount)
-        assertEquals(listOf("channel:channel-1"), store.state.value.items.map { it.key })
-        scope.cancel()
+            store.dispatch(SharedActivityIntent.LoadInitial)
+            store.acceptRealtime(
+                SharedActivityIntent.ApplyRealtimeEvent(MessageNew(realtimeMessage))
+            )
+
+            assertEquals(2, inbox.initialLoadCount, label)
+            assertEquals(listOf(arrived.key, existing.key), store.state.value.items.map { it.key }, label)
+            assertEquals(false, store.state.value.refreshing, label)
+            assertEquals(false, store.state.value.pullRefreshing, label)
+            scope.cancel()
+        }
     }
 
     @Test
-    fun messagePatchSurvivesStaleInFlightExplicitRefreshWithoutFollowUpReload() = runBlocking {
+    fun realtimeBackgroundReconcileKeepsRefreshChromeOffWhileRequestIsInFlight() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
         val store =
             activityStore(
                 scope = scope,
-                inboxRepository = inbox
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
             )
         val stale = threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 2)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "Realtime preview",
+                replyCount = 3
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "message-new",
+                        channelId = "thread-channel-1",
+                        body = "Realtime preview",
+                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+                    )
+                )
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        assertEquals(false, store.state.value.loading)
+        assertEquals(false, store.state.value.refreshing)
+        assertEquals(false, store.state.value.pullRefreshing)
+        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
+
+        inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
+        awaitState(store) { state -> state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new") }
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeBackgroundReconcileFailureDoesNotPolluteVisibleErrorOrChrome() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextResult(DataResult.Error(ScreenError("background_failed")))
+        delay(1L)
+
+        assertEquals(null, store.state.value.errorCode)
+        assertEquals(false, store.state.value.loading)
+        assertEquals(false, store.state.value.refreshing)
+        assertEquals(false, store.state.value.pullRefreshing)
+        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun messagePatchSurvivesStaleExplicitRefreshUntilBackgroundReconcileConfirmsIt() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 2)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "Realtime preview",
+                latestActivityAt = "2026-07-13T03:03:00Z",
+                replyCount = 3
+            )
         store.dispatch(SharedActivityIntent.LoadInitial)
         inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
         store.dispatch(SharedActivityIntent.Refresh)
@@ -1980,8 +2091,13 @@ class SharedActivityStoreTest {
 
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
         assertEquals(3, store.state.value.items.single().replyCount)
-        assertEquals(0, inbox.pendingCount)
         assertEquals(false, store.state.value.refreshing)
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
+        awaitState(store) { state -> !state.refreshing && state.items.singleOrNull()?.replyCount == 3 }
+
+        assertEquals(0, inbox.pendingCount)
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
         scope.cancel()
     }
@@ -2026,19 +2142,31 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun readStateIdentityEventDoesNotReloadRealtimePatchedThread() = runBlocking {
+    fun readStateIdentityEventDoesNotAddASecondRealtimeBackgroundReconcile() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
+        val stale = threadItem("thread-channel-1", unreadCount = 2).copy(replyCount = 2)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "Realtime preview",
+                replyCount = 3
+            )
+        val inbox =
+            FakeInboxRepository(
+                listOf(
+                    snapshot(listOf(stale), totalUnreadCount = 2),
+                    snapshot(listOf(canonical), totalUnreadCount = 2)
+                )
+            )
         val store =
             activityStore(
                 scope = scope,
-                inboxRepository = inbox
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
             )
-        val stale = threadItem("thread-channel-1", unreadCount = 2).copy(replyCount = 2)
 
         store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 2))
-        store.dispatch(
+        store.acceptRealtime(
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(
                     message(
@@ -2051,14 +2179,15 @@ class SharedActivityStoreTest {
                 )
             )
         )
+        val loadCountAfterRealtime = inbox.initialLoadCount
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 readStateEvent(scopeId = "thread-channel-1", version = 1, maxReadSeq = 10)
             )
         )
-        assertEquals(1, inbox.initialLoadCount)
-        assertEquals(0, inbox.pendingCount)
+        assertEquals(2, loadCountAfterRealtime)
+        assertEquals(loadCountAfterRealtime, inbox.initialLoadCount)
         val patched = store.state.value.items.single()
         assertEquals(MessageId("message-new"), patched.latestActivityMessageId)
         assertEquals("Realtime preview", patched.latestActivityPreview)
@@ -2069,18 +2198,25 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun realtimeBurstPatchesVisibleRowWithoutStartingCanonicalRefresh() = runBlocking {
+    fun messageThreadAndResumeBurstPatchImmediatelyAndCoalesceOneBackgroundReconcile() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val inbox = DeferredInboxRepository()
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-1"),
+                latestActivityPreview = "message message-1",
+                replyCount = 4,
+                latestActivityAt = "2026-07-13T03:04:00Z"
+            )
+        val inbox = FakeInboxRepository(listOf(snapshot(listOf(stale)), snapshot(listOf(canonical))))
         val store =
             activityStore(
                 scope = scope,
-                inboxRepository = inbox
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 75L
             )
-        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
 
         store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNextSnapshot(snapshot(listOf(stale)))
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(message("message-1", channelId = "thread-channel-1"))
@@ -2088,19 +2224,27 @@ class SharedActivityStoreTest {
         )
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(message("message-2", channelId = "thread-channel-1"))
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-channel-1"),
+                    replyCount = 4,
+                    lastReplyAt = "2026-07-13T03:04:00Z",
+                    participantIds = emptyList()
+                )
             )
         )
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(message("message-3", channelId = "thread-channel-1"))
+                SyncResumeResponse(messages = emptyList(), currentSeq = 10L, hasMore = false)
             )
         )
 
-        assertEquals(0, inbox.pendingCount)
-        assertEquals(5, store.state.value.items.single().replyCount)
-        assertEquals(1, inbox.initialLoadCount)
-        assertEquals(MessageId("message-3"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(4, store.state.value.items.single().replyCount)
+        assertEquals(MessageId("message-1"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(false, store.state.value.refreshing)
+        delay(150L)
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(false, store.state.value.refreshing)
         scope.cancel()
     }
 
@@ -2815,6 +2959,7 @@ class SharedActivityStoreTest {
         onUnreadCountsChanged: () -> Unit = {},
         onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
         onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
+        realtimeBackgroundReconcileDelayMillis: Long = 60_000L,
         beforeRealtimeHighWaterFold: () -> Unit = {},
         onRealtimePatchOwnerEntered: () -> Unit = {},
         onReadReceiptPredictionOwnerEntered: () -> Unit = {}
@@ -2837,6 +2982,7 @@ class SharedActivityStoreTest {
             onSummaryFact = onSummaryFact,
             onSummaryInvalidated = onSummaryInvalidated,
             scope = scope,
+            realtimeBackgroundReconcileDelayMillis = realtimeBackgroundReconcileDelayMillis,
             beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
             onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered,
             onReadReceiptPredictionOwnerEntered = onReadReceiptPredictionOwnerEntered
@@ -3008,8 +3154,12 @@ class SharedActivityStoreTest {
         }
 
         fun completeNextSnapshot(snapshot: InboxSnapshot) {
+            completeNextResult(DataResult.Content(snapshot))
+        }
+
+        fun completeNextResult(result: DataResult<InboxSnapshot>) {
             val next = synchronized(lock) { pending.removeAt(0) }
-            next.complete(DataResult.Content(snapshot))
+            next.complete(result)
         }
     }
 
