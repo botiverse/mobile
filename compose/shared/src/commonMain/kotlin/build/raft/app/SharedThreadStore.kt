@@ -3793,7 +3793,8 @@ internal class SharedThreadStore(
     private val dataSource: SharedThreadDataSource,
     private val scope: CoroutineScope,
     private val diagnosticsLogger: ((String) -> Unit)? = null,
-    initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload()
+    initialPayload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
+    private val beforeFocusedOriginCommit: (suspend (KuiklyThreadScreenPayload) -> Unit)? = null
 ) {
     private val _state = MutableStateFlow(SharedThreadState(payload = initialPayload))
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
@@ -4073,7 +4074,7 @@ internal class SharedThreadStore(
             if (routeIdentity.canRenderTimelineCandidates) {
                 _state.value.payload.takeIf {
                     it.isUsableCachedPayloadForRoute(routeContextPayload) && it.hasRenderableThreadContent()
-                }
+                }?.withRouteContext(routeContextPayload)
             } else {
                 null
             }
@@ -4417,8 +4418,15 @@ internal class SharedThreadStore(
                 ) {
                     return@launch
                 }
-                val emitted =
-                    reducePayloadPatchAndCache(cachePayload = true) { payload ->
+                val payloadBeforeCommit = _state.value.payload
+                beforeFocusedOriginCommit?.invoke(payloadBeforeCommit)
+                var committedPayload: KuiklyThreadScreenPayload? = null
+                var emitted = false
+                _state.update { currentState ->
+                    emitted = false
+                    committedPayload = null
+                    val payload = currentState.payload
+                    val nextPayload =
                         if (
                             !staleTokenStillCurrent(
                                 staleToken,
@@ -4435,32 +4443,40 @@ internal class SharedThreadStore(
                                 originMessageAtStart = originMessageAtStart
                             )
                         ) {
-                            return@reducePayloadPatchAndCache payload
+                            payload
+                        } else {
+                            when (resolution) {
+                                is SharedThreadOriginResolution.Loaded ->
+                                    payload.copy(
+                                        originMessage = resolution.message,
+                                        originParentMessageId = parentMessageId,
+                                        originStatus = "loaded",
+                                        originErrorCode = null
+                                    )
+                                SharedThreadOriginResolution.Missing ->
+                                    payload.copy(
+                                        originMessage = null,
+                                        originParentMessageId = parentMessageId,
+                                        originStatus = "missing",
+                                        originErrorCode = null
+                                    )
+                                is SharedThreadOriginResolution.Error ->
+                                    payload.copy(
+                                        originMessage = null,
+                                        originParentMessageId = parentMessageId,
+                                        originStatus = "error",
+                                        originErrorCode = resolution.code
+                                    )
+                            }
                         }
-                        when (resolution) {
-                            is SharedThreadOriginResolution.Loaded ->
-                                payload.copy(
-                                    originMessage = resolution.message,
-                                    originParentMessageId = parentMessageId,
-                                    originStatus = "loaded",
-                                    originErrorCode = null
-                                )
-                            SharedThreadOriginResolution.Missing ->
-                                payload.copy(
-                                    originMessage = null,
-                                    originParentMessageId = parentMessageId,
-                                    originStatus = "missing",
-                                    originErrorCode = null
-                                )
-                            is SharedThreadOriginResolution.Error ->
-                                payload.copy(
-                                    originMessage = null,
-                                    originParentMessageId = parentMessageId,
-                                    originStatus = "error",
-                                    originErrorCode = resolution.code
-                                )
-                        }
-                    }
+                    val nextState = currentState.copy(payload = nextPayload).withSynchronizedTimelineSlice()
+                    emitted = nextState != currentState
+                    if (emitted) committedPayload = nextPayload
+                    nextState
+                }
+                if (emitted) {
+                    committedPayload?.let(dataSource::cachePayload)
+                }
                 diagnosticsLogger?.invoke(
                     "thread_focused_origin_result parentChannelId=$parentChannelId " +
                         "parentMessageId=$parentMessageId result=${resolution.focusedOriginDiagnosticsResult()} " +
