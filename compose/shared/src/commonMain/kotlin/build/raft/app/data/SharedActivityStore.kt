@@ -102,6 +102,7 @@ class SharedActivityStore internal constructor(
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
+    internal val presentationStore = SharedActivityPresentationStore()
 
     private var loadJob: Job? = null
     private var loadGeneration: Long = 0L
@@ -240,6 +241,7 @@ class SharedActivityStore internal constructor(
 
     fun reset() {
         clear()
+        presentationStore.clear()
         synchronized(realtimeOwnerLock) {
             unreadClearOverrides = emptyMap()
             doneOverrides = emptyMap()
@@ -913,6 +915,7 @@ class SharedActivityStore internal constructor(
                                     replyThreadFreshnessLedger.invalidateServer(previousServerId)
                                 }
                                 realtimeHighWater.clear()
+                                presentationStore.clear()
                             }
                             val stateForOwner =
                                 if (ownerChanged) {
