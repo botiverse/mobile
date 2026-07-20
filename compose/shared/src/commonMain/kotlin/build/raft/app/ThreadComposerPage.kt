@@ -776,6 +776,24 @@ private fun threadComposerVisualFixture(
     return when (fixture) {
         "empty" -> base.copy(seedText = "")
         "as_task_selected" -> base.copy(seedAsTask = true, seedText = "Review the Android composer crop")
+        "pending_mention_actions" ->
+            base.copy(
+                seedText = "",
+                pendingMentionActions =
+                    listOf(
+                        KuiklyPendingMentionActionItem(
+                            resolutionId = "visual-pending-mention-resolution",
+                            messageId = "visual-pending-mention-message",
+                            channelId = "visual-design",
+                            channelName = "design",
+                            targetType = "agent",
+                            targetHandle = "Android-Developer-4",
+                            targetAvatarUrl = "pixel:robot",
+                            reason = "target_not_in_channel",
+                            availableActions = listOf("add", "notify")
+                        )
+                    )
+            )
         "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
         "channel_suggestions" -> base.copy(seedText = "#", suggestionsOpen = true)
         "image_preview" ->
