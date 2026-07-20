@@ -566,6 +566,7 @@ class SharedInboxPanelTest {
                 pendingMarkers =
                     setOf(
                         ActivityUpdateMarker(
+                            filter = InboxFilter.All,
                             itemKey = "channel:channel-new",
                             latestActivityMessageId = null
                         )
@@ -594,7 +595,7 @@ class SharedInboxPanelTest {
 
     @Test
     fun activityPendingUpdateLedgerConsumesClickedSnapshotWithoutRecurrence() {
-        val first = ActivityUpdateMarker("channel:first", "message:first")
+        val first = ActivityUpdateMarker(InboxFilter.All, "channel:first", "message:first")
         val pending = ActivityPendingUpdateLedger().record(setOf(first))
 
         val consumed = pending.consumePending()
@@ -605,8 +606,8 @@ class SharedInboxPanelTest {
 
     @Test
     fun activityPendingUpdateLedgerPreservesArrivalAfterRevealStarts() {
-        val first = ActivityUpdateMarker("channel:first", "message:first")
-        val second = ActivityUpdateMarker("channel:second", "message:second")
+        val first = ActivityUpdateMarker(InboxFilter.All, "channel:first", "message:first")
+        val second = ActivityUpdateMarker(InboxFilter.All, "channel:second", "message:second")
 
         val revealStarted =
             ActivityPendingUpdateLedger()
@@ -620,8 +621,8 @@ class SharedInboxPanelTest {
 
     @Test
     fun activityPendingUpdateLedgerAllowsNewMessageForRetiredConversation() {
-        val first = ActivityUpdateMarker("channel:same", "message:first")
-        val second = ActivityUpdateMarker("channel:same", "message:second")
+        val first = ActivityUpdateMarker(InboxFilter.All, "channel:same", "message:first")
+        val second = ActivityUpdateMarker(InboxFilter.All, "channel:same", "message:second")
 
         val laterArrival =
             ActivityPendingUpdateLedger()
@@ -634,8 +635,8 @@ class SharedInboxPanelTest {
 
     @Test
     fun activityPendingUpdateLedgerSecondBannerRemainsActionable() {
-        val first = ActivityUpdateMarker("channel:first", "message:first")
-        val second = ActivityUpdateMarker("channel:second", "message:second")
+        val first = ActivityUpdateMarker(InboxFilter.All, "channel:first", "message:first")
+        val second = ActivityUpdateMarker(InboxFilter.All, "channel:second", "message:second")
         val laterArrival =
             ActivityPendingUpdateLedger()
                 .record(setOf(first))
@@ -646,6 +647,95 @@ class SharedInboxPanelTest {
 
         assertEquals(0, secondRevealStarted.count)
         assertEquals(setOf(first, second), secondRevealStarted.retiredMarkers)
+    }
+
+    @Test
+    fun activityUpdateTrackingTreatsEachFilterAsAnIndependentBaseline() {
+        val allInitial = listOf(activityItem(key = "channel:all-old"))
+        val allNew =
+            listOf(
+                activityItem(key = "channel:all-new", latestActivityMessageId = "all-message"),
+                activityItem(key = "channel:all-old")
+            )
+        val unreadInitial = listOf(activityItem(key = "channel:unread-old", unreadCount = 1))
+        val unreadNew =
+            listOf(
+                activityItem(key = "channel:unread-new", latestActivityMessageId = "unread-message", unreadCount = 1),
+                activityItem(key = "channel:unread-old", unreadCount = 1)
+            )
+        val mentionsInitial = listOf(activityItem(key = "thread:mention-old", unreadCount = 1))
+        val mentionsNew =
+            listOf(
+                activityItem(key = "thread:mention-new", latestActivityMessageId = "mention-message", unreadCount = 1),
+                activityItem(key = "thread:mention-old", unreadCount = 1)
+            )
+
+        val allBaseline = ActivityUpdateTrackingState(InboxFilter.All).recordSnapshot(InboxFilter.All, allInitial)
+        val allPending = allBaseline.recordSnapshot(InboxFilter.All, allNew)
+        assertEquals(1, allPending.pendingCount)
+        assertEquals(setOf(InboxFilter.All), allPending.pendingUpdates.pendingMarkers.map { it.filter }.toSet())
+
+        val unreadBaseline = allPending.recordSnapshot(InboxFilter.Unread, unreadInitial)
+        assertEquals(0, unreadBaseline.pendingCount)
+        assertEquals(InboxFilter.Unread, unreadBaseline.filter)
+        val unreadPending = unreadBaseline.recordSnapshot(InboxFilter.Unread, unreadNew)
+        assertEquals(1, unreadPending.pendingCount)
+        assertEquals(setOf(InboxFilter.Unread), unreadPending.pendingUpdates.pendingMarkers.map { it.filter }.toSet())
+
+        val mentionsBaseline = unreadPending.recordSnapshot(InboxFilter.Mentions, mentionsInitial)
+        assertEquals(0, mentionsBaseline.pendingCount)
+        assertEquals(InboxFilter.Mentions, mentionsBaseline.filter)
+        val mentionsPending = mentionsBaseline.recordSnapshot(InboxFilter.Mentions, mentionsNew)
+        assertEquals(1, mentionsPending.pendingCount)
+        assertEquals(setOf(InboxFilter.Mentions), mentionsPending.pendingUpdates.pendingMarkers.map { it.filter }.toSet())
+    }
+
+    @Test
+    fun activityUpdateTrackingConsumesEachFilterWithoutCarryingRetiredMarkersAcrossTabs() {
+        val allMarker = activityItem(key = "channel:same", latestActivityMessageId = "message:same")
+        val allConsumed =
+            ActivityUpdateTrackingState(InboxFilter.All)
+                .recordSnapshot(InboxFilter.All, listOf(activityItem(key = "channel:old")))
+                .recordSnapshot(InboxFilter.All, listOf(allMarker, activityItem(key = "channel:old")))
+                .consumePending()
+
+        val unreadBaseline = allConsumed.recordSnapshot(InboxFilter.Unread, listOf(activityItem(key = "channel:unread-old")))
+        val unreadPending =
+            unreadBaseline.recordSnapshot(
+                InboxFilter.Unread,
+                listOf(allMarker, activityItem(key = "channel:unread-old"))
+            )
+
+        assertEquals(1, unreadPending.pendingCount)
+        assertEquals(
+            setOf(ActivityUpdateMarker(InboxFilter.Unread, "channel:same", "message:same")),
+            unreadPending.pendingUpdates.pendingMarkers
+        )
+    }
+
+    @Test
+    fun activityUpdateTrackingClickContractHoldsForAllUnreadAndMentions() {
+        InboxFilter.entries.forEach { filter ->
+            val old = activityItem(key = "channel:same", latestActivityMessageId = "message:old", unreadCount = 1)
+            val first = activityItem(key = "channel:same", latestActivityMessageId = "message:first", unreadCount = 1)
+            val later = activityItem(key = "channel:same", latestActivityMessageId = "message:later", unreadCount = 1)
+
+            val baseline = ActivityUpdateTrackingState(filter).recordSnapshot(filter, listOf(old))
+            val firstPending = baseline.recordSnapshot(filter, listOf(first))
+            assertEquals(1, firstPending.pendingCount, "$filter first banner")
+
+            val consumed = firstPending.consumePending()
+            assertEquals(0, consumed.pendingCount, "$filter click consumes its snapshot")
+            val stable = consumed.recordSnapshot(filter, listOf(first))
+            assertEquals(0, stable.pendingCount, "$filter consumed snapshot never recurs")
+
+            val laterPending = stable.recordSnapshot(filter, listOf(later))
+            assertEquals(1, laterPending.pendingCount, "$filter later message remains actionable")
+            assertEquals(
+                setOf(ActivityUpdateMarker(filter, "channel:same", "message:later")),
+                laterPending.pendingUpdates.pendingMarkers
+            )
+        }
     }
 
     @Test
