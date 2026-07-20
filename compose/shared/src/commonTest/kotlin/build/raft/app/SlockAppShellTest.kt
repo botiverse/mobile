@@ -2377,6 +2377,8 @@ class SlockAppShellTest {
                         serverName = "Raft",
                         channelName = "home-fixes",
                         parentChannelKind = ConversationKind.Channel,
+                        senderId = MemberId("agent-cindy"),
+                        senderKind = MemberKind.Agent,
                         senderName = "Cindy",
                         messagePreview = "hello",
                         mentioned = false
@@ -2394,6 +2396,7 @@ class SlockAppShellTest {
         // Parent kind enriched from the directory row (data-only, §5).
         assertEquals(KuiklyThreadSurfaceKind.Channel, resolved.conversation.thread?.parentSurfaceKind)
         assertEquals("reply-1", resolved.openRequest.anchorMessageId)
+        assertEquals("agent-cindy", resolved.senderMemberId)
         assertEquals("Thread in #home-fixes · Raft", resolved.title)
         assertEquals("", resolved.context)
         assertEquals("", resolved.inlineContextLabel())
@@ -2421,6 +2424,7 @@ class SlockAppShellTest {
         val resolved = assertNotNull(banner)
         assertEquals("#native · Raft Android", resolved.title)
         assertEquals("Artin: ping", resolved.body)
+        assertNull(resolved.senderMemberId)
         assertEquals("", resolved.context)
         assertEquals("", resolved.inlineContextLabel())
     }

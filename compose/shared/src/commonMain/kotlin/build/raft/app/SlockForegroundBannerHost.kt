@@ -874,7 +874,7 @@ internal fun slockNotificationPushBannerOrNull(
         body = event.foregroundBannerBody(),
         iconKind = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconKind(conversation),
         iconName = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconName(conversation),
-        senderMemberId = null,
+        senderMemberId = event.senderId?.takeIf { event.senderKind != null }?.value,
         avatarWireValue = null,
         avatarLabel = (event.senderName ?: event.title).trim().take(2).uppercase().ifBlank { "??" }
     )

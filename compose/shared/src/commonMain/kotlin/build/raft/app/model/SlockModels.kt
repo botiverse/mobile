@@ -686,6 +686,8 @@ data class NotificationPushReceived(
     val serverName: String? = null,
     val channelName: String? = null,
     val parentChannelKind: ConversationKind? = null,
+    val senderId: MemberId? = null,
+    val senderKind: MemberKind? = null,
     val senderName: String? = null,
     val messagePreview: String? = null,
     val mentioned: Boolean? = null
