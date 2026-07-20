@@ -260,7 +260,8 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     val targetNode = node.children.firstOrNull {
         it.type.name == MarkdownElementTypes.AUTOLINK.name
     } ?: node
-    val destination = targetNode.getUnescapedTextInNode(content)
+    val rawDestination = targetNode.getUnescapedTextInNode(content)
+    val (destination, trailingText) = rawDestination.splitAutoLinkDestination()
 
     annotatorSettings.referenceLinkHandler?.store(destination, destination)
     withLink(
@@ -272,6 +273,68 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     ) {
         append(destination)
     }
+    append(trailingText)
+}
+
+/**
+ * GFM's permissive auto-link token can include following prose when a URL is
+ * adjacent to an unmatched closing delimiter (for example `[https://x] now`).
+ * Keep balanced delimiters inside the URL, but return unmatched closers,
+ * whitespace tails, and terminal prose punctuation to normal visible text.
+ */
+private fun String.splitAutoLinkDestination(): Pair<String, String> {
+    if (isEmpty()) return this to ""
+
+    var roundDepth = 0
+    var squareDepth = 0
+    var curlyDepth = 0
+    var angleDepth = 0
+    var endExclusive = length
+    for (index in indices) {
+        when (this[index]) {
+            ' ', '\t', '\n', '\r' -> {
+                endExclusive = index
+                break
+            }
+            '(' -> roundDepth++
+            '[' -> squareDepth++
+            '{' -> curlyDepth++
+            '<' -> angleDepth++
+            ')' ->
+                if (roundDepth > 0) {
+                    roundDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+            ']' ->
+                if (squareDepth > 0) {
+                    squareDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+            '}' ->
+                if (curlyDepth > 0) {
+                    curlyDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+            '>' ->
+                if (angleDepth > 0) {
+                    angleDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+        }
+    }
+
+    while (endExclusive > 0 && this[endExclusive - 1] in ".,;:!?") {
+        endExclusive--
+    }
+    return substring(0, endExclusive) to substring(endExclusive)
 }
 
 /**
