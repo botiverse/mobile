@@ -1693,7 +1693,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun threadUpdatedPatchesOnlyMonotonicReplyActivityMetadata() = runBlocking {
+    fun threadUpdatedPatchesMonotonicReplyAndAuthoritativeUnreadMetadata() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             activityStore(
@@ -1731,8 +1731,8 @@ class SharedActivityStoreTest {
         val patched = store.state.value.items.single()
         assertEquals(3, patched.replyCount)
         assertEquals("2026-07-13T03:05:00Z", patched.latestActivityAt)
-        assertEquals(1, patched.unreadCount)
-        assertEquals(MessageId("first-thread-channel-1"), patched.firstUnreadMessageId)
+        assertEquals(9, patched.unreadCount)
+        assertEquals(MessageId("server-first-unread"), patched.firstUnreadMessageId)
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
@@ -1748,6 +1748,24 @@ class SharedActivityStoreTest {
 
         assertEquals(3, store.state.value.items.single().replyCount)
         assertEquals("2026-07-13T03:05:00Z", store.state.value.items.single().latestActivityAt)
+        assertEquals(9, store.state.value.items.single().unreadCount)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-channel-1"),
+                    replyCount = 3,
+                    lastReplyAt = "2026-07-13T03:05:00Z",
+                    participantIds = emptyList(),
+                    unreadCount = 0,
+                    firstUnreadMessageId = MessageId("must-be-cleared")
+                )
+            )
+        )
+
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(null, store.state.value.items.single().firstUnreadMessageId)
         scope.cancel()
     }
 
@@ -1982,16 +2000,17 @@ class SharedActivityStoreTest {
                 inboxRepository = inbox,
                 realtimeBackgroundReconcileDelayMillis = 0L
             )
-        val stale = threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 2)
+        val stale = threadItem("thread-channel-1", unreadCount = 0).copy(replyCount = 2)
         val canonical =
             stale.copy(
                 latestActivityMessageId = MessageId("message-new"),
                 latestActivityPreview = "Realtime preview",
-                replyCount = 3
+                replyCount = 3,
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("message-new")
             )
-
         store.dispatch(SharedActivityIntent.LoadInitial)
-        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 0))
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -2010,10 +2029,13 @@ class SharedActivityStoreTest {
         assertEquals(false, store.state.value.refreshing)
         assertEquals(false, store.state.value.pullRefreshing)
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
 
         inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
         awaitState(store) { state -> state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new") }
         assertEquals(false, store.state.value.refreshing)
+        assertEquals(1, store.state.value.items.single().unreadCount)
         scope.cancel()
     }
 
@@ -2050,6 +2072,220 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun unreadFilterWaitsForCanonicalMembershipBeforeReorderingOrRemovingRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val head = threadItem("thread-head", unreadCount = 1).copy(replyCount = 1)
+        val target = threadItem("thread-target", unreadCount = 1).copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        inbox.completeNextSnapshot(snapshot(listOf(head, target), totalUnreadCount = 2))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-target"))
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        assertEquals(listOf(head.key, target.key), store.state.value.items.map { it.key })
+        assertEquals(target.latestActivityMessageId, store.state.value.items[1].latestActivityMessageId)
+
+        inbox.completeNextSnapshot(snapshot(listOf(head), totalUnreadCount = 1))
+        awaitState(store) { state -> state.items.map { it.key } == listOf(head.key) }
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun mentionsFilterWaitsForCanonicalMembershipWithoutApplyingMessageGuess() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val target = threadItem("thread-target", unreadCount = 1).copy(replyCount = 2, hasMention = true)
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
+        inbox.completeNextSnapshot(snapshot(listOf(target), totalUnreadCount = 1))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-target"))
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        assertEquals(target, store.state.value.items.single())
+
+        inbox.completeNextSnapshot(snapshot(emptyList(), totalUnreadCount = 0))
+        awaitState(store) { state -> state.items.isEmpty() }
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun selfAuthoredMessagePatchKeepsAllRowRead() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 60_000L
+            )
+        val stale = threadItem("thread-channel-1", unreadCount = 0).copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 0))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "self-message",
+                        channelId = "thread-channel-1",
+                        authorId = "user-1"
+                    )
+                )
+            )
+        )
+
+        val patched = store.state.value.items.single()
+        assertEquals(MessageId("self-message"), patched.latestActivityMessageId)
+        assertEquals(0, patched.unreadCount)
+        assertEquals(null, patched.firstUnreadMessageId)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun staleBackgroundProjectionCannotDropPatchedAllRowBeforeCanonicalMarkerCatchesUp() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+        val canonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "message message-new",
+                replyCount = 3,
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("message-new")
+            )
+        val laggingReadProjection = canonical.copy(unreadCount = 0, firstUnreadMessageId = null)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        // The aggregate count may already include the realtime message even
+        // while the serving page still omits its row. Preserve the visible
+        // floor without adding the row unread a second time.
+        inbox.completeNextSnapshot(snapshot(emptyList(), totalUnreadCount = 1))
+        delay(1L)
+        assertEquals(listOf(stale.key), store.state.value.items.map { it.key })
+        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                SyncResumeResponse(messages = emptyList(), currentSeq = 10L, hasMore = false)
+            )
+        )
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(laggingReadProjection), totalUnreadCount = 0))
+        delay(1L)
+        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(laggingReadProjection), totalUnreadCount = 0))
+        awaitState(store) { state -> state.items.singleOrNull()?.unreadCount == 0 }
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(emptyList()))
+        awaitState(store) { state -> state.items.isEmpty() }
+        scope.cancel()
+    }
+
+    @Test
+    fun explicitRefreshMayRemoveRowStillHeldOnlyByBackgroundHighWater() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 60_000L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        inbox.completeNextSnapshot(snapshot(emptyList()))
+
+        assertTrue(store.state.value.items.isEmpty())
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun backgroundEmptyResultCannotDropRowStillHeldByRealtimeHighWater() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextResult(DataResult.Empty(EmptyReason.NoMessages))
+        delay(1L)
+
+        assertEquals(listOf(stale.key), store.state.value.items.map { it.key })
+        assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun messagePatchSurvivesStaleExplicitRefreshUntilBackgroundReconcileConfirmsIt() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
@@ -2065,7 +2301,8 @@ class SharedActivityStoreTest {
                 latestActivityMessageId = MessageId("message-new"),
                 latestActivityPreview = "Realtime preview",
                 latestActivityAt = "2026-07-13T03:03:00Z",
-                replyCount = 3
+                replyCount = 3,
+                unreadCount = 2
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
         inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
@@ -2086,15 +2323,18 @@ class SharedActivityStoreTest {
 
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
         assertEquals(3, store.state.value.items.single().replyCount)
+        assertEquals(2, store.state.value.items.single().unreadCount)
 
         inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
 
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
         assertEquals(3, store.state.value.items.single().replyCount)
+        assertEquals(2, store.state.value.items.single().unreadCount)
+        assertEquals(2, store.state.value.totalUnreadCount)
         assertEquals(false, store.state.value.refreshing)
 
         awaitPendingCount(inbox, 1)
-        inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
+        inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 2))
         awaitState(store) { state -> !state.refreshing && state.items.singleOrNull()?.replyCount == 3 }
 
         assertEquals(0, inbox.pendingCount)
@@ -2149,13 +2389,14 @@ class SharedActivityStoreTest {
             stale.copy(
                 latestActivityMessageId = MessageId("message-new"),
                 latestActivityPreview = "Realtime preview",
-                replyCount = 3
+                replyCount = 3,
+                unreadCount = 3
             )
         val inbox =
             FakeInboxRepository(
                 listOf(
                     snapshot(listOf(stale), totalUnreadCount = 2),
-                    snapshot(listOf(canonical), totalUnreadCount = 2)
+                    snapshot(listOf(canonical), totalUnreadCount = 3)
                 )
             )
         val store =
@@ -2192,8 +2433,8 @@ class SharedActivityStoreTest {
         assertEquals(MessageId("message-new"), patched.latestActivityMessageId)
         assertEquals("Realtime preview", patched.latestActivityPreview)
         assertEquals(3, patched.replyCount)
-        assertEquals(2, patched.unreadCount)
-        assertEquals(2, store.state.value.totalUnreadCount)
+        assertEquals(3, patched.unreadCount)
+        assertEquals(3, store.state.value.totalUnreadCount)
         scope.cancel()
     }
 
@@ -2206,9 +2447,17 @@ class SharedActivityStoreTest {
                 latestActivityMessageId = MessageId("message-1"),
                 latestActivityPreview = "message message-1",
                 replyCount = 4,
-                latestActivityAt = "2026-07-13T03:04:00Z"
+                latestActivityAt = "2026-07-13T03:04:00Z",
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("message-1")
             )
-        val inbox = FakeInboxRepository(listOf(snapshot(listOf(stale)), snapshot(listOf(canonical))))
+        val inbox =
+            FakeInboxRepository(
+                listOf(
+                    snapshot(listOf(stale), totalUnreadCount = 0),
+                    snapshot(listOf(canonical), totalUnreadCount = 1)
+                )
+            )
         val store =
             activityStore(
                 scope = scope,
@@ -2229,7 +2478,9 @@ class SharedActivityStoreTest {
                     threadChannelId = ChannelId("thread-channel-1"),
                     replyCount = 4,
                     lastReplyAt = "2026-07-13T03:04:00Z",
-                    participantIds = emptyList()
+                    participantIds = emptyList(),
+                    unreadCount = 1,
+                    firstUnreadMessageId = MessageId("message-1")
                 )
             )
         )
@@ -2241,6 +2492,7 @@ class SharedActivityStoreTest {
 
         assertEquals(4, store.state.value.items.single().replyCount)
         assertEquals(MessageId("message-1"), store.state.value.items.single().latestActivityMessageId)
+        assertEquals(1, store.state.value.items.single().unreadCount)
         assertEquals(false, store.state.value.refreshing)
         delay(150L)
         assertEquals(2, inbox.initialLoadCount)
