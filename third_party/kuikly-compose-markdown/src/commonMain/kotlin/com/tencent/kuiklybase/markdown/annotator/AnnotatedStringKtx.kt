@@ -256,12 +256,22 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     content: String,
     node: ASTNode,
     annotatorSettings: AnnotatorSettings,
-) {
+    followingNodes: List<ASTNode> = emptyList(),
+): Int {
     val targetNode = node.children.firstOrNull {
         it.type.name == MarkdownElementTypes.AUTOLINK.name
     } ?: node
     val rawDestination = targetNode.getUnescapedTextInNode(content)
-    val (destination, trailingText) = rawDestination.splitAutoLinkDestination()
+    val (boundedDestination, trailingText) = rawDestination.splitAutoLinkDestination()
+    val expectedClosers = boundedDestination.unclosedAutoLinkDelimiters()
+    var consumedFollowingNodes = 0
+    var destination = boundedDestination
+    for (expected in expectedClosers) {
+        val following = followingNodes.getOrNull(consumedFollowingNodes) ?: break
+        if (following.getUnescapedTextInNode(content) != expected.toString()) break
+        destination += expected
+        consumedFollowingNodes++
+    }
 
     annotatorSettings.referenceLinkHandler?.store(destination, destination)
     withLink(
@@ -274,6 +284,7 @@ internal fun AnnotatedString.Builder.appendAutoLink(
         append(destination)
     }
     append(trailingText)
+    return consumedFollowingNodes
 }
 
 /**
@@ -335,6 +346,20 @@ private fun String.splitAutoLinkDestination(): Pair<String, String> {
         endExclusive--
     }
     return substring(0, endExclusive) to substring(endExclusive)
+}
+
+private fun String.unclosedAutoLinkDelimiters(): List<Char> {
+    val stack = mutableListOf<Char>()
+    forEach { char ->
+        when (char) {
+            '(' -> stack += ')'
+            '[' -> stack += ']'
+            '{' -> stack += '}'
+            '<' -> stack += '>'
+            ')', ']', '}', '>' -> if (stack.lastOrNull() == char) stack.removeAt(stack.lastIndex)
+        }
+    }
+    return stack.asReversed()
 }
 
 /**
@@ -498,7 +523,15 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     GFMTokenTypes.GFM_AUTOLINK -> if (insideCodeSpan || child.parent == MarkdownElementTypes.LINK_TEXT) {
                         // Code spans are verbatim (task #493): no linkification.
                         append(child.getUnescapedTextInNode(content))
-                    } else appendAutoLink(content, child, annotatorSettings)
+                    } else {
+                        childIndex +=
+                            appendAutoLink(
+                                content = content,
+                                node = child,
+                                annotatorSettings = annotatorSettings,
+                                followingNodes = children.drop(childIndex + 1),
+                            )
+                    }
 
                     // The lexer emits EMAIL_AUTOLINK for "user@host" between angle
                     // brackets even inside code spans. Without this branch the token
