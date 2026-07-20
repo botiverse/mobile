@@ -548,6 +548,11 @@ class ReadStateV1ProductionCanary(
             engine.revoke(barrier.witness)
             return@synchronized null
         }
+        diagnostics.recordSelection(
+            barrier.owner,
+            barrier.channelId,
+            barrier.generation,
+        )
         val requested =
             (requestOffBarrier(barrier) as? ReadStateV1GenerationResult.BaselineRequired)?.requested == true
         diagnostics.recordBarrier("snapshot_requested=$requested")

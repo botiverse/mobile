@@ -229,14 +229,19 @@ class ReadStateV1DiagnosticOverrideTest {
         assertIs<ReadStateV1ProductionDisposition.Selected>(
             canary.applyHydrate(owner, "channel-a", readStateVersion = 1L, maxReadSeq = 7L)
         )
-        assertEquals("home=1 activity=1 generation=1", controller.snapshot().destinationPublication)
+        val selectedSnapshot = controller.snapshot()
+        assertEquals(1L, selectedSnapshot.witnessGeneration)
+        assertEquals("home=1 activity=1 generation=1", selectedSnapshot.destinationPublication)
 
         controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOff)
         assertIs<ReadStateV1ProductionDisposition.Selected>(
             canary.applyHydrate(owner, "channel-a", readStateVersion = 2L, maxReadSeq = 8L)
         )
 
-        assertEquals("home=1 activity=1 generation=2", controller.snapshot().destinationPublication)
+        val barrierSnapshot = controller.snapshot()
+        assertEquals(2L, barrierSnapshot.witnessGeneration)
+        assertEquals("home=1 activity=1 generation=2", barrierSnapshot.destinationPublication)
+        assertEquals("released", barrierSnapshot.barrierState)
     }
 }
 
