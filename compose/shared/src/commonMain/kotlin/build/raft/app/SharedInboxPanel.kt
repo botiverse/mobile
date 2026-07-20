@@ -1560,9 +1560,11 @@ internal data class ActivityPendingUpdateLedger(
 
     fun consumePending(): ActivityPendingUpdateLedger {
         if (pendingMarkers.isEmpty()) return this
+        val allRetired = (retiredMarkers + pendingMarkers).toList()
+        val retainedFrom = (allRetired.size - ActivityRetiredUpdateTrackingWindow).coerceAtLeast(0)
         val retired =
-            (retiredMarkers + pendingMarkers)
-                .takeLast(ActivityRetiredUpdateTrackingWindow)
+            allRetired
+                .subList(retainedFrom, allRetired.size)
                 .toSet()
         return copy(pendingMarkers = emptySet(), retiredMarkers = retired)
     }
