@@ -78,9 +78,9 @@ class MembersDirectMessageLaunchTest {
     }
 
     @Test
-    fun agentDetailUsesIconOnlyHeaderMessageAction() {
+    fun directMessageEligibleProfilesUseIconOnlyHeaderMessageAction() {
         assertTrue(membersHeaderMessageUsesIconOnly(MemberKind.Agent))
-        assertFalse(membersHeaderMessageUsesIconOnly(MemberKind.Human))
+        assertTrue(membersHeaderMessageUsesIconOnly(MemberKind.Human))
         assertFalse(membersHeaderMessageUsesIconOnly(MemberKind.System))
     }
 

@@ -262,7 +262,8 @@ private fun MembersAgentDetailTab.localizedLabel(): String =
         MembersAgentDetailTab.Apps -> stringResource(MR.strings.member_tab_apps)
     }
 
-internal fun membersHeaderMessageUsesIconOnly(kind: MemberKind): Boolean = kind == MemberKind.Agent
+internal fun membersHeaderMessageUsesIconOnly(kind: MemberKind): Boolean =
+    kind == MemberKind.Agent || kind == MemberKind.Human
 
 internal enum class MembersAgentServerRole(
     val wireValue: String,
