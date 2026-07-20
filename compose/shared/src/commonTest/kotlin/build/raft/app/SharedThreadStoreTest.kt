@@ -117,9 +117,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -127,6 +129,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import kotlinx.serialization.encodeToString
@@ -2008,6 +2011,70 @@ class SharedThreadStoreTest {
         assertEquals("reply-2", store.state.value.payload.focusedMessageId)
         assertEquals(listOf("thread-m1", "thread-m1"), api.channelIds)
         scope.cancel()
+    }
+
+    @Test
+    fun staleFocusedOriginWriterCannotOverwriteRepeatedActivityReplyFocus() = runBlocking {
+        val externalJob = SupervisorJob()
+        val scope = CoroutineScope(externalJob + Dispatchers.Default)
+        val staleCommitStarted = CompletableDeferred<Unit>()
+        val freshCommitStarted = CompletableDeferred<Unit>()
+        val releaseStaleCommit = CompletableDeferred<Unit>()
+        val freshCommitFinished = CompletableDeferred<Unit>()
+        val staleCommitFinished = CompletableDeferred<Unit>()
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("reply body", id = "reply-2", channelId = "thread-m1")
+            )
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = api,
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope,
+                diagnosticsLogger = { message ->
+                    if (message.contains("thread_focused_origin_result")) {
+                        if (!freshCommitFinished.complete(Unit)) {
+                            staleCommitFinished.complete(Unit)
+                        }
+                    }
+                },
+                beforeFocusedOriginCommit = { payloadBeforeCommit ->
+                    if (staleCommitStarted.complete(Unit)) {
+                        assertEquals("reply-1", payloadBeforeCommit.focusedMessageId)
+                        try {
+                            releaseStaleCommit.await()
+                        } catch (_: CancellationException) {
+                            withContext(NonCancellable) { releaseStaleCommit.await() }
+                        }
+                    } else {
+                        freshCommitStarted.complete(Unit)
+                    }
+                }
+            )
+        val firstRoute =
+            replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+                .copy(focusedMessageId = "reply-1")
+        val secondRoute = firstRoute.copy(focusedMessageId = "reply-2")
+
+        try {
+            store.accept(SharedThreadIntent.Start(firstRoute))
+            withTimeout(5_000) { staleCommitStarted.await() }
+
+            withTimeout(5_000) { store.accept(SharedThreadIntent.Start(secondRoute)) }
+            withTimeout(5_000) { freshCommitStarted.await() }
+            withTimeout(5_000) { freshCommitFinished.await() }
+            assertEquals("reply-2", store.state.value.payload.focusedMessageId)
+
+            releaseStaleCommit.complete(Unit)
+            withTimeout(5_000) { staleCommitFinished.await() }
+            assertEquals("reply-2", store.state.value.payload.focusedMessageId)
+        } finally {
+            releaseStaleCommit.complete(Unit)
+            externalJob.cancelAndJoin()
+        }
     }
 
     @Test
