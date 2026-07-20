@@ -45,7 +45,7 @@ internal class BoundedPerformanceTraceRing(
                     this.add(event)
                 }
             }
-        }
+        }.sortedBy(PerformanceTraceEvent::elapsedRealtimeNanos)
     }
 
     @Synchronized

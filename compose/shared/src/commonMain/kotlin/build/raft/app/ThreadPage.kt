@@ -5485,11 +5485,7 @@ internal fun SharedThreadRouteContent(
                     "asTask" to context.asTask.toString(),
                     "attachments" to context.attachmentIds.size.toString(),
                     "hasText" to context.body.isNotBlank().toString(),
-                    "bodyLength" to context.body.length.toString(),
-                    "localMessageId" to localMessageId,
-                    "parentMessageId" to context.parentMessageId.orEmpty(),
-                    "streamChannelId" to context.streamChannelId.orEmpty(),
-                    "mentionChannelId" to context.mentionChannelId.orEmpty()
+                    "bodyLength" to context.body.length.toString()
                 )
         )
         threadSendScope.launch {
@@ -5554,8 +5550,7 @@ internal fun SharedThreadRouteContent(
                                 "result" to "exception",
                                 "code" to errorCode,
                                 "errorType" to errorType,
-                                "attempt" to attempt.toString(),
-                                "localMessageId" to localMessageId
+                                "attempt" to attempt.toString()
                             )
                     )
                     markFailed(errorCode, threadSendExceptionErrorMessage(sendException))
@@ -5593,8 +5588,7 @@ internal fun SharedThreadRouteContent(
                                         "httpCode" to sendResponse.code.toString(),
                                         "contractCode" to sendResponse.contractCode.orEmpty(),
                                         "errorBytes" to (sendResponse.errorBodyText?.length ?: 0).toString(),
-                                        "attempt" to attempt.toString(),
-                                        "localMessageId" to localMessageId
+                                        "attempt" to attempt.toString()
                                     )
                             )
                             markFailed(errorCode, errorMessage)
@@ -5617,7 +5611,7 @@ internal fun SharedThreadRouteContent(
                         event = "end",
                         threadId = context.channelId,
                         durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                        metadata = mapOf("result" to "empty", "attempt" to attempt.toString(), "localMessageId" to localMessageId)
+                        metadata = mapOf("result" to "empty", "attempt" to attempt.toString())
                     )
                     markFailed("empty_response")
                     return@launch
@@ -5638,8 +5632,7 @@ internal fun SharedThreadRouteContent(
                         mapOf(
                             "result" to "success",
                             "messages" to sentPage.messages.size.toString(),
-                            "attempt" to attempt.toString(),
-                            "localMessageId" to localMessageId
+                            "attempt" to attempt.toString()
                         )
                 )
                 val pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }

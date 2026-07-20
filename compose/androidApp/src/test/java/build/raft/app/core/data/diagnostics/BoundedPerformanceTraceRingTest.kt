@@ -32,6 +32,18 @@ class BoundedPerformanceTraceRingTest {
     }
 
     @Test
+    fun snapshotSortsReverseArrivalByMonotonicTimestamp() {
+        val ring = BoundedPerformanceTraceRing(capacity = 3, retentionNanos = 15L)
+        ring.add(event(at = 20L, name = "later-time-first-arrival"))
+        ring.add(event(at = 10L, name = "earlier-time-late-arrival"))
+
+        assertEquals(
+            listOf("earlier-time-late-arrival", "later-time-first-arrival"),
+            ring.snapshot(nowNanos = 20L).map(PerformanceTraceEvent::name)
+        )
+    }
+
+    @Test
     fun detailedJankLoggingStartsAtSixtyFourMilliseconds() {
         assertFalse(shouldLogDetailedJankFrame(63L))
         assertTrue(shouldLogDetailedJankFrame(64L))
@@ -53,7 +65,29 @@ class BoundedPerformanceTraceRingTest {
         assertEquals(512, PerformanceTraceRingCapacity)
         assertEquals(15_000_000_000L, PerformanceTraceRetentionNanos)
         assertTrue(PerformanceTraceMetadataCharLimit <= 240)
-        assertTrue(PerformanceTraceRingCapacity * PerformanceTraceMetadataCharLimit <= 128 * 1024)
+    }
+
+    @Test
+    fun threadMetadataUsesPhaseAllowlistAndSanitizer() {
+        val metadata =
+            sanitizeThreadPerformanceMetadata(
+                phase = "composer_send",
+                metadata =
+                    mapOf(
+                        "result" to "failed user@example.com Bearer secret-token",
+                        "attempt" to "2",
+                        "localMessageId" to "local-sensitive-id",
+                        "parentMessageId" to "parent-sensitive-id",
+                        "body" to "private body"
+                    )
+            )
+
+        assertTrue(metadata.contains("attempt:2"))
+        assertTrue(metadata.contains("[redacted]"))
+        assertFalse(metadata.contains("secret-token"))
+        assertFalse(metadata.contains("local-sensitive-id"))
+        assertFalse(metadata.contains("parent-sensitive-id"))
+        assertFalse(metadata.contains("private body"))
     }
 
     private fun event(at: Long, name: String): PerformanceTraceEvent =

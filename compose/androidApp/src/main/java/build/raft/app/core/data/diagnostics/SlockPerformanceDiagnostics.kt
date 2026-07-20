@@ -137,7 +137,8 @@ object SlockPerformanceDiagnostics {
             event: String,
             sceneId: String,
             durationMs: Long?,
-            metadata: String
+            metadata: String,
+            performanceMetadata: Map<String, String> = emptyMap()
     ) {
         val sanitizedRoute = routeName.takeIf { it.isNotBlank() } ?: "unknown"
         val sanitizedPhase = phase.takeIf { it.isNotBlank() } ?: "marker"
@@ -146,12 +147,9 @@ object SlockPerformanceDiagnostics {
         if (sanitizedRoute == "kuikly_thread") {
             SlockPerformanceTraceRing.recordThreadMarker(
                     phase = sanitizedPhase,
-                    metadata =
-                            buildString {
-                                append("event=").append(sanitizedEvent)
-                                durationMs?.takeIf { it >= 0L }?.let { append(" durationMs=").append(it) }
-                                if (metadata.isNotBlank()) append(" ").append(metadata)
-                            }
+                    event = sanitizedEvent,
+                    durationMs = durationMs,
+                    metadataFields = performanceMetadata
             )
             if (sanitizedPhase.isThreadGenerationRingOnlyPhase()) return
         }
