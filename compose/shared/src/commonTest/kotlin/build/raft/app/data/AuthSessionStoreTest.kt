@@ -28,6 +28,10 @@ class AuthSessionStoreTest {
         assertTrue(permissions("admin").canManageSettings)
         assertFalse(permissions("member").canManageMachines)
         assertFalse(permissions("member").canManageSettings)
+        assertFalse(permissions("ADMIN").canManageMachines)
+        assertFalse(permissions("ADMIN").canManageSettings)
+        assertFalse(permissions(" owner ").canManageMachines)
+        assertFalse(permissions(" owner ").canManageSettings)
         assertFalse(permissions(null).canManageMachines)
         assertFalse(permissions("unknown").canManageMachines)
     }

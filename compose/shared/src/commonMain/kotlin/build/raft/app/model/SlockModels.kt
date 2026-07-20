@@ -37,8 +37,7 @@ data class ServerPermissions(
 )
 
 internal fun serverPermissionsForRole(role: String?): ServerPermissions {
-    val normalizedRole = role?.trim()?.lowercase()
-    val canAdministerServer = normalizedRole == "owner" || normalizedRole == "admin"
+    val canAdministerServer = role == "owner" || role == "admin"
     return ServerPermissions(
         canManageSettings = canAdministerServer,
         canManageMachines = canAdministerServer
