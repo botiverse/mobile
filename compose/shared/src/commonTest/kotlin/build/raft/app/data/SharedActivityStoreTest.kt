@@ -538,6 +538,313 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun canonicalRefreshRequestsLoadedDepthAndPreservesLoadedTailOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val head = (1..30).map { index -> activityItem("channel-$index") }
+        val tail = (31..60).map { index -> activityItem("channel-$index") }
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(head, hasMore = true, nextOffset = 30, totalCount = 60),
+                        snapshot(head + tail, hasMore = false, nextOffset = 60, totalCount = 60)
+                    ),
+                moreSnapshots =
+                    listOf(
+                        snapshot(tail, hasMore = false, nextOffset = 60, totalCount = 60)
+                    )
+            )
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.LoadMore)
+        val loadedTailKeys = store.state.value.items.drop(30).map { item -> item.key }
+
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(listOf(30, 60), inbox.initialLoadLimits)
+        assertEquals(60, store.state.value.items.size)
+        assertEquals(loadedTailKeys, store.state.value.items.drop(30).map { item -> item.key })
+        assertEquals(false, store.state.value.loading)
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun canonicalRefreshContinuesPastServerPageCapToPreserveDeepLoadedTail() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val rows = (1..120).map { index -> activityItem("channel-$index") }
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(rows.take(30), hasMore = true, nextOffset = 30, totalCount = 120),
+                        snapshot(rows.take(100), hasMore = true, nextOffset = 100, totalCount = 120)
+                    ),
+                moreSnapshots =
+                    listOf(
+                        snapshot(rows.slice(30 until 60), hasMore = true, nextOffset = 60, totalCount = 120),
+                        snapshot(rows.slice(60 until 90), hasMore = true, nextOffset = 90, totalCount = 120),
+                        snapshot(rows.slice(90 until 120), hasMore = false, nextOffset = 120, totalCount = 120),
+                        snapshot(rows.slice(99 until 119), hasMore = true, nextOffset = 120, totalCount = 120),
+                        snapshot(rows.slice(119 until 120), hasMore = false, nextOffset = 121, totalCount = 120)
+                    )
+            )
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        repeat(3) { store.dispatch(SharedActivityIntent.LoadMore) }
+        val deepTailKeys = store.state.value.items.drop(100).map { item -> item.key }
+
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(listOf(30, 100), inbox.initialLoadLimits)
+        assertEquals(listOf(30, 60, 90, 100, 120), inbox.loadMoreOffsets)
+        assertEquals(120, store.state.value.items.size)
+        assertEquals(deepTailKeys, store.state.value.items.drop(100).map { item -> item.key })
+        scope.cancel()
+    }
+
+    @Test
+    fun failedRefreshContinuationKeepsThePreviouslyLoadedDeepSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val rows = (1..120).map { index -> activityItem("channel-$index") }
+        var initialLoads = 0
+        var moreLoads = 0
+        val inbox =
+            object : InboxRepository {
+                override suspend fun loadInitial(
+                    serverId: ServerId,
+                    filter: InboxFilter,
+                    limit: Int
+                ): DataResult<InboxSnapshot> {
+                    initialLoads += 1
+                    return DataResult.Content(
+                        if (initialLoads == 1) {
+                            snapshot(rows.take(30), hasMore = true, nextOffset = 30, totalCount = 120)
+                        } else {
+                            snapshot(rows.take(100), hasMore = true, nextOffset = 100, totalCount = 120)
+                        }
+                    )
+                }
+
+                override suspend fun loadMore(
+                    serverId: ServerId,
+                    filter: InboxFilter,
+                    offset: Int,
+                    limit: Int
+                ): DataResult<InboxSnapshot> {
+                    moreLoads += 1
+                    return when (moreLoads) {
+                        1 -> DataResult.Content(snapshot(rows.slice(30 until 60), hasMore = true, nextOffset = 60, totalCount = 120))
+                        2 -> DataResult.Content(snapshot(rows.slice(60 until 90), hasMore = true, nextOffset = 90, totalCount = 120))
+                        3 -> DataResult.Content(snapshot(rows.slice(90 until 120), hasMore = false, nextOffset = 120, totalCount = 120))
+                        else -> DataResult.Error(ScreenError("tail_failed"))
+                    }
+                }
+
+                override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+                    DataResult.Content(InboxDoneResult(channelId))
+            }
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        repeat(3) { store.dispatch(SharedActivityIntent.LoadMore) }
+        val stableKeys = store.state.value.items.map { item -> item.key }
+
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(stableKeys, store.state.value.items.map { item -> item.key })
+        assertEquals(120, store.state.value.items.size)
+        assertEquals("tail_failed", store.state.value.errorCode)
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun advancingDuplicateRefreshPagesAreBoundedAndKeepThePreviousSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val rows = (1..30).map { index -> activityItem("channel-$index") }
+        var initialLoads = 0
+        var continuationLoads = 0
+        val inbox =
+            object : InboxRepository {
+                override suspend fun loadInitial(
+                    serverId: ServerId,
+                    filter: InboxFilter,
+                    limit: Int
+                ): DataResult<InboxSnapshot> {
+                    initialLoads += 1
+                    return DataResult.Content(
+                        if (initialLoads == 1) {
+                            snapshot(rows, hasMore = false, nextOffset = 30, totalCount = 30)
+                        } else {
+                            snapshot(rows.take(1), hasMore = true, nextOffset = 1, totalCount = 30)
+                        }
+                    )
+                }
+
+                override suspend fun loadMore(
+                    serverId: ServerId,
+                    filter: InboxFilter,
+                    offset: Int,
+                    limit: Int
+                ): DataResult<InboxSnapshot> {
+                    continuationLoads += 1
+                    return DataResult.Content(
+                        snapshot(
+                            rows.take(1),
+                            hasMore = true,
+                            nextOffset = offset + 1,
+                            totalCount = 30
+                        )
+                    )
+                }
+
+                override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+                    DataResult.Content(InboxDoneResult(channelId))
+            }
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val stableKeys = store.state.value.items.map { item -> item.key }
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(3, continuationLoads)
+        assertEquals(stableKeys, store.state.value.items.map { item -> item.key })
+        assertEquals("activity_pagination_stalled", store.state.value.errorCode)
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun nonAdvancingRefreshOffsetKeepsThePreviousSnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val rows = (1..30).map { index -> activityItem("channel-$index") }
+        var initialLoads = 0
+        val inbox =
+            object : InboxRepository {
+                override suspend fun loadInitial(
+                    serverId: ServerId,
+                    filter: InboxFilter,
+                    limit: Int
+                ): DataResult<InboxSnapshot> {
+                    initialLoads += 1
+                    return DataResult.Content(
+                        if (initialLoads == 1) {
+                            snapshot(rows, hasMore = false, nextOffset = 30, totalCount = 30)
+                        } else {
+                            snapshot(rows.take(10), hasMore = true, nextOffset = 10, totalCount = 30)
+                        }
+                    )
+                }
+
+                override suspend fun loadMore(
+                    serverId: ServerId,
+                    filter: InboxFilter,
+                    offset: Int,
+                    limit: Int
+                ): DataResult<InboxSnapshot> =
+                    DataResult.Content(
+                        snapshot(
+                            rows.slice(10 until 30),
+                            hasMore = true,
+                            nextOffset = offset,
+                            totalCount = 30
+                        )
+                    )
+
+                override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+                    DataResult.Content(InboxDoneResult(channelId))
+            }
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        val stableKeys = store.state.value.items.map { item -> item.key }
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(stableKeys, store.state.value.items.map { item -> item.key })
+        assertEquals("activity_pagination_stalled", store.state.value.errorCode)
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleRefreshBurstKeepsContentAndCoalescesWhileCanonicalRefreshIsInFlight() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNext(activityItem("channel-1"))
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(1, inbox.pendingCount)
+        assertEquals(false, store.state.value.loading)
+        assertEquals(true, store.state.value.refreshing)
+        assertEquals(listOf("channel-1"), store.state.value.items.map { item -> item.channelId.value })
+
+        inbox.completeNext(activityItem("channel-1"))
+        assertEquals(false, store.state.value.refreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeAndReadStateBurstShareOneDepthPreservingCanonicalRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val head = (1..30).map { index -> activityItem("channel-$index") }
+        val tail = (31..60).map { index -> activityItem("channel-$index") }
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(head, hasMore = true, nextOffset = 30, totalCount = 60),
+                        snapshot(head + tail, hasMore = false, nextOffset = 60, totalCount = 60)
+                    ),
+                moreSnapshots = listOf(snapshot(tail, hasMore = false, nextOffset = 60, totalCount = 60))
+            )
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 75L
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.LoadMore)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-burst", channelId = "channel-1"))
+            )
+        )
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
+            )
+        )
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-2", version = 1, maxReadSeq = 20)
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        withTimeout(2_000L) {
+            while (inbox.initialLoadCount < 2) delay(10L)
+        }
+        delay(150L)
+
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(listOf(30, 60), inbox.initialLoadLimits)
+        assertEquals(60, store.state.value.items.size)
+        assertEquals((31..60).map { index -> "channel:channel-$index" }, store.state.value.items.drop(30).map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun loadInitialDedupesRowsWithSameActivityKey() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val duplicateFirst = activityItem("channel-1", unreadCount = 1)
@@ -1054,6 +1361,7 @@ class SharedActivityStoreTest {
             )
         )
 
+        awaitInitialLoadCount(inbox, 1)
         assertEquals(1, inbox.initialLoadCount)
         assertEquals(1, homeReconcileRequests)
         assertEquals(0, store.state.value.totalUnreadCount)
@@ -1092,6 +1400,7 @@ class SharedActivityStoreTest {
             )
         )
 
+        awaitInitialLoadCount(inbox, 1)
         assertEquals(1, inbox.initialLoadCount)
         scope.cancel()
     }
@@ -1195,6 +1504,7 @@ class SharedActivityStoreTest {
             )
         )
 
+        awaitInitialLoadCount(inbox, 2)
         assertEquals(2, inbox.initialLoadCount)
         assertEquals(2, store.state.value.totalUnreadCount)
         assertEquals(
@@ -1230,6 +1540,7 @@ class SharedActivityStoreTest {
             )
         )
 
+        awaitInitialLoadCount(inbox, 1)
         assertEquals(1, inbox.initialLoadCount)
         assertEquals(
             build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50),
@@ -1259,6 +1570,7 @@ class SharedActivityStoreTest {
         )
         assertEquals(null, store.state.value.snapshot)
 
+        awaitPendingCount(inbox, 1)
         inbox.completeNextSnapshot(
             snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1)
         )
@@ -1292,6 +1604,7 @@ class SharedActivityStoreTest {
         assertEquals(3, store.state.value.totalUnreadCount)
         assertEquals(true, store.state.value.items.single().hasMention)
 
+        awaitPendingCount(inbox, 1)
         inbox.completeNextSnapshot(
             snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1)
         )
@@ -1762,7 +2075,7 @@ class SharedActivityStoreTest {
             activityStore(
                 scope = scope,
                 inboxRepository = inbox,
-                realtimeReconcileDelayMillis = 60_000L
+                realtimeReconcileDelayMillis = 10L
             )
         val stale = threadItem("thread-channel-1", unreadCount = 2).copy(replyCount = 2)
 
@@ -1787,6 +2100,7 @@ class SharedActivityStoreTest {
                 readStateEvent(scopeId = "thread-channel-1", version = 1, maxReadSeq = 10)
             )
         )
+        awaitPendingCount(inbox, 1)
         inbox.completeNextSnapshot(
             snapshot(
                 listOf(stale.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)),
@@ -2712,6 +3026,7 @@ class SharedActivityStoreTest {
         var initialLoadCount = 0
         var moreLoadCount = 0
         val initialLoadServerIds = mutableListOf<ServerId>()
+        val initialLoadLimits = mutableListOf<Int>()
         val loadMoreOffsets = mutableListOf<Int>()
         val doneChannelIds = mutableListOf<ChannelId>()
 
@@ -2722,7 +3037,10 @@ class SharedActivityStoreTest {
         ): DataResult<InboxSnapshot> =
             DataResult.Content(
                 initialSnapshots.getOrElse(initialLoadCount++) { initialSnapshots.last() }
-                    .also { initialLoadServerIds += serverId }
+                    .also {
+                        initialLoadServerIds += serverId
+                        initialLoadLimits += limit
+                    }
             )
 
         override suspend fun loadMore(
@@ -3071,6 +3389,17 @@ class SharedActivityStoreTest {
     ) {
         withTimeout(5_000L) {
             while (inbox.pendingCount != expected) {
+                delay(1L)
+            }
+        }
+    }
+
+    private suspend fun awaitInitialLoadCount(
+        inbox: FakeInboxRepository,
+        expected: Int
+    ) {
+        withTimeout(5_000L) {
+            while (inbox.initialLoadCount != expected) {
                 delay(1L)
             }
         }
