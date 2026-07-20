@@ -104,7 +104,6 @@ class ReadStateV1ProductionCanary(
                 } ?: return@ReadStateV1ProjectionObserver
                 if (synchronized(lock) { selection === selected && selected.preparingHydrate }) return@ReadStateV1ProjectionObserver
                 onProjection(selected.owner, witness, fact)
-                diagnostics.recordPublication()
                 synchronized(lock) {
                     if (selection === selected) selected.projectedFact = fact
                 }
@@ -188,6 +187,7 @@ class ReadStateV1ProductionCanary(
         projectionFact: ReadStateV1Fact? = null,
         publishContent: () -> Unit = {},
     ): Boolean {
+        diagnostics.refreshExpired()
         val selected = synchronized(lock) {
             selection?.takeIf {
                 it.owner == publication.owner &&
@@ -209,7 +209,6 @@ class ReadStateV1ProductionCanary(
                 publishContent()
                 if (projectionFact != null) {
                     onProjection(publication.owner, selected.witness, projectionFact)
-                    diagnostics.recordPublication()
                     synchronized(lock) {
                         if (selection === selected && selected.pendingPreparedFact == projectionFact) {
                             selected.projectedFact = projectionFact
@@ -337,7 +336,6 @@ class ReadStateV1ProductionCanary(
                     val exact = synchronized(lock) { selection === selected }
                     if (!exact) return@publishIfActive
                     onProjection(owner, selected.witness, currentFact)
-                    diagnostics.recordPublication()
                     synchronized(lock) {
                         if (selection === selected) selected.projectedFact = currentFact
                     }

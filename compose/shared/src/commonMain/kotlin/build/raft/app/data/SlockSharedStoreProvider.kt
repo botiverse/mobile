@@ -404,8 +404,14 @@ internal class SlockSharedStoreProvider private constructor(
             },
             store = SqlDelightReadStateV1Store(sqlDatabase, now = ::defaultNowMillis),
             onProjection = { owner, _, fact ->
-                homeStores.entries().forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
-                homeActivityStores.entries().forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
+                val currentHomeStores = homeStores.entries()
+                val currentActivityStores = homeActivityStores.entries()
+                currentHomeStores.forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
+                currentActivityStores.forEach { (_, store) -> store.applyReadStateV1Projection(owner, fact) }
+                ProcessReadStateV1DiagnosticOverride.controller.recordPublication(
+                    homeStoreCount = currentHomeStores.size,
+                    activityStoreCount = currentActivityStores.size,
+                )
             },
             onRebaseline = { owner, _, channelId ->
                 homeStores.entries().forEach { (_, store) -> store.dispatch(SharedHomeIntent.ForegroundRefresh) }

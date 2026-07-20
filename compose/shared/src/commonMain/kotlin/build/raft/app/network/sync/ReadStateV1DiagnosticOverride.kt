@@ -145,6 +145,20 @@ class ReadStateV1DiagnosticOverrideController(
         listener?.invoke()
     }
 
+    fun refreshExpired(): Boolean {
+        val (expired, listener) = synchronized(lock) {
+            val active = activeOverride
+            if (active == null || nowMillis() < active.expiresAtMillis) {
+                false to null
+            } else {
+                clearLocked("expired")
+                true to onChanged
+            }
+        }
+        if (expired) listener?.invoke()
+        return expired
+    }
+
     fun recordSelection(owner: ReadStateV1ProductionOwner, channelId: String, generation: Long) {
         val scope = owner.toDiagnosticScope(channelId) ?: return
         synchronized(lock) {
@@ -164,8 +178,11 @@ class ReadStateV1DiagnosticOverrideController(
         }
     }
 
-    fun recordPublication(destination: String = "home+activity") {
-        synchronized(lock) { destinationPublication = destination }
+    fun recordPublication(homeStoreCount: Int, activityStoreCount: Int) {
+        synchronized(lock) {
+            destinationPublication =
+                "home=$homeStoreCount activity=$activityStoreCount generation=${witnessGeneration ?: 0L}"
+        }
     }
 
     fun recordBarrier(state: String) {
@@ -225,9 +242,9 @@ class ReadStateV1DiagnosticOverrideController(
         }
     }
 
-    fun snapshot(): ReadStateV1DiagnosticOverrideSnapshot = synchronized(lock) {
-        expireLocked()
-        snapshotLocked()
+    fun snapshot(): ReadStateV1DiagnosticOverrideSnapshot {
+        refreshExpired()
+        return synchronized(lock) { snapshotLocked() }
     }
 
     private fun expireLocked() {

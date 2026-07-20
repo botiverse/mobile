@@ -97,6 +97,15 @@ class ReadStateV1DiagnosticOverrideTest {
     }
 
     @Test
+    fun `destination publication records actual store counts and witness generation`() {
+        controller.recordSelection(owner, "channel-a", generation = 9L)
+
+        controller.recordPublication(homeStoreCount = 0, activityStoreCount = 1)
+
+        assertEquals("home=0 activity=1 generation=9", controller.snapshot().destinationPublication)
+    }
+
+    @Test
     fun `force off revokes prepared publication and requests snapshot barrier`() = runBlocking {
         controller.configureEntitlement(true)
         controller.observe(owner, "channel-a")
@@ -125,6 +134,37 @@ class ReadStateV1DiagnosticOverrideTest {
         assertFalse(canary.completePreparedPublication(prepared))
         assertEquals(1L, controller.snapshot().stalePublicationRejectedCount)
         assertTrue(controller.snapshot().barrierState.orEmpty().startsWith("snapshot_requested="))
+    }
+
+    @Test
+    fun `ttl expiry revokes prepared publication before completion`() = runBlocking {
+        controller.configureEntitlement(true)
+        controller.observe(owner, "channel-a")
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope, ttlMillis = 10L)
+        val barriers = mutableListOf<String>()
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { candidateOwner, channelId ->
+                    controller.decide(false, candidateOwner, channelId).finalEffective
+                },
+                store = AcceptingReadStateV1Store(),
+                onProjection = { _, _, _ -> },
+                onRebaseline = { _, _, channelId -> barriers += channelId },
+                diagnostics = controller,
+            )
+        controller.setOnChanged(canary::refreshEffectiveState)
+        val prepared =
+            assertIs<ReadStateV1ProductionDisposition.Selected>(
+                canary.prepareHydrate(owner, "channel-a", readStateVersion = 1L, maxReadSeq = 7L)
+            ).preparedPublication
+        assertTrue(prepared != null)
+
+        now += 10L
+
+        assertFalse(canary.completePreparedPublication(prepared))
+        assertEquals(listOf("channel-a"), barriers)
+        assertEquals("expired", controller.snapshot().clearReason)
+        assertEquals(1L, controller.snapshot().stalePublicationRejectedCount)
     }
 }
 
