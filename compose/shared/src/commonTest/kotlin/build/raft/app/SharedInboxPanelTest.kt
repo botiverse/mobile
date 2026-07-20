@@ -778,7 +778,12 @@ class SharedInboxPanelTest {
     @Test
     fun activityPresentedOrderKeepsLowerReplyInItsOriginalSlotUntilReveal() {
         val first = activityItem(key = "channel:first", latestActivityMessageId = "message:first")
-        val lower = activityItem(key = "channel:lower", latestActivityMessageId = "message:old")
+        val lower =
+            activityItem(
+                key = "thread:lower",
+                latestActivityMessageId = "message:old",
+                kind = InboxItemKind.Thread
+            )
         val third = activityItem(key = "channel:third", latestActivityMessageId = "message:third")
         val updatedLower = lower.copy(latestActivityMessageId = MessageId("message:new"), unreadCount = 1)
         val canonical = listOf(updatedLower, first, third)
@@ -793,6 +798,97 @@ class SharedInboxPanelTest {
         assertEquals(MessageId("message:new"), held[1].latestActivityMessageId)
         assertEquals(1, held.count { it.key == lower.key })
         assertEquals(listOf(lower.key, first.key, third.key), canonical.map(InboxItem::key))
+    }
+
+    @Test
+    fun activityForegroundRefreshKeepsLowerSelfSendInItsOriginalSlotUntilReveal() {
+        val filter = InboxFilter.All
+        val first =
+            activityItem(
+                key = "thread:first",
+                latestActivityMessageId = "message:first",
+                kind = InboxItemKind.Thread
+            )
+        val lower =
+            activityItem(
+                key = "thread:lower",
+                latestActivityMessageId = "message:old",
+                kind = InboxItemKind.Thread
+            )
+        val third =
+            activityItem(
+                key = "thread:third",
+                latestActivityMessageId = "message:third",
+                kind = InboxItemKind.Thread
+            )
+        val selfSend =
+            lower.copy(
+                latestActivityMessageId = MessageId("message:self-send"),
+                latestActivityPreview = "sent by me"
+            )
+        val canonicalAfterThreadResume = listOf(selfSend, first, third)
+        val tracking =
+            ActivityUpdateTrackingState(filter)
+                .recordSnapshot(filter, listOf(first, lower, third))
+                .recordSnapshot(filter, canonicalAfterThreadResume)
+
+        assertEquals(1, tracking.pendingCount)
+        assertFalse(
+            activityShouldAdoptCanonicalOrder(
+                pendingCount = tracking.pendingCount,
+                pullRefreshCompleted = false
+            )
+        )
+
+        val held =
+            activityItemsPreservingPresentedOrder(
+                presentedItems = listOf(first, lower, third),
+                canonicalItems = canonicalAfterThreadResume
+            )
+
+        assertEquals(listOf(first.key, lower.key, third.key), held.map(InboxItem::key))
+        assertEquals(MessageId("message:self-send"), held[1].latestActivityMessageId)
+        assertEquals(1, held.count { it.key == lower.key })
+        assertTrue(
+            activityShouldAdoptCanonicalOrder(
+                pendingCount = tracking.pendingCount,
+                pullRefreshCompleted = true
+            )
+        )
+        assertTrue(
+            activityShouldAdoptCanonicalOrder(
+                pendingCount = 0,
+                pullRefreshCompleted = false
+            )
+        )
+    }
+
+    @Test
+    fun activityChannelAndDmLastMessageRevisionRemainHeldUntilReveal() {
+        listOf(InboxItemKind.Channel, InboxItemKind.DirectMessage).forEach { kind ->
+            val filter = InboxFilter.All
+            val first = activityItem(key = "$kind:first", kind = kind, lastMessageId = "message:first")
+            val lower = activityItem(key = "$kind:lower", kind = kind, lastMessageId = "message:old")
+            val third = activityItem(key = "$kind:third", kind = kind, lastMessageId = "message:third")
+            val updatedLower = lower.copy(lastMessageId = MessageId("message:self-send"))
+            val canonical = listOf(updatedLower, first, third)
+            val tracking =
+                ActivityUpdateTrackingState(filter)
+                    .recordSnapshot(filter, listOf(first, lower, third))
+                    .recordSnapshot(filter, canonical)
+
+            assertEquals(1, tracking.pendingCount, "$kind lastMessageId advance is a pending activity revision")
+            val held =
+                activityItemsPreservingPresentedOrder(
+                    presentedItems = listOf(first, lower, third),
+                    canonicalItems = canonical
+                )
+            assertEquals(listOf(first.key, lower.key, third.key), held.map(InboxItem::key), "$kind stays in slot")
+            assertEquals(MessageId("message:self-send"), held[1].lastMessageId)
+            assertEquals(1, held.count { it.key == lower.key })
+            assertFalse(activityShouldAdoptCanonicalOrder(tracking.pendingCount, pullRefreshCompleted = false))
+            assertTrue(activityShouldAdoptCanonicalOrder(tracking.consumePending().pendingCount, pullRefreshCompleted = false))
+        }
     }
 
     @Test
@@ -1508,16 +1604,19 @@ class SharedInboxPanelTest {
         lastMessageAt: String? = null,
         unreadCount: Int = 0,
         firstUnreadMessageId: String? = null,
-        latestActivityMessageId: String? = null
+        latestActivityMessageId: String? = null,
+        kind: InboxItemKind = InboxItemKind.Channel,
+        lastMessageId: String? = null
     ): InboxItem =
         InboxItem(
             key = key,
-            kind = InboxItemKind.Channel,
+            kind = kind,
             channelId = ChannelId("channel-1"),
             channelName = "general",
             unreadCount = unreadCount,
             firstUnreadMessageId = firstUnreadMessageId?.let(::MessageId),
             latestActivityMessageId = latestActivityMessageId?.let(::MessageId),
+            lastMessageId = lastMessageId?.let(::MessageId),
             lastMessageAt = lastMessageAt,
             latestActivityAt = latestActivityAt
         )
