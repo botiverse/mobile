@@ -299,18 +299,19 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun clearDiagnostics(): Boolean =
         diagnosticsSettingsCapability("clearDiagnostics")?.optString("status") == "ok"
 
-    override suspend fun setReadStateV1DiagnosticOverride(mode: String): DataResult<Unit> {
+    override suspend fun setDiagnosticFeatureFlagOverride(key: String, mode: String): DataResult<Unit> {
         val response =
             settingsCapability(
                 JSONObject()
-                    .put("action", "setReadStateV1DiagnosticOverride")
+                    .put("action", "setDiagnosticFeatureFlagOverride")
+                    .put("key", key)
                     .put("mode", mode)
             )
         if (response?.optString("status") != "ok") {
             return DataResult.Error(
                 ScreenError(
                     response?.optString("code").orEmpty()
-                        .ifBlank { "read_state_diagnostic_override_failed" },
+                        .ifBlank { "diagnostic_feature_flag_override_failed" },
                     retryable = false,
                 )
             )
@@ -682,6 +683,38 @@ internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHo
         optString("readStateV1DiagnosticJson")
             .takeIf { it.isNotBlank() }
             ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+    val featureFlagOverridesJson =
+        optString("diagnosticFeatureFlagOverridesJson")
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+    val featureFlagOverrides =
+        buildList {
+            if (featureFlagOverridesJson != null) {
+                for (index in 0 until featureFlagOverridesJson.length()) {
+                    val json = featureFlagOverridesJson.optJSONObject(index) ?: continue
+                    val key = json.optString("key").trim()
+                    if (key.isBlank()) continue
+                    add(
+                        SharedSettingsDiagnosticFeatureFlagSnapshot(
+                            key = key,
+                            supported = json.optBoolean("supported", false),
+                            scopeKind = json.optString("scopeKind").ifBlank { "unsupported" },
+                            entitled = json.optBoolean("entitled", false),
+                            clientOverride = json.optString("clientOverride").ifBlank { "Server" },
+                            observedScope = json.optString("observedScope"),
+                            boundScope = json.optString("boundScope"),
+                            expiresAtMillis = json.optLong("expiresAtMillis", 0L).takeIf { it > 0L },
+                            serverEffective = json.optNullableBoolean("serverEffective"),
+                            finalEffective = json.optNullableBoolean("finalEffective"),
+                            precedence = json.optString("precedence").ifBlank { "not_observed" },
+                            exactScopeMatched = json.optBoolean("exactScopeMatched", false),
+                            clearReason = json.optString("clearReason"),
+                            evidence = json.optString("evidence"),
+                        )
+                    )
+                }
+            }
+        }
     return SharedSettingsDiagnosticsHostSnapshot(
         entries = entries,
         readStateV1 =
@@ -707,6 +740,7 @@ internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHo
                     stalePublicationRejectedCount = json.optLong("stalePublicationRejectedCount", 0L),
                 )
             } ?: SharedSettingsReadStateV1DiagnosticSnapshot(),
+        featureFlagOverrides = featureFlagOverrides,
     )
 }
 

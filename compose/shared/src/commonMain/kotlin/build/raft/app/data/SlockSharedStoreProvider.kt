@@ -64,6 +64,7 @@ import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
 import build.raft.app.network.sync.ReadStateV1DestinationPublication
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.SqlDelightReadStateV1Store
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
@@ -1381,13 +1382,13 @@ internal class SlockSharedStoreProvider private constructor(
                     when (event) {
                         is AuthSessionEvent.Authenticated ->
                             {
-                                ProcessReadStateV1DiagnosticOverride.controller.clear("authenticated_identity_changed")
+                                ProcessDiagnosticFeatureFlagOverrides.registry.clearAll("authenticated_identity_changed")
                                 processServerMembersCore.invalidateAll(reason = "authenticated")
                                 activityUnreadSummaryStore.invalidateAll(reason = "authenticated")
                             }
                         is AuthSessionEvent.Cleared ->
                             {
-                                ProcessReadStateV1DiagnosticOverride.controller.clear("logout")
+                                ProcessDiagnosticFeatureFlagOverrides.registry.clearAll("logout")
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
                             }

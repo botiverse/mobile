@@ -1856,6 +1856,50 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun diagnosticFeatureFlagOverrideIntentForwardsKeyAndModeThenReloadsDiagnostics() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities,
+                    ),
+                scope = scope,
+            )
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+
+        store.accept(
+            SharedSettingsIntent.SetDiagnosticFeatureFlagOverride(
+                key = "mobile_activity_stable_order_v1",
+                mode = "force_off",
+            )
+        )
+
+        assertEquals(
+            listOf(
+                "about",
+                "diagnostics",
+                "diagnosticOverride:mobile_activity_stable_order_v1:force_off",
+                "about",
+                "diagnostics",
+            ),
+            capabilities.calls,
+        )
+        assertEquals(
+            SharedSettingsActionState(
+                action = "diagnosticFeatureFlagOverride:mobile_activity_stable_order_v1",
+                inProgress = false,
+            ),
+            store.state.value.actionState,
+        )
+        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
+        assertEquals("Diagnostic feature-flag override updated.", diagnostics.profiler.actionFeedback)
+        scope.cancel()
+    }
+
+    @Test
     fun developerEnvironmentLoadsAndSwitchesThroughPlatformCapabilities() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -3154,6 +3198,11 @@ class SharedSettingsStoreTest {
         override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
             calls += "diagnostics"
             return diagnosticsResult
+        }
+
+        override suspend fun setDiagnosticFeatureFlagOverride(key: String, mode: String): DataResult<Unit> {
+            calls += "diagnosticOverride:$key:$mode"
+            return DataResult.Content(Unit)
         }
 
         override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
