@@ -256,11 +256,22 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     content: String,
     node: ASTNode,
     annotatorSettings: AnnotatorSettings,
-) {
+    followingNodes: List<ASTNode> = emptyList(),
+): Int {
     val targetNode = node.children.firstOrNull {
         it.type.name == MarkdownElementTypes.AUTOLINK.name
     } ?: node
-    val destination = targetNode.getUnescapedTextInNode(content)
+    val rawDestination = targetNode.getUnescapedTextInNode(content)
+    val (boundedDestination, trailingText) = rawDestination.splitAutoLinkDestination()
+    val expectedClosers = boundedDestination.unclosedAutoLinkDelimiters()
+    var consumedFollowingNodes = 0
+    var destination = boundedDestination
+    for (expected in expectedClosers) {
+        val following = followingNodes.getOrNull(consumedFollowingNodes) ?: break
+        if (following.getUnescapedTextInNode(content) != expected.toString()) break
+        destination += expected
+        consumedFollowingNodes++
+    }
 
     annotatorSettings.referenceLinkHandler?.store(destination, destination)
     withLink(
@@ -272,6 +283,83 @@ internal fun AnnotatedString.Builder.appendAutoLink(
     ) {
         append(destination)
     }
+    append(trailingText)
+    return consumedFollowingNodes
+}
+
+/**
+ * GFM's permissive auto-link token can include following prose when a URL is
+ * adjacent to an unmatched closing delimiter (for example `[https://x] now`).
+ * Keep balanced delimiters inside the URL, but return unmatched closers,
+ * whitespace tails, and terminal prose punctuation to normal visible text.
+ */
+private fun String.splitAutoLinkDestination(): Pair<String, String> {
+    if (isEmpty()) return this to ""
+
+    var roundDepth = 0
+    var squareDepth = 0
+    var curlyDepth = 0
+    var angleDepth = 0
+    var endExclusive = length
+    for (index in indices) {
+        when (this[index]) {
+            ' ', '\t', '\n', '\r' -> {
+                endExclusive = index
+                break
+            }
+            '(' -> roundDepth++
+            '[' -> squareDepth++
+            '{' -> curlyDepth++
+            '<' -> angleDepth++
+            ')' ->
+                if (roundDepth > 0) {
+                    roundDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+            ']' ->
+                if (squareDepth > 0) {
+                    squareDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+            '}' ->
+                if (curlyDepth > 0) {
+                    curlyDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+            '>' ->
+                if (angleDepth > 0) {
+                    angleDepth--
+                } else {
+                    endExclusive = index
+                    break
+                }
+        }
+    }
+
+    while (endExclusive > 0 && this[endExclusive - 1] in ".,;:!?") {
+        endExclusive--
+    }
+    return substring(0, endExclusive) to substring(endExclusive)
+}
+
+private fun String.unclosedAutoLinkDelimiters(): List<Char> {
+    val stack = mutableListOf<Char>()
+    forEach { char ->
+        when (char) {
+            '(' -> stack += ')'
+            '[' -> stack += ']'
+            '{' -> stack += '}'
+            '<' -> stack += '>'
+            ')', ']', '}', '>' -> if (stack.lastOrNull() == char) stack.removeAt(stack.lastIndex)
+        }
+    }
+    return stack.asReversed()
 }
 
 /**
@@ -435,7 +523,15 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     GFMTokenTypes.GFM_AUTOLINK -> if (insideCodeSpan || child.parent == MarkdownElementTypes.LINK_TEXT) {
                         // Code spans are verbatim (task #493): no linkification.
                         append(child.getUnescapedTextInNode(content))
-                    } else appendAutoLink(content, child, annotatorSettings)
+                    } else {
+                        childIndex +=
+                            appendAutoLink(
+                                content = content,
+                                node = child,
+                                annotatorSettings = annotatorSettings,
+                                followingNodes = children.drop(childIndex + 1),
+                            )
+                    }
 
                     // The lexer emits EMAIL_AUTOLINK for "user@host" between angle
                     // brackets even inside code spans. Without this branch the token

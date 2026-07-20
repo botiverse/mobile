@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
@@ -11,6 +12,7 @@ import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -88,6 +90,65 @@ class MarkdownContentIntegrityTest {
         )
     }
 
+    @Test
+    fun generatedLiteralBoundariesConserveEveryVisibleCharacter() {
+        literalBoundarySources().forEach { source ->
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(
+                source,
+                rendered.text,
+                "literal boundary lost or rewrote source characters; source=$source",
+            )
+            assertEquals(
+                emptyList(),
+                rendered.urls,
+                "literal boundary unexpectedly became a link; source=$source; rendered=${rendered.text}",
+            )
+        }
+    }
+
+    @Test
+    fun generatedUrlBoundariesConserveTextAndExactLinkTarget() {
+        generatedUrlBoundaryCases().forEach { case ->
+            val rendered = renderTopParagraphsWithLinks(case.source).single()
+            assertEquals(
+                case.source,
+                rendered.text,
+                "URL boundary lost or rewrote visible characters; source=${case.source}",
+            )
+            if (case.linkMayBeSuppressedByMarkdownContainer) {
+                assertTrue(
+                    rendered.urls.isEmpty() || rendered.urls == listOf(case.url),
+                    "optional URL annotation escaped its generated source slice; source=${case.source}; urls=${rendered.urls}",
+                )
+            } else {
+                assertEquals(
+                    listOf(case.url),
+                    rendered.urls,
+                    "URL annotation did not preserve the generated balanced target; source=${case.source}",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun generatedInlineCodeUrlBoundariesStayVerbatimAndUnlinked() {
+        generatedInlineCodeUrlPayloads().forEach { payload ->
+            val source = "`$payload`"
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(
+                payload,
+                rendered.text,
+                "inline-code URL payload was not rendered verbatim; source=$source",
+            )
+            assertEquals(
+                emptyList(),
+                rendered.urls,
+                "inline-code URL payload leaked link semantics; source=$source; rendered=${rendered.text}",
+            )
+        }
+    }
+
     private fun renderTopParagraphs(content: String): List<String> {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
@@ -111,4 +172,125 @@ class MarkdownContentIntegrityTest {
             }.text
         }
     }
+
+    private fun renderTopParagraphsWithLinks(content: String): List<RenderedParagraph> {
+        val parserContent = MarkdownParserContent.from(content).parserContent
+        val tree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(parserContent)
+        val paragraphs = mutableListOf<ASTNode>()
+        fun collect(node: ASTNode) {
+            if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs += node
+            node.children.forEach(::collect)
+        }
+        collect(tree)
+        val settings =
+            DefaultAnnotatorSettings(
+                linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
+                codeSpanStyle = SpanStyle(),
+                annotator = slockMarkdownAnnotator(parserContent),
+            )
+        return paragraphs.map { paragraph ->
+            val annotated =
+                buildAnnotatedString {
+                    buildMarkdownAnnotatedString(parserContent, paragraph, settings)
+                }
+            RenderedParagraph(
+                text = annotated.text,
+                urls =
+                    annotated
+                        .getLinkAnnotations(0, annotated.length)
+                        .mapNotNull { range -> (range.item as? LinkAnnotation.Url)?.url },
+            )
+        }
+    }
+
+    /**
+     * Grammar-generated messages with no valid Markdown construct. Their
+     * conservation law is stronger than a hand-written case list: every source
+     * character must remain visible and none may acquire link semantics.
+     */
+    private fun literalBoundarySources(): List<String> {
+        val leftContexts = listOf("a", "aas", "before ")
+        val boundaryAtoms =
+            buildList {
+                val pairs = listOf('<' to '>', '(' to ')', '[' to ']', '{' to '}')
+                pairs.forEach { (open, close) ->
+                    add("$open$close")
+                    add("${open}x$close")
+                    add("$open")
+                    add("$close")
+                }
+                add("<>")
+                add("<<>>")
+            }
+        val rightContexts = listOf("", "z", " after")
+        return leftContexts.flatMap { left ->
+            boundaryAtoms.flatMap { atom ->
+                rightContexts.map { right -> "$left$atom$right" }
+            }
+        }.distinct()
+    }
+
+    /**
+     * Generates balanced URL paths and surrounds them with prose punctuation.
+     * The generator itself owns the exact URL slice, so the oracle can assert
+     * both visible-text conservation and link-target boundaries without
+     * encoding individual examples such as `asd(xxx)`.
+     */
+    private fun generatedUrlBoundaryCases(): List<GeneratedUrlBoundaryCase> {
+        val base = "https://xxx.com/xx/asd"
+        val contexts =
+            listOf<Pair<(String) -> String, Boolean>>(
+                ({ url: String -> url }) to false,
+                ({ url: String -> "$url." }) to false,
+                ({ url: String -> "$url, next" }) to false,
+                ({ url: String -> "See $url now" }) to false,
+                ({ url: String -> "See ($url) now" }) to false,
+                // `[url]` is also valid unresolved-reference syntax. GFM may
+                // suppress the nested autolink, but it must never create a
+                // target outside the generated URL slice.
+                ({ url: String -> "See [$url] now" }) to true,
+            )
+        return generatedBalancedUrlTargets(base).flatMap { url ->
+            contexts.map { (context, linkMayBeSuppressed) ->
+                GeneratedUrlBoundaryCase(
+                    source = context(url),
+                    url = url,
+                    linkMayBeSuppressedByMarkdownContainer = linkMayBeSuppressed,
+                )
+            }
+        }
+    }
+
+    private fun generatedInlineCodeUrlPayloads(): List<String> {
+        val base = "https://xxx.com/xx/asd"
+        val tails = listOf("", ".", ", next", "] now", ") now", "} now", "> now")
+        return generatedBalancedUrlTargets(base).flatMap { url -> tails.map { tail -> url + tail } }
+    }
+
+    private fun generatedBalancedUrlTargets(base: String): List<String> =
+        // GFM's extended-autolink grammar guarantees one nested balanced pair;
+        // exercise that whole contract instead of asserting recursive URL
+        // semantics beyond what web/commonmark promises.
+        listOf(base) + generatedBalancedParenthesisPayloads(maxDepth = 1).map { payload -> "$base($payload)" }
+
+    private fun generatedBalancedParenthesisPayloads(maxDepth: Int): List<String> {
+        fun atDepth(depth: Int): List<String> {
+            val literals = listOf("x", "xxx", "a-b", "a_b")
+            if (depth == 0) return literals
+            val nested = atDepth(depth - 1).map { inner -> "a($inner)c" }
+            return literals + nested
+        }
+        return atDepth(maxDepth).distinct()
+    }
+
+    private data class GeneratedUrlBoundaryCase(
+        val source: String,
+        val url: String,
+        val linkMayBeSuppressedByMarkdownContainer: Boolean,
+    )
+
+    private data class RenderedParagraph(
+        val text: String,
+        val urls: List<String>,
+    )
 }
