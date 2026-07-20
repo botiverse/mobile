@@ -124,6 +124,24 @@ class MarkdownContentIntegrityTest {
         }
     }
 
+    @Test
+    fun generatedInlineCodeUrlBoundariesStayVerbatimAndUnlinked() {
+        generatedInlineCodeUrlPayloads().forEach { payload ->
+            val source = "`$payload`"
+            val rendered = renderTopParagraphsWithLinks(source).single()
+            assertEquals(
+                payload,
+                rendered.text,
+                "inline-code URL payload was not rendered verbatim; source=$source",
+            )
+            assertEquals(
+                emptyList(),
+                rendered.urls,
+                "inline-code URL payload leaked link semantics; source=$source; rendered=${rendered.text}",
+            )
+        }
+    }
+
     private fun renderTopParagraphs(content: String): List<String> {
         // Uses the PRODUCTION annotator (slockMarkdownAnnotator) so app-side
         // annotate hooks are part of the integrity contract too.
@@ -213,8 +231,6 @@ class MarkdownContentIntegrityTest {
      */
     private fun generatedUrlBoundaryCases(): List<GeneratedUrlBoundaryCase> {
         val base = "https://xxx.com/xx/asd"
-        val balancedSuffixes =
-            listOf("") + generatedBalancedParenthesisPayloads(maxDepth = 3).map { payload -> "($payload)" }
         val contexts =
             listOf<(String) -> String>(
                 { url -> url },
@@ -224,11 +240,19 @@ class MarkdownContentIntegrityTest {
                 { url -> "See ($url) now" },
                 { url -> "See [$url] now" },
             )
-        return balancedSuffixes.flatMap { suffix ->
-            val url = base + suffix
+        return generatedBalancedUrlTargets(base).flatMap { url ->
             contexts.map { context -> GeneratedUrlBoundaryCase(source = context(url), url = url) }
         }
     }
+
+    private fun generatedInlineCodeUrlPayloads(): List<String> {
+        val base = "https://xxx.com/xx/asd"
+        val tails = listOf("", ".", ", next", "] now", ") now", "} now", "> now")
+        return generatedBalancedUrlTargets(base).flatMap { url -> tails.map { tail -> url + tail } }
+    }
+
+    private fun generatedBalancedUrlTargets(base: String): List<String> =
+        listOf(base) + generatedBalancedParenthesisPayloads(maxDepth = 3).map { payload -> "$base($payload)" }
 
     private fun generatedBalancedParenthesisPayloads(maxDepth: Int): List<String> {
         fun atDepth(depth: Int): List<String> {
