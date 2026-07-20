@@ -62,6 +62,7 @@ import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
 import build.raft.app.network.sync.SqlDelightStrictMessageScopeSnapshotReader
 import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
 import build.raft.app.network.sync.SqlDelightReadStateV1Store
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
@@ -394,8 +395,12 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeActivityStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
     private val processReadStateV1Canary: ReadStateV1ProductionCanary by lazy {
         ReadStateV1ProductionCanary(
-            isEnabledForServer = { serverId ->
-                serverFeatureFlags.isEnabled(ServerId(serverId), SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY)
+            isEnabledForServer = { owner, channelId ->
+                val serverEffective =
+                    serverFeatureFlags.isEnabled(ServerId(owner.serverId), SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY)
+                ProcessReadStateV1DiagnosticOverride.controller
+                    .decide(serverEffective, owner, channelId)
+                    .finalEffective
             },
             store = SqlDelightReadStateV1Store(sqlDatabase, now = ::defaultNowMillis),
             onProjection = { owner, _, fact ->
@@ -410,7 +415,9 @@ internal class SlockSharedStoreProvider private constructor(
                 sharedInfoLogger("ReadStateV1Canary", "rebaseline")("serverId=${owner.serverId}")
             },
             logger = sharedInfoLogger("ReadStateV1Canary", "production_canary"),
-        )
+        ).also { canary ->
+            ProcessReadStateV1DiagnosticOverride.controller.setOnChanged(canary::refreshEffectiveState)
+        }
     }
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
@@ -1356,11 +1363,13 @@ internal class SlockSharedStoreProvider private constructor(
                     when (event) {
                         is AuthSessionEvent.Authenticated ->
                             {
+                                ProcessReadStateV1DiagnosticOverride.controller.clear("authenticated_identity_changed")
                                 processServerMembersCore.invalidateAll(reason = "authenticated")
                                 activityUnreadSummaryStore.invalidateAll(reason = "authenticated")
                             }
                         is AuthSessionEvent.Cleared ->
                             {
+                                ProcessReadStateV1DiagnosticOverride.controller.clear("logout")
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
                             }

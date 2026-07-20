@@ -32,7 +32,7 @@ class ReadStateV1PreparedPublication internal constructor(
 )
 
 class ReadStateV1ProductionCanary(
-    private val isEnabledForServer: (String) -> Boolean,
+    private val isEnabledForServer: (ReadStateV1ProductionOwner, String) -> Boolean,
     store: ReadStateV1Store,
     private val onProjection: (
         owner: ReadStateV1ProductionOwner,
@@ -45,11 +45,37 @@ class ReadStateV1ProductionCanary(
         channelId: String,
     ) -> Unit,
     private val logger: (String) -> Unit = {},
+    private val diagnostics: ReadStateV1DiagnosticOverrideController = ProcessReadStateV1DiagnosticOverride.controller,
 ) {
+    constructor(
+        isEnabledForServer: () -> Boolean,
+        store: ReadStateV1Store,
+        onProjection: (
+            owner: ReadStateV1ProductionOwner,
+            witness: ReadStateV1GrantWitness,
+            fact: ReadStateV1Fact,
+        ) -> Unit,
+        onRebaseline: (
+            owner: ReadStateV1ProductionOwner,
+            witness: ReadStateV1GrantWitness,
+            channelId: String,
+        ) -> Unit,
+        logger: (String) -> Unit = {},
+        diagnostics: ReadStateV1DiagnosticOverrideController = ProcessReadStateV1DiagnosticOverride.controller,
+    ) : this(
+        isEnabledForServer = { _, _ -> isEnabledForServer() },
+        store = store,
+        onProjection = onProjection,
+        onRebaseline = onRebaseline,
+        logger = logger,
+        diagnostics = diagnostics,
+    )
+
     private data class Selection(
         val owner: ReadStateV1ProductionOwner,
         val channelId: String,
         val witness: ReadStateV1GrantWitness,
+        val generation: Long,
         var projectedFact: ReadStateV1Fact? = null,
         var preparingHydrate: Boolean = false,
         var offBarrierRequested: Boolean = false,
@@ -65,6 +91,7 @@ class ReadStateV1ProductionCanary(
     private val selectionIssueLock = SynchronizedObject()
     private val authority = ReadStateV1GrantAuthority()
     private var selection: Selection? = null
+    private var nextSelectionGeneration: Long = 0L
     private val engine =
         ReadStateV1GenerationEngine(
             authority = authority,
@@ -77,6 +104,7 @@ class ReadStateV1ProductionCanary(
                 } ?: return@ReadStateV1ProjectionObserver
                 if (synchronized(lock) { selection === selected && selected.preparingHydrate }) return@ReadStateV1ProjectionObserver
                 onProjection(selected.owner, witness, fact)
+                diagnostics.recordPublication()
                 synchronized(lock) {
                     if (selection === selected) selected.projectedFact = fact
                 }
@@ -149,7 +177,9 @@ class ReadStateV1ProductionCanary(
             selection?.takeIf {
                 it.owner == owner && it.channelId == fact.channelId && it.pendingPreparedFact == fact
             }?.let(::preparedPublication)
-        } ?: return false
+        } ?: return false.also {
+            diagnostics.recordStalePublicationRejected()
+        }
         return completePreparedPublication(publication, fact, publishContent)
     }
 
@@ -165,7 +195,9 @@ class ReadStateV1ProductionCanary(
                     it.witness === publication.witness &&
                     (projectionFact == null || it.pendingPreparedFact == projectionFact)
             }
-        } ?: return false
+        } ?: return false.also {
+            diagnostics.recordStalePublicationRejected()
+        }
         return try {
             var completedInsideFence = false
             val published = selected.witness.publicationFence.publishIfActive {
@@ -177,6 +209,7 @@ class ReadStateV1ProductionCanary(
                 publishContent()
                 if (projectionFact != null) {
                     onProjection(publication.owner, selected.witness, projectionFact)
+                    diagnostics.recordPublication()
                     synchronized(lock) {
                         if (selection === selected && selected.pendingPreparedFact == projectionFact) {
                             selected.projectedFact = projectionFact
@@ -188,7 +221,10 @@ class ReadStateV1ProductionCanary(
                 }
                 completedInsideFence = true
             }
-            if (!published || !completedInsideFence) return false
+            if (!published || !completedInsideFence) {
+                diagnostics.recordStalePublicationRejected()
+                return false
+            }
             if (projectionFact != null) releaseAfterCompletedBarrier(selected)
             true
         } catch (error: Throwable) {
@@ -208,6 +244,12 @@ class ReadStateV1ProductionCanary(
         logger("clear serverId=${revoked.owner.serverId} channelId=${revoked.channelId}")
     }
 
+    fun refreshEffectiveState() {
+        val selected = synchronized(lock) { selection } ?: return
+        if (isEnabledForServer(selected.owner, selected.channelId)) return
+        replaceWithSnapshotBarrier(selected)
+    }
+
     private suspend fun apply(
         owner: ReadStateV1ProductionOwner,
         channelId: String,
@@ -223,7 +265,7 @@ class ReadStateV1ProductionCanary(
         if (selected.owner != owner || selected.channelId != channelId) {
             return ReadStateV1ProductionDisposition.Legacy
         }
-        val enabled = isEnabledForServer(owner.serverId)
+        val enabled = isEnabledForServer(owner, channelId)
         var barrierRequested = false
         if (!enabled && !selected.releaseAfterSnapshotBarrier) {
             val barrier =
@@ -280,6 +322,11 @@ class ReadStateV1ProductionCanary(
                 "apply source=${source.name.lowercase()} serverId=${owner.serverId} channelId=$channelId " +
                     "result=${result::class.simpleName.orEmpty()}"
             )
+            diagnostics.recordAdjudication(
+                source = source.name.lowercase(),
+                result = result::class.simpleName.orEmpty(),
+                fact = candidate.toFactOrNull(),
+            )
             if (!deferProjection && source == ReadStateV1FactSource.Hydrate && result == ReadStateV1GenerationResult.Current) {
                 val currentFact = ReadStateV1Fact(
                     channelId,
@@ -290,6 +337,7 @@ class ReadStateV1ProductionCanary(
                     val exact = synchronized(lock) { selection === selected }
                     if (!exact) return@publishIfActive
                     onProjection(owner, selected.witness, currentFact)
+                    diagnostics.recordPublication()
                     synchronized(lock) {
                         if (selection === selected) selected.projectedFact = currentFact
                     }
@@ -367,7 +415,7 @@ class ReadStateV1ProductionCanary(
         return synchronized(selectionIssueLock) {
             val existing = synchronized(lock) { selection }
             if (existing != null) return@synchronized SelectionDecision(existing, newlySelected = false)
-            if (!isEnabledForServer(owner.serverId) ||
+            if (!isEnabledForServer(owner, channelId) ||
                 readStateVersion == null || readStateVersion <= 0L || maxReadSeq == null || maxReadSeq < 0L
             ) return@synchronized null
             val scope =
@@ -376,12 +424,20 @@ class ReadStateV1ProductionCanary(
                     principalId = durablePrincipalId(owner),
                     channelId = channelId,
                 )
-            val candidate = Selection(owner, channelId, authority.issue(scope))
+            nextSelectionGeneration += 1L
+            val candidate = Selection(owner, channelId, authority.issue(scope), nextSelectionGeneration)
             synchronized(lock) {
                 selection?.let { SelectionDecision(it, newlySelected = false) }
                     ?: SelectionDecision(candidate.also { selection = it }, newlySelected = true)
             }.also { decision ->
                 if (decision.selection !== candidate) engine.revoke(candidate.witness)
+                if (decision.selection === candidate) {
+                    diagnostics.recordSelection(
+                        owner,
+                        channelId,
+                        candidate.generation,
+                    )
+                }
             }
         }
     }
@@ -400,11 +456,13 @@ class ReadStateV1ProductionCanary(
                 it.owner == revoked.owner && it.channelId == revoked.channelId && it.releaseAfterSnapshotBarrier
             }?.let { SnapshotBarrierDecision(it, requested = false) }
         }
+        nextSelectionGeneration += 1L
         val barrier =
             Selection(
                 owner = revoked.owner,
                 channelId = revoked.channelId,
                 witness = authority.issue(revoked.witness.scope),
+                generation = nextSelectionGeneration,
                 projectedFact = revoked.projectedFact,
                 requiresSnapshotBarrier = true,
                 releaseAfterSnapshotBarrier = true,
@@ -424,6 +482,7 @@ class ReadStateV1ProductionCanary(
         }
         val requested =
             (requestOffBarrier(barrier) as? ReadStateV1GenerationResult.BaselineRequired)?.requested == true
+        diagnostics.recordBarrier("snapshot_requested=$requested")
         SnapshotBarrierDecision(barrier, requested)
     }
 
@@ -448,7 +507,7 @@ class ReadStateV1ProductionCanary(
         val shouldRelease = synchronized(lock) {
             selection === selected &&
                 !selected.requiresSnapshotBarrier &&
-                (!isEnabledForServer(selected.owner.serverId) || selected.releaseAfterSnapshotBarrier)
+                (!isEnabledForServer(selected.owner, selected.channelId) || selected.releaseAfterSnapshotBarrier)
         }
         if (!shouldRelease) return false
         val released = synchronized(lock) {
@@ -462,7 +521,15 @@ class ReadStateV1ProductionCanary(
         if (released) {
             engine.revoke(selected.witness)
             logger("off_barrier_complete serverId=${selected.owner.serverId} channelId=${selected.channelId}")
+            diagnostics.recordBarrier("released")
         }
         return released
     }
 }
+
+private fun ReadStateV1WireCandidate.toFactOrNull(): ReadStateV1Fact? =
+    if (channelId != null && readStateVersion != null && maxReadSeq != null) {
+        ReadStateV1Fact(channelId, readStateVersion, maxReadSeq)
+    } else {
+        null
+    }

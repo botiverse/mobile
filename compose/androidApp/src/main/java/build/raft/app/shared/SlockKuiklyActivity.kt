@@ -116,6 +116,10 @@ import build.raft.app.network.AttachmentDownloadResult
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.network.binaryDownloadUrlDiagnostics
 import build.raft.app.network.updateSlockNetworkKmmRecoveryEnvironment
+import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMode
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMutationResult
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -3241,6 +3245,7 @@ internal class SlockKuiklyBridgeModule(
                         "setApiEnvironment" -> setApiEnvironment(request)
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
+                        "setReadStateV1DiagnosticOverride" -> setReadStateV1DiagnosticOverride(request)
                         "setRecompositionProfilerEnabled" -> {
                             val enabled = request.optBoolean("enabled", false)
                             SlockAppLog.record(
@@ -4122,6 +4127,9 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun loadSettingsDiagnostics(): Map<String, Any> {
+        ProcessReadStateV1DiagnosticOverride.controller.configureEntitlement(
+                BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED
+        )
         val entries =
                 JSONArray().also { array ->
                     val journalEntries = SlockAuthCriticalJournal.recentEntries(appContext)
@@ -4142,7 +4150,45 @@ internal class SlockKuiklyBridgeModule(
                         )
                     }
                 }
-        return mapOf("status" to "ok", "entriesJson" to entries.toString())
+        return mapOf(
+                "status" to "ok",
+                "entriesJson" to entries.toString(),
+                "readStateV1DiagnosticJson" to
+                        ProcessReadStateV1DiagnosticOverride.controller.snapshot().toRedactedJson().toString()
+        )
+    }
+
+    private fun setReadStateV1DiagnosticOverride(request: JSONObject): Map<String, Any> {
+        ProcessReadStateV1DiagnosticOverride.controller.configureEntitlement(
+                BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED
+        )
+        val mode =
+                when (request.optString("mode")) {
+                    "force_off" -> ReadStateV1DiagnosticOverrideMode.ForceOff
+                    "force_on_exact_scope" -> ReadStateV1DiagnosticOverrideMode.ForceOnExactScope
+                    "server" -> ReadStateV1DiagnosticOverrideMode.Server
+                    else -> return mapOf("status" to "error", "code" to "read_state_diagnostic_override_mode_unknown")
+                }
+        return when (val result = ProcessReadStateV1DiagnosticOverride.controller.setMode(mode)) {
+            is ReadStateV1DiagnosticOverrideMutationResult.Applied -> {
+                val snapshot = result.snapshot
+                SlockAppLog.record(
+                        "ReadStateV1DiagnosticOverride",
+                        "source=diagnostic_override mode=${snapshot.mode.name} " +
+                                "scope=${snapshot.boundScope?.toStableRedactedLabel() ?: "none"}"
+                )
+                mapOf(
+                        "status" to "ok",
+                        "readStateV1DiagnosticJson" to snapshot.toRedactedJson().toString()
+                )
+            }
+            is ReadStateV1DiagnosticOverrideMutationResult.Rejected ->
+                mapOf(
+                        "status" to "error",
+                        "code" to result.code,
+                        "readStateV1DiagnosticJson" to result.snapshot.toRedactedJson().toString()
+                )
+        }
     }
 
     private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
@@ -4491,11 +4537,47 @@ internal class SlockKuiklyBridgeModule(
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
         val recentLogs = SlockAndroidLocalDiagnostics.exportRecentDiagnosticsText(appContext)
-        return formatMergedSettingsDiagnosticsExportText(
+        val base = formatMergedSettingsDiagnosticsExportText(
                 about = about,
                 recentLogs = recentLogs,
                 hasFallbackDiagnosticsLogs = SlockAndroidLocalDiagnostics.hasFallbackDiagnosticsLogs(appContext)
         )
+        val readState =
+                ProcessReadStateV1DiagnosticOverride.controller.snapshot().toRedactedJson().toString(2)
+        return "$base\n\n=== READ STATE V1 DIAGNOSTIC (REDACTED) ===\n$readState"
+    }
+
+    private fun ReadStateV1DiagnosticOverrideSnapshot.toRedactedJson(): JSONObject =
+            JSONObject()
+                    .put("entitled", entitled)
+                    .put("clientOverride", mode.name)
+                    .put("expiresAtMillis", expiresAtMillis ?: 0L)
+                    .put("clearReason", clearReason.orEmpty())
+                    .put("observedScope", observedScope?.toStableRedactedLabel().orEmpty())
+                    .put("boundScope", boundScope?.toStableRedactedLabel().orEmpty())
+                    .put("serverEffective", lastDecision?.serverEffective?.toString().orEmpty())
+                    .put("finalEffective", lastDecision?.finalEffective?.toString().orEmpty())
+                    .put("precedence", lastDecision?.precedence ?: "not_observed")
+                    .put("exactScopeMatched", lastDecision?.exactScopeMatched ?: false)
+                    .put("selectedScope", selectedScope?.toStableRedactedLabel().orEmpty())
+                    .put("witnessGeneration", witnessGeneration ?: 0L)
+                    .put("durableReadStateVersion", durableReadStateVersion ?: 0L)
+                    .put("durableMaxReadSeq", durableMaxReadSeq ?: -1L)
+                    .put("latestAdjudication", latestAdjudication.orEmpty())
+                    .put("destinationPublication", destinationPublication.orEmpty())
+                    .put("barrierState", barrierState.orEmpty())
+                    .put("stalePublicationRejectedCount", stalePublicationRejectedCount)
+
+    private fun build.raft.app.network.sync.ReadStateV1DiagnosticExactScope.toStableRedactedLabel(): String =
+            "env=${environmentId.stableDiagnosticId()} account=${accountId.stableDiagnosticId()} " +
+                    "server=${serverId.stableDiagnosticId()} channel=${channelId.stableDiagnosticId()}"
+
+    private fun String.stableDiagnosticId(): String {
+        var hash = 0xcbf29ce484222325UL
+        encodeToByteArray().forEach { byte ->
+            hash = (hash xor byte.toUByte().toULong()) * 0x100000001b3UL
+        }
+        return "#${hash.toString(16).takeLast(12).padStart(12, '0')}"
     }
 
     private fun recordSettingsDiagnosticsEnvironment(about: Map<String, Any>) {
