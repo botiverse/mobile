@@ -82,10 +82,19 @@ class SlockImageEditorProductionContractTest {
                 "private fun SlockFilePreviewComposerImageEditor(",
                 "private fun SlockFilePreviewImageEditorPrimaryControls(",
             )
-        val activeDraw = editor.window("activeMosaicRevision", "activeStrokePoints.windowed(2)")
+        val activeDraw = editor.window("val activeMosaicSnapshot =", "state.history.content.textAnnotations")
 
         assertContains(activeDraw, "slockComposerImageActiveMosaicTiles(")
         assertContains(activeDraw, "committedTiles = state.history.content.mosaicTiles")
+        assertContains(activeDraw, "val activeStrokeSnapshot = activeStrokePoints.toList()")
+        assertContains(activeDraw, "key(activeMosaicRevision, activeStrokeRevision, selectedPenColor)")
+        assertContains(activeDraw, "tiles = activeMosaicSnapshot")
+        assertContains(activeDraw, "activeStrokeSnapshot.windowed(2)")
+        assertTrue(
+            activeDraw.indexOf("key(activeMosaicRevision, activeStrokeRevision, selectedPenColor)") <
+                activeDraw.indexOf("Canvas(modifier"),
+            "The transient Canvas node must be replaced whenever active Mosaic/Pencil state changes or clears.",
+        )
     }
 
     private fun commonMainSource(path: String): String {

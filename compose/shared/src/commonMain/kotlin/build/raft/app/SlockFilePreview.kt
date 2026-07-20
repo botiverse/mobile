@@ -1781,25 +1781,30 @@ private fun SlockFilePreviewComposerImageEditor(
                     }
                 }
             }
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                activeMosaicRevision
-                activeStrokeRevision
-                drawSlockComposerImageMosaic(
-                    image = mosaicImage,
-                    tiles =
-                        slockComposerImageActiveMosaicTiles(
-                            touchedTiles = activeMosaicTiles,
-                            committedTiles = state.history.content.mosaicTiles,
-                        ),
+            val activeMosaicSnapshot =
+                slockComposerImageActiveMosaicTiles(
+                    touchedTiles = activeMosaicTiles,
+                    committedTiles = state.history.content.mosaicTiles,
                 )
-                activeStrokePoints.windowed(2).forEach { segment ->
-                    drawLine(
-                        color = selectedPenColor,
-                        start = segment[0],
-                        end = segment[1],
-                        strokeWidth = 6f,
-                        cap = StrokeCap.Round,
+            val activeStrokeSnapshot = activeStrokePoints.toList()
+            key(activeMosaicRevision, activeStrokeRevision, selectedPenColor) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    // Active collections mutate in place. Replace the retained native Canvas for
+                    // every explicit active revision so clearing a committed/cancelled gesture also
+                    // clears its transient pixels instead of leaving them above Undo/Redo history.
+                    drawSlockComposerImageMosaic(
+                        image = mosaicImage,
+                        tiles = activeMosaicSnapshot,
                     )
+                    activeStrokeSnapshot.windowed(2).forEach { segment ->
+                        drawLine(
+                            color = selectedPenColor,
+                            start = segment[0],
+                            end = segment[1],
+                            strokeWidth = 6f,
+                            cap = StrokeCap.Round,
+                        )
+                    }
                 }
             }
             state.history.content.textAnnotations.forEach { annotation ->
