@@ -521,6 +521,7 @@ open class SlockKuiklyActivity :
         removeHomeColdStartFirstDrawListener()
         removeHomeColdStartNativeHold(reason = "destroy")
         removeSlockInputFontBridge()
+        SlockPerformanceDiagnostics.uninstall(window)
         if (shouldReleaseAndroidShellWindow(isFinishing, isChangingConfigurations)) {
             androidShellLaunchTarget?.let { target ->
                 AndroidShellWindowRegistry.unregister(target.shellInstanceId)

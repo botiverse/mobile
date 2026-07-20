@@ -151,6 +151,12 @@ object SlockAndroidLocalDiagnostics {
             zip.closeEntry()
 
             val seenNames = mutableSetOf<String>()
+            val performanceTraceJsonl = SlockPerformanceTraceRing.exportRecentJsonl()
+            if (performanceTraceJsonl.isNotBlank()) {
+                zip.putNextEntry(ZipEntry("performance/recent-15s.jsonl".uniqueZipEntryName(seenNames)))
+                zip.write(performanceTraceJsonl.toByteArray(StandardCharsets.UTF_8))
+                zip.closeEntry()
+            }
             val recentJsonl = SlockGeneralLogRing.exportRecentJsonl()
             if (recentJsonl.isNotBlank()) {
                 zip.putNextEntry(ZipEntry("app_logs/recent-memory.jsonl".uniqueZipEntryName(seenNames)))
