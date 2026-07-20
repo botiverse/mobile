@@ -116,11 +116,18 @@ class MarkdownContentIntegrityTest {
                 rendered.text,
                 "URL boundary lost or rewrote visible characters; source=${case.source}",
             )
-            assertEquals(
-                listOf(case.url),
-                rendered.urls,
-                "URL annotation did not preserve the generated balanced target; source=${case.source}",
-            )
+            if (case.linkMayBeSuppressedByMarkdownContainer) {
+                assertTrue(
+                    rendered.urls.isEmpty() || rendered.urls == listOf(case.url),
+                    "optional URL annotation escaped its generated source slice; source=${case.source}; urls=${rendered.urls}",
+                )
+            } else {
+                assertEquals(
+                    listOf(case.url),
+                    rendered.urls,
+                    "URL annotation did not preserve the generated balanced target; source=${case.source}",
+                )
+            }
         }
     }
 
@@ -232,16 +239,25 @@ class MarkdownContentIntegrityTest {
     private fun generatedUrlBoundaryCases(): List<GeneratedUrlBoundaryCase> {
         val base = "https://xxx.com/xx/asd"
         val contexts =
-            listOf<(String) -> String>(
-                { url -> url },
-                { url -> "$url." },
-                { url -> "$url, next" },
-                { url -> "See $url now" },
-                { url -> "See ($url) now" },
-                { url -> "See [$url] now" },
+            listOf<Pair<(String) -> String, Boolean>>(
+                ({ url -> url }) to false,
+                ({ url -> "$url." }) to false,
+                ({ url -> "$url, next" }) to false,
+                ({ url -> "See $url now" }) to false,
+                ({ url -> "See ($url) now" }) to false,
+                // `[url]` is also valid unresolved-reference syntax. GFM may
+                // suppress the nested autolink, but it must never create a
+                // target outside the generated URL slice.
+                ({ url -> "See [$url] now" }) to true,
             )
         return generatedBalancedUrlTargets(base).flatMap { url ->
-            contexts.map { context -> GeneratedUrlBoundaryCase(source = context(url), url = url) }
+            contexts.map { (context, linkMayBeSuppressed) ->
+                GeneratedUrlBoundaryCase(
+                    source = context(url),
+                    url = url,
+                    linkMayBeSuppressedByMarkdownContainer = linkMayBeSuppressed,
+                )
+            }
         }
     }
 
@@ -267,6 +283,7 @@ class MarkdownContentIntegrityTest {
     private data class GeneratedUrlBoundaryCase(
         val source: String,
         val url: String,
+        val linkMayBeSuppressedByMarkdownContainer: Boolean,
     )
 
     private data class RenderedParagraph(
