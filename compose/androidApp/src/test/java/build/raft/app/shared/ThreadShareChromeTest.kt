@@ -90,11 +90,14 @@ class ThreadShareChromeTest {
             )
         )
         assertTrue(
-            source.contains(
-                "LaunchedEffect(threadInstanceKey, latestItemIndex, shareSelectionCaptureActive) {\n" +
-                    "        if (shareSelectionCaptureActive) {\n" +
-                    "            allowBottomAutoAnchor = false"
-            )
+            Regex(
+                pattern =
+                    """LaunchedEffect\(\s*threadInstanceKey,\s*latestItemIndex,""" +
+                        """\s*shareSelectionCaptureActive,[^)]*\)\s*\{""" +
+                        """\s*if \(shareSelectionCaptureActive\) \{""" +
+                        """\s*allowBottomAutoAnchor = false""",
+                option = RegexOption.DOT_MATCHES_ALL
+            ).containsMatchIn(source)
         )
         assertTrue(
             source.contains(

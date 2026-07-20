@@ -9,20 +9,20 @@ import kotlin.test.assertNull
 class ThreadNewerMessagesActionSpecTest {
 
     @Test
-    fun newerDefaultState_hasNoLeadingIcon() {
+    fun newerDefaultState_isPassiveAndHasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("idle")
 
         assertEquals(MR.strings.thread_load_new.desc(), spec.label)
-        assertEquals("loadNewer", spec.event)
+        assertNull(spec.event)
         assertNull(spec.leadingIcon)
     }
 
     @Test
-    fun newerLoadingState_hasNoLeadingIcon() {
+    fun newerLoadingState_isPassiveAndHasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("loading")
 
         assertEquals(MR.strings.thread_state_loading_new.desc(), spec.label)
-        assertEquals("loadNewer", spec.event)
+        assertNull(spec.event)
         assertNull(spec.leadingIcon)
     }
 
