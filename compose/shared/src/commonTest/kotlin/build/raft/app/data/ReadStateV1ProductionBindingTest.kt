@@ -48,11 +48,17 @@ class ReadStateV1ProductionBindingTest {
         val missingWatermark = fixture.canary.applyHydrate(owner, "channel-1", 1, null)
 
         assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.RejectedCandidate),
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.RejectedCandidate,
+                ReadStateV1Fact("channel-1", 1, 3),
+            ),
             missingVersion,
         )
         assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.RejectedCandidate),
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.RejectedCandidate,
+                ReadStateV1Fact("channel-1", 1, 3),
+            ),
             missingWatermark,
         )
         assertEquals(ReadStateV1Fact("channel-1", 1, 3), fixture.store.facts.values.single())
@@ -78,15 +84,24 @@ class ReadStateV1ProductionBindingTest {
         fixture.canary.applyHydrate(owner, "channel-1", 3, 9)
 
         assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.Stale),
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.Stale,
+                ReadStateV1Fact("channel-1", 3, 9),
+            ),
             fixture.canary.applyOwnerRealtime(owner, "channel-1", 2, 99),
         )
         assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.Current),
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.Current,
+                ReadStateV1Fact("channel-1", 3, 9),
+            ),
             fixture.canary.applyOwnerRealtime(owner, "channel-1", 3, 9),
         )
         assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.Conflict),
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.Conflict,
+                ReadStateV1Fact("channel-1", 3, 9),
+            ),
             fixture.canary.applyOwnerRealtime(owner, "channel-1", 3, 8),
         )
         fixture.canary.applyOwnerRealtime(owner, "channel-1", 4, 10)
@@ -116,13 +131,21 @@ class ReadStateV1ProductionBindingTest {
     }
 
     @Test
-    fun revokeBurnsSelectedGrantAndAllowsOneNewExactScope() = runBlocking {
+    fun revokeHoldsUntilSnapshotBarrierThenAllowsOneNewExactScope() = runBlocking {
         val fixture = fixture()
         fixture.canary.applyHydrate(owner, "channel-1", 1, 4)
         fixture.canary.revoke(owner)
 
+        assertEquals(listOf("channel-1"), fixture.rebaselines)
+        assertIs<ReadStateV1ProductionDisposition.Selected>(
+            fixture.canary.applyOwnerRealtime(owner, "channel-1", 2, 5),
+        )
+        val prepared = fixture.canary.prepareHydrate(owner, "channel-1", 2, 5)
+        assertTrue(fixture.canary.isSelected(owner, "channel-1"))
+        val preparedFact = assertIs<ReadStateV1ProductionDisposition.Selected>(prepared).projectedFact
+        assertTrue(fixture.canary.completePreparedHydrateProjection(owner, requireNotNull(preparedFact)))
         assertIs<ReadStateV1ProductionDisposition.Selected>(fixture.canary.applyHydrate(owner, "channel-2", 1, 8))
-        assertEquals(listOf("channel-1", "channel-2"), fixture.projections.map { it.channelId })
+        assertEquals(listOf("channel-1", "channel-1", "channel-2"), fixture.projections.map { it.channelId })
     }
 
     @Test
@@ -132,11 +155,90 @@ class ReadStateV1ProductionBindingTest {
         fixture.canary.revoke(owner)
 
         assertEquals(
-            ReadStateV1ProductionDisposition.Selected(ReadStateV1GenerationResult.Current),
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.Current,
+                ReadStateV1Fact("channel-1", 1, 4),
+            ),
             fixture.canary.applyHydrate(owner, "channel-1", 1, 4),
         )
         assertEquals(2, fixture.projections.size)
         assertEquals(ReadStateV1Fact("channel-1", 1, 4), fixture.projections.last())
+    }
+
+    @Test
+    fun flagOffHoldsSelectedScopeUntilSnapshotBarrierCommitsAndProjects() = runBlocking {
+        var enabled = true
+        val store = TestReadStateV1Store()
+        val projections = mutableListOf<ReadStateV1Fact>()
+        val rebaselines = mutableListOf<String>()
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { enabled },
+                store = store,
+                onProjection = { _, fact -> projections += fact },
+                onRebaseline = { _, channelId -> rebaselines += channelId },
+            )
+        canary.applyHydrate(owner, "channel-1", 1, 10)
+        enabled = false
+
+        assertEquals(
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.BaselineRequired(true),
+                ReadStateV1Fact("channel-1", 1, 10),
+            ),
+            canary.applyOwnerRealtime(owner, "channel-1", 2, 20),
+        )
+        assertEquals(
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.BaselineRequired(false),
+                ReadStateV1Fact("channel-1", 1, 10),
+            ),
+            canary.applyMutationAck(owner, "channel-1", 3, 30),
+        )
+        assertEquals(ReadStateV1Fact("channel-1", 1, 10), store.facts.values.single())
+        assertEquals(listOf("channel-1"), rebaselines)
+
+        val barrier = canary.prepareHydrate(owner, "channel-1", 4, 40)
+        assertEquals(
+            ReadStateV1ProductionDisposition.Selected(
+                ReadStateV1GenerationResult.Committed,
+                ReadStateV1Fact("channel-1", 4, 40),
+                requiresProjectionConfirmation = true,
+            ),
+            barrier,
+        )
+        assertTrue(canary.isSelected(owner, "channel-1"))
+        assertTrue(canary.completePreparedHydrateProjection(owner, ReadStateV1Fact("channel-1", 4, 40)))
+        assertEquals(ReadStateV1Fact("channel-1", 4, 40), projections.last())
+        assertIs<ReadStateV1ProductionDisposition.Legacy>(
+            canary.applyOwnerRealtime(owner, "channel-1", 5, 50),
+        )
+        Unit
+    }
+
+    @Test
+    fun flagOffSnapshotCommitFailureRemainsSelectedAndDark() = runBlocking {
+        var enabled = true
+        val store = TestReadStateV1Store()
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { enabled },
+                store = store,
+                onProjection = { _, _ -> },
+                onRebaseline = { _, _ -> },
+            )
+        canary.applyHydrate(owner, "channel-1", 1, 10)
+        enabled = false
+        store.failCommit = true
+
+        assertIs<ReadStateV1ProductionDisposition.SelectedFailure>(
+            canary.applyHydrate(owner, "channel-1", 2, 20),
+        )
+        assertTrue(canary.isSelected(owner, "channel-1"))
+        assertIs<ReadStateV1ProductionDisposition.Selected>(
+            canary.applyOwnerRealtime(owner, "channel-1", 3, 30),
+        )
+        assertEquals(ReadStateV1Fact("channel-1", 1, 10), store.facts.values.single())
     }
 
     private fun fixture(
@@ -171,7 +273,7 @@ class ReadStateV1ProductionBindingTest {
 
 internal class TestReadStateV1Store(
     private val events: MutableList<String> = mutableListOf(),
-    private val failCommit: Boolean = false,
+    var failCommit: Boolean = false,
 ) : ReadStateV1Store {
     val facts = mutableMapOf<ReadStateV1Scope, ReadStateV1Fact>()
 

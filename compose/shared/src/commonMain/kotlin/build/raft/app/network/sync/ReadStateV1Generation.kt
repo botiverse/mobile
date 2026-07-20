@@ -62,6 +62,7 @@ class ReadStateV1GenerationEngine(
     suspend fun applySnapshot(
         witness: ReadStateV1GrantWitness,
         candidate: ReadStateV1WireCandidate,
+        notifyProjection: Boolean = true,
     ): ReadStateV1GenerationResult {
         if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
         if (candidate.source != ReadStateV1FactSource.Hydrate) return ReadStateV1GenerationResult.RejectedCandidate
@@ -77,7 +78,7 @@ class ReadStateV1GenerationEngine(
         }
         if (!authority.publishIfCurrent(witness) {
                 synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
-                projectionObserver.onCommitted(witness.scope, fact)
+                if (notifyProjection) projectionObserver.onCommitted(witness.scope, fact)
             }
         ) return ReadStateV1GenerationResult.RejectedCurrentGrant
         return committed.toGenerationResult()

@@ -718,15 +718,17 @@ class SharedActivityStore internal constructor(
             val current = _state.value
             val serverId = current.ownerServerId?.let(::ServerId) ?: return@launch
             val memberId = currentUserId()?.let(::MemberId) ?: return@launch
-            if (serverId.value != owner.serverId || memberId.value != owner.accountId) return@launch
-            val projectionKey = ActivityReadStateProjectionKey(serverId, memberId, ChannelId(fact.channelId))
-            val checkpoint = PerReceiverReadStateCheckpoint(fact.readStateVersion, fact.maxReadSeq)
-            synchronized(realtimeOwnerLock) {
-                pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
-            }
+            val currentOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(serverId.value, memberId.value)
+                    ?.toReadStateV1ProductionOwner()
+                    ?: return@launch
+            if (currentOwner != owner) return@launch
+            diagnosticsLogger(
+                "activity_read_state_patch result=durable_v1_projection scopeId=${fact.channelId} " +
+                    "version=${fact.readStateVersion} maxReadSeq=${fact.maxReadSeq}"
+            )
             onUnreadCountsChanged()
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
-            awaitCurrentLoadIdle()
         }
     }
 

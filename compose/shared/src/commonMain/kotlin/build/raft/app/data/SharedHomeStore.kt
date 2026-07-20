@@ -753,23 +753,62 @@ internal class SharedHomeStore(
         if (needsReconcile) scheduleReadStateReconcile()
     }
 
-    private suspend fun applyReadStateV1Hydrates(snapshot: HomeSnapshot) {
-        val canary = readStateV1Canary ?: return
+    private data class PreparedReadStateV1Hydrates(
+        val snapshot: HomeSnapshot,
+        val confirmations: List<Pair<ReadStateV1ProductionOwner, ReadStateV1Fact>> = emptyList(),
+    )
+
+    private suspend fun prepareReadStateV1Hydrates(snapshot: HomeSnapshot): PreparedReadStateV1Hydrates {
+        val canary = readStateV1Canary ?: return PreparedReadStateV1Hydrates(snapshot)
         val owner =
             readReceiptOwnerFactory
                 ?.invoke(snapshot.server.id.value, snapshot.currentMember.id.value)
                 ?.toReadStateV1ProductionOwner()
-                ?: return
+                ?: return PreparedReadStateV1Hydrates(snapshot)
+        val projectedFacts = mutableMapOf<ChannelId, ReadStateV1Fact?>()
+        val confirmations = mutableListOf<Pair<ReadStateV1ProductionOwner, ReadStateV1Fact>>()
         (snapshot.channels + snapshot.directMessages).forEach { row ->
             val hydrate = row.readStateV1Hydrate ?: return@forEach
             val channelId = row.channelId?.value ?: return@forEach
-            canary.applyHydrate(owner, channelId, hydrate.readStateVersion, hydrate.maxReadSeq)
+            when (val disposition = canary.prepareHydrate(owner, channelId, hydrate.readStateVersion, hydrate.maxReadSeq)) {
+                is ReadStateV1ProductionDisposition.Selected -> {
+                    projectedFacts[ChannelId(channelId)] = disposition.projectedFact
+                    if (disposition.requiresProjectionConfirmation && disposition.projectedFact != null) {
+                        confirmations += owner to disposition.projectedFact
+                    }
+                }
+                ReadStateV1ProductionDisposition.SelectedFailure ->
+                    projectedFacts[ChannelId(channelId)] = null
+                ReadStateV1ProductionDisposition.Legacy -> Unit
+            }
         }
+        if (projectedFacts.isEmpty()) return PreparedReadStateV1Hydrates(snapshot)
+        return PreparedReadStateV1Hydrates(
+            snapshot =
+                snapshot.copy(
+                    channels =
+                        snapshot.channels.map { row ->
+                            if (row.channelId !in projectedFacts) row
+                            else row.copy(readStateMaxReadSeq = projectedFacts[row.channelId]?.maxReadSeq)
+                        },
+                    directMessages =
+                        snapshot.directMessages.map { row ->
+                            if (row.channelId !in projectedFacts) row
+                            else row.copy(readStateMaxReadSeq = projectedFacts[row.channelId]?.maxReadSeq)
+                        },
+                ),
+            confirmations = confirmations,
+        )
     }
 
     internal fun applyReadStateV1Projection(owner: ReadStateV1ProductionOwner, fact: ReadStateV1Fact) {
         val content = _state.value.content as? SharedHomeContentState.Content ?: return
-        if (content.snapshot.server.id.value != owner.serverId || content.snapshot.currentMember.id.value != owner.accountId) {
+        val currentOwner =
+            readReceiptOwnerFactory
+                ?.invoke(content.snapshot.server.id.value, content.snapshot.currentMember.id.value)
+                ?.toReadStateV1ProductionOwner()
+                ?: return
+        if (currentOwner != owner) {
             return
         }
         synchronized(readProjectionOwnerLock) {
@@ -1478,11 +1517,16 @@ internal class SharedHomeStore(
     ) {
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
         val previousContent = _state.value.content as? SharedHomeContentState.Content
+        val preparedHydrates =
+            (dataResult as? DataResult.Content)?.data?.let { snapshot ->
+                prepareReadStateV1Hydrates(snapshot)
+            }
+        val freshSnapshot = preparedHydrates?.snapshot
         val result =
             when (dataResult) {
                 is DataResult.Content ->
                     contentFromDurableSnapshot(
-                        snapshot = dataResult.data,
+                        snapshot = requireNotNull(freshSnapshot),
                         session = activeSession,
                         contentRefreshing = false,
                         previousContent = previousContent
@@ -1522,7 +1566,6 @@ internal class SharedHomeStore(
             // would mis-classify the failure as a fresh success and skip
             // `isStale = true`. The original `dataResult` is the source of
             // truth for whether the network actually succeeded.
-            val freshSnapshot = (dataResult as? DataResult.Content)?.data
             val nextBadge =
                 if (freshSnapshot != null) {
                     val next = snapshotToBadgeCount(freshSnapshot, selectedServerId = activeServer, isStale = false)
@@ -1568,7 +1611,9 @@ internal class SharedHomeStore(
                     appBadgeCount = nextBadge
                 )
             )
-            if (freshSnapshot != null) applyReadStateV1Hydrates(freshSnapshot)
+            preparedHydrates?.confirmations?.forEach { (owner, fact) ->
+                readStateV1Canary?.completePreparedHydrateProjection(owner, fact)
+            }
             if (refreshNotificationsAfterLoad) {
                 loadNotifications()
             } else {
@@ -1675,6 +1720,14 @@ internal class SharedHomeStore(
     }
 
     private fun HomeSnapshot.withAcceptedReadStateCursors(): HomeSnapshot {
+        val productionOwner =
+            readReceiptOwnerFactory
+                ?.invoke(server.id.value, currentMember.id.value)
+                ?.toReadStateV1ProductionOwner()
+
+        fun selected(scopeId: ChannelId): Boolean =
+            productionOwner != null && readStateV1Canary?.isSelected(productionOwner, scopeId.value) == true
+
         fun checkpoint(scopeId: ChannelId): PerReceiverReadStateCheckpoint =
             perReceiverStateVersionStore.readReadStateCheckpoint(
                 serverId = server.id,
@@ -1683,6 +1736,7 @@ internal class SharedHomeStore(
             )
 
         fun HomeChannelRow.withCheckpoint(): HomeChannelRow {
+            if (selected(channelId)) return this
             val accepted = checkpoint(channelId)
             return if (accepted.version > 0L && readStateMaxReadSeq == null) {
                 copy(readStateMaxReadSeq = accepted.maxReadSeq)
@@ -1692,6 +1746,7 @@ internal class SharedHomeStore(
         }
 
         fun HomeDirectMessageRow.withCheckpoint(): HomeDirectMessageRow {
+            if (selected(channelId)) return this
             val accepted = checkpoint(channelId)
             return if (accepted.version > 0L && readStateMaxReadSeq == null) {
                 copy(readStateMaxReadSeq = accepted.maxReadSeq)

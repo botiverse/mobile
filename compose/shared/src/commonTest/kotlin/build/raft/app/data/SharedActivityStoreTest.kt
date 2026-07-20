@@ -73,6 +73,7 @@ class SharedActivityStoreTest {
         )
         lateinit var store: SharedActivityStore
         var project = false
+        var projectionNotifications = 0
         val durable = TestReadStateV1Store()
         val canary =
             ReadStateV1ProductionCanary(
@@ -88,8 +89,14 @@ class SharedActivityStoreTest {
                 perReceiverStateVersionStore = versionStore,
                 readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
                 readStateV1Canary = canary,
+                onUnreadCountsChanged = { projectionNotifications += 1 },
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
+        store.applyReadStateV1Projection(
+            ReadStateV1ProductionOwner("staging", "user-1", "server-1"),
+            ReadStateV1Fact("channel-1", 50, 50),
+        )
+        assertEquals(0, projectionNotifications)
         canary.applyHydrate(ReadStateV1ProductionOwner("production", "user-1", "server-1"), "channel-1", 1, 10)
         project = true
 
@@ -107,7 +114,8 @@ class SharedActivityStoreTest {
             build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
             versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
         )
-        assertTrue(inbox.initialLoadCount >= 2)
+        assertEquals(1, projectionNotifications)
+        assertEquals(1, inbox.initialLoadCount)
         scope.cancel()
     }
 

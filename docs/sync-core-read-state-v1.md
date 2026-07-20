@@ -43,7 +43,9 @@ Peer `scope_read:updated` receipts are a different derived family and are reject
 3. **Commit before projection:** a snapshot or accepted incremental is projected only after its SQL transaction
    commits.
 4. **Revoke barrier:** revocation invalidates the baseline, rolls back a write whose grant changes before
-   commit, and clears only that owner's read-receipt pending overlay.
+   commit, then holds that exact scope dark behind a new grant until a verified snapshot is committed and
+   projected. Only after that barrier may flag-off return to legacy or owner revoke release the scope. Auth
+   teardown may hard-clear because the old owner can no longer project.
 
 ## Production canary binding
 
@@ -63,6 +65,9 @@ legacy apply is suppressed even when candidate validation, commit, or rebaseline
 Only the generation engine's post-commit observer may project a selected fact into Home and Activity. Those
 projections do not write the legacy version checkpoint; the durable v1 row remains sole authority. A verified
 hydrate equal to the durable pair establishes the baseline and projects it without rewriting the row.
+Home performs selected hydrate restore/commit/adjudication before constructing or reducing the first App
+snapshot; while the scope is selected, the legacy checkpoint filler is disabled even when canonical work fails.
+Projection fan-out revalidates the complete environment/account/server owner before touching a store.
 
 ## Persistence and recovery
 
