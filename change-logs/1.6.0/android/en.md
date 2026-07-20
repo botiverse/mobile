@@ -21,6 +21,7 @@
 - Fixed reply-thread opens and sends being delayed by background prewarm work, and the parent message briefly appearing blank on first frame
 - Fixed consecutive Activity or notification opens into different messages in the same reply thread sometimes returning to the previously focused message
 - Fixed Activity refreshes after loading multiple pages returning to loading, truncating later entries, or losing the loaded position
+- Fixed live message or read-state updates repeatedly reshuffling the top of Activity or restarting the refresh indicator while the page is open
 - Fixed Thread history continuing to load more pages without a fresh drag, which could cause extra work and unstable first-screen rendering
 - Fixed the Back to Bottom button, popover menus, and dialog actions sometimes activating content underneath
 - Fixed long-press message menu position flicker, confusing thread-follow icons, and incomplete image capture from selected messages
