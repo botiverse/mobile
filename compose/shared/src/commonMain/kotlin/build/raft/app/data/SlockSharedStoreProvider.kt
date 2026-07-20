@@ -69,6 +69,7 @@ import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.PartitionDenialReason
 import kotlin.random.Random
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -295,6 +296,40 @@ internal class SlockSharedStoreRegistryAccess<T : Any, A>(
         state.unbindFactoryBeforeFirstGet(handle)
 
     fun get(arguments: A): T = state.get(arguments)
+}
+
+internal class ProcessReadReceiptOwnerLifecycle(
+    private val readCurrentOwners: suspend () -> Set<ReadReceiptOwner>,
+    private val readVisibleOrActiveOwners: () -> Set<ReadReceiptOwner>,
+    private val revokeOwner: (ReadReceiptOwner) -> Unit,
+) {
+    private var knownOwners: Set<ReadReceiptOwner> = emptySet()
+    private var revokedOwners: Set<ReadReceiptOwner> = emptySet()
+
+    suspend fun initialize() {
+        knownOwners = readCurrentOwners()
+        revokedOwners = revokedOwners - knownOwners
+    }
+
+    suspend fun reconcile() {
+        val currentOwners = readCurrentOwners()
+        val newlyRevoked = ((knownOwners + readVisibleOrActiveOwners()) - currentOwners) - revokedOwners
+        newlyRevoked.forEach(revokeOwner)
+        revokedOwners = (revokedOwners + newlyRevoked) - currentOwners
+        knownOwners = currentOwners
+    }
+}
+
+internal fun CoroutineScope.observeProcessReadReceiptAuthLifecycle(
+    events: SharedFlow<AuthSessionEvent>,
+    lifecycle: ProcessReadReceiptOwnerLifecycle,
+) = launch {
+    lifecycle.initialize()
+    events.collect { event ->
+        if (event is AuthSessionEvent.Authenticated || event is AuthSessionEvent.Cleared) {
+            lifecycle.reconcile()
+        }
+    }
 }
 
 internal class SlockSharedStoreProvider private constructor(
@@ -939,7 +974,32 @@ internal class SlockSharedStoreProvider private constructor(
             }
         }
 
-    internal fun clearProcessReadReceiptCore() {
+    private suspend fun currentProcessReadReceiptOwners(): Set<ReadReceiptOwner> {
+        val session = authStore.readSession() ?: return emptySet()
+        val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+        return session.servers.mapTo(linkedSetOf()) { server ->
+            ReadReceiptOwner(environmentId, session.user.id, server.id)
+        }
+    }
+
+    private fun visibleOrActiveProcessReadReceiptOwners(): Set<ReadReceiptOwner> =
+        synchronized(processReadReceiptLock) { processReadReceiptRepositories.keys.toSet() } +
+            listOfNotNull(processReadStateV1Canary.selectedOwner()?.toReadReceiptOwner())
+
+    private fun revokeProcessReadReceiptOwner(owner: ReadReceiptOwner) {
+        val coordinator = synchronized(processReadReceiptLock) {
+            processReadReceiptRepositories.remove(owner)
+            processReadReceiptCoordinator
+        }
+        if (coordinator != null) {
+            coordinator.revoke(owner)
+        } else if (owner != ReadReceiptOwner.Legacy) {
+            processReadStateV1Canary.revoke(owner.toReadStateV1ProductionOwner())
+        }
+    }
+
+    internal fun hardClearProcessReadReceiptCoreForTeardown(): Boolean {
+        if (homeStores.entries().isNotEmpty() || homeActivityStores.entries().isNotEmpty()) return false
         val coordinator =
             synchronized(processReadReceiptLock) {
                 processReadReceiptRepositories.clear()
@@ -947,6 +1007,7 @@ internal class SlockSharedStoreProvider private constructor(
             }
         coordinator?.clear()
         processReadStateV1Canary.clear()
+        return true
     }
 
     fun readReceiptOwner(
@@ -1582,13 +1643,15 @@ internal class SlockSharedStoreProvider private constructor(
                     source = authStore.authSessionEvents,
                     scope = pushLifecycleScope
                 )
-                pushLifecycleScope.launch {
-                    authStore.authSessionEvents.collect { event ->
-                        if (event is AuthSessionEvent.Authenticated || event is AuthSessionEvent.Cleared) {
-                            provider.clearProcessReadReceiptCore()
-                        }
-                    }
-                }
+                pushLifecycleScope.observeProcessReadReceiptAuthLifecycle(
+                    events = authStore.authSessionEvents,
+                    lifecycle =
+                        ProcessReadReceiptOwnerLifecycle(
+                            readCurrentOwners = provider::currentProcessReadReceiptOwners,
+                            readVisibleOrActiveOwners = provider::visibleOrActiveProcessReadReceiptOwners,
+                            revokeOwner = provider::revokeProcessReadReceiptOwner,
+                        ),
+                )
             }
         }
     }

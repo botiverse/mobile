@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.*
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class InboxItem(
@@ -109,7 +110,7 @@ data class HomeChannelRow(
     override val lastMessageSeq: Long? = null,
     override val firstUnreadMessageId: MessageId? = null,
     override val readStateMaxReadSeq: Long? = null,
-    override val readStateV1Hydrate: ReadStateV1HydrateCarrier? = null,
+    @Transient override val readStateV1Hydrate: ReadStateV1HydrateCarrier? = null,
     override val lastMessagePreview: String? = null,
     override val lastMessageAt: String? = null,
     override val lastMessageSenderName: String? = null,
@@ -148,7 +149,7 @@ data class HomeDirectMessageRow(
     override val lastMessageSeq: Long? = null,
     override val firstUnreadMessageId: MessageId? = null,
     override val readStateMaxReadSeq: Long? = null,
-    override val readStateV1Hydrate: ReadStateV1HydrateCarrier? = null,
+    @Transient override val readStateV1Hydrate: ReadStateV1HydrateCarrier? = null,
     override val lastMessagePreview: String? = null,
     override val lastMessageAt: String? = null,
     override val lastMessageSenderName: String? = null,

@@ -78,9 +78,12 @@ class ReadStateV1GenerationEngine(
         }
         if (!authority.publishIfCurrent(witness) {
                 synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
-                if (notifyProjection) projectionObserver.onCommitted(witness.scope, fact)
             }
         ) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        if (notifyProjection) {
+            if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+            projectionObserver.onCommitted(witness.scope, fact)
+        }
         return committed.toGenerationResult()
     }
 
@@ -105,11 +108,9 @@ class ReadStateV1GenerationEngine(
             ReadStateV1CommitGuard { authority.isCurrent(witness) },
         )
         when (committed) {
-            ReadStateV1StoreResult.Accepted -> if (!authority.publishIfCurrent(witness) {
-                    projectionObserver.onCommitted(witness.scope, fact)
-                }
-            ) {
-                return ReadStateV1GenerationResult.RejectedCurrentGrant
+            ReadStateV1StoreResult.Accepted -> {
+                if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+                projectionObserver.onCommitted(witness.scope, fact)
             }
             ReadStateV1StoreResult.Conflict -> if (!invalidateAndRequest(witness)) {
                 return ReadStateV1GenerationResult.RejectedCurrentGrant
@@ -129,9 +130,10 @@ class ReadStateV1GenerationEngine(
         } ?: return requestBaseline(witness)
         if (!authority.publishIfCurrent(witness) {
                 synchronized(lock) { baselines[witness.scope] = BaselineState(witness, requestInFlight = false) }
-                projectionObserver.onCommitted(witness.scope, fact)
             }
         ) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        projectionObserver.onCommitted(witness.scope, fact)
         return ReadStateV1GenerationResult.Committed
     }
 
@@ -154,29 +156,34 @@ class ReadStateV1GenerationEngine(
         emitRebaselineRequest(witness)
 
     private fun requestBaseline(witness: ReadStateV1GrantWitness): ReadStateV1GenerationResult {
-        var requested = false
-        val published = authority.publishIfCurrent(witness) {
-            requested = synchronized(lock) {
-                val old = baselines[witness.scope]
-                baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
-                old?.witness !== witness || !old.requestInFlight
-            }
-            if (requested) rebaselineRequester.request(witness)
+        if (!authority.isCurrent(witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        val requested = synchronized(lock) {
+            val old = baselines[witness.scope]
+            baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
+            old?.witness !== witness || !old.requestInFlight
         }
-        if (!published) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        if (!authority.isCurrent(witness)) {
+            synchronized(lock) {
+                if (baselines[witness.scope]?.witness === witness) baselines.remove(witness.scope)
+            }
+            return ReadStateV1GenerationResult.RejectedCurrentGrant
+        }
+        if (requested) rebaselineRequester.request(witness)
         return ReadStateV1GenerationResult.BaselineRequired(requested)
     }
 
-    private fun emitRebaselineRequest(witness: ReadStateV1GrantWitness): Boolean =
-        authority.publishIfCurrent(witness) {
-            val requested = synchronized(lock) {
-                val old = baselines[witness.scope]
-                if (old?.witness === witness && old.requestInFlight) return@synchronized false
-                baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
-                true
-            }
-            if (requested) rebaselineRequester.request(witness)
+    private fun emitRebaselineRequest(witness: ReadStateV1GrantWitness): Boolean {
+        if (!authority.isCurrent(witness)) return false
+        val requested = synchronized(lock) {
+            val old = baselines[witness.scope]
+            if (old?.witness === witness && old.requestInFlight) return@synchronized false
+            baselines[witness.scope] = BaselineState(witness, requestInFlight = true)
+            true
         }
+        if (!authority.isCurrent(witness)) return false
+        if (requested) rebaselineRequester.request(witness)
+        return true
+    }
 }
 
 private fun ReadStateV1StoreResult.toGenerationResult(): ReadStateV1GenerationResult =

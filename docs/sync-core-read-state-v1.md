@@ -45,7 +45,8 @@ Peer `scope_read:updated` receipts are a different derived family and are reject
 4. **Revoke barrier:** revocation invalidates the baseline, rolls back a write whose grant changes before
    commit, then holds that exact scope dark behind a new grant until a verified snapshot is committed and
    projected. Only after that barrier may flag-off return to legacy or owner revoke release the scope. Auth
-   teardown may hard-clear because the old owner can no longer project.
+   events diff exact old/new owners and revoke only departed owners; hard clear is reserved for provider/process
+   teardown after all visible Home and Activity stores are gone.
 
 ## Production canary binding
 
@@ -56,8 +57,9 @@ process; empty version-zero or incomplete hydrate carriers do not seize the leas
 legacy. The lease is revoked with its read-receipt owner and a later exact scope may then be selected.
 
 Channel-list, channel-detail, and DM hydrate responses carry the two nullable wire members in a dedicated
-`ReadStateV1HydrateCarrier`. That carrier is not the legacy `readStateMaxReadSeq` field and is never consumed by
-the legacy reducer or persisted slice. Missing either member stays incomplete and dark. Mutation responses
+`ReadStateV1HydrateCarrier`. That carrier is not the legacy `readStateMaxReadSeq` field, is serialization-transient,
+and is stripped before the final Home state is constructed, compared, or persisted. Missing either member stays
+incomplete and dark. Mutation responses
 preserve the server's acknowledgement pair; the optimistic prediction remains UI-only. Owner realtime is the
 existing `user:<id>` full-pair event. For the selected scope, all three sources enter the generation engine and
 legacy apply is suppressed even when candidate validation, commit, or rebaseline fails.
@@ -77,8 +79,8 @@ conflict adjudicator and may replace that disputed pair. Incremental compare and
 transaction. Restore accepts only a complete, valid row from the exact partition; corrupt rows fail closed,
 invalidate the baseline, and coalesce a clean hydrate request. A current-grant check is made inside the
 transaction before mutation and again immediately before commit. Rebaseline requests carry the opaque grant
-witness, and current-check + request-state installation + request emission share one grant-authority critical
-section, so revoke cannot publish a hydrate request for an old owner.
+witness. Grant checks, canary state changes, and App callbacks are deliberately separated: no canary lock is held
+while issuing/revoking authority, and no authority critical section crosses into a canary lock or App callback.
 
 ## HOLD boundary
 

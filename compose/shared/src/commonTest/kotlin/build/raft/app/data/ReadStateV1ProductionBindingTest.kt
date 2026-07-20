@@ -11,7 +11,11 @@ import build.raft.app.network.sync.ReadStateV1Scope
 import build.raft.app.network.sync.ReadStateV1Store
 import build.raft.app.network.sync.ReadStateV1StoreResult
 import build.raft.app.network.sync.reduceReadStateV1
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -239,6 +243,39 @@ class ReadStateV1ProductionBindingTest {
             canary.applyOwnerRealtime(owner, "channel-1", 3, 30),
         )
         assertEquals(ReadStateV1Fact("channel-1", 1, 10), store.facts.values.single())
+    }
+
+    @Test
+    fun hydrateConfirmationAndConcurrentAckTerminateWithoutCanaryAuthorityLockInversion() = runBlocking {
+        val projectionEntered = CompletableDeferred<Unit>()
+        val releaseProjection = CompletableDeferred<Unit>()
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = TestReadStateV1Store(),
+                onProjection = { _, _ ->
+                    projectionEntered.complete(Unit)
+                    runBlocking { releaseProjection.await() }
+                },
+                onRebaseline = { _, _ -> },
+            )
+        val fact = ReadStateV1Fact("channel-1", 1, 10)
+        val prepared = canary.prepareHydrate(owner, fact.channelId, fact.readStateVersion, fact.maxReadSeq)
+        assertTrue(assertIs<ReadStateV1ProductionDisposition.Selected>(prepared).requiresProjectionConfirmation)
+
+        val confirmation = async(Dispatchers.Default) { canary.completePreparedHydrateProjection(owner, fact) }
+        withTimeout(2_000L) { projectionEntered.await() }
+        val concurrentAck =
+            async(Dispatchers.Default) {
+                canary.applyMutationAck(owner, fact.channelId, 2, 20)
+            }
+        releaseProjection.complete(Unit)
+
+        withTimeout(2_000L) {
+            assertTrue(confirmation.await())
+            assertIs<ReadStateV1ProductionDisposition.Selected>(concurrentAck.await())
+        }
+        Unit
     }
 
     private fun fixture(

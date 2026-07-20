@@ -41,6 +41,7 @@ class ReadStateV1ProductionCanary(
     private data class SelectionDecision(val selection: Selection, val newlySelected: Boolean)
 
     private val lock = SynchronizedObject()
+    private val selectionIssueLock = SynchronizedObject()
     private val authority = ReadStateV1GrantAuthority()
     private var selection: Selection? = null
     private val engine =
@@ -134,6 +135,8 @@ class ReadStateV1ProductionCanary(
     fun isSelected(owner: ReadStateV1ProductionOwner, channelId: String): Boolean =
         synchronized(lock) { selection?.let { it.owner == owner && it.channelId == channelId } == true }
 
+    fun selectedOwner(): ReadStateV1ProductionOwner? = synchronized(lock) { selection?.owner }
+
     fun completePreparedHydrateProjection(
         owner: ReadStateV1ProductionOwner,
         fact: ReadStateV1Fact,
@@ -144,18 +147,21 @@ class ReadStateV1ProductionCanary(
             }
         } ?: return false
         return try {
-            val published = authority.publishIfCurrent(selected.witness) {
-                onProjection(owner, fact)
-                synchronized(lock) {
-                    if (selection === selected && selected.pendingPreparedFact == fact) {
-                        selected.projectedFact = fact
-                        selected.pendingPreparedFact = null
-                        selected.requiresSnapshotBarrier = false
-                        selected.offBarrierRequested = false
-                    }
+            if (!authority.isCurrent(selected.witness)) return false
+            onProjection(owner, fact)
+            if (!authority.isCurrent(selected.witness)) return false
+            val completed = synchronized(lock) {
+                if (selection === selected && selected.pendingPreparedFact == fact) {
+                    selected.projectedFact = fact
+                    selected.pendingPreparedFact = null
+                    selected.requiresSnapshotBarrier = false
+                    selected.offBarrierRequested = false
+                    true
+                } else {
+                    false
                 }
             }
-            if (!published) return false
+            if (!completed) return false
             releaseAfterCompletedBarrier(selected)
             true
         } catch (error: Throwable) {
@@ -272,21 +278,25 @@ class ReadStateV1ProductionCanary(
         maxReadSeq: Long?,
     ): SelectionDecision? {
         if (!isEligible(owner, channelId)) return null
-        return synchronized(lock) {
-            selection?.let { SelectionDecision(it, newlySelected = false) }
-                ?: if (!isEnabledForServer(owner.serverId) ||
-                    readStateVersion == null || readStateVersion <= 0L || maxReadSeq == null || maxReadSeq < 0L
-                ) {
-                    null
-                } else ReadStateV1Scope(
+        return synchronized(selectionIssueLock) {
+            val existing = synchronized(lock) { selection }
+            if (existing != null) return@synchronized SelectionDecision(existing, newlySelected = false)
+            if (!isEnabledForServer(owner.serverId) ||
+                readStateVersion == null || readStateVersion <= 0L || maxReadSeq == null || maxReadSeq < 0L
+            ) return@synchronized null
+            val scope =
+                ReadStateV1Scope(
                     serverId = owner.serverId,
                     principalId = durablePrincipalId(owner),
                     channelId = channelId,
-                ).let { scope ->
-                    Selection(owner, channelId, authority.issue(scope))
-                        .also { selection = it }
-                        .let { SelectionDecision(it, newlySelected = true) }
-                }
+                )
+            val candidate = Selection(owner, channelId, authority.issue(scope))
+            synchronized(lock) {
+                selection?.let { SelectionDecision(it, newlySelected = false) }
+                    ?: SelectionDecision(candidate.also { selection = it }, newlySelected = true)
+            }.also { decision ->
+                if (decision.selection !== candidate) engine.revoke(candidate.witness)
+            }
         }
     }
 
@@ -298,23 +308,18 @@ class ReadStateV1ProductionCanary(
         "${owner.environmentId.trim()}\u001f${owner.accountId.trim()}"
 
     private fun requestOffBarrier(selected: Selection): ReadStateV1GenerationResult {
-        var requested = false
-        val current = authority.publishIfCurrent(selected.witness) {
-            requested = synchronized(lock) {
-                if (selection !== selected || selected.offBarrierRequested) {
-                    false
-                } else {
-                    selected.offBarrierRequested = true
-                    true
-                }
+        if (!authority.isCurrent(selected.witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        val requested = synchronized(lock) {
+            if (selection !== selected || selected.offBarrierRequested) {
+                false
+            } else {
+                selected.offBarrierRequested = true
+                true
             }
-            if (requested) onRebaseline(selected.owner, selected.channelId)
         }
-        return if (current) {
-            ReadStateV1GenerationResult.BaselineRequired(requested)
-        } else {
-            ReadStateV1GenerationResult.RejectedCurrentGrant
-        }
+        if (!authority.isCurrent(selected.witness)) return ReadStateV1GenerationResult.RejectedCurrentGrant
+        if (requested) onRebaseline(selected.owner, selected.channelId)
+        return ReadStateV1GenerationResult.BaselineRequired(requested)
     }
 
     private fun releaseAfterCompletedBarrier(selected: Selection): Boolean {

@@ -26,6 +26,9 @@ data class ReadReceiptOwner(
 internal fun ReadReceiptOwner.toReadStateV1ProductionOwner(): ReadStateV1ProductionOwner =
     ReadStateV1ProductionOwner(environmentId, accountId, serverId)
 
+internal fun ReadStateV1ProductionOwner.toReadReceiptOwner(): ReadReceiptOwner =
+    ReadReceiptOwner(environmentId, accountId, serverId)
+
 sealed interface ReadReceiptTarget {
     data object All : ReadReceiptTarget
     data class ToSeq(val seq: Long) : ReadReceiptTarget

@@ -1699,13 +1699,14 @@ internal class SharedHomeStore(
         contentRefreshing: Boolean,
         previousContent: SharedHomeContentState.Content?
     ): SharedHomeContentState.Content {
-        snapshot.sidebarOrder?.let { sidebarOrderByServer[snapshot.server.id] = it }
-        val sidebarOrder = snapshot.sidebarOrder ?: sidebarOrderByServer[snapshot.server.id]
+        val strippedSnapshot = snapshot.withoutReadStateV1Hydrates()
+        strippedSnapshot.sidebarOrder?.let { sidebarOrderByServer[strippedSnapshot.server.id] = it }
+        val sidebarOrder = strippedSnapshot.sidebarOrder ?: sidebarOrderByServer[strippedSnapshot.server.id]
         val snapshotWithSidebarOrder =
-            if (sidebarOrder != null && snapshot.sidebarOrder != sidebarOrder) {
-                snapshot.copy(sidebarOrder = sidebarOrder)
+            if (sidebarOrder != null && strippedSnapshot.sidebarOrder != sidebarOrder) {
+                strippedSnapshot.copy(sidebarOrder = sidebarOrder)
             } else {
-                snapshot
+                strippedSnapshot
             }
         val baseSnapshot =
             snapshotWithSidebarOrder
@@ -1718,6 +1719,16 @@ internal class SharedHomeStore(
             baseSnapshot = baseSnapshot
         )
     }
+
+    private fun HomeSnapshot.withoutReadStateV1Hydrates(): HomeSnapshot =
+        copy(
+            channels = channels.map { row ->
+                if (row.readStateV1Hydrate == null) row else row.copy(readStateV1Hydrate = null)
+            },
+            directMessages = directMessages.map { row ->
+                if (row.readStateV1Hydrate == null) row else row.copy(readStateV1Hydrate = null)
+            },
+        )
 
     private fun HomeSnapshot.withAcceptedReadStateCursors(): HomeSnapshot {
         val productionOwner =

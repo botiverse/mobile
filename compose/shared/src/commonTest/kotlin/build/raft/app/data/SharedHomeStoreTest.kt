@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -53,6 +54,41 @@ import kotlin.test.assertTrue
 import kotlin.concurrent.Volatile
 
 class SharedHomeStoreTest {
+    @Test
+    fun flagOffHydrateCarrierNeverReachesFinalStateOrPersistedBytes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val snapshot =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(7, 44),
+                        )
+                    )
+            )
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(snapshot),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary =
+                    ReadStateV1ProductionCanary(
+                        isEnabledForServer = { false },
+                        store = TestReadStateV1Store(),
+                        onProjection = { _, _ -> },
+                        onRebaseline = { _, _ -> },
+                    ),
+            )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val finalSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(null, finalSnapshot.channels.single().readStateV1Hydrate)
+        assertFalse(Json.encodeToString(HomeSnapshot.serializer(), finalSnapshot).contains("readStateV1Hydrate"))
+        scope.cancel()
+    }
+
     @Test
     fun selectedHydrateCommitsBeforeFirstHomeStateAndNeverFillsFromLegacyCheckpoint() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -104,6 +140,7 @@ class SharedHomeStoreTest {
 
         val row = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
         assertEquals(10, row.readStateMaxReadSeq)
+        assertEquals(null, row.readStateV1Hydrate)
         assertTrue(projectedAfterFreshContent)
         assertEquals(ReadStateV1Fact("channel-1", 1, 10), durable.facts.values.single())
         assertEquals(
