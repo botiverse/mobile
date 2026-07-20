@@ -302,12 +302,16 @@ internal data class ActivityRefreshPresentation(
     val pullRefreshing: Boolean
 )
 
+@Suppress("UNUSED_PARAMETER")
 internal fun activityRefreshPresentation(
     refreshing: Boolean,
     pullRefreshing: Boolean
 ): ActivityRefreshPresentation =
     ActivityRefreshPresentation(
-        headerRefreshing = refreshing || pullRefreshing,
+        // Background/re-entry baselines preserve loaded content and must not
+        // present as a continuously refreshing page. Only the user's explicit
+        // pull gesture owns visible refresh chrome.
+        headerRefreshing = pullRefreshing,
         pullRefreshing = pullRefreshing
     )
 

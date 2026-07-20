@@ -19,7 +19,6 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadUpdated
-import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
 import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -29,7 +28,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,7 +43,6 @@ private const val SharedActivityRefreshContinuationSlack = 2
 private const val SharedActivityRefreshMaxNoProgressPages = 2
 private const val SharedActivityReplyPrewarmConcurrency = 2
 private const val SharedActivityTailPrewarmDepthCap = 20
-private const val SharedActivityRealtimeReconcileDelayMillis = 150L
 
 private data class ActivityRealtimeHighWater(
     val marker: MessageId?,
@@ -90,8 +87,6 @@ class SharedActivityStore internal constructor(
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
-    private val realtimeReconcileDelayMillis: Long = SharedActivityRealtimeReconcileDelayMillis,
-    private val afterRealtimeReconcileTerminalDecision: suspend () -> Unit = {},
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
     private val onReadReceiptPredictionOwnerEntered: () -> Unit = {}
@@ -106,8 +101,6 @@ class SharedActivityStore internal constructor(
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
-    private var pendingReadStateFacts: Map<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint> = emptyMap()
-    private var reconciledReadStateFacts: Map<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint> = emptyMap()
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var readPredictionItemKeys: Map<ChannelId, Set<String>> = emptyMap()
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
@@ -121,10 +114,8 @@ class SharedActivityStore internal constructor(
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
     private var tailDrainBarrier: Job? = null
-    private var realtimeReconcileJob: Job? = null
-    private var realtimeReconcileDirty = false
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
-    // One owner for live row patches, version ledger changes, load folds, and scheduler lifecycle.
+    // One owner for live row patches, version-ledger changes, and canonical load folds.
     private val realtimeOwnerLock = SynchronizedObject()
 
     internal fun updateRuntimeIntegrations(
@@ -195,8 +186,8 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 if (intent.event is PerReceiverReadStateChanged) {
                     scope.launch { applyPerReceiverReadStateChanged(intent.event) }
-                } else if (applyRealtimeEventImmediately(intent)) {
-                    load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+                } else {
+                    applyRealtimeEventImmediately(intent)
                 }
             }
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
@@ -208,8 +199,6 @@ class SharedActivityStore internal constructor(
         when (intent) {
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 applyRealtimeEvent(intent)
-                synchronized(realtimeOwnerLock) { realtimeReconcileJob }?.join()
-                awaitCurrentLoadIdle()
             }
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
@@ -223,11 +212,7 @@ class SharedActivityStore internal constructor(
             loadGeneration += 1L
             loadJob?.cancel()
             loadJob = null
-            realtimeReconcileJob?.cancel()
-            realtimeReconcileJob = null
-            realtimeReconcileDirty = false
             realtimeHighWater.clear()
-            pendingReadStateFacts = emptyMap()
             owner
         }
         ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
@@ -241,7 +226,6 @@ class SharedActivityStore internal constructor(
             doneOverrides = emptyMap()
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
-            reconciledReadStateFacts = emptyMap()
             _state.value = SharedActivityState()
         }
     }
@@ -517,26 +501,16 @@ class SharedActivityStore internal constructor(
             applyPerReceiverReadStateChanged(intent.event)
             return
         }
-        val shouldRefresh = applyRealtimeEventImmediately(intent)
-        if (shouldRefresh) {
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
-            awaitCurrentLoadIdle()
-        }
+        applyRealtimeEventImmediately(intent)
     }
 
-    private fun applyRealtimeEventImmediately(intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
-        val (shouldRefresh, reconcileJobToStart) =
-            synchronized(realtimeOwnerLock) {
-                applyRealtimeEventLocked(intent) to
-                    realtimeReconcileJob?.takeIf { job -> !job.isActive && !job.isCompleted }
-            }
-        reconcileJobToStart?.start()
-        return shouldRefresh
+    private fun applyRealtimeEventImmediately(intent: SharedActivityIntent.ApplyRealtimeEvent) {
+        synchronized(realtimeOwnerLock) { applyRealtimeEventLocked(intent) }
     }
 
-    private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Boolean {
+    private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent) {
         val event = intent.event
-        if (!event.refreshesActivity()) return false
+        if (!event.refreshesActivity()) return
         when (event) {
             is MessageUpdated -> acceptMessageUpdatedFreshness(event.message)
             is SyncResumeResponse ->
@@ -555,11 +529,13 @@ class SharedActivityStore internal constructor(
                     else -> Unit
                 }
             }
-            scheduleRealtimeReconcileLocked()
-            return false
+            return
         }
-        val current = _state.value
-        return !current.loading && !current.refreshing && (!current.loaded || current.snapshot != null)
+        // Activity is snapshot-on-entry and patch-while-visible. Events whose
+        // identity-only payload cannot safely produce a narrow row patch are
+        // folded by their domain owners and become visible on the next route
+        // baseline or explicit pull refresh. They must never take full-list
+        // refresh ownership while the user is reading Activity.
     }
 
     private fun applyMessageNewPatch(
@@ -659,44 +635,6 @@ class SharedActivityStore internal constructor(
             )
     }
 
-    private fun scheduleRealtimeReconcileLocked(): Job {
-        realtimeReconcileDirty = true
-        realtimeReconcileJob?.let { return it }
-        val job =
-            scope.launch(start = CoroutineStart.LAZY) {
-                delay(realtimeReconcileDelayMillis.coerceAtLeast(0L))
-                while (true) {
-                    val shouldReconcile =
-                        synchronized(realtimeOwnerLock) {
-                            if (realtimeReconcileDirty) {
-                                realtimeReconcileDirty = false
-                                true
-                            } else {
-                                realtimeReconcileJob = null
-                                false
-                            }
-                        }
-                    if (!shouldReconcile) {
-                        afterRealtimeReconcileTerminalDecision()
-                        return@launch
-                    }
-                    awaitCurrentLoadIdle()
-                    load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
-                    awaitCurrentLoadIdle()
-                }
-            }
-        realtimeReconcileJob = job
-        return job
-    }
-
-    private suspend fun awaitCurrentLoadIdle() {
-        while (true) {
-            val observed = synchronized(realtimeOwnerLock) { loadJob }
-            observed?.join()
-            if (synchronized(realtimeOwnerLock) { loadJob === observed }) return
-        }
-    }
-
     private suspend fun applyRealtimeSummaryEvent(
         event: RealtimeEvent,
         activeConversationId: String?
@@ -727,22 +665,10 @@ class SharedActivityStore internal constructor(
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return
         if (event.serverId != null && event.serverId != serverId) return
         val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
-        var shouldReconcile = false
         var acceptedHere = false
-        val reconcileJob = synchronized(realtimeOwnerLock) {
+        synchronized(realtimeOwnerLock) {
             event.scopes.forEach { readScope ->
                 val maxReadSeq = readScope.maxReadSeq ?: return@forEach
-                val projectionKey =
-                    ActivityReadStateProjectionKey(
-                        serverId = serverId,
-                        memberId = memberId,
-                        scopeId = readScope.scopeId
-                    )
-                val checkpoint =
-                    PerReceiverReadStateCheckpoint(
-                        version = readScope.readStateVersion,
-                        maxReadSeq = maxReadSeq
-                    )
                 val result =
                     perReceiverStateVersionStore.applyOrObserveReadStateFact(
                         serverId = serverId,
@@ -755,33 +681,12 @@ class SharedActivityStore internal constructor(
                     "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
                         "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
                 )
-                val alreadyScheduledOrReconciled =
-                    pendingReadStateFacts[projectionKey] == checkpoint ||
-                        reconciledReadStateFacts[projectionKey] == checkpoint
-                if (result != PerReceiverReadStateFactResult.Stale && !alreadyScheduledOrReconciled) {
-                    pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
-                    shouldReconcile = true
-                }
                 acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
             }
-            if (shouldReconcile) {
-                // A read-state fact is a canonical fence, not merely a hint. Invalidate any
-                // request that may have started before the fact, then share the same debounced
-                // reconcile owner as message realtime. Further facts only dirty this owner;
-                // they do not create parallel refresh jobs.
-                loadGeneration += 1L
-                loadJob?.cancel()
-                scheduleRealtimeReconcileLocked()
-            } else {
-                null
-            }
         }
-        if (shouldReconcile) {
-            diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
-            if (acceptedHere) onUnreadCountsChanged()
-            reconcileJob?.start()
-            reconcileJob?.join()
-            awaitCurrentLoadIdle()
+        if (acceptedHere) {
+            diagnosticsLogger("activity_read_state_patch result=checkpoint_only reason=identity_only_event")
+            onUnreadCountsChanged()
         }
     }
 
@@ -953,9 +858,6 @@ class SharedActivityStore internal constructor(
                                         senderProfiles = senderProfiles,
                                         intent = intent
                                     )
-                                    completeReadStateReconcileLocked(
-                                        successful = result is DataResult.Content || result is DataResult.Empty
-                                    )
                                     true
                                 }
                             }
@@ -976,7 +878,6 @@ class SharedActivityStore internal constructor(
                                 if (generation != loadGeneration) {
                                     false
                                 } else {
-                                    completeReadStateReconcileLocked(successful = false)
                                     setLoadError("activity_network", append = !refresh)
                                     true
                                 }
@@ -1060,14 +961,6 @@ class SharedActivityStore internal constructor(
             }
         }
         return DataResult.Content(combined)
-    }
-
-    private fun completeReadStateReconcileLocked(successful: Boolean) {
-        if (pendingReadStateFacts.isEmpty()) return
-        if (successful) {
-            reconciledReadStateFacts = reconciledReadStateFacts + pendingReadStateFacts
-        }
-        pendingReadStateFacts = emptyMap()
     }
 
     private fun logActivityLoad(
@@ -1296,7 +1189,6 @@ class SharedActivityStore internal constructor(
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
             if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
-                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
             } else {
                 forgetUnreadCleared(snapshot.items)
                 onUnreadCountsChanged()
@@ -1512,7 +1404,6 @@ class SharedActivityStore internal constructor(
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
-                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
             } else {
                 onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_unread_failed")
@@ -1811,12 +1702,6 @@ class SharedActivityStore internal constructor(
 
 private data class ActivityUnreadClearOverride(
     val unreadAnchor: MessageId?
-)
-
-private data class ActivityReadStateProjectionKey(
-    val serverId: ServerId,
-    val memberId: MemberId,
-    val scopeId: ChannelId
 )
 
 private data class ActivityDoneOverride(
