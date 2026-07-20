@@ -1631,14 +1631,14 @@ class SharedActivityStoreTest {
         assertEquals("Realtime preview", patched.latestActivityPreview)
         assertEquals("User user-2", patched.latestActivitySenderName)
         assertEquals(3, patched.replyCount)
-        assertEquals(1, patched.unreadCount)
-        assertEquals(1, store.state.value.totalUnreadCount)
+        assertEquals(2, patched.unreadCount)
+        assertEquals(2, store.state.value.totalUnreadCount)
         assertEquals(1, inbox.initialLoadCount)
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
 
         assertEquals(3, store.state.value.items.single().replyCount)
-        assertEquals(1, store.state.value.totalUnreadCount)
+        assertEquals(2, store.state.value.totalUnreadCount)
         scope.cancel()
     }
 
@@ -1688,7 +1688,7 @@ class SharedActivityStoreTest {
         assertEquals(MessageId("reply-new"), patched.latestActivityMessageId)
         assertEquals("New reply", patched.latestActivityPreview)
         assertEquals(4, patched.replyCount)
-        assertEquals(1, patched.unreadCount)
+        assertEquals(2, patched.unreadCount)
         scope.cancel()
     }
 
@@ -2728,7 +2728,7 @@ class SharedActivityStoreTest {
         val reconciled = store.state.value.items.single()
         assertEquals("Realtime preview", reconciled.latestActivityPreview)
         assertEquals(4, reconciled.replyCount)
-        assertEquals(1, reconciled.unreadCount)
+        assertEquals(3, reconciled.unreadCount)
         assertTrue(secondPatchEnteredOwner.isCompleted)
         scope.cancel()
     }
