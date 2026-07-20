@@ -7,6 +7,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.RealtimeAgentActivityEntry
+import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 internal data class SharedAgentDetailState(
     val agentId: MemberId? = null,
+    val detailServerId: ServerId? = null,
     val detail: AgentDetailSnapshot? = null,
     val agentActivityLogs: Map<MemberId, List<AgentActivityEntry>> = emptyMap(),
     val agentRealtimeActivityLogs: Map<MemberId, List<AgentActivityEntry>> = emptyMap(),
@@ -106,11 +108,13 @@ internal sealed interface SharedAgentDetailIntent {
     data class SetDetail(
         val agentId: MemberId,
         val detail: AgentDetailSnapshot,
+        val serverId: ServerId? = null,
         val preserveSequencedActivity: Boolean = true
     ) : SharedAgentDetailIntent
     data class SetAgentActivity(
         val agentId: MemberId,
-        val activity: List<AgentActivityEntry>
+        val activity: List<AgentActivityEntry>,
+        val serverId: ServerId? = null
     ) : SharedAgentDetailIntent
     data class SetDetailNoPermission(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
     data class SetDetailError(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
@@ -197,19 +201,29 @@ internal class SharedAgentDetailStore(
                 }
             is SharedAgentDetailIntent.SetDetail ->
                 if (current.agentId == intent.agentId) {
+                    val base =
+                        if (intent.serverId != null && current.detailServerId != intent.serverId) {
+                            current.withoutCachedAgentActivity(intent.agentId)
+                        } else {
+                            current
+                        }
                     val incoming =
-                        current.detail
-                            ?.takeIf { it.agentId == intent.agentId }
+                        base.detail
+                            ?.takeIf {
+                                it.agentId == intent.agentId &&
+                                    (intent.serverId == null || base.detailServerId == intent.serverId)
+                            }
                             ?.let { intent.detail.withExistingAgentDetailSections(it) }
                             ?: intent.detail
-                    val detail = current.mergeSequencedActivityIntoDetail(
+                    val detail = base.mergeSequencedActivityIntoDetail(
                         agentId = intent.agentId,
                         incoming = incoming,
                         preserveSequencedActivity = intent.preserveSequencedActivity
-                    ).withCachedAgentActivity(current.agentActivityLogs[intent.agentId])
-                    val nextActivityLogs = current.agentActivityLogs.withAgentActivityLog(intent.agentId, detail.activity)
-                    current.copy(
+                    ).withCachedAgentActivity(base.agentActivityLogs[intent.agentId])
+                    val nextActivityLogs = base.agentActivityLogs.withAgentActivityLog(intent.agentId, detail.activity)
+                    base.copy(
                         detail = detail,
+                        detailServerId = intent.serverId ?: base.detailServerId,
                         agentActivityLogs = nextActivityLogs,
                         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
                         detailErrorCode = null
@@ -218,7 +232,11 @@ internal class SharedAgentDetailStore(
                     current
                 }
             is SharedAgentDetailIntent.SetAgentActivity ->
-                current.applyAgentActivitySnapshot(intent.agentId, intent.activity)
+                if (intent.serverId != null && current.detailServerId != intent.serverId) {
+                    current
+                } else {
+                    current.applyAgentActivitySnapshot(intent.agentId, intent.activity)
+                }
             is SharedAgentDetailIntent.SetDetailNoPermission ->
                 if (current.agentId == intent.agentId) {
                     current.copy(
@@ -480,10 +498,21 @@ private fun SharedAgentDetailState.applyAgentActivitySnapshot(
 
 private fun SharedAgentDetailState.seedDetailFromMember(member: MemberProfile): SharedAgentDetailState {
     if (member.kind != MemberKind.Agent) return this
-    if (agentId == member.id && detail?.agentId == member.id) return this
-    return copy(
+    if (
+        agentId == member.id &&
+        detail?.agentId == member.id &&
+        detailServerId?.value?.trim() == member.serverId?.value?.trim()
+    ) {
+        return this
+    }
+    val canReuseCachedActivity =
+        (agentId == member.id && detailServerId == member.serverId) ||
+            (member.serverId == null && detailServerId == null)
+    val base = if (canReuseCachedActivity) this else withoutCachedAgentActivity(member.id)
+    return base.copy(
         agentId = member.id,
-        detail = member.toAgentDetailSeed(agentActivityLogs[member.id].orEmpty()),
+        detailServerId = member.serverId,
+        detail = member.toAgentDetailSeed(base.agentActivityLogs[member.id].orEmpty()),
         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
         detailErrorCode = null,
         lifecycleActionInFlight = null,
@@ -500,6 +529,15 @@ private fun SharedAgentDetailState.seedDetailFromMember(member: MemberProfile): 
         roleError = null
     )
 }
+
+private fun SharedAgentDetailState.withoutCachedAgentActivity(agentId: MemberId): SharedAgentDetailState =
+    copy(
+        agentActivityLogs = agentActivityLogs - agentId,
+        agentRealtimeActivityLogs = agentRealtimeActivityLogs - agentId,
+        agentActivityObservedAt = agentActivityObservedAt - agentId,
+        agentActivityVersions = agentActivityVersions - agentId,
+        agentActivitySeq = agentActivitySeq - agentId
+    )
 
 private fun MemberProfile.toAgentDetailSeed(activity: List<AgentActivityEntry>): AgentDetailSnapshot {
     val fallbackName = handle.ifBlank { displayName.ifBlank { id.value } }

@@ -14490,7 +14490,13 @@ private fun SharedMembersScreen(
                             bridge.toast("Unable to open profile")
                             bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
                         } else {
-                            agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
+                            val seedMember =
+                                member.copy(
+                                    serverId =
+                                        member.serverId
+                                            ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                                )
+                            agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
                             pager.openSlockPage(
                                 pageName = MEMBER_DETAIL_PAGE,
                                 pageData = pageData,

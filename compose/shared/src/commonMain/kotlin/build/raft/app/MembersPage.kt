@@ -82,6 +82,8 @@ import build.raft.app.data.userFacingMessage
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedServerMembersEntry
+import build.raft.app.data.SharedServerMembersState
+import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.markdown.SlockMarkdownBody
@@ -486,17 +488,18 @@ internal fun membersInitialAgentDetailTabForLaunch(
         ?: agentPanelTabOrder.firstNotNullOfOrNull { it.toMembersAgentDetailTabOrNull() }
 }
 
-internal fun shouldWaitForAgentPanelTabOrderBeforeRender(
+internal fun membersInitialAgentDetailTabForRender(
     expectedKind: MemberKind?,
-    initialAgentTab: MembersAgentDetailTab?,
+    explicitInitialTab: MembersAgentDetailTab?,
     payloadAgentPanelTabOrder: List<String>,
     storeServerMatches: Boolean,
     storeLoaded: Boolean
-): Boolean =
-    expectedKind == MemberKind.Agent &&
-        initialAgentTab == null &&
-        payloadAgentPanelTabOrder.isEmpty() &&
-        (!storeServerMatches || !storeLoaded)
+): MembersAgentDetailTab? {
+    if (expectedKind != MemberKind.Agent) return explicitInitialTab
+    explicitInitialTab?.let { return it }
+    payloadAgentPanelTabOrder.firstNotNullOfOrNull { it.toMembersAgentDetailTabOrNull() }?.let { return it }
+    return if (!storeServerMatches || !storeLoaded) MembersAgentDetailTab.Profile else null
+}
 
 internal fun memberDetailAgentPanelTabOrderServerId(
     routeServerId: String?,
@@ -519,6 +522,42 @@ private sealed interface MembersAgentDetailLoadState {
     data class Error(val code: String) : MembersAgentDetailLoadState
     data object Empty : MembersAgentDetailLoadState
 }
+
+internal sealed interface MembersAgentActivityLoadState {
+    data object Idle : MembersAgentActivityLoadState
+    data object Loading : MembersAgentActivityLoadState
+    data object Refreshing : MembersAgentActivityLoadState
+    data class Error(val code: String) : MembersAgentActivityLoadState
+}
+
+internal data class MembersAgentActivityRequestFence(
+    val memberId: MemberId,
+    val serverId: ServerId,
+    val generation: Long
+) {
+    fun matches(
+        identity: MemberDetailIdentity?,
+        routeServerId: ServerId?,
+        currentGeneration: Long
+    ): Boolean =
+        identity != null &&
+            identity.memberId == memberId &&
+            identity.kind == MemberKind.Agent &&
+            (identity.sourceServerId == null || identity.sourceServerId == serverId) &&
+            routeServerId == serverId &&
+            currentGeneration == generation
+}
+
+internal fun membersAgentActivityLoadStart(hasCachedActivity: Boolean): MembersAgentActivityLoadState =
+    if (hasCachedActivity) MembersAgentActivityLoadState.Refreshing else MembersAgentActivityLoadState.Loading
+
+internal fun DataResult<List<AgentActivityEntry>>.toMembersAgentActivityLoadState(): MembersAgentActivityLoadState =
+    when (this) {
+        is DataResult.Content,
+        is DataResult.Empty -> MembersAgentActivityLoadState.Idle
+        is DataResult.Error -> MembersAgentActivityLoadState.Error(error.code)
+        is DataResult.NoPermission -> MembersAgentActivityLoadState.Error(blocker.code)
+    }
 
 private fun SharedAgentDetailState.toMembersAgentDetailLoadState(): MembersAgentDetailLoadState =
     when (detailLoadStatus) {
@@ -1428,7 +1467,11 @@ internal fun MembersPageContent() {
                     bridge.toast(openProfileFailed)
                     bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
                 } else {
-                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
+                    val seedMember =
+                        member.copy(
+                            serverId = member.serverId ?: serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
+                        )
+                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(seedMember))
                     pager.openSlockPage(
                         pageName = MEMBER_DETAIL_PAGE,
                         pageData = pageData,
@@ -1468,7 +1511,7 @@ internal fun MembersPageContent() {
     )
 }
 
-private sealed interface MemberDetailRouteState {
+internal sealed interface MemberDetailRouteState {
     data object Loading : MemberDetailRouteState
     data class Error(val code: String) : MemberDetailRouteState
     data class Agent(
@@ -1559,6 +1602,67 @@ private data class MemberDetailVisualSeed(
     val agentScopeSet: AgentScopeSet? = null
 )
 
+internal fun memberDetailInitialRouteState(
+    identity: MemberDetailIdentity?,
+    activeServerId: String?,
+    agentDetailState: SharedAgentDetailState,
+    serverMembersState: SharedServerMembersState
+): MemberDetailRouteState? {
+    identity ?: return null
+    val sourceServerId = identity.sourceServerId?.value?.trim()?.takeIf { it.isNotBlank() }
+    val activeServer = activeServerId?.trim()?.takeIf { it.isNotBlank() }
+    val expectedServerId = sourceServerId ?: activeServer
+    val entries =
+        when {
+            sourceServerId != null -> listOfNotNull(serverMembersState.entriesByServerId[sourceServerId])
+            activeServer != null -> listOfNotNull(serverMembersState.entriesByServerId[activeServer])
+            else -> serverMembersState.entriesByServerId.values.toList()
+        }
+    val matches =
+        entries.mapNotNull { entry ->
+            val server = entry.server ?: return@mapNotNull null
+            val serverId = server.id.value.trim()
+            if (entry.serverId.trim() != serverId || (expectedServerId != null && serverId != expectedServerId)) {
+                return@mapNotNull null
+            }
+            val member =
+                entry.members.firstOrNull {
+                    it.id == identity.memberId && it.kind == identity.kind
+                } ?: return@mapNotNull null
+            val memberServerId = member.serverId?.value?.trim()?.takeIf { it.isNotBlank() }
+            if (memberServerId != null && memberServerId != serverId) return@mapNotNull null
+            server to member
+        }
+    if (matches.size != 1) return null
+    val (server, member) = matches.single()
+    return when (identity.kind) {
+        MemberKind.Agent -> {
+            val detail = agentDetailState.detail
+            if (
+                agentDetailState.agentId != identity.memberId ||
+                agentDetailState.detailServerId?.value?.trim() != server.id.value.trim() ||
+                detail?.agentId != identity.memberId ||
+                detail.summary?.id?.trim()?.takeIf { it.isNotBlank() }?.let { it != identity.memberId.value } == true
+            ) {
+                null
+            } else {
+                MemberDetailRouteState.Agent(
+                    server = server,
+                    currentUserId = null,
+                    accessMode = identity.memberDetailAccessMode(activeServer)
+                )
+            }
+        }
+        MemberKind.Human ->
+            MemberDetailRouteState.Human(
+                server = server,
+                currentUserId = null,
+                member = member
+            )
+        MemberKind.System -> null
+    }
+}
+
 internal fun seedRemoteAgentProfile(
     agentDetailStore: SharedAgentDetailStore,
     member: MemberProfile
@@ -1578,6 +1682,7 @@ private class MemberDetailRouteProvider(
     val settingsRepository: build.raft.app.data.SettingsServerManagementRepository,
     val agentIssueReportRepository: AgentIssueReportRepository,
     val agentDetailStore: SharedAgentDetailStore,
+    val selectedServerStore: SelectedServerStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val serverMembersStore: build.raft.app.data.SharedServerMembersStore,
     val computersStore: SharedComputersStore,
@@ -1591,14 +1696,20 @@ private class MemberDetailRouteProvider(
     ): MemberDetailRouteState.Agent? {
         if (identity.kind != MemberKind.Agent) return null
         val session = authStore.readSession() ?: return null
-        if (!identity.memberDetailAccessMode(session.currentServerId).allowsPrivateAgentSurfaces) return null
+        val serverId = session.currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (!identity.memberDetailAccessMode(serverId).allowsPrivateAgentSurfaces) return null
         val selectedId = identity.memberId
         val state = agentDetailStore.state.value
         val detail = state.detail
-        if (state.agentId != selectedId || detail == null || detail.agentId != selectedId) {
+        if (
+            state.agentId != selectedId ||
+            state.detailServerId?.value?.trim() != serverId ||
+            detail == null ||
+            detail.agentId != selectedId ||
+            detail.summary?.id?.trim()?.takeIf { it.isNotBlank() }?.let { it != selectedId.value } == true
+        ) {
             return null
         }
-        val serverId = session.currentServerId
         val server = session.servers.firstOrNull { it.id == serverId }?.toServerSummary() ?: return null
         return MemberDetailRouteState.Agent(
             server = server,
@@ -1666,7 +1777,13 @@ private class MemberDetailRouteProvider(
                 }
                 agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detail))
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetail(
+                        agentId = selectedId,
+                        detail = detail,
+                        serverId = profileServerId
+                    )
+                )
                 MemberDetailRouteState.Agent(
                     server = profileServer.copy(id = profileServerId),
                     currentUserId = currentUserId,
@@ -1696,7 +1813,13 @@ private class MemberDetailRouteProvider(
         return when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetail(
+                        agentId = selectedId,
+                        detail = detailResult.data,
+                        serverId = server.id
+                    )
+                )
                 serverMembersStore.applyAgentDetailSnapshot(server.id, detailResult.data)
                 MemberDetailRouteState.Agent(
                     server = server,
@@ -1778,24 +1901,20 @@ private class MemberDetailRouteProvider(
             }
         }
 
-    suspend fun refreshAgentActivity(serverId: build.raft.app.model.ServerId?, agentId: MemberId) {
-        when (val activityResult = memberRepository.getAgentActivity(DataRequestPriority.Visible, agentId)) {
-            is DataResult.Content -> {
-                agentDetailStore.dispatch(
-                    SharedAgentDetailIntent.SetAgentActivity(
-                        agentId = agentId,
-                        activity = activityResult.data.activity
-                    )
-                )
-                if (serverId != null) {
-                    serverMembersStore.applyAgentActivitySnapshot(serverId, agentId, activityResult.data.activity)
-                }
-            }
-            is DataResult.Empty -> Unit
-            is DataResult.Error ->
+    suspend fun loadAgentActivity(
+        agentId: MemberId
+    ): DataResult<List<AgentActivityEntry>> {
+        return when (val activityResult = memberRepository.getAgentActivity(DataRequestPriority.Visible, agentId)) {
+            is DataResult.Content -> DataResult.Content(activityResult.data.activity)
+            is DataResult.Empty -> activityResult
+            is DataResult.Error -> {
                 bridge.log("member_detail_agent_activity_load_failed agentId=${agentId.value} code=${activityResult.error.code}")
-            is DataResult.NoPermission ->
+                activityResult
+            }
+            is DataResult.NoPermission -> {
                 bridge.log("member_detail_agent_activity_load_blocked agentId=${agentId.value} code=${activityResult.blocker.code}")
+                activityResult
+            }
         }
     }
 
@@ -2075,6 +2194,7 @@ private fun rememberMemberDetailRouteProvider(
         settingsRepository,
         agentIssueReportRepository,
         agentDetailStore,
+        selectedServerStore,
         agentPanelTabOrderStore,
         serverMembersStore,
         computersStore,
@@ -2091,6 +2211,7 @@ private fun rememberMemberDetailRouteProvider(
             settingsRepository = settingsRepository,
             agentIssueReportRepository = agentIssueReportRepository,
             agentDetailStore = agentDetailStore,
+            selectedServerStore = selectedServerStore,
             agentPanelTabOrderStore = agentPanelTabOrderStore,
             serverMembersStore = serverMembersStore,
             computersStore = computersStore,
@@ -2129,13 +2250,29 @@ private fun MemberDetailPageContent() {
     val routeScope = rememberCoroutineScope()
     val memberIdentity = payload.identity
     var routeState by remember(memberIdentity) {
-        mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
+        mutableStateOf(
+            memberDetailInitialRouteState(
+                identity = memberIdentity,
+                activeServerId = provider.selectedServerStore.currentServerId.value,
+                agentDetailState = provider.agentDetailStore.state.value,
+                serverMembersState = provider.serverMembersStore.state.value
+            ) ?: MemberDetailRouteState.Loading
+        )
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
+    var agentActivityLoadState by remember(memberIdentity) {
+        mutableStateOf<MembersAgentActivityLoadState>(MembersAgentActivityLoadState.Idle)
+    }
+    var agentActivityRequestGeneration by remember { mutableStateOf(0L) }
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
     val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
     val selectedMemberId = memberIdentity?.memberId
-    val selectedAgentDetailStoreStateMatches = selectedMemberId != null && agentDetailStoreState.agentId == selectedMemberId
+    val selectedAgentRouteServerId = (routeState as? MemberDetailRouteState.Agent)?.server?.id
+    val selectedAgentDetailStoreStateMatches =
+        selectedMemberId != null &&
+            selectedAgentRouteServerId != null &&
+            agentDetailStoreState.agentId == selectedMemberId &&
+            agentDetailStoreState.detailServerId == selectedAgentRouteServerId
     val selectedAgentDetail = agentDetailStoreState.detail?.takeIf {
         selectedAgentDetailStoreStateMatches && it.agentId == selectedMemberId
     }
@@ -2148,9 +2285,6 @@ private fun MemberDetailPageContent() {
     val timeContext = payload.toSlockTimeContext()
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val expectedKind = memberIdentity?.kind
-    val remoteProfileOnlyAgent =
-        (routeState as? MemberDetailRouteState.Agent)?.accessMode ==
-            MemberDetailAccessMode.RemoteProfileOnly
     val statusLookupServerId =
         when (val current = routeState) {
             is MemberDetailRouteState.Agent ->
@@ -2191,14 +2325,15 @@ private fun MemberDetailPageContent() {
         } else {
             payload.agentPanelTabOrder
         }
-    val waitForAgentPanelTabOrder =
-        !remoteProfileOnlyAgent && shouldWaitForAgentPanelTabOrderBeforeRender(
+    val initialAgentTabForRender = remember(memberIdentity) {
+        membersInitialAgentDetailTabForRender(
             expectedKind = expectedKind,
-            initialAgentTab = initialAgentTab,
+            explicitInitialTab = initialAgentTab,
             payloadAgentPanelTabOrder = payload.agentPanelTabOrder,
             storeServerMatches = agentPanelTabOrderState.serverId == agentPanelTabOrderServerId,
             storeLoaded = agentPanelTabOrderState.loaded
         )
+    }
     val agentStatusResolver =
         remember(provider.serverMembersStore, statusLookupServerId) {
             slockAgentStatusResolver(provider.serverMembersStore, statusLookupServerId)
@@ -2208,22 +2343,66 @@ private fun MemberDetailPageContent() {
             slockMemberAvatarResolver(provider.serverMembersStore, statusLookupServerId)
         }
 
+    suspend fun refreshVisibleAgentActivity(
+        current: MemberDetailRouteState.Agent,
+        agentId: MemberId
+    ) {
+        if (!current.accessMode.allowsPrivateAgentSurfaces) return
+        val detailState = provider.agentDetailStore.state.value
+        val hasCachedActivity =
+            detailState.detail
+                ?.takeIf {
+                    it.agentId == agentId &&
+                        detailState.detailServerId == current.server.id
+                }
+                ?.activity
+                ?.isNotEmpty() == true
+        val generation = agentActivityRequestGeneration + 1L
+        agentActivityRequestGeneration = generation
+        val fence =
+            MembersAgentActivityRequestFence(
+                memberId = agentId,
+                serverId = current.server.id,
+                generation = generation
+            )
+        agentActivityLoadState = membersAgentActivityLoadStart(hasCachedActivity)
+        val result = provider.loadAgentActivity(agentId)
+        val routeServerId = (routeState as? MemberDetailRouteState.Agent)?.server?.id
+        if (!fence.matches(memberIdentity, routeServerId, agentActivityRequestGeneration)) return
+        if (result is DataResult.Content) {
+            provider.agentDetailStore.dispatch(
+                SharedAgentDetailIntent.SetAgentActivity(
+                    agentId = agentId,
+                    activity = result.data,
+                    serverId = current.server.id
+                )
+            )
+            provider.serverMembersStore.applyAgentActivitySnapshot(current.server.id, agentId, result.data)
+        }
+        agentActivityLoadState = result.toMembersAgentActivityLoadState()
+    }
+
     LaunchedEffect(memberIdentity, localAgentDetailRefreshKey) {
         if (memberIdentity == null) {
             routeState = MemberDetailRouteState.Error("member_identity_missing")
             return@LaunchedEffect
         }
         val cached = provider.cachedContext(memberIdentity)
-        routeState = cached ?: MemberDetailRouteState.Loading
+        if (cached != null) {
+            routeState = cached
+        } else if (routeState !is MemberDetailRouteState.Agent && routeState !is MemberDetailRouteState.Human) {
+            routeState = MemberDetailRouteState.Loading
+        }
         if (cached != null && cached.accessMode.allowsPrivateAgentSurfaces && selectedMemberId != null) {
             launch {
-                provider.refreshAgentActivity(
-                    statusLookupServerId?.trim()?.takeIf { it.isNotBlank() }?.let { build.raft.app.model.ServerId(it) },
-                    selectedMemberId
-                )
+                refreshVisibleAgentActivity(cached, selectedMemberId)
             }
         }
-        routeState = provider.loadMember(memberIdentity)
+        val loaded = provider.loadMember(memberIdentity)
+        routeState = loaded
+        if (cached == null && loaded is MemberDetailRouteState.Agent && selectedMemberId != null) {
+            refreshVisibleAgentActivity(loaded, selectedMemberId)
+        }
     }
     LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -2289,7 +2468,7 @@ private fun MemberDetailPageContent() {
             )
         is MemberDetailRouteState.Agent -> {
             val member = selectedAgentDetail?.toMemberProfile(current.server)
-            if (member == null || waitForAgentPanelTabOrder) {
+            if (member == null) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
                     contentAlignment = Alignment.Center
@@ -2399,6 +2578,7 @@ private fun MemberDetailPageContent() {
                     currentUserId = current.currentUserId,
                     currentServerId = current.server.id.value,
                     agentDetailState = agentDetailState,
+                    agentActivityLoadState = agentActivityLoadState,
                     agentMachineRuntimes =
                         membersAgentMachineRuntimeIds(
                             machines = computerPickerSlice.machines,
@@ -2485,7 +2665,7 @@ private fun MemberDetailPageContent() {
                     sharedAgentDetailStore = provider.agentDetailStore,
                     initialAgentTab =
                         if (current.accessMode.allowsPrivateAgentSurfaces) {
-                            initialAgentTab
+                            initialAgentTabForRender
                         } else {
                             MembersAgentDetailTab.Profile
                         },
@@ -3491,6 +3671,7 @@ private fun MembersDetailContent(
     currentUserId: String? = null,
     currentServerId: String? = null,
     agentDetailState: MembersAgentDetailLoadState,
+    agentActivityLoadState: MembersAgentActivityLoadState = MembersAgentActivityLoadState.Idle,
     agentMachineRuntimes: List<String> = emptyList(),
     agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
@@ -3952,6 +4133,7 @@ private fun MembersDetailContent(
             if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
                 MembersAgentActivityTab(
                     detail = detail,
+                    loadState = agentActivityLoadState,
                     diagnosticActionState = effectiveDiagnosticActionState,
                     onCopyDiagnostics = { copyDiagnostics() },
                     timeContext = timeContext,
@@ -8701,6 +8883,7 @@ private fun MembersAgentAppLoginScopeChip(scope: String) {
 @Composable
 private fun MembersAgentActivityTab(
     detail: AgentDetailSnapshot?,
+    loadState: MembersAgentActivityLoadState,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onCopyDiagnostics: () -> Unit,
     timeContext: SlockTimeContext,
@@ -8748,7 +8931,25 @@ private fun MembersAgentActivityTab(
                     .filterNot { it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message" }
                     .sortedWith(compareBy<AgentActivityEntry> { it.timestamp.membersActivitySortKey() }.thenBy { it.id })
             }
-        if (rows.isEmpty()) {
+        val hasRows = rows.isNotEmpty()
+        if (hasRows && (loadState is MembersAgentActivityLoadState.Refreshing || loadState is MembersAgentActivityLoadState.Error)) {
+            MembersAgentActivityLoadNotice(loadState)
+        }
+        if (!hasRows && (loadState is MembersAgentActivityLoadState.Loading || loadState is MembersAgentActivityLoadState.Refreshing)) {
+            SlockCenteredLoading(
+                message = stringResource(MR.strings.member_state_loading_activity),
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+        } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
+            SlockEmptyState(
+                title = stringResource(MR.strings.member_error_load_activity),
+                detail = loadState.code,
+                iconName = SlockLucideIconName.Activity,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+        } else if (rows.isEmpty()) {
             SlockEmptyState(
                 title = stringResource(MR.strings.member_state_no_activity),
                 detail = stringResource(MR.strings.member_state_activity_start_agent),
@@ -8801,6 +9002,35 @@ private fun MembersAgentActivityTab(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MembersAgentActivityLoadNotice(
+    state: MembersAgentActivityLoadState,
+    modifier: Modifier = Modifier
+) {
+    val message =
+        when (state) {
+            MembersAgentActivityLoadState.Refreshing -> stringResource(MR.strings.member_state_refreshing_activity)
+            is MembersAgentActivityLoadState.Error ->
+                "${stringResource(MR.strings.member_error_load_activity)}: ${state.code}"
+            MembersAgentActivityLoadState.Idle,
+            MembersAgentActivityLoadState.Loading -> return
+        }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceCream)
+            .padding(horizontal = MembersPageInset, vertical = SlockSpacing.Xs),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = message,
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack
+        )
     }
 }
 

@@ -1,6 +1,17 @@
 package build.raft.app
 
+import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.AgentDetailSnapshot
+import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
+import build.raft.app.data.SharedAgentDetailLoadStatus
+import build.raft.app.data.SharedAgentDetailState
+import build.raft.app.data.SharedServerMembersEntry
+import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.parseSharedAgentActivity
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
@@ -16,6 +27,8 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -344,11 +357,12 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun agentDetailWaitsForServerTabOrderBeforeRenderingWithoutLaunchOrder() {
-        assertTrue(
-            shouldWaitForAgentPanelTabOrderBeforeRender(
+    fun agentDetailUsesProfileWhileServerTabOrderIsPending() {
+        assertEquals(
+            MembersAgentDetailTab.Profile,
+            membersInitialAgentDetailTabForRender(
                 expectedKind = MemberKind.Agent,
-                initialAgentTab = null,
+                explicitInitialTab = null,
                 payloadAgentPanelTabOrder = emptyList(),
                 storeServerMatches = true,
                 storeLoaded = false
@@ -357,32 +371,32 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun agentDetailDoesNotWaitForTabOrderWhenLaunchIntentOrOrderExists() {
+    fun agentDetailInitialTabUsesExplicitLaunchIntentOrPayloadOrder() {
         assertEquals(
-            false,
-            shouldWaitForAgentPanelTabOrderBeforeRender(
+            MembersAgentDetailTab.Activity,
+            membersInitialAgentDetailTabForRender(
                 expectedKind = MemberKind.Agent,
-                initialAgentTab = MembersAgentDetailTab.Activity,
+                explicitInitialTab = MembersAgentDetailTab.Activity,
                 payloadAgentPanelTabOrder = emptyList(),
                 storeServerMatches = false,
                 storeLoaded = false
             )
         )
         assertEquals(
-            false,
-            shouldWaitForAgentPanelTabOrderBeforeRender(
+            MembersAgentDetailTab.Activity,
+            membersInitialAgentDetailTabForRender(
                 expectedKind = MemberKind.Agent,
-                initialAgentTab = null,
+                explicitInitialTab = null,
                 payloadAgentPanelTabOrder = listOf("activity", "profile"),
                 storeServerMatches = false,
                 storeLoaded = false
             )
         )
         assertEquals(
-            false,
-            shouldWaitForAgentPanelTabOrderBeforeRender(
+            null,
+            membersInitialAgentDetailTabForRender(
                 expectedKind = MemberKind.Agent,
-                initialAgentTab = null,
+                explicitInitialTab = null,
                 payloadAgentPanelTabOrder = emptyList(),
                 storeServerMatches = true,
                 storeLoaded = true
@@ -416,15 +430,216 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun humanDetailDoesNotWaitForAgentTabOrder() {
+    fun humanDetailDoesNotReceiveAnAgentFallbackTab() {
         assertEquals(
-            false,
-            shouldWaitForAgentPanelTabOrderBeforeRender(
+            null,
+            membersInitialAgentDetailTabForRender(
                 expectedKind = MemberKind.Human,
-                initialAgentTab = null,
+                explicitInitialTab = null,
                 payloadAgentPanelTabOrder = emptyList(),
                 storeServerMatches = false,
                 storeLoaded = false
+            )
+        )
+    }
+
+    @Test
+    fun memberDetailInitialRouteUsesMatchingAgentSeedForTheFirstFrame() {
+        val member =
+            MemberProfile(
+                id = MemberId("agent-cindy"),
+                displayName = "Cindy",
+                handle = "cindy",
+                kind = MemberKind.Agent,
+                serverId = ServerId("server-source")
+            )
+        val server = ServerSummary(id = ServerId("server-source"), name = "Source")
+        val route =
+            memberDetailInitialRouteState(
+                identity = MemberDetailIdentity(member.id, member.kind, server.id),
+                activeServerId = server.id.value,
+                agentDetailState = seededAgentDetailState(member),
+                serverMembersState = serverMembersState(server, member)
+            )
+
+        val agentRoute = assertIs<MemberDetailRouteState.Agent>(route)
+        assertEquals(server, agentRoute.server)
+        assertEquals(MemberDetailAccessMode.LocalFull, agentRoute.accessMode)
+    }
+
+    @Test
+    fun memberDetailInitialRouteKeepsRemoteAgentProfileOnly() {
+        val member =
+            MemberProfile(
+                id = MemberId("agent-remote"),
+                displayName = "Remote Agent",
+                handle = "remote-agent",
+                kind = MemberKind.Agent,
+                serverId = ServerId("server-remote")
+            )
+        val server = ServerSummary(id = ServerId("server-remote"), name = "Remote")
+        val route =
+            memberDetailInitialRouteState(
+                identity = MemberDetailIdentity(member.id, member.kind, server.id),
+                activeServerId = "server-local",
+                agentDetailState = seededAgentDetailState(member),
+                serverMembersState = serverMembersState(server, member)
+            )
+
+        assertEquals(
+            MemberDetailAccessMode.RemoteProfileOnly,
+            assertIs<MemberDetailRouteState.Agent>(route).accessMode
+        )
+    }
+
+    @Test
+    fun memberDetailInitialRouteRejectsMismatchedOrAmbiguousSeeds() {
+        val member =
+            MemberProfile(
+                id = MemberId("agent-cindy"),
+                displayName = "Cindy",
+                handle = "cindy",
+                kind = MemberKind.Agent
+            )
+        val serverOne = ServerSummary(id = ServerId("server-1"), name = "One")
+        val serverTwo = ServerSummary(id = ServerId("server-2"), name = "Two")
+        val identity = MemberDetailIdentity(member.id, member.kind)
+
+        assertNull(
+            memberDetailInitialRouteState(
+                identity = identity,
+                activeServerId = serverOne.id.value,
+                agentDetailState = seededAgentDetailState(member.copy(id = MemberId("other-agent"))),
+                serverMembersState = serverMembersState(serverOne, member)
+            )
+        )
+        assertNull(
+            memberDetailInitialRouteState(
+                identity = MemberDetailIdentity(member.id, member.kind, serverOne.id),
+                activeServerId = serverOne.id.value,
+                agentDetailState = seededAgentDetailState(member.copy(serverId = serverTwo.id)),
+                serverMembersState = serverMembersState(serverOne, member.copy(serverId = serverOne.id))
+            )
+        )
+        assertNull(
+            memberDetailInitialRouteState(
+                identity = MemberDetailIdentity(member.id, member.kind, serverOne.id),
+                activeServerId = serverOne.id.value,
+                agentDetailState = seededAgentDetailState(member),
+                serverMembersState =
+                    SharedServerMembersState(
+                        entriesByServerId =
+                            mapOf(
+                                serverOne.id.value to
+                                    SharedServerMembersEntry(
+                                        serverId = serverOne.id.value,
+                                        server = serverTwo,
+                                        members = listOf(member)
+                                    )
+                            )
+                    )
+            )
+        )
+        assertNull(
+            memberDetailInitialRouteState(
+                identity = identity,
+                activeServerId = null,
+                agentDetailState = seededAgentDetailState(member),
+                serverMembersState =
+                    SharedServerMembersState(
+                        entriesByServerId =
+                            mapOf(
+                                serverOne.id.value to serverMembersEntry(serverOne, member),
+                                serverTwo.id.value to serverMembersEntry(serverTwo, member)
+                            )
+                    )
+            )
+        )
+    }
+
+    @Test
+    fun memberDetailInitialRouteUsesHumanRosterSeedWithoutAgentDetail() {
+        val member =
+            MemberProfile(
+                id = MemberId("human-artin"),
+                displayName = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human,
+                serverId = ServerId("server-1")
+            )
+        val server = ServerSummary(id = ServerId("server-1"), name = "One")
+        val route =
+            memberDetailInitialRouteState(
+                identity = MemberDetailIdentity(member.id, member.kind, server.id),
+                activeServerId = server.id.value,
+                agentDetailState = SharedAgentDetailState(),
+                serverMembersState = serverMembersState(server, member)
+            )
+
+        assertEquals(member, assertIs<MemberDetailRouteState.Human>(route).member)
+    }
+
+    @Test
+    fun agentActivityLoadStatePreservesRowsWhileRefreshingAndStabilizesFailures() {
+        assertEquals(
+            MembersAgentActivityLoadState.Loading,
+            membersAgentActivityLoadStart(hasCachedActivity = false)
+        )
+        assertEquals(
+            MembersAgentActivityLoadState.Refreshing,
+            membersAgentActivityLoadStart(hasCachedActivity = true)
+        )
+
+        val content: DataResult<List<AgentActivityEntry>> = DataResult.Content(emptyList())
+        val empty: DataResult<List<AgentActivityEntry>> = DataResult.Empty(EmptyReason.NoMembers)
+        val error: DataResult<List<AgentActivityEntry>> = DataResult.Error(ScreenError("activity_offline"))
+        val blocked: DataResult<List<AgentActivityEntry>> =
+            DataResult.NoPermission(PermissionBlocker("activity_forbidden"))
+
+        assertEquals(MembersAgentActivityLoadState.Idle, content.toMembersAgentActivityLoadState())
+        assertEquals(MembersAgentActivityLoadState.Idle, empty.toMembersAgentActivityLoadState())
+        assertEquals(
+            MembersAgentActivityLoadState.Error("activity_offline"),
+            error.toMembersAgentActivityLoadState()
+        )
+        assertEquals(
+            MembersAgentActivityLoadState.Error("activity_forbidden"),
+            blocked.toMembersAgentActivityLoadState()
+        )
+    }
+
+    @Test
+    fun agentActivityRequestFenceRejectsOldMemberServerAndGenerationResults() {
+        val fence =
+            MembersAgentActivityRequestFence(
+                memberId = MemberId("agent-1"),
+                serverId = ServerId("server-1"),
+                generation = 7L
+            )
+        val identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent, ServerId("server-1"))
+
+        assertTrue(fence.matches(identity, ServerId("server-1"), currentGeneration = 7L))
+        assertFalse(
+            fence.matches(
+                identity.copy(memberId = MemberId("agent-2")),
+                ServerId("server-1"),
+                currentGeneration = 7L
+            )
+        )
+        assertFalse(fence.matches(identity, ServerId("server-2"), currentGeneration = 7L))
+        assertFalse(fence.matches(identity, ServerId("server-1"), currentGeneration = 8L))
+        assertFalse(
+            fence.matches(
+                identity.copy(sourceServerId = ServerId("server-2")),
+                ServerId("server-1"),
+                currentGeneration = 7L
+            )
+        )
+        assertFalse(
+            fence.matches(
+                identity.copy(kind = MemberKind.Human),
+                ServerId("server-1"),
+                currentGeneration = 7L
             )
         )
     }
@@ -896,4 +1111,44 @@ class SharedMembersParserTest {
         assertEquals("Context Compaction Started", entries[6].title)
         assertEquals("Subagent started", entries[7].title)
     }
+
+    private fun seededAgentDetailState(member: MemberProfile): SharedAgentDetailState =
+        SharedAgentDetailState(
+            agentId = member.id,
+            detailServerId = member.serverId,
+            detail =
+                AgentDetailSnapshot(
+                    agentId = member.id,
+                    summary =
+                        AgentDetailSummary(
+                            id = member.id.value,
+                            name = member.handle,
+                            displayName = member.displayName,
+                            description = member.description,
+                            avatarUrl = member.avatarUrl
+                        ),
+                    directMessages = emptyList(),
+                    reminders = emptyList(),
+                    activity = emptyList()
+                ),
+            detailLoadStatus = SharedAgentDetailLoadStatus.Content
+        )
+
+    private fun serverMembersState(
+        server: ServerSummary,
+        member: MemberProfile
+    ): SharedServerMembersState =
+        SharedServerMembersState(
+            entriesByServerId = mapOf(server.id.value to serverMembersEntry(server, member))
+        )
+
+    private fun serverMembersEntry(
+        server: ServerSummary,
+        member: MemberProfile
+    ): SharedServerMembersEntry =
+        SharedServerMembersEntry(
+            serverId = server.id.value,
+            server = server,
+            members = listOf(member)
+        )
 }
