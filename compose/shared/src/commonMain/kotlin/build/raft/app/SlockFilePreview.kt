@@ -1753,27 +1753,31 @@ private fun SlockFilePreviewComposerImageEditor(
                     showLoadingIndicator = true
                 )
             }
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                // Read history inside the draw callback. Kuikly observes draw-time state reads to
-                // invalidate and reset the retained native Canvas; capturing this value during
-                // composition leaves stale pixels behind after Undo/Redo.
-                state.history.content.slockComposerImageResolvedDrawOperations().forEach { operation ->
-                    when (operation) {
-                        is SlockComposerImageDrawOperation.Mosaic ->
-                            drawSlockComposerImageMosaic(
-                                image = mosaicImage,
-                                tiles = operation.tiles,
-                            )
-                        is SlockComposerImageDrawOperation.Pencil ->
-                            operation.stroke.points.windowed(2).forEach { segment ->
-                                drawLine(
-                                    color = operation.stroke.color,
-                                    start = segment[0],
-                                    end = segment[1],
-                                    strokeWidth = 6f,
-                                    cap = StrokeCap.Round
+            val committedContent = state.history.content
+            key(committedContent) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    // Kuikly's native Canvas is retained across ordinary snapshot invalidations.
+                    // Key the committed surface by immutable editor content so Undo/Redo disposes
+                    // the old native node, starts from a blank surface, and replays only the current
+                    // operation stack. This mirrors Android View.invalidate() + onDraw() replay.
+                    committedContent.slockComposerImageResolvedDrawOperations().forEach { operation ->
+                        when (operation) {
+                            is SlockComposerImageDrawOperation.Mosaic ->
+                                drawSlockComposerImageMosaic(
+                                    image = mosaicImage,
+                                    tiles = operation.tiles,
                                 )
-                            }
+                            is SlockComposerImageDrawOperation.Pencil ->
+                                operation.stroke.points.windowed(2).forEach { segment ->
+                                    drawLine(
+                                        color = operation.stroke.color,
+                                        start = segment[0],
+                                        end = segment[1],
+                                        strokeWidth = 6f,
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                        }
                     }
                 }
             }

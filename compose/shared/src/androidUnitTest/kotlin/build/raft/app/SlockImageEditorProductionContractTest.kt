@@ -3,33 +3,37 @@ package build.raft.app
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContains
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SlockImageEditorProductionContractTest {
     @Test
-    fun committedCanvasObservesHistoryInsideTheDrawCallback() {
+    fun committedCanvasRemountsAndReplaysForEveryContentRevision() {
         val source = commonMainSource("build/raft/app/SlockFilePreview.kt")
         val editor =
             source.window(
                 "private fun SlockFilePreviewComposerImageEditor(",
                 "private fun SlockFilePreviewImageEditorPrimaryControls(",
             )
-        val drawBlock =
+        val committedSurface =
             editor.window(
-                "// Read history inside the draw callback.",
+                "val committedContent = state.history.content",
                 "activeMosaicRevision",
             )
 
         assertContains(
-            drawBlock,
-            "state.history.content.slockComposerImageResolvedDrawOperations()",
+            committedSurface,
+            "key(committedContent)",
             message =
-                "Undo/Redo must be read by Kuikly's draw-time snapshot observer so it invalidates and clears the retained Canvas.",
+                "Every committed content revision must replace Kuikly's retained native Canvas instead of reusing stale pixels.",
         )
-        assertFalse(
-            "val committedContent = state.history.content" in editor,
-            "Capturing committed content during composition recreates the stale-pixel Undo failure.",
+        assertContains(
+            committedSurface,
+            "committedContent.slockComposerImageResolvedDrawOperations()",
+            message = "The replacement surface must replay only the current operation stack.",
+        )
+        assertTrue(
+            committedSurface.indexOf("key(committedContent)") < committedSurface.indexOf("Canvas(modifier"),
+            "The Canvas itself, not merely its draw lambda, must live inside the revision key boundary.",
         )
     }
 
