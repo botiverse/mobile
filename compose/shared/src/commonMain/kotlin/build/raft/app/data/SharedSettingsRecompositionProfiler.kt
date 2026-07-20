@@ -6,7 +6,8 @@ import com.tencent.kuikly.compose.profiler.RecompositionReport
 import kotlin.math.roundToInt
 
 data class SharedSettingsDiagnosticsHostSnapshot(
-    val entries: List<SharedSettingsDiagnosticsEntry> = emptyList()
+    val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
+    val readStateV1: SharedSettingsReadStateV1DiagnosticSnapshot = SharedSettingsReadStateV1DiagnosticSnapshot(),
 )
 
 internal data class SharedSettingsRecompositionProfilerSupportState(

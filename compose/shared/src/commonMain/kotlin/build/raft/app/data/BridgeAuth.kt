@@ -299,6 +299,25 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun clearDiagnostics(): Boolean =
         diagnosticsSettingsCapability("clearDiagnostics")?.optString("status") == "ok"
 
+    override suspend fun setReadStateV1DiagnosticOverride(mode: String): DataResult<Unit> {
+        val response =
+            settingsCapability(
+                JSONObject()
+                    .put("action", "setReadStateV1DiagnosticOverride")
+                    .put("mode", mode)
+            )
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(
+                ScreenError(
+                    response?.optString("code").orEmpty()
+                        .ifBlank { "read_state_diagnostic_override_failed" },
+                    retryable = false,
+                )
+            )
+        }
+        return DataResult.Content(Unit)
+    }
+
     override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
         val response =
             settingsCapability(
@@ -659,8 +678,44 @@ internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHo
                 }
             }
         }
-    return SharedSettingsDiagnosticsHostSnapshot(entries = entries)
+    val readStateJson =
+        optString("readStateV1DiagnosticJson")
+            .takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+    return SharedSettingsDiagnosticsHostSnapshot(
+        entries = entries,
+        readStateV1 =
+            readStateJson?.let { json ->
+                SharedSettingsReadStateV1DiagnosticSnapshot(
+                    entitled = json.optBoolean("entitled", false),
+                    clientOverride = json.optString("clientOverride").ifBlank { "Server" },
+                    observedScope = json.optString("observedScope"),
+                    boundScope = json.optString("boundScope"),
+                    expiresAtMillis = json.optLong("expiresAtMillis", 0L).takeIf { it > 0L },
+                    serverEffective = json.optNullableBoolean("serverEffective"),
+                    finalEffective = json.optNullableBoolean("finalEffective"),
+                    precedence = json.optString("precedence").ifBlank { "not_observed" },
+                    exactScopeMatched = json.optBoolean("exactScopeMatched", false),
+                    clearReason = json.optString("clearReason"),
+                    selectedScope = json.optString("selectedScope"),
+                    witnessGeneration = json.optLong("witnessGeneration", 0L).takeIf { it > 0L },
+                    durableReadStateVersion = json.optLong("durableReadStateVersion", 0L).takeIf { it > 0L },
+                    durableMaxReadSeq = json.optLong("durableMaxReadSeq", -1L).takeIf { it >= 0L },
+                    latestAdjudication = json.optString("latestAdjudication"),
+                    destinationPublication = json.optString("destinationPublication"),
+                    barrierState = json.optString("barrierState"),
+                    stalePublicationRejectedCount = json.optLong("stalePublicationRejectedCount", 0L),
+                )
+            } ?: SharedSettingsReadStateV1DiagnosticSnapshot(),
+    )
 }
+
+private fun JSONObject.optNullableBoolean(key: String): Boolean? =
+    when (optString(key).trim().lowercase()) {
+        "true" -> true
+        "false" -> false
+        else -> null
+    }
 
 internal fun CoroutineScope.kuiklyBridgeCallContext(): CoroutineContext =
     coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext

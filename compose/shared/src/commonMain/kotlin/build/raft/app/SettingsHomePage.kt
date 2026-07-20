@@ -184,6 +184,7 @@ import build.raft.app.data.SharedSettingsNavItem
 import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
+import build.raft.app.data.SharedSettingsReadStateV1DiagnosticSnapshot
 import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsStorageRow
@@ -5808,6 +5809,9 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding,
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
+                    onSetReadStateV1Override = { mode ->
+                        onSettingsIntent(SharedSettingsIntent.SetReadStateV1DiagnosticOverride(mode))
+                    },
                     onSetProfilerEnabled = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetRecompositionProfilerEnabled(enabled))
                     },
@@ -10335,6 +10339,7 @@ internal fun SharedSettingsDiagnosticsContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
+    onSetReadStateV1Override: (String) -> Unit,
     onSetProfilerEnabled: (Boolean) -> Unit,
     onStartProfiler: () -> Unit,
     onStopProfiler: () -> Unit,
@@ -10349,6 +10354,9 @@ internal fun SharedSettingsDiagnosticsContent(
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
+            "readStateV1Server" -> onSetReadStateV1Override("server")
+            "readStateV1ForceOff" -> onSetReadStateV1Override("force_off")
+            "readStateV1ForceOnExactScope" -> onSetReadStateV1Override("force_on_exact_scope")
             DIAGNOSTICS_ACTION_PROFILER_ENABLED -> onSetProfilerEnabled(value == "true")
             "startProfiler" -> onStartProfiler()
             "stopProfiler" -> onStopProfiler()
@@ -13199,6 +13207,73 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     )
                 }
         )
+    val readState = snapshot?.readStateV1 ?: SharedSettingsReadStateV1DiagnosticSnapshot()
+    val readStateBusy = actionState?.action == "readStateV1Override" && actionState.inProgress
+    val readStateSection =
+        KuiklySharedSettingsSection(
+            title = "Read-state v1 diagnostic override",
+            rows =
+                listOf(
+                    KuiklySharedSettingsRow(
+                        "readStateV1Effective",
+                        SlockLucideIconName.Activity,
+                        "Effective decision",
+                        "server=${readState.serverEffective?.toString() ?: "unobserved"} · " +
+                            "final=${readState.finalEffective?.toString() ?: "unobserved"} · ${readState.precedence}",
+                        status = readState.clientOverride,
+                    ),
+                    KuiklySharedSettingsRow(
+                        "readStateV1Scope",
+                        SlockLucideIconName.Server,
+                        "Exact scope",
+                        readState.boundScope.ifBlank {
+                            readState.observedScope.ifBlank {
+                                "Open the target channel once to observe an exact scope."
+                            }
+                        },
+                        status = if (readState.exactScopeMatched) "Matched" else "Not matched",
+                    ),
+                    KuiklySharedSettingsRow(
+                        "readStateV1Runtime",
+                        SlockLucideIconName.Activity,
+                        "Runtime witness",
+                        "generation=${readState.witnessGeneration ?: 0} · durable=(${readState.durableReadStateVersion ?: "--"},${readState.durableMaxReadSeq ?: "--"}) · " +
+                            "adjudication=${readState.latestAdjudication.ifBlank { "none" }} · publication=${readState.destinationPublication.ifBlank { "none" }}",
+                        status = readState.barrierState.ifBlank { "idle" },
+                    ),
+                    KuiklySharedSettingsRow(
+                        "readStateV1StaleRejected",
+                        SlockLucideIconName.ShieldCheck,
+                        "Stale publications rejected",
+                        "Rejected destination publications from retired or mismatched witnesses.",
+                        status = readState.stalePublicationRejectedCount.toString(),
+                    ),
+                    KuiklySharedSettingsRow(
+                        "readStateV1Server",
+                        SlockLucideIconName.Server,
+                        "Server",
+                        "Clear the local override and follow the server effective flag.",
+                        status = if (readState.clientOverride == "Server") "Current" else "Select",
+                        enabled = readState.entitled && !readStateBusy,
+                    ),
+                    KuiklySharedSettingsRow(
+                        "readStateV1ForceOff",
+                        SlockLucideIconName.Shield,
+                        "Force OFF",
+                        "Highest-priority local kill switch for the observed identity.",
+                        status = if (readState.clientOverride == "ForceOff") "Current" else "15 min",
+                        enabled = readState.entitled && readState.observedScope.isNotBlank() && !readStateBusy,
+                    ),
+                    KuiklySharedSettingsRow(
+                        "readStateV1ForceOnExactScope",
+                        SlockLucideIconName.ShieldCheck,
+                        "Force ON exact scope",
+                        "Bind only the redacted environment/account/server/channel shown above; other channels stay on server behavior.",
+                        status = if (readState.clientOverride == "ForceOnExactScope") "Current" else "15 min",
+                        enabled = readState.entitled && readState.observedScope.isNotBlank() && !readStateBusy,
+                    ),
+                ),
+        )
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = copy.title,
@@ -13221,7 +13296,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
-            ) + listOf(profilerControlSection) + listOf(
+            ) + listOf(readStateSection, profilerControlSection) + listOf(
                 KuiklySharedSettingsSection(
                     title = copy.actions,
                     rows =

@@ -222,7 +222,29 @@ data class SharedSettingsDiagnosticsSnapshot(
     val about: SharedSettingsAboutSnapshot? = null,
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
     val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot(),
+    val readStateV1: SharedSettingsReadStateV1DiagnosticSnapshot = SharedSettingsReadStateV1DiagnosticSnapshot(),
     val loadErrorMessage: String? = null
+)
+
+data class SharedSettingsReadStateV1DiagnosticSnapshot(
+    val entitled: Boolean = false,
+    val clientOverride: String = "Server",
+    val observedScope: String = "",
+    val boundScope: String = "",
+    val expiresAtMillis: Long? = null,
+    val serverEffective: Boolean? = null,
+    val finalEffective: Boolean? = null,
+    val precedence: String = "not_observed",
+    val exactScopeMatched: Boolean = false,
+    val clearReason: String = "",
+    val selectedScope: String = "",
+    val witnessGeneration: Long? = null,
+    val durableReadStateVersion: Long? = null,
+    val durableMaxReadSeq: Long? = null,
+    val latestAdjudication: String = "",
+    val destinationPublication: String = "",
+    val barrierState: String = "",
+    val stalePublicationRejectedCount: Long = 0L,
 )
 
 data class SharedSettingsDiagnosticsEntry(
@@ -402,6 +424,7 @@ sealed interface SharedSettingsIntent {
     data object CopyDiagnostics : SharedSettingsIntent
     data object ShareDiagnostics : SharedSettingsIntent
     data object ClearDiagnostics : SharedSettingsIntent
+    data class SetReadStateV1DiagnosticOverride(val mode: String) : SharedSettingsIntent
     data class SetRecompositionProfilerEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object StartRecompositionProfiler : SharedSettingsIntent
     data object StopRecompositionProfiler : SharedSettingsIntent
@@ -478,6 +501,9 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun setReadStateV1DiagnosticOverride(mode: String): DataResult<Unit> =
+        DataResult.Error(ScreenError("read_state_diagnostic_override_unavailable", retryable = false))
 
     suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> =
         DataResult.Content(Unit)
@@ -1127,6 +1153,15 @@ class SharedSettingsDataSource(
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
         loadDiagnosticsSnapshot()
 
+    suspend fun setReadStateV1DiagnosticOverride(mode: String): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        return when (val result = platformCapabilities.setReadStateV1DiagnosticOverride(mode)) {
+            is DataResult.Content -> loadDiagnosticsSnapshot(feedback = "Read-state override updated.")
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
+
     suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<SharedSettingsDiagnosticsSnapshot> {
         val hostResult = platformCapabilities.setRecompositionProfilerEnabled(enabled)
         when (hostResult) {
@@ -1407,6 +1442,8 @@ class SharedSettingsDataSource(
                 about = about,
                 entries = entries,
                 profiler = recompositionProfilerController.buildSnapshot(enabled = profilerEnabled, feedback = feedback),
+                readStateV1 = (hostResult as? DataResult.Content)?.data?.readStateV1
+                    ?: SharedSettingsReadStateV1DiagnosticSnapshot(),
                 loadErrorMessage = loadErrorMessage
             )
         )
@@ -2116,6 +2153,14 @@ class SharedSettingsStore(
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.ShareDiagnostics)
             SharedSettingsIntent.ClearDiagnostics ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.ClearDiagnostics)
+            is SharedSettingsIntent.SetReadStateV1DiagnosticOverride -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState("readStateV1Override", inProgress = true)
+                    )
+                dataSource.setReadStateV1DiagnosticOverride(intent.mode)
+                    .applyDiagnosticsActionResult("readStateV1Override")
+            }
             is SharedSettingsIntent.SetRecompositionProfilerEnabled -> {
                 _state.value =
                     _state.value.copy(
@@ -3049,6 +3094,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
             SharedSettingsIntent.ClearDiagnostics,
+            is SharedSettingsIntent.SetReadStateV1DiagnosticOverride,
             is SharedSettingsIntent.SetRecompositionProfilerEnabled,
             SharedSettingsIntent.StartRecompositionProfiler,
             SharedSettingsIntent.StopRecompositionProfiler,
