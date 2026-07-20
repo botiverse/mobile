@@ -553,6 +553,20 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityPendingUpdateLedgerAllowsNewMessageForRetiredConversation() {
+        val first = ActivityUpdateMarker("channel:same", "message:first")
+        val second = ActivityUpdateMarker("channel:same", "message:second")
+
+        val laterArrival =
+            ActivityPendingUpdateLedger()
+                .record(setOf(first))
+                .consumePending()
+                .record(setOf(second))
+
+        assertEquals(setOf(second), laterArrival.pendingMarkers)
+    }
+
+    @Test
     fun activityPendingUpdateLedgerSecondBannerRemainsActionable() {
         val first = ActivityUpdateMarker("channel:first", "message:first")
         val second = ActivityUpdateMarker("channel:second", "message:second")
