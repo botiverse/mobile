@@ -2286,6 +2286,144 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun twoRetainedRowsDoNotDoubleCountCanonicalAggregateThatAlreadyCaughtUp() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val first = threadItem("thread-first").copy(replyCount = 2)
+        val second = threadItem("thread-second").copy(replyCount = 4)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(first, second), totalUnreadCount = 0))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-first", channelId = "thread-first"))
+            )
+        )
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-second", channelId = "thread-second"))
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(emptyList(), totalUnreadCount = 2))
+        delay(1L)
+
+        assertEquals(2, store.state.value.items.size)
+        assertEquals(listOf(1, 1), store.state.value.items.map { it.unreadCount })
+        assertEquals(2, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun authoritativeThreadUnreadClearsBackgroundPreservedHighWaterWithoutExplicitRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+        val sameMarkerRead =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "message message-new",
+                replyCount = 3,
+                unreadCount = 0,
+                firstUnreadMessageId = null
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 0))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(sameMarkerRead), totalUnreadCount = 0))
+        delay(1L)
+        assertEquals(1, store.state.value.items.single().unreadCount)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-channel-1"),
+                    replyCount = 3,
+                    lastReplyAt = sameMarkerRead.latestActivityAt,
+                    participantIds = emptyList(),
+                    unreadCount = 0,
+                    firstUnreadMessageId = null
+                )
+            )
+        )
+
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(sameMarkerRead), totalUnreadCount = 0))
+        delay(1L)
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun filterSwitchFencesOlderAllBackgroundProjectionAndStartsCleanMembershipLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+        val patchedCanonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "message message-new",
+                replyCount = 3,
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("message-new")
+            )
+        val unreadOnly = threadItem("thread-unread", unreadCount = 1)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 0))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+        awaitPendingCount(inbox, 1)
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        awaitPendingCount(inbox, 2)
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        assertTrue(store.state.value.items.isEmpty())
+
+        inbox.completeNextSnapshot(snapshot(listOf(patchedCanonical), totalUnreadCount = 1))
+        delay(1L)
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        assertTrue(store.state.value.items.isEmpty())
+
+        inbox.completeNextSnapshot(snapshot(listOf(unreadOnly), totalUnreadCount = 1))
+        awaitState(store) { state -> state.items.map { it.key } == listOf(unreadOnly.key) }
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        scope.cancel()
+    }
+
+    @Test
     fun messagePatchSurvivesStaleExplicitRefreshUntilBackgroundReconcileConfirmsIt() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
