@@ -8,6 +8,7 @@ import kotlin.math.roundToInt
 data class SharedSettingsDiagnosticsHostSnapshot(
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
     val readStateV1: SharedSettingsReadStateV1DiagnosticSnapshot = SharedSettingsReadStateV1DiagnosticSnapshot(),
+    val featureFlagOverrides: List<SharedSettingsDiagnosticFeatureFlagSnapshot> = emptyList(),
 )
 
 internal data class SharedSettingsRecompositionProfilerSupportState(

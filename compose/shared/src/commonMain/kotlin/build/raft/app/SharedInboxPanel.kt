@@ -29,6 +29,9 @@ import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
+import build.raft.app.network.sync.DiagnosticFeatureFlagScope
+import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.activityPendingUpdateIncrement
 import build.raft.app.data.activityPendingUpdateMarkers
 import build.raft.app.data.activityUpdatePresentation
@@ -217,11 +220,21 @@ internal fun SharedHomeActivityScreen(
         remember(state, activitySummary) {
             projectActivityStateWithProcessSummary(state, activitySummary)
         }
+    val diagnosticOverrideRevision by
+        ProcessDiagnosticFeatureFlagOverrides.registry.revision.collectAsState()
     val stableOrderEnabledAtRouteEntry =
-        remember(activityStore, state.ownerUserId, activitySummaryServerId) {
-            sharedStores.serverFeatureFlags.isEnabled(
-                activitySummaryServerId,
-                MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
+        remember(activityStore, state.ownerUserId, activitySummaryServerId, diagnosticOverrideRevision) {
+            val serverEffective =
+                sharedStores.serverFeatureFlags.isEnabled(
+                    activitySummaryServerId,
+                    MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
+                )
+            resolveActivityStableOrderEnabled(
+                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
+                serverEffective = serverEffective,
+                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                accountId = state.ownerUserId.orEmpty(),
+                serverId = activitySummaryServerId.value,
             )
         }
     val sharedHomeStore = remember(sharedStores, storeScope) {
@@ -308,6 +321,24 @@ internal fun SharedHomeActivityScreen(
         modifier = modifier
     )
 }
+
+internal fun resolveActivityStableOrderEnabled(
+    registry: DiagnosticFeatureFlagOverrideRegistry,
+    serverEffective: Boolean,
+    environmentId: String,
+    accountId: String,
+    serverId: String,
+): Boolean =
+    registry.decide(
+        key = MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
+        serverEffective = serverEffective,
+        scope =
+            DiagnosticFeatureFlagScope(
+                environmentId = environmentId.trim().trimEnd('/'),
+                accountId = accountId,
+                serverId = serverId,
+            ),
+    ).finalEffective
 
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean =
     routeVisibleTick > 0
