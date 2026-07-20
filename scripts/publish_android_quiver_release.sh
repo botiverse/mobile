@@ -119,6 +119,9 @@ Environment overrides:
   SLOCK_COLLECT_ANDROID_SYMBOLS=0
   SLOCK_REQUIRE_ANDROID_SYMBOLS=1
   SLOCK_ANDROID_SYMBOL_ARCHIVE=/path/to/exact-native-symbols.zip
+  SLOCK_RELEASE_CHANGELOG_ZH_FILE=change-logs/1.6.0/android/zh-CN.md
+  SLOCK_RELEASE_CHANGELOG_EN_FILE=change-logs/1.6.0/android/en.md
+  SLOCK_RELEASE_CHANGELOG_FILE=changelog.txt
   SLOCK_QUIVER_DRY_RUN=1
 
 Options:
@@ -297,7 +300,7 @@ HANDS_ARGS=(
 if [ -n "${SLOCK_RELEASE_CHANGELOG_ZH_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_ZH_FILE}" ] &&
   [ -n "${SLOCK_RELEASE_CHANGELOG_EN_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_EN_FILE}" ]; then
   HANDS_ARGS+=(
-    --changelog-file "zh=${SLOCK_RELEASE_CHANGELOG_ZH_FILE}"
+    --changelog-file "zh-CN=${SLOCK_RELEASE_CHANGELOG_ZH_FILE}"
     --changelog-file "en=${SLOCK_RELEASE_CHANGELOG_EN_FILE}"
   )
 elif [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then

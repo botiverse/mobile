@@ -789,6 +789,14 @@ Raft Mobile release notes use version-scoped feature changesets under
 contract explicitly targets a release such as `1.6.0`, the implementation is
 not complete without its own changeset in that version directory.
 
+The release lane aggregates those changesets separately for each shipped
+platform under `change-logs/<version>/<platform>/{zh-CN,en}.md`, where
+`<platform>` is `android`, `ios`, or `ohos`. A platform aggregate contains only
+behavior shipped on that platform and does not repeat the platform name in
+each bullet. Historical root-level `change-logs/<version>/{zh-CN,en}.md` files
+remain supported as workflow fallbacks, but new versions must use the
+platform directories.
+
 - Add one kebab-case Markdown file per user-facing feature, improvement, or
   fix. Use
   `change-logs/1.6.0/changesets/sync-core-v2-sole-apply-canary.md` as the
@@ -805,9 +813,10 @@ not complete without its own changeset in that version directory.
 - Do not guess a target version. If no version was explicitly assigned, do
   not place the change in a version directory merely because that is the next
   planned release; wait for owner/release-lane classification.
-- Do not edit consolidated `change-logs/<version>/zh-CN.md` or `en.md` as the
-  per-feature delivery path. The release lane owns their aggregation and
-  review using the accepted version changesets.
+- Do not edit consolidated
+  `change-logs/<version>/<platform>/{zh-CN,en}.md` as the per-feature delivery
+  path. The release lane owns platform aggregation and review using the
+  accepted version changesets.
 - Before moving a version-targeted task to In Review, verify the changeset is
   present, the bilingual copy matches the shipped scope, and the product PR
   number/rollout metadata are accurate.

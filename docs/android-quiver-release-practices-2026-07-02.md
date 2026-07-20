@@ -290,6 +290,13 @@ the first entry. Write it with the Quiver CLI
 (`quiver releases update <app> <releaseId> --changelog-file zh-CN=zh.md --changelog-file en=en.md`)
 or `PATCH /api/apps/:appId/releases/:id` with a `release_notes` object.
 
+**Platform-owned source files.** New releases store the reviewed Android pair
+at `change-logs/<version>/android/{zh-CN,en}.md`. The Android release workflow
+uses that directory first and reads the old root-level pair only as a fallback
+for historical versions. Because the file already identifies the platform,
+bullets describe the behavior directly instead of repeating "Android" on each
+line.
+
 **User-facing only.** Describe what changed for a user, not how. Exclude
 internal / CI / build / refactor items, PR and commit numbers, and
 platform-internal detail; fold many small related fixes into one line. Soften

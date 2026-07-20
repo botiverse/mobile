@@ -500,8 +500,22 @@ jobs:
         shell: bash
         env:
           SLOCK_RELEASE_CHANGELOG_FILE: ${{ github.workspace }}/changelog.txt
+          SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}/ios
+          SLOCK_RELEASE_CHANGELOG_LEGACY_DIR: ${{ github.workspace }}/change-logs/${{ needs.resolve.outputs.version_name }}
         run: |
           set -euo pipefail
+          if [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md" ]; then
+            export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/zh-CN.md"
+            export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_PLATFORM_DIR}/en.md"
+            echo "Using reviewed iOS changelog from change-logs/${{ needs.resolve.outputs.version_name }}/ios/"
+          elif [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md" ]; then
+            export SLOCK_RELEASE_CHANGELOG_ZH_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/zh-CN.md"
+            export SLOCK_RELEASE_CHANGELOG_EN_FILE="${SLOCK_RELEASE_CHANGELOG_LEGACY_DIR}/en.md"
+            echo "Using legacy reviewed changelog from change-logs/${{ needs.resolve.outputs.version_name }}/"
+          else
+            unset SLOCK_RELEASE_CHANGELOG_ZH_FILE SLOCK_RELEASE_CHANGELOG_EN_FILE
+            echo "Reviewed iOS changelog not found; falling back to generated git history."
+          fi
           IPA="$(find dist/ios -type f -name '*.ipa' | sort | head -n 1)"
           DSYM="$(find dist/ios -type f -name '*.dSYM.zip' | sort | head -n 1)"
           ./scripts/publish_ios_hands_release.sh \
