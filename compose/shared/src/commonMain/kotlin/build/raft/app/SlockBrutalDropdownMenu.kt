@@ -74,7 +74,7 @@ internal data class SlockBrutalDropdownMenuItem(
  */
 @Composable
 internal fun SlockBrutalDropdownMenu(
-    anchor: Offset,
+    anchor: SlockPopoverAnchor,
     items: List<SlockBrutalDropdownMenuItem>,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -121,11 +121,11 @@ internal fun SlockBrutalDropdownMenu(
         verticalOffset = verticalOffsetPx,
         horizontalAutoFlip = horizontalAutoFlip,
         verticalPlacement = verticalPlacement
-    ) { popoverModifier, _ ->
+    ) {
         SlockBrutalDropdownMenuSurface(
             items = items,
             onSelect = onSelect,
-            modifier = popoverModifier,
+            modifier = Modifier,
             width = popoverWidth,
             rowHeight = rowHeight,
             shadowOffset = shadowOffsetDp,

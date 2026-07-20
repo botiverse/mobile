@@ -22,7 +22,6 @@ import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SlockTimeFormat12Hour
 import build.raft.app.resources.MR
-import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
@@ -918,19 +917,6 @@ class SharedMembersParserTest {
                 canManage = true,
                 deleted = true,
                 inProgress = false
-            )
-        )
-    }
-
-    @Test
-    fun agentManagementMenuAnchorUsesTriggerBottomEnd() {
-        assertEquals(
-            Offset(132f, 80f),
-            membersManagementMenuAnchor(
-                buttonLeftPx = 100f,
-                buttonTopPx = 48f,
-                buttonWidthPx = 32f,
-                buttonHeightPx = 32f
             )
         )
     }

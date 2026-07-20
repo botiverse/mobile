@@ -3870,16 +3870,14 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
 
 @Composable
 internal fun SlockFilePreviewOverflowMenuButton(
-    onOpenMenu: (Offset) -> Unit,
+    onOpenMenu: (SlockPopoverAnchor) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val menuAnchor = remember { SlockLiveRootAnchorRef() }
+    val menuAnchor = remember { SlockLiveRootAnchorRef(identity = "file_preview_overflow") }
     SlockBrutalIconButton(
         iconName = SlockLucideIconName.Ellipsis,
         onClick = {
-            menuAnchor.resolve { size ->
-                Offset(size.width.toFloat(), size.height.toFloat())
-            }?.let(onOpenMenu)
+            menuAnchor.resolve(SlockPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
         },
         size = 30.dp,
         shadowOffset = 2.dp,
@@ -4222,7 +4220,7 @@ internal fun SlockFilePreviewPageScaffold(
     content: @Composable ColumnScope.() -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
             SlockTopPageHeader(
@@ -4260,10 +4258,10 @@ internal fun SlockFilePreviewPageScaffold(
                 content()
             }
         }
-        if (menuOpen && overflowMenuItems.isNotEmpty()) {
+        if (menuOpen && overflowMenuItems.isNotEmpty() && menuAnchor != null) {
             SlockRaftUiControlledMenu(
                 expanded = menuOpen,
-                anchor = menuAnchor,
+                anchor = menuAnchor!!,
                 items = overflowMenuItems,
                 onSelect = { id ->
                     menuOpen = false

@@ -1,5 +1,9 @@
 package build.raft.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockRaftUiAvatar
 import build.raft.app.components.SlockRaftUiAvatarGroup
 import build.raft.app.components.SlockRaftUiAvatarType
@@ -578,6 +582,14 @@ internal fun RaftUiInteractionStatesVisualContent() {
 
 @Composable
 internal fun RaftUiControlledOpenOverlaysVisualContent() {
+    val dropdownRef = remember { SlockLiveRootAnchorRef(identity = "raft_ui_fixture:dropdown") }
+    val popoverRef = remember { SlockLiveRootAnchorRef(identity = "raft_ui_fixture:popover") }
+    val selectRef = remember { SlockLiveRootAnchorRef(identity = "raft_ui_fixture:select") }
+    val emptySelectRef = remember { SlockLiveRootAnchorRef(identity = "raft_ui_fixture:empty_select") }
+    var dropdownAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var popoverAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var selectAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var emptySelectAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     Box(
         modifier =
             Modifier
@@ -587,32 +599,47 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
     ) {
         SlockRaftUiButton(
             label = "Dropdown open",
-            modifier = Modifier.offset(x = 16.dp, y = 16.dp).width(170.dp),
+            modifier =
+                Modifier
+                    .offset(x = 16.dp, y = 16.dp)
+                    .width(170.dp)
+                    .slockCaptureLiveRootAnchor(dropdownRef) {
+                        dropdownAnchor = dropdownRef.resolve(SlockPopoverLocalPoint.BottomStart)
+                    },
             variant = SlockRaftUiButtonVariant.Outline
         )
-        SlockRaftUiControlledMenu(
-            expanded = true,
-            anchor = Offset(16f, 66f),
-            items =
-                listOf(
-                    SlockRaftUiMenuItem(id = "publish", label = "Publish page", trailing = "⌘ P"),
-                    SlockRaftUiMenuItem(id = "history", label = "Keep history", selected = true),
-                    SlockRaftUiMenuItem(id = "mobile", label = "Mobile report", selected = true),
-                    SlockRaftUiMenuItem(id = "delete", label = "Delete run", destructive = true, enabled = false)
-                ),
-            onSelect = {},
-            onDismiss = {},
-            width = 170.dp
-        )
+        dropdownAnchor?.let { anchor ->
+            SlockRaftUiControlledMenu(
+                expanded = true,
+                anchor = anchor,
+                items =
+                    listOf(
+                        SlockRaftUiMenuItem(id = "publish", label = "Publish page", trailing = "⌘ P"),
+                        SlockRaftUiMenuItem(id = "history", label = "Keep history", selected = true),
+                        SlockRaftUiMenuItem(id = "mobile", label = "Mobile report", selected = true),
+                        SlockRaftUiMenuItem(id = "delete", label = "Delete run", destructive = true, enabled = false)
+                    ),
+                onSelect = {},
+                onDismiss = {},
+                width = 170.dp
+            )
+        }
 
         SlockRaftUiButton(
             label = "Popover open",
-            modifier = Modifier.offset(x = 204.dp, y = 16.dp).width(170.dp),
+            modifier =
+                Modifier
+                    .offset(x = 204.dp, y = 16.dp)
+                    .width(170.dp)
+                    .slockCaptureLiveRootAnchor(popoverRef) {
+                        popoverAnchor = popoverRef.resolve(SlockPopoverLocalPoint.BottomStart)
+                    },
             variant = SlockRaftUiButtonVariant.Outline
         )
+        popoverAnchor?.let { anchor ->
         SlockRaftUiControlledSelectionPopover(
             expanded = true,
-            anchor = Offset(204f, 66f),
+            anchor = anchor,
             title = "Review gate",
             options =
                 listOf(
@@ -629,6 +656,7 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             width = 170.dp,
             verticalOffset = 16.dp
         )
+        }
 
         SlockRaftUiButton(
             label = "Tooltip trigger",
@@ -666,9 +694,9 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             SlockRaftUiMenuRow("Archive", disabled = true)
         }
 
-        SlockRaftUiControlledSelect(
+        selectAnchor?.let { anchor -> SlockRaftUiControlledSelect(
             expanded = true,
-            anchor = Offset(204f, 456f),
+            anchor = anchor,
             options =
                 listOf(
                     SlockRaftUiSelectionOption(id = "library", label = "Raft UI Library", selected = true),
@@ -677,22 +705,46 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
                 ),
             selectedId = "library",
             title = "Report scope",
-            modifier = Modifier.offset(x = 204.dp, y = 456.dp).width(170.dp),
+            modifier =
+                Modifier
+                    .offset(x = 204.dp, y = 456.dp)
+                    .width(170.dp)
+                    .slockCaptureLiveRootAnchor(selectRef) {
+                        selectAnchor = selectRef.resolve(SlockPopoverLocalPoint.BottomStart)
+                    },
             triggerHeight = 32.dp,
             menuWidth = 170.dp,
             onSelect = {},
             onDismiss = {},
             onTriggerClick = {}
-        )
+        ) }
 
-        SlockRaftUiControlledSelect(
+        if (selectAnchor == null) {
+            Box(
+                Modifier
+                    .offset(x = 204.dp, y = 456.dp)
+                    .width(170.dp)
+                    .height(32.dp)
+                    .slockCaptureLiveRootAnchor(selectRef) {
+                        selectAnchor = selectRef.resolve(SlockPopoverLocalPoint.BottomStart)
+                    }
+            )
+        }
+
+        emptySelectAnchor?.let { anchor -> SlockRaftUiControlledSelect(
             expanded = true,
-            anchor = Offset(16f, 590f),
+            anchor = anchor,
             options = emptyList(),
             selectedId = "",
             selectedLabel = "Android capture",
             title = "Matching reports",
-            modifier = Modifier.offset(x = 16.dp, y = 590.dp).width(170.dp),
+            modifier =
+                Modifier
+                    .offset(x = 16.dp, y = 590.dp)
+                    .width(170.dp)
+                    .slockCaptureLiveRootAnchor(emptySelectRef) {
+                        emptySelectAnchor = emptySelectRef.resolve(SlockPopoverLocalPoint.BottomStart)
+                    },
             triggerHeight = 32.dp,
             menuWidth = 220.dp,
             search = "and",
@@ -702,7 +754,18 @@ internal fun RaftUiControlledOpenOverlaysVisualContent() {
             onSelect = {},
             onDismiss = {},
             onTriggerClick = {}
-        )
+        ) }
+        if (emptySelectAnchor == null) {
+            Box(
+                Modifier
+                    .offset(x = 16.dp, y = 590.dp)
+                    .width(170.dp)
+                    .height(32.dp)
+                    .slockCaptureLiveRootAnchor(emptySelectRef) {
+                        emptySelectAnchor = emptySelectRef.resolve(SlockPopoverLocalPoint.BottomStart)
+                    }
+            )
+        }
     }
 }
 

@@ -19,7 +19,6 @@ import build.raft.app.components.SlockFormField
 import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SlockRaftUiSelectionPopover
 import build.raft.app.components.SlockRaftUiSelectionOption
-import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentIssueReportRepository
@@ -3789,7 +3788,10 @@ private fun MembersDetailContent(
         } else {
             diagnosticActionState
         }
-    var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
+    var managementMenuAnchor by remember(member.id.value) { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var managementMenuAnchorResolver by remember(member.id.value) {
+        mutableStateOf<SlockPopoverAnchorResolver?>(null)
+    }
     var showAvatarPicker by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
         mutableStateOf<MembersAgentWorkspaceTreeState>(MembersAgentWorkspaceTreeState.Idle)
@@ -3801,7 +3803,7 @@ private fun MembersDetailContent(
     LaunchedEffect(member.id.value, initialVisualMode) {
         when (initialVisualMode) {
             MembersAgentDetailVisualMode.LifecycleActions -> {
-                managementMenuOpen = true
+                Unit
             }
             MembersAgentDetailVisualMode.AvatarManagement -> {
                 showAvatarPicker = true
@@ -3821,6 +3823,14 @@ private fun MembersDetailContent(
                 issueReportReferenceCopied = false
             }
             MembersAgentDetailVisualMode.Profile -> Unit
+        }
+    }
+    LaunchedEffect(member.id.value, initialVisualMode, managementMenuAnchorResolver) {
+        if (initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions) {
+            managementMenuAnchorResolver?.resolve()?.let { anchor ->
+                managementMenuAnchor = anchor
+                managementMenuOpen = true
+            }
         }
     }
     val visibleTabs = remember(accessMode, canViewPrivate, deleted, member.kind, agentPanelTabOrder) {
@@ -4097,6 +4107,7 @@ private fun MembersDetailContent(
                 onCopyMemberId = onCopyMemberId,
                 agentStatusIndicatorState = agentStatusIndicatorState,
                 memberAvatarResolver = memberAvatarResolver,
+                onManagementMenuAnchorResolverReady = { managementMenuAnchorResolver = it },
                 onRequestManagementMenu = { anchor ->
                     if (anchor != null) {
                         managementMenuAnchor = anchor
@@ -4272,9 +4283,8 @@ private fun MembersDetailContent(
                 }
             }
         }
-        val dropdownAnchor: Offset = managementMenuAnchor
-            ?: Offset(100f, 100f)
-        if (managementMenuOpen && member.kind == MemberKind.Agent) {
+        val dropdownAnchor = managementMenuAnchor
+        if (managementMenuOpen && member.kind == MemberKind.Agent && dropdownAnchor != null) {
             val menuSummary = detail?.summary
             val menuStatus = member.membersAgentStatusDisplayState(menuSummary?.status, menuSummary?.activity).status
             val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
@@ -4502,7 +4512,8 @@ private fun MembersDetailHeader(
     onAvatarClick: (() -> Unit)?,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
-    onRequestManagementMenu: (Offset?) -> Unit
+    onManagementMenuAnchorResolverReady: (SlockPopoverAnchorResolver) -> Unit,
+    onRequestManagementMenu: (SlockPopoverAnchor?) -> Unit
 ) {
     val summary = detail?.summary
     val directMessageEligibility =
@@ -4512,7 +4523,12 @@ private fun MembersDetailHeader(
             currentServerId = currentServerId,
             deleted = deleted
         )
-    val threeDotButtonAnchor = remember(member.id.value) { SlockLiveRootAnchorRef() }
+    val threeDotButtonAnchor =
+        remember(member.id.value) { SlockLiveRootAnchorRef(identity = "member:${member.id.value}:management") }
+    val threeDotButtonAnchorResolver =
+        remember(threeDotButtonAnchor) { threeDotButtonAnchor.resolver(SlockPopoverLocalPoint.BottomEnd) }
+    val currentOnManagementMenuAnchorResolverReady by
+        rememberUpdatedState(onManagementMenuAnchorResolverReady)
     val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     val headerMetaLabel =
         when {
@@ -4605,13 +4621,14 @@ private fun MembersDetailHeader(
                     iconName = SlockLucideIconName.Menu,
                     onClick = {
                         onRequestManagementMenu(
-                            threeDotButtonAnchor.resolve { size ->
-                                Offset(size.width.toFloat(), size.height.toFloat())
-                            }
+                            threeDotButtonAnchorResolver.resolve()
                         )
                     },
                     size = MembersActionSize,
-                    modifier = Modifier.slockCaptureLiveRootAnchor(threeDotButtonAnchor)
+                    modifier =
+                        Modifier.slockCaptureLiveRootAnchor(threeDotButtonAnchor) {
+                            currentOnManagementMenuAnchorResolverReady(threeDotButtonAnchorResolver)
+                        }
                 )
             }
         }
@@ -4624,19 +4641,6 @@ private fun MembersDetailHeader(
         )
     }
 }
-
-internal fun membersManagementMenuAnchor(
-    buttonLeftPx: Float,
-    buttonTopPx: Float,
-    buttonWidthPx: Float,
-    buttonHeightPx: Float
-): Offset =
-    slockAnchoredTriggerGeometryAnchor(
-        root = Offset(buttonLeftPx, buttonTopPx),
-        width = buttonWidthPx,
-        height = buttonHeightPx,
-        placement = SlockAnchorPlacement.BottomEnd
-    )
 
 @Composable
 private fun MembersDetailSummary(

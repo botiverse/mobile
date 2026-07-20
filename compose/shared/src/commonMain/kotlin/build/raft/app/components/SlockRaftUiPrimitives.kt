@@ -88,7 +88,7 @@ internal fun SlockBrutalBadgeButton(
     leadingIcon: SlockLucideIconName? = null
 ) {
     SlockButton(
-        onClick2 = { onClick() },
+        onClick = onClick,
         enabled = enabled,
         pressFeedback = enabled,
         modifier = modifier

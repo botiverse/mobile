@@ -8,11 +8,14 @@ import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockLiveRootAnchorRef
+import build.raft.app.SlockPopoverAnchor
+import build.raft.app.SlockPopoverLocalPoint
 import build.raft.app.SlockModalAnchoredPopover
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
+import build.raft.app.slockCaptureLiveRootAnchor
 import build.raft.app.slockSquareCorners
 import build.raft.app.slockFloatingContentClickTarget
 import build.raft.app.withSlockFontWeight
@@ -44,7 +47,6 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
-import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -312,7 +314,7 @@ internal fun SlockSelectTrigger(
 @Composable
 internal fun SlockRaftUiControlledSelectionPopover(
     expanded: Boolean,
-    anchor: Offset,
+    anchor: SlockPopoverAnchor?,
     title: String,
     options: List<SlockRaftUiSelectionOption>,
     onSelect: (String) -> Unit,
@@ -335,7 +337,7 @@ internal fun SlockRaftUiControlledSelectionPopover(
     emptyLabel: String? = null,
     onClear: () -> Unit = {}
 ) {
-    if (!expanded) return
+    if (!expanded || anchor == null) return
     val density = LocalDensity.current
     val headerHeight = if (showHeader) 35.dp else 0.dp
     val searchHeight = if (search != null) 47.dp else 0.dp
@@ -363,12 +365,12 @@ internal fun SlockRaftUiControlledSelectionPopover(
         verticalOffsetAbove = with(density) { verticalOffsetAbove.toPx() },
         horizontalAutoFlip = horizontalAutoFlip,
         verticalPlacement = verticalPlacement
-    ) { popoverModifier, _ ->
+    ) {
         SlockRaftUiSelectionPopover(
             title = title,
             options = options,
             selectedId = selectedId,
-            modifier = popoverModifier.width(width).slockFloatingContentClickTarget(),
+            modifier = Modifier.width(width).slockFloatingContentClickTarget(),
             showHeader = showHeader,
             showClear = showClear,
             search = search,
@@ -386,7 +388,7 @@ internal fun SlockRaftUiControlledSelectionPopover(
 @Composable
 internal fun SlockRaftUiControlledSelect(
     expanded: Boolean,
-    anchor: Offset,
+    anchor: SlockPopoverAnchor?,
     options: List<SlockRaftUiSelectionOption>,
     selectedId: String,
     onSelect: (String) -> Unit,
@@ -454,14 +456,14 @@ internal fun SlockRaftUiSelectField(
     emptyLabel: String? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var triggerRootOffset by remember { mutableStateOf(Offset.Zero) }
+    var triggerAnchorValue by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
     var triggerRootWidthPx by remember { mutableStateOf(0f) }
-    val triggerAnchor = remember { SlockLiveRootAnchorRef() }
+    val triggerAnchor = remember { SlockLiveRootAnchorRef(identity = "raft_ui_select") }
     val density = LocalDensity.current
     val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
     SlockRaftUiControlledSelect(
         expanded = expanded,
-        anchor = triggerRootOffset,
+        anchor = triggerAnchorValue,
         options = options,
         selectedId = selectedId,
         selectedLabel = selectedLabel,
@@ -477,16 +479,15 @@ internal fun SlockRaftUiSelectField(
         modifier =
             modifier
                 .fillMaxWidth()
-                .onGloballyPositioned { coordinates ->
-                    triggerAnchor.update(coordinates)
-                    triggerRootWidthPx = coordinates.size.width.toFloat()
+                .slockCaptureLiveRootAnchor(triggerAnchor) { size ->
+                    triggerRootWidthPx = size.width.toFloat()
                 },
         onTriggerClick = {
             if (expanded) {
                 expanded = false
             } else {
-                triggerAnchor.resolve(Offset.Zero)?.let { anchor ->
-                    triggerRootOffset = anchor
+                triggerAnchor.resolve(SlockPopoverLocalPoint.Exact(Offset.Zero))?.let { anchor ->
+                    triggerAnchorValue = anchor
                     expanded = true
                 }
             }
@@ -501,7 +502,7 @@ internal fun SlockRaftUiSelectField(
 @Composable
 internal fun SlockRaftUiControlledMenu(
     expanded: Boolean,
-    anchor: Offset,
+    anchor: SlockPopoverAnchor,
     items: List<SlockRaftUiMenuItem>,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -535,12 +536,12 @@ internal fun SlockRaftUiControlledMenu(
         verticalOffset = with(density) { verticalOffset.toPx() },
         horizontalAutoFlip = horizontalAutoFlip,
         verticalPlacement = verticalPlacement
-    ) { popoverModifier, _ ->
+    ) {
         SlockRaftUiMenuSurface(
             items = items,
             onSelect = onSelect,
             onDismiss = onDismiss,
-            modifier = popoverModifier,
+            modifier = Modifier,
             width = width,
             rowHeight = rowHeight,
             shadowOffset = shadowOffset,
