@@ -439,14 +439,16 @@ jobs:
             # methodName with CASE_START but no CASE_END — a normally-FAILing case
             # still logs CASE_END status=FAIL, so only a true hang trips this.
             # Surface it LOUDLY as a red ::error:: annotation naming the hung
-            # case, but do NOT fail the step: a hard failure would trip the report
-            # job's `if: !failure()` and drop the whole published site. Portable
-            # (grep -oE isolates the two-token marker so awk $NF is the
-            # methodName regardless of the logcat -v time prefix; no gawk/procsub).
+            # case, but let this collection step finish so screenshots, failure
+            # JSON, and logcat upload first. The post-upload verdict step below
+            # turns any instrumentation/tail-drop failure into the terminal job
+            # result. Portable (grep -oE isolates the two-token marker so awk
+            # $NF is the methodName regardless of the logcat -v time prefix;
+            # no gawk/procsub).
             grep -oE 'CASE_START [A-Za-z0-9_]+' visual-testing-results/logcat-shard-${{ matrix.shard }}.txt 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/td-started-${{ matrix.shard }}; grep -oE 'CASE_END [A-Za-z0-9_]+' visual-testing-results/logcat-shard-${{ matrix.shard }}.txt 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/td-ended-${{ matrix.shard }}; HUNG=$(comm -23 /tmp/td-started-${{ matrix.shard }} /tmp/td-ended-${{ matrix.shard }} | tr '\n' ' '); RC=$(cat visual-testing-results/instr-rc-${{ matrix.shard }}.txt 2>/dev/null || echo '?'); if [ -n "$HUNG" ]; then MSG="tail-drop shard ${{ matrix.shard }}: hung case(s) with CASE_START but no CASE_END: ${HUNG}(instrumentation rc=$RC). Every case MethodSorter ordered after a hung case never ran and this shard's tail was dropped — not a timeout."; echo "::error title=Visual capture tail-drop (shard ${{ matrix.shard }})::$MSG"; echo "TAIL_DROP_GUARD: $MSG" >> visual-testing-results/logcat-shard-${{ matrix.shard }}.txt; else echo "tail-drop guard: shard ${{ matrix.shard }} clean (instrumentation rc=$RC, every CASE_START matched a CASE_END)"; fi
 
       - name: Upload android results
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-results-android-shard-${{ matrix.shard }}
@@ -460,6 +462,35 @@ jobs:
           name: visual-logcat-shard-${{ matrix.shard }}
           path: visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
           if-no-files-found: warn
+
+      - name: Finalize Android capture verdict
+        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        shell: bash
+        run: |
+          rc_file="visual-testing-results/instr-rc-${{ matrix.shard }}.txt"
+          log_file="visual-testing-results/logcat-shard-${{ matrix.shard }}.txt"
+          if [ ! -s "$rc_file" ]; then
+            echo "::error title=Visual capture verdict missing (shard ${{ matrix.shard }})::instrumentation exit code was not recorded; uploaded evidence may be partial"
+            exit 1
+          fi
+          rc=$(tr -d '[:space:]' < "$rc_file")
+          if ! [[ "$rc" =~ ^[0-9]+$ ]]; then
+            echo "::error title=Visual capture verdict invalid (shard ${{ matrix.shard }})::invalid instrumentation exit code '$rc'"
+            exit 1
+          fi
+          mapfile -t failures < <(find visual-testing-results/android -type f -name '*.failure.json' -print 2>/dev/null | sort)
+          tail_drop=0
+          if [ -f "$log_file" ] && grep -q '^TAIL_DROP_GUARD:' "$log_file"; then
+            tail_drop=1
+          fi
+          if [ "$rc" -ne 0 ] || [ "${#failures[@]}" -ne 0 ] || [ "$tail_drop" -ne 0 ]; then
+            echo "::error title=Visual capture shard failed (shard ${{ matrix.shard }})::instrumentation rc=$rc, failure_json=${#failures[@]}, tail_drop=$tail_drop; results and logcat were uploaded before this verdict"
+            if [ "${#failures[@]}" -ne 0 ]; then
+              printf 'failure artifact: %s\n' "${failures[@]}"
+            fi
+            exit 1
+          fi
+          echo "visual capture shard ${{ matrix.shard }} verdict: PASS (instrumentation rc=0, no failure JSON, no tail-drop)"
 
   # iOS simulator capture (task #418). Additive: the report job does not (yet)
   # depend on this leg — results upload as their own artifact and the diff
