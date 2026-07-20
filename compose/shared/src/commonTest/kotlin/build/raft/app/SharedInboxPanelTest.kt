@@ -478,7 +478,7 @@ class SharedInboxPanelTest {
         val current = previous + activityItem(key = "channel:older-page")
 
         assertEquals(
-            ActivityUpdatePresentation(pendingIncrement = 0),
+            ActivityUpdatePresentation(pendingMarkers = emptySet()),
             activityUpdatePresentation(
                 previousItems = previous,
                 currentItems = current
@@ -496,7 +496,15 @@ class SharedInboxPanelTest {
             )
 
         assertEquals(
-            ActivityUpdatePresentation(pendingIncrement = 1),
+            ActivityUpdatePresentation(
+                pendingMarkers =
+                    setOf(
+                        ActivityUpdateMarker(
+                            itemKey = "channel:channel-new",
+                            latestActivityMessageId = null
+                        )
+                    )
+            ),
             activityUpdatePresentation(
                 previousItems = previous,
                 currentItems = current
@@ -510,12 +518,68 @@ class SharedInboxPanelTest {
         val current = listOf(activityItem(key = "channel:channel-top", unreadCount = 0))
 
         assertEquals(
-            ActivityUpdatePresentation(pendingIncrement = 0),
+            ActivityUpdatePresentation(pendingMarkers = emptySet()),
             activityUpdatePresentation(
                 previousItems = previous,
                 currentItems = current
             )
         )
+    }
+
+    @Test
+    fun activityPendingUpdateLedgerConsumesClickedSnapshotWithoutRecurrence() {
+        val first = ActivityUpdateMarker("channel:first", "message:first")
+        val pending = ActivityPendingUpdateLedger().record(setOf(first))
+
+        val consumed = pending.consumePending()
+
+        assertEquals(0, consumed.count)
+        assertEquals(consumed, consumed.record(setOf(first)))
+    }
+
+    @Test
+    fun activityPendingUpdateLedgerPreservesArrivalAfterRevealStarts() {
+        val first = ActivityUpdateMarker("channel:first", "message:first")
+        val second = ActivityUpdateMarker("channel:second", "message:second")
+
+        val revealStarted =
+            ActivityPendingUpdateLedger()
+                .record(setOf(first))
+                .consumePending()
+        val laterArrival = revealStarted.record(setOf(second))
+
+        assertEquals(1, laterArrival.count)
+        assertEquals(setOf(second), laterArrival.pendingMarkers)
+    }
+
+    @Test
+    fun activityPendingUpdateLedgerAllowsNewMessageForRetiredConversation() {
+        val first = ActivityUpdateMarker("channel:same", "message:first")
+        val second = ActivityUpdateMarker("channel:same", "message:second")
+
+        val laterArrival =
+            ActivityPendingUpdateLedger()
+                .record(setOf(first))
+                .consumePending()
+                .record(setOf(second))
+
+        assertEquals(setOf(second), laterArrival.pendingMarkers)
+    }
+
+    @Test
+    fun activityPendingUpdateLedgerSecondBannerRemainsActionable() {
+        val first = ActivityUpdateMarker("channel:first", "message:first")
+        val second = ActivityUpdateMarker("channel:second", "message:second")
+        val laterArrival =
+            ActivityPendingUpdateLedger()
+                .record(setOf(first))
+                .consumePending()
+                .record(setOf(second))
+
+        val secondRevealStarted = laterArrival.consumePending()
+
+        assertEquals(0, secondRevealStarted.count)
+        assertEquals(setOf(first, second), secondRevealStarted.retiredMarkers)
     }
 
     @Test
