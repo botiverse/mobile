@@ -427,6 +427,28 @@ class SharedSlockAuthTransport internal constructor(
     override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse =
         request(path = "servers", method = "POST", authorization = authorization, bodyText = bodyText)
 
+    override suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse =
+        request(path = "qa/session-bootstrap/consume", method = "POST", bodyText = bodyText)
+
+    override suspend fun readyQaBootstrap(
+        ticketDigest: String,
+        authorization: String,
+        bodyText: String
+    ): AuthNetworkResponse =
+        request(
+            path = "qa/session-bootstrap/tickets/${ticketDigest.removePrefix("sha256:")}/ready",
+            method = "POST",
+            authorization = authorization,
+            bodyText = bodyText
+        )
+
+    override suspend fun statusQaBootstrap(ticketDigest: String, authorization: String): AuthNetworkResponse =
+        request(
+            path = "qa/session-bootstrap/tickets/${ticketDigest.removePrefix("sha256:")}/status",
+            method = "GET",
+            authorization = authorization
+        )
+
     private suspend fun request(
         path: String,
         method: String,

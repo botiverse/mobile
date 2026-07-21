@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -101,6 +102,47 @@ class AuthSessionStoreTest {
             StoredAuthServerSelection(serverId = "server-2", serverSlug = "work"),
             store.readRememberedServerSelection(sampleSession().user)
         )
+    }
+
+    @Test
+    fun qaBootstrapMonotonicBoundariesPersistAsDecimalStringsBeyondJavascriptSafeInteger() = runBlocking {
+        val keyValueStore = InMemorySlockKeyValueStore()
+        val store = KeyValueAuthSessionStore(keyValueStore)
+        val session =
+            sampleSession().copy(
+                qaBootstrap =
+                    StoredQaBootstrapMetadata(
+                        ticketDigest = "sha256:ticket",
+                        runCaseId = "run-1",
+                        attempt = 1,
+                        ciJobRef = "job-1",
+                        principalId = "user-1",
+                        serverId = "server-1",
+                        sessionGeneration = "generation-1",
+                        targetRoute = "compose_slock_app_shell",
+                        applicationId = "build.raft.app.alpha",
+                        signingCertSha256 = "sha256:cert",
+                        deviceBootGeneration = "sha256:boot",
+                        runtimeEnvelope =
+                            StoredQaBootstrapRuntimeEnvelope(
+                                envelopeDigest = "sha256:envelope",
+                                readyReceiptDigest = "sha256:receipt",
+                                pid = 42,
+                                processInstanceId = "process-1",
+                                processGeneration = "9007199254740992",
+                                deviceBootGeneration = "sha256:boot",
+                                deviceReadyElapsedRealtimeNanos = "9007199254740993",
+                                routeReadyProofDigest = "sha256:route"
+                            )
+                    )
+            )
+
+        store.replaceAuthenticatedSession(session)
+
+        val encoded = keyValueStore.getString(SLOCK_AUTH_SESSION_RECORD_KEY).orEmpty()
+        assertContains(encoded, "\"processGeneration\":\"9007199254740992\"")
+        assertContains(encoded, "\"deviceReadyElapsedRealtimeNanos\":\"9007199254740993\"")
+        assertEquals("9007199254740993", store.readSession()?.qaBootstrap?.runtimeEnvelope?.deviceReadyElapsedRealtimeNanos)
     }
 
     @Test
@@ -233,6 +275,55 @@ class AuthSessionStoreTest {
         assertEquals("token-successor", final.accessToken) // successor preserved, NOT clobbered
         assertEquals("token-successor-r", final.refreshToken)
         assertEquals("Renamed", final.user.displayName) // metadata applied
+    }
+
+    @Test
+    fun qaBootstrapBindingCasRejectsSameAccountSuccessorAttemptAndPreservesPendingState() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val attemptA = sampleSession().copy(qaBootstrap = sampleQaBootstrap(attempt = 1))
+        store.replaceAuthenticatedSession(attemptA)
+        val capturedA = requireNotNull(store.readSession()?.qaBootstrap)
+
+        val attemptB =
+            attemptA.copy(
+                qaBootstrap = sampleQaBootstrap(attempt = 2),
+                qaBootstrapLaunchAuthorized = false,
+            )
+        store.replaceAuthenticatedSession(attemptB)
+
+        val applied =
+            store.updateQaBootstrapIfBindingMatches(capturedA) { latest ->
+                latest.copy(
+                    qaBootstrap =
+                        requireNotNull(latest.qaBootstrap).copy(
+                            state = "ready",
+                            readyReceipt = StoredQaBootstrapReadyReceipt("receipt-a", "digest-a", "v1", "now"),
+                        )
+                )
+            }
+
+        assertNull(applied)
+        val final = requireNotNull(store.readSession())
+        assertEquals(2, final.qaBootstrap?.attempt)
+        assertEquals("pending", final.qaBootstrap?.state)
+        assertNull(final.qaBootstrap?.readyReceipt)
+    }
+
+    @Test
+    fun qaBootstrapBindingCasUsesLatestRotatedTokensForSameBinding() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession().copy(qaBootstrap = sampleQaBootstrap(attempt = 1)))
+        val captured = requireNotNull(store.readSession()?.qaBootstrap)
+        store.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r")
+
+        val applied =
+            store.updateQaBootstrapIfBindingMatches(captured) { latest ->
+                latest.copy(qaBootstrap = requireNotNull(latest.qaBootstrap).copy(state = "ready"))
+            }
+
+        assertEquals("token-successor", applied?.accessToken)
+        assertEquals("token-successor-r", applied?.refreshToken)
+        assertEquals("ready", store.readSession()?.qaBootstrap?.state)
     }
 
     @Test
@@ -439,6 +530,21 @@ class AuthSessionStoreTest {
                         slug = "work"
                     )
                 )
+        )
+
+    private fun sampleQaBootstrap(attempt: Int): StoredQaBootstrapMetadata =
+        StoredQaBootstrapMetadata(
+            ticketDigest = "sha256:ticket-$attempt",
+            runCaseId = "run-case",
+            attempt = attempt,
+            ciJobRef = "gha:job",
+            principalId = "user-1",
+            serverId = "server-1",
+            sessionGeneration = "session-$attempt",
+            targetRoute = "compose_slock_app_shell",
+            applicationId = "build.raft.app.alpha",
+            signingCertSha256 = "sha256:cert",
+            deviceBootGeneration = "sha256:boot",
         )
 
 }

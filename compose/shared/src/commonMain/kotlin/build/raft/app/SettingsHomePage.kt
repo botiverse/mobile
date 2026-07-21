@@ -3003,6 +3003,14 @@ internal fun SlockAppShellContent(
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
+    LaunchedEffect(readySession?.qaBootstrap?.ticketDigest, homeState.content) {
+        if (
+            readySession?.qaBootstrap != null &&
+            (homeState.content is SharedHomeContentState.Content || homeState.content is SharedHomeContentState.Empty)
+        ) {
+            slockPlatformCompleteQaBootstrapRouteReady(authDataSource)
+        }
+    }
     LaunchedEffect(storeScope.shellInstanceId, authGateState, readyServerId) {
         when (val state = authGateState) {
             is SharedAuthGateState.Ready -> {
@@ -3018,7 +3026,8 @@ internal fun SlockAppShellContent(
             SharedAuthGateState.AuthRequired,
             is SharedAuthGateState.EmailVerificationRequired,
             is SharedAuthGateState.ProfileSetupRequired,
-            is SharedAuthGateState.ServerRequired -> {
+            is SharedAuthGateState.ServerRequired,
+            is SharedAuthGateState.BootstrapRecoveryRequired -> {
                 ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
                 bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
             }
@@ -3422,6 +3431,10 @@ internal fun SlockAppShellContent(
                 pager.openLoginReplacingCurrentPage(localizedAuthGateMessage)
             }
             AppShellRestoreSplashContent()
+            return
+        }
+        is SharedAuthGateState.BootstrapRecoveryRequired -> {
+            AppShellSilentRestoreContent()
             return
         }
         is SharedAuthGateState.ServerRequired -> {
@@ -19258,6 +19271,7 @@ private fun SharedAuthGateState.authGateDiagnosticsName(): String =
         is SharedAuthGateState.ProfileSetupRequired -> "profile_setup_required"
         is SharedAuthGateState.ServerRequired -> "server_required"
         is SharedAuthGateState.Ready -> "ready"
+        is SharedAuthGateState.BootstrapRecoveryRequired -> "qa_bootstrap_recovery"
         is SharedAuthGateState.Error -> "error"
     }
 

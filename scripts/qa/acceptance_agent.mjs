@@ -23,9 +23,11 @@
 //     [--max-turns 30] [--max-minutes 20] [--device <serial>]
 
 import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeAssertionAnnotation } from "./assertion_annotations.mjs";
+import { captureAndroidScreenshotWithPostProof } from "./android_capture_proof.mjs";
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
@@ -52,6 +54,7 @@ const opts = {
 // on it first, so the Android code path is byte-for-byte what it always was.
 let drv = null;
 let modelCapacity = null;
+let lastCaptureBoundary = null;
 
 const SECRETS = {
   "{{QA_EMAIL}}": process.env.QA_TEST_EMAIL || "",
@@ -81,7 +84,60 @@ function adb(args, opts2 = {}) {
 
 function screenshotPng() {
   if (drv) return drv.screenshotPng();
-  return adb(["exec-out", "screencap", "-p"], { encoding: "buffer" });
+  const captured = captureAndroidScreenshotWithPostProof(
+    () => adb(["exec-out", "screencap", "-p"], { encoding: "buffer" }),
+    (imageSha256) => captureAndroidQaBoundary(imageSha256)
+  );
+  lastCaptureBoundary = captured.boundary;
+  return captured.png;
+}
+
+function captureAndroidQaBoundary(imageSha256) {
+  const nonce = process.env.QA_CAPTURE_WINDOW_NONCE || "";
+  if (!nonce) { lastCaptureBoundary = null; return; }
+  const scopeGeneration = process.env.QA_CAPTURE_SCOPE_GENERATION || "";
+  const readyReceiptDigest = process.env.QA_READY_RECEIPT_DIGEST || "";
+  const runCaseId = process.env.QA_RUN_CASE_ID || "";
+  const attempt = Number(process.env.QA_ATTEMPT || "0");
+  if (!scopeGeneration || !readyReceiptDigest || !runCaseId || !Number.isInteger(attempt) || attempt <= 0) {
+    throw new Error("QA capture boundary requires nonce, scope generation, receipt, run case, and attempt");
+  }
+  const requestId = randomUUID();
+  const producerCommandGeneration = randomUUID();
+  const request = Buffer.from(JSON.stringify({
+    captureWindowNonce: nonce,
+    scopeGeneration,
+    readyReceiptDigest,
+    runCaseId,
+    attempt,
+    producerCommandGeneration,
+    imageSha256,
+  }));
+  const requestDigest = `sha256:${createHash("sha256").update(request).digest("hex")}`;
+  const relative = `files/qa-bootstrap/inbox/${requestId}.capture`;
+  adb([
+    "exec-out", "run-as", opts.appPackage, "sh", "-c",
+    `umask 077; mkdir -p files/qa-bootstrap/inbox; tmp='${relative}.tmp'; cat >\"$tmp\"; chmod 600 \"$tmp\"; mv \"$tmp\" '${relative}'`,
+  ], { input: request, encoding: "utf8" });
+  adb([
+    "shell", "am", "broadcast",
+    "-n", `${opts.appPackage}/build.raft.app.core.data.auth.QaCaptureBoundaryReceiver`,
+    "-a", "build.raft.app.qa.CAPTURE_BOUNDARY",
+    "--es", "qaCaptureRequestId", requestId,
+    "--es", "qaCaptureRequestDigest", requestDigest,
+  ], { encoding: "utf8" });
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const logs = adb(["logcat", "-d", "-s", "SlockQaBootstrap:I", "*:S"], { encoding: "utf8" });
+    const line = logs.split("\n").reverse().find((entry) => entry.includes(`QA_CAPTURE_BOUNDARY requestId=${requestId} `));
+    if (line) {
+      const fields = Object.fromEntries([...line.matchAll(/([A-Za-z][A-Za-z0-9]*)=([^\s]+)/g)].map((match) => [match[1], match[2]]));
+      if (fields.imageSha256 !== imageSha256) throw new Error("QA capture boundary image digest mismatch");
+      return fields;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+  throw new Error("QA capture boundary acknowledgement timed out");
 }
 
 // Structured view of the current uiautomator dump — the single source both
@@ -494,7 +550,18 @@ async function main() {
 
   const shoot = (turn) => {
     const png = screenshotPng();
-    fs.writeFileSync(path.join(opts.out, `step-${String(turn).padStart(2, "0")}.png`), png);
+    const fileName = `step-${String(turn).padStart(2, "0")}.png`;
+    fs.writeFileSync(path.join(opts.out, fileName), png);
+    if (lastCaptureBoundary) {
+      const imageSha256 = createHash("sha256").update(png).digest("hex");
+      if (lastCaptureBoundary.imageSha256 !== imageSha256) {
+        throw new Error("QA capture boundary does not bind the saved screenshot bytes");
+      }
+      fs.appendFileSync(
+        path.join(opts.out, "device-capture-boundaries.jsonl"),
+        JSON.stringify({ ...lastCaptureBoundary, fileName }) + "\n"
+      );
+    }
     return { type: "image", data: png.toString("base64"), mimeType: "image/png" };
   };
   // ts per step lets the perf collectors (collect_perf*.mjs) derive per-step

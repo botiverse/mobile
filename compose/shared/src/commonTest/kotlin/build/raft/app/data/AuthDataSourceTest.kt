@@ -9,6 +9,17 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AuthDataSourceTest {
+    private val qaConsumeResponse =
+        AuthNetworkResponse(
+            200,
+            """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"qa-access","refreshToken":"qa-refresh","bootstrap":{"ticketDigest":"sha256:ticket","runCaseId":"00000000-0000-4000-8000-000000000001","attempt":1,"ciJobRef":"gha:job:1","principalId":"user-1","serverId":"server-1","sessionGeneration":"00000000-0000-4000-8000-000000000004","targetRoute":"compose_slock_app_shell","consumedAt":"2026-07-21T15:00:00.000Z"}}"""
+        )
+    private val qaReadyBodyText =
+        """{"receiptId":"receipt-1","receiptDigest":"sha256:receipt","receipt":{"version":"qa-bootstrap-ready/v1","ticketDigest":"sha256:ticket","runCaseId":"00000000-0000-4000-8000-000000000001","attempt":1,"ciJobRef":"gha:job:1","principalId":"user-1","serverId":"server-1","sessionGeneration":"00000000-0000-4000-8000-000000000004","targetRoute":"compose_slock_app_shell","applicationId":"build.raft.app.alpha","signingCertSha256":"sha256:cert","deviceBootGeneration":"sha256:boot","serverReadyVersion":1,"readyAtServer":"2026-07-21T15:00:00.000Z"}}"""
+    private val qaReadyResponse = AuthNetworkResponse(200, qaReadyBodyText)
+    private val qaReadyStatusResponse =
+        AuthNetworkResponse(200, qaReadyBodyText.replaceFirst("{", "{\"status\":\"ready\","))
+
     @Test
     fun buildsSharedThreadSendBodyWithNativeRepositoryShape() {
         val body =
@@ -60,6 +71,233 @@ class AuthDataSourceTest {
         assertEquals(true, store.readSession()?.user?.requiresProfileSetup)
         assertEquals("user", store.readSession()?.user?.profileSetupSuggestedHandle)
     }
+
+    @Test
+    fun qaBootstrapConsumePersistsCanonicalSessionAndBindingInOneReplace() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi(qaConsumeResponse = qaConsumeResponse)
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+        val request = QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot")
+
+        val result = source.consumeQaBootstrap(request)
+
+        assertTrue(result is SharedAuthResult.Success)
+        val session = store.readSession()
+        assertEquals("qa-access", session?.accessToken)
+        assertEquals("server-1", session?.selectedServerId)
+        assertFalse(session?.allowImplicitServerFallback ?: true)
+        assertTrue(session?.qaBootstrapLaunchAuthorized == true)
+        assertEquals("sha256:ticket", session?.qaBootstrap?.ticketDigest)
+        assertEquals("build.raft.app.alpha", session?.qaBootstrap?.applicationId)
+        assertEquals("sha256:cert", session?.qaBootstrap?.signingCertSha256)
+        assertEquals("sha256:boot", session?.qaBootstrap?.deviceBootGeneration)
+        assertContains(api.qaConsumeBody.orEmpty(), "raw-ticket")
+    }
+
+    @Test
+    fun qaBootstrapConsumeFailsClosedWhenFrozenServerIsMissing() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api = FakeAuthApi(
+            qaConsumeResponse = qaConsumeResponse,
+            serversResponse = AuthNetworkResponse(200, """[{"id":"server-other","name":"Other","slug":"other","role":"owner"}]""")
+        )
+
+        val result = SharedAuthDataSource(transport = api, sessionStore = store).consumeQaBootstrap(
+            QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot")
+        )
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertNull(store.readSession())
+    }
+
+    @Test
+    fun qaBootstrapConsumeFailsClosedWhenPrincipalDoesNotMatch() = runBlocking {
+        val mismatched = qaConsumeResponse.copy(bodyText = qaConsumeResponse.bodyText!!.replace("\"id\":\"user-1\"", "\"id\":\"user-2\""))
+        val store = InMemorySlockAuthSessionStore()
+
+        val result = SharedAuthDataSource(
+            transport = FakeAuthApi(qaConsumeResponse = mismatched),
+            sessionStore = store
+        ).consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertNull(store.readSession())
+    }
+
+    @Test
+    fun qaBootstrapConsumeDoesNotExposeAnOrdinarySessionWhenAtomicWriteFails() = runBlocking {
+        val result = SharedAuthDataSource(
+            transport = FakeAuthApi(qaConsumeResponse = qaConsumeResponse),
+            sessionStore = ThrowingSaveSessionStore()
+        ).consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
+
+        assertTrue(result is SharedAuthResult.Failure)
+    }
+
+    @Test
+    fun qaBootstrapReadyStoresStableReceiptAndUsesFrozenSessionGeneration() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api = FakeAuthApi(qaConsumeResponse = qaConsumeResponse, qaReadyResponse = qaReadyResponse)
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+        assertTrue(
+            source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
+                is SharedAuthResult.Success
+        )
+
+        val result = source.readyQaBootstrap()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("sha256:ticket", api.qaReadyTicketDigest)
+        assertEquals("Bearer qa-access", api.qaReadyAuthorization)
+        assertContains(api.qaReadyBody.orEmpty(), "00000000-0000-4000-8000-000000000004")
+        assertEquals("ready", store.readSession()?.qaBootstrap?.state)
+        assertEquals("sha256:receipt", store.readSession()?.qaBootstrap?.readyReceipt?.receiptDigest)
+    }
+
+    @Test
+    fun qaBootstrapReadyResponseForAttemptADoesNotMutateSameAccountAttemptB() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api =
+            FakeAuthApi(
+                qaConsumeResponse = qaConsumeResponse,
+                qaReadyResponse = qaReadyResponse,
+                onQaReadyRequest = {
+                    val current = requireNotNull(store.readSession())
+                    store.replaceAuthenticatedSession(
+                        current.copy(
+                            qaBootstrap =
+                                requireNotNull(current.qaBootstrap).copy(
+                                    ticketDigest = "sha256:ticket-b",
+                                    attempt = 2,
+                                    sessionGeneration = "session-b",
+                                    state = "pending",
+                                    readyReceipt = null,
+                                    runtimeEnvelope = null,
+                                ),
+                            qaBootstrapLaunchAuthorized = false,
+                        )
+                    )
+                },
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+        assertTrue(
+            source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
+                is SharedAuthResult.Success
+        )
+
+        val result = source.readyQaBootstrap()
+
+        assertTrue(result is SharedAuthResult.Failure)
+        val final = requireNotNull(store.readSession())
+        assertEquals(2, final.qaBootstrap?.attempt)
+        assertEquals("pending", final.qaBootstrap?.state)
+        assertNull(final.qaBootstrap?.readyReceipt)
+    }
+
+    @Test
+    fun qaBootstrapRuntimeEnvelopeForAttemptADoesNotEnterSameAccountAttemptB() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val source = SharedAuthDataSource(transport = FakeAuthApi(qaConsumeResponse = qaConsumeResponse), sessionStore = store)
+        assertTrue(
+            source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
+                is SharedAuthResult.Success
+        )
+        val attemptA = requireNotNull(store.readSession()?.qaBootstrap)
+        val session = requireNotNull(store.readSession())
+        store.replaceAuthenticatedSession(
+            session.copy(
+                qaBootstrap =
+                    attemptA.copy(
+                        ticketDigest = "sha256:ticket-b",
+                        attempt = 2,
+                        sessionGeneration = "session-b",
+                    )
+            )
+        )
+        val envelope =
+            StoredQaBootstrapRuntimeEnvelope(
+                envelopeDigest = "sha256:envelope-a",
+                readyReceiptDigest = "sha256:receipt-a",
+                pid = 1,
+                processInstanceId = "process-a",
+                processGeneration = "generation-a",
+                deviceBootGeneration = "sha256:boot",
+                deviceReadyElapsedRealtimeNanos = "1",
+                routeReadyProofDigest = "sha256:route-a",
+            )
+
+        assertNull(source.saveQaBootstrapRuntimeEnvelope(attemptA, envelope))
+        val final = requireNotNull(store.readSession())
+        assertEquals(2, final.qaBootstrap?.attempt)
+        assertEquals("pending", final.qaBootstrap?.state)
+        assertNull(final.qaBootstrap?.runtimeEnvelope)
+    }
+
+    @Test
+    fun qaBootstrapReadyRejectsEveryFrozenReceiptBindingMutation() = runBlocking {
+        frozenReadyReceiptMutations(qaReadyBodyText).forEach { (field, body) ->
+            val store = InMemorySlockAuthSessionStore()
+            val source = SharedAuthDataSource(
+                transport = FakeAuthApi(
+                    qaConsumeResponse = qaConsumeResponse,
+                    qaReadyResponse = AuthNetworkResponse(200, body)
+                ),
+                sessionStore = store
+            )
+            assertTrue(
+                source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
+                    is SharedAuthResult.Success,
+                field
+            )
+
+            assertTrue(source.readyQaBootstrap() is SharedAuthResult.Failure, field)
+            assertEquals("pending", store.readSession()?.qaBootstrap?.state, field)
+            assertNull(store.readSession()?.qaBootstrap?.readyReceipt, field)
+        }
+    }
+
+    @Test
+    fun qaBootstrapColdStatusRejectsEveryFrozenReceiptBindingMutation() = runBlocking {
+        frozenReadyReceiptMutations(qaReadyStatusResponse.bodyText.orEmpty()).forEach { (field, body) ->
+            val store = InMemorySlockAuthSessionStore()
+            val source = SharedAuthDataSource(
+                transport = FakeAuthApi(
+                    qaConsumeResponse = qaConsumeResponse,
+                    qaStatusResponse = AuthNetworkResponse(200, body)
+                ),
+                sessionStore = store
+            )
+            assertTrue(
+                source.consumeQaBootstrap(QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot"))
+                    is SharedAuthResult.Success,
+                field
+            )
+
+            assertTrue(source.statusQaBootstrap() is SharedAuthResult.Failure, field)
+            assertEquals("pending", store.readSession()?.qaBootstrap?.state, field)
+            assertNull(store.readSession()?.qaBootstrap?.readyReceipt, field)
+        }
+    }
+
+    private fun frozenReadyReceiptMutations(body: String): List<Pair<String, String>> =
+        listOf(
+            "receiptId" to body.replace("\"receiptId\":\"receipt-1\"", "\"receiptId\":\"\""),
+            "receiptDigest" to body.replace("\"receiptDigest\":\"sha256:receipt\"", "\"receiptDigest\":\"\""),
+            "version" to body.replace("qa-bootstrap-ready/v1", "qa-bootstrap-ready/v2"),
+            "ticketDigest" to body.replace("sha256:ticket", "sha256:wrong-ticket"),
+            "runCaseId" to body.replace("00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000099"),
+            "attempt" to body.replace("\"attempt\":1", "\"attempt\":2"),
+            "ciJobRef" to body.replace("gha:job:1", "gha:job:2"),
+            "principalId" to body.replace("\"principalId\":\"user-1\"", "\"principalId\":\"user-2\""),
+            "serverId" to body.replace("\"serverId\":\"server-1\"", "\"serverId\":\"server-2\""),
+            "sessionGeneration" to body.replace("00000000-0000-4000-8000-000000000004", "00000000-0000-4000-8000-000000000005"),
+            "targetRoute" to body.replace("compose_slock_app_shell", "wrong_route"),
+            "applicationId" to body.replace("build.raft.app.alpha", "build.raft.app.wrong"),
+            "signingCertSha256" to body.replace("sha256:cert", "sha256:wrong-cert"),
+            "deviceBootGeneration" to body.replace("sha256:boot", "sha256:wrong-boot"),
+            "serverReadyVersion" to body.replace("\"serverReadyVersion\":1", "\"serverReadyVersion\":2"),
+            "readyAtServer" to body.replace("2026-07-21T15:00:00.000Z", "")
+        )
 
     @Test
     fun loginReusesRememberedServerSelectionForSameAccount() = runBlocking {
@@ -1428,10 +1666,14 @@ class AuthDataSourceTest {
             AuthNetworkResponse(200, """{"ok":true}"""),
         private val verifyEmailResponse: AuthNetworkResponse =
             AuthNetworkResponse(200, """{"ok":true}"""),
+        private val qaConsumeResponse: AuthNetworkResponse = AuthNetworkResponse(501, null),
+        private val qaReadyResponse: AuthNetworkResponse = AuthNetworkResponse(501, null),
+        private val qaStatusResponse: AuthNetworkResponse = AuthNetworkResponse(501, null),
         private val onCurrentUserRequest: suspend (Int) -> Unit = {},
         private val onCompleteProfileRequest: suspend () -> Unit = {},
         private val onServersRequest: suspend () -> Unit = {},
-        private val onLogoutRequest: suspend () -> Unit = {}
+        private val onLogoutRequest: suspend () -> Unit = {},
+        private val onQaReadyRequest: suspend () -> Unit = {},
     ) : SlockAuthTransport {
         var loginBody: String? = null
             private set
@@ -1478,6 +1720,14 @@ class AuthDataSourceTest {
         val serversAuthorizations = mutableListOf<String>()
         val serverOrderAuthorizations = mutableListOf<String>()
         var createServerBody: String? = null
+            private set
+        var qaConsumeBody: String? = null
+            private set
+        var qaReadyTicketDigest: String? = null
+            private set
+        var qaReadyAuthorization: String? = null
+            private set
+        var qaReadyBody: String? = null
             private set
 
         override suspend fun login(bodyText: String): AuthNetworkResponse {
@@ -1592,6 +1842,22 @@ class AuthDataSourceTest {
             createServerBody = bodyText
             return createServerResponse
         }
+
+        override suspend fun consumeQaBootstrap(bodyText: String): AuthNetworkResponse {
+            qaConsumeBody = bodyText
+            return qaConsumeResponse
+        }
+
+        override suspend fun readyQaBootstrap(ticketDigest: String, authorization: String, bodyText: String): AuthNetworkResponse {
+            qaReadyTicketDigest = ticketDigest
+            qaReadyAuthorization = authorization
+            qaReadyBody = bodyText
+            onQaReadyRequest()
+            return qaReadyResponse
+        }
+
+        override suspend fun statusQaBootstrap(ticketDigest: String, authorization: String): AuthNetworkResponse =
+            qaStatusResponse
     }
 
     private class ThrowingSaveSessionStore(
