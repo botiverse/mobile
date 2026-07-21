@@ -17740,22 +17740,28 @@ private fun SharedHomeSavedResultCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SharedHomeSavedUnsaveButton(onClick = onUnsave)
+            SharedHomeSavedUnsaveButton(
+                interactionIdentity = "saved-unsave:${item.key}",
+                onClick = onUnsave
+            )
         }
     }
 }
 
 @Composable
 private fun SharedHomeSavedUnsaveButton(
+    interactionIdentity: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val size = 31.dp
     val shadowOffset = 3.dp
+    val currentOnClick by rememberUpdatedState(onClick)
     Box(
         modifier =
             modifier
                 .size(size + shadowOffset)
+                .zIndex(1f)
     ) {
         Box(
             modifier =
@@ -17770,7 +17776,10 @@ private fun SharedHomeSavedUnsaveButton(
                     .size(size)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable(onClick = onClick),
+                    .slockButtonAccessibility(enabled = true) { currentOnClick() }
+                    .pointerInput(interactionIdentity) {
+                        detectTapGestures(onTap = { currentOnClick() })
+                    },
             contentAlignment = Alignment.Center
         ) {
             // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
