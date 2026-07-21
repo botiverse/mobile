@@ -487,9 +487,14 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> return response.toSharedAuthFailure()
             }
-        val updated = current.copy(user = updatedUser)
-        sessionStore.replaceAuthenticatedSession(updated)
-        return SharedAuthResult.Success(updated)
+        sessionStore.updateMetadata(expectedAccountId = current.user.id) { latest ->
+            latest.copy(user = updatedUser)
+        }
+        val persisted = sessionStore.readSession()
+        if (persisted == null || persisted.user.id != current.user.id || persisted.user != updatedUser) {
+            return SharedAuthResult.Unauthenticated
+        }
+        return SharedAuthResult.Success(persisted)
     }
 
     suspend fun forgotPassword(email: String): SharedAuthResult<Unit> {

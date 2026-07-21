@@ -562,6 +562,70 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun completeProfilePreservesConcurrentTokenRotationAndServerSelection() = runBlocking {
+        val pending = storedSession().copy(
+            user = StoredAuthUser(
+                id = "user-1",
+                email = "user@slock.ai",
+                profileSetupCompletedAt = null,
+                profileSetupSuggestedHandle = "user"
+            )
+        )
+        val store = InMemorySlockAuthSessionStore(pending)
+        val api = FakeAuthApi(
+            onCompleteProfileRequest = {
+                assertTrue(
+                    store.rotateTokensIfMatch(
+                        expectedAccessToken = "access-token",
+                        expectedRefreshToken = "refresh-token",
+                        newAccessToken = "rotated-access",
+                        newRefreshToken = "rotated-refresh"
+                    ) != null
+                )
+                store.updateMetadata(expectedAccountId = "user-1") { latest ->
+                    latest.copy(
+                        selectedServerId = "server-2",
+                        selectedServerSlug = "ops",
+                        servers = latest.servers + StoredAuthServer(id = "server-2", name = "Ops", slug = "ops")
+                    )
+                }
+            }
+        )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.completeProfile(name = "artin", displayName = "Artin Chen")
+
+        assertTrue(result is SharedAuthResult.Success)
+        val persisted = store.readSession()
+        assertEquals("rotated-access", persisted?.accessToken)
+        assertEquals("rotated-refresh", persisted?.refreshToken)
+        assertEquals("server-2", persisted?.selectedServerId)
+        assertEquals("ops", persisted?.selectedServerSlug)
+        assertEquals(listOf("server-1", "server-2"), persisted?.servers?.map { it.id })
+        assertEquals("artin", persisted?.user?.name)
+        assertEquals(persisted, (result as SharedAuthResult.Success).data)
+    }
+
+    @Test
+    fun completeProfileDoesNotRestoreCapturedAccountAfterConcurrentAccountSwitch() = runBlocking {
+        val pending = storedSession().copy(
+            user = StoredAuthUser(id = "user-1", email = "user@slock.ai", profileSetupCompletedAt = null)
+        )
+        val switched = storedSession(accessToken = "account-2-access").copy(
+            user = StoredAuthUser(id = "user-2", email = "other@slock.ai"),
+            refreshToken = "account-2-refresh"
+        )
+        val store = InMemorySlockAuthSessionStore(pending)
+        val api = FakeAuthApi(onCompleteProfileRequest = { store.replaceAuthenticatedSession(switched) })
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.completeProfile(name = "artin", displayName = "Artin Chen")
+
+        assertEquals(SharedAuthResult.Unauthenticated, result)
+        assertEquals(switched, store.readSession())
+    }
+
+    @Test
     fun resendVerificationSendsBearerFromStoredSession() = runBlocking {
         val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "verify-token"))
         val api = FakeAuthApi()
@@ -1365,6 +1429,7 @@ class AuthDataSourceTest {
         private val verifyEmailResponse: AuthNetworkResponse =
             AuthNetworkResponse(200, """{"ok":true}"""),
         private val onCurrentUserRequest: suspend (Int) -> Unit = {},
+        private val onCompleteProfileRequest: suspend () -> Unit = {},
         private val onServersRequest: suspend () -> Unit = {},
         private val onLogoutRequest: suspend () -> Unit = {}
     ) : SlockAuthTransport {
@@ -1490,6 +1555,7 @@ class AuthDataSourceTest {
         override suspend fun completeProfile(authorization: String, bodyText: String): AuthNetworkResponse {
             completeProfileAuthorization = authorization
             completeProfileBody = bodyText
+            onCompleteProfileRequest()
             return AuthNetworkResponse(
                 200,
                 """{"id":"user-1","email":"user@slock.ai","name":"artin","displayName":"Artin Chen","profileSetupCompletedAt":"2026-07-21T00:00:00Z"}"""
