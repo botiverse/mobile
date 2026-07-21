@@ -159,6 +159,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
@@ -361,6 +362,7 @@ open class SlockKuiklyActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
+        ProcessAndroidAttachmentMediaStoreCleanup.start(applicationContext)
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
         setContentView(R.layout.activity_slock_kuikly)
         registerAndroidShellWindow(intent)
@@ -539,6 +541,7 @@ open class SlockKuiklyActivity :
                         explicitClose = true
                     )
                 }
+                ProcessAndroidAttachmentOwners.retireShell(target.shellInstanceId)
                 releaseSlockShellStoreScope(target.shellInstanceId, target.serverId)
             }
         }
@@ -884,6 +887,7 @@ open class SlockKuiklyActivity :
     internal fun requestAttachmentExport(
             sourceFile: File,
             displayName: String,
+            owner: AndroidAttachmentOwnerLease,
             callback: KuiklyRenderCallback?
     ) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
@@ -891,6 +895,7 @@ open class SlockKuiklyActivity :
                 requestAttachmentExport(
                         sourceFile = sourceFile,
                         displayName = displayName,
+                        owner = owner,
                         callback = callback
                 )
             }
@@ -909,6 +914,7 @@ open class SlockKuiklyActivity :
                 PendingAttachmentExport(
                         sourceFile = sourceFile,
                         displayName = displayName,
+                        owner = owner,
                         callback = callback
                 )
         runCatching { attachmentExportLauncher.launch(displayName) }
@@ -1028,12 +1034,14 @@ open class SlockKuiklyActivity :
         }
         lifecycleScope.launch(Dispatchers.IO) {
             val copied =
-                    runCatching {
-                                contentResolver.openOutputStream(uri, "w")?.use { output ->
-                                    FileInputStream(pending.sourceFile).use { input -> input.copyTo(output) }
-                                } != null
-                            }
-                            .getOrDefault(false)
+                    ProcessAndroidAttachmentOwners.runIfCurrent(pending.owner) {
+                        runCatching {
+                                    contentResolver.openOutputStream(uri, "w")?.use { output ->
+                                        FileInputStream(pending.sourceFile).use { input -> input.copyTo(output) }
+                                    } != null
+                                }
+                                .getOrDefault(false)
+                    } ?: false
             val result =
                     if (copied) {
                         mapOf(
@@ -1836,6 +1844,7 @@ private data class PendingThreadAttachmentUpload(
 private data class PendingAttachmentExport(
         val sourceFile: File,
         val displayName: String,
+        val owner: AndroidAttachmentOwnerLease,
         val callback: KuiklyRenderCallback?
 )
 
@@ -2589,6 +2598,8 @@ private class SlockKuiklyImageAdapter(
 internal class SlockKuiklyBridgeModule(
         private val appContext: Context,
 ) : KuiklyRenderBaseModule() {
+    private val attachmentSystemDownloads = ProcessAndroidAttachmentSystemDownloads.get(appContext)
+
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -2611,6 +2622,10 @@ internal class SlockKuiklyBridgeModule(
             }
             "attachmentDownloadControl" -> {
                 callback?.invoke(attachmentDownloadControl(params))
+                null
+            }
+            "attachmentDownloadOwnerChanged" -> {
+                attachmentDownloadOwnerChanged(params)
                 null
             }
             "closePage" -> {
@@ -4825,6 +4840,7 @@ internal class SlockKuiklyBridgeModule(
                         callback?.invoke(
                                 publishAttachmentToDownloads(
                                         downloadId = preparation.downloadId,
+                                        owner = preparation.owner,
                                         source = preparation.targetFile,
                                         displayName = displayName,
                                         mimeType = preparation.mimeType,
@@ -4846,11 +4862,16 @@ internal class SlockKuiklyBridgeModule(
                                     )
                             )
                         } else {
-                            hostActivity.requestAttachmentExport(
-                                    sourceFile = preparation.targetFile,
-                                    displayName = displayName,
-                                    callback = callback
-                            )
+                            val launched = ProcessAndroidAttachmentOwners.runIfCurrent(preparation.owner) {
+                                hostActivity.requestAttachmentExport(
+                                        sourceFile = preparation.targetFile,
+                                        displayName = displayName,
+                                        owner = preparation.owner,
+                                        callback = callback
+                                )
+                                true
+                            }
+                            if (launched == null) callback?.invoke(mapOf("status" to "cancelled"))
                         }
                     }
                 }
@@ -4858,48 +4879,66 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    private fun attachmentDownloadOwnerChanged(params: String?) {
+        val request = JSONObject(params ?: "{}")
+        when (request.optString("action")) {
+            "bind" -> request.attachmentOwnerLease()?.let(ProcessAndroidAttachmentOwners::bind)
+            "retire_scope" ->
+                request.optString("shellInstanceId").takeIf(String::isNotBlank)
+                    ?.let(ProcessAndroidAttachmentOwners::retireShell)
+            "retire_account" -> ProcessAndroidAttachmentOwners.retireAccount()
+        }
+    }
+
     private fun attachmentCacheStatus(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
-        val targetFile = attachmentCacheFile(request)
-        val cached = targetFile.isUsableAttachmentCacheFile()
+        val owner = request.attachmentOwnerLease()
+                ?: return mapOf("status" to "failed", "cached" to false, "message" to "Authentication required")
+        if (!ProcessAndroidAttachmentOwners.admit(owner)) {
+            return mapOf("status" to "cancelled", "cached" to false, "message" to "Attachment scope retired")
+        }
+        val targetFile = attachmentCacheFile(request, owner.principalKey)
+        val spec = request.toSystemDownloadSpec(owner, targetFile)
+        val state = attachmentSystemDownloads.cacheState(spec)
         return mapOf(
                 "status" to "ok",
-                "cached" to cached,
-                "sizeBytes" to if (cached) targetFile.length() else 0L
+                "cached" to state.cached,
+                "active" to (state.attemptToken != null && !state.cached),
+                "attemptToken" to state.attemptToken.orEmpty(),
+                "recordVersion" to (state.recordVersion ?: -1L),
+                "sizeBytes" to state.sizeBytes
         )
     }
 
     private fun deleteAttachmentCache(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
-        val targetFile = attachmentCacheFile(request)
-        val cleanupReservation = AttachmentDownloadCoordinator.beginTargetCleanup(targetFile.absolutePath)
-        if (cleanupReservation.status == "timeout") {
-            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath, cleanupReservation.token)
-            return mapOf("status" to "failed", "message" to "Download publication is still active")
-        }
-        try {
-            val partFiles = attachmentDownloadPartFiles(targetFile)
-            val existed = targetFile.exists() || partFiles.any { it.exists() }
-            val deleted =
-                    (listOf(targetFile) + partFiles)
-                            .map { file -> if (file.exists()) runCatching { file.delete() }.getOrDefault(false) else true }
-                            .all { it }
-            return if (deleted) {
-                mapOf("status" to "ok", "cached" to false, "deleted" to existed)
-            } else {
-                mapOf("status" to "failed", "message" to "Unable to clear cached copy")
-            }
-        } finally {
-            AttachmentDownloadCoordinator.finishTargetCleanup(targetFile.absolutePath, cleanupReservation.token)
+        val owner = request.attachmentOwnerLease()
+                ?: return mapOf("status" to "failed", "message" to "Authentication required")
+        if (!ProcessAndroidAttachmentOwners.admit(owner)) return mapOf("status" to "missing")
+        val targetFile = attachmentCacheFile(request, owner.principalKey)
+        val status = attachmentSystemDownloads.deleteTarget(
+                principalKey = owner.principalKey,
+                targetFile = targetFile,
+                expectedAttemptToken = request.optString("attemptToken").takeIf(String::isNotBlank),
+                expectedRecordVersion = request.optLong("recordVersion", -1L).takeIf { it >= 0L }
+        )
+        return if (status == "deleted" || status == "missing") {
+            mapOf("status" to "ok", "cached" to false, "deleted" to (status == "deleted"))
+        } else {
+            mapOf("status" to "failed", "message" to "Unable to clear cached copy")
         }
     }
 
     private fun attachmentDownloadControl(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
+        val owner = request.attachmentOwnerLease()
+                ?: return mapOf("status" to "failed", "message" to "Authentication required")
+        if (!ProcessAndroidAttachmentOwners.admit(owner)) return mapOf("status" to "missing")
         val downloadId = request.optString("downloadId").takeIf { it.isNotBlank() }
                 ?: return mapOf("status" to "failed", "message" to "Missing download id")
         val action = request.optString("action").lowercase(Locale.US)
         val expectedAttemptToken = request.optString("attemptToken").takeIf { it.isNotBlank() }
+        val expectedRecordVersion = request.optLong("recordVersion", -1L).takeIf { it >= 0L }
         val commonHandled = request.optBoolean("commonHandled", false)
         val downloadStatus =
                 if (commonHandled) {
@@ -4907,8 +4946,19 @@ internal class SlockKuiklyBridgeModule(
                 } else {
                     AttachmentDownloadCoordinator.control(downloadId, expectedAttemptToken, action)
                 }
-        val exportStatus = attachmentDownloadsExportCoordinator.control(downloadId, expectedAttemptToken, action)
-        val status = if (exportStatus != "missing") exportStatus else downloadStatus
+        val systemStatus = attachmentSystemDownloads.control(
+                owner.principalKey,
+                downloadId,
+                expectedAttemptToken,
+                expectedRecordVersion,
+                action
+        )
+        val exportStatus = attachmentDownloadsExportCoordinator.control(downloadId, expectedAttemptToken, action, owner)
+        val status = when {
+            exportStatus != "missing" -> exportStatus
+            systemStatus != "missing" -> systemStatus
+            else -> downloadStatus
+        }
         return if (status == "failed") {
             mapOf("status" to "failed", "message" to "Unknown download action")
         } else if (status == "missing") {
@@ -4930,6 +4980,15 @@ internal class SlockKuiklyBridgeModule(
         val requestedFileName = request.optString("fileName").takeIf { it.isNotBlank() } ?: "attachment"
         val downloadId = request.optString("downloadId").takeIf { it.isNotBlank() }
                 ?: "${attachmentId}:${requestedFileName}".take(160)
+        val owner = request.attachmentOwnerLease()
+                ?: return AttachmentPreparationResult.Terminal(
+                        mapOf("status" to "failed", "message" to "Authentication required")
+                )
+        if (!ProcessAndroidAttachmentOwners.admit(owner)) {
+            return AttachmentPreparationResult.Terminal(
+                    mapOf("status" to "cancelled", "message" to "Attachment scope retired")
+            )
+        }
         val requestedMimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
         val cacheDir = attachmentCacheDir()
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
@@ -4937,13 +4996,14 @@ internal class SlockKuiklyBridgeModule(
                     mapOf("status" to "storage_failed", "message" to "Storage unavailable")
             )
         }
-        cleanupAttachmentCache(cacheDir)
-        val targetFile = attachmentCacheFile(attachmentId, requestedFileName, requestedMimeType)
-        val wasCached = targetFile.isUsableAttachmentCacheFile()
+        cleanupAttachmentCache(cacheDir, owner.principalKey)
+        val targetFile = attachmentCacheFile(attachmentId, requestedFileName, requestedMimeType, owner.principalKey)
+        val cacheState = attachmentSystemDownloads.cacheState(request.toSystemDownloadSpec(owner, targetFile))
+        val wasCached = cacheState.cached || targetFile.isUsableAttachmentCacheFile()
         val responseMimeType =
                 if (!wasCached) {
                     try {
-                        downloadAttachmentToFile(urlText, targetFile, downloadId, progressCallback)
+                        downloadAttachmentToFile(request, owner, urlText, targetFile, downloadId, requestedFileName, requestedMimeType, progressCallback)
                     } catch (ignored: AttachmentDownloadStoppedException) {
                         return AttachmentPreparationResult.Terminal(
                                 mapOf(
@@ -4958,6 +5018,7 @@ internal class SlockKuiklyBridgeModule(
                 }
         return AttachmentPreparationResult.Ready(
                 downloadId = downloadId,
+                owner = owner,
                 attachmentId = attachmentId,
                 requestedFileName = requestedFileName,
                 targetFile = targetFile,
@@ -5006,35 +5067,39 @@ internal class SlockKuiklyBridgeModule(
             )
             return mapOf("status" to "no_app", "message" to "No app can open this file")
         }
-        handlers.forEach { handler ->
-            appContext.grantUriPermission(
-                    handler.activityInfo.packageName,
-                    attachmentUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        }
         return runCatching {
-            if (isPackageArchive) {
-                runCatching {
-                    appContext.startActivity(intent)
-                }.getOrElse { firstThrowable ->
-                    if (firstThrowable !is ActivityNotFoundException) throw firstThrowable
-                    val viewIntent =
-                            Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(attachmentUri, openMimeType)
-                                clipData = ClipData.newUri(appContext.contentResolver, targetFile.name, attachmentUri)
+            val launched = ProcessAndroidAttachmentOwners.runIfCurrent(prepared.owner) {
+                handlers.forEach { handler ->
+                    appContext.grantUriPermission(
+                            handler.activityInfo.packageName,
+                            attachmentUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+                if (isPackageArchive) {
+                    runCatching {
+                        appContext.startActivity(intent)
+                    }.getOrElse { firstThrowable ->
+                        if (firstThrowable !is ActivityNotFoundException) throw firstThrowable
+                        val viewIntent =
+                                Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(attachmentUri, openMimeType)
+                                    clipData = ClipData.newUri(appContext.contentResolver, targetFile.name, attachmentUri)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                        appContext.startActivity(viewIntent)
+                    }
+                } else {
+                    val chooser =
+                            Intent.createChooser(intent, "Open with").apply {
+                                clipData = intent.clipData
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                    appContext.startActivity(viewIntent)
+                    appContext.startActivity(chooser)
                 }
-            } else {
-                val chooser =
-                        Intent.createChooser(intent, "Open with").apply {
-                            clipData = intent.clipData
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                appContext.startActivity(chooser)
+                true
             }
+            if (launched == null) return mapOf("status" to "cancelled", "message" to "Attachment scope retired")
             SlockAppLog.record(
                     "SlockAttachmentOpen",
                     "attachmentId=${attachmentId.take(8)} status=opened mimeType=$openMimeType cached=${prepared.wasCached} durationMs=${System.currentTimeMillis() - startedAt}"
@@ -5058,12 +5123,14 @@ internal class SlockKuiklyBridgeModule(
 
     private fun publishAttachmentToDownloads(
             downloadId: String,
+            owner: AndroidAttachmentOwnerLease,
             source: File,
             displayName: String,
             mimeType: String,
             progressCallback: ((Map<String, Any>) -> Unit)?
     ): Map<String, Any> {
         val resolver = appContext.contentResolver
+        val mediaStoreRequestToken = UUID.randomUUID().toString().replace("-", "")
         val result =
                 attachmentDownloadsExportCoordinator.export(
                         request =
@@ -5071,18 +5138,25 @@ internal class SlockKuiklyBridgeModule(
                                         downloadId = downloadId,
                                         source = source,
                                         displayName = displayName,
-                                        mimeType = mimeType
+                                        mimeType = mimeType,
+                                        owner = owner
                                 ),
                         backend =
                                 object : AttachmentDownloadsExportBackend {
                                     override fun insert(displayName: String, mimeType: String): String? {
                                         val values =
                                                 ContentValues().apply {
-                                                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                                                    put(
+                                                            MediaStore.MediaColumns.DISPLAY_NAME,
+                                                            pendingAttachmentMediaStoreDisplayName(
+                                                                    mediaStoreRequestToken,
+                                                                    displayName
+                                                            )
+                                                    )
                                                     put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
                                                     put(
                                                             MediaStore.MediaColumns.RELATIVE_PATH,
-                                                            "${Environment.DIRECTORY_DOWNLOADS}/Raft"
+                                                            ANDROID_ATTACHMENT_DOWNLOADS_RELATIVE_PATH
                                                     )
                                                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                                                 }
@@ -5094,6 +5168,7 @@ internal class SlockKuiklyBridgeModule(
                                     override fun publish(uri: String): Boolean {
                                         val values =
                                                 ContentValues().apply {
+                                                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
                                                     put(MediaStore.MediaColumns.IS_PENDING, 0)
                                                 }
                                         return resolver.update(Uri.parse(uri), values, null, null) > 0
@@ -5103,10 +5178,15 @@ internal class SlockKuiklyBridgeModule(
                                             resolver.delete(
                                                     MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                                                     "${MediaStore.MediaColumns._ID} = ? AND " +
-                                                            "${MediaStore.MediaColumns.IS_PENDING} = ?",
+                                                            "${MediaStore.MediaColumns.IS_PENDING} = ? AND " +
+                                                            "${MediaStore.MediaColumns.RELATIVE_PATH} IN (?, ?) AND " +
+                                                            "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?",
                                                     arrayOf(
                                                             android.content.ContentUris.parseId(Uri.parse(uri)).toString(),
-                                                            "1"
+                                                            "1",
+                                                            ANDROID_ATTACHMENT_DOWNLOADS_RELATIVE_PATH,
+                                                            "$ANDROID_ATTACHMENT_DOWNLOADS_RELATIVE_PATH/",
+                                                            "$ANDROID_ATTACHMENT_PENDING_NAME_PREFIX%"
                                                     )
                                             ) > 0
 
@@ -5166,19 +5246,29 @@ internal class SlockKuiklyBridgeModule(
 
     private fun attachmentCacheDir(): File = File(appContext.cacheDir, ATTACHMENT_CACHE_DIR_NAME)
 
-    private fun attachmentCacheFile(request: JSONObject): File =
+    private fun attachmentSystemDownloadStagingDir(): File? =
+            appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let {
+                File(it, "RaftAttachmentStaging")
+            } ?: appContext.externalCacheDir?.let { File(it, "RaftAttachmentStaging") }
+
+    private fun attachmentCacheFile(request: JSONObject, principalKey: String): File =
             attachmentCacheFile(
                     attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment",
                     requestedFileName = request.optString("fileName").takeIf { it.isNotBlank() } ?: "attachment",
-                    requestedMimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
+                    requestedMimeType = request.optString("mimeType").takeIf { it.isNotBlank() },
+                    principalKey = principalKey
             )
 
     private fun attachmentCacheFile(
             attachmentId: String,
             requestedFileName: String,
-            requestedMimeType: String?
+            requestedMimeType: String?,
+            principalKey: String
     ): File =
-            File(attachmentCacheDir(), safeAttachmentCacheFileName(attachmentId, requestedFileName, requestedMimeType))
+            File(
+                    attachmentCacheDir(),
+                    safeAttachmentCacheFileName(attachmentId, requestedFileName, requestedMimeType, principalKey)
+            )
 
     private fun File.isUsableAttachmentCacheFile(): Boolean =
             isFile &&
@@ -5186,58 +5276,37 @@ internal class SlockKuiklyBridgeModule(
                     System.currentTimeMillis() - lastModified() <= ATTACHMENT_CACHE_MAX_AGE_MS
 
     private fun downloadAttachmentToFile(
+            request: JSONObject,
+            owner: AndroidAttachmentOwnerLease,
             urlText: String,
             targetFile: File,
             downloadId: String,
+            displayName: String,
+            requestedMimeType: String?,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
     ): String? {
-        val requestStartedAt = SystemClock.elapsedRealtime()
-        val downloadKeyHash = downloadId.hashCode().toString(16)
-        val resultRef = AtomicReference<AttachmentDownloadResult?>()
-        val completed = CountDownLatch(1)
-        val observer =
-                object : AttachmentDownloadObserver {
-                    override fun onProgress(progress: AttachmentDownloadProgress) {
-                        SlockAppLog.record(
-                                "SlockAttachmentDownload",
-                                "phase=${progress.phase} keyHash=$downloadKeyHash " +
-                                        "downloadedBytes=${progress.downloadedBytes} " +
-                                        "expectedBytes=${progress.totalBytes ?: -1L} " +
-                                        "elapsedMs=${SystemClock.elapsedRealtime() - requestStartedAt}"
-                        )
-                        progressCallback?.invoke(progress.toAndroidBridgePayload())
-                    }
-
-                    override fun onComplete(result: AttachmentDownloadResult) {
-                        resultRef.set(result)
-                        completed.countDown()
-                    }
-                }
-        AttachmentDownloadCoordinator.start(
-                downloadId = downloadId,
-                targetKey = targetFile.absolutePath,
-                url = urlText,
-                targetPath = targetFile.absolutePath,
-                observer = observer
-        )
-        try {
-            completed.await()
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            AttachmentDownloadCoordinator.control(downloadId, action = "cancel")
-            throw AttachmentDownloadStoppedException()
-        }
-        val result = resultRef.get() ?: throw IllegalStateException("Attachment download ended without a result")
+        val result = attachmentSystemDownloads.download(
+                AndroidSystemDownloadSpec(
+                        principalKey = owner.principalKey,
+                        logicalDownloadId = downloadId,
+                        targetFile = targetFile,
+                        stagingDirectory = attachmentSystemDownloadStagingDir()
+                                ?: throw IllegalStateException("System download staging unavailable"),
+                        url = urlText,
+                        displayName = displayName,
+                        mimeType = requestedMimeType ?: "application/octet-stream"
+                )
+        ) { progress -> progressCallback?.invoke(progress.toAndroidBridgePayload()) }
         return when (result.status) {
-            "complete" -> result.contentType
+            "complete" -> requestedMimeType
             "cancelled" -> throw AttachmentDownloadStoppedException()
-            else -> throw IllegalStateException(result.message ?: "Attachment download failed")
+            else -> throw IllegalStateException(result.errorKind ?: "Attachment download failed")
         }
     }
 
-    private fun cleanupAttachmentCache(cacheDir: File) {
+    private fun cleanupAttachmentCache(cacheDir: File, principalKey: String) {
         cacheDir.listFiles()
-                ?.filter { it.isFile && !it.name.contains(".part") }
+                ?.filter { it.isFile && it.name.startsWith("$principalKey-") && !it.name.contains(".part") }
                 ?.sortedByDescending { it.lastModified() }
                 ?.drop(ATTACHMENT_CACHE_MAX_FILES)
                 ?.forEach { runCatching { it.delete() } }
@@ -5246,7 +5315,8 @@ internal class SlockKuiklyBridgeModule(
     private fun safeAttachmentCacheFileName(
             attachmentId: String,
             requestedFileName: String,
-            mimeType: String?
+            mimeType: String?,
+            principalKey: String
     ): String {
         val safeId =
                 attachmentId
@@ -5276,8 +5346,28 @@ internal class SlockKuiklyBridgeModule(
                     val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType.orEmpty())
                     if (extension.isNullOrBlank()) baseName else "$baseName.$extension"
                 }
-        return "$safeId-$withExtension"
+        return "$principalKey-$safeId-$withExtension"
     }
+
+    private fun JSONObject.attachmentLogicalDownloadId(): String =
+            optString("downloadId").takeIf(String::isNotBlank)
+                    ?: "attachment:${optString("attachmentId")}:${optString("fileName")}"
+
+    private fun JSONObject.toSystemDownloadSpec(
+            owner: AndroidAttachmentOwnerLease,
+            targetFile: File
+    ): AndroidSystemDownloadSpec =
+            AndroidSystemDownloadSpec(
+                    principalKey = owner.principalKey,
+                    logicalDownloadId = attachmentLogicalDownloadId(),
+                    targetFile = targetFile,
+                    // A no-record status probe never enqueues. Active records carry their own
+                    // external staging path, so this private fallback is not used for recovery.
+                    stagingDirectory = attachmentSystemDownloadStagingDir() ?: targetFile.parentFile,
+                    url = optString("url"),
+                    displayName = optString("fileName").ifBlank { "attachment" },
+                    mimeType = optString("mimeType").ifBlank { "application/octet-stream" }
+            )
 
     private fun guessAttachmentMimeType(fileName: String, mimeType: String?): String {
         if (fileName.substringAfterLast('.', missingDelimiterValue = "").equals("apk", ignoreCase = true)) {
@@ -5562,6 +5652,19 @@ private fun AttachmentDownloadProgress.toAndroidBridgePayload(): Map<String, Any
             bytesPerSecond?.takeIf { it > 0L }?.let { put("bytesPerSecond", it) }
         }
 
+private fun AndroidSystemDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =
+        buildMap {
+            put("downloadId", logicalDownloadId)
+            put("attemptToken", attemptToken)
+            put("recordVersion", recordVersion)
+            put("sequence", recordVersion)
+            put("phase", phase)
+            put("status", "progress")
+            put("downloadedBytes", downloadedBytes)
+            put("totalBytes", totalBytes)
+            percent?.let { put("percent", it.coerceIn(0, 100)) }
+        }
+
 internal fun attachmentDownloadPartFiles(targetFile: File): List<File> {
     val legacyName = "${targetFile.name}.part"
     val attemptPrefix = "$legacyName-"
@@ -5574,6 +5677,7 @@ internal fun attachmentDownloadPartFiles(targetFile: File): List<File> {
 private sealed interface AttachmentPreparationResult {
     data class Ready(
             val downloadId: String,
+            val owner: AndroidAttachmentOwnerLease,
             val attachmentId: String,
             val requestedFileName: String,
             val targetFile: File,
@@ -5584,6 +5688,15 @@ private sealed interface AttachmentPreparationResult {
     data class Terminal(
             val payload: Map<String, Any>
     ) : AttachmentPreparationResult
+}
+
+private fun JSONObject.attachmentOwnerLease(): AndroidAttachmentOwnerLease? {
+    val shellInstanceId = optString("shellInstanceId").takeIf(String::isNotBlank) ?: return null
+    val scopeId = optString("ownerScopeId").takeIf(String::isNotBlank) ?: return null
+    val principalKey = optString("ownerKey").takeIf { it.length == 64 } ?: return null
+    val authEpoch = optLong("ownerAuthEpoch", -1L).takeIf { it >= 0L } ?: return null
+    val generation = optLong("ownerGeneration", -1L).takeIf { it >= 0L } ?: return null
+    return AndroidAttachmentOwnerLease(shellInstanceId, scopeId, authEpoch, principalKey, generation)
 }
 
 private val attachmentDownloadsExportCoordinator = AttachmentDownloadsExportCoordinator()

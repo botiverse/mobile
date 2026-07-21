@@ -76,6 +76,7 @@ private fun Pager.sourcePageDataParams(): JSONObject = pageData.params
 fun releaseSlockShellStoreScope(shellInstanceId: String, serverId: String? = null) {
     val normalizedShellInstanceId = shellInstanceId.trim()
     if (normalizedShellInstanceId.isBlank()) return
+    ProcessAttachmentAuthScopes.retireShell(normalizedShellInstanceId)
     SlockSharedStoreRegistry.currentOrNull()?.releaseShellStoreScope(
         SlockShellStoreScope.create(
             shellInstanceId = normalizedShellInstanceId,

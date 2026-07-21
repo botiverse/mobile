@@ -22,7 +22,8 @@ internal data class AttachmentDownloadsExportRequest(
     val downloadId: String,
     val source: File,
     val displayName: String,
-    val mimeType: String
+    val mimeType: String,
+    val owner: AndroidAttachmentOwnerLease? = null
 )
 
 internal data class AttachmentDownloadsExportProgress(
@@ -89,7 +90,9 @@ internal class AttachmentDownloadsExportCoordinator(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val cancelReceiptTtlMs: Long = 60_000L,
     private val deferredCleanupDelayMs: Long = 5_000L,
-    private val afterInsertOwnerAcquired: () -> Unit = {}
+    private val afterInsertOwnerAcquired: () -> Unit = {},
+    private val beforeOwnerRegistration: () -> Unit = {},
+    private val ownerRegistry: AndroidAttachmentOwnerRegistry = ProcessAndroidAttachmentOwners
 ) {
     private val lock = Any()
     private val activeByKey = mutableMapOf<String, ExportState>()
@@ -102,42 +105,80 @@ internal class AttachmentDownloadsExportCoordinator(
         observer: ((AttachmentDownloadsExportProgress) -> Unit)? = null
     ): AttachmentDownloadsExportResult {
         require(request.downloadId.isNotBlank())
-        val key = "${request.source.absolutePath}\u0000${request.displayName}"
+        beforeOwnerRegistration()
+        val ownerPrefix = request.owner?.let { "${it.scopeId}\u0000${it.generation}\u0000" }.orEmpty()
+        val key = "$ownerPrefix${request.source.absolutePath}\u0000${request.displayName}"
         var registration: ObserverRegistration? = null
         lateinit var state: ExportState
         var reservedFinishedState: ExportState? = null
         var start = false
-        synchronized(lock) {
-            pruneCancelReceiptsLocked()
-            if (cancelReceipts.remove(request.downloadId) != null) {
-                return AttachmentDownloadsExportResult(status = "cancelled", message = "Save stopped")
-            }
-            val existing = activeByKey[key]
-            if (existing != null && existing.finished.get()) {
-                reservedFinishedState = existing
-            } else {
-                state = existing ?: ExportState(key, request, backend).also {
-                    activeByKey[key] = it
-                    start = true
+        val stateRef = AtomicReference<ExportState?>()
+        val registerState = {
+            synchronized(lock) {
+                pruneCancelReceiptsLocked()
+                val controlKey = controlKey(request.downloadId, request.owner)
+                if (cancelReceipts.remove(controlKey) != null) {
+                    return@synchronized AttachmentDownloadsExportResult(
+                        status = "cancelled",
+                        message = "Save stopped"
+                    )
                 }
-                registration = state.addObserver(request.downloadId, observer)
-                activeByDownloadId[request.downloadId] = state
+                val existing = activeByKey[key]
+                if (existing != null && existing.finished.get()) {
+                    reservedFinishedState = existing
+                } else {
+                    state = existing ?: ExportState(key, request, backend).also {
+                        activeByKey[key] = it
+                        start = true
+                    }
+                    stateRef.set(state)
+                    registration = state.addObserver(request.downloadId, observer)
+                    activeByDownloadId[controlKey] = state
+                }
+                null
             }
         }
-        reservedFinishedState?.let { return it.terminal.join() }
+        val ownerRegistration =
+            request.owner?.let { owner ->
+                ownerRegistry.registerOperation(
+                    lease = owner,
+                    operationId = "export:${request.downloadId}",
+                    hook = AndroidAttachmentRetirementHook {
+                        stateRef.get()?.invalidateOwnerLocked()
+                    },
+                    block = registerState
+                ) ?: return AttachmentDownloadsExportResult(
+                    status = "cancelled",
+                    message = "Save stopped after account changed"
+                )
+            }
+        val immediate = ownerRegistration?.first ?: registerState()
+        if (immediate != null) return immediate
+        ownerRegistration?.second?.let { stateRef.get()?.ownerRegistration?.set(it) }
+        reservedFinishedState?.let {
+            ownerRegistration?.second?.close()
+            return it.terminal.join()
+        }
         val activeRegistration = checkNotNull(registration)
         state.snapshot.get()?.let { activeRegistration.admit(it) }
         if (start) start(state)
         return state.terminal.join()
     }
 
-    fun control(downloadId: String, expectedAttemptToken: String?, action: String): String {
+    fun control(
+        downloadId: String,
+        expectedAttemptToken: String?,
+        action: String,
+        owner: AndroidAttachmentOwnerLease? = null
+    ): String {
+        if (owner != null && !ownerRegistry.admit(owner)) return "missing"
         val state =
             synchronized(lock) {
                 pruneCancelReceiptsLocked()
-                activeByDownloadId[downloadId]
+                val controlKey = controlKey(downloadId, owner)
+                activeByDownloadId[controlKey]
                     ?: if (action.lowercase() in setOf("cancel", "stop")) {
-                        cancelReceipts[downloadId] = nowMillis()
+                        cancelReceipts[controlKey] = nowMillis()
                         while (cancelReceipts.size > 256) {
                             cancelReceipts.remove(cancelReceipts.keys.first())
                         }
@@ -169,17 +210,22 @@ internal class AttachmentDownloadsExportCoordinator(
         }
     }
 
+    private fun controlKey(downloadId: String, owner: AndroidAttachmentOwnerLease?): String =
+        owner?.let { "${it.scopeId}\u0000${it.generation}\u0000$downloadId" } ?: downloadId
+
     internal fun awaitKeyReservationReleaseForTesting(
         request: AttachmentDownloadsExportRequest,
         timeoutMs: Long
     ): Boolean {
-        val key = "${request.source.absolutePath}\u0000${request.displayName}"
+        val ownerPrefix = request.owner?.let { "${it.scopeId}\u0000${it.generation}\u0000" }.orEmpty()
+        val key = "$ownerPrefix${request.source.absolutePath}\u0000${request.displayName}"
         val state = synchronized(lock) { activeByKey[key] } ?: return true
         return state.keyReservationReleased.await(timeoutMs, TimeUnit.MILLISECONDS)
     }
 
     internal fun keyReservationOwnerForTesting(request: AttachmentDownloadsExportRequest): Any? {
-        val key = "${request.source.absolutePath}\u0000${request.displayName}"
+        val ownerPrefix = request.owner?.let { "${it.scopeId}\u0000${it.generation}\u0000" }.orEmpty()
+        val key = "$ownerPrefix${request.source.absolutePath}\u0000${request.displayName}"
         return synchronized(lock) { activeByKey[key] }
     }
 
@@ -226,7 +272,7 @@ internal class AttachmentDownloadsExportCoordinator(
             }
         }
         state.workerFuture.set(task)
-        if (state.finished.get()) {
+        if (state.isStopped()) {
             state.wholeWatchdog.getAndSet(null)?.cancel(false)
             state.closeInsertAdmissionIfIdle()
             task.cancel(true)
@@ -260,7 +306,7 @@ internal class AttachmentDownloadsExportCoordinator(
                     abortPending = false
                 )
             }
-            if (state.finished.get()) {
+            if (state.isStopped()) {
                 if (ownsLateCleanup) startLateInsertCleanup(state)
                 return
             }
@@ -272,17 +318,34 @@ internal class AttachmentDownloadsExportCoordinator(
                     failureResult("export_open", "Unable to open Downloads file"),
                     abortPending = true
                 )
-            if (state.finished.get()) {
+            if (state.isStopped()) {
                 runCatching { output.close() }
                 return
             }
             output.use { stream -> copy(state, stream) }
-            if (state.finished.get()) {
+            if (state.isStopped()) {
                 return
             }
 
             enterPhase(state, "export_publish", request.source.length())
-            if (!state.backend.publish(uri)) {
+            val published: Boolean? =
+                if (request.owner == null) {
+                    state.backend.publish(uri)
+                } else {
+                    ownerRegistry.runIfCurrent(request.owner) { state.backend.publish(uri) }
+                }
+            if (published == null) {
+                return finish(
+                    state,
+                    AttachmentDownloadsExportResult(
+                        status = "cancelled",
+                        message = "Save stopped after account changed",
+                        failurePhase = "export_publish"
+                    ),
+                    abortPending = true
+                )
+            }
+            if (!published) {
                 return finish(
                     state,
                     failureResult("export_publish", "Unable to publish attachment in Downloads"),
@@ -302,11 +365,11 @@ internal class AttachmentDownloadsExportCoordinator(
             )
         } catch (interrupted: InterruptedException) {
             Thread.currentThread().interrupt()
-            if (!state.finished.get()) {
+            if (!state.isStopped()) {
                 finish(state, failureResult(state.phase.get(), "Save interrupted"), abortPending = true)
             }
         } catch (throwable: Throwable) {
-            if (!state.finished.get()) {
+            if (!state.isStopped()) {
                 finish(state, failureResult(state.phase.get(), "Unable to save attachment to Downloads"), true)
             }
         } finally {
@@ -327,13 +390,13 @@ internal class AttachmentDownloadsExportCoordinator(
         enterPhase(state, "export_copy", copied)
         FileInputStream(state.request.source).use { input ->
             while (true) {
-                if (Thread.currentThread().isInterrupted || state.finished.get()) {
+                if (Thread.currentThread().isInterrupted || state.isStopped()) {
                     throw InterruptedException("export stopped")
                 }
                 val count = input.read(buffer)
                 if (count < 0) break
                 output.write(buffer, 0, count)
-                if (state.finished.get()) throw InterruptedException("export stopped")
+                if (state.isStopped()) throw InterruptedException("export stopped")
                 copied += count
                 val now = nowNanos()
                 if (copied == total || now - lastProgressAt >= TimeUnit.MILLISECONDS.toNanos(progressCadenceMs)) {
@@ -348,7 +411,7 @@ internal class AttachmentDownloadsExportCoordinator(
     }
 
     private fun enterPhase(state: ExportState, phase: String, downloadedBytes: Long) {
-        if (state.finished.get()) throw InterruptedException("export stopped")
+        if (state.isStopped()) throw InterruptedException("export stopped")
         state.phase.set(phase)
         emit(state, phase, downloadedBytes)
         armStageDeadline(state, phase)
@@ -358,7 +421,7 @@ internal class AttachmentDownloadsExportCoordinator(
         val epoch = state.phaseEpoch.incrementAndGet()
         watchdog.schedule(
             {
-                if (state.phaseEpoch.get() == epoch && !state.finished.get()) {
+                if (state.phaseEpoch.get() == epoch && !state.isStopped()) {
                     finish(state, timeoutResult(phase, "Save timed out during $phase"), abortPending = true)
                 }
             },
@@ -369,7 +432,7 @@ internal class AttachmentDownloadsExportCoordinator(
 
     private fun emit(state: ExportState, phase: String, downloadedBytes: Long) {
         synchronized(state.deliveryLock) {
-            if (state.finished.get()) return
+            if (state.isStopped()) return
             val total = state.request.source.length().coerceAtLeast(0L)
             val snapshot = ProgressSnapshot(
                 phase = phase,
@@ -389,6 +452,7 @@ internal class AttachmentDownloadsExportCoordinator(
         synchronized(state.deliveryLock) {
             if (!state.finished.compareAndSet(false, true)) return
         }
+        state.ownerRegistration.getAndSet(null)?.close()
         state.wholeWatchdog.getAndSet(null)?.cancel(false)
         state.workerFuture.getAndSet(null)?.cancel(true)
         state.closeInsertAdmissionIfIdle()
@@ -424,8 +488,9 @@ internal class AttachmentDownloadsExportCoordinator(
             state.terminal.complete(terminalResult)
             synchronized(lock) {
                 state.observers.forEach { registration ->
-                    if (activeByDownloadId[registration.downloadId] === state) {
-                        activeByDownloadId.remove(registration.downloadId)
+                    val controlKey = controlKey(registration.downloadId, state.request.owner)
+                    if (activeByDownloadId[controlKey] === state) {
+                        activeByDownloadId.remove(controlKey)
                     }
                 }
             }
@@ -566,6 +631,8 @@ internal class AttachmentDownloadsExportCoordinator(
         val deliveryLock = Any()
         val terminal = CompletableFuture<AttachmentDownloadsExportResult>()
         val finished = AtomicBoolean(false)
+        private val ownerInvalidated = AtomicBoolean(false)
+        val ownerRegistration = AtomicReference<AndroidAttachmentOwnerRegistration?>()
         val pendingUri = AtomicReference<String?>()
         val phase = AtomicReference("export_insert")
         val phaseEpoch = AtomicLong(0L)
@@ -581,9 +648,27 @@ internal class AttachmentDownloadsExportCoordinator(
         private var lateInsertCleanupClaimed = false
         private val registrations = ConcurrentHashMap<String, ObserverRegistration>()
 
+        fun isStopped(): Boolean = finished.get() || ownerInvalidated.get()
+
+        fun invalidateOwnerLocked(): (() -> Unit)? {
+            if (!ownerInvalidated.compareAndSet(false, true)) return null
+            observers.forEach { it.close() }
+            return {
+                finish(
+                    this,
+                    AttachmentDownloadsExportResult(
+                        status = "cancelled",
+                        message = "Save stopped after account changed",
+                        failurePhase = phase.get()
+                    ),
+                    abortPending = true
+                )
+            }
+        }
+
         fun tryBeginInsertOwner(): Boolean =
             synchronized(insertAdmissionLock) {
-                if (finished.get()) {
+                if (isStopped()) {
                     insertAdmission.complete(Unit)
                     false
                 } else {

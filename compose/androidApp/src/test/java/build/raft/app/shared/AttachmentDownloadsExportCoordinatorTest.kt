@@ -22,6 +22,80 @@ import org.junit.Test
 
 class AttachmentDownloadsExportCoordinatorTest {
     @Test
+    fun ownerSwitchBeforeRegistrationRejectsOldExportAndFreshOwnerPublishes() =
+        withSourceFile(4096) { source ->
+            val registry = AndroidAttachmentOwnerRegistry()
+            val old = ownerLease("scope-a", 1L)
+            val fresh = ownerLease("scope-b", 2L)
+            val registrationReady = CountDownLatch(1)
+            val releaseRegistration = CountDownLatch(1)
+            registry.bind(old)
+            val coordinator =
+                coordinator(
+                    ownerRegistry = registry,
+                    beforeOwnerRegistration = {
+                        if (Thread.currentThread().name == "old-export") {
+                            registrationReady.countDown()
+                            releaseRegistration.await()
+                        }
+                    }
+                )
+            val oldBackend = FakeExportBackend()
+            val oldResult = AtomicReference<AttachmentDownloadsExportResult>()
+            val oldThread = thread(name = "old-export") {
+                oldResult.set(
+                    coordinator.export(
+                        request(source, "old-owner").copy(owner = old),
+                        oldBackend
+                    )
+                )
+            }
+            assertTrue(registrationReady.await(2, TimeUnit.SECONDS))
+            registry.bind(fresh)
+            releaseRegistration.countDown()
+            oldThread.join(2_000L)
+
+            assertFalse(oldThread.isAlive)
+            assertEquals("cancelled", oldResult.get()?.status)
+            assertEquals(0, oldBackend.insertCount.get())
+            assertEquals(0, oldBackend.publishCount.get())
+
+            val freshBackend = FakeExportBackend()
+            val freshResult =
+                coordinator.export(request(source, "fresh-owner").copy(owner = fresh), freshBackend)
+            assertEquals("saved", freshResult.status)
+            assertEquals(1, freshBackend.insertCount.get())
+            assertEquals(1, freshBackend.publishCount.get())
+        }
+
+    @Test
+    fun registeredExportBecomesStaleInsideGateBeforeCleanupRuns() =
+        withSourceFile(1024 * 1024) { source ->
+            val registry = AndroidAttachmentOwnerRegistry()
+            val old = ownerLease("scope-a", 1L)
+            val fresh = ownerLease("scope-b", 2L)
+            val writeEntered = CountDownLatch(1)
+            val releaseWrite = CountDownLatch(1)
+            registry.bind(old)
+            val backend = FakeExportBackend(writeEntered = writeEntered, writeBlock = releaseWrite)
+            val coordinator = coordinator(ownerRegistry = registry, stageTimeoutMs = 5_000L)
+            val result = AtomicReference<AttachmentDownloadsExportResult>()
+            val exportThread = thread {
+                result.set(coordinator.export(request(source, "registered-old").copy(owner = old), backend))
+            }
+            assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+
+            registry.bind(fresh)
+            releaseWrite.countDown()
+            exportThread.join(2_000L)
+
+            assertFalse(exportThread.isAlive)
+            assertEquals("cancelled", result.get()?.status)
+            assertEquals(0, backend.publishCount.get())
+            assertTrue(backend.awaitDelete())
+        }
+
+    @Test
     fun cacheHit34MbExportsExactBytesAndPublishesOnce() = withSourceFile(34 * 1024 * 1024) { source ->
         val sourceLengthBefore = source.length()
         val sourceHashBefore = source.sha256()
@@ -609,7 +683,9 @@ class AttachmentDownloadsExportCoordinatorTest {
         terminalWorker: ExecutorService = Executors.newCachedThreadPool { runnable ->
             Thread(runnable, "attachment-export-test-terminal").apply { isDaemon = true }
         },
-        afterInsertOwnerAcquired: () -> Unit = {}
+        afterInsertOwnerAcquired: () -> Unit = {},
+        beforeOwnerRegistration: () -> Unit = {},
+        ownerRegistry: AndroidAttachmentOwnerRegistry = ProcessAndroidAttachmentOwners
     ) =
         AttachmentDownloadsExportCoordinator(
             worker = worker,
@@ -621,7 +697,9 @@ class AttachmentDownloadsExportCoordinatorTest {
             cleanupAttempts = cleanupAttempts,
             insertAdmissionWaitMs = insertAdmissionWaitMs,
             deferredCleanupDelayMs = deferredCleanupDelayMs,
-            afterInsertOwnerAcquired = afterInsertOwnerAcquired
+            afterInsertOwnerAcquired = afterInsertOwnerAcquired,
+            beforeOwnerRegistration = beforeOwnerRegistration,
+            ownerRegistry = ownerRegistry
         )
 
     private fun request(source: File, downloadId: String) =
@@ -630,6 +708,15 @@ class AttachmentDownloadsExportCoordinatorTest {
             source = source,
             displayName = "fixture.bin",
             mimeType = "application/octet-stream"
+        )
+
+    private fun ownerLease(scopeId: String, generation: Long) =
+        AndroidAttachmentOwnerLease(
+            shellInstanceId = "shell",
+            scopeId = scopeId,
+            authEpoch = 1L,
+            principalKey = "a".repeat(64),
+            generation = generation
         )
 
     private fun withSourceFile(size: Int, block: (File) -> Unit) {

@@ -1,5 +1,6 @@
 package build.raft.app.base
 
+import build.raft.app.AttachmentOwnerLease
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.slockLogDebug
@@ -339,12 +340,13 @@ internal class BridgeModule : Module() {
         url: String,
         attachmentId: String,
         fileName: String,
+        owner: AttachmentOwnerLease,
         mimeType: String? = null,
         downloadId: String? = null,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
-            val resolvedDownloadId = attachmentDownloadId(downloadId, attachmentId, fileName)
+            val resolvedDownloadId = attachmentDownloadId(owner, downloadId, attachmentId, fileName)
             var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
@@ -352,6 +354,7 @@ internal class BridgeModule : Module() {
             methodArgs.put("fileName", fileName)
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
+            methodArgs.putAttachmentOwner(owner)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null
             var completed = false
@@ -383,7 +386,6 @@ internal class BridgeModule : Module() {
                     expectedAttemptToken = activeAttemptToken,
                     action = "cancel"
                 )
-                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
                 callbackRef?.let { removeCallback(it) }
             }
         }
@@ -392,12 +394,13 @@ internal class BridgeModule : Module() {
         url: String,
         attachmentId: String,
         fileName: String,
+        owner: AttachmentOwnerLease,
         mimeType: String? = null,
         downloadId: String? = null,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
-            val resolvedDownloadId = attachmentDownloadId(downloadId, attachmentId, fileName)
+            val resolvedDownloadId = attachmentDownloadId(owner, downloadId, attachmentId, fileName)
             var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
@@ -405,6 +408,7 @@ internal class BridgeModule : Module() {
             methodArgs.put("fileName", fileName)
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
+            methodArgs.putAttachmentOwner(owner)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null
             var completed = false
@@ -436,14 +440,15 @@ internal class BridgeModule : Module() {
                     expectedAttemptToken = activeAttemptToken,
                     action = "cancel"
                 )
-                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
                 callbackRef?.let { removeCallback(it) }
             }
         }
 
     suspend fun attachmentDownloadControl(
         downloadId: String,
+        owner: AttachmentOwnerLease,
         expectedAttemptToken: String? = null,
+        expectedRecordVersion: Long? = null,
         action: String
     ): JSONObject {
         val commonStatus =
@@ -457,7 +462,7 @@ internal class BridgeModule : Module() {
             return JSONObject().apply { put("status", commonStatus) }
         }
         return suspendCoroutine { continuation ->
-            requestAttachmentDownloadControl(downloadId, expectedAttemptToken, action) { payload ->
+            requestAttachmentDownloadControl(downloadId, owner, expectedAttemptToken, expectedRecordVersion, action) { payload ->
                 val nativeStatus = payload?.optString("status").orEmpty()
                 continuation.resume(
                     when {
@@ -475,47 +480,76 @@ internal class BridgeModule : Module() {
 
     private fun requestAttachmentDownloadControl(
         downloadId: String,
+        owner: AttachmentOwnerLease,
         expectedAttemptToken: String?,
+        expectedRecordVersion: Long?,
         action: String,
         callback: ((JSONObject?) -> Unit)? = null
     ) {
         val methodArgs = JSONObject()
         methodArgs.put("downloadId", downloadId)
+        methodArgs.putAttachmentOwner(owner)
         methodArgs.put("commonHandled", true)
         expectedAttemptToken?.takeIf { it.isNotBlank() }?.let { methodArgs.put("attemptToken", it) }
+        expectedRecordVersion?.let { methodArgs.put("recordVersion", it) }
         methodArgs.put("action", action)
         callNativeMethod(ATTACHMENT_DOWNLOAD_CONTROL, methodArgs, callback)
     }
 
-    private fun attachmentDownloadId(explicit: String?, attachmentId: String, fileName: String): String =
-        explicit?.trim()?.takeIf { it.isNotBlank() }
-            ?: "bridge:${attachmentId.hashCode().toUInt().toString(16)}:" +
-                "${fileName.hashCode().toUInt().toString(16)}:${nextAttachmentDownloadId.incrementAndGet()}"
+    private fun attachmentDownloadId(
+        owner: AttachmentOwnerLease,
+        explicit: String?,
+        attachmentId: String,
+        fileName: String
+    ): String {
+        val base = explicit?.trim()?.takeIf { it.isNotBlank() }
+            ?: "bridge:${attachmentId.encodeToByteArray().toHexToken()}:" +
+                "${fileName.encodeToByteArray().toHexToken()}:${nextAttachmentDownloadId.incrementAndGet()}"
+        return "${owner.principalKey.value}:$base"
+    }
 
     suspend fun attachmentCacheStatus(
         attachmentId: String,
         fileName: String,
+        owner: AttachmentOwnerLease,
         mimeType: String? = null
     ): JSONObject? =
-        attachmentCacheCall(ATTACHMENT_CACHE_STATUS, attachmentId, fileName, mimeType)
+        attachmentCacheCall(ATTACHMENT_CACHE_STATUS, attachmentId, fileName, owner, mimeType)
 
     suspend fun deleteAttachmentCache(
         attachmentId: String,
         fileName: String,
+        owner: AttachmentOwnerLease,
+        expectedAttemptToken: String? = null,
+        expectedRecordVersion: Long? = null,
         mimeType: String? = null
     ): JSONObject? =
-        attachmentCacheCall(DELETE_ATTACHMENT_CACHE, attachmentId, fileName, mimeType)
+        attachmentCacheCall(
+            DELETE_ATTACHMENT_CACHE,
+            attachmentId,
+            fileName,
+            owner,
+            mimeType,
+            expectedAttemptToken,
+            expectedRecordVersion
+        )
 
     private suspend fun attachmentCacheCall(
         methodName: String,
         attachmentId: String,
         fileName: String,
-        mimeType: String?
+        owner: AttachmentOwnerLease,
+        mimeType: String?,
+        expectedAttemptToken: String? = null,
+        expectedRecordVersion: Long? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
+            methodArgs.putAttachmentOwner(owner)
+            expectedAttemptToken?.takeIf(String::isNotBlank)?.let { methodArgs.put("attemptToken", it) }
+            expectedRecordVersion?.let { methodArgs.put("recordVersion", it) }
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             val result =
                 toNative(
@@ -532,6 +566,39 @@ internal class BridgeModule : Module() {
                 result.callbackRef?.let { removeCallback(it) }
             }
         }
+
+    fun attachmentDownloadOwnerChanged(owner: AttachmentOwnerLease?) {
+        val methodArgs = JSONObject()
+        if (owner == null) {
+            methodArgs.put("action", "retire_account")
+        } else {
+            methodArgs.put("action", "bind")
+            methodArgs.putAttachmentOwner(owner)
+        }
+        callNativeMethod(ATTACHMENT_DOWNLOAD_OWNER_CHANGED, methodArgs, null)
+    }
+
+    fun attachmentDownloadScopeRetired(shellInstanceId: String) {
+        callNativeMethod(
+            ATTACHMENT_DOWNLOAD_OWNER_CHANGED,
+            JSONObject().apply {
+                put("action", "retire_scope")
+                put("shellInstanceId", shellInstanceId)
+            },
+            null
+        )
+    }
+
+    private fun JSONObject.putAttachmentOwner(owner: AttachmentOwnerLease): JSONObject =
+        put("shellInstanceId", owner.shellInstanceId)
+            .put("ownerScopeId", owner.scopeId)
+            .put("ownerAuthEpoch", owner.authEpoch)
+            .put("ownerKey", owner.principalKey.value)
+            .put("ownerGeneration", owner.generation)
+
+    private fun ByteArray.toHexToken(): String = joinToString(separator = "") { byte ->
+        (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+    }
 
     /**
      * #81: host bridge for the selected-server app badge. Called from
@@ -993,6 +1060,7 @@ internal class BridgeModule : Module() {
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
         const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
+        const val ATTACHMENT_DOWNLOAD_OWNER_CHANGED = "attachmentDownloadOwnerChanged"
         const val SSO_REQUEST = "ssoRequest"
         const val QQ_LIVE_SSO_REQUEST = "qqLiveSSORequest"
         const val REPORT_DT = "reportDT"
@@ -1021,6 +1089,7 @@ internal data class BridgeAttachmentDownloadProgress(
     val downloadId: String = "",
     val attemptToken: String = "",
     val sequence: Long = 0L,
+    val recordVersion: Long? = null,
     val phase: String = "receiving",
     val status: String = "progress",
     val percent: Int?,
@@ -1049,6 +1118,7 @@ internal fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDo
         downloadId = optString("downloadId"),
         attemptToken = optString("attemptToken"),
         sequence = optString("sequence").toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
+        recordVersion = optString("recordVersion").toLongOrNull(),
         phase = optString("phase").ifBlank { if (downloadedBytes > 0L) "receiving" else "response_wait" },
         status = optString("status").ifBlank { "progress" },
         percent = percent,

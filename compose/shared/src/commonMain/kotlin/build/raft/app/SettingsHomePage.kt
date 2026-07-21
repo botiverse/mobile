@@ -2503,6 +2503,10 @@ internal fun SlockAppShellContent(
         authStore.sessionChanges.collect { fingerprint ->
             val cachedSession =
                 runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
+            if (cachedSession == null) {
+                ProcessAttachmentAuthScopes.retireAccount()
+                bridge.attachmentDownloadOwnerChanged(null)
+            }
             val currentSession = (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
             val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
             val authDecision =
@@ -2989,6 +2993,28 @@ internal fun SlockAppShellContent(
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
+    LaunchedEffect(storeScope.shellInstanceId, authGateState, readyServerId) {
+        when (val state = authGateState) {
+            is SharedAuthGateState.Ready -> {
+                val serverId = readyServerId
+                if (serverId.isNullOrBlank()) {
+                    ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
+                    bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
+                } else {
+                    val lease = ProcessAttachmentAuthScopes.bind(storeScope, state.session, serverId)
+                    bridge.attachmentDownloadOwnerChanged(lease)
+                }
+            }
+            SharedAuthGateState.AuthRequired,
+            is SharedAuthGateState.EmailVerificationRequired,
+            is SharedAuthGateState.ServerRequired -> {
+                ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
+                bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
+            }
+            SharedAuthGateState.Restoring,
+            is SharedAuthGateState.Error -> Unit
+        }
+    }
     val activityUnreadServerId = remember(readyServerId) { ServerId(readyServerId.orEmpty()) }
     val activityUnreadSummaryFlow =
         remember(sharedStores.activityUnreadSummaryStore, activityUnreadServerId) {
