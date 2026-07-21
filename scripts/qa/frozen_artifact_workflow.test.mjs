@@ -23,11 +23,12 @@ test("iOS frozen artifact inputs match Stamp dispatch and replacement is opt-in"
 });
 
 test("Android exposes the same frozen identity names for strict claim overrides", () => {
-  for (const name of ["apk_run_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
+  for (const name of ["apk_run_id", "apk_artifact_id", "artifact_sha256", "artifact_source_commit", "artifact_version", "artifact_version_code", "artifact_package_id"]) {
     assert.match(android, new RegExp(`\\n      ${name}:`));
   }
   assert.match(android, /name: Verify frozen Android artifact identity/);
   assert.match(android, /resolve_pinned_android_artifact\.mjs/);
+  assert.match(android, /actions\/artifacts\/\$APK_ARTIFACT_ID\/zip/);
   assert.match(android, /gh run download "\$APK_RUN_ID"[\s\S]*-n "\$artifact_name"/);
   assert.match(android, /requires exactly one APK and one build-info\.json/);
   assert.match(android, /run-name: Stamp \$\{\{ inputs\.stamp_run_case_id/);
