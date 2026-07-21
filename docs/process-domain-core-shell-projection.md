@@ -252,6 +252,9 @@ Do not:
 - `docs/slock-app-state-first-principles.md` defines canonical state,
   patch-first refresh, narrow selectors, and render-only UI threading.
 - `docs/shared-mvi-foundation.md` defines reducer/store/repository boundaries.
+- `docs/ios-turbo-safe-shell-contract.md` defines the iOS-only disposable
+  startup-visual boundary; it never becomes process or shell product-state
+  authority.
 - `docs/rfc-multi-server-shell.md` defines multi-window/server isolation.
 - `docs/realtime-session-owner-boundary-spec.md` defines process realtime
   authority and shell projections.
