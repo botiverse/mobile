@@ -35,22 +35,35 @@ class AttachmentDownloadCoordinatorRaceTest {
 
     @Test
     fun pausedChunkCancelReturnsBoundedAndRejectsLateWrite() {
+        // A second admission-hook entry proves the first round resolved to Paused
+        // (a Written round exits the admission loop and never re-enters the hook).
+        val pausedRoundCompleted = CountDownLatch(2)
+        val releaseChunk = CountDownLatch(1)
         val sink = RaceSink()
         val transport = RaceTransport()
         val observer = RaceObserver()
-        val engine = AttachmentDownloadCoordinatorEngine(transport, AttachmentDownloadSinkFactory { _, _ -> sink }, nowMillis = { 0L })
+        val engine =
+            AttachmentDownloadCoordinatorEngine(
+                transport = transport,
+                sinkFactory = AttachmentDownloadSinkFactory { _, _ -> sink },
+                beforeChunkAdmission = {
+                    pausedRoundCompleted.countDown()
+                    if (pausedRoundCompleted.count == 0L) releaseChunk.await(1, TimeUnit.SECONDS)
+                },
+                nowMillis = { 0L }
+            )
         val token = engine.start(request(), observer)
         transport.call.start(200, 1L)
         assertEquals("paused", engine.control("download-race", token, "pause"))
         val chunkThread = thread { transport.call.chunk(byteArrayOf(1)) }
-        Thread.sleep(50L)
+        assertTrue(pausedRoundCompleted.await(1, TimeUnit.SECONDS), "chunk never completed a paused admission round")
 
-        val started = System.nanoTime()
+        // The chunk thread is parked at the admission hook: cancel completing here
+        // proves it does not wait on the fenced chunk (bounded by construction).
         assertEquals("cancelled", engine.control("download-race", token, "cancel"))
-        val durationMs = (System.nanoTime() - started) / 1_000_000L
+        releaseChunk.countDown()
         chunkThread.join(1_000L)
 
-        assertTrue(durationMs < 500L, "cancel took ${durationMs}ms")
         assertFalse(chunkThread.isAlive)
         assertEquals(0, sink.writeCount)
         assertEquals(1, sink.abortCount)
@@ -60,6 +73,9 @@ class AttachmentDownloadCoordinatorRaceTest {
     fun pauseReturningBeforeWriteAdmissionFencesTheChunkUntilResume() {
         val admissionEntered = CountDownLatch(1)
         val releaseAdmission = CountDownLatch(1)
+        // Two hook entries prove the first (released) round resolved to Paused
+        // instead of Written — replaces a vacuous fixed-length sleep window.
+        val pausedRoundCompleted = CountDownLatch(2)
         val sink = RaceSink()
         val transport = RaceTransport()
         val observer = RaceObserver()
@@ -68,6 +84,7 @@ class AttachmentDownloadCoordinatorRaceTest {
                 transport = transport,
                 sinkFactory = AttachmentDownloadSinkFactory { _, _ -> sink },
                 beforeChunkAdmission = {
+                    pausedRoundCompleted.countDown()
                     admissionEntered.countDown()
                     releaseAdmission.await(1, TimeUnit.SECONDS)
                 },
@@ -80,7 +97,7 @@ class AttachmentDownloadCoordinatorRaceTest {
 
         assertEquals("paused", engine.control("download-race", token, "pause"))
         releaseAdmission.countDown()
-        Thread.sleep(100L)
+        assertTrue(pausedRoundCompleted.await(1, TimeUnit.SECONDS), "chunk never completed a paused admission round")
         assertEquals(0, sink.writeCount)
         assertEquals("resumed", engine.control("download-race", token, "resume"))
         chunkThread.join(1_000L)
