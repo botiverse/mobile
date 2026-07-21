@@ -94,6 +94,7 @@ private fun Modifier.authStaticTextFocus(): Modifier =
 @Composable
 internal fun AuthScaffold(
     modifier: Modifier = Modifier,
+    dismissInputFocusOnBackgroundDown: Boolean = false,
     onDiagnosticsShortcut: (() -> Unit)? = null,
     contentTopPadding: Dp = 40.dp,
     contentScrollable: Boolean = false,
@@ -117,6 +118,9 @@ internal fun AuthScaffold(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .dismissInputFocusOnUnconsumedPointerDown(
+                enabled = dismissInputFocusOnBackgroundDown
+            )
             .background(SlockColor.SurfaceWhite)
     ) {
         AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)

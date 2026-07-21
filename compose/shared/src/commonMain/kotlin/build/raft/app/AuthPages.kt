@@ -1096,6 +1096,7 @@ internal fun LoginContent(
         }
     }
     AuthScaffold(
+        dismissInputFocusOnBackgroundDown = true,
         onDiagnosticsShortcut = onOpenDiagnostics,
         contentScrollable = true
     ) {
@@ -1283,6 +1284,7 @@ internal fun RegisterContent(
         }
     }
     AuthScaffold(
+        dismissInputFocusOnBackgroundDown = true,
         onDiagnosticsShortcut = onOpenDiagnostics,
         contentScrollable = true
     ) {
@@ -1368,6 +1370,7 @@ internal fun ForgotPasswordContent(
     onOpenDiagnostics: () -> Unit = {}
 ) {
     AuthScaffold(
+        dismissInputFocusOnBackgroundDown = true,
         onDiagnosticsShortcut = onOpenDiagnostics,
         contentScrollable = true
     ) {

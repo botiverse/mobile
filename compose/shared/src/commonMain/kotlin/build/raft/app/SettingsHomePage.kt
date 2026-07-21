@@ -5907,7 +5907,12 @@ private fun SharedSettingsServerContent(
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .dismissInputFocusOnUnconsumedPointerDown()
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (showProfileCard) {
@@ -6108,7 +6113,12 @@ private fun SettingsConnectedAppsContent(
     }
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .dismissInputFocusOnUnconsumedPointerDown()
+                .background(SlockColor.SurfaceWhite)
+                .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
@@ -13904,6 +13914,7 @@ private fun AppShellServerGateContent(
     }
 
     AuthScaffold(
+        dismissInputFocusOnBackgroundDown = mode == "create",
         contentTopPadding = 72.dp,
         contentScrollable = true,
         topBarHorizontalPadding = 8.dp,
