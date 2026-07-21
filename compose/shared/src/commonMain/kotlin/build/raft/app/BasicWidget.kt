@@ -68,6 +68,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.onSizeChanged
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.semantics.disabled
 import com.tencent.kuikly.compose.ui.semantics.onClick
@@ -517,6 +518,29 @@ fun Modifier.touchListener(
     touchListenerWithConfiguration { type, position, _ ->
         onTouchEvent(type, position)
     }
+
+/**
+ * Clears the current input focus when a pointer down reaches container chrome without a child
+ * consuming it.
+ *
+ * Kuikly text fields and clickable controls consume their down event during the Main pass, so
+ * their focus/cursor/click behavior remains intact. Blank container regions and the first down of
+ * a scroll stay unconsumed, allowing the page/dialog to dismiss the software keyboard without
+ * consuming the gesture that owns the eventual tap or drag.
+ */
+@Composable
+internal fun Modifier.dismissInputFocusOnUnconsumedPointerDown(
+    enabled: Boolean = true
+): Modifier {
+    val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
+    return pointerInput(enabled) {
+        if (!enabled) return@pointerInput
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = true)
+            currentFocusManager.clearFocus(force = true)
+        }
+    }
+}
 
 /**
  * [touchListener] plus the platform drag threshold for consumers that must

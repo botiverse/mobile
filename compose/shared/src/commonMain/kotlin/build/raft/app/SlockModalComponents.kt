@@ -194,6 +194,7 @@ internal fun SlockUnifiedDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     dismissEnabled: Boolean = true,
+    dismissInputFocusOnBackgroundDown: Boolean = false,
     overlayAlpha: Float = 0.60f,
     minWidth: Dp = 312.dp,
     maxWidth: Dp = 408.dp,
@@ -219,6 +220,7 @@ internal fun SlockUnifiedDialog(
                 onDismiss = onDismiss,
                 modifier = modifier,
                 dismissEnabled = dismissEnabled,
+                dismissInputFocusOnBackgroundDown = dismissInputFocusOnBackgroundDown,
                 overlayAlpha = overlayAlpha,
                 minWidth = minWidth,
                 maxWidth = maxWidth,
@@ -250,6 +252,7 @@ internal fun SlockUnifiedDialog(
                     onDismiss = onDismiss,
                     modifier = modifier,
                     dismissEnabled = dismissEnabled,
+                    dismissInputFocusOnBackgroundDown = dismissInputFocusOnBackgroundDown,
                     overlayAlpha = overlayAlpha,
                     minWidth = minWidth,
                     maxWidth = maxWidth,
@@ -283,6 +286,7 @@ private fun SlockUnifiedDialogSurface(
     onDismiss: () -> Unit,
     modifier: Modifier,
     dismissEnabled: Boolean,
+    dismissInputFocusOnBackgroundDown: Boolean,
     overlayAlpha: Float,
     minWidth: Dp,
     maxWidth: Dp,
@@ -331,6 +335,9 @@ private fun SlockUnifiedDialogSurface(
                 modifier =
                     Modifier
                         .fillMaxWidth()
+                        .dismissInputFocusOnUnconsumedPointerDown(
+                            enabled = dismissInputFocusOnBackgroundDown
+                        )
                         .background(SlockColor.SurfaceWhite)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
                         .padding(contentPadding),

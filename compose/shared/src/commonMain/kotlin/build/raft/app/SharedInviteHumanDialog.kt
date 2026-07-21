@@ -73,6 +73,7 @@ internal fun SharedInviteHumanDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.agent_invite_title),
         dismissEnabled = !submitting,
+        dismissInputFocusOnBackgroundDown = true,
         onDismiss = onDismiss
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {

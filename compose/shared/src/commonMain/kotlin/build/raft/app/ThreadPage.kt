@@ -19536,6 +19536,7 @@ internal fun ThreadAttachmentCommentsDialog(
 ) {
     SlockUnifiedDialog(
         title = stringResource(MR.strings.thread_comments_title),
+        dismissInputFocusOnBackgroundDown = true,
         onDismiss = onDismiss,
         minWidth = 312.dp,
         maxWidth = 360.dp,
@@ -20990,6 +20991,7 @@ private fun ThreadForwardNoteDialog(
         title = stringResource(MR.strings.thread_forward_add_note),
         onDismiss = onDismiss,
         dismissEnabled = !sending,
+        dismissInputFocusOnBackgroundDown = true,
         minWidth = 320.dp,
         maxWidth = 430.dp
     ) {
@@ -21371,6 +21373,7 @@ private fun ThreadAddMemberModal(
         }
     SlockUnifiedDialog(
         title = stringResource(MR.strings.thread_action_add_member),
+        dismissInputFocusOnBackgroundDown = true,
         onDismiss = onDismiss,
         minWidth = 356.dp,
         maxWidth = 356.dp,
@@ -21793,6 +21796,7 @@ private fun ThreadSettingsModal(
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
     SlockUnifiedDialog(
         title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
+        dismissInputFocusOnBackgroundDown = activeDanger == null,
         onDismiss = onDismiss
     ) {
         if (activeDanger == null) {

@@ -10181,7 +10181,7 @@ internal fun SharedSettingsApiEnvironmentContent(
     val canSave = normalizedApi.startsWith("http") && normalizedSocket.startsWith("http") && !busy
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().dismissInputFocusOnUnconsumedPointerDown(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -15644,6 +15644,7 @@ private fun SharedCreateChannelDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
+        dismissInputFocusOnBackgroundDown = true,
         onDismiss = onDismiss
     ) {
         SlockBrutalTextField(
