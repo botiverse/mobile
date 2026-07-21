@@ -72,20 +72,38 @@ class SocketIoRealtimeClient(
     private var connectedServerId: String? = null
     private var currentAuth: RealtimeAuth? = null
     private var currentConnectionContext: RealtimeSocketConnectionContext? = null
-    private var authRefreshProvider: ((String) -> RealtimeAuth?)? = null
+    private var authRefreshProvider: ((String, RealtimeAuth?) -> RealtimeAuth?)? = null
     private var lastHeartbeatAtMillis: Long? = null
     private var lastInboundEventAtMillis: Long? = null
     private var resumeProjectionRetryLastSeq: Long? = null
     private var nextWatchdogEpoch = 0L
     private var watchdogRegistration: WatchdogRegistration? = null
+    private var reconnectAllowed = true
     private val successDiagnostics = RealtimeSuccessDiagnostics(clockMillis)
     private var connectionState: RealtimeConnectionState = RealtimeConnectionState.Disconnected
 
     val state: RealtimeConnectionState
         get() = transport.linearize { connectionState }
 
-    fun setAuthRefreshProvider(provider: ((String) -> RealtimeAuth?)?) {
+    fun setAuthRefreshProvider(provider: ((String, RealtimeAuth?) -> RealtimeAuth?)?) {
         transport.linearize { authRefreshProvider = provider }
+    }
+
+    fun setReconnectAllowed(allowed: Boolean) {
+        transport.linearize {
+            if (reconnectAllowed == allowed) return@linearize
+            reconnectAllowed = allowed
+            if (!allowed) {
+                stopHeartbeatWatchdog()
+                currentConnectionContext = null
+                connectionState = RealtimeConnectionState.Disconnected
+                transport.disconnect()
+                diagnostics?.onIntentionalDisconnect(
+                    reason = "reconnect_suspended",
+                    serverId = connectedServerId?.let(::ServerId),
+                )
+            }
+        }
     }
 
     fun connect(request: RealtimeConnectRequest) {
@@ -99,6 +117,11 @@ class SocketIoRealtimeClient(
             currentConnectionContext = connectionContext
             cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
             resumeProjectionRetryLastSeq = null
+            if (!reconnectAllowed) {
+                connectionState = RealtimeConnectionState.Disconnected
+                logger("client_connect_skip reason=reconnect_suspended serverId=${request.auth.serverId.value}")
+                return@linearize
+            }
             connectionState = RealtimeConnectionState.Connecting
             lastHeartbeatAtMillis = null
             lastInboundEventAtMillis = null
@@ -134,6 +157,7 @@ class SocketIoRealtimeClient(
         transport.linearize { checkHeartbeatSilenceLocked(nowMillis) }
 
     private fun checkHeartbeatSilenceLocked(nowMillis: Long): Boolean {
+        if (!reconnectAllowed) return false
         val shouldReconnect =
             RealtimeHeartbeatWatchdog.shouldForceReconnect(
                 RealtimeHeartbeatWatchdogSnapshot(
@@ -219,6 +243,7 @@ class SocketIoRealtimeClient(
     private fun ensureTransportListeners() {
         if (transportSubscriptions.isNotEmpty()) return
         transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) { capturedContext, _ ->
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.Connect)) return@on
             markInbound()
             startHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Connected
@@ -230,6 +255,7 @@ class SocketIoRealtimeClient(
             rejoinChannels(reason = "connect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) { capturedContext, _ ->
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.RoomsJoined)) return@on
             markInbound()
             connectionState = RealtimeConnectionState.RoomsJoined
             diagnostics?.onRoomsJoined(
@@ -243,6 +269,7 @@ class SocketIoRealtimeClient(
             emitSyncResume(reason = "rooms_joined")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { capturedContext, payload ->
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.ConnectError)) return@on
             markInbound()
             connectionState = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
             diagnostics?.onConnectionFailed(
@@ -251,10 +278,14 @@ class SocketIoRealtimeClient(
             )
             logger("client_connect_error serverId=${capturedContext.serverId.value} reason=${payload?.javaClass?.simpleName.orEmpty()}")
             if (payload.isAuthFailurePayload()) {
-                refreshTransportAuth(reason = "connect_error")
+                refreshTransportAuth(
+                    reason = "connect_error",
+                    capturedContext = capturedContext,
+                )
             }
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.Disconnect) { capturedContext, _ ->
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.Disconnect)) return@on
             stopHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Disconnected
             diagnostics?.onDisconnected(
@@ -264,6 +295,7 @@ class SocketIoRealtimeClient(
             logger("client_disconnected serverId=${capturedContext.serverId.value}")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.Reconnect) { capturedContext, _ ->
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.Reconnect)) return@on
             markInbound()
             startHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Connected
@@ -276,10 +308,15 @@ class SocketIoRealtimeClient(
             rejoinChannels(reason = "reconnect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectAttempt) { capturedContext, payload ->
-            refreshTransportAuth(reason = "reconnect_attempt")
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.ReconnectAttempt)) return@on
+            refreshTransportAuth(
+                reason = "reconnect_attempt",
+                capturedContext = capturedContext,
+            )
             logger("client_reconnect_attempt serverId=${capturedContext.serverId.value} payload=${payload?.toString().orEmpty()}")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectError) { capturedContext, payload ->
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.ReconnectError)) return@on
             diagnostics?.onConnectionFailed(
                     reason = payload?.toString().orEmpty(),
                     serverId = capturedContext.serverId,
@@ -287,6 +324,7 @@ class SocketIoRealtimeClient(
             logger("client_reconnect_error serverId=${capturedContext.serverId.value} reason=${payload?.javaClass?.simpleName.orEmpty()}")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ReconnectFailed) { capturedContext, payload ->
+            if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.ReconnectFailed)) return@on
             stopHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Failed(payload?.toString().orEmpty())
             diagnostics?.onConnectionFailed(
@@ -297,6 +335,7 @@ class SocketIoRealtimeClient(
         }
         RealtimeWireEventNames.forEach { eventName ->
             transportSubscriptions += transport.on(eventName) { capturedContext, payload ->
+                if (!acceptConnectionCallback(capturedContext, eventName)) return@on
                 markInbound(eventName)
                 val payloadServerId = payload.serverIdOrNull()
                 val capturedServerId = capturedContext.serverId.value
@@ -339,6 +378,20 @@ class SocketIoRealtimeClient(
                 ).forEach(logger)
             }
         }
+    }
+
+    private fun acceptConnectionCallback(
+        capturedContext: RealtimeSocketConnectionContext,
+        eventName: String,
+    ): Boolean {
+        val accepted = reconnectAllowed && capturedContext === currentConnectionContext
+        if (!accepted) {
+            logger(
+                "client_event_skip eventName=$eventName result=stale_or_suspended " +
+                    "serverId=${capturedContext.serverId.value}"
+            )
+        }
+        return accepted
     }
 
     private fun shouldFanOutRawEvent(eventName: String, serverAhead: Boolean): Boolean =
@@ -429,10 +482,26 @@ class SocketIoRealtimeClient(
         }
     }
 
-    private fun refreshTransportAuth(reason: String) {
+    private fun refreshTransportAuth(
+        reason: String,
+        capturedContext: RealtimeSocketConnectionContext,
+    ) {
         val provider = authRefreshProvider ?: return
+        if (!reconnectAllowed) {
+            logger("auth_refresh_skip reason=$reason result=reconnect_suspended")
+            return
+        }
+        val activeContext = currentConnectionContext
+        if (capturedContext !== activeContext) {
+            logger(
+                "auth_refresh_skip reason=$reason result=stale_connection " +
+                    "capturedServerId=${capturedContext.serverId.value} " +
+                    "activeServerId=${activeContext?.serverId?.value.orEmpty()}"
+            )
+            return
+        }
         val previous = currentAuth
-        val next = provider(reason) ?: run {
+        val next = provider(reason, previous) ?: run {
             logger("auth_refresh_skip reason=$reason result=missing_session")
             return
         }
