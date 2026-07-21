@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SlockSidebarSortMode
+import build.raft.app.base.putIfAbsent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -23,6 +24,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
@@ -1102,13 +1104,21 @@ internal class SharedHomeStore(
         status: HomeServerDrawerLoadStatus
     ): HomeServerDrawerState {
         val serverId = content.snapshot.server.id
-        val section = sections[serverId] ?: return this
+        val section =
+            sections[serverId]
+                ?: HomeServerDrawerSectionState(server = content.snapshot.server)
         return copy(
             sections =
                 sections +
                     (serverId to
                         section.copy(
                             content = content,
+                            normalizedContent =
+                                homeServerDrawerNormalizedContentForSnapshot(
+                                    previousSnapshot = section.content?.snapshot,
+                                    nextSnapshot = content.snapshot,
+                                    previousContent = section.normalizedContent
+                                ),
                             status = status,
                             errorCode = null
                         ))
@@ -1151,6 +1161,13 @@ internal class SharedHomeStore(
                     HomeServerDrawerSectionState(
                         server = server,
                         content = cached,
+                        normalizedContent =
+                            previous.sections[server.id]?.normalizedContent
+                                ?: cached
+                                    ?.takeIf { server.id == selectedServerId }
+                                    ?.snapshot
+                                    ?.toHomeServerDrawerNormalizedContent()
+                                ?: HomeServerDrawerNormalizedContent.Empty,
                         status = status,
                         requestGeneration = previous.sections[server.id]?.requestGeneration ?: 0L
                     )
@@ -1183,11 +1200,24 @@ internal class SharedHomeStore(
                     val cached = existing?.content ?: contentByServer[server.id]
                     server.id to
                         if (existing != null) {
-                            existing.copy(server = server, content = cached)
+                            existing.copy(
+                                server = server,
+                                content = cached,
+                                normalizedContent =
+                                    if (existing.content?.snapshot === cached?.snapshot) {
+                                        existing.normalizedContent
+                                    } else {
+                                        cached?.snapshot?.toHomeServerDrawerNormalizedContent()
+                                            ?: HomeServerDrawerNormalizedContent.Empty
+                                    }
+                            )
                         } else {
                             HomeServerDrawerSectionState(
                                 server = server,
                                 content = cached,
+                                normalizedContent =
+                                    cached?.snapshot?.toHomeServerDrawerNormalizedContent()
+                                        ?: HomeServerDrawerNormalizedContent.Empty,
                                 status =
                                     if (cached == null) {
                                         HomeServerDrawerLoadStatus.Unloaded
@@ -1251,6 +1281,16 @@ internal class SharedHomeStore(
         val loadingSection =
             section.copy(
                 content = cached,
+                normalizedContent =
+                    if (
+                        section.content?.snapshot === cached?.snapshot &&
+                        (cached == null || section.normalizedContent !== HomeServerDrawerNormalizedContent.Empty)
+                    ) {
+                        section.normalizedContent
+                    } else {
+                        cached?.snapshot?.toHomeServerDrawerNormalizedContent()
+                            ?: HomeServerDrawerNormalizedContent.Empty
+                    },
                 status =
                     if (cached == null) {
                         HomeServerDrawerLoadStatus.Loading
@@ -1376,6 +1416,7 @@ internal class SharedHomeStore(
                                 (serverId to
                                     section.copy(
                                         content = content,
+                                        normalizedContent = content.snapshot.toHomeServerDrawerNormalizedContent(),
                                         status = HomeServerDrawerLoadStatus.Loaded,
                                         errorCode = null
                                     ))
@@ -3495,10 +3536,155 @@ enum class HomeServerDrawerLoadStatus {
 data class HomeServerDrawerSectionState(
     val server: ServerSummary,
     val content: SharedHomeContentState.Content? = null,
+    val normalizedContent: HomeServerDrawerNormalizedContent = HomeServerDrawerNormalizedContent.Empty,
     val status: HomeServerDrawerLoadStatus = HomeServerDrawerLoadStatus.Unloaded,
     val requestGeneration: Long = 0L,
     val errorCode: String? = null
 )
+
+enum class HomeServerDrawerConversationSection {
+    Pinned,
+    Channel,
+    JointChannel,
+    DirectMessage
+}
+
+sealed interface HomeServerDrawerNormalizedRow {
+    val key: String
+
+    data class SectionHeader(
+        val section: HomeServerDrawerConversationSection,
+        val count: Int
+    ) : HomeServerDrawerNormalizedRow {
+        override val key: String = "section:${section.name.lowercase()}"
+    }
+
+    data class Conversation(
+        val section: HomeServerDrawerConversationSection,
+        val conversation: HomeConversationRow
+    ) : HomeServerDrawerNormalizedRow {
+        override val key: String = "conversation:${section.name.lowercase()}:${conversation.threadId.value}"
+    }
+}
+
+data class HomeServerDrawerNormalizedContent(
+    val rows: List<HomeServerDrawerNormalizedRow>,
+    val firstConversationIndex: Int
+) {
+    companion object {
+        val Empty = HomeServerDrawerNormalizedContent(emptyList(), -1)
+    }
+}
+
+internal fun homeServerDrawerNormalizedContentForSnapshot(
+    previousSnapshot: HomeSnapshot?,
+    nextSnapshot: HomeSnapshot,
+    previousContent: HomeServerDrawerNormalizedContent,
+    normalize: (HomeSnapshot) -> HomeServerDrawerNormalizedContent = HomeSnapshot::toHomeServerDrawerNormalizedContent
+): HomeServerDrawerNormalizedContent =
+    if (previousSnapshot === nextSnapshot) previousContent else normalize(nextSnapshot)
+
+internal fun HomeSnapshot.toHomeServerDrawerNormalizedContent(): HomeServerDrawerNormalizedContent {
+    val order = sidebarOrder ?: SettingsServerSidebarOrderSnapshot()
+    val visibleDirectMessages =
+        directMessages
+            .orderedForHomeServerDrawer(order.dmOrder)
+            .filter { conversation ->
+                conversation.threadId.value !in order.hiddenDmIds || conversation.unreadCount > 0
+            }
+            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.dmSortMode))
+    val regularChannels =
+        channels
+            .filter { conversation -> conversation.kind != ConversationKind.Joint }
+            .orderedForHomeServerDrawer(order.channelOrder)
+            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.channelSortMode))
+    val jointChannels =
+        channels
+            .filter { conversation -> conversation.kind == ConversationKind.Joint }
+            .orderedForHomeServerDrawer(order.channelOrder)
+            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.channelSortMode))
+    val pinned =
+        homeServerDrawerPinnedConversations(
+            channels = channels,
+            directMessages = directMessages,
+            order = order
+        )
+
+    val rows =
+        buildList {
+            fun appendSection(
+                section: HomeServerDrawerConversationSection,
+                conversations: List<HomeConversationRow>
+            ) {
+                if (conversations.isEmpty()) return
+                add(HomeServerDrawerNormalizedRow.SectionHeader(section, conversations.size))
+                conversations.forEach { conversation ->
+                    add(HomeServerDrawerNormalizedRow.Conversation(section, conversation))
+                }
+            }
+
+            appendSection(HomeServerDrawerConversationSection.Pinned, pinned)
+            appendSection(HomeServerDrawerConversationSection.Channel, regularChannels)
+            appendSection(HomeServerDrawerConversationSection.JointChannel, jointChannels)
+            appendSection(HomeServerDrawerConversationSection.DirectMessage, visibleDirectMessages)
+        }
+    return HomeServerDrawerNormalizedContent(
+        rows = rows,
+        firstConversationIndex = rows.indexOfFirst { it is HomeServerDrawerNormalizedRow.Conversation }
+    )
+}
+
+private fun List<HomeConversationRow>.orderedForHomeServerDrawer(
+    order: List<String>
+): List<HomeConversationRow> {
+    if (isEmpty() || order.isEmpty()) return this
+    val byId = associateBy { conversation -> conversation.threadId.value }
+    val ordered = LinkedHashMap<String, HomeConversationRow>()
+    order.forEach { id -> byId[id]?.let { conversation -> ordered[conversation.threadId.value] = conversation } }
+    forEach { conversation -> ordered.putIfAbsent(conversation.threadId.value, conversation) }
+    return ordered.values.toList()
+}
+
+private fun List<HomeConversationRow>.sortedForHomeServerDrawer(
+    mode: SlockSidebarSortMode
+): List<HomeConversationRow> =
+    when (mode) {
+        SlockSidebarSortMode.Manual -> this
+        SlockSidebarSortMode.Recent ->
+            sortedWith(
+                compareByDescending<HomeConversationRow> { conversation ->
+                    parseSlockTimestampEpochMillisOrNull(conversation.lastMessageAt) ?: Long.MIN_VALUE
+                }.thenBy { conversation -> conversation.name.trim().lowercase() }
+                    .thenBy { conversation -> conversation.threadId.value }
+            )
+        SlockSidebarSortMode.Az ->
+            sortedWith(
+                compareBy<HomeConversationRow> { conversation -> conversation.name.trim().lowercase() }
+                    .thenBy { conversation -> conversation.threadId.value }
+            )
+    }
+
+private fun homeServerDrawerPinnedConversations(
+    channels: List<HomeConversationRow>,
+    directMessages: List<HomeConversationRow>,
+    order: SettingsServerSidebarOrderSnapshot
+): List<HomeConversationRow> {
+    val byConversationId = (channels + directMessages).associateBy { it.threadId.value }
+    val byMemberId =
+        directMessages.mapNotNull { conversation ->
+            conversation.presenceMemberId?.value?.let { memberId -> memberId to conversation }
+        }.toMap()
+    val pinnedItems = order.typedPinnedOrLegacy()
+    val conversations =
+        pinnedItems.mapNotNull { item ->
+            when (item.kind.trim().lowercase()) {
+                "channel" -> byConversationId[item.id]
+                "agent", "human" -> byMemberId[item.id] ?: byConversationId[item.id]
+                else -> null
+            }
+        }.distinctBy { conversation -> conversation.threadId.value }
+    return conversations.sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.pinnedSortMode))
+}
 
 data class HomeServerDrawerState(
     val expanded: Boolean = false,

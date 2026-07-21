@@ -10,7 +10,11 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeDirectMessageRow
+import build.raft.app.data.HomeServerDrawerConversationSection
 import build.raft.app.data.HomeServerDrawerLoadStatus
+import build.raft.app.data.HomeServerDrawerNormalizedContent
+import build.raft.app.data.HomeServerDrawerNormalizedRow
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.OpenDirectMessageResult
@@ -305,6 +309,28 @@ data class SlockHomeServerDrawerSection(
     val pinnedSortMode: String = "manual",
     val hiddenDmIds: List<String> = emptyList()
 )
+
+data class SlockServerDrawerUserHeader(
+    val displayName: String,
+    val avatarWireValue: String? = null,
+    val avatarLabel: String = displayName.take(2).uppercase()
+)
+
+data class SlockHomeServerDrawerHostedSection(
+    val header: SlockHomeServerDrawerSection,
+    val normalizedContent: HomeServerDrawerNormalizedContent,
+    val hasCachedConversations: Boolean
+)
+
+internal class HomeServerDrawerInteractiveMarkerGate {
+    private var claimedGeneration: Long? = null
+
+    fun claim(generation: Long): Boolean {
+        if (claimedGeneration == generation) return false
+        claimedGeneration = generation
+        return true
+    }
+}
 
 internal sealed interface SlockHomeServerDrawerRow {
     val key: String
@@ -2720,6 +2746,11 @@ internal fun shouldDismissHomeServerDrawerOnSwipe(
     thresholdDp: Float = HomeServerDrawerSwipeDismissThreshold.value
 ): Boolean = horizontalDragDp <= -thresholdDp
 
+internal fun shouldOpenHomeServerDrawerOnEdgeSwipe(
+    horizontalDragDp: Float,
+    thresholdDp: Float = HomeServerDrawerSwipeDismissThreshold.value
+): Boolean = horizontalDragDp >= thresholdDp
+
 internal fun List<String>.moveItem(id: String, toIndex: Int): List<String> {
     val fromIndex = indexOf(id)
     if (fromIndex < 0 || toIndex !in indices || fromIndex == toIndex) return this
@@ -3572,6 +3603,234 @@ private fun HomeServerDrawerPanel(
         }
     }
 }
+
+/**
+ * AppShell-owned drawer surface. It deliberately has no per-row timers or
+ * parent-owned hydration set: the LazyColumn admits only the viewport and a
+ * two-row overscan, while each stable row key owns its own composition.
+ */
+@Composable
+internal fun HomeServerDrawerHostedPanel(
+    sections: List<SlockHomeServerDrawerHostedSection>,
+    labels: SlockHomeShellLabels,
+    userHeader: SlockServerDrawerUserHeader,
+    topSafeArea: Dp,
+    bottomSafeArea: Dp,
+    serverMembersStore: SharedServerMembersStore?,
+    openGeneration: Long?,
+    onSectionToggle: (String) -> Unit,
+    onRetry: (String) -> Unit,
+    onConversationClick: (String, String) -> Unit,
+    onFirstInteractiveRow: (Long, String) -> Unit
+) {
+    val markerGate = remember { HomeServerDrawerInteractiveMarkerGate() }
+    val projector = remember { SharedHomeConversationRowProjector() }
+    val firstInteractiveServerId =
+        remember(sections) {
+            sections.firstOrNull { section ->
+                section.header.expanded && section.normalizedContent.firstConversationIndex >= 0
+            }?.header?.server?.id
+        }
+
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(HomeServerDrawerHeaderHeight + topSafeArea)
+                    .background(SlockColor.BrandYellow)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(top = topSafeArea)
+                    .padding(horizontal = SlockSpacing.Md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            SlockAvatar(
+                avatarWireValue = userHeader.avatarWireValue,
+                label = userHeader.avatarLabel,
+                avatarSize = 32.dp
+            )
+            Text(
+                text = userHeader.displayName,
+                style = SlockType.ButtonBold,
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (sections.isEmpty()) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                beyondBoundsItemCount = 2
+            ) {
+                sections.forEach { hostedSection ->
+                    val section = hostedSection.header
+                    val serverId = section.server.id
+                    items(1, key = { "server:$serverId" }) {
+                        HomeServerDrawerServerHeader(
+                            section = section,
+                            onClick = { onSectionToggle(serverId) }
+                        )
+                    }
+                    if (!section.expanded) return@forEach
+
+                    val normalizedContent = hostedSection.normalizedContent
+                    val hasCache = hostedSection.hasCachedConversations
+                    if (
+                        !hasCache &&
+                        section.status in setOf(HomeServerDrawerLoadStatus.Unloaded, HomeServerDrawerLoadStatus.Loading)
+                    ) {
+                        items(3, key = { index -> "skeleton:$serverId:$index" }) {
+                            HomeSidebarSkeletonRow(
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = HomeServerDrawerConversationHorizontalPadding,
+                                        vertical = SlockSpacing.Xs
+                                    )
+                            )
+                        }
+                    } else {
+                        items(
+                            normalizedContent.rows.size,
+                            key = { index -> "$serverId:${normalizedContent.rows[index].key}" }
+                        ) { index ->
+                            when (val row = normalizedContent.rows[index]) {
+                                is HomeServerDrawerNormalizedRow.SectionHeader ->
+                                    HomeServerDrawerSectionHeader(
+                                        section = row.section.toSlockHomeConversationSection(),
+                                        count = row.count,
+                                        labels = labels
+                                    )
+                                is HomeServerDrawerNormalizedRow.Conversation -> {
+                                    val item = remember(row.conversation) { projector.project(row.conversation) }
+                                    val interactiveModifier =
+                                        if (
+                                            serverId == firstInteractiveServerId &&
+                                            index == normalizedContent.firstConversationIndex &&
+                                            openGeneration != null
+                                        ) {
+                                            Modifier.onGloballyPositioned {
+                                                val generation = openGeneration
+                                                if (markerGate.claim(generation)) {
+                                                    onFirstInteractiveRow(
+                                                        generation,
+                                                        "$serverId:${row.key}"
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            Modifier
+                                        }
+                                    Box(modifier = Modifier.fillMaxWidth().then(interactiveModifier)) {
+                                        HomeServerDrawerHostedConversationRow(
+                                            serverId = serverId,
+                                            item = item,
+                                            serverMembersStore = serverMembersStore,
+                                            onClick = { onConversationClick(serverId, item.id) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (
+                        section.status in setOf(
+                            HomeServerDrawerLoadStatus.ErrorEmpty,
+                            HomeServerDrawerLoadStatus.ErrorWithCache
+                        )
+                    ) {
+                        items(1, key = { "error:$serverId" }) {
+                            HomeServerDrawerErrorRow(
+                                row =
+                                    SlockHomeServerDrawerRow.Error(
+                                        serverId = serverId,
+                                        code = section.errorCode ?: "home_network",
+                                        hasCache = hasCache
+                                    ),
+                                onRetry = { onRetry(serverId) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.fillMaxWidth().height(bottomSafeArea))
+    }
+}
+
+@Composable
+private fun HomeServerDrawerHostedConversationRow(
+    serverId: String,
+    item: SlockHomeConversationItem,
+    serverMembersStore: SharedServerMembersStore?,
+    onClick: () -> Unit
+) {
+    val badgeProjection = item.homeConversationBadgeProjection()
+    val isDirectMessage = item.isDirectMessageConversation()
+    val avatarWireValue =
+        if (isDirectMessage) {
+            val resolver =
+                remember(serverMembersStore, serverId) {
+                    slockMemberAvatarResolver(serverMembersStore, serverId)
+                }
+            rememberSlockMemberAvatarWireValue(resolver, item.presenceMemberId)
+        } else {
+            null
+        }
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = HomeServerDrawerConversationHorizontalPadding)
+                .height(ChannelRowHeight)
+                .clickable(onClick = onClick)
+                .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isDirectMessage) {
+                SlockAvatar(avatarWireValue = avatarWireValue, label = item.avatarLabel)
+            } else {
+                Text(
+                    text = item.homeChannelSymbol(),
+                    style = SlockType.Button,
+                    color = SlockColor.TextBlack.copy(alpha = if (item.joined) 1f else 0.46f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+        Text(
+            text = item.name,
+            style =
+                if (badgeProjection.label != null) {
+                    SlockType.ButtonBold
+                } else {
+                    SlockType.Button
+                },
+            color = homeConversationTitleColor(item.activityMuted, item.joined),
+            modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        badgeProjection.label?.let { HomeUnreadBadge(it) }
+    }
+}
+
+private fun HomeServerDrawerConversationSection.toSlockHomeConversationSection(): SlockHomeConversationSection =
+    when (this) {
+        HomeServerDrawerConversationSection.Pinned -> SlockHomeConversationSection.Pinned
+        HomeServerDrawerConversationSection.Channel -> SlockHomeConversationSection.Channel
+        HomeServerDrawerConversationSection.JointChannel -> SlockHomeConversationSection.JointChannel
+        HomeServerDrawerConversationSection.DirectMessage -> SlockHomeConversationSection.DirectMessage
+    }
 
 @Composable
 private fun HomeServerDrawerServerHeader(

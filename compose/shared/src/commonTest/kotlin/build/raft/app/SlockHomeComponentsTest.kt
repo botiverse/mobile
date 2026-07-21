@@ -5,14 +5,22 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerLoadStatus
+import build.raft.app.data.HomeServerDrawerConversationSection
+import build.raft.app.data.HomeServerDrawerNormalizedContent
+import build.raft.app.data.HomeServerDrawerNormalizedRow
+import build.raft.app.data.HomeServerDrawerSectionState
+import build.raft.app.data.HomeServerDrawerState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.toHomeDirectMessageRow
+import build.raft.app.data.toHomeServerDrawerNormalizedContent
+import build.raft.app.data.homeServerDrawerNormalizedContentForSnapshot
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -30,6 +38,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
@@ -115,6 +124,147 @@ class SlockHomeComponentsTest {
         assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -71f))
         assertTrue(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -72f))
         assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = 120f))
+        assertFalse(shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp = 71f))
+        assertTrue(shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp = 72f))
+        assertFalse(shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp = -120f))
+    }
+
+    @Test
+    fun homeServerDrawerInteractiveMarkerClaimsExactlyOncePerOpenGeneration() {
+        val gate = HomeServerDrawerInteractiveMarkerGate()
+
+        assertTrue(gate.claim(4L))
+        assertFalse(gate.claim(4L))
+        assertTrue(gate.claim(5L))
+        assertFalse(gate.claim(5L))
+    }
+
+    @Test
+    fun hostedDrawerProjectionRetainsPreNormalizedTenThousandRowSnapshotByIdentity() {
+        val serverId = ServerId("server-scale")
+        val normalizedRows =
+            List(10_000) { index ->
+                HomeServerDrawerNormalizedRow.Conversation(
+                    section = HomeServerDrawerConversationSection.Channel,
+                    conversation =
+                        HomeChannelRow(
+                            threadId = ThreadId("channel-$index"),
+                            channelId = ChannelId("channel-$index"),
+                            name = "Channel $index"
+                        )
+                )
+            }
+        val normalizedContent = HomeServerDrawerNormalizedContent(normalizedRows, firstConversationIndex = 0)
+        val drawer =
+            HomeServerDrawerState(
+                expanded = true,
+                expandedServerIds = setOf(serverId),
+                sections =
+                    mapOf(
+                        serverId to
+                            HomeServerDrawerSectionState(
+                                server = ServerSummary(serverId, "Scale"),
+                                normalizedContent = normalizedContent,
+                                status = HomeServerDrawerLoadStatus.Loaded
+                            )
+                    )
+            )
+
+        val hostedSections = drawer.toSlockHomeServerDrawerHostedSections()
+
+        assertEquals(1, hostedSections.size)
+        assertSame(normalizedContent, hostedSections.single().normalizedContent)
+        assertSame(normalizedRows, hostedSections.single().normalizedContent.rows)
+    }
+
+    @Test
+    fun sameSnapshotDrawerToggleDoesNotRenormalizeTenThousandCachedRows() {
+        val snapshot = testHomeSnapshot()
+        val previous =
+            HomeServerDrawerNormalizedContent(
+                rows =
+                    List(10_000) { index ->
+                        HomeServerDrawerNormalizedRow.Conversation(
+                            section = HomeServerDrawerConversationSection.Channel,
+                            conversation =
+                                HomeChannelRow(
+                                    threadId = ThreadId("cached-$index"),
+                                    channelId = ChannelId("cached-$index"),
+                                    name = "Cached $index"
+                                )
+                        )
+                    },
+                firstConversationIndex = 0
+            )
+        var normalizeCalls = 0
+
+        val retained =
+            homeServerDrawerNormalizedContentForSnapshot(
+                previousSnapshot = snapshot,
+                nextSnapshot = snapshot,
+                previousContent = previous
+            ) {
+                normalizeCalls += 1
+                it.toHomeServerDrawerNormalizedContent()
+            }
+
+        assertSame(previous, retained)
+        assertEquals(0, normalizeCalls)
+    }
+
+    @Test
+    fun storeNormalizesDrawerOrderingPinnedAndHiddenRowsBeforeHostedProjection() {
+        val regular =
+            HomeChannelRow(
+                threadId = ThreadId("regular"),
+                channelId = ChannelId("regular"),
+                name = "Zulu"
+            )
+        val joint =
+            HomeChannelRow(
+                threadId = ThreadId("joint"),
+                channelId = ChannelId("joint"),
+                kind = ConversationKind.Joint,
+                name = "Joint"
+            )
+        val hiddenRead =
+            HomeDirectMessageRow(
+                threadId = ThreadId("hidden-read"),
+                channelId = ChannelId("hidden-read"),
+                name = "Hidden",
+                unreadCount = 0
+            )
+        val hiddenUnread =
+            HomeDirectMessageRow(
+                threadId = ThreadId("hidden-unread"),
+                channelId = ChannelId("hidden-unread"),
+                name = "Visible unread",
+                unreadCount = 2
+            )
+        val normalized =
+            testHomeSnapshot().copy(
+                channels = listOf(regular, joint),
+                directMessages = listOf(hiddenRead, hiddenUnread),
+                sidebarOrder =
+                    SettingsServerSidebarOrderSnapshot(
+                        channelSortMode = "az",
+                        pinned = listOf(SettingsServerSidebarPinnedItem("channel", "regular")),
+                        hiddenDmIds = listOf("hidden-read", "hidden-unread")
+                    )
+            ).toHomeServerDrawerNormalizedContent()
+        val conversations =
+            normalized.rows.filterIsInstance<HomeServerDrawerNormalizedRow.Conversation>()
+
+        assertEquals(1, normalized.firstConversationIndex)
+        assertEquals(
+            listOf(
+                HomeServerDrawerConversationSection.Pinned to "regular",
+                HomeServerDrawerConversationSection.Channel to "regular",
+                HomeServerDrawerConversationSection.JointChannel to "joint",
+                HomeServerDrawerConversationSection.DirectMessage to "hidden-unread"
+            ),
+            conversations.map { row -> row.section to row.conversation.threadId.value }
+        )
     }
 
     @Test
