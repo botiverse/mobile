@@ -94,6 +94,35 @@ class FocusDismissProductionContractTest {
         )
     }
 
+    @Test
+    fun feedbackMultilineSurfacesTerminateTheNativeImeOnBlurWithoutChangingOrdinaryInputs() {
+        val composer = source("build/raft/app/ThreadComposerPage.kt")
+        val settings = source("build/raft/app/SettingsHomePage.kt")
+        val members = source("build/raft/app/MembersPage.kt")
+        val brutal = source("build/raft/app/components/SlockBrutalComponents.kt")
+
+        assertContains(composer, "dismissKeyboardOnBlur: Boolean = false")
+        assertContains(
+            composer,
+            "if (dismissKeyboardOnBlur) {\n                                softwareKeyboardController?.hide()"
+        )
+        assertTrue(
+            commonMainRoot().readAllKotlin().occurrences("dismissKeyboardOnBlur = true") == 1,
+            "Only the Send feedback composer may opt into the explicit blur terminal"
+        )
+        assertContains(settings, "dismissKeyboardOnBlur = true")
+
+        val reportDialog =
+            functionBlock(
+                members,
+                "private fun MembersAgentIssueReportDialog(",
+                "@Composable\nprivate fun MembersAgentIssueReportOption("
+            )
+        assertContains(reportDialog, "val softwareKeyboardController = LocalSoftwareKeyboardController.current")
+        assertContains(reportDialog, "onBlur = { softwareKeyboardController?.hide() }")
+        assertContains(brutal, "onBlur: () -> Unit = {}")
+    }
+
     private fun source(path: String): String {
         val commonMain = commonMainRoot()
         val file = File(commonMain, path)

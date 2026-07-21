@@ -170,6 +170,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalSoftwareKeyboardController
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
@@ -4834,6 +4835,7 @@ private fun MembersAgentIssueReportDialog(
     onSubmit: (String, Boolean, Boolean, Boolean, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val softwareKeyboardController = LocalSoftwareKeyboardController.current
     var description by remember(agentName) { mutableStateOf("") }
     var consented by remember(agentName) { mutableStateOf(false) }
     var includeRecentMessages by remember(agentName) { mutableStateOf(true) }
@@ -4876,6 +4878,7 @@ private fun MembersAgentIssueReportDialog(
                 value = description,
                 placeholder = stringResource(MR.strings.member_report_issue_description_placeholder),
                 onValueChange = { description = it },
+                onBlur = { softwareKeyboardController?.hide() },
                 optional = true,
                 enabled = !busy,
                 maxLines = 4,

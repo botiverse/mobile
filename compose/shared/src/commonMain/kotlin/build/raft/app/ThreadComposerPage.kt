@@ -1029,6 +1029,7 @@ internal fun ThreadComposerContent(
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
+    dismissKeyboardOnBlur: Boolean = false,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit = {}
@@ -1047,6 +1048,7 @@ internal fun ThreadComposerContent(
         hostPaddingTop = hostPaddingTop,
         keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
         composerSendKeyEnabled = composerSendKeyEnabled,
+        dismissKeyboardOnBlur = dismissKeyboardOnBlur,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
         onSuggestionDemandChanged = onSuggestionDemandChanged
@@ -1065,6 +1067,7 @@ internal fun ThreadComposerContent(
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
     composerSendKeyEnabled: Boolean = false,
+    dismissKeyboardOnBlur: Boolean = false,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
@@ -1517,6 +1520,9 @@ internal fun ThreadComposerContent(
                         },
                         onBlur = {
                             focused = false
+                            if (dismissKeyboardOnBlur) {
+                                softwareKeyboardController?.hide()
+                            }
                             onEvent("blur", null, null, null)
                         },
                         maxLines = 4,
