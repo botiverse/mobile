@@ -74,13 +74,19 @@ no assignee, and are not already processing/refuted/agent-ready.
 
 For each claimed issue, `scripts/patrol/fix_queue.mjs` runs a bounded pipeline:
 
-1. derives React truth from the pinned Slock staging checkout plus the pinned
+1. requires the case in both the canonical manifest and exact published
+   comparison analysis, plus non-empty pinned React/RUI and Android/KMP source
+   authority, before spending any M3 call;
+2. derives React truth from the pinned Slock staging checkout plus the pinned
    `botiverse/rui` checkout, enumerating theme/state variants;
-2. asks M3 for a minimal, source-authoritative Android/KMP patch without
+3. asks M3 for a minimal, source-authoritative Android/KMP patch without
    applying it;
-3. gives the patch result (including a fail-closed no-patch result) to three
+4. validates every proposed patch path and unified-diff header against the
+   located Android product-source set, excluding tests, baselines, and shared
+   registries;
+5. gives the patch result (including a fail-closed no-patch result) to three
    independent M3 reviewers, so every admitted case has a full 3× panel record;
-4. records `REFUTED` with the precise flaw, or labels `UNREFUTED` as
+6. records `REFUTED` with the precise flaw, or labels `UNREFUTED` as
    `fix-queue:agent-ready` with the exact agent handoff: targeted Visual Testing,
    `visual_verify.py`, three-column evidence, then a draft PR.
 
@@ -93,8 +99,11 @@ Safety boundaries:
   duplicate consumption; terminal result labels prevent daily reprocessing;
 - daily case cap is clamped to 1–3; source prompt input is bounded and the
   token cap conservatively reserves 75k per selected issue before any M3 call;
-- full mobile/Slock/model/workflow/script provenance is uploaded and summarized
-  on the issue;
+- all three fresh panel replies must be valid strict JSON before a terminal
+  verdict; each model stage gets one bounded strict-JSON retry, and exhausted
+  retries remain `REVIEW` with a bounded redacted audit record;
+- full mobile/Slock/RUI/model/workflow/script provenance plus the gh-pages
+  analysis commit/path/hash is uploaded and summarized on the issue;
 - the job never applies product source, changes a baseline, opens or merges a
   PR. An implementation agent owns the targeted CI/evidence/draft-PR step, and
   product merge still requires the normal independent review and owner approval.

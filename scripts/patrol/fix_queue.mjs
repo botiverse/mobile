@@ -126,12 +126,20 @@ function releaseClaim(issue, opts) {
 
 function loadAnalysis(opts) {
   try {
+    const analysisPath = `visual-testing/latest/analysis/${opts.comparison}.json`;
     const text = execFileSync("git", ["-c", "submodule.recurse=false", "show",
-      `origin/gh-pages:visual-testing/latest/analysis/${opts.comparison}.json`],
+      `origin/gh-pages:${analysisPath}`],
     { cwd: opts.mobileRoot, encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
-    return JSON.parse(text);
+    return {
+      data: JSON.parse(text),
+      provenance: {
+        commit: execFileSync("git", ["rev-parse", "origin/gh-pages"], { cwd: opts.mobileRoot, encoding: "utf8" }).trim(),
+        path: analysisPath,
+        sha256: crypto.createHash("sha256").update(text).digest("hex"),
+      },
+    };
   } catch {
-    return { generatedAt: null, cases: [] };
+    return { data: { generatedAt: null, cases: [] }, provenance: null };
   }
 }
 
@@ -161,7 +169,10 @@ function sourceRecord(root, file) {
 }
 
 function sourceMatches(root, needles, limit = 5) {
-  const normalized = [...new Set(needles.filter(Boolean).map((needle) => String(needle).split(/[/.]/).pop()))];
+  const normalized = [...new Set(needles.filter(Boolean).flatMap((needle) => {
+    const text = String(needle);
+    return [text.split(/[/.]/).pop(), ...text.split(/[#:+/\s]/)].filter((part) => part && part.length >= 4);
+  }))];
   if (!normalized.length) return [];
   const matches = [];
   for (const file of walkFiles(root)) {
@@ -203,10 +214,14 @@ export function capSources(sources, maxChars = 60_000) {
 function collectSources(entry, opts) {
   const react = entry?.providerMatrix?.react || {};
   const android = entry?.providerMatrix?.android || {};
-  const reactExact = sourceRecord(opts.slockRoot, react.path ? path.join(opts.slockRoot, react.path) : "");
+  const reactHintPath = String(entry?.reactPathHint || "").split("#")[0];
+  const reactPath = react.path || reactHintPath;
+  const reactExact = sourceRecord(opts.slockRoot, reactPath ? path.join(opts.slockRoot, reactPath) : "");
   const androidExact = sourceRecord(opts.mobileRoot, android.path ? path.join(opts.mobileRoot, android.path) : "");
-  const reactComponents = react.components || [];
-  const androidComponents = android.components || [];
+  const reactComponents = [...(react.components || []), entry?.reactPathHint];
+  const androidComponents = [...(android.components || []), entry?.androidCaseHint];
+  const androidComponentSources = sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6)
+    .map((source) => ({ ...source, path: `compose/${source.path}` }));
   return {
     react: capSources(dedupeSources([
       reactExact,
@@ -215,34 +230,77 @@ function collectSources(entry, opts) {
     ])),
     android: capSources(dedupeSources([
       androidExact,
-      ...sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6),
+      ...androidComponentSources,
     ])),
   };
+}
+
+export function sourceAuthorityProblem(candidate) {
+  if (!candidate.manifest) return "case is absent from the canonical shared manifest";
+  if (!candidate.analysis) return "case is absent from the exact published comparison analysis";
+  if (!candidate.sources.react.length) return "no exact React/RUI source authority was located";
+  if (!candidate.sources.android.length) return "no exact Android/KMP source authority was located";
+  return null;
+}
+
+const FORBIDDEN_PATCH_PATH = /(^|\/)(?:test|tests|__tests__|baseline|baselines|snapshots?)(\/|$)|platformDivergences\.json$|sharedCases\.json$/i;
+
+export function patchScopeProblem(patchResult, androidSources) {
+  if (patchResult?.patchable === false) return null;
+  if (!Array.isArray(patchResult?.patch) || patchResult.patch.length === 0) return "patch generator emitted no patch";
+  const allowed = new Set(androidSources.map((source) => source.path));
+  for (const entry of patchResult.patch) {
+    const patchPath = String(entry?.path || "").replace(/^\.\//, "");
+    if (!allowed.has(patchPath)) return `patch path is outside located Android authority: ${patchPath || "<missing>"}`;
+    if (FORBIDDEN_PATCH_PATH.test(patchPath)) return `patch path is forbidden queue scope: ${patchPath}`;
+    const diff = String(entry?.diff || "");
+    if (!diff.includes(`--- a/${patchPath}`) || !diff.includes(`+++ b/${patchPath}`)) {
+      return `patch diff headers do not bind to declared path: ${patchPath}`;
+    }
+  }
+  return null;
 }
 
 function loadModels() {
   return import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all").then((sdk) => sdk.builtinModels());
 }
 
+function redactModelText(value, limit = 8_000) {
+  return String(value || "")
+    .replace(/sk_(agent|machine)_[A-Za-z0-9_-]+/g, "sk_$1_<redacted>")
+    .replace(/\b(api[_-]?key|authorization|token|password)\s*[:=]\s*[^\s,;]+/gi, "$1=<redacted>")
+    .slice(0, limit);
+}
+
 function parseJsonReply(message) {
   if (message.stopReason === "error" || message.stopReason === "aborted") throw new Error(message.errorMessage || message.stopReason);
   const text = message.content.filter((block) => block.type === "text").map((block) => block.text).join("\n").trim();
   const match = /\{[\s\S]*\}/.exec(text);
-  return JSON.parse(match ? match[0] : text);
+  return { data: JSON.parse(match ? match[0] : text), raw: redactModelText(text) };
 }
 
 async function completeJson(models, model, prompt, maxTokens) {
-  const controller = new AbortController();
-  const timeoutMs = 180_000;
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const message = await models.complete(model,
-      { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
-      { apiKey: process.env.MINIMAX_API_KEY || process.env.PI_API_KEY, maxTokens, signal: controller.signal, timeoutMs });
-    return { data: parseJsonReply(message), usage: message.usage || null };
-  } finally {
-    clearTimeout(timer);
+  const attempts = [];
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutMs = 180_000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const message = await models.complete(model,
+        { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
+        { apiKey: process.env.MINIMAX_API_KEY || process.env.PI_API_KEY, maxTokens, signal: controller.signal, timeoutMs });
+      const parsed = parseJsonReply(message);
+      attempts.push({ attempt, ok: true, raw: parsed.raw });
+      return { data: parsed.data, usage: message.usage || null, attempts };
+    } catch (error) {
+      attempts.push({ attempt, ok: false, error: redactModelText(error?.message || error) });
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  const error = new Error("strict JSON completion failed after 2 bounded attempts");
+  error.attempts = attempts;
+  throw error;
 }
 
 function truthPrompt(candidate) {
@@ -297,7 +355,7 @@ function reviewPrompt(candidate, truth, patchResult, voter) {
 export function panelDecision(votes, threshold) {
   const valid = votes.filter((vote) => !vote.error);
   const refuted = valid.filter((vote) => vote.refuted).length;
-  if (valid.length < 2) return { verdict: "REVIEW", valid: valid.length, refuted };
+  if (valid.length !== votes.length || valid.length < 3) return { verdict: "REVIEW", valid: valid.length, refuted };
   return { verdict: refuted >= threshold ? "REFUTED" : "UNREFUTED", valid: valid.length, refuted };
 }
 
@@ -309,21 +367,38 @@ function usageTokens(usage) {
 
 async function processCandidate(candidate, opts, models, model) {
   const usages = [];
-  const truthCall = await completeJson(models, model, truthPrompt(candidate), 3_072);
+  const audit = {};
+  let truthCall;
+  try {
+    truthCall = await completeJson(models, model, truthPrompt(candidate), 3_072);
+  } catch (error) {
+    return { verdict: "REVIEW", stage: "truth", specificFlaw: error.message, audit: { truth: error.attempts || [] }, votes: [], tokenUsage: 0 };
+  }
+  audit.truth = truthCall.attempts;
   usages.push(truthCall.usage);
   const truth = truthCall.data;
 
-  const patchCall = await completeJson(models, model, patchPrompt(candidate, truth), 4_096);
+  let patchCall;
+  try {
+    patchCall = await completeJson(models, model, patchPrompt(candidate, truth), 4_096);
+  } catch (error) {
+    return { verdict: "REVIEW", stage: "patch", specificFlaw: error.message, truth, audit: { ...audit, patch: error.attempts || [] }, votes: [], tokenUsage: usages.reduce((sum, usage) => sum + usageTokens(usage), 0) };
+  }
+  audit.patch = patchCall.attempts;
   usages.push(patchCall.usage);
   const patchResult = patchCall.data;
+  const scopeProblem = patchScopeProblem(patchResult, candidate.sources.android);
+  if (scopeProblem) {
+    return { verdict: "REVIEW", stage: "patch_scope", specificFlaw: scopeProblem, truth, patch: patchResult, audit, votes: [], tokenUsage: usages.reduce((sum, usage) => sum + usageTokens(usage), 0) };
+  }
 
   const votes = await Promise.all(Array.from({ length: opts.voters }, async (_, index) => {
     try {
       const call = await completeJson(models, model, reviewPrompt(candidate, truth, patchResult, index + 1), 2_048);
       usages.push(call.usage);
-      return { voter: index + 1, ...call.data };
+      return { voter: index + 1, ...call.data, audit: call.attempts };
     } catch (error) {
-      return { voter: index + 1, error: String(error?.message || error).slice(0, 300) };
+      return { voter: index + 1, error: String(error?.message || error).slice(0, 300), audit: error.attempts || [] };
     }
   }));
   const decision = panelDecision(votes, opts.threshold);
@@ -335,15 +410,16 @@ async function processCandidate(candidate, opts, models, model) {
     || votes.find((vote) => vote.refuted)?.reason
     || truth.specificFlaw
     || patchResult.specificFlaw
-    || (decision.verdict === "REVIEW" ? "Fewer than two valid independent panel votes." : null);
+    || (decision.verdict === "REVIEW" ? "All three independent panel votes must complete with valid strict JSON." : null);
   return {
     ...decision,
-    verdict: patchUsable ? decision.verdict : "REFUTED",
+    verdict: decision.verdict === "REVIEW" ? "REVIEW" : (patchUsable ? decision.verdict : "REFUTED"),
     stage: patchUsable ? "panel" : (truth.patchable === false ? "truth" : "patch"),
     specificFlaw: strongestFlaw || "M3 produced no safe minimal patch.",
     truth,
     patch: patchResult,
     votes,
+    audit,
     tokenUsage: usages.reduce((sum, usage) => sum + usageTokens(usage), 0),
   };
 }
@@ -370,7 +446,8 @@ export function resultComment(result, provenance) {
     "",
     next,
     "",
-    `**Provenance:** mobile \`${provenance.mobileSha}\` · slock \`${provenance.slockSha}\` · analysis \`${provenance.analysisGeneratedAt || "unavailable"}\` · model \`${provenance.model}\` · workflow \`${provenance.runKey}\``,
+    `**Provenance:** mobile \`${provenance.mobileSha}\` · slock \`${provenance.slockSha}\` · RUI \`${provenance.ruiSha || "unavailable"}\` · analysis \`${provenance.analysisGeneratedAt || "unavailable"}\` (` +
+      `${provenance.analysisSource?.commit || "no-commit"}:${provenance.analysisSource?.path || "no-path"} sha256=${provenance.analysisSource?.sha256 || "unavailable"}) · model \`${provenance.model}\` · workflow \`${provenance.runKey}\``,
     `**Budget:** reserved ${provenance.reservedTokens} tokens · reported usage ${result.tokenUsage || "unavailable"}`,
     "",
     "<details><summary>Truth / patch / independent votes</summary>",
@@ -399,7 +476,8 @@ async function main() {
   const opts = parseArgs();
   if (!process.env.PI_API_KEY && !process.env.MINIMAX_API_KEY) throw new Error("PI_API_KEY/MINIMAX_API_KEY is required");
   ensureLabels(opts);
-  const analysis = loadAnalysis(opts);
+  const analysisRecord = loadAnalysis(opts);
+  const analysis = analysisRecord.data;
   const analysisByCase = new Map((analysis.cases || []).map((entry) => [entry.id, entry]));
   const issues = listIssues(opts);
   const selected = selectFixQueueIssues(issues, opts.caseCap, opts.tokenCap);
@@ -414,7 +492,9 @@ async function main() {
     runKey,
     mobileSha: gitSha(opts.mobileRoot),
     slockSha: gitSha(opts.slockRoot),
+    ruiSha: gitSha(opts.ruiRoot),
     analysisGeneratedAt: analysis.generatedAt || null,
+    analysisSource: analysisRecord.provenance,
     model: `${provider}/${modelName}`,
     scriptSha256: scriptSha(),
     reservedTokens: DEFAULT_CASE_TOKEN_RESERVATION,
@@ -438,6 +518,22 @@ async function main() {
         manifest: entry,
         sources,
       };
+      const authorityProblem = sourceAuthorityProblem(candidate);
+      if (authorityProblem) {
+        const result = {
+          verdict: "REVIEW",
+          stage: "source_authority",
+          specificFlaw: authorityProblem,
+          manifestPresent: Boolean(entry),
+          analysisPresent: Boolean(candidate.analysis),
+          sourceCounts: { react: sources.react.length, android: sources.android.length },
+          votes: [],
+          tokenUsage: 0,
+        };
+        applyResult(issue, result, opts, provenance);
+        results.push({ issue: issue.number, caseId, ...result, provenance });
+        continue;
+      }
       const result = await processCandidate(candidate, opts, models, model);
       applyResult(issue, result, opts, provenance);
       results.push({ issue: issue.number, caseId, ...result, provenance });

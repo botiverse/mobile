@@ -5,8 +5,10 @@ import {
   dedupeSources,
   isEligibleIssue,
   panelDecision,
+  patchScopeProblem,
   resultComment,
   selectFixQueueIssues,
+  sourceAuthorityProblem,
 } from "./fix_queue.mjs";
 
 function issue(number, overrides = {}) {
@@ -39,10 +41,34 @@ test("selection drains oldest first while enforcing case and token caps", () => 
   assert.deepEqual(selectFixQueueIssues(issues, 3, 75_000).map((entry) => entry.number), [1]);
 });
 
-test("panel requires at least two valid voters and majority refutation", () => {
+test("panel requires all three valid voters and majority refutation", () => {
   assert.deepEqual(panelDecision([{ error: "x" }, { error: "y" }, { refuted: false }], 2), { verdict: "REVIEW", valid: 1, refuted: 0 });
+  assert.deepEqual(panelDecision([{ refuted: false }, { refuted: false }, { error: "timeout" }], 2), { verdict: "REVIEW", valid: 2, refuted: 0 });
   assert.deepEqual(panelDecision([{ refuted: true }, { refuted: true }, { refuted: false }], 2), { verdict: "REFUTED", valid: 3, refuted: 2 });
   assert.deepEqual(panelDecision([{ refuted: true }, { refuted: false }, { refuted: false }], 2), { verdict: "UNREFUTED", valid: 3, refuted: 1 });
+});
+
+test("source authority fails closed before model calls", () => {
+  const complete = {
+    manifest: { id: "case" },
+    analysis: { id: "case" },
+    sources: { react: [{ path: "a.tsx" }], android: [{ path: "a.kt" }] },
+  };
+  assert.equal(sourceAuthorityProblem(complete), null);
+  assert.match(sourceAuthorityProblem({ ...complete, manifest: null }), /canonical shared manifest/);
+  assert.match(sourceAuthorityProblem({ ...complete, analysis: null }), /published comparison analysis/);
+  assert.match(sourceAuthorityProblem({ ...complete, sources: { ...complete.sources, react: [] } }), /React\/RUI/);
+  assert.match(sourceAuthorityProblem({ ...complete, sources: { ...complete.sources, android: [] } }), /Android\/KMP/);
+});
+
+test("patch scope is restricted to located product sources and exact diff headers", () => {
+  const sources = [{ path: "compose/shared/src/commonMain/kotlin/Thing.kt" }];
+  assert.equal(patchScopeProblem({ patchable: true, patch: [{
+    path: sources[0].path,
+    diff: `--- a/${sources[0].path}\n+++ b/${sources[0].path}\n@@ -1 +1 @@`,
+  }] }, sources), null);
+  assert.match(patchScopeProblem({ patchable: true, patch: [{ path: "compose/shared/src/commonTest/ThingTest.kt", diff: "x" }] }, sources), /outside located/);
+  assert.match(patchScopeProblem({ patchable: true, patch: [{ path: sources[0].path, diff: "missing headers" }] }, sources), /diff headers/);
 });
 
 test("source records dedupe by repo-relative path", () => {
