@@ -157,12 +157,21 @@ task thread. Admission checklist for new cases:
   test. `withTimeout` alone is not an assertion. Polling waits must fail with
   a contextual message (`error("waited for X, state=$s")`), never a bare
   `TimeoutCancellationException`.
-- **Deterministic time.** New async tests use `runTest` + virtual time
-  (`kotlinx-coroutines-test` is in commonTest). No new real `delay`/`sleep`/
-  wall-clock polling or wall-clock duration assertions. Real-concurrency race
-  tests must use deterministic injection points (latches, admission hooks —
-  see `AttachmentDownloadCoordinatorRaceTest` for the pattern) and justify in
-  the PR why virtual time cannot express the interleaving.
+- **Deterministic time (JVM/common unit tests).** New async coroutine unit
+  tests use `runTest` + virtual time (`kotlinx-coroutines-test` is in
+  commonTest). No new real `delay`/`sleep`/wall-clock polling or wall-clock
+  duration assertions in JVM/common suites. Real-concurrency race tests must
+  use deterministic injection points (latches, admission hooks — see
+  `AttachmentDownloadCoordinatorRaceTest` for the pattern) and justify in the
+  PR why virtual time cannot express the interleaving.
+- **Device waits (instrumented tests).** Instrumentation/device lifecycle
+  states (activity stage changes, page-spec application, task counts) have no
+  virtual clock. When no deterministic callback exists, bounded monotonic
+  polling is allowed: short deadline, small interval, contextual failure
+  message on expiry (see `AndroidShellTaskReuseConnectedTest`'s wait
+  helpers), and the PR states why no deterministic hook applies. Never a
+  single unsynchronized read, never an unbounded wait, and never a wall-clock
+  duration assertion as the property under test.
 - **No literal clones.** A case differing from an existing one only in literal
   values is parameterized into it, not added as a new method.
 - **Shared fixtures.** Do not re-declare `sampleSession`/`Fake*` helpers per
