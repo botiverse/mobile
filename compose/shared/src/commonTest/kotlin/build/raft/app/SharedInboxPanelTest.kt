@@ -19,6 +19,7 @@ import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityPresentationCheckpoint
 import build.raft.app.data.SharedActivityPresentationStore
+import build.raft.app.components.SlockBrutalTone
 import build.raft.app.data.activityPendingUpdateIncrement
 import build.raft.app.data.activityPendingUpdateMarkers
 import build.raft.app.data.activityUpdatePresentation
@@ -1320,13 +1321,46 @@ class SharedInboxPanelTest {
 
         assertEquals(
             listOf(
-                SharedActivityFooterSlot.Replies,
                 SharedActivityFooterSlot.Task,
+                SharedActivityFooterSlot.Replies,
                 SharedActivityFooterSlot.Mention,
                 SharedActivityFooterSlot.New
             ),
             item.activityFooterSlots()
         )
+    }
+
+    @Test
+    fun activityFooterSlotsProjectEveryMetadataKindToSquareBadgeVisuals() {
+        assertEquals(
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.Cyan, SlockLucideIconName.Play),
+            SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress)
+        )
+        assertEquals(
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.White),
+            SharedActivityFooterSlot.Replies.badgeVisual()
+        )
+        assertEquals(
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.Yellow, SlockLucideIconName.AtSign),
+            SharedActivityFooterSlot.Mention.badgeVisual()
+        )
+        assertEquals(
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.Pink),
+            SharedActivityFooterSlot.New.badgeVisual()
+        )
+        assertEquals(
+            SharedActivityFooterBadgeVisual(SlockBrutalTone.White, SlockLucideIconName.Pencil),
+            SharedActivityFooterSlot.Draft.badgeVisual()
+        )
+    }
+
+    @Test
+    fun activityTaskBadgeVisualKeepsSharedStatusColors() {
+        assertEquals(SlockBrutalTone.Orange, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Todo).tone)
+        assertEquals(SlockBrutalTone.Cyan, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InProgress).tone)
+        assertEquals(SlockBrutalTone.Lavender, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.InReview).tone)
+        assertEquals(SlockBrutalTone.Lime, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Done).tone)
+        assertEquals(SlockBrutalTone.Stone, SharedActivityFooterSlot.Task.badgeVisual(TaskStatus.Closed).tone)
     }
 
     @Test
@@ -1395,7 +1429,7 @@ class SharedInboxPanelTest {
 
         assertEquals("#177 @Claude Assistant", item.activityTaskBadgeText())
         assertEquals(
-            listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Task),
+            listOf(SharedActivityFooterSlot.Task, SharedActivityFooterSlot.Replies),
             item.activityFooterSlots()
         )
     }
