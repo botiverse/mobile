@@ -273,6 +273,13 @@ jobs:
           mkdir -p m3 && cd m3
           npm i @earendil-works/pi-ai@0.80.10 --no-audit --no-fund
 
+      # Keep evidence behavior identical to Android: acceptance_agent imports
+      # sharp from the workspace root when it renders tap/assertion overlays.
+      # Without this explicit install, iOS uploads only raw screenshots and
+      # Stamp has no annotated frame to display.
+      - name: Install sharp (evidence annotation)
+        run: npm i --no-save sharp@0.33.5 --no-audit --no-fund
+
       - name: Start loop harness (background)
         working-directory: compose/iosApp
         run: |
