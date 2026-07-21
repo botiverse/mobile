@@ -27,6 +27,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { normalizeAssertionAnnotation } from "./assertion_annotations.mjs";
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
+import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -49,6 +50,7 @@ const opts = {
 // Non-null only on --platform ios; every device-touching helper below branches
 // on it first, so the Android code path is byte-for-byte what it always was.
 let drv = null;
+let modelCapacity = null;
 
 const SECRETS = {
   "{{QA_EMAIL}}": process.env.QA_TEST_EMAIL || "",
@@ -305,13 +307,26 @@ function recordSession(kind, payload) {
 }
 
 async function callModel(models, model, messages) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 120000);
-    try {
-      const msg = await models.complete(model, { messages },
-        { apiKey: piKey(), maxTokens: 1500, signal: controller.signal, timeoutMs: 120000 });
-      if (msg.stopReason === "error" || msg.stopReason === "aborted") throw new Error(msg.errorMessage || msg.stopReason);
+  const maxAttempts = Math.max(1, Math.min(6, Number(process.env.QA_MODEL_MAX_ATTEMPTS || "3")));
+  return runWithModelRetries({
+    capacity: modelCapacity,
+    maxAttempts,
+    retryBudgetMs: Number(process.env.QA_MODEL_RETRY_BUDGET_MS || "300000"),
+    invoke: async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 120000);
+      let msg;
+      try {
+        msg = await models.complete(model, { messages },
+          { apiKey: piKey(), maxTokens: 1500, signal: controller.signal, timeoutMs: 120000 });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (msg.stopReason === "error" || msg.stopReason === "aborted") {
+        const error = new Error(msg.errorMessage || msg.stopReason);
+        error.modelResponse = msg;
+        throw error;
+      }
       const text = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
       const u = msg.usage ?? {};
       modelUsage.calls++;
@@ -322,11 +337,26 @@ async function callModel(models, model, messages) {
       usageDetail.push({ call: modelUsage.calls, input: u.input ?? 0, output: u.output ?? 0, cacheRead: u.cacheRead ?? 0, cacheWrite: u.cacheWrite ?? 0 });
       recordSession("model_reply", { usage: { input: u.input ?? 0, output: u.output ?? 0, cacheRead: u.cacheRead ?? 0 }, reply: text });
       return text;
-    } catch (e) {
-      if (attempt === 3) throw e;
-      await new Promise((r) => setTimeout(r, 3000 * attempt));
-    } finally { clearTimeout(timer); }
-  }
+    },
+    onError: async ({ attempt, maxAttempts: attempts, classification, status, requestId, retryAfterMs, retryDelayMs: delay, retryable, retryBudgetMs, retryBudgetRemainingMs, retryBudgetExceeded, message }) => {
+      recordSession("model_error", {
+        attempt, max_attempts: attempts, classification,
+        status, request_id: requestId, retry_after_ms: retryAfterMs,
+        retry_delay_ms: delay, retryable, retry_budget_ms: retryBudgetMs,
+        retry_budget_remaining_ms: retryBudgetRemainingMs, retry_budget_exceeded: retryBudgetExceeded,
+        error: redact(message).slice(0, 300),
+      });
+      try {
+        fs.appendFileSync(path.join(opts.out, "model-capacity.jsonl"), `${JSON.stringify({
+          ts: Date.now(), event: "provider_error", attempt, max_attempts: attempts,
+          classification, status, request_id: requestId,
+          retry_after_ms: retryAfterMs, retry_delay_ms: delay, retryable,
+          retry_budget_ms: retryBudgetMs, retry_budget_remaining_ms: retryBudgetRemainingMs,
+          retry_budget_exceeded: retryBudgetExceeded,
+        })}\n`);
+      } catch {}
+    },
+  });
 }
 
 function parseAction(text) {
@@ -438,6 +468,10 @@ async function main() {
   if (!opts.goal) { console.error("no --goal / QA_GOAL"); process.exit(2); }
   if (!piKey()) { console.error("no PI_API_KEY/MINIMAX_API_KEY"); process.exit(2); }
   fs.mkdirSync(opts.out, { recursive: true });
+  modelCapacity = capacityClientFromEnv({
+    outDir: opts.out,
+    onEvent: (event) => recordSession("model_capacity", event),
+  });
   if (opts.platform === "ios") {
     if (!opts.iosIoDir) { console.error("--platform ios requires --ios-io-dir / QA_LOOP_IO_DIR"); process.exit(2); }
     const { createIosDriver } = await import("./ios_driver.mjs");

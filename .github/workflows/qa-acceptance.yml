@@ -418,6 +418,12 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         env:
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          PI_PROVIDER: ${{ vars.PI_PROVIDER || 'minimax' }}
+          PI_MODEL: ${{ vars.PI_MODEL || 'MiniMax-M3' }}
+          QA_MODEL_MAX_ATTEMPTS: ${{ vars.QA_MODEL_MAX_ATTEMPTS || '3' }}
+          QA_MODEL_RETRY_BUDGET_MS: ${{ vars.QA_MODEL_RETRY_BUDGET_MS || '300000' }}
+          QA_MODEL_RELEASE_ATTEMPTS: ${{ vars.QA_MODEL_RELEASE_ATTEMPTS || '3' }}
+          QA_MODEL_QUEUE_TIMEOUT_MS: ${{ vars.QA_MODEL_QUEUE_TIMEOUT_MS || '900000' }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
           QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}
           QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}

@@ -107,6 +107,7 @@ done
 [ -f "$EV/steps.jsonl" ] && upload "$EV/steps.jsonl" steps_log
 [ -f "$EV/usage.json" ] && upload "$EV/usage.json" usage
 [ -f "$EV/session.jsonl" ] && upload "$EV/session.jsonl" session_log
+[ -f "$EV/model-capacity.jsonl" ] && upload "$EV/model-capacity.jsonl" model_capacity
 [ -f "$EV/logcat.txt" ] && upload "$EV/logcat.txt" logcat
 for f in "$EV"/qa-rec-*.mp4; do [ -f "$f" ] && upload "$f" recording; done
 
