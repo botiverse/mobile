@@ -20388,6 +20388,8 @@ private data class ThreadForwardTargetItem(
     val title: String,
     val subtitle: String,
     val kind: ThreadForwardTargetKind,
+    val avatarWireValue: String? = null,
+    val avatarLabel: String = title.take(1).uppercase(),
     val forwardTarget: ForwardMessageTarget? = null
 )
 
@@ -20403,6 +20405,8 @@ private fun ForwardMessageTarget.toThreadForwardTargetItem(): ThreadForwardTarge
         id = threadForwardSelectionKey(),
         title = title,
         subtitle = threadForwardTargetSubtitle(),
+        avatarWireValue = avatarWireValue,
+        avatarLabel = avatarLabel,
         kind =
             when (kind) {
                 ForwardMessageTargetKind.RecentChannel -> ThreadForwardTargetKind.Channel
@@ -20483,7 +20487,9 @@ internal fun ThreadForwardModalVisualScreen() {
                         id = "dm-artin",
                         title = "artin",
                         subtitle = "Direct message",
-                        kind = ThreadForwardTargetKind.DirectMessage
+                        kind = ThreadForwardTargetKind.DirectMessage,
+                        avatarWireValue = AvatarReference.Random("artin").wireValue,
+                        avatarLabel = "A"
                     ),
                     ThreadForwardTargetItem(
                         id = "channel-android",
@@ -21110,24 +21116,31 @@ private fun ThreadForwardTargetRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(38.dp)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(
-                    when (target.kind) {
-                        ThreadForwardTargetKind.Channel,
-                        ThreadForwardTargetKind.PublicChannelUnjoined -> SlockLucideIconName.Hash
-                        ThreadForwardTargetKind.DirectMessage -> SlockLucideIconName.MessageCircle
-                        ThreadForwardTargetKind.Member -> SlockLucideIconName.User
-                    },
-                    modifier = Modifier.size(18.dp),
-                    color = "#FF111111"
-                )
+            when (target.kind) {
+                ThreadForwardTargetKind.DirectMessage,
+                ThreadForwardTargetKind.Member ->
+                    SlockAvatar(
+                        avatarWireValue = target.avatarWireValue,
+                        label = target.avatarLabel,
+                        avatarSize = 38.dp,
+                        borderWidth = SlockStroke.Default
+                    )
+                ThreadForwardTargetKind.Channel,
+                ThreadForwardTargetKind.PublicChannelUnjoined ->
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(38.dp)
+                                .background(SlockColor.BrandYellow)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockLucideIcon(
+                            SlockLucideIconName.Hash,
+                            modifier = Modifier.size(18.dp),
+                            color = "#FF111111"
+                        )
+                    }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
