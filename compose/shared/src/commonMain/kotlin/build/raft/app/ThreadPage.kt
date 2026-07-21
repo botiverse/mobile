@@ -91,6 +91,8 @@ import build.raft.app.data.SharedTasksEvent
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
+import build.raft.app.data.SharedTaskReferenceResolution
+import build.raft.app.data.SharedTaskReferenceResolutionSource
 import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.ThreadRowAffordancePreference
@@ -106,8 +108,8 @@ import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.PendingMentionActionExecuteResult
-import build.raft.app.data.TaskFilter
 import build.raft.app.data.TasksUiState
+import build.raft.app.data.resolveSharedTaskReference
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
 import build.raft.app.data.actionCardFromMessageMetadata
@@ -1763,11 +1765,33 @@ internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
 
 internal sealed interface MarkdownTaskNumberOpenResult {
-    data class Found(val task: TaskSummary, val payload: KuiklyThreadScreenPayload) : MarkdownTaskNumberOpenResult
-    data class Ambiguous(val taskNumber: Int, val candidates: List<TaskSummary>) : MarkdownTaskNumberOpenResult
+    data class Found(
+        val task: TaskSummary,
+        val payload: KuiklyThreadScreenPayload,
+        val source: SharedTaskReferenceResolutionSource
+    ) : MarkdownTaskNumberOpenResult
+
+    data class Ambiguous(
+        val taskNumber: Int,
+        val candidates: List<TaskSummary>,
+        val source: SharedTaskReferenceResolutionSource
+    ) : MarkdownTaskNumberOpenResult
+
     data object NotFound : MarkdownTaskNumberOpenResult
     data object AuthRequired : MarkdownTaskNumberOpenResult
     data object Failed : MarkdownTaskNumberOpenResult
+}
+
+internal class MarkdownTaskNumberOpenRequestGate {
+    private var generation: Long = 0L
+
+    fun nextRequest(): Long {
+        generation += 1L
+        return generation
+    }
+
+    fun <T> accept(requestGeneration: Long, value: T): T? =
+        value.takeIf { requestGeneration == generation }
 }
 
 internal suspend fun openMarkdownTaskNumberPayload(
@@ -1779,96 +1803,40 @@ internal suspend fun openMarkdownTaskNumberPayload(
     tasksDataStore: SharedTasksDataStore?,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null
 ): MarkdownTaskNumberOpenResult {
-    currentTaskChannelId?.let { channelId ->
-        when (
-            val channelResult =
-                tasksDataSource.loadChannelTaskByNumber(
-                    channelId = channelId,
-                    taskNumber = taskNumber,
-                    priority = DataRequestPriority.Foreground
-                )
-        ) {
-            is DataResult.Content -> {
-                val task = channelResult.data.task
-                val payload =
-                    currentPayload.markdownTaskNumberLaunchPayload(
-                        task = task,
-                        serverId = serverId,
-                        conversationIdentityProvider = conversationIdentityProvider
-                    )
-                        ?: return MarkdownTaskNumberOpenResult.Failed
-                tasksDataStore?.upsertTask(serverId.value, task)
-                return MarkdownTaskNumberOpenResult.Found(task, payload)
-            }
-            is DataResult.NoPermission -> return MarkdownTaskNumberOpenResult.AuthRequired
-            is DataResult.Empty,
-            is DataResult.Error -> Unit
-        }
-    }
-    val snapshot =
-        when (
-            val result =
-                tasksDataStore?.loadSnapshot(
-                    serverId = serverId.value,
-                    scope = SharedTasksScope.Server,
-                    forceRefresh = true
-                ) {
-                    tasksDataSource.loadTasks(
-                        serverId = serverId,
-                        filter = TaskFilter(),
-                        priority = DataRequestPriority.Foreground
-                    )
-                } ?: tasksDataSource.loadTasks(
+    return when (
+        val resolution =
+            resolveSharedTaskReference(
+                serverId = serverId,
+                taskNumber = taskNumber,
+                currentChannelId = currentTaskChannelId,
+                tasksDataSource = tasksDataSource,
+                tasksDataStore = tasksDataStore
+            )
+    ) {
+        is SharedTaskReferenceResolution.Found -> {
+            val payload =
+                currentPayload.markdownTaskNumberLaunchPayload(
+                    task = resolution.task,
                     serverId = serverId,
-                    filter = TaskFilter(),
-                    priority = DataRequestPriority.Foreground
-                )
-        ) {
-            is DataResult.Content -> result.data
-            is DataResult.Empty -> return MarkdownTaskNumberOpenResult.NotFound
-            is DataResult.Error -> return MarkdownTaskNumberOpenResult.Failed
-            is DataResult.NoPermission -> return MarkdownTaskNumberOpenResult.AuthRequired
+                    conversationIdentityProvider = conversationIdentityProvider
+                ) ?: return MarkdownTaskNumberOpenResult.Failed
+            MarkdownTaskNumberOpenResult.Found(
+                task = resolution.task,
+                payload = payload,
+                source = resolution.source
+            )
         }
-    val matches = snapshot.tasks.filter { task -> task.taskNumber == taskNumber }
-    val selected =
-        when (matches.size) {
-            0 -> return MarkdownTaskNumberOpenResult.NotFound
-            1 -> matches.single()
-            else -> {
-                val currentChannelMatches =
-                    currentTaskChannelId?.let { channelId ->
-                        matches.filter { task -> task.channelId == channelId }
-                    }.orEmpty()
-                if (currentChannelMatches.size == 1) {
-                    currentChannelMatches.single()
-                } else {
-                    return MarkdownTaskNumberOpenResult.Ambiguous(
-                        taskNumber = taskNumber,
-                        candidates = matches.threadMarkdownTaskCandidates(currentTaskChannelId)
-                    )
-                }
-            }
-        }
-    val payload =
-        currentPayload.markdownTaskNumberLaunchPayload(
-            task = selected,
-            serverId = serverId,
-            conversationIdentityProvider = conversationIdentityProvider
-        )
-            ?: return MarkdownTaskNumberOpenResult.Failed
-    tasksDataStore?.upsertTask(serverId.value, selected)
-    return MarkdownTaskNumberOpenResult.Found(selected, payload)
+        is SharedTaskReferenceResolution.Ambiguous ->
+            MarkdownTaskNumberOpenResult.Ambiguous(
+                taskNumber = resolution.taskNumber,
+                candidates = resolution.candidates,
+                source = resolution.source
+            )
+        SharedTaskReferenceResolution.NotFound -> MarkdownTaskNumberOpenResult.NotFound
+        SharedTaskReferenceResolution.AuthRequired -> MarkdownTaskNumberOpenResult.AuthRequired
+        SharedTaskReferenceResolution.Failed -> MarkdownTaskNumberOpenResult.Failed
+    }
 }
-
-private fun List<TaskSummary>.threadMarkdownTaskCandidates(currentTaskChannelId: ChannelId?): List<TaskSummary> =
-    sortedWith(
-        compareByDescending<TaskSummary> { task ->
-            currentTaskChannelId != null && task.channelId == currentTaskChannelId
-        }
-            .thenBy { task -> task.channelName.orEmpty().lowercase() }
-            .thenBy { task -> task.title.lowercase() }
-            .thenBy { task -> task.id.value }
-    )
 
 internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(
     task: TaskSummary,
@@ -4261,6 +4229,9 @@ internal fun SharedThreadRouteContent(
     var markdownTaskCandidateModalState by remember(threadInstanceKey) {
         mutableStateOf<ThreadMarkdownTaskCandidateModalState?>(null)
     }
+    val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
+        MarkdownTaskNumberOpenRequestGate()
+    }
     var createAgentComputerServerId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var createAgentComputerServerResolved by remember(threadInstanceKey) { mutableStateOf(false) }
     LaunchedEffect(threadInstanceKey, currentSession?.currentServerId) {
@@ -6472,6 +6443,8 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
+                    markdownTaskOpenRequestGate.nextRequest()
+                    markdownTaskCandidateModalState = null
                     val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
                         bridge.toast(unableToOpenTaskLabel)
@@ -6512,22 +6485,39 @@ internal fun SharedThreadRouteContent(
                         bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                         return@ThreadPageContent
                     }
-                    coroutineScope.launch {
-                        when (
-                            val result =
-                                openMarkdownTaskNumberPayload(
-                                    serverId = ServerId(currentServerId),
-                                    taskNumber = taskNumber,
-                                    currentPayload = renderedThread,
-                                    currentTaskChannelId = taskChannelId,
-                                    tasksDataSource = tasksDataSource,
-                                    tasksDataStore = tasksDataStore,
-                                    conversationIdentityProvider = conversationIdentityProvider
-                                )
-                        ) {
+                    val requestGeneration = markdownTaskOpenRequestGate.nextRequest()
+                    markdownTaskCandidateModalState = null
+                    val resolveStartedAt = TimeSource.Monotonic.markNow()
+                    bridge.log(
+                        "thread_markdown_task_resolve result=start taskNumber=$taskNumber " +
+                            "generation=$requestGeneration"
+                    )
+                    coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        val resolved =
+                            openMarkdownTaskNumberPayload(
+                                serverId = ServerId(currentServerId),
+                                taskNumber = taskNumber,
+                                currentPayload = renderedThread,
+                                currentTaskChannelId = taskChannelId,
+                                tasksDataSource = tasksDataSource,
+                                tasksDataStore = tasksDataStore,
+                                conversationIdentityProvider = conversationIdentityProvider
+                            )
+                        val result = markdownTaskOpenRequestGate.accept(requestGeneration, resolved)
+                        if (result == null) {
+                            bridge.log(
+                                "thread_markdown_task_resolve result=stale taskNumber=$taskNumber " +
+                                    "generation=$requestGeneration " +
+                                    "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                            )
+                            return@launch
+                        }
+                        when (result) {
                             is MarkdownTaskNumberOpenResult.Found -> {
                                 bridge.log(
                                     "thread_markdown_task_open taskNumber=$taskNumber taskId=${result.task.id.value} " +
+                                        "source=${result.source.name} generation=$requestGeneration " +
+                                        "resolveDurationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds} " +
                                         "parentChannelId=${result.payload.parentChannelId.orEmpty()} " +
                                         "parentMessageId=${result.payload.parentMessageId.orEmpty()} " +
                                         "threadId=${result.payload.streamChannelId.orEmpty()}"
@@ -6535,6 +6525,12 @@ internal fun SharedThreadRouteContent(
                                 onOpenThreadPayload(result.payload)
                             }
                             is MarkdownTaskNumberOpenResult.Ambiguous -> {
+                                bridge.log(
+                                    "thread_markdown_task_resolve result=ambiguous taskNumber=$taskNumber " +
+                                        "source=${result.source.name} generation=$requestGeneration " +
+                                        "candidateCount=${result.candidates.size} " +
+                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                )
                                 markdownTaskCandidateModalState =
                                     ThreadMarkdownTaskCandidateModalState(
                                         taskNumber = result.taskNumber,
@@ -6542,14 +6538,29 @@ internal fun SharedThreadRouteContent(
                                     )
                             }
                             MarkdownTaskNumberOpenResult.NotFound -> {
+                                bridge.log(
+                                    "thread_markdown_task_resolve result=not_found taskNumber=$taskNumber " +
+                                        "generation=$requestGeneration " +
+                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                )
                                 bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
                             }
                             MarkdownTaskNumberOpenResult.AuthRequired -> {
+                                bridge.log(
+                                    "thread_markdown_task_resolve result=auth_required taskNumber=$taskNumber " +
+                                        "generation=$requestGeneration " +
+                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                )
                                 routeAuthRequired(
                                     DataResult.NoPermission(PermissionBlocker(code = "tasks_401"))
                                 )
                             }
                             MarkdownTaskNumberOpenResult.Failed -> {
+                                bridge.log(
+                                    "thread_markdown_task_resolve result=failed taskNumber=$taskNumber " +
+                                        "generation=$requestGeneration " +
+                                        "durationMs=${resolveStartedAt.elapsedNow().inWholeMilliseconds}"
+                                )
                                 bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
                             }
                         }
