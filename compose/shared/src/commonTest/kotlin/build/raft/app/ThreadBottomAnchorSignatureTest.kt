@@ -916,6 +916,46 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun initialBottomAnchor_invisiblePaddingPrepositionsThenContinuesAnchoring() {
+        assertEquals(
+            ThreadInitialBottomAnchorStage.PrepositionThenAnchor,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = false,
+                userScrollInProgress = false,
+                latestItemVisible = false
+            )
+        )
+        assertEquals(
+            ThreadInitialBottomAnchorStage.Anchor,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = false,
+                userScrollInProgress = false,
+                latestItemVisible = true
+            )
+        )
+    }
+
+    @Test
+    fun initialBottomAnchor_userGestureOwnsPendingViewport() {
+        assertEquals(
+            ThreadInitialBottomAnchorStage.UserOwned,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = false,
+                userScrollInProgress = true,
+                latestItemVisible = false
+            )
+        )
+        assertEquals(
+            ThreadInitialBottomAnchorStage.Settled,
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = true,
+                userScrollInProgress = true,
+                latestItemVisible = false
+            )
+        )
+    }
+
+    @Test
     fun latestMessageListItemIndex_appendingMessage_changesIndex() {
         val a = payload(messages = listOf(message("m1")), originStatus = "content")
         val b = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")

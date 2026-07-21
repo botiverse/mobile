@@ -13572,17 +13572,31 @@ private fun ThreadMessagesList(
                     "elapsedMs=$bottomAnchorFocusedYieldElapsedMs"
             )
         }
-        // A drag during the initial-anchor window wins: reveal the list where
-        // the user already is instead of yanking to the bottom (task #554
-        // pattern scan — entry-window race).
-        if (!initialBottomAnchorReady && listState.isScrollInProgress) {
-            initialBottomAnchorReady = true
-            return@LaunchedEffect
-        }
-        if (!initialBottomAnchorReady && !listState.isThreadItemVisible(latestItemIndex)) {
-            listState.scrollToItem(latestItemIndex)
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            return@LaunchedEffect
+        when (
+            threadInitialBottomAnchorStage(
+                initialBottomAnchorReady = initialBottomAnchorReady,
+                userScrollInProgress = listState.isScrollInProgress,
+                latestItemVisible = listState.isThreadItemVisible(latestItemIndex)
+            )
+        ) {
+            ThreadInitialBottomAnchorStage.UserOwned -> {
+                // A drag during the initial-anchor window wins: reveal the list where
+                // the user already is instead of yanking to the bottom (task #554
+                // pattern scan — entry-window race).
+                initialBottomAnchorReady = true
+                return@LaunchedEffect
+            }
+            ThreadInitialBottomAnchorStage.PrepositionThenAnchor -> {
+                // latestItemIndex is the synthetic bottom-padding item. When content
+                // arrives after rememberLazyListState was created, snapping that item
+                // to the viewport start is only a measurement preposition; returning
+                // here strands the viewport on empty padding until the first gesture.
+                // Continue into the existing bottom-alignment owner in the same effect.
+                listState.scrollToItem(latestItemIndex)
+                delay(ThreadLayoutStabilityFrameDelayMs)
+            }
+            ThreadInitialBottomAnchorStage.Anchor,
+            ThreadInitialBottomAnchorStage.Settled -> Unit
         }
         if (!initialBottomAnchorReady) {
             while (!initialBottomAnchorReady) {
@@ -14659,6 +14673,25 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
 
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     latestItemIndex.coerceAtLeast(0)
+
+internal enum class ThreadInitialBottomAnchorStage {
+    UserOwned,
+    PrepositionThenAnchor,
+    Anchor,
+    Settled
+}
+
+internal fun threadInitialBottomAnchorStage(
+    initialBottomAnchorReady: Boolean,
+    userScrollInProgress: Boolean,
+    latestItemVisible: Boolean
+): ThreadInitialBottomAnchorStage =
+    when {
+        initialBottomAnchorReady -> ThreadInitialBottomAnchorStage.Settled
+        userScrollInProgress -> ThreadInitialBottomAnchorStage.UserOwned
+        !latestItemVisible -> ThreadInitialBottomAnchorStage.PrepositionThenAnchor
+        else -> ThreadInitialBottomAnchorStage.Anchor
+    }
 
 internal fun KuiklyThreadMessageItem.threadMessageRenderIdentity(): String =
     randomId?.trim()?.takeIf { it.isNotBlank() }?.let { "random:$it" }
