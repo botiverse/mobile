@@ -25,6 +25,8 @@ internal expect fun slockPlatformDefaultAppTabBarRenderer(): String?
 // keep the shared controls until their native players grow an equivalent.
 internal expect fun slockPlatformUsesNativeVideoController(): Boolean
 
+internal expect fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean
+
 // task #90: each platform is a separate Quiver app with its own release
 // stream, so the release-notes slug must be injected per platform (like the
 // build version), not hardcoded in commonMain. These MUST stay in sync with

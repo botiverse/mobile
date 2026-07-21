@@ -1121,6 +1121,13 @@ data class SettingsMobileSnapshot(
     val muteServer: SettingsMobileToggleSnapshot,
     val serverNotificationMode: SettingsMobileSelectionSnapshot =
         ServerPushMode.All.toSettingsMobileSelectionSnapshot(available = false),
+    val pushMessagePreviews: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = true,
+            available = false,
+            statusLabel = "Unsupported",
+            detail = "Message preview privacy is not available on this server."
+        ),
     val sendTestEnabled: Boolean = false,
     val notificationPermission: SettingsMobileActionSnapshot =
         SettingsMobileActionSnapshot(
@@ -1272,6 +1279,15 @@ enum class ServerPushMode(val wireName: String) {
 
     companion object {
         fun fromWire(value: String?): ServerPushMode? = entries.firstOrNull { it.wireName == value }
+    }
+}
+
+enum class PushPreviewMode(val wireName: String) {
+    Full("full"),
+    Private("private");
+
+    companion object {
+        fun fromWire(value: String?): PushPreviewMode? = entries.firstOrNull { it.wireName == value }
     }
 }
 

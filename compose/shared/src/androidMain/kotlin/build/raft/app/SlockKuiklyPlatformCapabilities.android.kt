@@ -14,6 +14,8 @@ internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = null
 // Media3 PlayerView ships the mature controller (task #556 phase 2).
 internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
+internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-android"
 
 // Android's core-render-android draws the chip and char-wraps natively.

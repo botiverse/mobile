@@ -129,6 +129,7 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetForegroundKeepAlivePreference -> MviActionKey(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE)
                 is SharedSettingsIntent.SetServerMute,
                 is SharedSettingsIntent.SetServerNotificationMode -> MviActionKey(MOBILE_ACTION_SERVER_MUTE)
+                is SharedSettingsIntent.SetPushPreviewMode -> MviActionKey(MOBILE_ACTION_PUSH_PREVIEW_MODE)
                 is SharedSettingsIntent.SetLocale -> MviActionKey(MOBILE_ACTION_LANGUAGE)
                 is SharedSettingsIntent.SetMessageAlignment -> MviActionKey(MOBILE_ACTION_MESSAGE_ALIGNMENT)
                 is SharedSettingsIntent.SetLinkOpenMode -> MviActionKey(MOBILE_ACTION_LINK_OPEN_MODE)

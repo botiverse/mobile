@@ -1256,6 +1256,8 @@ class RealSettingsRepository(
             } ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
         val serverNotificationMode =
             (serverNotificationPreferences as? DataResult.Content)?.data?.mode ?: ServerPushMode.All
+        val pushPreviewMode =
+            (serverNotificationPreferences as? DataResult.Content)?.data?.pushPreviewMode ?: PushPreviewMode.Full
         return DataResult.Content(
             SettingsMobileSnapshot(
                 pushNotifications = SettingsMobileToggleSnapshot(
@@ -1289,6 +1291,16 @@ class RealSettingsRepository(
                                 ?.data
                                 ?.canonicalModeSupported == true,
                         detail = "Choose all messages, only direct mentions, or no push notifications for this workspace."
+                    ),
+                pushMessagePreviews =
+                    SettingsMobileToggleSnapshot(
+                        enabled = pushPreviewMode == PushPreviewMode.Full,
+                        available =
+                            (serverNotificationPreferences as? DataResult.Content)
+                                ?.data
+                                ?.pushPreviewModeSupported == true,
+                        statusLabel = if (pushPreviewMode == PushPreviewMode.Full) "Shown" else "Hidden",
+                        detail = "Controls whether iOS push alerts include message details."
                     ),
                 sendTestEnabled = true
             )
@@ -1371,6 +1383,29 @@ class RealSettingsRepository(
 
     override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> =
         setServerNotificationMode(if (enabled) ServerPushMode.None else ServerPushMode.All)
+
+    override suspend fun setPushPreviewMode(mode: PushPreviewMode): DataResult<SettingsMobileSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val current = fetchServerNotificationPreferences(serverId)
+        val preferences = (current as? DataResult.Content)?.data
+            ?: return when (current) {
+                is DataResult.Empty -> current
+                is DataResult.Error -> current
+                is DataResult.NoPermission -> current
+                is DataResult.Content -> error("unreachable")
+            }
+        if (!preferences.pushPreviewModeSupported) {
+            return DataResult.Error(
+                ScreenError(code = "settings_push_preview_mode_unsupported", retryable = false)
+            )
+        }
+        return when (val result = settingsUpdatePushPreviewMode(serverId, mode)) {
+            is DataResult.Content -> getMobileSettings()
+            is DataResult.Empty -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
 
     private suspend fun settingsComputers(
         serverId: String,
@@ -2097,6 +2132,26 @@ class RealSettingsRepository(
                     } else {
                         buildSharedSettingsLegacyServerMuteBody(mode == ServerPushMode.None)
                     }
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsServerNotificationSettings(bodyText, warningLogger)
+                    ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsUpdatePushPreviewMode(
+        serverId: String,
+        mode: PushPreviewMode
+    ): DataResult<SettingsServerNotificationPreferences> =
+        executeTypedSettings(
+            source = "settings_push_preview_mode_update",
+            contractCode = "settings_server_notification_settings_contract_mismatch",
+            block = {
+                networkClient.updateSettingsNotificationSettings(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    buildSharedSettingsPushPreviewModeBody(mode)
                 )
             },
             mapper = { bodyText ->
@@ -3091,6 +3146,14 @@ data class SettingsServerNotificationModeRequestBody(
 
 fun buildSharedSettingsServerNotificationModeBody(mode: ServerPushMode): String =
     settingsRepositoryJson.encodeToString(SettingsServerNotificationModeRequestBody(serverPushMode = mode.wireName))
+
+@Serializable
+data class SettingsPushPreviewModeRequestBody(
+    val pushPreviewMode: String
+)
+
+fun buildSharedSettingsPushPreviewModeBody(mode: PushPreviewMode): String =
+    settingsRepositoryJson.encodeToString(SettingsPushPreviewModeRequestBody(pushPreviewMode = mode.wireName))
 
 fun buildSharedSettingsServerMuteBody(enabled: Boolean): String =
     buildSharedSettingsServerNotificationModeBody(if (enabled) ServerPushMode.None else ServerPushMode.All)

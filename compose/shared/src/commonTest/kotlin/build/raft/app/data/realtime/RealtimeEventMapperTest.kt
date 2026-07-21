@@ -1037,7 +1037,8 @@ class RealtimeEventMapperTest {
                   "prefs": {
                     "serverPushMuted": false,
                     "serverPushMentionsOnly": true,
-                    "serverPushMode": "mentions"
+                    "serverPushMode": "mentions",
+                    "pushPreviewMode": "private"
                   },
                   "prefsVersion": 4
                 }
@@ -1047,7 +1048,32 @@ class RealtimeEventMapperTest {
         val changed = assertIs<ServerNotificationPreferencesChanged>(event)
         assertEquals("server-1", changed.serverId.value)
         assertEquals("mentions", changed.serverPushMode)
+        assertEquals("private", changed.pushPreviewMode)
         assertEquals(4L, changed.prefsVersion)
+    }
+
+    @Test
+    fun serverNotificationPrefsUpdatedRejectsUnknownPushPreviewMode() {
+        val diagnostics = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = diagnostics::add).map(
+                RealtimeSocketEvents.NotificationPrefsUpdated,
+                """
+                {
+                  "serverId": "server-1",
+                  "scopeId": "server-1",
+                  "prefs": {
+                    "serverPushMuted": false,
+                    "serverPushMode": "all",
+                    "pushPreviewMode": "future"
+                  },
+                  "prefsVersion": 5
+                }
+                """.trimIndent()
+            )
+
+        assertNull(event)
+        assertTrue(diagnostics.any { it.contains("realtime_server_notification") && it.contains("push_preview_mode") })
     }
 
     @Test

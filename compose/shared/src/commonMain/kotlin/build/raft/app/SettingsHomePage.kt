@@ -61,6 +61,7 @@ import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
 import build.raft.app.data.MOBILE_ACTION_PERMISSION
 import build.raft.app.data.MOBILE_ACTION_SERVER_MUTE
+import build.raft.app.data.MOBILE_ACTION_PUSH_PREVIEW_MODE
 import build.raft.app.data.MOBILE_ACTION_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
@@ -194,6 +195,7 @@ import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.ServerSwitcherOrderPreference
 import build.raft.app.data.ServerPushMode
+import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -6049,6 +6051,9 @@ private fun SettingsAppShellContent(
                     onServerNotificationModeChange = { mode ->
                         onSettingsIntent(SharedSettingsIntent.SetServerNotificationMode(mode))
                     },
+                    onPushPreviewModeChange = { mode ->
+                        onSettingsIntent(SharedSettingsIntent.SetPushPreviewMode(mode))
+                    },
                     onPermission = { onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission) },
                     onSettings = { onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings) },
                     onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
@@ -8003,6 +8008,7 @@ private fun SettingsNotificationsContent(
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
     onForegroundMessageBannersChange: (Boolean) -> Unit,
     onServerNotificationModeChange: (String) -> Unit,
+    onPushPreviewModeChange: (String) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
     onTest: () -> Unit,
@@ -8077,6 +8083,15 @@ private fun SettingsNotificationsContent(
                         actionState = actionState,
                         onServerNotificationModeChange = onServerNotificationModeChange
                     )
+                }
+                if (slockPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushMessagePreviews.available) {
+                    item {
+                        SettingsPushPreviewModeCard(
+                            snapshot = snapshot,
+                            actionState = actionState,
+                            onPushPreviewModeChange = onPushPreviewModeChange
+                        )
+                    }
                 }
             }
         }
@@ -8374,6 +8389,35 @@ private fun SettingsServerNotificationModeCard(
         }
     }
 }
+
+@Composable
+private fun SettingsPushPreviewModeCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onPushPreviewModeChange: (String) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.inProgress
+    val preference = snapshot.pushMessagePreviews
+    SettingsNotificationPreferenceGroup {
+        SettingsNotificationToggleRow(
+            title = stringResource(MR.strings.settings_notifications_show_previews_title),
+            detail = stringResource(MR.strings.settings_notifications_show_previews_detail),
+            checked = preference.enabled,
+            enabled = preference.available && !busy,
+            onCheckedChange = { enabled ->
+                onPushPreviewModeChange(pushPreviewModeForEnabled(enabled).wireName)
+            }
+        )
+        if (actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.errorCode != null) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+                SettingsFormErrorText(actionState.errorCode.orEmpty())
+            }
+        }
+    }
+}
+
+internal fun pushPreviewModeForEnabled(enabled: Boolean): PushPreviewMode =
+    if (enabled) PushPreviewMode.Full else PushPreviewMode.Private
 
 @Composable
 private fun ServerPushMode.settingsNotificationModeTitle(): String =
@@ -20380,6 +20424,7 @@ private fun SettingsVisualNotificationsContent() {
         onForegroundKeepAlivePreferenceChange = {},
         onForegroundMessageBannersChange = {},
         onServerNotificationModeChange = {},
+        onPushPreviewModeChange = {},
         onPermission = {},
         onSettings = {},
         onTest = {},
@@ -20652,6 +20697,13 @@ private fun settingsVisualMobileSnapshot(): SettingsMobileSnapshot =
                 available = true,
                 statusLabel = "Unmuted",
                 detail = "This server can send push notifications."
+            ),
+        pushMessagePreviews =
+            build.raft.app.data.SettingsMobileToggleSnapshot(
+                enabled = true,
+                available = true,
+                statusLabel = "Shown",
+                detail = "Message details are included in iOS push notifications."
             ),
         sendTestEnabled = true,
         notificationPermission =

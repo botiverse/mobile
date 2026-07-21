@@ -402,6 +402,7 @@ sealed interface SharedSettingsIntent {
     data class SetForegroundKeepAlivePreference(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerMute(val enabled: Boolean) : SharedSettingsIntent
     data class SetServerNotificationMode(val mode: String) : SharedSettingsIntent
+    data class SetPushPreviewMode(val mode: String) : SharedSettingsIntent
     data class SetLanguageRegionServerTranslation(val enabled: Boolean) : SharedSettingsIntent
     data class SetTranslationMode(val mode: String) : SharedSettingsIntent
     data class SetTranslationTargetLanguage(val language: String) : SharedSettingsIntent
@@ -930,6 +931,21 @@ class SharedSettingsDataSource(
             settingsRepository as? SettingsServerActionRepository
                 ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         return when (val result = repository.setServerNotificationMode(selectedMode)) {
+            is DataResult.Content -> DataResult.Content(result.data.withLocalMobilePreferences())
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    suspend fun setPushPreviewMode(mode: String): DataResult<SettingsMobileSnapshot> {
+        val selectedMode =
+            PushPreviewMode.fromWire(mode)
+                ?: return DataResult.Error(ScreenError("settings_push_preview_mode_unknown", retryable = false))
+        val repository =
+            settingsRepository as? SettingsServerActionRepository
+                ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return when (val result = repository.setPushPreviewMode(selectedMode)) {
             is DataResult.Content -> DataResult.Content(result.data.withLocalMobilePreferences())
             is DataResult.Empty -> result
             is DataResult.Error -> result
@@ -1983,6 +1999,13 @@ class SharedSettingsStore(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_SERVER_MUTE, inProgress = true)
                     )
                 dataSource.setServerNotificationMode(intent.mode).applyMobileActionResult(MOBILE_ACTION_SERVER_MUTE)
+            }
+            is SharedSettingsIntent.SetPushPreviewMode -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_PUSH_PREVIEW_MODE, inProgress = true)
+                    )
+                dataSource.setPushPreviewMode(intent.mode).applyMobileActionResult(MOBILE_ACTION_PUSH_PREVIEW_MODE)
             }
             is SharedSettingsIntent.SetLanguageRegionServerTranslation -> {
                 runAction(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION) {
@@ -3128,6 +3151,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetForegroundKeepAlivePreference,
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.SetServerNotificationMode,
+            is SharedSettingsIntent.SetPushPreviewMode,
             is SharedSettingsIntent.SetLanguageRegionServerTranslation,
             is SharedSettingsIntent.SetTranslationMode,
             is SharedSettingsIntent.SetTranslationTargetLanguage,
@@ -3302,6 +3326,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
 internal const val MOBILE_ACTION_NOTIFICATION_PREFERENCE = "notificationPreference"
 internal const val MOBILE_ACTION_FOREGROUND_KEEP_ALIVE = "foregroundKeepAlive"
 internal const val MOBILE_ACTION_SERVER_MUTE = "serverMute"
+internal const val MOBILE_ACTION_PUSH_PREVIEW_MODE = "pushPreviewMode"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
 internal const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"

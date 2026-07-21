@@ -4,6 +4,7 @@ import build.raft.app.MemberKindWireContract
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
+import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
@@ -562,6 +563,7 @@ private data class NotificationPrefsWireDto(
     val serverPushMuted: Boolean? = null,
     val serverPushMentionsOnly: Boolean? = null,
     val serverPushMode: String? = null,
+    val pushPreviewMode: String? = null,
 )
 
 // task #459: server-qualified notification payload (server PR #4233,
@@ -1243,10 +1245,23 @@ private fun NotificationPrefsUpdatedDto.toDomain(
             }
     }
     if (serverMode != null) {
+        val previewMode =
+            when (prefs.pushPreviewMode) {
+                null -> null
+                PushPreviewMode.Full.wireName -> PushPreviewMode.Full
+                PushPreviewMode.Private.wireName -> PushPreviewMode.Private
+                else -> {
+                    diagnostics(
+                        "projection_value_rejected source=realtime_server_notification field=push_preview_mode value=unknown"
+                    )
+                    return null
+                }
+            }
         val cleanServerId = serverId?.takeIf { it.isNotBlank() } ?: cleanScopeId
         return ServerNotificationPreferencesChanged(
             serverId = ServerId(cleanServerId),
             serverPushMode = serverMode.wireName,
+            pushPreviewMode = previewMode?.wireName,
             prefsVersion = prefsVersion
         )
     }

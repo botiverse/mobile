@@ -618,12 +618,15 @@ private data class WireSettingsNotificationSettings(
     val serverPushMuted: Boolean,
     val serverPushMentionsOnly: Boolean = false,
     val serverPushMode: String? = null,
+    val pushPreviewMode: String? = null,
 )
 
 data class SettingsServerNotificationPreferences(
     val mode: ServerPushMode,
+    val pushPreviewMode: PushPreviewMode,
     val legacyMuted: Boolean,
-    val canonicalModeSupported: Boolean
+    val canonicalModeSupported: Boolean,
+    val pushPreviewModeSupported: Boolean
 )
 
 fun parseSharedSettingsServerNotificationSettings(
@@ -633,6 +636,7 @@ fun parseSharedSettingsServerNotificationSettings(
     val root = settingsJson.parseToJsonElement(bodyText).jsonObject
     val wire = settingsJson.decodeFromString(WireSettingsNotificationSettings.serializer(), bodyText)
     val canonicalModePresent = "serverPushMode" in root
+    val pushPreviewModePresent = "pushPreviewMode" in root
     val mode = if (canonicalModePresent) {
         ServerPushMode.fromWire(wire.serverPushMode)
             ?: run {
@@ -646,10 +650,21 @@ fun parseSharedSettingsServerNotificationSettings(
                 else -> ServerPushMode.All
             }
     }
+    val pushPreviewMode = if (pushPreviewModePresent) {
+        PushPreviewMode.fromWire(wire.pushPreviewMode)
+            ?: run {
+                diagnostics("projection_value_rejected source=settings_server_notification field=push_preview_mode value=unknown")
+                return@runCatching null
+            }
+    } else {
+        PushPreviewMode.Full
+    }
     SettingsServerNotificationPreferences(
         mode = mode,
+        pushPreviewMode = pushPreviewMode,
         legacyMuted = wire.serverPushMuted,
-        canonicalModeSupported = canonicalModePresent
+        canonicalModeSupported = canonicalModePresent,
+        pushPreviewModeSupported = pushPreviewModePresent
     )
 }.getOrNull()
 

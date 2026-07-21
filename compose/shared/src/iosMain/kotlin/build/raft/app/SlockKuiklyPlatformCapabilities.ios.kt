@@ -32,6 +32,8 @@ internal fun slockIosAppTabBarRendererForMajorVersion(majorVersion: Long): Strin
 // Media3 PlayerView, task #556 phase 2).
 internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
+internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = true
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
 // iOS atomizes inline code into one native attachment per grapheme. TextKit can
