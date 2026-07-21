@@ -339,7 +339,7 @@ class SlockNetworkAuthMiddlewareTest {
         ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
             error("not used")
 
-        override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
+        override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
             error("not used")
 
         override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =

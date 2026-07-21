@@ -34,10 +34,31 @@ class AuthDataSourceTest {
         assertEquals("""{"email":"user@slock.ai","password":"password"}""", api.loginBody)
         assertEquals("Bearer access-token", api.serversAuthorization)
         assertEquals("user-1", store.readSession()?.user?.id)
+        assertEquals(false, store.readSession()?.user?.requiresProfileSetup)
         assertEquals("access-token", store.readSession()?.accessToken)
         assertEquals(null, store.readSession()?.selectedServerId)
         assertEquals(null, store.readSession()?.selectedServerSlug)
         assertEquals(1, store.readSession()?.servers?.size)
+    }
+
+    @Test
+    fun loginPreservesExplicitPendingProfileNullFromServer() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api =
+            FakeAuthApi(
+                loginResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """{"user":{"id":"user-1","email":"user@slock.ai","emailVerified":true,"profileSetupCompletedAt":null,"profileSetupSuggestedHandle":"user"},"accessToken":"access-token","refreshToken":"refresh-token"}"""
+                    )
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(true, store.readSession()?.user?.requiresProfileSetup)
+        assertEquals("user", store.readSession()?.user?.profileSetupSuggestedHandle)
     }
 
     @Test
@@ -503,18 +524,41 @@ class AuthDataSourceTest {
         val api = FakeAuthApi()
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
 
-        val registered = source.register(name = " Artin ", email = " user@slock.ai ", password = "password123")
+        val registered = source.register(email = " user@slock.ai ", password = "password123")
         val forgot = source.forgotPassword(" user@slock.ai ")
 
         assertTrue(registered is SharedAuthResult.Success)
         assertTrue(forgot is SharedAuthResult.Success)
         assertEquals(
-            """{"email":"user@slock.ai","password":"password123","name":"Artin","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"signup"}""",
+            """{"email":"user@slock.ai","password":"password123","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"signup"}""",
             api.registerBody
         )
         assertEquals("""{"email":"user@slock.ai"}""", api.forgotPasswordBody)
         assertEquals("user-1", store.readSession()?.user?.id)
         assertEquals(null, store.readSession()?.selectedServerId)
+    }
+
+    @Test
+    fun completeProfilePersistsCanonicalUserAndUsesBearer() = runBlocking {
+        val pending = storedSession().copy(
+            user = StoredAuthUser(
+                id = "user-1",
+                email = "user@slock.ai",
+                profileSetupCompletedAt = null,
+                profileSetupSuggestedHandle = "user"
+            )
+        )
+        val store = InMemorySlockAuthSessionStore(pending)
+        val api = FakeAuthApi()
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.completeProfile(name = " artin ", displayName = " Artin Chen ")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("Bearer access-token", api.completeProfileAuthorization)
+        assertEquals("""{"name":"artin","displayName":"Artin Chen"}""", api.completeProfileBody)
+        assertEquals("artin", store.readSession()?.user?.name)
+        assertEquals(false, store.readSession()?.user?.requiresProfileSetup)
     }
 
     @Test
@@ -1328,6 +1372,10 @@ class AuthDataSourceTest {
             private set
         var registerBody: String? = null
             private set
+        var completeProfileAuthorization: String? = null
+            private set
+        var completeProfileBody: String? = null
+            private set
         var forgotPasswordBody: String? = null
             private set
         var socialCompleteProvider: String? = null
@@ -1437,6 +1485,15 @@ class AuthDataSourceTest {
             onCurrentUserRequest(currentUserRequestCount)
             if (throwCurrentUser) error("bridge not ready")
             return if (currentUserResponses.size > 1) currentUserResponses.removeFirst() else currentUserResponses.first()
+        }
+
+        override suspend fun completeProfile(authorization: String, bodyText: String): AuthNetworkResponse {
+            completeProfileAuthorization = authorization
+            completeProfileBody = bodyText
+            return AuthNetworkResponse(
+                200,
+                """{"id":"user-1","email":"user@slock.ai","name":"artin","displayName":"Artin Chen","profileSetupCompletedAt":"2026-07-21T00:00:00Z"}"""
+            )
         }
 
         override suspend fun refresh(bodyText: String): AuthNetworkResponse =

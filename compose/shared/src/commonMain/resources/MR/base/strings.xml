@@ -1022,6 +1022,16 @@
     <string name="auth_title_create_account">Create Account</string>
     <string name="auth_action_create_account">Create Account</string>
     <string name="auth_state_creating_account">Creating account…</string>
+    <string name="auth_title_profile_setup">Set up your account</string>
+    <string name="auth_hint_profile_setup">Choose the identity people will see in Raft.</string>
+    <string name="auth_label_username">Username</string>
+    <string name="auth_username_placeholder">alexchen</string>
+    <string name="auth_hint_username">Your unique name for @mentions and links. It can’t be changed later.</string>
+    <string name="auth_label_display_name">Display name</string>
+    <string name="auth_display_name_placeholder">Alex Chen</string>
+    <string name="auth_hint_display_name">How your name appears in messages. Change this anytime.</string>
+    <string name="auth_state_finishing_profile">Finishing setup…</string>
+    <string name="auth_error_profile_setup_failed">Couldn’t finish identity setup.</string>
     <string name="auth_prompt_already_have_account">Already have an account?</string>
     <string name="auth_title_reset_password">Reset Password</string>
     <string name="auth_hint_reset_password">Enter your email and we\'ll send you a link to reset your password.</string>

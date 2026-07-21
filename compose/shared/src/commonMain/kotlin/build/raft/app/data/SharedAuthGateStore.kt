@@ -226,6 +226,7 @@ sealed interface SharedAuthGateState {
     data object Restoring : SharedAuthGateState
     data object AuthRequired : SharedAuthGateState
     data class EmailVerificationRequired(val session: StoredAuthSession) : SharedAuthGateState
+    data class ProfileSetupRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class ServerRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class Ready(val session: StoredAuthSession) : SharedAuthGateState
     data class Error(val message: String) : SharedAuthGateState
@@ -234,6 +235,8 @@ sealed interface SharedAuthGateState {
 private fun StoredAuthSession.asGateState(): SharedAuthGateState =
     if (user.emailVerified == false) {
         SharedAuthGateState.EmailVerificationRequired(this)
+    } else if (user.requiresProfileSetup) {
+        SharedAuthGateState.ProfileSetupRequired(this)
     } else if (selectedServerId.isNullOrBlank()) {
         SharedAuthGateState.ServerRequired(this)
     } else {
@@ -263,6 +266,7 @@ private fun SharedAuthGateState.diagnosticsName(): String =
         SharedAuthGateState.Restoring -> "restoring"
         SharedAuthGateState.AuthRequired -> "auth_required"
         is SharedAuthGateState.EmailVerificationRequired -> "email_verification_required"
+        is SharedAuthGateState.ProfileSetupRequired -> "profile_setup_required"
         is SharedAuthGateState.ServerRequired -> "server_required"
         is SharedAuthGateState.Ready -> "ready"
         is SharedAuthGateState.Error -> "error"
@@ -273,6 +277,7 @@ private fun SharedAuthGateState.hasSelectedServer(): Boolean =
         is SharedAuthGateState.Ready -> !session.selectedServerId.isNullOrBlank()
         is SharedAuthGateState.ServerRequired -> !session.selectedServerId.isNullOrBlank()
         is SharedAuthGateState.EmailVerificationRequired -> !session.selectedServerId.isNullOrBlank()
+        is SharedAuthGateState.ProfileSetupRequired -> !session.selectedServerId.isNullOrBlank()
         SharedAuthGateState.AuthRequired,
         is SharedAuthGateState.Error,
         SharedAuthGateState.Restoring -> false

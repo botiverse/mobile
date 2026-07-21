@@ -3012,6 +3012,7 @@ internal fun SlockAppShellContent(
             }
             SharedAuthGateState.AuthRequired,
             is SharedAuthGateState.EmailVerificationRequired,
+            is SharedAuthGateState.ProfileSetupRequired,
             is SharedAuthGateState.ServerRequired -> {
                 ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
                 bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
@@ -3451,6 +3452,13 @@ internal fun SlockAppShellContent(
                     resetAppShellSessionState()
                 }
             )
+            return
+        }
+        is SharedAuthGateState.ProfileSetupRequired -> {
+            LaunchedEffect(gate.session.user.id) {
+                pager.openAuthProfileSetupReplacingCurrentPage()
+            }
+            AppShellRestoreSplashContent()
             return
         }
         is SharedAuthGateState.Error -> {
@@ -14218,7 +14226,7 @@ private class AuthChooseServerVisualApi(
     ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
         AuthApiResult.Failure(code = 400)
 
-    override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
+    override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
         AuthApiResult.Failure(code = 400)
 
     override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
@@ -19186,6 +19194,7 @@ private fun SharedAuthGateState.authGateDiagnosticsName(): String =
         SharedAuthGateState.Restoring -> "restoring"
         SharedAuthGateState.AuthRequired -> "auth_required"
         is SharedAuthGateState.EmailVerificationRequired -> "email_verification_required"
+        is SharedAuthGateState.ProfileSetupRequired -> "profile_setup_required"
         is SharedAuthGateState.ServerRequired -> "server_required"
         is SharedAuthGateState.Ready -> "ready"
         is SharedAuthGateState.Error -> "error"
