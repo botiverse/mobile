@@ -567,10 +567,6 @@ private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
 
-internal fun settingsComputersShouldConsumeBack(
-    selectedDestination: String,
-    canGoBack: Boolean
-): Boolean = selectedDestination == SettingsDestinationComputers && canGoBack
 private const val SettingsRouteVisualDestinationKey = "destination"
 private const val SettingsRouteVisualFixtureKey = "fixtureKey"
 private const val SettingsRouteVisualItemIdKey = "itemId"
@@ -4705,6 +4701,10 @@ internal fun SlockAppShellContent(
                                 prewarmAdmissionGate.invalidate("settings_open_billing")
                                 pager.openSettingsBillingPage(storeScope)
                             },
+                            onOpenComputers = {
+                                prewarmAdmissionGate.invalidate("settings_open_computers")
+                                pager.openSettingsComputersPage(storeScope)
+                            },
                             onOpenAdministration = {
                                 prewarmAdmissionGate.invalidate("settings_open_administration")
                                 pager.openSettingsAdministrationPage(storeScope)
@@ -4949,6 +4949,7 @@ private fun SettingsAppShellContent(
     onOpenRouter: () -> Unit,
     onOpenReleaseNotes: () -> Unit,
     onOpenBilling: () -> Unit,
+    onOpenComputers: () -> Unit,
     onOpenAdministration: () -> Unit,
     onOpenConnectedApps: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
@@ -4970,11 +4971,6 @@ private fun SettingsAppShellContent(
     onLogout: () -> Unit
 ) {
     val accountLinkScope = rememberCoroutineScope()
-    val computersWebViewController = remember(selectedDestination) { SlockWebViewController() }
-    var computersNavigationState by
-        remember(selectedDestination) {
-            mutableStateOf(SlockWebViewNavigationState())
-        }
     val returnFromSettingsDetail: () -> Unit = {
         when (selectedDestination) {
             SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
@@ -4984,13 +4980,7 @@ private fun SettingsAppShellContent(
             else -> onDestinationChange(SettingsDestinationHome)
         }
     }
-    val handleSettingsBack: () -> Unit = {
-        if (settingsComputersShouldConsumeBack(selectedDestination, computersNavigationState.canGoBack)) {
-            computersWebViewController.goBack()
-        } else {
-            returnFromSettingsDetail()
-        }
-    }
+    val handleSettingsBack: () -> Unit = returnFromSettingsDetail
     SlockBackHandler(
         enabled = selectedDestination != SettingsDestinationHome,
         label = "settings_detail",
@@ -4999,14 +4989,13 @@ private fun SettingsAppShellContent(
 
     LaunchedEffect(selectedDestination) {
         when (selectedDestination) {
+            SettingsDestinationComputers -> onOpenComputers()
+            SettingsDestinationBilling -> onOpenBilling()
+            SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
             SettingsDestinationApiEnvironment ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
-            SettingsDestinationReleaseNotes ->
-                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
             SettingsDestinationOpenSourceLicenses ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.OpenSourceLicenses))
-            SettingsDestinationComputers ->
-                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
             else ->
                 selectedDestination.toSharedSettingsDestination()?.let { destination ->
                     onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
@@ -5246,6 +5235,7 @@ private fun SettingsAppShellContent(
                     SettingsDestinationRouter -> onOpenRouter()
                     SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
                     SettingsDestinationBilling -> onOpenBilling()
+                    SettingsDestinationComputers -> onOpenComputers()
                     // Administration is the WEB settings page in an in-app
                     // WebView (own pager, Billing pattern) — not a native
                     // child destination.
@@ -5317,15 +5307,7 @@ private fun SettingsAppShellContent(
                         else -> onSettingsAction(action, null)
                     }
                 }
-            SettingsDestinationComputers -> {
-                SettingsComputersWebViewContent(
-                    session = session,
-                    webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
-                    bottomContentPadding = bottomContentPadding,
-                    controller = computersWebViewController,
-                    onNavigationStateChange = { computersNavigationState = it }
-                )
-            }
+            SettingsDestinationComputers -> SettingsComputersLoadingContent()
             SettingsDestinationStorage ->
                 SettingsStorageContent(
                     settingsState.storage.toStoragePayload(
@@ -5340,12 +5322,7 @@ private fun SettingsAppShellContent(
                         else -> onSettingsAction(action, target)
                     }
                 }
-            SettingsDestinationBilling ->
-                SettingsBillingWebViewContent(
-                    session = session,
-                    webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
-                    bottomContentPadding = bottomContentPadding
-                )
+            SettingsDestinationBilling -> SettingsComputersLoadingContent()
             SettingsDestinationLanguageRegion ->
                 SettingsLanguageRegionContent(
                     state = settingsState.languageRegion,
@@ -5772,17 +5749,7 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding,
                     onOpenUrl = { url -> settingsCapabilities.openUrl(url) }
                 )
-            SettingsDestinationReleaseNotes -> {
-                val aboutSnapshot =
-                    when (val about = settingsState.about) {
-                        is ScreenLoadState.Content -> about.data
-                        else -> appShellAboutFallback(session)
-                    }
-                SharedSettingsReleaseNotesContent(
-                    versionCode = aboutSnapshot.buildLabel,
-                    bottomContentPadding = bottomContentPadding
-                )
-            }
+            SettingsDestinationReleaseNotes -> SettingsComputersLoadingContent()
             SettingsDestinationDeveloper ->
                 SharedSettingsDeveloperContent(
                     state = settingsState.developer,
@@ -10012,88 +9979,6 @@ private fun SharedSettingsOpenSourceLicensesContent(
         when (action) {
             "openLicenseUrl", "openSourceUrl" ->
                 value.orEmpty().takeIf { it.isNotBlank() }?.let(onOpenUrl)
-        }
-    }
-}
-
-/**
- * task #90: server-rendered, public release-notes page for the current
- * build, loaded full-screen in an in-app WebView. `allowNavigation`
- * stays on so the page's per-version download links keep working. On a
- * load failure we overlay a retry affordance that recreates the WebView
- * (bumping [reloadKey]) instead of inventing a new navigation mechanism.
- */
-@Composable
-private fun SharedSettingsReleaseNotesContent(
-    versionCode: String,
-    bottomContentPadding: Dp = SlockSpacing.Lg
-) {
-    if (versionCode.isBlank()) {
-        Box(
-            modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                "加载中… / Loading…",
-                style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
-            )
-        }
-        return
-    }
-    val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
-    var reloadKey by remember { mutableStateOf(0) }
-    var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
-    // The native WebView platform view attaches ahead of the Kuikly-drawn page
-    // header on the destination's first frame, so the page flashed as: full
-    // white → web content → header last (task #227). Hold the WebView out of
-    // composition for the first committed frame so frame one is the header
-    // plus the white placeholder, and the WebView attaches strictly after.
-    var webViewSlotReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { webViewSlotReady = true }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        // The native WebView applies its own bottom safe-area content inset, so
-        // it stops short of the screen bottom and the Box's SurfaceWhite shows
-        // through as a white strip. Extend the WebView frame below the slot by
-        // the bottom safe-area height so that inset region falls off-screen and
-        // the page fills edge-to-edge regardless of page content height.
-        val webViewHeight = maxHeight + slockBottomSafeAreaPadding()
-        if (webViewSlotReady) {
-            key(reloadKey, url) {
-                SlockWebView(
-                    url = url,
-                    modifier = Modifier.fillMaxWidth().height(webViewHeight),
-                    allowNavigation = true,
-                    onLoadSuccess = { loadError = null },
-                    onLoadFailure = { reason -> loadError = reason }
-                )
-            }
-        }
-        if (loadError != null) {
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(SlockColor.SurfaceWhite)
-                        .padding(16.dp)
-                        .padding(bottom = bottomContentPadding),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier.size(52.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                    contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
-                ) {
-                    SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))
-                }
-                Text("Couldn't load release notes", style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-                Text("Check your connection and try again.", style = SlockType.Body.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-                SlockBrutalActionButton(
-                    label = "重试 / Retry",
-                    onClick = { reloadKey += 1 },
-                    leadingIcon = SlockLucideIconName.RefreshCw,
-                    backgroundColor = SlockColor.SurfaceWhite
-                )
-            }
         }
     }
 }
@@ -20870,6 +20755,7 @@ private fun SettingsRouteVisualScreen() {
         onOpenRouter = {},
         onOpenReleaseNotes = {},
         onOpenBilling = {},
+        onOpenComputers = {},
         onOpenAdministration = {},
         onOpenConnectedApps = {},
         onMessageAlignmentSelected = {},
