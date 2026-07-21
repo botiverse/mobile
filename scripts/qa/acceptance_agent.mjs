@@ -95,11 +95,13 @@ function uiNodes() {
     const text = /text="([^"]*)"/.exec(tag)?.[1] ?? "";
     const desc = /content-desc="([^"]*)"/.exec(tag)?.[1] ?? "";
     const cls = /class="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const pkg = /package="([^"]*)"/.exec(tag)?.[1] ?? "";
+    const resourceId = /resource-id="([^"]*)"/.exec(tag)?.[1] ?? "";
     const focused = /focused="true"/.test(tag);
     const clickable = /clickable="true"/.test(tag);
     const editable = /EditText|TextField|AutoComplete/i.test(cls);
     const b = /bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(tag);
-    nodes.push({ text, desc, editable, clickable, focused, bounds: b ? [+b[1], +b[2], +b[3], +b[4]] : null });
+    nodes.push({ text, desc, cls, pkg, resourceId, editable, clickable, focused, bounds: b ? [+b[1], +b[2], +b[3], +b[4]] : null });
   }
   return nodes;
 }

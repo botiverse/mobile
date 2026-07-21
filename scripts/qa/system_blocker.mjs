@@ -8,14 +8,25 @@ const FOREIGN_ANDROID_SYSTEM_ANR = [
 // Only classify known foreign system surfaces. A generic "isn't responding"
 // dialog, or an ANR naming the app under test, remains a product failure.
 export function detectForeignAndroidSystemBlocker(nodes) {
-  const visible = (Array.isArray(nodes) ? nodes : [])
-    .flatMap((node) => [node?.text, node?.desc])
-    .filter(Boolean)
-    .map(String)
-    .join("\n");
+  const all = Array.isArray(nodes) ? nodes : [];
+  const systemOwned = (node) => node?.pkg === "android" || node?.pkg === "com.android.systemui";
+  const systemAction = all.some((node) => {
+    if (!systemOwned(node)) return false;
+    const id = String(node?.resourceId ?? "");
+    const label = String(node?.text || node?.desc || "").trim();
+    return /^android:id\/aerr_(?:wait|close|report|restart)$/.test(id) || /^(?:Wait|Close app|App info)$/i.test(label);
+  });
+  if (!systemAction) return null;
+
   for (const candidate of FOREIGN_ANDROID_SYSTEM_ANR) {
-    const match = candidate.pattern.exec(visible);
-    if (match) return { code: candidate.code, label: match[0] };
+    const title = all.find((node) => {
+      if (!systemOwned(node)) return false;
+      return candidate.pattern.test(String(node?.text || node?.desc || ""));
+    });
+    if (title) {
+      const label = String(title.text || title.desc);
+      return { code: candidate.code, label };
+    }
   }
   return null;
 }
