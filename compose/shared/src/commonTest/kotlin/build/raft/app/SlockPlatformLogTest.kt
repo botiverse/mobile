@@ -55,20 +55,38 @@ class SlockPlatformLogTest {
     @Test
     fun typedRecordSinkReceivesTimestampAndHint() = runBlocking {
         val entries = mutableListOf<SlockPlatformLogRecord>()
+        val backgroundStarted = CompletableDeferred<Unit>()
+        val releaseBackground = CompletableDeferred<Unit>()
+        val markerTag = "SlockPlatformLogTest.typedRecord"
+        val markerMessage = "typed-record-marker"
         installSlockPlatformLogRecordSink(entries::add)
         try {
-            slockLogWarn("SlockTest", "typed", hint = SlockPlatformLogHint.AuthCritical)
+            val background = launch(Dispatchers.Default) {
+                slockLogInfo("BackgroundLog", "before typed record")
+                backgroundStarted.complete(Unit)
+                releaseBackground.await()
+                slockLogInfo("BackgroundLog", "after typed record")
+            }
+            withTimeout(1_000) { backgroundStarted.await() }
+            slockLogWarn(markerTag, markerMessage, hint = SlockPlatformLogHint.AuthCritical)
+            releaseBackground.complete(Unit)
+            withTimeout(1_000) { background.join() }
             flushSlockPlatformLogsForTest()
         } finally {
+            releaseBackground.complete(Unit)
             installSlockPlatformLogRecordSink(null)
         }
 
-        val entry = entries.single()
+        val entry =
+            entries.single { record ->
+                record.tag == markerTag && record.message == markerMessage
+            }
         assertEquals("warn", entry.level)
-        assertEquals("SlockTest", entry.tag)
-        assertEquals("typed", entry.message)
+        assertEquals(markerTag, entry.tag)
+        assertEquals(markerMessage, entry.message)
         assertEquals(SlockPlatformLogHint.AuthCritical, entry.hint)
         assertTrue(entry.timestampMillis > 0L)
+        assertTrue(entries.any { it.tag == "BackgroundLog" })
     }
 
     @Test
