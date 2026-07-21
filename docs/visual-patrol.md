@@ -98,7 +98,9 @@ Safety boundaries:
 - one global workflow concurrency group plus `fix-queue:processing` prevents
   duplicate consumption; terminal result labels prevent daily reprocessing;
 - daily case cap is clamped to 1–3; source prompt input is bounded and the
-  token cap conservatively reserves 75k per selected issue before any M3 call;
+  token cap defaults to 1T (repo variable `VISUAL_FIX_QUEUE_TOKEN_CAP`) while
+  conservatively reserving 75k per selected issue before any M3 call; the large
+  budget never raises the 1–3 case cap or weakens any mutation/review boundary;
 - all three fresh panel replies must be valid strict JSON before a terminal
   verdict; each model stage gets one bounded strict-JSON retry, and exhausted
   retries remain `REVIEW` with a bounded redacted audit record;

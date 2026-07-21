@@ -32,7 +32,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     repo: value("--repo", "botiverse/mobile"),
     comparison: value("--comparison", "react__android"),
     caseCap: Math.max(1, Math.min(3, Number(value("--case-cap", "3")))),
-    tokenCap: Math.max(DEFAULT_CASE_TOKEN_RESERVATION, Number(value("--token-cap", "225000"))),
+    tokenCap: Math.max(DEFAULT_CASE_TOKEN_RESERVATION, Number(value("--token-cap", process.env.VISUAL_FIX_QUEUE_TOKEN_CAP || "1000000000000"))),
     voters: Math.max(3, Number(value("--voters", "3"))),
     threshold: Math.max(2, Number(value("--threshold", "2"))),
     mobileRoot: path.resolve(value("--mobile-root", ".")),
