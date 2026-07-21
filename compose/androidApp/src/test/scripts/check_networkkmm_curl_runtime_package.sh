@@ -47,12 +47,14 @@ verify_entry_hash() {
   fi
 }
 
+# network-android-curl-runtime:0.1.0-raft.29, published from
+# bytemain/KuiklyBase-components@730f1642071042db7cfea165c078a97667ce86af.
 verify_entry_hash \
   "${prefix}lib/arm64-v8a/libnetworkkmmcurl.so" \
-  'cade582ae10233c3e6e2a9321b8117f334fe7ebc23e36051a93d6f4acd5dd0e3'
+  '5468b7483e44c11acc5ac3bc3bb86ae10c5827b0b0d2789487bd0de7c6d85776'
 verify_entry_hash \
   "${prefix}lib/x86_64/libnetworkkmmcurl.so" \
-  '47f473900f3d25c10f8cfa45fbd3298aa0836719624444ca97adec15e1f93b02'
+  'c6308299a648eac5631c6af27fa95e829bfbfc7411e55be5d0424cb1ee4cccbd'
 verify_entry_hash \
   "${prefix}assets/network/cacert-2026-05-14.pem" \
   '86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c'
