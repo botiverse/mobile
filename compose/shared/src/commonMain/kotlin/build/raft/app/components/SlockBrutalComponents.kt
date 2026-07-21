@@ -402,7 +402,6 @@ internal fun SlockBrutalTextField(
     value: String,
     placeholder: String,
     onValueChange: (String) -> Unit,
-    onBlur: () -> Unit = {},
     modifier: Modifier = Modifier,
     required: Boolean = false,
     optional: Boolean = false,
@@ -437,7 +436,6 @@ internal fun SlockBrutalTextField(
         SlockBrutalInputField(
             value = value,
             onValueChange = onValueChange,
-            onBlur = onBlur,
             placeholder = placeholder,
             enabled = enabled,
             autoFocus = autoFocus,
@@ -462,7 +460,6 @@ internal fun SlockBrutalTextField(
 internal fun SlockBrutalInputField(
     value: String,
     onValueChange: (String) -> Unit,
-    onBlur: () -> Unit = {},
     placeholder: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
@@ -544,10 +541,7 @@ internal fun SlockBrutalInputField(
                     placeholderColor = placeholderColor,
                     autoFocus = autoFocus,
                     onFocus = { focused = true },
-                    onBlur = {
-                        focused = false
-                        onBlur()
-                    },
+                    onBlur = { focused = false },
                     maxLines = maxLines,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
@@ -578,7 +572,6 @@ internal fun SlockBrutalInputField(
 internal fun SlockBrutalInputField(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
-    onBlur: () -> Unit = {},
     placeholder: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
@@ -660,10 +653,7 @@ internal fun SlockBrutalInputField(
                     placeholderColor = placeholderColor,
                     autoFocus = autoFocus,
                     onFocus = { focused = true },
-                    onBlur = {
-                        focused = false
-                        onBlur()
-                    },
+                    onBlur = { focused = false },
                     maxLines = maxLines,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
