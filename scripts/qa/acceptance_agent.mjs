@@ -26,6 +26,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeAssertionAnnotation } from "./assertion_annotations.mjs";
+import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -402,39 +403,8 @@ function pruneImages(messages) {
 // the originals; originals stay untouched (evidence integrity). sharp is an
 // optional dependency — when absent (ad-hoc checkout), annotation is skipped
 // and noted, never fatal.
-const BOUNDS_RE = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/;
-function escapeXml(s) {
-  return String(s).replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" }[c]));
-}
-
 async function annotateEvidence(size, taps, assertions) {
-  const byStep = new Map();
-  const add = (step, svg) => {
-    const n = Number(step);
-    if (!Number.isInteger(n) || n < 0) return;
-    byStep.set(n, (byStep.get(n) || "") + svg);
-  };
-  for (const t of taps) {
-    const s = 22;
-    add(t.step,
-      `<line x1="${t.x - s}" y1="${t.y - s}" x2="${t.x + s}" y2="${t.y + s}" stroke="#ffd400" stroke-width="5"/>` +
-      `<line x1="${t.x - s}" y1="${t.y + s}" x2="${t.x + s}" y2="${t.y - s}" stroke="#ffd400" stroke-width="5"/>` +
-      `<circle cx="${t.x}" cy="${t.y}" r="${s + 8}" fill="none" stroke="#ffd400" stroke-width="3"/>`);
-  }
-  for (const a of assertions) {
-    const m = BOUNDS_RE.exec(String(a.bounds ?? ""));
-    if (!m) continue;
-    const [x1, y1, x2, y2] = m.slice(1).map(Number);
-    if (x2 <= x1 || y2 <= y1) continue;
-    const color = a.result === "fail" ? "#ff2d2d" : "#00c853";
-    const label = escapeXml(redact(String(a.label ?? "")).slice(0, 60));
-    const labelY = y1 >= 34 ? y1 - 10 : y2 + 26;
-    add(a.step,
-      `<rect x="${x1}" y="${y1}" width="${x2 - x1}" height="${y2 - y1}" fill="none" stroke="${color}" stroke-width="5" rx="4"/>` +
-      (label
-        ? `<text x="${x1}" y="${labelY}" font-family="sans-serif" font-size="26" font-weight="bold" fill="${color}" stroke="#000000" stroke-width="0.6">${label}</text>`
-        : ""));
-  }
+  const byStep = buildEvidenceOverlays(taps, assertions, redact);
   if (!byStep.size) return [];
   let sharp;
   try {
@@ -568,7 +538,7 @@ async function main() {
           else adb(["shell", "input", "tap", String(Math.round(action.x)), String(Math.round(action.y))]);
           // The agent decided this tap while looking at the PREVIOUS turn's
           // screenshot — that's the frame the crosshair belongs on.
-          tapAnnotations.push({ step: turns - 1, x: Math.round(action.x), y: Math.round(action.y) });
+          tapAnnotations.push(screenshotPixelTap(turns, action.x, action.y));
           break;
         case "tap_text": {
           const wanted = String(action.text ?? "").trim();
@@ -580,9 +550,10 @@ async function main() {
           if (r.x !== undefined) {
             if (drv) await drv.tap(r.x, r.y);
             else adb(["shell", "input", "tap", String(r.x), String(r.y)]);
-            // Crosshair on the CURRENT frame: bounds came from a fresh dump,
-            // not the previous screenshot.
-            tapAnnotations.push({ step: turns, x: r.x, y: r.y });
+            // A fresh dump refines the coordinate but does not capture a new
+            // screenshot. The action was still chosen from the pre-action
+            // frame, just like a coordinate tap.
+            tapAnnotations.push(screenshotPixelTap(turns, r.x, r.y));
           }
           break;
         }
@@ -599,7 +570,7 @@ async function main() {
           else adb(["shell", "input", "swipe",
             String(Math.round(action.x)), String(Math.round(action.y)),
             String(Math.round(action.x)), String(Math.round(action.y)), "800"]);
-          tapAnnotations.push({ step: turns - 1, x: Math.round(action.x), y: Math.round(action.y) });
+          tapAnnotations.push(screenshotPixelTap(turns, action.x, action.y));
           break;
         case "open_link": {
           const url = String(action.url ?? "");
