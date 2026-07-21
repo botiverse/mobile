@@ -100,6 +100,10 @@ private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
 private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_EMAIL = "new@raft.build"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery staple"
+private const val AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY = "profileSetupHandle"
+private const val AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY = "profileSetupDisplayName"
+private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE = "new_designer"
+private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME = "New Designer"
 private const val AUTH_TERMS_URL = "https://raft.build/terms"
 private const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
@@ -1128,6 +1132,23 @@ internal fun AuthRegisterInputsVisualScreen() {
         onPasswordChange = {},
         onSubmit = {},
         onBackToSignIn = {}
+    )
+}
+
+@Composable
+internal fun AuthProfileSetupVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
+    AuthProfileSetupContent(
+        handle = params.optString(AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY)
+            .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE },
+        displayName = params.optString(AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY)
+            .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME },
+        submitting = false,
+        errorMessage = null,
+        onHandleChange = {},
+        onDisplayNameChange = {},
+        onSubmit = {}
     )
 }
 
