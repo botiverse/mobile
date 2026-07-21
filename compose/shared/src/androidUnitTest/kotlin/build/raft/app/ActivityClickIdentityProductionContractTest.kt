@@ -9,6 +9,26 @@ import kotlin.test.assertTrue
 class ActivityClickIdentityProductionContractTest {
 
     @Test
+    fun releaseActivityUsesServerDefaultDecisionWithoutLiveDiagnosticOverride() {
+        val source = source()
+
+        assertTrue("val stableOrderEnabledAtRouteEntry =" in source)
+        assertTrue(
+            "remember(activityStore, state.ownerUserId, activitySummaryServerId)" in source,
+            "The release decision must be rebound when the Activity owner/server identity changes.",
+        )
+        assertTrue("sharedStores.serverFeatureFlags.isEnabled(" in source)
+        assertFalse(
+            "ProcessDiagnosticFeatureFlagOverrides" in source,
+            "release-1.6.0 intentionally excludes the live diagnostic override control plane.",
+        )
+        assertFalse(
+            "stableOrderDecisionRevision" in source,
+            "A dormant revision parameter would falsely imply live override support in this release port.",
+        )
+    }
+
+    @Test
     fun activityRowsFreezeOneImmutableItemSnapshotForLazyKeyContentAndCallbacks() {
         val source = source()
 
