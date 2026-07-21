@@ -80,6 +80,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.items
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -716,12 +717,16 @@ private fun SharedActivityList(
         mutableStateOf(restoredPresentation.updateTracking)
     }
     var revealRequest by remember(selectedFilter) { mutableStateOf(0) }
-    var presentedItems by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
-        mutableStateOf(restoredPresentation.presentedItems)
-    }
-    var presentationGeneration by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
-        mutableStateOf(restoredPresentation.presentationGeneration)
-    }
+    val presentedItemsState =
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+            mutableStateOf(restoredPresentation.presentedItems)
+        }
+    var presentedItems by presentedItemsState
+    val presentationGenerationState =
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+            mutableStateOf(restoredPresentation.presentationGeneration)
+        }
+    var presentationGeneration by presentationGenerationState
     var pullRefreshInFlight by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
         mutableStateOf(restoredPresentation.pullRefreshInFlight)
     }
@@ -855,6 +860,23 @@ private fun SharedActivityList(
     }
     val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
+    val presentationOwnerIdentity =
+        activityPresentationOwnerIdentity(
+            accountId = presentationAccountId,
+            serverId = presentationServerId,
+            filter = selectedFilter,
+        )
+    val currentPresentationOwnerIdentityState = rememberUpdatedState(presentationOwnerIdentity)
+    // Freeze the item/key/content triplet for one LazyColumn composition. Reading the mutable
+    // presentedItems list independently from the count-key lambda and the row-content lambda can
+    // bind a node to the new key while its content/callback still belongs to the old index during
+    // an immediate-canonical reorder (Hands e3866a35/acb153fa).
+    val renderedItems = presentedItems
+    val renderedPresentationGeneration = presentationGeneration
+    val renderedPresentationOwnerIdentity = presentationOwnerIdentity
+    // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
+    // the backing MutableState objects at commit time so the old callback sees an order change
+    // immediately, even before the next recomposition updates or cancels its pointerInput node.
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
@@ -868,8 +890,7 @@ private fun SharedActivityList(
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) }
                 )
             }
-            items(presentedItems.size, key = { index -> presentedItems[index].key }) { index ->
-                val item = presentedItems[index]
+            items(items = renderedItems, key = { item -> item.key }) { item ->
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
@@ -878,24 +899,54 @@ private fun SharedActivityList(
                     timeContext = timeContext,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     captureMenuAnchor = !listState.isScrollInProgress,
-                    presentationGeneration = presentationGeneration,
-                    onOpen = {
-                        selectedItemKey = item.key
+                    presentationGeneration = renderedPresentationGeneration,
+                    presentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                    onOpen = open@{
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedPresentationGeneration = renderedPresentationGeneration,
+                                currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationGeneration = presentationGenerationState.value,
+                            ) ?: return@open
+                        selectedItemKey = currentItem.key
                         onIntent(
                             SharedActivityIntent.PrewarmActivityTail(
                                 activityReplyThreadPrewarmNextAfterClick(
                                     items = presentedItems,
-                                    clickedIndex = index,
+                                    clickedKey = currentItem.key,
                                     serverId = snapshot.server.id.value
                                 )
                             )
                         )
-                        item.activityOpenReadIntent()?.let(onIntent)
-                        onOpenItem(item)
+                        currentItem.activityOpenReadIntent()?.let(onIntent)
+                        onOpenItem(currentItem)
                     },
-                    onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
-                    onOpenMenu = { anchor ->
-                        activeMenuItem = item
+                    onDone = done@{
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedPresentationGeneration = renderedPresentationGeneration,
+                                currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationGeneration = presentationGenerationState.value,
+                            ) ?: return@done
+                        onIntent(SharedActivityIntent.MarkDone(currentItem))
+                    },
+                    onOpenMenu = menu@{ anchor ->
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedPresentationGeneration = renderedPresentationGeneration,
+                                currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationGeneration = presentationGenerationState.value,
+                            ) ?: return@menu
+                        activeMenuItem = currentItem
                         menuAnchor = anchor
                     }
                 )
@@ -1004,9 +1055,10 @@ private fun SharedActivityList(
  */
 internal fun activityReplyThreadPrewarmNextAfterClick(
     items: List<InboxItem>,
-    clickedIndex: Int,
+    clickedKey: String,
     serverId: String
 ): List<ActivityReplyThreadPrewarmMarker> {
+    val clickedIndex = items.indexOfFirst { item -> item.key == clickedKey }
     if (clickedIndex !in items.indices) return emptyList()
     return listOfNotNull(
         items
@@ -1014,6 +1066,30 @@ internal fun activityReplyThreadPrewarmNextAfterClick(
         .firstNotNullOfOrNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
     )
 }
+
+/**
+ * Commits an Activity row gesture only while the exact rendered order generation still owns the
+ * row key. Content-only updates for the same key are allowed and resolve to the newest canonical
+ * item; any reorder/removal cancels the stale DOWN instead of retargeting its UP to another row.
+ */
+internal fun activityItemForCommittedGesture(
+    renderedItemKey: String,
+    renderedPresentationOwnerIdentity: String,
+    renderedPresentationGeneration: Int,
+    currentItems: List<InboxItem>,
+    currentPresentationOwnerIdentity: String,
+    currentPresentationGeneration: Int,
+): InboxItem? {
+    if (renderedPresentationOwnerIdentity != currentPresentationOwnerIdentity) return null
+    if (renderedPresentationGeneration != currentPresentationGeneration) return null
+    return currentItems.firstOrNull { item -> item.key == renderedItemKey }
+}
+
+internal fun activityPresentationOwnerIdentity(
+    accountId: String,
+    serverId: String,
+    filter: InboxFilter,
+): String = "account:$accountId|server:$serverId|filter:${filter.wireValue}"
 
 internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
     // The destination store acknowledges the stable channel/thread identity after it is loaded
@@ -1082,13 +1158,17 @@ private fun SharedActivityRow(
     activityTaskStatusBadgesEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
     presentationGeneration: Int = 0,
+    presentationOwnerIdentity: String = "",
     onOpen: () -> Unit,
     onDone: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ) {
     val openGestureKey =
-        remember(item, presentationGeneration) {
-            item.activityOpenGestureKey(presentationGeneration)
+        remember(item, presentationGeneration, presentationOwnerIdentity) {
+            item.activityOpenGestureKey(
+                presentationGeneration = presentationGeneration,
+                presentationOwnerIdentity = presentationOwnerIdentity,
+            )
         }
     val mutedPrimaryContent = item.activityPrimaryContentMuted()
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
@@ -1204,7 +1284,11 @@ private fun SharedActivityRow(
                 ) {
                     SharedActivitySmallIconButton(
                         iconName = SlockLucideIconName.Check,
-                        clickIdentity = item.activityDoneClickIdentity(),
+                        clickIdentity =
+                            item.activityDoneClickIdentity(
+                                presentationGeneration = presentationGeneration,
+                                presentationOwnerIdentity = presentationOwnerIdentity,
+                            ),
                         onClick = onDone
                     )
                 }
@@ -1230,7 +1314,10 @@ private fun SharedActivityRow(
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
     kind != InboxItemKind.System && unreadCount == 0
 
-internal fun InboxItem.activityDoneClickIdentity(): String = "activity-done:$key"
+internal fun InboxItem.activityDoneClickIdentity(
+    presentationGeneration: Int = 0,
+    presentationOwnerIdentity: String = "",
+): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
 @Composable
 private fun Modifier.activityRowGestures(
@@ -1239,8 +1326,6 @@ private fun Modifier.activityRowGestures(
     onClick: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ): Modifier {
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnOpenMenu by rememberUpdatedState(onOpenMenu)
     val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef() }
     return this
         .then(
@@ -1252,9 +1337,12 @@ private fun Modifier.activityRowGestures(
         )
         .pointerInput(gestureKey) {
             detectTapGestures(
-                onTap = { currentOnClick() },
+                // Deliberately capture the callback owned by this pointerInput generation. Using
+                // rememberUpdatedState here lets a recomposed row replace the callback before the
+                // old DOWN is cancelled, which can open the item newly occupying the same slot.
+                onTap = { onClick() },
                 onLongPress = { localOffset ->
-                    rootAnchor.resolve(localOffset)?.let(currentOnOpenMenu)
+                    rootAnchor.resolve(localOffset)?.let(onOpenMenu)
                 }
             )
         }
@@ -1275,12 +1363,15 @@ internal fun InboxItem.inboxItemOpenGestureKey(): String =
         unreadCount.toString()
     ).joinToString("|")
 
-internal fun InboxItem.activityOpenGestureKey(presentationGeneration: Int): String =
+internal fun InboxItem.activityOpenGestureKey(
+    presentationGeneration: Int,
+    presentationOwnerIdentity: String = "",
+): String =
     // The Activity pointer owner follows the stable presented slot, not the
-    // latest anchor/unread fields. rememberUpdatedState supplies the newest
-    // row payload to the callback; only a committed order generation change
-    // may cancel a DOWN→UP gesture that started on this slot.
-    "activity-open:$key|presentation:$presentationGeneration"
+    // latest anchor/unread fields. The captured callback resolves newest content
+    // through stable current-state holders; only a committed order generation
+    // change may cancel a DOWN→UP gesture that started on this slot.
+    "activity-open:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
