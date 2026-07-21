@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-21T10:44:56.026Z",
+  "generatedAt": "2026-07-21T10:49:29.058Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 84,
-    "ready": 70,
-    "pending": 14
+    "ready": 77,
+    "pending": 7
   },
   "cases": [
     {
@@ -273,15 +273,34 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc07fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-07-21T10:44:54.669Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-21T10:47:26.794Z",
+      "severity": "low",
+      "summary": [
+        "All four status dots (green, orange, gray, cyan) match in color, shape, size, and spacing between React and iOS.",
+        "Pink 'Waiting pulse' dot matches in color, size, and vertical alignment across both platforms.",
+        "'Waiting pulse' label text matches in font weight, size, color, and baseline alignment.",
+        "Header text ('Raft UI Status Dot', dimensions label, component ID label) matches in typography and positioning.",
+        "Overall component bounds and layout are visually equivalent; pixel-perfect similarity is 99.77% with only 0.23% mismatch, likely from anti-aliasing differences."
+      ],
+      "likelyCauses": [
+        "Minor anti-aliasing/font rasterization differences between React (web) and iOS (native) rendering.",
+        "Larger iOS canvas viewport causing comparison region to include extra whitespace below the actual component."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "No action required; differences are within tolerance and attributed to anti-aliasing.",
+        "If desired, crop the iOS capture to match the component bounds (342×92) before comparison to avoid whitespace diff.",
+        "Confirm the 0.23% mismatch area is limited to font/dot edge anti-aliasing and not a structural layout shift."
+      ],
+      "intentional": [
+        "Empty whitespace below the component in the iOS capture is due to viewport size and is not a real UI difference.",
+        "All dot colors, sizes, and the 'Waiting pulse' label appear intentionally identical across platforms."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -777,15 +796,37 @@
     },
     {
       "id": "components.thread.composer.pending-mention-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f803fc0001000300010003000163830001781b000100038001000300010fb30ff900030001ffff8001fffffffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffee002fffe3fff",
-      "generatedAt": "2026-07-21T10:44:54.979Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-21T10:47:27.123Z",
+      "severity": "medium",
+      "summary": [
+        "React (left) uses a bold yellow/orange filled warning banner with icon and 'UNDELIVERED MENTIONS' header; iOS (right) uses a flat off-white/cream background with no header title or icon, just body text.",
+        "iOS is missing the 'UNDELIVERED MENTIONS' heading and supporting description line ('Message sent, but these @mentions were not delivered.').",
+        "Button labels differ: React shows 'Add to channel' (with person-plus icon) and 'Notify once' (with bell icon); iOS shows shorter 'Add' and 'Notify' without leading icons.",
+        "React's mention sub-text is truncated ('@Android-Developer-4 was not notified b…'); iOS shows a full explanatory sentence ('@Android-Developer-4 isn't in #design. Add them to #design or send a one-time notification.').",
+        "iOS adds an empty avatar/picture tile next to the user name that is absent in React (React shows only the person-plus glyph)."
+      ],
+      "likelyCauses": [
+        "iOS implementation appears to be a simplified/draft variant missing the warning header, descriptive body copy, and iconography from the React design spec.",
+        "Different content/copy strategy chosen for iOS (channel-aware explanation vs. generic 'undelivered' framing).",
+        "Possible incomplete migration of the warning banner styling (background color, title, icon) from the React spec to native iOS."
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Add the 'UNDELIVERED MENTIONS' bold title and the descriptive subline ('Message sent, but these @mentions were not delivered.') to the iOS banner.",
+        "Apply the yellow/orange warning background color and prominent warning icon to the iOS banner to match React's emphasis.",
+        "Restore the person-plus icon on the 'Add' button and the bell icon on the 'Notify' button (or use full labels 'Add to channel' / 'Notify once') for parity.",
+        "Align the avatar tile handling: either add it on both platforms or remove it from iOS to match React.",
+        "Standardize the sub-text rendering so both platforms either truncate or show the full mention explanation consistently."
+      ],
+      "intentional": [
+        "Use of cream/off-white background instead of warning yellow may be an intentional iOS design choice to feel less alarming.",
+        "Shorter button labels ('Add' / 'Notify') could be intentional for compact mobile UI, but should be confirmed against design spec."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1729979341353749
     },
     {
@@ -1478,15 +1519,39 @@
     },
     {
       "id": "components.tasks.status-menu",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1cf8381c03fc07fe00fc001e1cfce39e04fce09e04fce09e04fce19e1cfce39e00fce01e00fcf01e0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff80fff",
-      "generatedAt": "2026-07-21T10:44:55.392Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-21T10:47:27.563Z",
+      "severity": "low",
+      "summary": [
+        "Dropdown panel horizontal position differs: iOS version is shifted further right relative to the 'In Progress' trigger button compared to React baseline.",
+        "iOS version shows slightly larger vertical spacing between dropdown menu items (Todo, In Progress, In Review, Done, Closed) than the React baseline.",
+        "iOS dropdown panel appears slightly wider than the React baseline.",
+        "Checkmark icon next to 'In Progress' in the dropdown appears at a slightly different horizontal offset in iOS.",
+        "'In Progress' trigger button (cyan pill with pencil icon) is positioned further right in the iOS canvas due to different overall layout coordinate system."
+      ],
+      "likelyCauses": [
+        "Different default font metrics/line-height between React/web and iOS (San Francisco) typography stacks causing vertical spacing variation.",
+        "iOS uses point-based layout with different padding tokens compared to web px-based spacing.",
+        "No shared design-token enforcement across platforms; spacing values defined independently per platform.",
+        "Coordinate offset due to iOS screenshot being captured within a larger 1170×2532 canvas vs the tightly cropped 342×780 React baseline."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Normalize menu item vertical spacing using shared design tokens (e.g., menu-item-padding-y) enforced across web and iOS.",
+        "Align dropdown panel width and trigger-relative offset to match baseline by using consistent positioning constants.",
+        "Verify font line-height for menu items matches between web (e.g., Inter/system-ui) and iOS (SF) so text rows align.",
+        "Use a shared component spec (Figma/Storybook) with locked spacing tokens for the status menu across platforms.",
+        "Crop iOS screenshot to component bounds only (no full-screen canvas) to eliminate layout-coordinate drift in comparisons."
+      ],
+      "intentional": [
+        "Trigger button color (cyan/teal) and pencil icon are consistent across platforms — intentional brand styling.",
+        "Checkmark indicator on the currently selected 'In Progress' item is present on both — intentional state visualization.",
+        "Dropdown items list contents (Todo, In Progress, In Review, Done, Closed) match exactly — intentional parity."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.026635138601963204
     },
     {
@@ -1559,22 +1624,43 @@
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff0000000000007dfc3ffc6df83ffc3ffc3ffc00cc006c7ffc21fc3ffc3ffc3dfc3ffc7ffc28fc1ffc1ffc31fc3ffc07fc3ffc07fc27fc3ffc3ffc3ffc3ffc7ff43ffc7ffc3ffc3ffc3ffc80012ffcfff73ffcffff2ffcffff3ffcffff37fcbff83ffc3ff83ffc8ff03d000ff038008181000090090000fffdffffffff",
-      "generatedAt": "2026-07-21T10:44:55.474Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-21T10:47:27.655Z",
+      "severity": "high",
+      "summary": [
+        "iOS viewport is occluded by the system keyboard, hiding the lower half of the form (Runtime select, Model dropdown, > More, Cancel, Create Agent).",
+        "The dialog in iOS does not scroll or reposition to remain usable while the Name field is focused, so actionable controls are unreachable.",
+        "Form labels and inputs render at a visibly larger size on iOS; spacing between fields is also greater, increasing the visible content area needed.",
+        "The \"Create Agent\" primary CTA (pink) and \"Cancel\" button are not visible on iOS due to keyboard occlusion."
+      ],
+      "likelyCauses": [
+        "iOS dialog not using a scroll view or keyboard-avoidance inset adjustment when the keyboard appears.",
+        "Modal is rendered full-screen without safe-area/keyboard insets handling (no `keyboardAvoidingView` / `contentInset`).",
+        "Form fields are not wrapped in a ScrollView, so content below the focused input gets clipped by the keyboard."
+      ],
+      "suggestedOwner": "iOS / Mobile engineering (dialog component owner)",
+      "suggestedFixes": [
+        "Wrap the dialog body in a UIScrollView (or equivalent) so the form can scroll when the keyboard appears.",
+        "Apply keyboard avoidance insets / safe-area bottom padding so the focused field and the CTA remain visible.",
+        "Reduce vertical spacing between form rows or collapse the upgrade notice to fit within the visible area when the keyboard is up.",
+        "Ensure the primary action (Create Agent) sits above the keyboard or becomes reachable by scrolling.",
+        "Capture the test with the keyboard dismissed for a fair baseline comparison, or compare against an iOS screenshot with the keyboard hidden."
+      ],
+      "intentional": [
+        "Larger iOS typography and spacing may be intentional platform scaling.",
+        "Pink CTA color and pink required-field asterisk are consistent across both platforms."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.5003696277392959
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:44:55.331Z",
+      "generatedAt": "2026-07-21T10:49:28.312Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1973,28 +2059,75 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe8ffe07fe81fe01fe06021f0e8200001681fc001280cc01f280040072a3fc0002807c0002817c0072bffc00128ffc2002807c00028004c006b1fcfffe8000fffe8000fffe81f0fffe8018fffebffcfffe83fcfffe8000fffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-07-21T10:44:55.715Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-21T10:47:28.099Z",
+      "severity": "high",
+      "summary": [
+        "React page shows two full settings cards (Message font size + Live agent activity); iOS page only renders the Message font size card — Live agent activity section is missing entirely.",
+        "React page title font ('Appearance') is larger and bolder than iOS equivalent.",
+        "iOS page header shows 'Appearance' in title-case smaller weight versus React's larger heading-style title.",
+        "iOS preview block shows only one chat bubble ('Onboarding Assistant'); React preview shows a different sample ('Cindy' with timestamp, inline code, and reference chip styling).",
+        "iOS content uses smaller body text and tighter vertical spacing compared to React's roomier card layout."
+      ],
+      "likelyCauses": [
+        "iOS implementation did not port the 'Live agent activity' setting card from the React baseline.",
+        "iOS preview copy/data differs from React — likely a placeholder/different sample message used during iOS development.",
+        "Typography scale differs between platforms — iOS used smaller font tokens than React's design system.",
+        "Density/spacing tokens not aligned between iOS and React implementations."
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Add the 'Live agent activity' toggle card to the iOS Appearance page to match React scope.",
+        "Align iOS preview sample message content with React baseline (or accept it as intentional copy difference and verify with design).",
+        "Unify header typography: match React's 'Appearance' title size/weight in iOS using shared design tokens.",
+        "Standardize body text size and card vertical padding/spacing using shared spacing scale tokens across platforms.",
+        "Re-run Slock comparison with crop targets set to element bounds to remove whitespace from iOS canvas."
+      ],
+      "intentional": [
+        "iOS canvas size (1170x2532) is larger than React (390x844); whitespace at bottom of iOS view is from raw viewport, not a layout gap.",
+        "Preview chat sample differences may be intentional placeholder content per platform."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20032945814936332
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff81fe80fe9cfe1ffe80ff8ff3807c000080600000806087fbbffc81ffbffc81f1bffcff19a01c81ff807c81f1807cffff81fc807be274ffd1fff0cfffbfe080fd800000fdffffffffffff0001ffff0000ffff0000ffff0000ffff03feffff283cffff0000ffff07fcffff3bfcfffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-21T10:44:55.738Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-21T10:47:28.184Z",
+      "severity": "high",
+      "summary": [
+        "iOS renders a fully populated notifications settings page while React shows only an empty/unavailable state with one disabled card",
+        "React displays a yellow 'UNAVAILABLE' badge and pink 'Enable Push Notifications' button indicating push is not configured; iOS has a green 'Notifications allowed' system status banner instead",
+        "iOS uses sectioned layout with SYSTEM / ON THIS DEVICE / WORKSPACE headers and a 3-option radio group (All messages / Only mentions / Nothing); React only shows a single Mute-this-server card",
+        "Toggle controls differ: iOS uses standard green/gray switches aligned right of each row; React uses a small empty checkbox for 'Mute this server'",
+        "iOS includes a 'Send a test notification' row with a 'Ready' status and paper-plane icon absent from React"
+      ],
+      "likelyCauses": [
+        "React baseline was captured in an environment where web push is unsupported/denied, producing a fallback unavailable UI",
+        "iOS current build was captured with notification permissions granted, so it renders the full settings surface",
+        "Platform-specific implementation divergence: React web client lacks the SYSTEM/ON THIS DEVICE/WORKSPACE sectioning that native iOS exposes",
+        "Different state machines drive the two views — React's push vs mute logic is collapsed into one card; iOS splits into system permission, per-device toggles, and per-workspace radios",
+        "Visual differences (typography, spacing, toggle style) reflect native iOS HIG defaults vs React web component library choices"
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Align React component to render the same SYSTEM / ON THIS DEVICE / WORKSPACE section structure when push is available",
+        "Replace React's checkbox mute control with the iOS-style toggle (or a unified switch component) and place it on the right edge of each row",
+        "Add equivalent 'Send a test notification' action row in React with a status indicator when supported",
+        "Standardize header typography weight, back-button padding, and divider styling across React and iOS to remove the top-of-page misalignment",
+        "When push is unavailable, render a clearly differentiated unavailable card on iOS that mirrors the React 'UNAVAILABLE' badge pattern for consistency"
+      ],
+      "intentional": [
+        "Platform permission banners are necessarily different (web Notification API vs iOS UNUserNotificationCenter) so divergence in the top status card may be intentional",
+        "Different control primitives (checkbox vs UISwitch) are expected cross-platform but should be normalized via design tokens"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2720969876183146
     },
     {
@@ -2069,7 +2202,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:44:55.656Z",
+      "generatedAt": "2026-07-21T10:49:28.666Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2082,7 +2215,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:44:55.656Z",
+      "generatedAt": "2026-07-21T10:49:28.666Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2095,7 +2228,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:44:55.656Z",
+      "generatedAt": "2026-07-21T10:49:28.666Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2108,7 +2241,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:44:55.656Z",
+      "generatedAt": "2026-07-21T10:49:28.666Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2121,7 +2254,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:44:55.656Z",
+      "generatedAt": "2026-07-21T10:49:28.666Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2163,15 +2296,38 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe8010003180100821000c0000008405dc80008c018fff00018fff0fffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff0fff8fff0fffc0fff8ff81fff9fffffff1ffd47fffffffffffffdfff0c3f80010c3f80010c7f80ff0027807f0003807ff7ffffff97ffdfff97ff80f85c02ffffffff",
-      "generatedAt": "2026-07-21T10:44:55.821Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-21T10:47:33.492Z",
+      "severity": "high",
+      "summary": [
+        "Agent action menu (Stop Agent / Restart / Reset) overflows downward in iOS, covering the member name and \"Product UX Designer\" handle, while in React it sits as a compact dropdown at the top-right.",
+        "iOS shows an extra \"Working\" status indicator (yellow dot + label) under @Product-UX-Designer that is absent in React.",
+        "Info section layout differs: React uses a vertical stack with Created date first then Creator side-by-side; iOS uses a horizontal row layout with Computer, Connected, daemon v0.61, Created, and Creator on stacked aligned rows.",
+        "Runtime Config chips are arranged in a single row of 4 columns in React (Runtime, Model, Reasoning, Mode) but laid out as a 2×2 grid in iOS.",
+        "Environment Variables are stacked vertically full-width in React but displayed as narrower side-by-side tiles in iOS."
+      ],
+      "likelyCauses": [
+        "iOS implementation rebuilt the page as a responsive/adaptive layout rather than mirroring the React fixed-width component design.",
+        "The action menu (Stop Agent / Restart) was not constrained or anchored properly on iOS, allowing it to overflow into content below.",
+        "iOS added a presence/status indicator (\"Working\") not present in the React baseline.",
+        "Label/value cell groupings (Info, Runtime Config, Env Vars) were reorganized into row/grid layouts instead of stacked rows on iOS.",
+        "Different text truncation/wrapping rules applied to long fields like computer name and env var values."
+      ],
+      "suggestedOwner": "ios",
+      "suggestedFixes": [
+        "Anchor the Stop Agent / Restart menu to the toolbar with constrained max-height so it does not overlap the member header in iOS.",
+        "Remove or hide the \"Working\" status indicator on iOS to match React baseline, or gate it behind a feature flag and document the intentional difference.",
+        "Restructure iOS Info section to a vertical stack (Computer → Connected → Created → Creator) to mirror React ordering.",
+        "Restore the 4-column single-row Runtime Config layout (Runtime, Model, Reasoning, Mode) in iOS instead of the 2×2 grid.",
+        "Stack Environment Variables vertically full-width on iOS, matching React, and relax truncation to avoid mid-word ellipsis for computer name."
+      ],
+      "intentional": [
+        "Higher-resolution canvas (1170×2532) on iOS vs 390×844 React baseline naturally scales typography and spacing."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20213067606432533
     },
     {
@@ -2556,7 +2712,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-21T10:44:55.920Z",
+      "generatedAt": "2026-07-21T10:49:28.937Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

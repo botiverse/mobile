@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-21T10:45:01.019Z",
+  "generatedAt": "2026-07-21T10:49:34.257Z",
   "latestRunId": "8cf0118-20260721104254",
   "latest": {
     "runId": "8cf0118-20260721104254",
     "commit": "8cf0118-20260721104254",
     "commitSubject": "test(visual): stabilize activity hit-target tap (#1382)",
-    "generatedAt": "2026-07-21T10:45:01.019Z",
+    "generatedAt": "2026-07-21T10:49:34.257Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 84,
-      "ready": 71,
-      "pending": 13
+      "ready": 83,
+      "pending": 1
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "8cf0118-20260721104254",
       "commit": "8cf0118-20260721104254",
       "commitSubject": "test(visual): stabilize activity hit-target tap (#1382)",
-      "generatedAt": "2026-07-21T10:45:01.019Z",
+      "generatedAt": "2026-07-21T10:49:34.257Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 84,
-        "ready": 71,
-        "pending": 13
+        "ready": 83,
+        "pending": 1
       },
       "comparisons": [
         "react__android",

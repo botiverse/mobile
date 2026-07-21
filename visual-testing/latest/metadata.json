@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-21T10:45:01.019Z",
+  "generatedAt": "2026-07-21T10:49:34.257Z",
   "runId": "8cf0118-20260721104254",
   "commit": "8cf0118-20260721104254",
   "commitSubject": "test(visual): stabilize activity hit-target tap (#1382)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 84,
-        "ready": 71,
-        "pending": 13
+        "ready": 83,
+        "pending": 1
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 84,
-        "ready": 70,
-        "pending": 14
+        "ready": 77,
+        "pending": 7
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 84,
-        "ready": 68,
-        "pending": 16
+        "ready": 78,
+        "pending": 6
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 84,
-    "ready": 71,
-    "pending": 13
+    "ready": 83,
+    "pending": 1
   },
   "componentMatrixSummary": {
     "total": 112,

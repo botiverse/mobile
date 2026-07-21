@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-21 10:45:01 UTC
+Generated: 2026-07-21 10:49:34 UTC
 Latest run: 8cf0118-20260721104254
 Latest commit: 8cf0118-20260721104254
 Commit subject: test(visual): stabilize activity hit-target tap (#1382)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 84, same 0, pass 0, basic-pass 1, different 82, missing 1
-AI analysis: ready 71 / total 84, pending 13
+AI analysis: ready 83 / total 84, pending 1
 Visual coverage matrix: active 93 / total 112, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
