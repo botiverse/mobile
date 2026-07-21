@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -289,6 +290,14 @@ data class SharedSettingsActionState(
     val errorCode: String? = null
 )
 
+private data class ServerNotificationModeMutation(
+    val generation: Long,
+    val ownerKey: String?,
+    val ownerRoute: SharedSettingsRoute,
+    val previousMode: SettingsMobileSelectionSnapshot,
+    val previousMute: SettingsMobileToggleSnapshot
+)
+
 sealed interface SharedSettingsIntent {
     data object Start : SharedSettingsIntent
     data class OpenDestination(val destination: SharedSettingsDestination) : SharedSettingsIntent
@@ -502,6 +511,14 @@ class SharedSettingsDataSource(
     private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
     private val networkTransportPreferenceRepository: NetworkTransportPreferenceRepository? = null
 ) {
+    val authSessionEvents: SharedFlow<AuthSessionEvent>?
+        get() = (sessionStore as? SlockAuthSessionEventSource)?.authSessionEvents
+
+    suspend fun currentMobileSettingsOwnerKey(): String? =
+        sessionStore.readSession()?.let { session ->
+            "${session.user.id}\u001F${session.currentServerId.orEmpty()}"
+        }
+
     suspend fun loadHome(selectedDestination: SharedSettingsDestination): DataResult<SharedSettingsHomeSnapshot> {
         val session = sessionStore.readSession()
         return DataResult.Content(session.toSharedSettingsHomeSnapshot(selectedDestination))
@@ -1525,6 +1542,18 @@ class SharedSettingsStore(
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private var authOwnerObservationJob: Job? = null
+    private var serverNotificationModeMutationGeneration: Long = 0L
+    private var serverNotificationModeMutation: ServerNotificationModeMutation? = null
+
+    init {
+        authOwnerObservationJob =
+            dataSource.authSessionEvents?.let { events ->
+                scope.launch {
+                    events.collect(::onAuthSessionEvent)
+                }
+            }
+    }
 
     fun dispatch(intent: SharedSettingsIntent) {
         if (intent.loadsSettingsContent) {
@@ -1543,12 +1572,18 @@ class SharedSettingsStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        authOwnerObservationJob?.cancel()
+        authOwnerObservationJob = null
+        retireServerNotificationModeMutation()
     }
 
     suspend fun accept(intent: SharedSettingsIntent) {
         when (intent) {
             SharedSettingsIntent.Start -> loadHome()
             is SharedSettingsIntent.OpenDestination -> {
+                if (intent.destination != SharedSettingsDestination.Notifications) {
+                    retireServerNotificationModeMutation()
+                }
                 _state.value = _state.value.copy(route = SharedSettingsRoute(intent.destination), routeErrorCode = null)
                 loadCurrentRoute()
             }
@@ -1561,6 +1596,7 @@ class SharedSettingsStore(
                 loadComputerDetail(intent.machineId)
             }
             SharedSettingsIntent.Back -> {
+                retireServerNotificationModeMutation()
                 _state.value =
                     _state.value.copy(
                         route = SharedSettingsRoute(SharedSettingsDestination.Home),
@@ -1890,6 +1926,7 @@ class SharedSettingsStore(
             is SharedSettingsIntent.CompleteSystemNotificationAction ->
                 completeSystemNotificationAction(intent.action, intent.result)
             is SharedSettingsIntent.SetNotificationPreference -> {
+                if (serverNotificationModeMutation != null) return
                 _state.value =
                     _state.value.copy(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_NOTIFICATION_PREFERENCE, inProgress = true)
@@ -1898,6 +1935,7 @@ class SharedSettingsStore(
                     .applyMobileActionResult(MOBILE_ACTION_NOTIFICATION_PREFERENCE)
             }
             is SharedSettingsIntent.SetForegroundKeepAlivePreference -> {
+                if (serverNotificationModeMutation != null) return
                 _state.value =
                     _state.value.copy(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, inProgress = true)
@@ -1906,6 +1944,7 @@ class SharedSettingsStore(
                     .applyMobileActionResult(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE)
             }
             is SharedSettingsIntent.SetServerMute -> {
+                if (serverNotificationModeMutation != null) return
                 _state.value =
                     _state.value.copy(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_SERVER_MUTE, inProgress = true)
@@ -1913,11 +1952,7 @@ class SharedSettingsStore(
                 dataSource.setServerMute(intent.enabled).applyMobileActionResult(MOBILE_ACTION_SERVER_MUTE)
             }
             is SharedSettingsIntent.SetServerNotificationMode -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_SERVER_MUTE, inProgress = true)
-                    )
-                dataSource.setServerNotificationMode(intent.mode).applyMobileActionResult(MOBILE_ACTION_SERVER_MUTE)
+                setServerNotificationMode(intent.mode)
             }
             is SharedSettingsIntent.SetLanguageRegionServerTranslation -> {
                 runAction(LANGUAGE_REGION_ACTION_SERVER_TRANSLATION) {
@@ -2022,6 +2057,7 @@ class SharedSettingsStore(
                     .applyMobileActionResult(MOBILE_ACTION_IMAGE_ANNOTATION)
             }
             is SharedSettingsIntent.SetForegroundMessageBanners -> {
+                if (serverNotificationModeMutation != null) return
                 _state.value =
                     _state.value.copy(
                         actionState = SharedSettingsActionState(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS, inProgress = true)
@@ -2199,7 +2235,8 @@ class SharedSettingsStore(
             SharedSettingsDestination.Appearance ->
                 dataSource.loadAppearance().applyToState(destination) { copy(appearance = it) }
             SharedSettingsDestination.Notifications ->
-                dataSource.loadMobile().applyToState(destination) { copy(mobile = it) }
+                dataSource.loadMobile().preservingPendingServerNotificationMode()
+                    .applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Mobile ->
                 dataSource.loadMobilePreferences().applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Storage -> loadStorage()
@@ -2297,7 +2334,8 @@ class SharedSettingsStore(
             if (event.serverId.value != serverId) return
             when (_state.value.route.destination) {
                 SharedSettingsDestination.Notifications ->
-                    dataSource.loadMobile().applyToState(SharedSettingsDestination.Notifications) { copy(mobile = it) }
+                    dataSource.loadMobile().preservingPendingServerNotificationMode()
+                        .applyToState(SharedSettingsDestination.Notifications) { copy(mobile = it) }
                 else -> Unit
             }
             return
@@ -2473,12 +2511,194 @@ class SharedSettingsStore(
         block()
     }
 
+    private suspend fun setServerNotificationMode(mode: String) {
+        val selectedMode = ServerPushMode.fromWire(mode) ?: run {
+            _state.value =
+                _state.value.copy(
+                    actionState =
+                        SharedSettingsActionState(
+                            action = MOBILE_ACTION_SERVER_MUTE,
+                            inProgress = false,
+                            errorCode = "settings_server_notification_mode_unknown"
+                        ),
+                    routeErrorCode = "settings_server_notification_mode_unknown"
+                )
+            return
+        }
+        val current = (_state.value.mobile as? ScreenLoadState.Content)?.data ?: return
+        if (current.serverNotificationMode.selectedKey == selectedMode.wireName) return
+        if (_state.value.actionState?.let { it.action == MOBILE_ACTION_SERVER_MUTE && it.inProgress } == true) return
+
+        val ownerResult = runCatchingPreservingCancellation { dataSource.currentMobileSettingsOwnerKey() }
+        if (ownerResult.isFailure) {
+            _state.value =
+                _state.value.copy(
+                    actionState =
+                        SharedSettingsActionState(
+                            action = MOBILE_ACTION_SERVER_MUTE,
+                            inProgress = false,
+                            errorCode = "settings_server_notification_mode_owner_unavailable"
+                        ),
+                    routeErrorCode = "settings_server_notification_mode_owner_unavailable"
+                )
+            return
+        }
+        val ownerKey = ownerResult.getOrNull()
+
+        val generation = ++serverNotificationModeMutationGeneration
+        val ownerRoute = _state.value.route
+        val previousMode = current.serverNotificationMode
+        val previousMute = current.muteServer
+        serverNotificationModeMutation =
+            ServerNotificationModeMutation(
+                generation = generation,
+                ownerKey = ownerKey,
+                ownerRoute = ownerRoute,
+                previousMode = previousMode,
+                previousMute = previousMute
+            )
+        _state.value =
+            _state.value.copy(
+                mobile =
+                    ScreenLoadState.Content(
+                        current.withServerNotificationModeProjection(selectedMode)
+                    ),
+                actionState =
+                    SharedSettingsActionState(
+                        action = MOBILE_ACTION_SERVER_MUTE,
+                        itemId = selectedMode.wireName,
+                        inProgress = true
+                    ),
+                routeErrorCode = null
+            )
+        val result =
+            runCatchingPreservingCancellation {
+                dataSource.setServerNotificationMode(selectedMode.wireName)
+            }.getOrElse {
+                DataResult.Error(ScreenError("settings_server_notification_mode_failed"))
+            }
+        applyServerNotificationModeMutationResult(
+            result = result,
+            generation = generation
+        )
+    }
+
+    private suspend fun applyServerNotificationModeMutationResult(
+        result: DataResult<SettingsMobileSnapshot>,
+        generation: Long
+    ) {
+        val mutation = serverNotificationModeMutation?.takeIf { it.generation == generation } ?: return
+        if (_state.value.route != mutation.ownerRoute) {
+            retireServerNotificationModeMutation()
+            return
+        }
+        val currentOwnerResult =
+            runCatchingPreservingCancellation { dataSource.currentMobileSettingsOwnerKey() }
+        if (serverNotificationModeMutation?.generation != generation ||
+            _state.value.route != mutation.ownerRoute
+        ) {
+            retireServerNotificationModeMutation()
+            return
+        }
+        val currentOwner =
+            currentOwnerResult.getOrElse {
+                retireServerNotificationModeMutation()
+                return
+            }
+        if (currentOwner != mutation.ownerKey) {
+            retireServerNotificationModeMutation()
+            return
+        }
+
+        when (result) {
+            is DataResult.Content -> {
+                serverNotificationModeMutation = null
+                _state.value =
+                    _state.value.copy(
+                        mobile = ScreenLoadState.Content(result.data),
+                        actionState =
+                            SharedSettingsActionState(
+                                action = MOBILE_ACTION_SERVER_MUTE,
+                                itemId = result.data.serverNotificationMode.selectedKey,
+                                inProgress = false
+                            ),
+                        routeErrorCode = null
+                    )
+            }
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                val errorCode = result.toScreenLoadState().routeErrorCode()
+                val visible = (_state.value.mobile as? ScreenLoadState.Content)?.data
+                serverNotificationModeMutation = null
+                _state.value =
+                    _state.value.copy(
+                        mobile =
+                            visible?.copy(
+                                serverNotificationMode = mutation.previousMode,
+                                muteServer = mutation.previousMute
+                            )?.let { ScreenLoadState.Content(it) } ?: _state.value.mobile,
+                        actionState =
+                            SharedSettingsActionState(
+                                action = MOBILE_ACTION_SERVER_MUTE,
+                                itemId = mutation.previousMode.selectedKey,
+                                inProgress = false,
+                                errorCode = errorCode
+                            ),
+                        routeErrorCode = errorCode
+                    )
+            }
+        }
+    }
+
+    private suspend fun onAuthSessionEvent(event: AuthSessionEvent) {
+        if (event is AuthSessionEvent.TokensRotated) return
+        val mutation = serverNotificationModeMutation ?: return
+        val currentOwnerResult =
+            runCatchingPreservingCancellation { dataSource.currentMobileSettingsOwnerKey() }
+        val activeMutation =
+            serverNotificationModeMutation?.takeIf { it.generation == mutation.generation }
+                ?: return
+        if (currentOwnerResult.isFailure || currentOwnerResult.getOrNull() != activeMutation.ownerKey) {
+            retireServerNotificationModeMutation(invalidateServerOwnedProjection = true)
+        }
+    }
+
+    private fun retireServerNotificationModeMutation(
+        invalidateServerOwnedProjection: Boolean = false
+    ) {
+        if (serverNotificationModeMutation == null) return
+        serverNotificationModeMutation = null
+        val currentMobile = (_state.value.mobile as? ScreenLoadState.Content)?.data
+        _state.value =
+            _state.value.copy(
+                mobile =
+                    if (invalidateServerOwnedProjection && currentMobile != null) {
+                        ScreenLoadState.Content(
+                            currentMobile.copy(
+                                muteServer =
+                                    currentMobile.muteServer.copy(
+                                        enabled = false,
+                                        available = false,
+                                        statusLabel = "Unavailable"
+                                    ),
+                                serverNotificationMode =
+                                    ServerPushMode.All.toSettingsMobileSelectionSnapshot(available = false)
+                            )
+                        )
+                    } else {
+                        _state.value.mobile
+                    },
+                actionState = _state.value.actionState.takeUnless { it?.action == MOBILE_ACTION_SERVER_MUTE }
+            )
+    }
+
     private fun DataResult<SettingsMobileSnapshot>.applyMobileActionResult(
         action: String,
         itemId: String? = null,
         errorCodeOverride: String? = null
     ) {
-        val nextMobile = toScreenLoadState()
+        val nextMobile = preservingPendingServerNotificationMode().toScreenLoadState()
         val errorCode = errorCodeOverride ?: nextMobile.routeErrorCode()
         _state.value =
             _state.value.copy(
@@ -2496,6 +2716,17 @@ class SharedSettingsStore(
                     ),
                 routeErrorCode = errorCode
             )
+    }
+
+    private fun DataResult<SettingsMobileSnapshot>.preservingPendingServerNotificationMode(): DataResult<SettingsMobileSnapshot> {
+        if (serverNotificationModeMutation == null || this !is DataResult.Content) return this
+        val visible = (_state.value.mobile as? ScreenLoadState.Content)?.data ?: return this
+        return DataResult.Content(
+            data.copy(
+                serverNotificationMode = visible.serverNotificationMode,
+                muteServer = visible.muteServer
+            )
+        )
     }
 
     private fun DataResult<SettingsLanguageRegionSnapshot>.applyLanguageRegionActionResult(action: String) {
@@ -3315,6 +3546,30 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileSelectionSnapshot(): Se
                 )
             }
     )
+
+private fun SettingsMobileSnapshot.withServerNotificationModeProjection(
+    mode: ServerPushMode
+): SettingsMobileSnapshot {
+    val label =
+        serverNotificationMode.options
+            .firstOrNull { it.key == mode.wireName }
+            ?.label
+            ?.takeIf { it.isNotBlank() }
+            ?: mode.wireName
+    return copy(
+        muteServer =
+            muteServer.copy(
+                enabled = mode == ServerPushMode.None,
+                statusLabel = if (mode == ServerPushMode.None) "Muted" else "Not muted"
+            ),
+        serverNotificationMode =
+            serverNotificationMode.copy(
+                selectedKey = mode.wireName,
+                selectedLabel = label,
+                statusLabel = label
+            )
+    )
+}
 
 private fun LinkOpenMode.toSettingsMobileLinkOpenModeSnapshot(): SettingsMobileSelectionSnapshot =
     SettingsMobileSelectionSnapshot(
