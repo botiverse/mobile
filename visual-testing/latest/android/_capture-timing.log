@@ -1,30 +1,36 @@
-37862 START captureSettingsServerProfile
-42773 OK captureSettingsServerProfile durationMs=4912
-42857 START captureSettingsAccountErrorState
-46824 OK captureSettingsAccountErrorState durationMs=3967
-46912 START captureThreadMessageBodyTapOpensThread
-55399 OK captureThreadMessageBodyTapOpensThread durationMs=8484
-55569 START captureHomeSearchResults
-63245 OK captureHomeSearchResults durationMs=7676
-63618 START captureUiSelectionPopoverStates
-66914 OK captureUiSelectionPopoverStates durationMs=3296
-67140 START captureAuthLoginInputsEmpty
-73255 OK captureAuthLoginInputsEmpty durationMs=6113
-73605 START captureRaftUiWipMessageCardsStates
-76703 OK captureRaftUiWipMessageCardsStates durationMs=3097
-76944 START captureRaftUiPopoverSurfaceStates
-79662 OK captureRaftUiPopoverSurfaceStates durationMs=2713
-79745 START captureHomeActivityBottomHitTarget
-85992 OK captureHomeActivityBottomHitTarget durationMs=6247
-86239 START captureThreadMessageRowMdCodeEmail
-89012 OK captureThreadMessageRowMdCodeEmail durationMs=2773
-89170 START captureThreadApproveLoginActionCardPending
-91879 OK captureThreadApproveLoginActionCardPending durationMs=2708
-91969 START captureThreadComposerEmpty
-94397 OK captureThreadComposerEmpty durationMs=2425
-94446 START captureRaftUiInteractionStates
-96893 OK captureRaftUiInteractionStates durationMs=2446
-96989 START captureRaftUiFieldInputStates
-99616 OK captureRaftUiFieldInputStates durationMs=2627
-99648 START captureMembersAgentDetailAppsScreen
-103543 OK captureMembersAgentDetailAppsScreen durationMs=3894
+38346 START captureUiAvatarListRowStates
+42534 OK captureUiAvatarListRowStates durationMs=4193
+42592 START captureThreadActionCardCatalog
+46281 OK captureThreadActionCardCatalog durationMs=3688
+46379 START captureThreadMessageRowMdWrapSlice1
+49670 OK captureThreadMessageRowMdWrapSlice1 durationMs=3291
+49832 START captureThreadMessageMenuTask
+56100 OK captureThreadMessageMenuTask durationMs=6268
+56209 START captureUiBadgeStates
+58837 OK captureUiBadgeStates durationMs=2628
+59068 START captureRaftUiComboboxSurfaceStates
+61895 OK captureRaftUiComboboxSurfaceStates durationMs=2828
+62097 START captureSettingsRowStates
+65007 OK captureSettingsRowStates durationMs=2919
+65278 START captureThreadMessageRow
+69623 OK captureThreadMessageRow durationMs=4345
+69639 START captureThreadMessageMenuDefault
+74588 OK captureThreadMessageMenuDefault durationMs=4949
+74792 START captureRaftUiTextareaStates
+77649 OK captureRaftUiTextareaStates durationMs=2858
+77735 START captureMembersAgentIssueReport
+83661 OK captureMembersAgentIssueReport durationMs=5926
+83744 START captureSettingsAccountPage
+86612 OK captureSettingsAccountPage durationMs=2867
+86792 START captureThreadForwardModalScrollProbe
+91417 OK captureThreadForwardModalScrollProbe durationMs=4606
+91473 START captureHomeSearchError
+97496 OK captureHomeSearchError durationMs=6023
+97789 START captureThreadMessageSavedBadge
+102640 OK captureThreadMessageSavedBadge durationMs=4850
+102712 START captureAuthLoginInputsInvalid
+108530 OK captureAuthLoginInputsInvalid durationMs=5818
+108698 START captureHomeLoadingScreen
+114343 OK captureHomeLoadingScreen durationMs=5645
+114480 START captureHomeServerSwitcherOpen
+118442 OK captureHomeServerSwitcherOpen durationMs=3961

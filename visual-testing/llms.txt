@@ -1,31 +1,31 @@
 # Raft Visual Testing
 
-Generated: 2026-07-19 22:11:47 UTC
-Latest run: 6249daf-20260719220554
-Latest commit: 6249daf-20260719220554
-Commit subject: fix: rework image editor controls (#1313)
+Generated: 2026-07-21 10:45:01 UTC
+Latest run: 8cf0118-20260721104254
+Latest commit: 8cf0118-20260721104254
+Commit subject: test(visual): stabilize activity hit-target tap (#1382)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 83, same 0, pass 0, basic-pass 1, different 81, missing 1
-AI analysis: ready 82 / total 83, pending 1
-Visual coverage matrix: active 92 / total 111, pending 16, skipped 3
+Summary: total 84, same 0, pass 0, basic-pass 1, different 82, missing 1
+AI analysis: ready 71 / total 84, pending 13
+Visual coverage matrix: active 93 / total 112, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 83, same 0, pass 0, basic-pass 1, different 81, missing 1
-- react__ios: total 83, same 0, pass 13, basic-pass 10, different 54, missing 6
-- android__ios: total 83, same 0, pass 13, basic-pass 17, different 46, missing 7
+- react__android: total 84, same 0, pass 0, basic-pass 1, different 82, missing 1
+- react__ios: total 84, same 0, pass 13, basic-pass 10, different 54, missing 7
+- android__ios: total 84, same 0, pass 14, basic-pass 17, different 47, missing 6
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 81, pending 2, total 85
+- Components Parity (component-fixture): active 82, pending 2, total 86
 - Screens Parity (real-screen): active 11, pending 14, total 26
 
 ## Provider Coverage
 
-- react: active 92, pending 13, unsupported 0
-- android: active 86, pending 19, unsupported 0
-- harmony: active 0, pending 85, unsupported 0
+- react: active 93, pending 13, unsupported 0
+- android: active 87, pending 19, unsupported 0
+- harmony: active 0, pending 86, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
@@ -53,6 +53,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.composer.file-previews: fixture alignment deferred — artin 2026-07-05: 例子没对齐，但也许不用做了
 - components.thread.composer.image-preview: Real React MessageInput pending image attachment chip vs Android connected visual-only rendering of ThreadComposerContent with a ready image preview above the composer card.
 - components.thread.composer.member-suggestions: Real React MessageInput @mention autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the member suggestion panel open. Covers avatar, agent description, channel-membership grouping, and trailing @handle treatment.
+- components.thread.composer.pending-mention-actions: Real React MessageInput post-send PendingMentionActionStrip vs Android ThreadComposerContent PendingMentionActionBanner. Seeded action covers an agent outside the current channel with Add, Notify, and Dismiss controls so nightly diffs expose typography, button chrome, spacing, and layout drift.
 - components.thread.composer.states: Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. Baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button using the same component-bounds crop as the empty and selected states.
 - components.thread.message.row: Real React MessageItem vs Android rendering of shared ThreadMessageCard with matching fixture text, reply count, and task metadata.
 - tasks.card.states: Task Card States
@@ -119,6 +120,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 8cf0118-20260721104254: react vs android, total 84, pass 0, basic-pass 1, different 82, matrix runs/8cf0118-20260721104254/component-matrix.json, page runs/8cf0118-20260721104254/
 - 6249daf-20260719220554: react vs android, total 83, pass 0, basic-pass 1, different 81, matrix runs/6249daf-20260719220554/component-matrix.json, page runs/6249daf-20260719220554/
 - 52bfef4-20260719052734: react vs android, total 82, pass 0, basic-pass 1, different 81, matrix runs/52bfef4-20260719052734/component-matrix.json, page runs/52bfef4-20260719052734/
 - 5149272-20260718073555: react vs android, total 84, pass 0, basic-pass 1, different 76, matrix runs/5149272-20260718073555/component-matrix.json, page runs/5149272-20260718073555/
