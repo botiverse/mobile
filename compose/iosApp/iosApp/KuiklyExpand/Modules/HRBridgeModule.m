@@ -2531,6 +2531,11 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     callback(@{ @"status" : status ?: @"failed" });
 }
 
+- (void)attachmentDownloadOwnerChanged:(NSDictionary *)args {
+    // Android alone owns durable DownloadManager recovery. iOS keeps the common coordinator;
+    // accept the shared owner-generation notification as an explicit no-op.
+}
+
 - (void)relationalStore:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
     if (callback) {

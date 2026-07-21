@@ -62,10 +62,12 @@ interface AttachmentDownloadObserver {
 }
 
 /**
- * Single owner for attachment transfer lifecycle, attempt fencing and progress on every platform.
+ * Common owner for hosts that do not expose a durable OS-managed attachment downloader.
  *
- * NetworkKMM owns transport. [createAttachmentDownloadAtomicSink] owns only platform filesystem
- * staging and atomic publication. ArkTS/Android/iOS must not start a second HTTP transport.
+ * NetworkKMM owns transport for iOS/OHOS and other common-host paths.
+ * [createAttachmentDownloadAtomicSink] owns only platform filesystem staging and atomic
+ * publication. Android attachment downloads intentionally use DownloadManager so transfer
+ * survives Activity recreation, backgrounding and process death.
  */
 object AttachmentDownloadCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

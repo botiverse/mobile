@@ -1025,6 +1025,21 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun androidSystemDownloadAllowsStopButRejectsFakePauseResume() {
+        val progress =
+            BridgeAttachmentDownloadProgress(
+                phase = "system_download",
+                percent = 42,
+                downloadedBytes = 420L,
+                totalBytes = 1_000L
+            )
+
+        assertFalse(slockAttachmentDownloadControlAllowed(progress, "pause"))
+        assertFalse(slockAttachmentDownloadControlAllowed(progress, "resume"))
+        assertTrue(slockAttachmentDownloadControlAllowed(progress, "stop"))
+    }
+
+    @Test
     fun activeDownloadStatusStaysIndeterminateBeforeNativeProgress() {
         val label =
             slockFilePreviewActiveDownloadStatusLabel(

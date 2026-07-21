@@ -95,6 +95,7 @@ import build.raft.app.data.TaskSnapshot
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockAuthSessionChangeSource
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -4323,6 +4324,24 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
     var nextAttachmentDownloadGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
+    var attachmentOwnerFingerprint by remember(threadInstanceKey, authStore) { mutableStateOf<String?>(null) }
+    var attachmentOwnerGeneration by remember(threadInstanceKey, authStore) { mutableStateOf(0L) }
+    fun applyThreadAttachmentOwner(nextOwnerFingerprint: String?) {
+        if (attachmentOwnerFingerprint == nextOwnerFingerprint) {
+            bridge.updateAttachmentDownloadOwner(nextOwnerFingerprint, attachmentOwnerGeneration)
+            return
+        }
+        attachmentOwnerGeneration += 1L
+        attachmentOwnerFingerprint = nextOwnerFingerprint
+        attachmentOpenStates = emptyMap()
+        bridge.updateAttachmentDownloadOwner(nextOwnerFingerprint, attachmentOwnerGeneration)
+    }
+    LaunchedEffect(threadInstanceKey, authStore) {
+        applyThreadAttachmentOwner(authStore.currentAttachmentDownloadOwnerFingerprint())
+        (authStore as? SlockAuthSessionChangeSource)?.sessionChanges?.collect {
+            applyThreadAttachmentOwner(authStore.currentAttachmentDownloadOwnerFingerprint())
+        }
+    }
     var inlineVideoPreviewStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
@@ -5221,23 +5240,43 @@ internal fun SharedThreadRouteContent(
     }
     fun openAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        nextAttachmentDownloadGeneration += 1L
-        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
-        attachmentOpenStates =
-            attachmentOpenStates +
-                (attachment.id to ThreadAttachmentOpenUiState(
-                    status = "downloading",
-                    downloadId = downloadId,
-                    progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
-                ))
         coroutineScope.launch {
+            val ownerFingerprint = authStore.currentAttachmentDownloadOwnerFingerprint()
+            if (ownerFingerprint == null) {
+                bridge.toast(unableToOpenAttachmentLabel)
+                return@launch
+            }
+            applyThreadAttachmentOwner(ownerFingerprint)
+            val ownerGeneration = attachmentOwnerGeneration
+            nextAttachmentDownloadGeneration += 1L
+            val downloadId =
+                attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration, ownerFingerprint)
+            attachmentOpenStates =
+                attachmentOpenStates +
+                    (attachment.id to ThreadAttachmentOpenUiState(
+                        status = "downloading",
+                        downloadId = downloadId,
+                        progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
+                    ))
             val result =
                 openSharedThreadAttachment(
                     bridge = bridge,
                     dataSource = dataSource,
                     attachment = attachment,
+                    ownerFingerprint = ownerFingerprint,
+                    ownerGeneration = ownerGeneration,
                     downloadId = downloadId,
                     onProgress = { progress ->
+                        if (
+                            !attachmentOperationCommitAllowed(
+                                expectedOwnerFingerprint = ownerFingerprint,
+                                expectedGeneration = ownerGeneration,
+                                currentOwnerFingerprint = attachmentOwnerFingerprint,
+                                currentGeneration = attachmentOwnerGeneration
+                            )
+                        ) {
+                            return@openSharedThreadAttachment
+                        }
                         val current = attachmentOpenStates[attachment.id]
                         if (current?.downloadId != downloadId) return@openSharedThreadAttachment
                         val reduced =
@@ -5255,6 +5294,18 @@ internal fun SharedThreadRouteContent(
                                 ))
                     }
                 )
+            if (
+                authStore.currentAttachmentDownloadOwnerFingerprint() != ownerFingerprint ||
+                !attachmentOperationCommitAllowed(
+                    expectedOwnerFingerprint = ownerFingerprint,
+                    expectedGeneration = ownerGeneration,
+                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                    currentGeneration = attachmentOwnerGeneration
+                ) ||
+                attachmentOpenStates[attachment.id]?.downloadId != downloadId
+            ) {
+                return@launch
+            }
             if (result.status == "opened") {
                 attachmentOpenStates = attachmentOpenStates - attachment.id
             } else {
@@ -5273,23 +5324,43 @@ internal fun SharedThreadRouteContent(
     }
     fun saveAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        nextAttachmentDownloadGeneration += 1L
-        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
-        attachmentOpenStates =
-            attachmentOpenStates +
-                (attachment.id to ThreadAttachmentOpenUiState(
-                    status = "downloading",
-                    downloadId = downloadId,
-                    progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
-                ))
         coroutineScope.launch {
+            val ownerFingerprint = authStore.currentAttachmentDownloadOwnerFingerprint()
+            if (ownerFingerprint == null) {
+                bridge.toast(unableToDownloadAttachmentLabel)
+                return@launch
+            }
+            applyThreadAttachmentOwner(ownerFingerprint)
+            val ownerGeneration = attachmentOwnerGeneration
+            nextAttachmentDownloadGeneration += 1L
+            val downloadId =
+                attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration, ownerFingerprint)
+            attachmentOpenStates =
+                attachmentOpenStates +
+                    (attachment.id to ThreadAttachmentOpenUiState(
+                        status = "downloading",
+                        downloadId = downloadId,
+                        progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
+                    ))
             val result =
                 saveSharedThreadAttachment(
                     bridge = bridge,
                     dataSource = dataSource,
                     attachment = attachment,
+                    ownerFingerprint = ownerFingerprint,
+                    ownerGeneration = ownerGeneration,
                     downloadId = downloadId,
                     onProgress = { progress ->
+                        if (
+                            !attachmentOperationCommitAllowed(
+                                expectedOwnerFingerprint = ownerFingerprint,
+                                expectedGeneration = ownerGeneration,
+                                currentOwnerFingerprint = attachmentOwnerFingerprint,
+                                currentGeneration = attachmentOwnerGeneration
+                            )
+                        ) {
+                            return@saveSharedThreadAttachment
+                        }
                         val current = attachmentOpenStates[attachment.id]
                         if (current?.downloadId != downloadId) return@saveSharedThreadAttachment
                         val reduced =
@@ -5307,6 +5378,18 @@ internal fun SharedThreadRouteContent(
                                 ))
                     }
                 )
+            if (
+                authStore.currentAttachmentDownloadOwnerFingerprint() != ownerFingerprint ||
+                !attachmentOperationCommitAllowed(
+                    expectedOwnerFingerprint = ownerFingerprint,
+                    expectedGeneration = ownerGeneration,
+                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                    currentGeneration = attachmentOwnerGeneration
+                ) ||
+                attachmentOpenStates[attachment.id]?.downloadId != downloadId
+            ) {
+                return@launch
+            }
             when (result.status) {
                 "saved" -> {
                     attachmentOpenStates = attachmentOpenStates - attachment.id
@@ -7804,6 +7887,8 @@ private suspend fun openSharedThreadAttachment(
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     attachment: KuiklyThreadAttachmentItem,
+    ownerFingerprint: String,
+    ownerGeneration: Long,
     downloadId: String? = null,
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
 ): ThreadAttachmentOpenResult {
@@ -7816,6 +7901,8 @@ private suspend fun openSharedThreadAttachment(
                     url = response.data.url,
                     attachmentId = attachmentId,
                     fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
+                    ownerFingerprint = ownerFingerprint,
+                    ownerGeneration = ownerGeneration,
                     mimeType = attachment.mimeType,
                     downloadId = downloadId,
                     onProgress = onProgress
@@ -7853,6 +7940,8 @@ private suspend fun saveSharedThreadAttachment(
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     attachment: KuiklyThreadAttachmentItem,
+    ownerFingerprint: String,
+    ownerGeneration: Long,
     downloadId: String? = null,
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
 ): ThreadAttachmentOpenResult {
@@ -7865,6 +7954,8 @@ private suspend fun saveSharedThreadAttachment(
                     url = response.data.url,
                     attachmentId = attachmentId,
                     fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
+                    ownerFingerprint = ownerFingerprint,
+                    ownerGeneration = ownerGeneration,
                     mimeType = attachment.mimeType,
                     downloadId = downloadId,
                     onProgress = onProgress
@@ -19317,12 +19408,24 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
 
-private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(generation: Long): String =
-    listOf("attempt-$generation", "thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
-        .joinToString(":")
-        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
-        .take(160)
-        .ifBlank { "thread-attachment-download" }
+private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(
+    generation: Long,
+    ownerFingerprint: String
+): String =
+    ownerScopedAttachmentDownloadId(
+        ownerFingerprint = ownerFingerprint,
+        downloadId =
+            listOf(
+                "attempt-$generation",
+                "thread_attachment",
+                id.ifBlank { name.ifBlank { "attachment" } },
+                name.ifBlank { "attachment" }
+            )
+                .joinToString(":")
+                .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
+                .take(160)
+                .ifBlank { "thread-attachment-download" }
+    )
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreviewLabel: String): String =
     listOf(

@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -185,7 +187,10 @@ internal class SlockShellAuthSessionStore(
     private val delegate: SlockAuthSessionStore,
     private val selectedServerStore: SelectedServerStore,
     private val onProcessSessionCleared: suspend () -> Unit = {}
-) : SlockAuthSessionStore {
+) : SlockAuthSessionStore, SlockAuthSessionChangeSource {
+    override val sessionChanges: SharedFlow<String> =
+        (delegate as? SlockAuthSessionChangeSource)?.sessionChanges ?: MutableSharedFlow()
+
     override suspend fun readSession(): StoredAuthSession? {
         val session = delegate.readSession() ?: return null
         val selection = selectedServerStore.reconcile(session)

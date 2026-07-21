@@ -339,17 +339,20 @@ internal class BridgeModule : Module() {
         url: String,
         attachmentId: String,
         fileName: String,
+        ownerFingerprint: String,
+        ownerGeneration: Long,
         mimeType: String? = null,
         downloadId: String? = null,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val resolvedDownloadId = attachmentDownloadId(downloadId, attachmentId, fileName)
-            var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
+            methodArgs.put("ownerFingerprint", ownerFingerprint)
+            methodArgs.put("ownerGeneration", ownerGeneration)
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
@@ -366,7 +369,6 @@ internal class BridgeModule : Module() {
                         }
                         if (payload?.optString("status") == "progress") {
                             val progress = payload.toBridgeAttachmentDownloadProgress()
-                            activeAttemptToken = progress.attemptToken.takeIf { it.isNotBlank() }
                             onProgress?.invoke(progress)
                             return@toNative
                         }
@@ -378,12 +380,8 @@ internal class BridgeModule : Module() {
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
-                AttachmentDownloadCoordinator.control(
-                    downloadId = resolvedDownloadId,
-                    expectedAttemptToken = activeAttemptToken,
-                    action = "cancel"
-                )
-                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
+                // Caller/page lifetime only owns observation. The process/system transfer remains
+                // active across backgrounding and Activity recreation; explicit Stop owns cancel.
                 callbackRef?.let { removeCallback(it) }
             }
         }
@@ -392,17 +390,20 @@ internal class BridgeModule : Module() {
         url: String,
         attachmentId: String,
         fileName: String,
+        ownerFingerprint: String,
+        ownerGeneration: Long,
         mimeType: String? = null,
         downloadId: String? = null,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val resolvedDownloadId = attachmentDownloadId(downloadId, attachmentId, fileName)
-            var activeAttemptToken: String? = null
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
+            methodArgs.put("ownerFingerprint", ownerFingerprint)
+            methodArgs.put("ownerGeneration", ownerGeneration)
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
@@ -419,7 +420,6 @@ internal class BridgeModule : Module() {
                         }
                         if (payload?.optString("status") == "progress") {
                             val progress = payload.toBridgeAttachmentDownloadProgress()
-                            activeAttemptToken = progress.attemptToken.takeIf { it.isNotBlank() }
                             onProgress?.invoke(progress)
                             return@toNative
                         }
@@ -431,18 +431,15 @@ internal class BridgeModule : Module() {
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
-                AttachmentDownloadCoordinator.control(
-                    downloadId = resolvedDownloadId,
-                    expectedAttemptToken = activeAttemptToken,
-                    action = "cancel"
-                )
-                requestAttachmentDownloadControl(resolvedDownloadId, activeAttemptToken, "cancel")
+                // Caller/page lifetime only owns observation. The process/system transfer remains
+                // active across backgrounding and Activity recreation; explicit Stop owns cancel.
                 callbackRef?.let { removeCallback(it) }
             }
         }
 
     suspend fun attachmentDownloadControl(
         downloadId: String,
+        ownerFingerprint: String,
         expectedAttemptToken: String? = null,
         action: String
     ): JSONObject {
@@ -457,7 +454,7 @@ internal class BridgeModule : Module() {
             return JSONObject().apply { put("status", commonStatus) }
         }
         return suspendCoroutine { continuation ->
-            requestAttachmentDownloadControl(downloadId, expectedAttemptToken, action) { payload ->
+            requestAttachmentDownloadControl(downloadId, ownerFingerprint, expectedAttemptToken, action) { payload ->
                 val nativeStatus = payload?.optString("status").orEmpty()
                 continuation.resume(
                     when {
@@ -475,12 +472,14 @@ internal class BridgeModule : Module() {
 
     private fun requestAttachmentDownloadControl(
         downloadId: String,
+        ownerFingerprint: String,
         expectedAttemptToken: String?,
         action: String,
         callback: ((JSONObject?) -> Unit)? = null
     ) {
         val methodArgs = JSONObject()
         methodArgs.put("downloadId", downloadId)
+        methodArgs.put("ownerFingerprint", ownerFingerprint)
         methodArgs.put("commonHandled", true)
         expectedAttemptToken?.takeIf { it.isNotBlank() }?.let { methodArgs.put("attemptToken", it) }
         methodArgs.put("action", action)
@@ -495,28 +494,49 @@ internal class BridgeModule : Module() {
     suspend fun attachmentCacheStatus(
         attachmentId: String,
         fileName: String,
-        mimeType: String? = null
+        ownerFingerprint: String,
+        mimeType: String? = null,
+        downloadId: String? = null
     ): JSONObject? =
-        attachmentCacheCall(ATTACHMENT_CACHE_STATUS, attachmentId, fileName, mimeType)
+        attachmentCacheCall(
+            ATTACHMENT_CACHE_STATUS,
+            attachmentId,
+            fileName,
+            ownerFingerprint,
+            mimeType,
+            downloadId
+        )
 
     suspend fun deleteAttachmentCache(
         attachmentId: String,
         fileName: String,
+        ownerFingerprint: String,
         mimeType: String? = null
     ): JSONObject? =
-        attachmentCacheCall(DELETE_ATTACHMENT_CACHE, attachmentId, fileName, mimeType)
+        attachmentCacheCall(DELETE_ATTACHMENT_CACHE, attachmentId, fileName, ownerFingerprint, mimeType, null)
+
+    fun updateAttachmentDownloadOwner(ownerFingerprint: String?, ownerGeneration: Long) {
+        val methodArgs = JSONObject()
+        ownerFingerprint?.takeIf { it.isNotBlank() }?.let { methodArgs.put("ownerFingerprint", it) }
+        methodArgs.put("ownerGeneration", ownerGeneration)
+        callNativeMethod(ATTACHMENT_OWNER_CHANGED, methodArgs, null)
+    }
 
     private suspend fun attachmentCacheCall(
         methodName: String,
         attachmentId: String,
         fileName: String,
-        mimeType: String?
+        ownerFingerprint: String,
+        mimeType: String?,
+        downloadId: String?
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
+            methodArgs.put("ownerFingerprint", ownerFingerprint)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
+            downloadId?.takeIf { it.isNotBlank() }?.let { methodArgs.put("downloadId", it) }
             val result =
                 toNative(
                     methodName = methodName,
@@ -993,6 +1013,7 @@ internal class BridgeModule : Module() {
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
         const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
+        const val ATTACHMENT_OWNER_CHANGED = "attachmentDownloadOwnerChanged"
         const val SSO_REQUEST = "ssoRequest"
         const val QQ_LIVE_SSO_REQUEST = "qqLiveSSORequest"
         const val REPORT_DT = "reportDT"

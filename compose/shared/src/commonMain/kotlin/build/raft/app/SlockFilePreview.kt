@@ -107,6 +107,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -130,6 +131,8 @@ private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 private const val SlockFilePreviewImageGalleryMaxInFlightRequests = 2
+private const val SlockFilePreviewSystemDownloadPollMillis = 750L
+private const val SlockFilePreviewStaleAttachmentOperation = "__stale_attachment_owner__"
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -335,6 +338,9 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
         }
     val coroutineScope = rememberCoroutineScope()
+    var attachmentOwnerFingerprint by remember(sharedStores.authStore) { mutableStateOf<String?>(null) }
+    var attachmentOwnerGeneration by remember(sharedStores.authStore) { mutableStateOf(0L) }
+    var attachmentOperationGeneration by remember(sharedStores.authStore) { mutableStateOf(0L) }
     val launchPayloadTrace =
         remember(pager.pageData.params.toString()) {
             val source = pager.pageData.params.optString("payload")
@@ -373,11 +379,34 @@ private fun SlockFilePreviewStandalonePageContent() {
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
     var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
     var activeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
-    var nextDownloadGeneration by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(0L) }
     var activeDownloadStartedAt by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<TimeMark?>(null) }
     var firstBridgeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var firstRenderedDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
+    fun applyAttachmentOwner(nextOwnerFingerprint: String?) {
+        if (attachmentOwnerFingerprint == nextOwnerFingerprint) {
+            bridge.updateAttachmentDownloadOwner(nextOwnerFingerprint, attachmentOwnerGeneration)
+            return
+        }
+        attachmentOwnerGeneration += 1L
+        attachmentOperationGeneration += 1L
+        attachmentOwnerFingerprint = nextOwnerFingerprint
+        downloadStatus = "idle"
+        downloadMessage = ""
+        downloadProgress = null
+        activeDownloadId = null
+        activeDownloadStartedAt = null
+        firstBridgeDownloadId = null
+        firstRenderedDownloadId = null
+        attachmentCacheState = false
+        bridge.updateAttachmentDownloadOwner(nextOwnerFingerprint, attachmentOwnerGeneration)
+    }
+    LaunchedEffect(sharedStores.authStore) {
+        applyAttachmentOwner(sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint())
+        sharedStores.authStore.sessionChanges.collect {
+            applyAttachmentOwner(sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint())
+        }
+    }
     val unableToSendComment = stringResource(MR.strings.file_preview_error_send_comment)
     val unableToResolveComment = stringResource(MR.strings.file_preview_error_resolve_comment)
     val attachmentFallback = stringResource(MR.strings.file_preview_fallback_attachment)
@@ -654,25 +683,76 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     val canOpenWith = canOpenPayloadWithExternalViewer(payload)
     val canOpenComments = payload.supportsAttachmentComments()
-    LaunchedEffect(canOpenWith, attachmentCacheId, attachmentCacheFileName, payload.externalMimeType) {
+    LaunchedEffect(
+        canOpenWith,
+        attachmentCacheId,
+        attachmentCacheFileName,
+        payload.externalMimeType,
+        attachmentOwnerFingerprint
+    ) {
         attachmentCacheState = false
         if (!canOpenWith) return@LaunchedEffect
-        val result =
-            bridge.attachmentCacheStatus(
-                attachmentId = attachmentCacheId,
-                fileName = attachmentCacheFileName,
-                mimeType = payload.externalMimeType
-            )
-        attachmentCacheState = result?.optBoolean("cached") == true
+        val ownerFingerprint = attachmentOwnerFingerprint ?: return@LaunchedEffect
+        val operationGeneration = attachmentOperationGeneration
+        val recoveredDownloadId = payload.filePreviewDownloadId(ownerFingerprint)
+        do {
+            val result =
+                bridge.attachmentCacheStatus(
+                    attachmentId = attachmentCacheId,
+                    fileName = attachmentCacheFileName,
+                    ownerFingerprint = ownerFingerprint,
+                    mimeType = payload.externalMimeType,
+                    downloadId = recoveredDownloadId
+                )
+            val currentOwnerFingerprint =
+                sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint()
+            if (
+                currentOwnerFingerprint != ownerFingerprint ||
+                !attachmentOperationCommitAllowed(
+                    expectedOwnerFingerprint = ownerFingerprint,
+                    expectedGeneration = operationGeneration,
+                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                    currentGeneration = attachmentOperationGeneration
+                )
+            ) {
+                return@LaunchedEffect
+            }
+            val active = result?.optBoolean("active") == true
+            attachmentCacheState = result?.optBoolean("cached") == true
+            if (active) {
+                downloadStatus = "downloading"
+                activeDownloadId = recoveredDownloadId
+                activeDownloadStartedAt = activeDownloadStartedAt ?: TimeSource.Monotonic.markNow()
+                if (downloadProgress?.downloadId != recoveredDownloadId) {
+                    downloadProgress =
+                        SlockFilePreviewInitialDownloadProgress.copy(
+                            downloadId = recoveredDownloadId,
+                            phase = "system_download"
+                        )
+                }
+                delay(SlockFilePreviewSystemDownloadPollMillis)
+            } else if (downloadProgress?.phase?.startsWith("system_") == true) {
+                downloadStatus = "idle"
+                activeDownloadId = null
+                activeDownloadStartedAt = null
+                downloadProgress = null
+            }
+        } while (active)
     }
-    suspend fun openPayloadExternally(currentPayload: SlockFilePreviewPayload, trackProgress: Boolean): String? {
+    suspend fun openPayloadExternally(
+        currentPayload: SlockFilePreviewPayload,
+        trackProgress: Boolean,
+        ownerFingerprint: String,
+        ownerSessionGeneration: Long,
+        operationGeneration: Long
+    ): String? {
         val externalUrl =
             currentPayload.externalUrl?.takeIf { it.isNotBlank() }
                 ?: currentPayload.threadAttachmentExternalUrl(threadApi)
                 ?: return unableToDownloadAttachment
         val downloadId =
             if (trackProgress) {
-                activeDownloadId ?: currentPayload.filePreviewDownloadId()
+                activeDownloadId ?: currentPayload.filePreviewDownloadId(ownerFingerprint)
             } else {
                 null
             }
@@ -689,11 +769,23 @@ private fun SlockFilePreviewStandalonePageContent() {
                 url = externalUrl,
                 attachmentId = currentPayload.attachmentCacheId(),
                 fileName = currentPayload.attachmentCacheFileName(),
+                ownerFingerprint = ownerFingerprint,
+                ownerGeneration = ownerSessionGeneration,
                 mimeType = currentPayload.externalMimeType,
                 downloadId = downloadId,
                 onProgress =
                     if (trackProgress) {
                         { progress ->
+                            if (
+                                !attachmentOperationCommitAllowed(
+                                    expectedOwnerFingerprint = ownerFingerprint,
+                                    expectedGeneration = operationGeneration,
+                                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                                    currentGeneration = attachmentOperationGeneration
+                                )
+                            ) {
+                                return@openAttachment
+                            }
                             activeDownloadId?.let { expectedDownloadId ->
                                 if (progress.downloadedBytes > 0L && firstBridgeDownloadId != expectedDownloadId) {
                                     firstBridgeDownloadId = expectedDownloadId
@@ -715,6 +807,17 @@ private fun SlockFilePreviewStandalonePageContent() {
                         null
                     }
             )
+        if (
+            sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint() != ownerFingerprint ||
+            !attachmentOperationCommitAllowed(
+                expectedOwnerFingerprint = ownerFingerprint,
+                expectedGeneration = operationGeneration,
+                currentOwnerFingerprint = attachmentOwnerFingerprint,
+                currentGeneration = attachmentOperationGeneration
+            )
+        ) {
+            return SlockFilePreviewStaleAttachmentOperation
+        }
         return when (result?.optString("status").orEmpty()) {
             "opened", "" -> {
                 attachmentCacheState = result?.optBoolean("cached", true) ?: true
@@ -730,14 +833,20 @@ private fun SlockFilePreviewStandalonePageContent() {
             else -> result?.optString("message").orEmpty().ifBlank { unableToOpenAttachment }
         }
     }
-    suspend fun savePayloadExternally(currentPayload: SlockFilePreviewPayload, trackProgress: Boolean): String? {
+    suspend fun savePayloadExternally(
+        currentPayload: SlockFilePreviewPayload,
+        trackProgress: Boolean,
+        ownerFingerprint: String,
+        ownerSessionGeneration: Long,
+        operationGeneration: Long
+    ): String? {
         val externalUrl =
             currentPayload.externalUrl?.takeIf { it.isNotBlank() }
                 ?: currentPayload.threadAttachmentExternalUrl(threadApi)
                 ?: return unableToDownloadAttachment
         val downloadId =
             if (trackProgress) {
-                activeDownloadId ?: currentPayload.filePreviewDownloadId()
+                activeDownloadId ?: currentPayload.filePreviewDownloadId(ownerFingerprint)
             } else {
                 null
             }
@@ -754,11 +863,23 @@ private fun SlockFilePreviewStandalonePageContent() {
                 url = externalUrl,
                 attachmentId = currentPayload.attachmentCacheId(),
                 fileName = currentPayload.attachmentCacheFileName(),
+                ownerFingerprint = ownerFingerprint,
+                ownerGeneration = ownerSessionGeneration,
                 mimeType = currentPayload.externalMimeType,
                 downloadId = downloadId,
                 onProgress =
                     if (trackProgress) {
                         { progress ->
+                            if (
+                                !attachmentOperationCommitAllowed(
+                                    expectedOwnerFingerprint = ownerFingerprint,
+                                    expectedGeneration = operationGeneration,
+                                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                                    currentGeneration = attachmentOperationGeneration
+                                )
+                            ) {
+                                return@saveAttachment
+                            }
                             activeDownloadId?.let { expectedDownloadId ->
                                 if (progress.downloadedBytes > 0L && firstBridgeDownloadId != expectedDownloadId) {
                                     firstBridgeDownloadId = expectedDownloadId
@@ -780,6 +901,17 @@ private fun SlockFilePreviewStandalonePageContent() {
                         null
                     }
             )
+        if (
+            sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint() != ownerFingerprint ||
+            !attachmentOperationCommitAllowed(
+                expectedOwnerFingerprint = ownerFingerprint,
+                expectedGeneration = operationGeneration,
+                currentOwnerFingerprint = attachmentOwnerFingerprint,
+                currentGeneration = attachmentOperationGeneration
+            )
+        ) {
+            return SlockFilePreviewStaleAttachmentOperation
+        }
         return when (result?.optString("status").orEmpty()) {
             "saved" -> {
                 attachmentCacheState = result?.optBoolean("cached", attachmentCacheState) ?: attachmentCacheState
@@ -800,22 +932,42 @@ private fun SlockFilePreviewStandalonePageContent() {
         // Saving a cached file still performs a potentially slow MediaStore export. Keep the
         // request observable so cache hits show Saving progress and remain cancellable/bounded.
         val trackProgress = true
-        downloadMessage = ""
-        if (trackProgress) {
-            nextDownloadGeneration += 1L
+        coroutineScope.launch {
+            val ownerFingerprint = sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint()
+            if (ownerFingerprint == null) {
+                bridge.toast(unableToDownloadAttachment)
+                return@launch
+            }
+            applyAttachmentOwner(ownerFingerprint)
+            val ownerSessionGeneration = attachmentOwnerGeneration
+            attachmentOperationGeneration += 1L
+            val operationGeneration = attachmentOperationGeneration
+            downloadMessage = ""
             downloadStatus = "downloading"
-            activeDownloadId = payload.filePreviewDownloadId(nextDownloadGeneration)
+            activeDownloadId = payload.filePreviewDownloadId(ownerFingerprint)
             activeDownloadStartedAt = TimeSource.Monotonic.markNow()
             firstBridgeDownloadId = null
             firstRenderedDownloadId = null
             downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
-        } else {
-            downloadStatus = "idle"
-            activeDownloadId = null
-            downloadProgress = null
-        }
-        coroutineScope.launch {
-            val error = savePayloadExternally(payload, trackProgress)
+            val error =
+                savePayloadExternally(
+                    payload,
+                    trackProgress,
+                    ownerFingerprint,
+                    ownerSessionGeneration,
+                    operationGeneration
+                )
+            if (error == SlockFilePreviewStaleAttachmentOperation) return@launch
+            if (
+                !attachmentOperationCommitAllowed(
+                    expectedOwnerFingerprint = ownerFingerprint,
+                    expectedGeneration = operationGeneration,
+                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                    currentGeneration = attachmentOperationGeneration
+                )
+            ) {
+                return@launch
+            }
             if (error == null) {
                 downloadStatus = "idle"
                 downloadMessage = ""
@@ -835,22 +987,48 @@ private fun SlockFilePreviewStandalonePageContent() {
     fun requestExternalOpen() {
         if (!canOpenWith || downloadStatus == "downloading" || downloadStatus == "paused") return
         val trackProgress = slockFilePreviewShouldTrackOpenProgress(attachmentCacheState)
-        downloadMessage = ""
-        if (trackProgress) {
-            nextDownloadGeneration += 1L
-            downloadStatus = "downloading"
-            activeDownloadId = payload.filePreviewDownloadId(nextDownloadGeneration)
-            activeDownloadStartedAt = TimeSource.Monotonic.markNow()
-            firstBridgeDownloadId = null
-            firstRenderedDownloadId = null
-            downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
-        } else {
-            downloadStatus = "idle"
-            activeDownloadId = null
-            downloadProgress = null
-        }
         coroutineScope.launch {
-            val error = openPayloadExternally(payload, trackProgress)
+            val ownerFingerprint = sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint()
+            if (ownerFingerprint == null) {
+                bridge.toast(unableToOpenAttachment)
+                return@launch
+            }
+            applyAttachmentOwner(ownerFingerprint)
+            val ownerSessionGeneration = attachmentOwnerGeneration
+            attachmentOperationGeneration += 1L
+            val operationGeneration = attachmentOperationGeneration
+            downloadMessage = ""
+            if (trackProgress) {
+                downloadStatus = "downloading"
+                activeDownloadId = payload.filePreviewDownloadId(ownerFingerprint)
+                activeDownloadStartedAt = TimeSource.Monotonic.markNow()
+                firstBridgeDownloadId = null
+                firstRenderedDownloadId = null
+                downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
+            } else {
+                downloadStatus = "idle"
+                activeDownloadId = null
+                downloadProgress = null
+            }
+            val error =
+                openPayloadExternally(
+                    payload,
+                    trackProgress,
+                    ownerFingerprint,
+                    ownerSessionGeneration,
+                    operationGeneration
+                )
+            if (error == SlockFilePreviewStaleAttachmentOperation) return@launch
+            if (
+                !attachmentOperationCommitAllowed(
+                    expectedOwnerFingerprint = ownerFingerprint,
+                    expectedGeneration = operationGeneration,
+                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                    currentGeneration = attachmentOperationGeneration
+                )
+            ) {
+                return@launch
+            }
             if (error == null) {
                 downloadStatus = "idle"
                 downloadMessage = ""
@@ -881,8 +1059,11 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
         coroutineScope.launch {
+            val ownerFingerprint =
+                sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint() ?: return@launch
             bridge.attachmentDownloadControl(
                 downloadId = downloadId,
+                ownerFingerprint = ownerFingerprint,
                 expectedAttemptToken = downloadProgress?.attemptToken,
                 action = action
             )
@@ -891,12 +1072,29 @@ private fun SlockFilePreviewStandalonePageContent() {
     fun requestDeleteDownload() {
         if (!canOpenWith || !attachmentCacheState || downloadStatus == "downloading" || downloadStatus == "paused") return
         coroutineScope.launch {
+            val ownerFingerprint =
+                sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint() ?: return@launch
+            applyAttachmentOwner(ownerFingerprint)
+            attachmentOperationGeneration += 1L
+            val operationGeneration = attachmentOperationGeneration
             val result =
                 bridge.deleteAttachmentCache(
                     attachmentId = attachmentCacheId,
                     fileName = attachmentCacheFileName,
+                    ownerFingerprint = ownerFingerprint,
                     mimeType = payload.externalMimeType
                 )
+            if (
+                sharedStores.authStore.currentAttachmentDownloadOwnerFingerprint() != ownerFingerprint ||
+                !attachmentOperationCommitAllowed(
+                    expectedOwnerFingerprint = ownerFingerprint,
+                    expectedGeneration = operationGeneration,
+                    currentOwnerFingerprint = attachmentOwnerFingerprint,
+                    currentGeneration = attachmentOperationGeneration
+                )
+            ) {
+                return@launch
+            }
             val status = result?.optString("status").orEmpty()
             if (status == "ok" || status.isBlank()) {
                 attachmentCacheState = false
@@ -4424,7 +4622,9 @@ internal fun slockAttachmentDownloadControlAllowed(
     progress: BridgeAttachmentDownloadProgress?,
     action: String
 ): Boolean =
-    progress?.phase?.startsWith("export_") != true || (action != "pause" && action != "resume")
+    progress?.phase?.let { phase ->
+        phase.startsWith("export_") || phase.startsWith("system_")
+    } != true || (action != "pause" && action != "resume")
 
 internal fun slockFilePreviewActiveDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,
@@ -4675,12 +4875,16 @@ private fun SlockFilePreviewPayload.attachmentCacheFileName(): String =
         .ifBlank { path }
         .ifBlank { "attachment" }
 
-private fun SlockFilePreviewPayload.filePreviewDownloadId(generation: Long? = null): String =
-    listOfNotNull(generation?.let { "attempt-$it" }, source, attachmentCacheId(), attachmentCacheFileName())
-        .joinToString(":")
-        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
-        .take(160)
-        .ifBlank { "file-preview-download" }
+private fun SlockFilePreviewPayload.filePreviewDownloadId(ownerFingerprint: String): String =
+    ownerScopedAttachmentDownloadId(
+        ownerFingerprint = ownerFingerprint,
+        downloadId =
+            listOf(source, attachmentCacheId(), attachmentCacheFileName())
+                .joinToString(":")
+                .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
+                .take(160)
+                .ifBlank { "file-preview-download" }
+    )
 
 private fun SlockFilePreviewPayload.isAndroidPackageArchive(): Boolean {
     val mime = externalMimeType.substringBefore(';').trim()

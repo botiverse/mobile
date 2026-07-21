@@ -69,6 +69,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly SAVE_ATTACHMENT = "saveAttachment";
   static readonly ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl";
+  static readonly ATTACHMENT_OWNER_CHANGED = "attachmentDownloadOwnerChanged";
   static readonly LOG = "log";
   static readonly PERFORMANCE_MARKER = "performanceMarker";
   static readonly PERFORMANCE_SCENE = "performanceScene";
@@ -128,6 +129,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.ATTACHMENT_DOWNLOAD_CONTROL: {
         this.attachmentDownloadControl(params, callback);
+        break;
+      }
+      case KRBridgeModule.ATTACHMENT_OWNER_CHANGED: {
+        // Android alone owns durable DownloadManager recovery; OHOS keeps the common sink.
         break;
       }
       case KRBridgeModule.LOG: {

@@ -22,7 +22,14 @@ internal data class AttachmentDownloadsExportRequest(
     val downloadId: String,
     val source: File,
     val displayName: String,
-    val mimeType: String
+    val mimeType: String,
+    val ownerKey: String = "test-owner",
+    val ownerGeneration: Long = 0L
+)
+
+private data class AttachmentDownloadsOwnerBinding(
+    val ownerKey: String?,
+    val generation: Long
 )
 
 internal data class AttachmentDownloadsExportProgress(
@@ -89,12 +96,14 @@ internal class AttachmentDownloadsExportCoordinator(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val cancelReceiptTtlMs: Long = 60_000L,
     private val deferredCleanupDelayMs: Long = 5_000L,
-    private val afterInsertOwnerAcquired: () -> Unit = {}
+    private val afterInsertOwnerAcquired: () -> Unit = {},
+    private val beforeRegistration: () -> Unit = {}
 ) {
     private val lock = Any()
     private val activeByKey = mutableMapOf<String, ExportState>()
     private val activeByDownloadId = mutableMapOf<String, ExportState>()
     private val cancelReceipts = linkedMapOf<String, Long>()
+    private var ownerBinding = AttachmentDownloadsOwnerBinding("test-owner", 0L)
 
     fun export(
         request: AttachmentDownloadsExportRequest,
@@ -102,14 +111,25 @@ internal class AttachmentDownloadsExportCoordinator(
         observer: ((AttachmentDownloadsExportProgress) -> Unit)? = null
     ): AttachmentDownloadsExportResult {
         require(request.downloadId.isNotBlank())
-        val key = "${request.source.absolutePath}\u0000${request.displayName}"
+        beforeRegistration()
+        val requestBinding = AttachmentDownloadsOwnerBinding(request.ownerKey, request.ownerGeneration)
+        val key =
+            "${request.ownerKey}\u0000${request.ownerGeneration}\u0000" +
+                "${request.source.absolutePath}\u0000${request.displayName}"
         var registration: ObserverRegistration? = null
         lateinit var state: ExportState
         var reservedFinishedState: ExportState? = null
         var start = false
         synchronized(lock) {
+            if (ownerBinding != requestBinding) {
+                return AttachmentDownloadsExportResult(
+                    status = "cancelled",
+                    message = "Save stopped after account changed"
+                )
+            }
             pruneCancelReceiptsLocked()
-            if (cancelReceipts.remove(request.downloadId) != null) {
+            val controlKey = controlKey(request.downloadId, request.ownerKey)
+            if (cancelReceipts.remove(controlKey) != null) {
                 return AttachmentDownloadsExportResult(status = "cancelled", message = "Save stopped")
             }
             val existing = activeByKey[key]
@@ -121,7 +141,7 @@ internal class AttachmentDownloadsExportCoordinator(
                     start = true
                 }
                 registration = state.addObserver(request.downloadId, observer)
-                activeByDownloadId[request.downloadId] = state
+                activeByDownloadId[controlKey] = state
             }
         }
         reservedFinishedState?.let { return it.terminal.join() }
@@ -131,13 +151,19 @@ internal class AttachmentDownloadsExportCoordinator(
         return state.terminal.join()
     }
 
-    fun control(downloadId: String, expectedAttemptToken: String?, action: String): String {
+    fun control(
+        downloadId: String,
+        expectedAttemptToken: String?,
+        action: String,
+        ownerKey: String = "test-owner"
+    ): String {
+        val controlKey = controlKey(downloadId, ownerKey)
         val state =
             synchronized(lock) {
                 pruneCancelReceiptsLocked()
-                activeByDownloadId[downloadId]
+                activeByDownloadId[controlKey]
                     ?: if (action.lowercase() in setOf("cancel", "stop")) {
-                        cancelReceipts[downloadId] = nowMillis()
+                        cancelReceipts[controlKey] = nowMillis()
                         while (cancelReceipts.size > 256) {
                             cancelReceipts.remove(cancelReceipts.keys.first())
                         }
@@ -169,17 +195,47 @@ internal class AttachmentDownloadsExportCoordinator(
         }
     }
 
+    fun updateOwnerBinding(ownerKey: String?, generation: Long) {
+        val foreignStates = synchronized(lock) {
+            val previous = ownerBinding
+            if (generation < previous.generation) return
+            val next = AttachmentDownloadsOwnerBinding(ownerKey, generation)
+            if (previous == next) return
+            ownerBinding = next
+            activeByKey.values
+                .filter { state ->
+                    state.request.ownerKey != ownerKey || state.request.ownerGeneration != generation
+                }
+                .distinct()
+        }
+        foreignStates.forEach { state ->
+            finish(
+                state,
+                AttachmentDownloadsExportResult(
+                    status = "cancelled",
+                    message = "Save stopped after account changed",
+                    failurePhase = state.phase.get()
+                ),
+                abortPending = true
+            )
+        }
+    }
+
     internal fun awaitKeyReservationReleaseForTesting(
         request: AttachmentDownloadsExportRequest,
         timeoutMs: Long
     ): Boolean {
-        val key = "${request.source.absolutePath}\u0000${request.displayName}"
+        val key =
+            "${request.ownerKey}\u0000${request.ownerGeneration}\u0000" +
+                "${request.source.absolutePath}\u0000${request.displayName}"
         val state = synchronized(lock) { activeByKey[key] } ?: return true
         return state.keyReservationReleased.await(timeoutMs, TimeUnit.MILLISECONDS)
     }
 
     internal fun keyReservationOwnerForTesting(request: AttachmentDownloadsExportRequest): Any? {
-        val key = "${request.source.absolutePath}\u0000${request.displayName}"
+        val key =
+            "${request.ownerKey}\u0000${request.ownerGeneration}\u0000" +
+                "${request.source.absolutePath}\u0000${request.displayName}"
         return synchronized(lock) { activeByKey[key] }
     }
 
@@ -194,6 +250,8 @@ internal class AttachmentDownloadsExportCoordinator(
             if (iterator.next().value < cutoff) iterator.remove()
         }
     }
+
+    private fun controlKey(downloadId: String, ownerKey: String): String = "$ownerKey\u0000$downloadId"
 
     private fun start(state: ExportState) {
         val wholeWatchdog =
@@ -424,8 +482,9 @@ internal class AttachmentDownloadsExportCoordinator(
             state.terminal.complete(terminalResult)
             synchronized(lock) {
                 state.observers.forEach { registration ->
-                    if (activeByDownloadId[registration.downloadId] === state) {
-                        activeByDownloadId.remove(registration.downloadId)
+                    val controlKey = controlKey(registration.downloadId, state.request.ownerKey)
+                    if (activeByDownloadId[controlKey] === state) {
+                        activeByDownloadId.remove(controlKey)
                     }
                 }
             }

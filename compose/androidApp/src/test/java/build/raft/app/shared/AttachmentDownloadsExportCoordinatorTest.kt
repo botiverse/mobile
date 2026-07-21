@@ -89,6 +89,110 @@ class AttachmentDownloadsExportCoordinatorTest {
     }
 
     @Test
+    fun foreignOwnerCannotCancelActiveExportWithSameDownloadId() = withSourceFile(1024 * 1024) { source ->
+        val writeEntered = CountDownLatch(1)
+        val releaseWrite = CountDownLatch(1)
+        val backend = FakeExportBackend(writeEntered = writeEntered, writeBlock = releaseWrite)
+        val coordinator = coordinator(stageTimeoutMs = 5_000L)
+        coordinator.updateOwnerBinding("owner-a", 1L)
+        var result: AttachmentDownloadsExportResult? = null
+        val exportThread = thread {
+            result =
+                coordinator.export(
+                    request(source, "same-download-id").copy(ownerKey = "owner-a", ownerGeneration = 1L),
+                    backend
+                )
+        }
+        assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+
+        assertEquals(
+            "cancelled",
+            coordinator.control("same-download-id", null, "cancel", ownerKey = "owner-b")
+        )
+        releaseWrite.countDown()
+        exportThread.join(2_000L)
+
+        assertFalse(exportThread.isAlive)
+        assertEquals("saved", result?.status)
+        assertEquals(1, backend.publishCount.get())
+        assertEquals(0, backend.deleteCount.get())
+    }
+
+    @Test
+    fun ownerChangeCancelsForeignActiveExportBeforePublication() = withSourceFile(1024 * 1024) { source ->
+        val writeEntered = CountDownLatch(1)
+        val releaseWrite = CountDownLatch(1)
+        val backend = FakeExportBackend(writeEntered = writeEntered, writeBlock = releaseWrite)
+        val coordinator = coordinator(stageTimeoutMs = 5_000L)
+        coordinator.updateOwnerBinding("owner-a", 1L)
+        var result: AttachmentDownloadsExportResult? = null
+        val exportThread = thread {
+            result =
+                coordinator.export(
+                    request(source, "owner-change").copy(ownerKey = "owner-a", ownerGeneration = 1L),
+                    backend
+                )
+        }
+        assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+
+        coordinator.updateOwnerBinding("owner-b", 2L)
+        exportThread.join(2_000L)
+
+        assertFalse(exportThread.isAlive)
+        assertEquals("cancelled", result?.status)
+        assertEquals(0, backend.publishCount.get())
+        releaseWrite.countDown()
+        assertTrue(backend.awaitDelete())
+    }
+
+    @Test
+    fun ownerSwitchBeforeRegistrationRejectsOldExportAndAdmitsFreshOwner() =
+        withSourceFile(4096) { source ->
+            val oldRegistrationReady = CountDownLatch(1)
+            val releaseOldRegistration = CountDownLatch(1)
+            val coordinator =
+                coordinator(
+                    beforeRegistration = {
+                        if (Thread.currentThread().name == "old-export") {
+                            oldRegistrationReady.countDown()
+                            releaseOldRegistration.await()
+                        }
+                    }
+                )
+            val oldBackend = FakeExportBackend()
+            val freshBackend = FakeExportBackend()
+            val oldResult = AtomicReference<AttachmentDownloadsExportResult>()
+            coordinator.updateOwnerBinding("owner-a", 1L)
+
+            val oldThread = thread(name = "old-export") {
+                oldResult.set(
+                    coordinator.export(
+                        request(source, "old-owner").copy(ownerKey = "owner-a", ownerGeneration = 1L),
+                        oldBackend
+                    )
+                )
+            }
+            assertTrue(oldRegistrationReady.await(2, TimeUnit.SECONDS))
+            coordinator.updateOwnerBinding("owner-b", 2L)
+            releaseOldRegistration.countDown()
+            oldThread.join(2_000L)
+
+            assertFalse(oldThread.isAlive)
+            assertEquals("cancelled", oldResult.get()?.status)
+            assertEquals(0, oldBackend.insertCount.get())
+            assertEquals(0, oldBackend.publishCount.get())
+
+            val freshResult =
+                coordinator.export(
+                    request(source, "fresh-owner").copy(ownerKey = "owner-b", ownerGeneration = 2L),
+                    freshBackend
+                )
+            assertEquals("saved", freshResult.status)
+            assertEquals(1, freshBackend.insertCount.get())
+            assertEquals(1, freshBackend.publishCount.get())
+        }
+
+    @Test
     fun publishFailureDeletesPendingRowAndKeepsCache() = withSourceFile(4096) { source ->
         val backend = FakeExportBackend(publishResult = false)
         val result = coordinator().export(request(source, "download-publish-fail"), backend)
@@ -609,7 +713,8 @@ class AttachmentDownloadsExportCoordinatorTest {
         terminalWorker: ExecutorService = Executors.newCachedThreadPool { runnable ->
             Thread(runnable, "attachment-export-test-terminal").apply { isDaemon = true }
         },
-        afterInsertOwnerAcquired: () -> Unit = {}
+        afterInsertOwnerAcquired: () -> Unit = {},
+        beforeRegistration: () -> Unit = {}
     ) =
         AttachmentDownloadsExportCoordinator(
             worker = worker,
@@ -621,7 +726,8 @@ class AttachmentDownloadsExportCoordinatorTest {
             cleanupAttempts = cleanupAttempts,
             insertAdmissionWaitMs = insertAdmissionWaitMs,
             deferredCleanupDelayMs = deferredCleanupDelayMs,
-            afterInsertOwnerAcquired = afterInsertOwnerAcquired
+            afterInsertOwnerAcquired = afterInsertOwnerAcquired,
+            beforeRegistration = beforeRegistration
         )
 
     private fun request(source: File, downloadId: String) =
