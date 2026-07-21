@@ -35,6 +35,7 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.InboxItem
+import build.raft.app.data.PlatformFile
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.StoredAuthServer
@@ -334,6 +335,49 @@ class ThreadPayloadTest {
                 action = "attachImage",
                 fileCount = 2,
                 imageAnnotationEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun pickedVideoNeverOpensImageAnnotationEvenFromImagePickerAction() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.UploadToComposer,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = 1,
+                imageAnnotationEnabled = true,
+                allFilesAreImages = false,
+            )
+        )
+    }
+
+    @Test
+    fun composerImagePickerRequiresMatchingImageMimeAndExtension() {
+        assertTrue(slockComposerImagePickerIsStrictImage(fileName = "photo.jpg", mimeType = "image/jpeg"))
+        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "clip.jpg", mimeType = "video/mp4"))
+        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "clip.mp4", mimeType = "image/jpeg"))
+        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "photo.jpg", mimeType = ""))
+        assertFalse(slockComposerImagePickerIsStrictImage(fileName = "photo", mimeType = "image/jpeg"))
+    }
+
+    @Test
+    fun composerImagePickerRejectsMixedSelectionThroughTheProductionClassifier() {
+        val files =
+            listOf(
+                PlatformFile(id = "image", fileName = "photo.png", mimeType = "image/png"),
+                PlatformFile(id = "video", fileName = "clip.mp4", mimeType = "video/mp4"),
+            )
+        val allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files)
+
+        assertFalse(allFilesAreImages)
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.UploadToComposer,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = files.size,
+                imageAnnotationEnabled = true,
+                allFilesAreImages = allFilesAreImages,
             )
         )
     }
