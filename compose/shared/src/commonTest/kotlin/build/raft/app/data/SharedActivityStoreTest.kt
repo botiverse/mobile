@@ -3874,6 +3874,48 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun staleCanonicalUnreadDoesNotReinflateProcessSummaryAfterOptimisticRead() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val facts = mutableListOf<ActivityUnreadSummaryFact>()
+        val unread = activityItem("channel-1", unreadCount = 1)
+        val acknowledged = unread.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(
+                                snapshot(listOf(unread), totalUnreadCount = 1),
+                                snapshot(listOf(unread), totalUnreadCount = 1),
+                                snapshot(listOf(acknowledged), totalUnreadCount = 0)
+                            )
+                    ),
+                onSummaryFact = facts::add
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        assertEquals(0, facts.last().totalUnreadCount)
+        assertFalse(facts.last().authoritative)
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(0, facts.last().totalUnreadCount)
+        assertFalse(
+            facts.last().authoritative,
+            "a stale canonical count suppressed by the local read fence must not overwrite the process summary"
+        )
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(0, facts.last().totalUnreadCount)
+        assertTrue(facts.last().authoritative)
+        scope.cancel()
+    }
+
+    @Test
     fun nonAllFilterNeverPublishesAbsoluteProcessCountsAndMutationsOnlyInvalidate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val facts = mutableListOf<ActivityUnreadSummaryFact>()

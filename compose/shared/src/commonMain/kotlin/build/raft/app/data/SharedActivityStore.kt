@@ -1301,12 +1301,19 @@ class SharedActivityStore internal constructor(
             summaryAuthoritative =
                 !append &&
                     current.selectedFilter == InboxFilter.All &&
-                    (result is DataResult.Content || result is DataResult.Empty),
+                    (result is DataResult.Content || result is DataResult.Empty) &&
+                    unreadClearOverrides.isEmpty() &&
+                    doneOverrides.isEmpty() &&
+                    realtimeHighWater.isEmpty(),
             summaryFactCounts =
                 if (!append && current.selectedFilter == InboxFilter.All) {
+                    // The mounted store may have already suppressed a serving-lag unread/done
+                    // row or retained a realtime high-water. Publishing the raw wire totals here
+                    // would let the process projection overlay that stale count back onto the
+                    // header. Publish the same fenced snapshot the rows are rendered from.
                     when (result) {
-                        is DataResult.Content -> result.data.totalUnreadCount to result.data.totalCount
-                        is DataResult.Empty -> 0 to 0
+                        is DataResult.Content,
+                        is DataResult.Empty -> nextState.totalUnreadCount to nextState.totalCount
                         is DataResult.Error,
                         is DataResult.NoPermission -> null
                     }
