@@ -66,7 +66,8 @@ class SettingsComputersWebViewTest {
         val script = settingsComputersWebViewInjectedJavaScript(null)
 
         assertContains(script, "removeItem(\"slock_refresh_token\")")
-        assertFalse(script.contains("slock_access_token"))
+        assertContains(script, "removeItem(\"slock_access_token\")")
+        assertContains(script, "removeItem(\"slock_host_auth_binding\")")
     }
 
 }

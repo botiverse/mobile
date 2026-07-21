@@ -44,6 +44,28 @@ class SlockSandboxWebViewContractTest {
     }
 
     @Test
+    fun runtimeJavaScriptIsEphemeralAndNeverCrossesAControllerDetach() {
+        val controller = SlockWebViewController()
+        val delivered = mutableListOf<String>()
+
+        assertFalse(controller.evaluateJavaScript("window.beforeAttach = true"))
+        val firstOwner = Any()
+        controller.bindCommandDispatcher(firstOwner, delivered::add)
+        assertEquals(emptyList(), delivered)
+
+        assertEquals(true, controller.evaluateJavaScript("window.active = true"))
+        assertEquals(
+            SlockWebViewController.COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX + "window.active = true",
+            delivered.single(),
+        )
+
+        controller.unbindCommandDispatcher(firstOwner)
+        assertFalse(controller.evaluateJavaScript("window.afterDetach = true"))
+        controller.bindCommandDispatcher(Any(), delivered::add)
+        assertEquals(1, delivered.size)
+    }
+
+    @Test
     fun allowedNavigationSchemesAreNormalizedAndStable() {
         assertEquals(
             "http,https",

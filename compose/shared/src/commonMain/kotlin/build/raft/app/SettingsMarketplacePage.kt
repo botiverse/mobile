@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -93,18 +94,16 @@ private fun SettingsMarketplaceScreenBody(pager: Pager) {
     val authStore = remember(sharedStores, environment.storeScope) {
         sharedStores.authStore(environment.storeScope)
     }
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
+    val webViewController = rememberSlockWebViewController()
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-marketplace") {
             SharedSettingsViewModel(environment.dataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
-    var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     LaunchedEffect(Unit) {
         bridge.log("settings_marketplace_open")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
-    }
-    LaunchedEffect(authStore) {
-        session = runCatching { authStore.readSession() }.getOrNull()
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     if (settingsState.developer is ScreenLoadState.Loading) {
@@ -112,8 +111,11 @@ private fun SettingsMarketplaceScreenBody(pager: Pager) {
         return
     }
     SettingsMarketplaceWebViewContent(
-        session = session,
+        session = authSnapshot.session,
+        authSnapshot = authSnapshot,
         webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+        controller = webViewController,
+        accessTokenSyncLogger = bridge::log,
         onUrlChange = { url -> bridge.log("settings_marketplace_webview_url_changed url=$url") },
         onLoadFailure = { reason -> bridge.log("settings_marketplace_webview_load_failure reason=$reason") }
     )
@@ -125,26 +127,49 @@ internal fun SettingsMarketplaceWebViewContent(
     webBaseUrl: String?,
     modifier: Modifier = Modifier,
     onUrlChange: (String) -> Unit = {},
-    onLoadFailure: (String) -> Unit = {}
+    onLoadFailure: (String) -> Unit = {},
+    controller: SlockWebViewController = rememberSlockWebViewController(),
+    authSnapshot: SettingsWebViewAuthSnapshot =
+        SettingsWebViewAuthSnapshot(session = session, sessionGeneration = if (session == null) 0L else 1L),
+    accessTokenSyncLogger: (String) -> Unit = {},
 ) {
     val webUrl = remember(session, webBaseUrl) {
         settingsMarketplaceWebViewUrl(webBaseUrl, session)
     }
-    val injectedJavaScript = remember(session) { settingsMarketplaceWebViewInjectedJavaScript(session) }
+    val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+    val injectedJavaScript = remember(session, hostAuthBinding) {
+        settingsMarketplaceWebViewInjectedJavaScript(session, hostAuthBinding)
+    }
+    var pageLoaded by remember(webUrl) { mutableStateOf(false) }
+    var navigationState by remember(webUrl) { mutableStateOf(SlockWebViewNavigationState()) }
+    val documentReady = pageLoaded && !navigationState.isLoading && navigationState.progress >= 100
     if (session == null) {
         SlockCenteredLoading(stringResource(MR.strings.common_loading))
         return
     }
-    SlockWebView(
-        url = webUrl,
-        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-        allowNavigation = true,
-        domStorageEnabled = true,
-        cacheEnabled = true,
-        ephemeral = false,
-        injectedJavaScript = injectedJavaScript,
-        onUrlChange = onUrlChange,
-        onLoadFailure = onLoadFailure
+    key(hostAuthBinding?.webViewGeneration) {
+        SlockWebView(
+            url = webUrl,
+            modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+            allowNavigation = true,
+            domStorageEnabled = true,
+            cacheEnabled = true,
+            ephemeral = false,
+            injectedJavaScript = injectedJavaScript,
+            controller = controller,
+            onLoadSuccess = { pageLoaded = true },
+            onUrlChange = onUrlChange,
+            onLoadFailure = onLoadFailure,
+            onNavigationStateChange = { navigationState = it },
+        )
+    }
+    SettingsWebViewAccessTokenSyncEffect(
+        snapshot = authSnapshot,
+        documentReady = documentReady,
+        controller = controller,
+        binding = hostAuthBinding,
+        surface = SettingsWebViewSurface.Marketplace,
+        logger = accessTokenSyncLogger,
     )
 }
 
@@ -164,8 +189,11 @@ internal fun settingsMarketplaceWebViewUrl(
     return sharedSettingsHostShellWebUrl(webBaseUrl, path)
 }
 
-internal fun settingsMarketplaceWebViewInjectedJavaScript(session: StoredAuthSession?): String {
-    val writes = settingsWebViewAuthStorageJavaScript(session)
+internal fun settingsMarketplaceWebViewInjectedJavaScript(
+    session: StoredAuthSession?,
+    hostBinding: SettingsWebViewHostAuthBinding? = null,
+): String {
+    val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
     return """
         (function() {
           try {

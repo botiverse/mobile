@@ -176,6 +176,18 @@ internal class SlockWebViewController {
 
     fun stop() = issueCommand(COMMAND_STOP)
 
+    /**
+     * Dispatches an ephemeral script only to the currently attached renderer. Runtime auth
+     * updates must never queue across detach/recreate, otherwise an old page's token update can
+     * be delivered to a replacement WebView instance (ABA).
+     */
+    fun evaluateJavaScript(script: String): Boolean {
+        if (script.isBlank() || flushingCommands) return false
+        val binding = commandBinding ?: return false
+        binding.dispatch(COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX + script)
+        return true
+    }
+
     private fun issueCommand(command: String) {
         val binding = commandBinding
         if (binding == null || flushingCommands) {
@@ -214,6 +226,7 @@ internal class SlockWebViewController {
         internal const val COMMAND_GO_FORWARD = "goForward"
         internal const val COMMAND_RELOAD = "reload"
         internal const val COMMAND_STOP = "stop"
+        internal const val COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX = "evaluateJavaScript:"
     }
 }
 
