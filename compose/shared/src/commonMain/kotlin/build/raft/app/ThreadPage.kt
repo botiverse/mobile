@@ -3722,6 +3722,10 @@ internal fun SharedThreadRouteContent(
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberSlockLinkNavigator(pager, bridge)
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val attachmentOwnerVersion by ProcessAttachmentAuthScopes.version.collectAsState()
+    val attachmentOwner = remember(attachmentOwnerVersion, storeScope.shellInstanceId) {
+        currentAttachmentOwnerLease(storeScope)
+    }
     val translationStore = remember(sharedStores) { sharedStores.messageTranslationStore }
     val realtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
@@ -4321,6 +4325,17 @@ internal fun SharedThreadRouteContent(
     }
     var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
+    }
+    var attachmentOperationTokens by remember(threadInstanceKey) {
+        mutableStateOf<Map<String, AttachmentOperationToken>>(emptyMap())
+    }
+    LaunchedEffect(attachmentOwner?.scopeId, attachmentOwner?.generation, threadInstanceKey) {
+        val currentOwner = attachmentOwner
+        val hasForeign = attachmentOperationTokens.values.any { it.owner != currentOwner }
+        if (hasForeign) {
+            attachmentOperationTokens = emptyMap()
+            attachmentOpenStates = emptyMap()
+        }
     }
     var nextAttachmentDownloadGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     var inlineVideoPreviewStates by remember(threadInstanceKey) {
@@ -5221,8 +5236,11 @@ internal fun SharedThreadRouteContent(
     }
     fun openAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
+        val owner = attachmentOwner ?: return
         nextAttachmentDownloadGeneration += 1L
         val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
+        val operation = AttachmentOperationToken(owner, downloadId, downloadId)
+        attachmentOperationTokens = attachmentOperationTokens + (attachment.id to operation)
         attachmentOpenStates =
             attachmentOpenStates +
                 (attachment.id to ThreadAttachmentOpenUiState(
@@ -5236,8 +5254,13 @@ internal fun SharedThreadRouteContent(
                     bridge = bridge,
                     dataSource = dataSource,
                     attachment = attachment,
+                    owner = owner,
                     downloadId = downloadId,
                     onProgress = { progress ->
+                        val token = attachmentOperationTokens[attachment.id]
+                        if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {
+                            return@openSharedThreadAttachment
+                        }
                         val current = attachmentOpenStates[attachment.id]
                         if (current?.downloadId != downloadId) return@openSharedThreadAttachment
                         val reduced =
@@ -5255,8 +5278,11 @@ internal fun SharedThreadRouteContent(
                                 ))
                     }
                 )
+            val token = attachmentOperationTokens[attachment.id]
+            if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
             if (result.status == "opened") {
                 attachmentOpenStates = attachmentOpenStates - attachment.id
+                attachmentOperationTokens = attachmentOperationTokens - attachment.id
             } else {
                 attachmentOpenStates =
                     attachmentOpenStates +
@@ -5268,13 +5294,17 @@ internal fun SharedThreadRouteContent(
                 if (result.status != "cancelled") {
                     bridge.toast(result.message.ifBlank { unableToOpenAttachmentLabel })
                 }
+                attachmentOperationTokens = attachmentOperationTokens - attachment.id
             }
         }
     }
     fun saveAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
+        val owner = attachmentOwner ?: return
         nextAttachmentDownloadGeneration += 1L
         val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
+        val operation = AttachmentOperationToken(owner, downloadId, downloadId)
+        attachmentOperationTokens = attachmentOperationTokens + (attachment.id to operation)
         attachmentOpenStates =
             attachmentOpenStates +
                 (attachment.id to ThreadAttachmentOpenUiState(
@@ -5288,8 +5318,13 @@ internal fun SharedThreadRouteContent(
                     bridge = bridge,
                     dataSource = dataSource,
                     attachment = attachment,
+                    owner = owner,
                     downloadId = downloadId,
                     onProgress = { progress ->
+                        val token = attachmentOperationTokens[attachment.id]
+                        if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {
+                            return@saveSharedThreadAttachment
+                        }
                         val current = attachmentOpenStates[attachment.id]
                         if (current?.downloadId != downloadId) return@saveSharedThreadAttachment
                         val reduced =
@@ -5307,13 +5342,17 @@ internal fun SharedThreadRouteContent(
                                 ))
                     }
                 )
+            val token = attachmentOperationTokens[attachment.id]
+            if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
             when (result.status) {
                 "saved" -> {
                     attachmentOpenStates = attachmentOpenStates - attachment.id
+                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
                     bridge.toast(result.message.ifBlank { attachmentSavedLabel })
                 }
                 "cancelled" -> {
                     attachmentOpenStates = attachmentOpenStates - attachment.id
+                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
                 }
                 else -> {
                     attachmentOpenStates =
@@ -5324,6 +5363,7 @@ internal fun SharedThreadRouteContent(
                                 downloadId = downloadId
                             ))
                     bridge.toast(result.message.ifBlank { unableToDownloadAttachmentLabel })
+                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
                 }
             }
         }
@@ -7804,6 +7844,7 @@ private suspend fun openSharedThreadAttachment(
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     attachment: KuiklyThreadAttachmentItem,
+    owner: AttachmentOwnerLease,
     downloadId: String? = null,
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
 ): ThreadAttachmentOpenResult {
@@ -7816,6 +7857,7 @@ private suspend fun openSharedThreadAttachment(
                     url = response.data.url,
                     attachmentId = attachmentId,
                     fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
+                    owner = owner,
                     mimeType = attachment.mimeType,
                     downloadId = downloadId,
                     onProgress = onProgress
@@ -7853,6 +7895,7 @@ private suspend fun saveSharedThreadAttachment(
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     attachment: KuiklyThreadAttachmentItem,
+    owner: AttachmentOwnerLease,
     downloadId: String? = null,
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
 ): ThreadAttachmentOpenResult {
@@ -7865,6 +7908,7 @@ private suspend fun saveSharedThreadAttachment(
                     url = response.data.url,
                     attachmentId = attachmentId,
                     fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
+                    owner = owner,
                     mimeType = attachment.mimeType,
                     downloadId = downloadId,
                     onProgress = onProgress

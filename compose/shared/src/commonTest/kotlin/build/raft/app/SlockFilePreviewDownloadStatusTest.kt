@@ -41,6 +41,26 @@ class SlockFilePreviewDownloadStatusTest {
         )
 
     @Test
+    fun cachedOpenHoldsAdmissionUntilNativeTerminal() {
+        var status = "idle"
+        var launches = 0
+        fun tapCachedOpen() {
+            if (!slockFilePreviewCanStartExternalOperation(status)) return
+            status = slockFilePreviewExternalOpenAdmissionStatus()
+            launches += 1
+        }
+
+        tapCachedOpen()
+        tapCachedOpen()
+        assertEquals("downloading", status)
+        assertEquals(1, launches)
+
+        status = "idle"
+        tapCachedOpen()
+        assertEquals(2, launches)
+    }
+
+    @Test
     fun editorSelectedToolUsesTheActiveIconTone() {
         assertEquals(
             SlockColor.AccentRedArgb,

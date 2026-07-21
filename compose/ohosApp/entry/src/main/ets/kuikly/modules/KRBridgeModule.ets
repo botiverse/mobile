@@ -69,6 +69,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly SAVE_ATTACHMENT = "saveAttachment";
   static readonly ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl";
+  static readonly ATTACHMENT_DOWNLOAD_OWNER_CHANGED = "attachmentDownloadOwnerChanged";
   static readonly LOG = "log";
   static readonly PERFORMANCE_MARKER = "performanceMarker";
   static readonly PERFORMANCE_SCENE = "performanceScene";
@@ -128,6 +129,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.ATTACHMENT_DOWNLOAD_CONTROL: {
         this.attachmentDownloadControl(params, callback);
+        break;
+      }
+      case KRBridgeModule.ATTACHMENT_DOWNLOAD_OWNER_CHANGED: {
+        this.attachmentDownloadOwnerChanged();
         break;
       }
       case KRBridgeModule.LOG: {
@@ -390,6 +395,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
     const status = slockOhosAttachmentDownloadSink.control(downloadId, attemptToken, action);
     callback({ "status": status });
+  }
+
+  private attachmentDownloadOwnerChanged(): void {
+    // OHOS keeps transfer authority in the common coordinator; shared leases fence UI commits.
   }
 
   private log(params: KRAny) {

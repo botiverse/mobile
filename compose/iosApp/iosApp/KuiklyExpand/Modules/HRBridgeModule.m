@@ -2531,6 +2531,11 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     callback(@{ @"status" : status ?: @"failed" });
 }
 
+- (void)attachmentDownloadOwnerChanged:(NSDictionary *)args {
+    // iOS keeps attachment transfer authority in the common coordinator. The shared owner lease
+    // still fences UI commits, but there is no Android-style native transient state to retire.
+}
+
 - (void)relationalStore:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
     if (callback) {
