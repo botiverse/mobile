@@ -678,6 +678,9 @@ class KmpVisualScreenshotCaptureTest {
                 focusImageEditorTextField()
                 Thread.sleep(1_000)
             },
+            afterScreenshot = {
+                dismissImageEditorTextImeInteraction()
+            },
             suppressSoftKeyboard = false,
             captureSystemSurface = true,
         )
@@ -700,8 +703,7 @@ class KmpVisualScreenshotCaptureTest {
                 dismissCompatibilityDialog()
                 focusImageEditorTextField()
                 Thread.sleep(800)
-                tapDisplayDp(x = 124f, y = 485f)
-                Thread.sleep(1_000)
+                dismissImageEditorTextImeInteraction()
             },
             suppressSoftKeyboard = false,
             captureSystemSurface = true,
@@ -2412,6 +2414,7 @@ class KmpVisualScreenshotCaptureTest {
         settleMs: Long = 1_500,
         requireReactionAtlas: Boolean = false,
         beforeScreenshot: (() -> Unit)? = null,
+        afterScreenshot: (() -> Unit)? = null,
         suppressSoftKeyboard: Boolean = true,
         captureSystemSurface: Boolean = false,
         assertBitmap: ((Bitmap) -> Unit)? = null,
@@ -2473,6 +2476,11 @@ class KmpVisualScreenshotCaptureTest {
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
         } finally {
+            try {
+                afterScreenshot?.invoke()
+            } catch (t: Throwable) {
+                Log.w(VISUAL_LOG_TAG, "after-screenshot teardown failed: ${t.message}")
+            }
             closeScenarioBounded(scenario)
         }
     }
@@ -2669,6 +2677,14 @@ class KmpVisualScreenshotCaptureTest {
                 inputMethodManager.showSoftInput(focused, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
             }
         }
+    }
+
+    private fun dismissImageEditorTextImeInteraction() {
+        // Mirrors the existing text-ime-dismissed fixture's proven interaction:
+        // it clears the native text selection/IME overlay that otherwise leaves
+        // a dim layer attached after the activity closes (task #507).
+        tapDisplayDp(x = 124f, y = 485f)
+        Thread.sleep(1_000)
     }
 
     private fun applyVisualFullscreen(activity: Activity, hideKeyboard: Boolean = true) {
