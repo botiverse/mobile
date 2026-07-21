@@ -78,6 +78,9 @@ class SettingsWebViewPagerContractTest {
         assertTrue(computers.contains("onLoadSuccess = { contentVisible = true }"))
         assertTrue(computers.contains("if (!contentVisible) SettingsComputersLoadingContent()"))
         assertTrue(computers.contains(".alpha(if (contentVisible) 1f else 0f)"))
+        assertTrue(computers.contains("Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))"))
+        assertFalse(computers.contains("repeat(4)"))
+        assertFalse(computers.contains(".height(68.dp)"))
     }
 
     @Test

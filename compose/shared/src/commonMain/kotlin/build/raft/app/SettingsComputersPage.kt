@@ -15,12 +15,10 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Modifier
@@ -175,20 +173,7 @@ internal fun SettingsComputersWebViewContent(
 
 @Composable
 internal fun SettingsComputersLoadingContent() {
-    Column(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        repeat(4) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(68.dp)
-                        .background(SlockColor.SurfaceWhite)
-            )
-        }
-    }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceCream))
 }
 
 internal fun settingsComputersWebViewUrl(
