@@ -143,7 +143,7 @@ function loadAnalysis(opts) {
   }
 }
 
-function manifestCase(caseId, opts) {
+export function manifestCase(caseId, opts) {
   const manifestPath = path.join(opts.slockRoot, "packages/visual-testing/shared/sharedCases.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   return (manifest.cases || []).find((entry) => entry.id === caseId) || null;
@@ -152,7 +152,11 @@ function manifestCase(caseId, opts) {
 function walkFiles(root, output = []) {
   if (!fs.existsSync(root)) return output;
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if ([".git", "node_modules", "build", ".gradle", "dist"].includes(entry.name)) continue;
+    if ([".git", "node_modules", ".gradle", "dist"].includes(entry.name)) continue;
+    // Kotlin packages live under `.../kotlin/build/raft/...`; only skip a
+    // Gradle output directory named build when its parent is a module root.
+    if (entry.name === "build"
+      && (fs.existsSync(path.join(root, "build.gradle.kts")) || fs.existsSync(path.join(root, "build.gradle")))) continue;
     const full = path.join(root, entry.name);
     if (entry.isDirectory()) walkFiles(full, output);
     else if (SOURCE_EXTENSIONS.has(path.extname(entry.name))) output.push(full);
@@ -166,6 +170,27 @@ function sourceRecord(root, file) {
     path: path.relative(root, file),
     src: fs.readFileSync(file, "utf8").slice(0, 28_000),
   };
+}
+
+function referencedUiIdentifiers(sources, hints = []) {
+  const identifiers = [];
+  const hintNeedles = hints.flatMap((hint) => [String(hint || ""), ...String(hint || "").split(/[#:+/\s]/)])
+    .filter((term) => term.length >= 4);
+  for (const source of sources) {
+    const windows = hintNeedles.map((needle) => source.src.indexOf(needle)).filter((index) => index >= 0)
+      .map((index) => source.src.slice(Math.max(0, index - 300), index + 1_200));
+    const searchable = windows.length ? windows.join("\n") : source.src;
+    for (const match of searchable.matchAll(/\b([A-Z][A-Za-z0-9_]*(?:Content|Screen|Page))\b/g)) {
+      identifiers.push(match[1]);
+      if (identifiers.length >= 200) break;
+    }
+  }
+  const unique = [...new Set(identifiers)];
+  const terms = hints.flatMap((hint) => String(hint || "").split(/[^A-Za-z0-9]+/))
+    .filter((term) => term.length >= 4)
+    .map((term) => term.toLowerCase());
+  const prioritized = unique.filter((identifier) => terms.some((term) => identifier.toLowerCase().includes(term)));
+  return prioritized.length ? prioritized : unique.slice(0, 40);
 }
 
 function sourceMatches(root, needles, limit = 5) {
@@ -189,10 +214,15 @@ function sourceMatches(root, needles, limit = 5) {
   return matches.filter(Boolean);
 }
 
+export function isForbiddenSourcePath(sourcePath) {
+  return /(^|\/)(?:test|tests|__tests__|commonTest|androidTest|iosTest|jvmTest|jsTest|desktopTest|nativeTest|ohosTest|wasmTest)(\/|$)|(?:Test|Tests)\.(?:kt|kts|java|ts|tsx|js|jsx)$/i.test(sourcePath)
+    || /(^|\/)(?:baseline|baselines|snapshots?)(\/|$)|platformDivergences\.json$|sharedCases\.json$/i.test(sourcePath);
+}
+
 export function dedupeSources(sources) {
   const seen = new Set();
   return sources.filter((source) => {
-    if (!source || seen.has(source.path)) return false;
+    if (!source || isForbiddenSourcePath(source.path) || seen.has(source.path)) return false;
     seen.add(source.path);
     return true;
   });
@@ -211,7 +241,7 @@ export function capSources(sources, maxChars = 60_000) {
   return capped;
 }
 
-function collectSources(entry, opts) {
+export function collectSources(entry, opts) {
   const react = entry?.providerMatrix?.react || {};
   const android = entry?.providerMatrix?.android || {};
   const reactHintPath = String(entry?.reactPathHint || "").split("#")[0];
@@ -220,7 +250,13 @@ function collectSources(entry, opts) {
   const androidExact = sourceRecord(opts.mobileRoot, android.path ? path.join(opts.mobileRoot, android.path) : "");
   const reactComponents = [...(react.components || []), entry?.reactPathHint];
   const androidComponents = [...(android.components || []), entry?.androidCaseHint];
-  const androidComponentSources = sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6)
+  const androidSeedSources = sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6);
+  const androidExpandedSources = sourceMatches(
+    path.join(opts.mobileRoot, "compose"),
+    referencedUiIdentifiers(androidSeedSources, androidComponents),
+    8,
+  );
+  const androidComponentSources = [...androidSeedSources, ...androidExpandedSources]
     .map((source) => ({ ...source, path: `compose/${source.path}` }));
   return {
     react: capSources(dedupeSources([
@@ -243,8 +279,6 @@ export function sourceAuthorityProblem(candidate) {
   return null;
 }
 
-const FORBIDDEN_PATCH_PATH = /(^|\/)(?:test|tests|__tests__|baseline|baselines|snapshots?)(\/|$)|platformDivergences\.json$|sharedCases\.json$/i;
-
 export function patchScopeProblem(patchResult, androidSources) {
   if (patchResult?.patchable === false) return null;
   if (!Array.isArray(patchResult?.patch) || patchResult.patch.length === 0) return "patch generator emitted no patch";
@@ -252,7 +286,7 @@ export function patchScopeProblem(patchResult, androidSources) {
   for (const entry of patchResult.patch) {
     const patchPath = String(entry?.path || "").replace(/^\.\//, "");
     if (!allowed.has(patchPath)) return `patch path is outside located Android authority: ${patchPath || "<missing>"}`;
-    if (FORBIDDEN_PATCH_PATH.test(patchPath)) return `patch path is forbidden queue scope: ${patchPath}`;
+    if (isForbiddenSourcePath(patchPath)) return `patch path is forbidden queue scope: ${patchPath}`;
     const diff = String(entry?.diff || "");
     if (!diff.includes(`--- a/${patchPath}`) || !diff.includes(`+++ b/${patchPath}`)) {
       return `patch diff headers do not bind to declared path: ${patchPath}`;

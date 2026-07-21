@@ -68,6 +68,11 @@ test("patch scope is restricted to located product sources and exact diff header
     diff: `--- a/${sources[0].path}\n+++ b/${sources[0].path}\n@@ -1 +1 @@`,
   }] }, sources), null);
   assert.match(patchScopeProblem({ patchable: true, patch: [{ path: "compose/shared/src/commonTest/ThingTest.kt", diff: "x" }] }, sources), /outside located/);
+  const testSource = "compose/shared/src/commonTest/kotlin/ThingTest.kt";
+  assert.match(patchScopeProblem({ patchable: true, patch: [{
+    path: testSource,
+    diff: `--- a/${testSource}\n+++ b/${testSource}\n@@ -1 +1 @@`,
+  }] }, [{ path: testSource }]), /forbidden queue scope/);
   assert.match(patchScopeProblem({ patchable: true, patch: [{ path: sources[0].path, diff: "missing headers" }] }, sources), /diff headers/);
 });
 
