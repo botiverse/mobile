@@ -71,12 +71,27 @@ class FocusDismissProductionContractTest {
 
     @Test
     fun threadComposerKeepsItsDedicatedNonConsumingTimelineDismissContract() {
+        val basic = source("build/raft/app/BasicWidget.kt")
         val thread = source("build/raft/app/ThreadPage.kt")
         val composer = source("build/raft/app/ThreadComposerPage.kt")
+        val legacyTouchListener =
+            functionBlock(
+                basic,
+                "fun Modifier.touchListener(",
+                "/**\n * Clears the current input focus"
+            )
 
-        assertContains(thread, ".touchListenerWithConfiguration { type, position, touchSlop ->")
+        assertContains(thread, ".touchListener { type, _ ->")
         assertContains(thread, "focusManager.clearFocus(force = true)")
+        assertFalse(
+            Regex("""(?m)^\s*change\.consume\(\)""").containsMatchIn(legacyTouchListener),
+            "The release timeline listener must observe without consuming taps or scrolls"
+        )
         assertContains(composer, "participatesInGlobalFocusDismiss = false")
+        assertTrue(
+            commonMainRoot().readAllKotlin().occurrences("participatesInGlobalFocusDismiss = false") == 1,
+            "Thread composer must remain the only explicit global focus-dismiss opt-out"
+        )
     }
 
     private fun source(path: String): String {
