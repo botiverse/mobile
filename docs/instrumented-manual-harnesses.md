@@ -40,7 +40,7 @@ shared androidInstrumentedTest data.DurablePartitionAndroidDriverMigrationTest
 (every PR), SlockThreadNewerAutoPaginationConnectedTest (main/nightly only) —
 all in test.yml's android-device job.
 
-## Pending a shell-lane behavior decision (do not promote, do not "fix" the test)
+## On HOLD for a production fix (do not promote, do not "fix" the test)
 
 **AndroidShellTaskReuseConnectedTest** — its first-ever CI run (task #19)
 failed `secondServerLegacyDocumentLaunchCannotCreateAnotherAppShell`:
@@ -52,10 +52,16 @@ test (written 2026-07-12 for #661/#866/#918) asserts, leaving that function
 with no production caller and `registerAndroidShellWindow` resolving
 targets with `multiShellHostEnabled = true` regardless of the preference.
 Task-reuse assertions still hold (manifest singleTask); the pageData
-demotion no longer happens for raw intents. Whether #1152's semantics are
-intended (→ update the test) or a gap (→ restore normalization) is the
-shell/launch-contract lane's call — routed via Raft task; until then the
-class stays manual and its other three tests remain valid.
+demotion no longer happens for raw intents.
+
+Adjudicated in Raft task #743 (launch-contract review, 2026-07-21): this is
+a **production ingress gap left by #1152**, not intended semantics. The
+test's expectation stands — do not rewrite it to accept
+`server-shell:server-b`, and do not delete `normalizeAndroidAppShellPageData`.
+The fix (a host-aware ingress canonicalizer consumed by splash/registry/
+page-spec/store alike) belongs to the launch-contract lane; once it lands,
+re-promote this class to the android-device gate. Until then it stays
+manual and its other three tests remain valid.
 
 ## Deleted by task #19
 
