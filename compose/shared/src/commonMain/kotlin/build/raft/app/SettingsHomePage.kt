@@ -5907,12 +5907,7 @@ private fun SharedSettingsServerContent(
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .dismissInputFocusOnUnconsumedPointerDown()
-                .background(SlockColor.SurfaceWhite)
-                .padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (showProfileCard) {
@@ -6113,12 +6108,7 @@ private fun SettingsConnectedAppsContent(
     }
     val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .dismissInputFocusOnUnconsumedPointerDown()
-                .background(SlockColor.SurfaceWhite)
-                .padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (state) {
@@ -10191,7 +10181,7 @@ internal fun SharedSettingsApiEnvironmentContent(
     val canSave = normalizedApi.startsWith("http") && normalizedSocket.startsWith("http") && !busy
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().dismissInputFocusOnUnconsumedPointerDown(),
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -13914,7 +13904,6 @@ private fun AppShellServerGateContent(
     }
 
     AuthScaffold(
-        dismissInputFocusOnBackgroundDown = mode == "create",
         contentTopPadding = 72.dp,
         contentScrollable = true,
         topBarHorizontalPadding = 8.dp,
@@ -15655,7 +15644,6 @@ private fun SharedCreateChannelDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
-        dismissInputFocusOnBackgroundDown = true,
         onDismiss = onDismiss
     ) {
         SlockBrutalTextField(

@@ -636,7 +636,6 @@ internal fun SharedCreateAgentDialog(
                 stringResource(MR.strings.agent_create_title)
             },
         dismissEnabled = !submitting,
-        dismissInputFocusOnBackgroundDown = true,
         onDismiss = onDismiss,
         hostRoute = SharedCreateAgentDialogHostRoute
     ) {

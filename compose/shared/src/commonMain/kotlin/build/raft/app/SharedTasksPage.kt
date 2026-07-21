@@ -1510,7 +1510,6 @@ private fun TasksCreateDialog(
                 modifier = Modifier
                     .padding(SlockSpacing.Md)
                     .widthIn(min = 280.dp, max = 360.dp)
-                    .dismissInputFocusOnUnconsumedPointerDown()
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .slockFloatingContentClickTarget()

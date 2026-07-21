@@ -61,7 +61,6 @@ internal fun AddComputerDialog(
         title = title,
         onDismiss = { onIntent(dismissIntent) },
         dismissEnabled = !state.registering && !state.saving,
-        dismissInputFocusOnBackgroundDown = true,
         maxWidth = 520.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,

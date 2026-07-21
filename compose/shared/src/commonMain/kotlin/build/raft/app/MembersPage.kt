@@ -4850,7 +4850,6 @@ private fun MembersAgentIssueReportDialog(
     SlockUnifiedDialog(
         title = stringResource(MR.strings.member_report_issue_title).uppercase(),
         dismissEnabled = !busy,
-        dismissInputFocusOnBackgroundDown = true,
         maxWidth = 420.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,

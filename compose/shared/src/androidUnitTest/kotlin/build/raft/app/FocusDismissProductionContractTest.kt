@@ -19,75 +19,82 @@ class FocusDismissProductionContractTest {
     }
 
     @Test
-    fun unifiedDialogsAndOrdinarySettingsFormsUseTheSharedDismissBoundary() {
-        val dialogs = source("build/raft/app/SlockModalComponents.kt")
-        val settings = source("build/raft/app/SettingsHomePage.kt")
-        val account = source("build/raft/app/SettingsAccountPage.kt")
-        val members = source("build/raft/app/MembersPage.kt")
+    fun everyBaseTextFieldRegistersWithTheActiveFocusOwnerByDefault() {
+        val source = source("build/raft/app/BasicWidget.kt")
 
-        assertContains(dialogs, "dismissInputFocusOnBackgroundDown: Boolean = false")
-        assertContains(dialogs, "enabled = dismissInputFocusOnBackgroundDown")
-        assertContains(settings, "Modifier.fillMaxSize().dismissInputFocusOnUnconsumedPointerDown()")
-        assertContains(account, ".fillMaxSize()\n                .dismissInputFocusOnUnconsumedPointerDown()")
-        assertEditableRoot(settings, "private fun SharedSettingsServerContent(")
-        assertEditableRoot(settings, "private fun SettingsConnectedAppsContent(")
-        assertContains(members, "MembersAgentIssueReportDialog(")
-        val reportDialog = members.substringAfter("private fun MembersAgentIssueReportDialog(")
-            .substringBefore("private fun MembersAgentIssueReportOption(")
-        assertContains(reportDialog, "dismissInputFocusOnBackgroundDown = true")
+        assertTrue(source.occurrences("participatesInGlobalFocusDismiss: Boolean = true") == 2)
+        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, true)") == 2)
+        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, false)") >= 4)
+        assertContains(source, "DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss)")
     }
 
     @Test
-    fun authAndCustomEditableSurfacesOptInWithoutChangingReadOnlyAuthPages() {
-        val authComponents = source("build/raft/app/AuthComponents.kt")
-        val authPages = source("build/raft/app/AuthPages.kt")
-        val settings = source("build/raft/app/SettingsHomePage.kt")
-        val tasks = source("build/raft/app/SharedTasksPage.kt")
+    fun appAuthFilePreviewAndEveryModalInstallTheSameFocusDismissHost() {
+        val basic = source("build/raft/app/BasicWidget.kt")
+        val appShell = source("build/raft/app/SlockAppShell.kt")
+        val auth = source("build/raft/app/AuthComponents.kt")
+        val filePreview = source("build/raft/app/SlockFilePreview.kt")
 
-        assertContains(authComponents, "dismissInputFocusOnBackgroundDown: Boolean = false")
-        assertContains(authComponents, "enabled = dismissInputFocusOnBackgroundDown")
-        assertContains(functionBlock(authPages, "internal fun LoginContent(", "internal fun RegisterContent("), "dismissInputFocusOnBackgroundDown = true")
-        assertContains(functionBlock(authPages, "internal fun RegisterContent(", "internal fun ForgotPasswordContent("), "dismissInputFocusOnBackgroundDown = true")
-        assertContains(functionBlock(authPages, "internal fun ForgotPasswordContent(", "private fun AuthLegalAcceptanceContent("), "dismissInputFocusOnBackgroundDown = true")
-        assertContains(functionBlock(settings, "private fun AppShellServerGateContent(", "internal fun authChooseServerShouldSkipInitialLoad("), "dismissInputFocusOnBackgroundDown = mode == \"create\"")
-        assertContains(functionBlock(tasks, "private fun TasksCreateDialog(", "private fun parseTaskSortTimestamp("), ".dismissInputFocusOnUnconsumedPointerDown()")
+        assertContains(functionBlock(basic, "fun Modal(", "internal fun slockModalDialogProperties("), "SlockInputFocusDismissHost")
+        assertContains(functionBlock(appShell, "internal fun SlockAppShellSurface(", "internal enum class SlockAppShellNetworkStatus"), "SlockInputFocusDismissHost")
+        assertContains(functionBlock(auth, "internal fun AuthScaffold(", "private fun AuthTopBar("), "SlockInputFocusDismissHost")
+        assertContains(functionBlock(filePreview, "internal fun SlockFilePreviewPageScaffold(", "internal fun SlockFilePreviewGenericCard("), "SlockInputFocusDismissHost")
     }
 
     @Test
-    fun nonEditableDialogsRemainOptOutByDefault() {
-        val dialogs = source("build/raft/app/SlockModalComponents.kt")
-        val announcement = source("build/raft/app/AnnouncementModal.kt")
+    fun standardInputFamiliesAutomaticallyUseTheRegisteredBaseTextField() {
+        val brutal = source("build/raft/app/components/SlockBrutalComponents.kt")
+        val formPrimitives = source("build/raft/app/components/SlockRaftUiFormPrimitives.kt")
 
-        assertContains(dialogs, "dismissInputFocusOnBackgroundDown: Boolean = false")
-        assertFalse("dismissInputFocusOnBackgroundDown" in announcement)
+        assertTrue(brutal.occurrences("TextField(") >= 3)
+        assertContains(formPrimitives, "TextField(")
+        assertFalse("participatesInGlobalFocusDismiss = false" in brutal)
+        assertFalse("participatesInGlobalFocusDismiss = false" in formPrimitives)
+    }
+
+    @Test
+    fun businessPagesDoNotOwnDismissAllowlistsOrPointerHandlers() {
+        val commonMain = commonMainRoot()
+        val directPointerOwners =
+            commonMain.walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { file ->
+                    file.relativeTo(commonMain).invariantSeparatorsPath != "build/raft/app/BasicWidget.kt" &&
+                        "dismissInputFocusOnUnconsumedPointerDown(" in file.readText()
+                }
+                .map { it.relativeTo(commonMain).invariantSeparatorsPath }
+                .toList()
+
+        assertTrue(directPointerOwners.isEmpty(), "Business-owned focus-dismiss handlers: $directPointerOwners")
+        assertFalse("dismissInputFocusOnBackgroundDown" in commonMain.readAllKotlin())
     }
 
     @Test
     fun threadComposerKeepsItsDedicatedNonConsumingTimelineDismissContract() {
         val thread = source("build/raft/app/ThreadPage.kt")
+        val composer = source("build/raft/app/ThreadComposerPage.kt")
 
         assertContains(thread, ".touchListenerWithConfiguration { type, position, touchSlop ->")
         assertContains(thread, "focusManager.clearFocus(force = true)")
+        assertContains(composer, "participatesInGlobalFocusDismiss = false")
     }
 
     private fun source(path: String): String {
-        val commonMain =
-            listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))
-                .firstOrNull(File::isDirectory)
-                ?: error("Could not locate shared commonMain Kotlin sources")
+        val commonMain = commonMainRoot()
         val file = File(commonMain, path)
         assertTrue(file.isFile, "Missing production source $path")
         return file.readText().replace("\r\n", "\n")
     }
 
-    private fun assertEditableRoot(source: String, marker: String) {
-        val block = source.substringAfter(marker).substringBefore("\n@Composable", missingDelimiterValue = source.substringAfter(marker))
-        assertContains(
-            block,
-            ".dismissInputFocusOnUnconsumedPointerDown()",
-            message = "Missing focus-dismiss boundary for $marker"
-        )
-    }
+    private fun commonMainRoot(): File =
+        listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))
+            .firstOrNull(File::isDirectory)
+            ?: error("Could not locate shared commonMain Kotlin sources")
+
+    private fun File.readAllKotlin(): String =
+        walkTopDown().filter { it.isFile && it.extension == "kt" }.joinToString("\n") { it.readText() }
+
+    private fun String.occurrences(needle: String): Int = split(needle).size - 1
 
     private fun functionBlock(source: String, start: String, end: String): String =
         source.substringAfter(start).substringBefore(end)

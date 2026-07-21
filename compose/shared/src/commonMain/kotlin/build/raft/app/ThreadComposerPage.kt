@@ -1537,6 +1537,7 @@ internal fun ThreadComposerContent(
                         placeholderColor = SlockColor.TextMutedGray,
                         cursorBrush = SolidColor(SlockColor.TextBlack),
                         systemNewlineAction = true,
+                        participatesInGlobalFocusDismiss = false,
                         // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                         focusRequester = composerFocusRequester,
                         modifier = Modifier
