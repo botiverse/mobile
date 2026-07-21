@@ -109,6 +109,48 @@ class SettingsWebViewPagerContractTest {
         assertTrue(fence.mayUncover(target))
     }
 
+    @Test
+    fun fourSettingsWebViewsUseTheSharedRuntimeAccessTokenFence() {
+        val expectations =
+            mapOf(
+                "SettingsComputersPage.kt" to "SettingsWebViewSurface.Computers",
+                "SettingsBillingPage.kt" to "SettingsWebViewSurface.Billing",
+                "SettingsMarketplacePage.kt" to "SettingsWebViewSurface.Marketplace",
+                "SettingsAdministrationPage.kt" to "SettingsWebViewSurface.Administration",
+            )
+
+        expectations.forEach { (fileName, surface) ->
+            val source = sourceFile("shared/src/commonMain/kotlin/build/raft/app/$fileName").readText()
+            assertTrue("$fileName must observe typed process auth events", source.contains("rememberSettingsWebViewAuthSnapshot"))
+            assertTrue("$fileName must use the shared sync effect", source.contains("SettingsWebViewAccessTokenSyncEffect"))
+            assertTrue("$fileName must bootstrap a trusted host binding", source.contains("rememberSettingsWebViewHostAuthBinding"))
+            assertTrue("$fileName must recreate the native node for a new binding", source.contains("key(hostAuthBinding?.webViewGeneration)"))
+            assertTrue("$fileName must wait for a settled document", source.contains("navigationState.progress >= 100"))
+            assertTrue("$fileName must declare its surface identity", source.contains(surface))
+            assertTrue("$fileName must route sanitized sync diagnostics", source.contains("accessTokenSyncLogger"))
+        }
+    }
+
+    @Test
+    fun androidRuntimeJavaScriptIsEphemeralAndSameOriginDocumentGated() {
+        val host = sourceFile("androidApp/src/main/java/build/raft/app/shared/SlockSandboxWebViewRenderView.kt").readText()
+        val controller = sourceFile("shared/src/commonMain/kotlin/build/raft/app/SlockSandboxWebView.kt").readText()
+
+        assertTrue(controller.contains("updates must never queue across detach/recreate"))
+        assertTrue(controller.contains("val binding = commandBinding ?: return false"))
+        assertTrue(host.contains("lastSuccessfulUrl.isBlank()"))
+        assertTrue(host.contains("activeOrigin != sourceOrigin"))
+        assertTrue(host.contains("pendingRuntimeJavaScript = script"))
+        assertTrue(host.indexOf("evaluateInjectedJavaScript()") < host.indexOf("flushPendingRuntimeJavaScript()"))
+        assertTrue(host.contains("notifyLoadSuccess(url, \"finished\", beforeCallback = ::flushPendingRuntimeJavaScript)"))
+        assertTrue(host.indexOf("beforeCallback?.invoke()") < host.indexOf("loadSuccessCallback?.invoke"))
+        assertTrue(host.contains("pendingRuntimeJavaScript = \"\"\n        removeDocumentStartScript()"))
+        assertTrue(host.contains("targetOrigin != sourceOrigin"))
+        assertTrue(host.contains("if (src.isNotBlank()) installDocumentStartScript(src)"))
+        assertTrue(host.contains("MAX_RUNTIME_JAVA_SCRIPT_LENGTH"))
+        assertFalse(host.contains("runtime_js script="))
+    }
+
     private fun sourceFile(relativePath: String): File {
         val userDir = requireNotNull(System.getProperty("user.dir"))
         var current = File(userDir).absoluteFile

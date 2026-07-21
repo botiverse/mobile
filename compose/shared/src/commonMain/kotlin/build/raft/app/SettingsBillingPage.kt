@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -287,23 +288,24 @@ private fun SettingsBillingScreenBody(pager: Pager) {
     val billingAuthStore = remember(sharedStores, environment.storeScope) {
         sharedStores.authStore(environment.storeScope)
     }
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(billingAuthStore, sharedStores.authStore)
+    val webViewController = rememberSlockWebViewController()
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-billing") {
             SharedSettingsViewModel(environment.dataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
-    var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     LaunchedEffect(Unit) {
         bridge.log("settings_billing_open instanceId=${launchPayload.instanceId}")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Billing))
     }
-    LaunchedEffect(billingAuthStore) {
-        session = runCatching { billingAuthStore.readSession() }.getOrNull()
-    }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsBillingWebViewContent(
-        session = session,
+        session = authSnapshot.session,
+        authSnapshot = authSnapshot,
         webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+        controller = webViewController,
+        accessTokenSyncLogger = bridge::log,
         onUrlChange = { url -> bridge.log("settings_billing_webview_url_changed url=$url") },
         onLoadFailure = { reason -> bridge.log("settings_billing_webview_load_failure reason=$reason") }
     )
@@ -380,7 +382,11 @@ internal fun SettingsBillingWebViewContent(
     modifier: Modifier = Modifier,
     bottomContentPadding: Dp = 0.dp,
     onUrlChange: (String) -> Unit = {},
-    onLoadFailure: (String) -> Unit = {}
+    onLoadFailure: (String) -> Unit = {},
+    controller: SlockWebViewController = rememberSlockWebViewController(),
+    authSnapshot: SettingsWebViewAuthSnapshot =
+        SettingsWebViewAuthSnapshot(session = session, sessionGeneration = if (session == null) 0L else 1L),
+    accessTokenSyncLogger: (String) -> Unit = {},
 ) {
     val localeTag =
         remember {
@@ -393,21 +399,40 @@ internal fun SettingsBillingWebViewContent(
             }
         }
     val webUrl = remember(session, webBaseUrl, localeTag) { settingsBillingWebViewUrl(webBaseUrl, session, localeTag) }
-    val injectedJavaScript = remember(session) { settingsBillingWebViewInjectedJavaScript(session) }
+    val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+    val injectedJavaScript = remember(session, hostAuthBinding) {
+        settingsBillingWebViewInjectedJavaScript(session, hostAuthBinding)
+    }
+    var pageLoaded by remember(webUrl) { mutableStateOf(false) }
+    var navigationState by remember(webUrl) { mutableStateOf(SlockWebViewNavigationState()) }
+    val documentReady = pageLoaded && !navigationState.isLoading && navigationState.progress >= 100
     if (session == null) {
         SettingsBillingLoadingContent()
         return
     }
-    SlockWebView(
-        url = webUrl,
-        modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(bottom = bottomContentPadding),
-        allowNavigation = true,
-        domStorageEnabled = true,
-        cacheEnabled = true,
-        ephemeral = false,
-        injectedJavaScript = injectedJavaScript,
-        onUrlChange = onUrlChange,
-        onLoadFailure = onLoadFailure
+    key(hostAuthBinding?.webViewGeneration) {
+        SlockWebView(
+            url = webUrl,
+            modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(bottom = bottomContentPadding),
+            allowNavigation = true,
+            domStorageEnabled = true,
+            cacheEnabled = true,
+            ephemeral = false,
+            injectedJavaScript = injectedJavaScript,
+            controller = controller,
+            onLoadSuccess = { pageLoaded = true },
+            onUrlChange = onUrlChange,
+            onLoadFailure = onLoadFailure,
+            onNavigationStateChange = { navigationState = it },
+        )
+    }
+    SettingsWebViewAccessTokenSyncEffect(
+        snapshot = authSnapshot,
+        documentReady = documentReady,
+        controller = controller,
+        binding = hostAuthBinding,
+        surface = SettingsWebViewSurface.Billing,
+        logger = accessTokenSyncLogger,
     )
 }
 
@@ -430,8 +455,11 @@ internal fun settingsBillingWebViewUrl(
     )
 }
 
-internal fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?): String {
-    val writes = settingsWebViewAuthStorageJavaScript(session)
+internal fun settingsBillingWebViewInjectedJavaScript(
+    session: StoredAuthSession?,
+    hostBinding: SettingsWebViewHostAuthBinding? = null,
+): String {
+    val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
     return """
         (function() {
           try {

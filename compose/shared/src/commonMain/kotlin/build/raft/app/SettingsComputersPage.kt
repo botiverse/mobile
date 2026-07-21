@@ -4,6 +4,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,24 +97,25 @@ private fun SettingsComputersScreenBody(pager: Pager) {
     val authStore = remember(sharedStores, environment.storeScope) {
         sharedStores.authStore(environment.storeScope)
     }
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, sharedStores.authStore)
+    val webViewController = rememberSlockWebViewController()
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-computers") {
             SharedSettingsViewModel(environment.dataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
-    var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     LaunchedEffect(Unit) {
         bridge.log("settings_computers_open")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
     }
-    LaunchedEffect(authStore) {
-        session = runCatching { authStore.readSession() }.getOrNull()
-    }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsComputersWebViewContent(
-        session = session,
+        session = authSnapshot.session,
+        authSnapshot = authSnapshot,
         webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
         bottomContentPadding = 0.dp,
+        controller = webViewController,
+        accessTokenSyncLogger = bridge::log,
         onUrlChange = { url -> bridge.log("settings_computers_webview_url_changed url=$url") },
         onLoadFailure = { reason -> bridge.log("settings_computers_webview_load_failure reason=$reason") }
     )
@@ -133,42 +135,61 @@ internal fun SettingsComputersWebViewContent(
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {},
     controller: SlockWebViewController = rememberSlockWebViewController(),
+    authSnapshot: SettingsWebViewAuthSnapshot =
+        SettingsWebViewAuthSnapshot(session = session, sessionGeneration = if (session == null) 0L else 1L),
+    accessTokenSyncLogger: (String) -> Unit = {},
     onNavigationStateChange: (SlockWebViewNavigationState) -> Unit = {}
 ) {
     val webUrl = remember(session, webBaseUrl) {
         settingsComputersWebViewUrl(webBaseUrl, session)
     }
-    val injectedJavaScript = remember(session) {
-        settingsComputersWebViewInjectedJavaScript(session)
+    val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+    val injectedJavaScript = remember(session, hostAuthBinding) {
+        settingsComputersWebViewInjectedJavaScript(session, hostAuthBinding)
     }
     var contentVisible by remember(webUrl) { mutableStateOf(false) }
+    var navigationState by remember(webUrl) { mutableStateOf(SlockWebViewNavigationState()) }
+    val documentReady = contentVisible && !navigationState.isLoading && navigationState.progress >= 100
     if (session == null) {
         SettingsComputersLoadingContent()
         return
     }
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceCream)) {
-        SlockWebView(
-            url = webUrl,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.SurfaceCream)
-                    .padding(bottom = bottomContentPadding)
-                    .alpha(if (contentVisible) 1f else 0f),
-            allowNavigation = true,
-            allowedNavigationSchemes = setOf("http", "https"),
-            domStorageEnabled = true,
-            cacheEnabled = true,
-            ephemeral = false,
-            injectedJavaScript = injectedJavaScript,
-            controller = controller,
-            onLoadSuccess = { contentVisible = true },
-            onUrlChange = onUrlChange,
-            onLoadFailure = onLoadFailure,
-            onNavigationStateChange = onNavigationStateChange
-        )
+        key(hostAuthBinding?.webViewGeneration) {
+            SlockWebView(
+                url = webUrl,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(SlockColor.SurfaceCream)
+                        .padding(bottom = bottomContentPadding)
+                        .alpha(if (contentVisible) 1f else 0f),
+                allowNavigation = true,
+                allowedNavigationSchemes = setOf("http", "https"),
+                domStorageEnabled = true,
+                cacheEnabled = true,
+                ephemeral = false,
+                injectedJavaScript = injectedJavaScript,
+                controller = controller,
+                onLoadSuccess = { contentVisible = true },
+                onUrlChange = onUrlChange,
+                onLoadFailure = onLoadFailure,
+                onNavigationStateChange = { state ->
+                    navigationState = state
+                    onNavigationStateChange(state)
+                }
+            )
+        }
         if (!contentVisible) SettingsComputersLoadingContent()
     }
+    SettingsWebViewAccessTokenSyncEffect(
+        snapshot = authSnapshot,
+        documentReady = documentReady,
+        controller = controller,
+        binding = hostAuthBinding,
+        surface = SettingsWebViewSurface.Computers,
+        logger = accessTokenSyncLogger,
+    )
 }
 
 @Composable
@@ -192,8 +213,11 @@ internal fun settingsComputersWebViewUrl(
     return sharedSettingsHostShellWebUrl(webBaseUrl, path)
 }
 
-internal fun settingsComputersWebViewInjectedJavaScript(session: StoredAuthSession?): String {
-    val writes = settingsWebViewAuthStorageJavaScript(session)
+internal fun settingsComputersWebViewInjectedJavaScript(
+    session: StoredAuthSession?,
+    hostBinding: SettingsWebViewHostAuthBinding? = null,
+): String {
+    val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
     return """
         (function() {
           try {

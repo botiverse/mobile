@@ -40,6 +40,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var cacheEnabled: Boolean = false
     private var ephemeral: Boolean = true
     private var injectedJavaScript: String = ""
+    private var pendingRuntimeJavaScript: String = ""
     private var allowedNavigationSchemes: Set<String> = emptySet()
     private var currentUrl: String = ""
     private var currentTitle: String = ""
@@ -218,6 +219,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         navigationBlockedCallback = null
         urlChangeCallback = null
         navigationStateChangeCallback = null
+        pendingRuntimeJavaScript = ""
         removeDocumentStartScript()
         Log.i(LOG_TAG, "destroy_webview loadedSrc=${loadedSrc.redactedUrlForLog()}")
         webView.stopLoading()
@@ -241,6 +243,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         currentIsLoading = false
         lastNavigationStateKey = ""
         lastLoadFailureReason = ""
+        pendingRuntimeJavaScript = ""
         webView = WebView(context)
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -332,6 +335,11 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     val target = url.orEmpty()
                     Log.i(LOG_TAG, "page_started url=${target.redactedUrlForLog()}")
                     bootstrapNavigationFence.onMainFrameStarted(target)
+                    val sourceOrigin = documentStartScriptOriginRule(src)
+                    val targetOrigin = documentStartScriptOriginRule(target)
+                    if (sourceOrigin == null || targetOrigin != sourceOrigin) {
+                        pendingRuntimeJavaScript = ""
+                    }
                     if (wouldBlockMainFrameNavigation(url)) {
                         view?.stopLoading()
                         handleBlockedMainFrameNavigation(url)
@@ -357,10 +365,12 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                         currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                         currentProgress = 100
                         currentIsLoading = false
+                        evaluateInjectedJavaScript()
+                        if (bootstrapNavigationFence.mayUncover(url)) {
+                            notifyLoadSuccess(url, "finished", beforeCallback = ::flushPendingRuntimeJavaScript)
+                        }
                         notifyUrlChange(target)
                         notifyNavigationState()
-                        evaluateInjectedJavaScript()
-                        if (bootstrapNavigationFence.mayUncover(url)) notifyLoadSuccess(url, "finished")
                     }
                 }
 
@@ -485,6 +495,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (destroyed) return
         if (allowScripts == next) return
         allowScripts = next
+        if (!next) pendingRuntimeJavaScript = ""
         webView.settings.javaScriptEnabled = next
     }
 
@@ -517,6 +528,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (injectedJavaScript == next) return
         injectedJavaScript = next
         removeDocumentStartScript()
+        if (src.isNotBlank()) installDocumentStartScript(src)
     }
 
     private fun updateAllowedNavigationSchemes(next: String) {
@@ -540,6 +552,10 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     private fun executeNavigationCommand(next: String) {
         if (destroyed) return
+        if (next.startsWith(COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX)) {
+            evaluateRuntimeJavaScript(next.removePrefix(COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX))
+            return
+        }
         when (next.trim()) {
             COMMAND_GO_BACK -> if (webView.canGoBack()) webView.goBack()
             COMMAND_GO_FORWARD -> if (webView.canGoForward()) webView.goForward()
@@ -559,10 +575,55 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         notifyNavigationState(force = true)
     }
 
+    private fun evaluateRuntimeJavaScript(script: String, allowQueue: Boolean = true) {
+        if (destroyed || !allowScripts || script.isBlank()) return
+        if (script.length > MAX_RUNTIME_JAVA_SCRIPT_LENGTH) {
+            Log.w(LOG_TAG, "runtime_js result=dropped reason=oversized length=${script.length}")
+            return
+        }
+        val activeUrl = currentUrl.ifBlank { lastSuccessfulUrl }
+        val sourceOrigin = documentStartScriptOriginRule(src)
+        val activeOrigin = documentStartScriptOriginRule(activeUrl)
+        if (sourceOrigin == null || activeOrigin != sourceOrigin) {
+            Log.i(
+                LOG_TAG,
+                "runtime_js result=dropped reason=document_not_ready sameOrigin=${sourceOrigin != null && activeOrigin == sourceOrigin}"
+            )
+            return
+        }
+        if (currentIsLoading || lastSuccessfulUrl.isBlank()) {
+            if (allowQueue) {
+                pendingRuntimeJavaScript = script
+                Log.i(LOG_TAG, "runtime_js result=queued reason=document_loading")
+            } else {
+                Log.i(LOG_TAG, "runtime_js result=dropped reason=document_not_ready sameOrigin=true")
+            }
+            return
+        }
+        applyRuntimeJavaScript(script)
+    }
+
+    private fun flushPendingRuntimeJavaScript() {
+        val script = pendingRuntimeJavaScript.takeIf { it.isNotBlank() } ?: return
+        pendingRuntimeJavaScript = ""
+        evaluateRuntimeJavaScript(script, allowQueue = false)
+    }
+
+    private fun applyRuntimeJavaScript(script: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            webView.evaluateJavascript(script, null)
+        } else {
+            @Suppress("DEPRECATION")
+            webView.loadUrl("javascript:$script")
+        }
+        Log.i(LOG_TAG, "runtime_js result=applied")
+    }
+
     private fun updateSrc(next: String) {
         if (destroyed) return
         val normalized = next.trim()
         if (src == normalized && (normalized.isBlank() || loadedSrc == normalized)) return
+        pendingRuntimeJavaScript = ""
         src = normalized
         loadedSrc = ""
         lastSuccessfulUrl = ""
@@ -665,11 +726,19 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         loadFailureCallback?.invoke(mapOf("reason" to reason))
     }
 
-    private fun notifyLoadSuccess(url: String, phase: String) {
+    private fun notifyLoadSuccess(
+        url: String,
+        phase: String,
+        beforeCallback: (() -> Unit)? = null,
+    ) {
         if (destroyed) return
-        if (lastSuccessfulUrl == url) return
+        if (lastSuccessfulUrl == url) {
+            beforeCallback?.invoke()
+            return
+        }
         lastSuccessfulUrl = url
         lastLoadFailureReason = ""
+        beforeCallback?.invoke()
         Log.i(LOG_TAG, "page_success phase=$phase url=${url.redactedUrlForLog()}")
         loadSuccessCallback?.invoke(emptyMap<String, Any>())
     }
@@ -827,6 +896,8 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         private const val PROP_INJECTED_JAVASCRIPT = "injectedJavaScript"
         private const val PROP_ALLOWED_NAVIGATION_SCHEMES = "allowedNavigationSchemes"
         private const val METHOD_NAVIGATION_COMMAND = "navigationCommand"
+        private const val COMMAND_EVALUATE_JAVA_SCRIPT_PREFIX = "evaluateJavaScript:"
+        private const val MAX_RUNTIME_JAVA_SCRIPT_LENGTH = 64 * 1024
         private const val EVENT_LOAD_SUCCESS = "loadSuccess"
         private const val EVENT_LOAD_FAILURE = "loadFailure"
         private const val EVENT_NAVIGATION_BLOCKED = "navigationBlocked"

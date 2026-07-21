@@ -11,6 +11,7 @@ class SettingsWebViewAuthBootstrapTest {
     @Test
     fun authenticatedBootstrapRemovesPersistedRefreshOwnerWithoutExposingNativeToken() {
         val session = session()
+        val binding = hostBinding(session)
         val storage =
             mutableMapOf(
                 "slock_access_token" to "stale-access",
@@ -18,14 +19,34 @@ class SettingsWebViewAuthBootstrapTest {
                 "slock_last_server_slug" to "stale-server",
             )
 
-        settingsWebViewAuthStorageMutations(session).forEach { mutation ->
+        settingsWebViewAuthStorageMutations(session, binding).forEach { mutation ->
             mutation.value?.let { storage[mutation.key] = it } ?: storage.remove(mutation.key)
         }
 
         assertEquals(session.accessToken, storage["slock_access_token"])
         assertEquals(session.selectedServerSlug, storage["slock_last_server_slug"])
         assertFalse(storage.containsKey("slock_refresh_token"))
+        assertEquals(
+            "{\"accountId\":\"user-1\",\"serverId\":\"server-1\",\"sessionGeneration\":42,\"webViewGeneration\":7}",
+            storage[SLOCK_HOST_AUTH_BINDING_STORAGE_KEY],
+        )
         assertEquals("native-refresh-secret", session.refreshToken)
+    }
+
+    @Test
+    fun missingSessionOrBindingRemovesStaleHostBinding() {
+        val storage =
+            mutableMapOf(
+                SLOCK_HOST_AUTH_BINDING_STORAGE_KEY to "stale",
+                "slock_access_token" to "stale-access",
+            )
+
+        settingsWebViewAuthStorageMutations(session = null, hostBinding = null).forEach { mutation ->
+            mutation.value?.let { storage[mutation.key] = it } ?: storage.remove(mutation.key)
+        }
+
+        assertFalse(storage.containsKey(SLOCK_HOST_AUTH_BINDING_STORAGE_KEY))
+        assertFalse(storage.containsKey("slock_access_token"))
     }
 
     private fun session() =
@@ -37,4 +58,20 @@ class SettingsWebViewAuthBootstrapTest {
             selectedServerSlug = "workspace",
             servers = listOf(StoredAuthServer(id = "server-1", name = "Workspace", slug = "workspace")),
         )
+
+    private fun hostBinding(session: StoredAuthSession): SettingsWebViewHostAuthBinding {
+        val fence =
+            SettingsWebViewAccessTokenFence(
+                initialSession = session,
+                sessionGeneration = 42L,
+                webViewGeneration = 7L,
+            )
+        return SettingsWebViewHostAuthBinding(
+            accountId = "user-1",
+            serverId = "server-1",
+            sessionGeneration = 42L,
+            webViewGeneration = 7L,
+            fence = fence,
+        )
+    }
 }
