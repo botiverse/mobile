@@ -225,6 +225,12 @@ internal fun SharedHomeActivityScreen(
                 MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
             )
         }
+    LaunchedEffect(activitySummaryServerId, stableOrderEnabledAtRouteEntry) {
+        bridge.log(
+            "mobile_activity_stable_order_v1 effective=$stableOrderEnabledAtRouteEntry " +
+                "serverId=${activitySummaryServerId.value.ifBlank { "_" }}"
+        )
+    }
     val sharedHomeStore = remember(sharedStores, storeScope) {
         sharedStores.sharedHomeStore(storeScope)
     }
