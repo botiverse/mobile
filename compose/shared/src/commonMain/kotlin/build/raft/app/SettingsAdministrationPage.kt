@@ -118,15 +118,13 @@ private fun SettingsAdministrationScreenBody(pager: Pager) {
     val settingsState by settingsViewModel.state.collectAsState()
     LaunchedEffect(Unit) {
         bridge.log("settings_administration_open")
-        // Developer snapshot carries any configured web base URL override; the
-        // destination open keeps refresh/auth behavior aligned with Billing.
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Administration))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsAdministrationWebViewContent(
         session = authSnapshot.session,
         authSnapshot = authSnapshot,
-        webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+        webBaseUrl = environment.webBaseUrl,
         controller = webViewController,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url -> bridge.log("settings_administration_webview_url_changed url=$url") },

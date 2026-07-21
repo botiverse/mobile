@@ -14,6 +14,7 @@ import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedAuthDataSource
+import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsEffect
@@ -37,7 +38,16 @@ internal data class StandaloneSettingsEnvironment(
     val serverMembersStore: SharedServerMembersStore,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val storeScope: SlockShellStoreScope,
+    val webBaseUrl: String,
 )
+
+/**
+ * Standalone Settings pages must resolve their Web origin synchronously from
+ * the canonical environment store. The developer screen state is loaded
+ * asynchronously and can still be empty when a standalone WebView is created.
+ */
+internal fun standaloneSettingsWebBaseUrl(apiEnvironmentStore: SharedApiEnvironmentStore): String =
+    apiEnvironmentStore.current().webUrl
 
 @Composable
 internal fun rememberStandaloneSettingsEnvironment(
@@ -48,6 +58,7 @@ internal fun rememberStandaloneSettingsEnvironment(
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val authDataSource = remember(sharedStores, storeScope) {
@@ -100,6 +111,7 @@ internal fun rememberStandaloneSettingsEnvironment(
         serverMembersStore,
         settingsCapabilities,
         storeScope,
+        webBaseUrl,
     ) {
         StandaloneSettingsEnvironment(
             dataSource = dataSource,
@@ -107,6 +119,7 @@ internal fun rememberStandaloneSettingsEnvironment(
             serverMembersStore = serverMembersStore,
             settingsCapabilities = settingsCapabilities,
             storeScope = storeScope,
+            webBaseUrl = webBaseUrl,
         )
     }
 }

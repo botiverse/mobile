@@ -132,6 +132,32 @@ class SettingsWebViewPagerContractTest {
     }
 
     @Test
+    fun fourStandaloneSettingsWebViewsUseTheCanonicalEnvironmentWebUrl() {
+        val standaloneEnvironment =
+            sourceFile("shared/src/commonMain/kotlin/build/raft/app/SettingsStandaloneStore.kt").readText()
+        val pageFiles =
+            listOf(
+                "SettingsComputersPage.kt",
+                "SettingsBillingPage.kt",
+                "SettingsMarketplacePage.kt",
+                "SettingsAdministrationPage.kt",
+            )
+
+        assertTrue(standaloneEnvironment.contains("apiEnvironmentStore.current().webUrl"))
+        pageFiles.forEach { fileName ->
+            val source = sourceFile("shared/src/commonMain/kotlin/build/raft/app/$fileName").readText()
+            assertTrue("$fileName must use the canonical environment URL", source.contains("webBaseUrl = environment.webBaseUrl"))
+            assertFalse(
+                "$fileName must not depend on the asynchronously loaded developer snapshot",
+                source.contains("webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull()"),
+            )
+        }
+
+        val marketplace = sourceFile("shared/src/commonMain/kotlin/build/raft/app/SettingsMarketplacePage.kt").readText()
+        assertFalse(marketplace.contains("settingsState.developer is ScreenLoadState.Loading"))
+    }
+
+    @Test
     fun androidRuntimeJavaScriptIsEphemeralAndSameOriginDocumentGated() {
         val host = sourceFile("androidApp/src/main/java/build/raft/app/shared/SlockSandboxWebViewRenderView.kt").readText()
         val controller = sourceFile("shared/src/commonMain/kotlin/build/raft/app/SlockSandboxWebView.kt").readText()

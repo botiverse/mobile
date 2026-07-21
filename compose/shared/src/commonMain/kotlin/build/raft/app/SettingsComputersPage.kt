@@ -112,7 +112,7 @@ private fun SettingsComputersScreenBody(pager: Pager) {
     SettingsComputersWebViewContent(
         session = authSnapshot.session,
         authSnapshot = authSnapshot,
-        webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+        webBaseUrl = environment.webBaseUrl,
         bottomContentPadding = 0.dp,
         controller = webViewController,
         accessTokenSyncLogger = bridge::log,
