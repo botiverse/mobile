@@ -52,8 +52,6 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_BILLING_PAGE = "compose_settings_billing"
 
@@ -413,8 +411,6 @@ internal fun SettingsBillingWebViewContent(
     )
 }
 
-private val settingsBillingWebViewJson = Json
-
 internal fun settingsBillingWebViewUrl(
     webBaseUrl: String?,
     session: StoredAuthSession?,
@@ -435,19 +431,7 @@ internal fun settingsBillingWebViewUrl(
 }
 
 internal fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?): String {
-    if (session == null) return ""
-    val currentServerSlug = session.selectedServerSlug
-        ?: session.servers.firstOrNull { it.id == session.currentServerId }?.slug
-        ?: session.servers.firstOrNull()?.slug
-    val writes =
-        buildList {
-            add(settingsBillingLocalStorageWrite("slock_access_token", session.accessToken))
-            add(settingsBillingLocalStorageWrite("slock_refresh_token", session.refreshToken))
-            currentServerSlug?.takeIf { it.isNotBlank() }?.let {
-                add(settingsBillingLocalStorageWrite("slock_last_server_slug", it))
-            }
-        }
-            .joinToString(separator = ";")
+    val writes = settingsWebViewAuthStorageJavaScript(session)
     return """
         (function() {
           try {
@@ -458,9 +442,6 @@ internal fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession
         })();
     """.trimIndent()
 }
-
-private fun settingsBillingLocalStorageWrite(key: String, value: String): String =
-    "window.localStorage.setItem(${settingsBillingWebViewJson.encodeToString(key)}, ${settingsBillingWebViewJson.encodeToString(value)})"
 
 @Composable
 private fun BillingNoticeCard(notice: KuiklySettingsBillingNotice) {

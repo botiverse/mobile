@@ -134,6 +134,7 @@ internal object AndroidAppScopeRealtimeOwner {
             lastHiddenAtMillis = null
             appVisibility = AppVisibility.Foreground
         }
+        syncRealtimeReconnectPolicy()
         if (multiSessionEnabled && becameForeground) {
             multiSessionRegistry?.runtimes()?.forEach { it.runtime.onAppShown() }
         } else if (!multiSessionEnabled) {
@@ -196,6 +197,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         appVisibility = AppVisibility.Background
         lastHiddenAtMillis = System.currentTimeMillis()
+        syncRealtimeReconnectPolicy()
         if (multiSessionEnabled) {
             multiSessionRegistry?.runtimes()?.forEach { it.runtime.onAppHidden() }
         } else {
@@ -234,6 +236,7 @@ internal object AndroidAppScopeRealtimeOwner {
         source: String = "unknown"
     ) {
         backgroundKeepAliveEnabled = true
+        syncRealtimeReconnectPolicy()
         SlockAppLog.d(
             LOG_TAG,
             "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${joinedChannelCount()}"
@@ -261,6 +264,7 @@ internal object AndroidAppScopeRealtimeOwner {
     fun disableBackgroundKeepAlive(reason: String = "unknown") {
         if (!backgroundKeepAliveEnabled) return
         backgroundKeepAliveEnabled = false
+        syncRealtimeReconnectPolicy()
         SlockAppLog.d(
             LOG_TAG,
             "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
@@ -586,6 +590,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 )
             }
             backgroundKeepAliveEnabled = false
+            syncRealtimeReconnectPolicy()
             return
         }
         realtimeConnectJob?.cancel()
@@ -681,6 +686,7 @@ internal object AndroidAppScopeRealtimeOwner {
                         scope = scope,
                         pinnedServerId = serverId
                     )
+                hostContext.client.setReconnectAllowed(realtimeReconnectAllowed())
                 val runtime = bootstrapRealtime(hostContext)
                 syncRuntimeVisibility(runtime, appVisibility)
                 MultiSessionRuntime(serverId, hostContext.client, runtime)
@@ -764,6 +770,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
         realtimeRuntime?.let { return it }
         val hostContext = AndroidAppScopeRealtimeHostContext.create(context.applicationContext, scope)
+        hostContext.client.setReconnectAllowed(realtimeReconnectAllowed())
         val runtime = bootstrapRealtime(hostContext)
         syncRuntimeVisibility(runtime, appVisibility)
         realtimeClient = hostContext.client
@@ -872,6 +879,35 @@ internal object AndroidAppScopeRealtimeOwner {
             AppVisibility.Foreground -> runtime.onAppShown()
             AppVisibility.Background -> runtime.onAppHidden()
         }
+    }
+
+    private fun realtimeReconnectAllowed(): Boolean =
+        realtimeReconnectAllowed(appVisibility, backgroundKeepAliveEnabled)
+
+    internal fun realtimeReconnectAllowed(
+        visibility: AppVisibility,
+        backgroundKeepAliveEnabled: Boolean,
+    ): Boolean = visibility == AppVisibility.Foreground || backgroundKeepAliveEnabled
+
+    private fun syncRealtimeReconnectPolicy() {
+        applyRealtimeReconnectPolicy(
+            clients =
+                buildList {
+                    realtimeClient?.let(::add)
+                    multiSessionRegistry?.runtimes().orEmpty().forEach { add(it.client) }
+                },
+            visibility = appVisibility,
+            backgroundKeepAliveEnabled = backgroundKeepAliveEnabled,
+        )
+    }
+
+    internal fun applyRealtimeReconnectPolicy(
+        clients: Iterable<SocketIoRealtimeClient>,
+        visibility: AppVisibility,
+        backgroundKeepAliveEnabled: Boolean,
+    ) {
+        val allowed = realtimeReconnectAllowed(visibility, backgroundKeepAliveEnabled)
+        clients.forEach { client -> client.setReconnectAllowed(allowed) }
     }
 
     internal fun shouldDisposeRuntimeForSessionEnd(reason: String): Boolean =
