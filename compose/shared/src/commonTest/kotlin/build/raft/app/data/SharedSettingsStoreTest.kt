@@ -907,6 +907,48 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun foregroundBannerMutationPreservesCanonicalServerNotificationMode() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val mentionsSnapshot =
+            mobileSnapshot().copy(
+                serverNotificationMode = ServerPushMode.Mentions.toSettingsMobileSelectionSnapshot()
+            )
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mentionsSnapshot))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
+                        localeRepository = FakeLocaleRepository(),
+                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository()
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
+
+        var mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(true, mobile.serverNotificationMode.available)
+        assertEquals(true, mobile.foregroundMessageBanners.enabled)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+
+        store.accept(SharedSettingsIntent.SetServerNotificationMode(ServerPushMode.All.wireName))
+
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(ServerPushMode.All.wireName, mobile.serverNotificationMode.selectedKey)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertEquals(
+            listOf("mobile", "mobile", "setServerNotificationMode:all"),
+            repository.calls
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun mobileNotificationActionCompletionStoresActionableFeedbackWithoutGenericError() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =

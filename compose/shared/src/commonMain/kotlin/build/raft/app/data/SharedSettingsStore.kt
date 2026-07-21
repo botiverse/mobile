@@ -978,7 +978,11 @@ class SharedSettingsDataSource(
             chatLayoutPreferenceRepository
                 ?: return DataResult.Error(ScreenError("settings_foreground_message_banners_unavailable", retryable = false))
         repository.setForegroundMessageBannersEnabled(enabled)
-        return loadMobilePreferences()
+        // This control lives on the Notifications page beside server-owned
+        // push mode. A local-only snapshot defaults that mode to unavailable
+        // All and would overwrite the canonical server selection after the
+        // foreground preference changes.
+        return loadMobile()
     }
 
     suspend fun setActivityTaskStatusBadges(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
