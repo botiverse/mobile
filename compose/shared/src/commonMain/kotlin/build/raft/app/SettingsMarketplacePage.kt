@@ -28,8 +28,6 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_MARKETPLACE_PAGE = "compose_settings_marketplace"
 
@@ -167,19 +165,7 @@ internal fun settingsMarketplaceWebViewUrl(
 }
 
 internal fun settingsMarketplaceWebViewInjectedJavaScript(session: StoredAuthSession?): String {
-    if (session == null) return ""
-    val currentServerSlug =
-        session.selectedServerSlug
-            ?: session.servers.firstOrNull { it.id == session.currentServerId }?.slug
-            ?: session.servers.firstOrNull()?.slug
-    val writes =
-        buildList {
-            add(settingsMarketplaceLocalStorageWrite("slock_access_token", session.accessToken))
-            add(settingsMarketplaceLocalStorageWrite("slock_refresh_token", session.refreshToken))
-            currentServerSlug?.takeIf { it.isNotBlank() }?.let {
-                add(settingsMarketplaceLocalStorageWrite("slock_last_server_slug", it))
-            }
-        }.joinToString(separator = ";")
+    val writes = settingsWebViewAuthStorageJavaScript(session)
     return """
         (function() {
           try {
@@ -190,8 +176,3 @@ internal fun settingsMarketplaceWebViewInjectedJavaScript(session: StoredAuthSes
         })();
     """.trimIndent()
 }
-
-private val settingsMarketplaceWebViewJson = Json
-
-private fun settingsMarketplaceLocalStorageWrite(key: String, value: String): String =
-    "window.localStorage.setItem(${settingsMarketplaceWebViewJson.encodeToString(key)}, ${settingsMarketplaceWebViewJson.encodeToString(value)})"

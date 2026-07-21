@@ -21,14 +21,12 @@ class SessionRealtimeRepository(
 ) : RealtimeRepository {
     init {
         if (tokenProvider != null) {
-            client.setAuthRefreshProvider { reason ->
+            client.setAuthRefreshProvider { reason, failedAuth ->
                 runBlocking {
                     val refreshed =
                         if (reason == "connect_error") {
-                            val failedSession = store.readSession()
                             tokenProvider.refreshSession(
-                                failedAccessToken = failedSession?.accessToken,
-                                failedRefreshToken = failedSession?.refreshToken,
+                                failedAccessToken = failedAuth?.token,
                                 clearOnUnauthorized = false,
                                 reason = reason,
                                 caller = "android_socket"

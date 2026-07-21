@@ -27,13 +27,14 @@ class SettingsComputersWebViewTest {
     }
 
     @Test
-    fun computersAuthBootstrapContainsTokensAndSelectedServerWithoutDomRewriting() {
+    fun computersAuthBootstrapClearsRefreshOwnerAndProvidesAccessAndServer() {
         val script = settingsComputersWebViewInjectedJavaScript(computersSession())
 
         assertContains(script, "slock_access_token")
         assertContains(script, "access-token")
         assertContains(script, "slock_refresh_token")
-        assertContains(script, "refresh-token")
+        assertContains(script, "removeItem(\"slock_refresh_token\")")
+        assertFalse(script.contains("refresh-token"))
         assertContains(script, "slock_last_server_slug")
         assertContains(script, "workspace")
         assertFalse(script.contains("h-panel-header"))
@@ -58,6 +59,14 @@ class SettingsComputersWebViewTest {
         assertFalse(pageData.has("accessToken"))
         assertFalse(pageData.has("serverSlug"))
         assertFalse(pageData.has("machines"))
+    }
+
+    @Test
+    fun computersBootstrapWithoutSessionStillClearsPersistedRefreshOwner() {
+        val script = settingsComputersWebViewInjectedJavaScript(null)
+
+        assertContains(script, "removeItem(\"slock_refresh_token\")")
+        assertFalse(script.contains("slock_access_token"))
     }
 
 }

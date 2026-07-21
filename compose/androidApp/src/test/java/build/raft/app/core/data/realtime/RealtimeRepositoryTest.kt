@@ -20,6 +20,7 @@ import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
+import build.raft.app.data.realtime.RealtimeConnectionState
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
@@ -384,6 +385,39 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun repositoryAppliesHttpRotatedSessionWithoutRefreshingSuccessorAgain() {
+        val transport = FakeRealtimeSocketTransport()
+        val store = InMemoryAuthSessionStore(sampleSession.copy(accessToken = "socket-old-access"))
+        val authApi = FakeAuthApi()
+        val repository = SessionRealtimeRepository(
+            store = store,
+            client = SocketIoRealtimeClient(transport),
+            tokenProvider = SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi = authApi,
+                clockMillis = { 0L },
+                logger = {},
+                warningLogger = {}
+            )
+        )
+
+        runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
+        runSuspend {
+            store.updateTokens(
+                accessToken = "http-rotated-access",
+                refreshToken = "http-rotated-refresh",
+            )
+        }
+
+        transport.receive(RealtimeSocketEvents.ConnectError, "invalid token")
+
+        assertEquals("http-rotated-access", transport.lastAuth["token"])
+        assertEquals("http-rotated-access", store.session?.accessToken)
+        assertEquals("http-rotated-refresh", store.session?.refreshToken)
+        assertEquals(0, authApi.refreshCallCount)
+    }
+
+    @Test
     fun pinnedRealtimeSessionKeepsServerDuringProcessSelectionChange() {
         val transport = FakeRealtimeSocketTransport()
         val store =
@@ -410,7 +444,7 @@ class RealtimeRepositoryTest {
         )
         client.connect(
             RealtimeConnectRequest(
-                auth = RealtimeAuth("opaque-access", ServerId("server-1")),
+                auth = RealtimeAuth(sampleSession.accessToken, ServerId("server-1")),
                 lastSeq = 0L
             )
         )
@@ -929,6 +963,37 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun clientDoesNotHeartbeatReconnectWhileLifecycleDisallowsIt() {
+        var now = 1_000L
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport, clockMillis = { now })
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        transport.receive(RealtimeSocketEvents.Connect)
+        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 1))
+        client.setReconnectAllowed(false)
+        now += 121_000L
+
+        assertFalse(client.checkHeartbeatSilence(now))
+        assertEquals(1, transport.connectCount)
+        assertEquals(1, transport.disconnectCount)
+        assertEquals(RealtimeConnectionState.Disconnected, client.state)
+
+        client.setReconnectAllowed(true)
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "successor-access", serverId = ServerId("server-1"))
+            )
+        )
+        assertEquals(2, transport.connectCount)
+        assertEquals("successor-access", transport.lastAuth["token"])
+    }
+
+    @Test
     fun successDeliveryKeepsProducingConnectionStateAheadOfSuccessorConnect() {
         val transport = LinearizedGenerationFakeTransport()
         val deliveryOwnsLock = CountDownLatch(1)
@@ -1199,7 +1264,7 @@ class RealtimeRepositoryTest {
         val transport = LinearizedGenerationFakeTransport()
         val client = SocketIoRealtimeClient(transport)
         val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
-        client.setAuthRefreshProvider {
+        client.setAuthRefreshProvider { _, _ ->
             RealtimeAuth(token = "token-B", serverId = ServerId("server-B"))
         }
 
@@ -1220,6 +1285,101 @@ class RealtimeRepositoryTest {
             ),
             transport.currentContext(),
         )
+    }
+
+    @Test
+    fun retainedConnectErrorCannotRefreshSuccessorConnection() {
+        val transport = LinearizedGenerationFakeTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
+        var refreshCalls = 0
+        client.setAuthRefreshProvider { _, _ ->
+            refreshCalls += 1
+            RealtimeAuth(token = "unexpected-token", serverId = ServerId("server-A"))
+        }
+
+        client.connect(requestA)
+        val connectionA = transport.captureCurrent()
+        client.connect(requestB)
+        val connectionB = transport.captureCurrent()
+
+        transport.deliverStale(
+            connectionA,
+            RealtimeSocketEvents.ConnectError,
+            "invalid token",
+        )
+
+        assertEquals(0, refreshCalls)
+        assertEquals(connectionB.context, transport.currentContext())
+        assertEquals(requestB.toContext(), transport.currentContext())
+    }
+
+    @Test
+    fun retainedSameServerConnectErrorCannotRefreshSuccessorAttempt() {
+        val transport = LinearizedGenerationFakeTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val witness = realtimeConnectRequest(serverId = "server-A", familyId = "family-A").witness
+        val requestA =
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "token-RT0", serverId = ServerId("server-A")),
+                witness = witness,
+            )
+        var refreshCalls = 0
+        client.setAuthRefreshProvider { _, _ ->
+            refreshCalls += 1
+            RealtimeAuth(token = "token-RT1", serverId = ServerId("server-A"))
+        }
+
+        client.connect(requestA)
+        val connectionA = transport.captureCurrent()
+        transport.deliverRetained(connectionA, RealtimeSocketEvents.ConnectError, "invalid token")
+        val connectionB = transport.captureCurrent()
+
+        assertEquals(connectionA.context, connectionB.context)
+        assertFalse(connectionA.context === connectionB.context)
+        assertEquals(1, refreshCalls)
+        assertEquals("token-RT1", transport.lastAuth["token"])
+
+        transport.deliverStale(
+            connectionA,
+            RealtimeSocketEvents.ConnectError,
+            "invalid token",
+        )
+
+        assertEquals(1, refreshCalls)
+        assertEquals(connectionB.context, transport.currentContext())
+        assertTrue(connectionB.context === transport.currentContext())
+    }
+
+    @Test
+    fun backgroundReconnectSuspensionRejectsRetainedSocketAuthCallbacks() {
+        val transport = LinearizedGenerationFakeTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val request = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
+        var refreshCalls = 0
+        client.setAuthRefreshProvider { _, _ ->
+            refreshCalls += 1
+            RealtimeAuth(token = "unexpected-token", serverId = ServerId("server-A"))
+        }
+
+        client.connect(request)
+        val backgroundedConnection = transport.captureCurrent()
+        client.setReconnectAllowed(false)
+
+        transport.deliverStale(
+            backgroundedConnection,
+            RealtimeSocketEvents.ReconnectAttempt,
+        )
+        transport.deliverStale(
+            backgroundedConnection,
+            RealtimeSocketEvents.ConnectError,
+            "invalid token",
+        )
+
+        assertEquals(0, refreshCalls)
+        assertEquals(1, transport.connectCount)
+        assertEquals(RealtimeConnectionState.Disconnected, client.state)
     }
 
     @Test
@@ -1727,6 +1887,7 @@ class RealtimeRepositoryTest {
         var lastAuth: Map<String, String> = emptyMap()
         val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
         var connectCount = 0
+        var disconnectCount = 0
         private var currentContext: RealtimeSocketConnectionContext? = null
 
         override fun <T> linearize(block: () -> T): T = synchronized(linearizationLock, block)
@@ -1740,7 +1901,10 @@ class RealtimeRepositoryTest {
         }
 
         override fun disconnect() {
-            linearize { currentContext = null }
+            linearize {
+                disconnectCount += 1
+                currentContext = null
+            }
         }
 
         override fun emit(eventName: String, payload: Map<String, Any>) {
@@ -1779,6 +1943,10 @@ class RealtimeRepositoryTest {
             mutableMapOf<String, MutableList<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
         private val connectHistory = mutableListOf<RealtimeSocketConnectionContext>()
         private val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
+        var lastAuth: Map<String, String> = emptyMap()
+            private set
+        val connectCount: Int
+            get() = linearize { connectHistory.size }
 
         @Volatile
         var beforeDelivery: ((eventName: String) -> Unit)? = null
@@ -1788,6 +1956,7 @@ class RealtimeRepositoryTest {
         override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
             linearize {
                 nextConnectionId += 1
+                lastAuth = auth
                 current = LinearizedConnection(nextConnectionId, context)
                 connectHistory += context
             }
@@ -1838,6 +2007,18 @@ class RealtimeRepositoryTest {
                 }
                 true
             }
+
+        fun deliverStale(
+            connection: LinearizedConnection,
+            eventName: String,
+            payload: Any? = null,
+        ) {
+            linearize {
+                handlers[eventName].orEmpty().toList().forEach { listener ->
+                    listener(connection.context, payload)
+                }
+            }
+        }
     }
 
     private fun realtimeConnectRequest(

@@ -3,12 +3,16 @@ package build.raft.app.shared
 import build.raft.app.data.DataResult
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.realtime.RealtimeConnectionState
+import build.raft.app.data.realtime.RealtimeAuth
+import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
+import build.raft.app.data.realtime.RealtimeSocketTransport
 import build.raft.app.data.realtime.SlockRealtimeAppScopeConnection
 import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
 import build.raft.app.data.realtime.SlockRealtimeAppScopeSink
 import build.raft.app.data.realtime.bootstrapRealtime
+import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -192,6 +196,58 @@ class AndroidAppScopeRealtimeOwnerTest {
     }
 
     @Test
+    fun realtimeReconnectRequiresForegroundOrBackgroundKeepAlive() {
+        assertTrue(
+            AndroidAppScopeRealtimeOwner.realtimeReconnectAllowed(
+                visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Foreground,
+                backgroundKeepAliveEnabled = false,
+            )
+        )
+        assertTrue(
+            AndroidAppScopeRealtimeOwner.realtimeReconnectAllowed(
+                visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+                backgroundKeepAliveEnabled = true,
+            )
+        )
+        assertFalse(
+            AndroidAppScopeRealtimeOwner.realtimeReconnectAllowed(
+                visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+                backgroundKeepAliveEnabled = false,
+            )
+        )
+    }
+
+    @Test
+    fun endingKeepAliveSuspendsEveryRemainingBackgroundClient() {
+        val removedTransport = OwnerPolicyFakeTransport()
+        val remainingTransport = OwnerPolicyFakeTransport()
+        val removedClient = SocketIoRealtimeClient(removedTransport)
+        val remainingClient = SocketIoRealtimeClient(remainingTransport)
+        val request =
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "access", serverId = ServerId("server-1"))
+            )
+        removedClient.connect(request)
+        remainingClient.connect(request.copy(auth = request.auth.copy(serverId = ServerId("server-2"))))
+
+        AndroidAppScopeRealtimeOwner.applyRealtimeReconnectPolicy(
+            clients = listOf(removedClient, remainingClient),
+            visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+            backgroundKeepAliveEnabled = true,
+        )
+        removedClient.disconnect()
+        AndroidAppScopeRealtimeOwner.applyRealtimeReconnectPolicy(
+            clients = listOf(remainingClient),
+            visibility = AndroidAppScopeRealtimeOwner.AppVisibility.Background,
+            backgroundKeepAliveEnabled = false,
+        )
+
+        assertEquals(1, remainingTransport.disconnectCount)
+        assertEquals(RealtimeConnectionState.Disconnected, remainingClient.state)
+        assertEquals(1, remainingTransport.connectCount)
+    }
+
+    @Test
     fun apiEnvironmentChangeDisposesAppScopeRealtimeRuntime() {
         assertTrue(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("api_environment_changed"))
         assertFalse(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("logout"))
@@ -267,5 +323,29 @@ class AndroidAppScopeRealtimeOwnerTest {
             event: NotificationPushReceived,
             isAppInForeground: Boolean
         ) = Unit
+    }
+
+    private class OwnerPolicyFakeTransport : RealtimeSocketTransport {
+        var connectCount = 0
+            private set
+        var disconnectCount = 0
+            private set
+
+        override fun <T> linearize(block: () -> T): T = block()
+
+        override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
+            connectCount += 1
+        }
+
+        override fun disconnect() {
+            disconnectCount += 1
+        }
+
+        override fun emit(eventName: String, payload: Map<String, Any>) = Unit
+
+        override fun on(
+            eventName: String,
+            listener: (RealtimeSocketConnectionContext, Any?) -> Unit,
+        ): RealtimeSubscription = RealtimeSubscription {}
     }
 }

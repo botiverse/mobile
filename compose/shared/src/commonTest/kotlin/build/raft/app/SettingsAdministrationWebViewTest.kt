@@ -36,12 +36,14 @@ class SettingsAdministrationWebViewTest {
     }
 
     @Test
-    fun administrationBootstrapProvidesSessionWithoutDomChromeInjection() {
+    fun administrationBootstrapClearsRefreshOwnerAndProvidesAccessAndServer() {
         val session = administrationSession()
         val script = settingsAdministrationWebViewInjectedJavaScript(session)
 
         assertContains(script, "slock_access_token")
         assertContains(script, "slock_refresh_token")
+        assertContains(script, "removeItem(\"slock_refresh_token\")")
+        assertFalse(script.contains(session.refreshToken))
         assertContains(script, "slock_last_server_slug")
         assertFalse(script.contains(".h-panel-header"))
         assertFalse(script.contains("MutationObserver"))
@@ -53,7 +55,7 @@ class SettingsAdministrationWebViewTest {
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "user@example.test", displayName = "User"),
             accessToken = "access",
-            refreshToken = "refresh",
+            refreshToken = "native-refresh-secret",
             selectedServerId = "server-1",
             selectedServerSlug = "workspace",
             servers = listOf(StoredAuthServer(id = "server-1", name = "Workspace", slug = "workspace"))
