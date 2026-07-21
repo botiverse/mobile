@@ -143,6 +143,13 @@ jobs:
       SLOCK_IOS_CODE_SIGN_IDENTITY: ${{ secrets.SLOCK_IOS_CODE_SIGN_IDENTITY }}
       SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64: ${{ secrets.SLOCK_IOS_EXPORT_OPTIONS_PLIST_BASE64 }}
     steps:
+      # Blacksmith macOS starts its local Actions-results proxy with the job.
+      # Give it a bounded readiness window before any action can use artifact
+      # or cache APIs. Remove this once the fleet has a server-side health gate.
+      - name: Warm macOS artifact proxy
+        shell: bash
+        run: sleep 5
+
       - name: Checkout
         uses: actions/checkout@v5
         with:

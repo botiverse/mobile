@@ -84,6 +84,13 @@ jobs:
       # iPhone 14: 390x844pt @3x — same geometry as the android/react baselines.
       SIM_DEVICE: iPhone 14
     steps:
+      # Blacksmith macOS starts its local Actions-results proxy with the job.
+      # Give it a bounded readiness window before any action can use artifact
+      # or cache APIs. Remove this once the fleet has a server-side health gate.
+      - name: Warm macOS artifact proxy
+        shell: bash
+        run: sleep 5
+
       - name: Checkout
         uses: actions/checkout@v5
 
