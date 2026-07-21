@@ -15,7 +15,8 @@ import org.json.JSONObject
 
 object SlockAuthCriticalJournal {
     private const val LegacyJournalDirName = "slock_auth_critical"
-    private const val JournalFileName = "slock-auth-critical.jsonl"
+    private const val JournalFileName = "raft-auth-critical.jsonl"
+    private const val LegacyJournalFileName = "slock-auth-critical.jsonl"
     private const val EntryLimit = 50
     private const val MessageMaxChars = 2_048
     private const val ExportMaxChars = 120_000
@@ -86,9 +87,12 @@ object SlockAuthCriticalJournal {
             val applicationContext = context.applicationContext
             val root = SlockGeneralLogRing.logRoot(applicationContext)
             val sessions = sessionDirs(root).take(5)
-            sessions.map { File(it, JournalFileName) }
+            sessions.flatMap { session -> listOf(File(session, JournalFileName), File(session, LegacyJournalFileName)) }
                 .filterTo(this) { it.isFile && it.length() > 0L }
             if (sessions.size < 5) {
+                val remaining = 5 - sessions.size
+                legacySharedRootJournalFiles(applicationContext, remaining)
+                    .filterTo(this) { it.isFile && it.length() > 0L }
                 legacyJournalFiles(applicationContext).filterTo(this) { it.isFile && it.length() > 0L }
             }
         }
@@ -129,7 +133,10 @@ object SlockAuthCriticalJournal {
     fun clearFiles(context: Context) {
         runCatching {
             SlockGeneralLogRing.logRoot(context.applicationContext).walkTopDown()
-                .filter { it.isFile && it.name == JournalFileName }
+                .filter { it.isFile && it.name in setOf(JournalFileName, LegacyJournalFileName) }
+                .forEach { it.delete() }
+            SlockGeneralLogRing.legacyLogRoot(context.applicationContext).walkTopDown()
+                .filter { it.isFile && it.name in setOf(JournalFileName, LegacyJournalFileName) }
                 .forEach { it.delete() }
             legacyJournalDir(context.applicationContext).deleteRecursively()
         }
@@ -159,11 +166,14 @@ object SlockAuthCriticalJournal {
     }
 
     internal fun relativeLogPath(context: Context, file: File): String =
-        file.relativeToOrNull(SlockGeneralLogRing.logRoot(context.applicationContext))?.invariantSeparatorsPath
+        (file.relativeToOrNull(SlockGeneralLogRing.logRoot(context.applicationContext))?.invariantSeparatorsPath
+            ?: file.relativeToOrNull(SlockGeneralLogRing.legacyLogRoot(context.applicationContext))
+                ?.invariantSeparatorsPath
             ?: file.relativeToOrNull(legacyJournalDir(context.applicationContext))
                 ?.invariantSeparatorsPath
                 ?.let { "legacy/$it" }
-            ?: "legacy/${file.name}"
+            ?: "legacy/${file.name}")
+            .replace(LegacyJournalFileName, JournalFileName)
 
     private fun sessionDirs(root: File): List<File> =
         root.listFiles()
@@ -177,9 +187,16 @@ object SlockAuthCriticalJournal {
 
     private fun legacyJournalFiles(context: Context): List<File> {
         val root = legacyJournalDir(context)
-        val sessionFiles = sessionDirs(root).take(5).map { File(it, JournalFileName) }
-        return sessionFiles + File(root, JournalFileName)
+        val sessionFiles = sessionDirs(root).take(5).flatMap { session ->
+            listOf(File(session, JournalFileName), File(session, LegacyJournalFileName))
+        }
+        return sessionFiles + listOf(File(root, JournalFileName), File(root, LegacyJournalFileName))
     }
+
+    private fun legacySharedRootJournalFiles(context: Context, maxSessions: Int): List<File> =
+        sessionDirs(SlockGeneralLogRing.legacyLogRoot(context))
+            .take(maxSessions)
+            .flatMap { session -> listOf(File(session, JournalFileName), File(session, LegacyJournalFileName)) }
 
     private fun legacyJournalDir(context: Context): File = File(context.filesDir, LegacyJournalDirName)
 
@@ -196,7 +213,7 @@ object SlockAuthCriticalJournal {
         }
 }
 
-internal fun authJournalFileIn(launchDir: File): File = File(launchDir, "slock-auth-critical.jsonl")
+internal fun authJournalFileIn(launchDir: File): File = File(launchDir, "raft-auth-critical.jsonl")
 
 internal fun classifyAuthCriticalEvent(message: String): String? {
     val normalized = message.lowercase(Locale.US)

@@ -13,6 +13,14 @@ import {
 } from '../main/ets/kuikly/SlockOhosDiagnosticsQueue';
 import { nextSlockOhosForegroundEpoch } from '../main/ets/kuikly/SlockOhosRealtimeHostContext';
 import {
+  compareOhosDiagnosticsPath,
+  isOhosDiagnosticsLogFileName,
+  isOhosFeedbackArchiveName,
+  ohosDiagnosticsArchiveLogName,
+  ohosUniqueDiagnosticsStagedName,
+  selectOhosDiagnosticsCandidateGroups,
+} from '../main/ets/entryability/SlockOhosAppDiagnostics';
+import {
   activityUnreadCountOrNull,
   activityUnreadPersistedFallbackCount,
   createActivityUnreadWidgetRefreshError,
@@ -72,6 +80,44 @@ export default function localUnitTest() {
       // Defines a variety of assertion methods, which are used to declare expected boolean conditions.
       expect(a).assertContain(b);
       expect(a).assertEqual(a);
+    });
+    it('diagnosticsArchiveUsesRaftNamesAndReadsLegacyNames', 0, () => {
+      expect(isOhosDiagnosticsLogFileName('raft-diagnostics.jsonl')).assertTrue();
+      expect(isOhosDiagnosticsLogFileName('slock-diagnostics.jsonl.1')).assertTrue();
+      expect(ohosDiagnosticsArchiveLogName('slock-diagnostics.jsonl.1')).assertEqual('raft-diagnostics.jsonl.1');
+      expect(isOhosFeedbackArchiveName('raft-feedback-1.zip')).assertTrue();
+      expect(isOhosFeedbackArchiveName('slock-feedback-1.zip')).assertTrue();
+      const reserved = new Set<string>();
+      expect(ohosUniqueDiagnosticsStagedName('raft-diagnostics.jsonl', reserved))
+        .assertEqual('raft-diagnostics.jsonl');
+      expect(ohosUniqueDiagnosticsStagedName('raft-diagnostics.jsonl', reserved))
+        .assertEqual('raft-diagnostics-2.jsonl');
+      expect(ohosUniqueDiagnosticsStagedName('raft-diagnostics.jsonl', reserved))
+        .assertEqual('raft-diagnostics-3.jsonl');
+      expect(compareOhosDiagnosticsPath('/b', '/a', 100, 100)).assertEqual(1);
+      expect(compareOhosDiagnosticsPath('/new', '/old', 200, 100)).assertEqual(-100);
+      const selectedAfterEmptyCurrent = selectOhosDiagnosticsCandidateGroups([
+        { entryPrefix: 'current-empty-1-', files: [] },
+        { entryPrefix: 'current-empty-2-', files: [] },
+        { entryPrefix: 'current-empty-3-', files: [] },
+        { entryPrefix: 'current-empty-4-', files: [] },
+        { entryPrefix: 'current-empty-5-', files: [] },
+        { entryPrefix: 'legacy-launch-', files: ['/legacy/raft-diagnostics.jsonl'] },
+      ], 5);
+      expect(selectedAfterEmptyCurrent.length).assertEqual(1);
+      expect(selectedAfterEmptyCurrent[0].entryPrefix).assertEqual('legacy-launch-');
+
+      const selectedCurrentFirst = selectOhosDiagnosticsCandidateGroups([
+        { entryPrefix: 'current-launch-', files: ['/current/raft-diagnostics.jsonl'] },
+        { entryPrefix: 'legacy-1-', files: ['/legacy/1.jsonl'] },
+        { entryPrefix: 'legacy-2-', files: ['/legacy/2.jsonl'] },
+        { entryPrefix: 'legacy-3-', files: ['/legacy/3.jsonl'] },
+        { entryPrefix: 'legacy-4-', files: ['/legacy/4.jsonl'] },
+        { entryPrefix: 'legacy-5-', files: ['/legacy/5.jsonl'] },
+      ], 5);
+      expect(selectedCurrentFirst.length).assertEqual(5);
+      expect(selectedCurrentFirst[0].entryPrefix).assertEqual('current-launch-');
+      expect(selectedCurrentFirst[4].entryPrefix).assertEqual('legacy-4-');
     });
     it('foregroundEpochAdvancesOnlyOnHiddenToVisibleLeadingEdge', 0, () => {
       const first = nextSlockOhosForegroundEpoch(0, false, true);
