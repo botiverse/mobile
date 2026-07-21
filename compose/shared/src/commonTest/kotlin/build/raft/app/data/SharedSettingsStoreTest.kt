@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -906,6 +907,35 @@ class SharedSettingsStoreTest {
         assertEquals(false, mobile.muteServer.enabled)
         assertEquals(ServerPushMode.Mentions.wireName, mobile.serverNotificationMode.selectedKey)
         assertEquals(listOf("setServerNotificationMode:mentions"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun mobilePushPreviewModeIntentUsesSettingsRepository() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        notificationPreferenceRepository = FakeNotificationPreferenceRepository(),
+                        localeRepository = FakeLocaleRepository(),
+                        chatLayoutPreferenceRepository = FakeChatLayoutPreferenceRepository()
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications))
+        repository.calls.clear()
+        store.accept(SharedSettingsIntent.SetPushPreviewMode(PushPreviewMode.Private.wireName))
+
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertFalse(mobile.pushMessagePreviews.enabled)
+        assertEquals(listOf("setPushPreviewMode:private"), repository.calls)
+        assertEquals(MOBILE_ACTION_PUSH_PREVIEW_MODE, store.state.value.actionState?.action)
+        assertFalse(store.state.value.actionState?.inProgress == true)
         scope.cancel()
     }
 
@@ -3118,6 +3148,23 @@ class SharedSettingsStoreTest {
                                 statusLabel = if (mode == ServerPushMode.None) "Muted" else "Not muted"
                             ),
                         serverNotificationMode = mode.toSettingsMobileSelectionSnapshot()
+                    )
+                )
+            return mobileResult
+        }
+
+        override suspend fun setPushPreviewMode(mode: PushPreviewMode): DataResult<SettingsMobileSnapshot> {
+            calls += "setPushPreviewMode:${mode.wireName}"
+            val current = (mobileResult as? DataResult.Content)?.data ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            mobileResult =
+                DataResult.Content(
+                    current.copy(
+                        pushMessagePreviews =
+                            current.pushMessagePreviews.copy(
+                                enabled = mode == PushPreviewMode.Full,
+                                available = true,
+                                statusLabel = if (mode == PushPreviewMode.Full) "Shown" else "Hidden"
+                            )
                     )
                 )
             return mobileResult

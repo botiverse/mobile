@@ -804,7 +804,9 @@ class KmmResourceI18nTest {
             MR.strings.settings_notifications_mode_mentions,
             MR.strings.settings_notifications_mode_mentions_detail,
             MR.strings.settings_notifications_mode_none,
-            MR.strings.settings_notifications_mode_none_detail
+            MR.strings.settings_notifications_mode_none_detail,
+            MR.strings.settings_notifications_show_previews_title,
+            MR.strings.settings_notifications_show_previews_detail
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,

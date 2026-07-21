@@ -4,6 +4,7 @@ import build.raft.app.network.MultipartFile
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -608,6 +609,44 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun iosPushPreviewModeUsesCanonicalIndependentPatch() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                notificationSettingsJson =
+                    """{"serverPushMuted":false,"serverPushMentionsOnly":false,"serverPushMode":"all","pushPreviewMode":"full"}"""
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val initial = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
+        assertTrue(initial.pushMessagePreviews.enabled)
+        assertTrue(initial.pushMessagePreviews.available)
+
+        val updated = assertIs<DataResult.Content<SettingsMobileSnapshot>>(
+            repository.setPushPreviewMode(PushPreviewMode.Private)
+        ).data
+
+        assertFalse(updated.pushMessagePreviews.enabled)
+        assertTrue(updated.pushMessagePreviews.available)
+        assertEquals(ServerPushMode.All.wireName, updated.serverNotificationMode.selectedKey)
+        assertEquals("""{"pushPreviewMode":"private"}""", network.notificationSettingsBodies.single())
+    }
+
+    @Test
+    fun legacyServerDoesNotAdvertisePushPreviewPrivacy() = runBlocking {
+        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false}""")
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val initial = assertIs<DataResult.Content<SettingsMobileSnapshot>>(repository.getMobileSettings()).data
+        assertTrue(initial.pushMessagePreviews.enabled)
+        assertFalse(initial.pushMessagePreviews.available)
+
+        val unsupported = repository.setPushPreviewMode(PushPreviewMode.Private)
+        assertIs<DataResult.Error>(unsupported)
+        assertEquals("settings_push_preview_mode_unsupported", unsupported.error.code)
+        assertTrue(network.notificationSettingsBodies.isEmpty())
+    }
+
+    @Test
     fun legacyServerKeepsAllAndNoneButDoesNotExposeMentions() = runBlocking {
         val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false}""")
         val repository = RealSettingsRepository(sampleStore(), network)
@@ -635,6 +674,19 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(null, parsed)
         assertEquals(1, diagnostics.size)
         assertTrue(diagnostics.single().contains("server_push_mode"))
+    }
+
+    @Test
+    fun presentUnknownPushPreviewModeFailsClosed() {
+        val diagnostics = mutableListOf<String>()
+        val parsed = parseSharedSettingsServerNotificationSettings(
+            """{"serverPushMuted":false,"serverPushMode":"all","pushPreviewMode":"future"}""",
+            diagnostics::add
+        )
+
+        assertEquals(null, parsed)
+        assertEquals(1, diagnostics.size)
+        assertTrue(diagnostics.single().contains("push_preview_mode"))
     }
 
     @Test
@@ -1059,7 +1111,10 @@ class SettingsRepositoryDataSourceTest {
                 notificationSettingsJson.contains("true") -> "none"
                 else -> "all"
             }
+        private var currentPushPreviewMode =
+            if (notificationSettingsJson.contains("\"private\"")) "private" else "full"
         private val canonicalNotificationModeSupported = notificationSettingsJson.contains("serverPushMode")
+        private val pushPreviewModeSupported = notificationSettingsJson.contains("pushPreviewMode")
         var machinesServerId: String? = null
             private set
         var workspacesMachineId: String? = null
@@ -1252,20 +1307,25 @@ class SettingsRepositoryDataSourceTest {
                 }
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "GET" ->
                     response(if (canonicalNotificationModeSupported) {
-                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"}"""
+                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"${if (pushPreviewModeSupported) ",\"pushPreviewMode\":\"$currentPushPreviewMode\"" else ""}}"""
                     } else {
                         """{"serverPushMuted":${currentServerPushMode == "none"}}"""
                     })
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "PATCH" -> {
                     notificationSettingsBodies += bodyText.orEmpty()
-                    currentServerPushMode =
-                        when {
-                            bodyText?.contains("\"mentions\"") == true -> "mentions"
-                            bodyText?.contains("\"none\"") == true || bodyText?.contains("true") == true -> "none"
-                            else -> "all"
-                        }
+                    if (bodyText?.contains("serverPushMode") == true || bodyText?.contains("serverPushMuted") == true) {
+                        currentServerPushMode =
+                            when {
+                                bodyText.contains("\"mentions\"") -> "mentions"
+                                bodyText.contains("\"none\"") || bodyText.contains("true") -> "none"
+                                else -> "all"
+                            }
+                    }
+                    if (bodyText?.contains("pushPreviewMode") == true) {
+                        currentPushPreviewMode = if (bodyText.contains("\"private\"")) "private" else "full"
+                    }
                     response(if (canonicalNotificationModeSupported) {
-                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"}"""
+                        """{"serverPushMuted":${currentServerPushMode == "none"},"serverPushMentionsOnly":${currentServerPushMode == "mentions"},"serverPushMode":"$currentServerPushMode"${if (pushPreviewModeSupported) ",\"pushPreviewMode\":\"$currentPushPreviewMode\"" else ""}}"""
                     } else {
                         """{"serverPushMuted":${currentServerPushMode == "none"}}"""
                     })

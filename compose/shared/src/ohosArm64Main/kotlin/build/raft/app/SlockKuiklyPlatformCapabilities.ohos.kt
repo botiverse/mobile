@@ -18,6 +18,8 @@ internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = null
 // player owns the surface — no more overlay-over-native-bar double controls.
 internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
+internal actual fun slockPlatformSupportsPushPreviewPrivacySetting(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ohos"
 
 // task #401 A-bridge: core-render-ohos has no slockInlineCode chip yet, so

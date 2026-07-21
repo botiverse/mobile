@@ -657,7 +657,8 @@ data class PerReceiverNotificationPrefsChanged(
 data class ServerNotificationPreferencesChanged(
     val serverId: ServerId,
     val serverPushMode: String,
-    val prefsVersion: Long
+    val prefsVersion: Long,
+    val pushPreviewMode: String? = null
 ) : RealtimeEvent
 
 /**
