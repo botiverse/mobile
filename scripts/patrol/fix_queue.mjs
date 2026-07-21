@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Daily consumer for the verified visual-drift backlog.
+// Two-hourly consumer for the verified visual-drift backlog.
 //
 // This job deliberately stops before mutating product source. It claims a small,
 // bounded batch of open+verified+unassigned issues, derives React truth, asks M3

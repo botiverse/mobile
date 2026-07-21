@@ -24,8 +24,8 @@ on:
         default: true
   schedule:
     # Independent of patrol/new-issue verification: this consumes the verified
-    # backlog even when the nightly patrol dedupes every finding.
-    - cron: "30 9 * * *"
+    # backlog every two hours even when the nightly patrol dedupes every finding.
+    - cron: "30 */2 * * *"
 
 permissions:
   contents: read
