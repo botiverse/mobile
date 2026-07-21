@@ -17,6 +17,8 @@ class MembersHumanRoleProductionContractTest {
         )
 
         assertContains(providerMethod, "settingsRepository.updateServerMemberRole(")
+        assertContains(providerMethod, "membersHumanRoleUpdateServerMatches(expectedServerId, selectedServerStore.selectedServerId.value)")
+        assertContains(providerMethod, "ScreenError(\"member_role_server_changed\", retryable = false)")
         assertContains(providerMethod, "SettingsServerMemberRoleUpdateRequest(memberId = memberId, role = role.wireValue)")
         assertFalse("updateAgentProfile(" in providerMethod)
     }
@@ -31,8 +33,29 @@ class MembersHumanRoleProductionContractTest {
 
         assertContains(humanRoute, "humanActorRole = current.server.role")
         assertContains(humanRoute, "humanOwnerCount = ownerCount.takeIf { it > 0 }")
+        assertContains(humanRoute, "humanAccessMode = current.accessMode")
         assertContains(humanRoute, "onUpdateHumanRole = { memberId, role ->")
-        assertContains(humanRoute, "provider.updateHumanRole(memberId, role)")
+        assertContains(humanRoute, "provider.updateHumanRole(current.server.id.value, memberId, role)")
+    }
+
+    @Test
+    fun humanLookupPreservesRemoteAccessModeAndCanonicalProfileServerIdentity() {
+        val source = membersSource()
+        val loadDispatch = block(
+            source,
+            "        return identity.dispatchMemberDetailLookup(",
+            "    private suspend fun loadAgentProfileOnly("
+        )
+        val humanLoader = block(
+            source,
+            "    private suspend fun loadHumanMember(",
+            "    fun updateCachedMemberProfile("
+        )
+
+        assertContains(loadDispatch, "loadHuman = { selectedId, sourceServerId, accessMode ->")
+        assertContains(loadDispatch, "accessMode = accessMode")
+        assertContains(humanLoader, "val member = memberResult.data.copy(serverId = profileServerId)")
+        assertContains(humanLoader, "MemberDetailRouteState.Human(server, currentUserId, member, accessMode)")
     }
 
     @Test

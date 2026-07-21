@@ -50,7 +50,14 @@ class MembersAgentServerRoleTest {
     fun humanRoleEditorFailsClosedForSelfRemovedRemoteAndUnknownRole() {
         assertEquals(emptyList(), editableHumanRoles(currentUserId = "human-1"))
         assertEquals(emptyList(), editableHumanRoles(targetMembershipStatus = "removed"))
+        assertEquals(
+            emptyList(),
+            editableHumanRoles(accessMode = MemberDetailAccessMode.RemoteProfileOnly)
+        )
         assertEquals(emptyList(), editableHumanRoles(targetServerId = "server-2"))
+        assertEquals(emptyList(), editableHumanRoles(targetServerId = null))
+        assertEquals(emptyList(), editableHumanRoles(targetServerId = ""))
+        assertEquals(emptyList(), editableHumanRoles(currentServerId = null))
         assertEquals(emptyList(), editableHumanRoles(targetRole = "mystery"))
         assertEquals(emptyList(), editableHumanRoles(targetRole = ""))
     }
@@ -65,14 +72,14 @@ class MembersAgentServerRoleTest {
     }
 
     @Test
-    fun humanRoleSaveOutcomeOnlyClosesOnSuccessfulContentOrEmpty() {
+    fun humanRoleSaveOutcomeOnlyClosesOnSuccessfulContent() {
         assertEquals(
             MembersHumanRoleSaveOutcome.Success,
             DataResult.Content(SettingsServerActionResult(success = true)).membersHumanRoleSaveOutcome()
         )
         assertEquals(
-            MembersHumanRoleSaveOutcome.Success,
-            DataResult.Empty(EmptyReason.NoMembers).membersHumanRoleSaveOutcome()
+            MembersHumanRoleSaveOutcome.Error,
+            DataResult.Empty(EmptyReason.NoSettingsAvailable).membersHumanRoleSaveOutcome()
         )
         assertEquals(
             MembersHumanRoleSaveOutcome.Error,
@@ -88,10 +95,21 @@ class MembersAgentServerRoleTest {
         )
     }
 
+    @Test
+    fun humanRoleSubmitRequiresFrozenRouteServerToRemainSelected() {
+        assertTrue(membersHumanRoleUpdateServerMatches("server-1", "server-1"))
+        assertTrue(membersHumanRoleUpdateServerMatches(" server-1 ", "server-1"))
+        assertFalse(membersHumanRoleUpdateServerMatches("server-1", "server-2"))
+        assertFalse(membersHumanRoleUpdateServerMatches("server-1", null))
+        assertFalse(membersHumanRoleUpdateServerMatches(null, "server-1"))
+        assertFalse(membersHumanRoleUpdateServerMatches("", "server-1"))
+    }
+
     private fun editableHumanRoles(
         actorRole: String? = "owner",
         targetRole: String? = "member",
         targetMembershipStatus: String? = "active",
+        accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
         targetMemberId: String = "human-1",
         currentUserId: String? = "owner-1",
         targetServerId: String? = "server-1",
@@ -102,6 +120,7 @@ class MembersAgentServerRoleTest {
             actorRole = actorRole,
             targetRole = targetRole,
             targetMembershipStatus = targetMembershipStatus,
+            accessMode = accessMode,
             targetMemberId = targetMemberId,
             currentUserId = currentUserId,
             targetServerId = targetServerId,

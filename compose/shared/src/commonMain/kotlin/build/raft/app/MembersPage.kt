@@ -305,6 +305,7 @@ internal fun membersEditableHumanServerRoles(
     actorRole: String?,
     targetRole: String?,
     targetMembershipStatus: String?,
+    accessMode: MemberDetailAccessMode,
     targetMemberId: String,
     currentUserId: String?,
     targetServerId: String?,
@@ -312,11 +313,16 @@ internal fun membersEditableHumanServerRoles(
     ownerCount: Int? = null
 ): List<MembersHumanServerRole> {
     if (targetMembershipStatus != "active") return emptyList()
+    if (accessMode != MemberDetailAccessMode.LocalFull) return emptyList()
     val normalizedTargetId = targetMemberId.trim()
     if (normalizedTargetId.isBlank() || currentUserId?.trim() == normalizedTargetId) return emptyList()
     val normalizedCurrentServerId = currentServerId?.trim().orEmpty()
     val normalizedTargetServerId = targetServerId?.trim().orEmpty()
-    if (normalizedTargetServerId.isNotBlank() && normalizedTargetServerId != normalizedCurrentServerId) {
+    if (
+        normalizedTargetServerId.isBlank() ||
+        normalizedCurrentServerId.isBlank() ||
+        normalizedTargetServerId != normalizedCurrentServerId
+    ) {
         return emptyList()
     }
     val currentRole = targetRole.toMembersHumanServerRoleOrNull() ?: return emptyList()
@@ -334,11 +340,20 @@ internal fun membersEditableHumanServerRoles(
 
 internal enum class MembersHumanRoleSaveOutcome { Success, NoPermission, Error }
 
+internal fun membersHumanRoleUpdateServerMatches(
+    expectedServerId: String?,
+    selectedServerId: String?
+): Boolean {
+    val expected = expectedServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    val selected = selectedServerId?.trim()?.takeIf { it.isNotBlank() } ?: return false
+    return expected == selected
+}
+
 internal fun DataResult<SettingsServerActionResult>.membersHumanRoleSaveOutcome(): MembersHumanRoleSaveOutcome =
     when (this) {
         is DataResult.Content ->
             if (data.success) MembersHumanRoleSaveOutcome.Success else MembersHumanRoleSaveOutcome.Error
-        is DataResult.Empty -> MembersHumanRoleSaveOutcome.Success
+        is DataResult.Empty -> MembersHumanRoleSaveOutcome.Error
         is DataResult.NoPermission -> MembersHumanRoleSaveOutcome.NoPermission
         is DataResult.Error -> MembersHumanRoleSaveOutcome.Error
     }
@@ -1591,7 +1606,8 @@ internal sealed interface MemberDetailRouteState {
     data class Human(
         val server: ServerSummary,
         val currentUserId: String?,
-        val member: MemberProfile
+        val member: MemberProfile,
+        val accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull
     ) : MemberDetailRouteState
 }
 
@@ -1726,7 +1742,8 @@ internal fun memberDetailInitialRouteState(
             MemberDetailRouteState.Human(
                 server = server,
                 currentUserId = null,
-                member = member
+                member = member.copy(serverId = identity.sourceServerId ?: member.serverId),
+                accessMode = identity.memberDetailAccessMode(activeServer)
             )
         MemberKind.System -> null
     }
@@ -1761,12 +1778,17 @@ private class MemberDetailRouteProvider(
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
     suspend fun updateHumanRole(
+        expectedServerId: String,
         memberId: String,
         role: MembersHumanServerRole
-    ): DataResult<SettingsServerActionResult> =
-        settingsRepository.updateServerMemberRole(
+    ): DataResult<SettingsServerActionResult> {
+        if (!membersHumanRoleUpdateServerMatches(expectedServerId, selectedServerStore.selectedServerId.value)) {
+            return DataResult.Error(ScreenError("member_role_server_changed", retryable = false))
+        }
+        return settingsRepository.updateServerMemberRole(
             SettingsServerMemberRoleUpdateRequest(memberId = memberId, role = role.wireValue)
         )
+    }
 
     suspend fun cachedContext(
         identity: MemberDetailIdentity
@@ -1805,12 +1827,13 @@ private class MemberDetailRouteProvider(
         }
         return identity.dispatchMemberDetailLookup(
             currentServerId = serverId,
-            loadHuman = { selectedId, sourceServerId, _ ->
+            loadHuman = { selectedId, sourceServerId, accessMode ->
                 loadHumanMember(
                     selectedId = selectedId,
                     profileServerId = sourceServerId ?: ServerId(serverId),
                     server = server,
-                    currentUserId = session.user.id
+                    currentUserId = session.user.id,
+                    accessMode = accessMode
                 )
             },
             loadAgent = { selectedId, accessMode ->
@@ -1999,13 +2022,15 @@ private class MemberDetailRouteProvider(
         selectedId: MemberId,
         profileServerId: ServerId,
         server: ServerSummary,
-        currentUserId: String?
+        currentUserId: String?,
+        accessMode: MemberDetailAccessMode
     ): MemberDetailRouteState {
         agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
         return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId, profileServerId)) {
             is DataResult.Content -> {
-                serverMembersStore.seedProfiles(profileServerId, listOf(memberResult.data))
-                MemberDetailRouteState.Human(server, currentUserId, memberResult.data)
+                val member = memberResult.data.copy(serverId = profileServerId)
+                serverMembersStore.seedProfiles(profileServerId, listOf(member))
+                MemberDetailRouteState.Human(server, currentUserId, member, accessMode)
             }
             is DataResult.Empty ->
                 MemberDetailRouteState.Error("member_not_found")
@@ -2855,8 +2880,9 @@ private fun MemberDetailPageContent() {
                 }) else null,
                 humanActorRole = current.server.role,
                 humanOwnerCount = ownerCount.takeIf { it > 0 },
+                humanAccessMode = current.accessMode,
                 onUpdateHumanRole = { memberId, role ->
-                    provider.updateHumanRole(memberId, role)
+                    provider.updateHumanRole(current.server.id.value, memberId, role)
                 },
                 onOpenUrl = { linkNavigator.open(it) },
                 onOpenReminderMessage = { permalink ->
@@ -3771,6 +3797,7 @@ private fun MembersDetailContent(
     onRemoveMember: (() -> Unit)? = null,
     humanActorRole: String? = null,
     humanOwnerCount: Int? = null,
+    humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
     onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
     onOpenUrl: (String) -> Unit,
     onOpenReminderMessage: (String) -> Unit = {},
@@ -4366,6 +4393,7 @@ private fun MembersDetailContent(
                                 timeContext = timeContext,
                                 memberAvatarResolver = memberAvatarResolver,
                                 actorRole = humanActorRole,
+                                accessMode = humanAccessMode,
                                 currentUserId = currentUserId,
                                 currentServerId = currentServerId,
                                 ownerCount = humanOwnerCount,
@@ -5728,6 +5756,7 @@ private fun MembersHumanDetailSections(
     timeContext: SlockTimeContext,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     actorRole: String? = null,
+    accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
     currentUserId: String? = null,
     currentServerId: String? = null,
     ownerCount: Int? = null,
@@ -5745,6 +5774,7 @@ private fun MembersHumanDetailSections(
             member = member,
             timeContext = timeContext,
             actorRole = actorRole,
+            accessMode = accessMode,
             currentUserId = currentUserId,
             currentServerId = currentServerId,
             ownerCount = ownerCount,
@@ -5837,6 +5867,7 @@ private fun MembersHumanInfoSection(
     member: MemberProfile,
     timeContext: SlockTimeContext,
     actorRole: String?,
+    accessMode: MemberDetailAccessMode,
     currentUserId: String?,
     currentServerId: String?,
     ownerCount: Int?,
@@ -5858,6 +5889,7 @@ private fun MembersHumanInfoSection(
     val saveErrorTemplate = stringResource(MR.strings.member_error_save)
     val editableRoles = membersEditableHumanServerRoles(
         actorRole = actorRole,
+        accessMode = accessMode,
         targetRole = displayedRole?.wireValue,
         targetMembershipStatus = member.membershipStatus,
         targetMemberId = member.id.value,
