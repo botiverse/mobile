@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalIconButton
-import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
@@ -106,14 +105,10 @@ private fun SettingsMarketplaceScreenBody(pager: Pager) {
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-    if (settingsState.developer is ScreenLoadState.Loading) {
-        SlockCenteredLoading(stringResource(MR.strings.common_loading))
-        return
-    }
     SettingsMarketplaceWebViewContent(
         session = authSnapshot.session,
         authSnapshot = authSnapshot,
-        webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+        webBaseUrl = environment.webBaseUrl,
         controller = webViewController,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url -> bridge.log("settings_marketplace_webview_url_changed url=$url") },

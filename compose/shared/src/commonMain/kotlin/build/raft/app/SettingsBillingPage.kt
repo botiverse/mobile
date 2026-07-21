@@ -303,7 +303,7 @@ private fun SettingsBillingScreenBody(pager: Pager) {
     SettingsBillingWebViewContent(
         session = authSnapshot.session,
         authSnapshot = authSnapshot,
-        webBaseUrl = settingsState.developer.configuredWebBaseUrlOrNull(),
+        webBaseUrl = environment.webBaseUrl,
         controller = webViewController,
         accessTokenSyncLogger = bridge::log,
         onUrlChange = { url -> bridge.log("settings_billing_webview_url_changed url=$url") },
