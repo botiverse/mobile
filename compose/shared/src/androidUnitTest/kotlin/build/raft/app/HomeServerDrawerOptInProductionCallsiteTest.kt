@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class HomeServerDrawerOptInProductionCallsiteTest {
     @Test
@@ -21,8 +22,30 @@ class HomeServerDrawerOptInProductionCallsiteTest {
         assertContains(host, "server_drawer_command_settled")
         assertContains(host, "commandState.acceptsConversationClick(generation, currentIntent)")
         assertContains(host, "commandState.acceptsRowObservation(generation, currentIntent)")
+        assertContains(host, "val pointerPolicy = commandState.pointerPolicy(projection.commandIntent)")
+        assertContains(host, "userScrollEnabled = pointerPolicy.nativePagerEnabled")
+        assertContains(host, "if (pointerPolicy.appEdgeEnabled && drawerState.progress <= 0.01f)")
+        assertContains(host, "commandState = commandState.beginProgrammaticOpen()")
+        assertContains(host, "commandState = commandState.beginProgrammaticClose()")
+        assertContains(host, "onProgrammaticCloseFenceChanged(programmaticCloseFence)")
+        assertContains(host, ".establishClosedOwner(currentIntent)")
+        assertContains(host, ".nativeSettledClosedWithoutCommand()")
         assertFalse(host.contains("server_drawer_command_end"))
         assertFalse(host.contains("delay("))
+    }
+
+    @Test
+    fun appBackFencesDrawerPointersBeforeDispatchingAuthoritativeClose() {
+        val source = settingsHomeSource()
+        val popMainRoute = source.substringAfter("fun popMainRoute(): Boolean {").substringBefore("fun openHomeSecondaryDestination")
+        val drawerBranch =
+            popMainRoute.substringAfter("if (homeState.serverSwitcherExpanded) {").substringBefore("return true")
+
+        val fenceIndex = drawerBranch.indexOf("serverDrawerProgrammaticCloseFence?.invoke(\"back\")")
+        val dispatchIndex = drawerBranch.indexOf("SharedHomeIntent.DismissServerSwitcher")
+        assertFalse(fenceIndex < 0)
+        assertFalse(dispatchIndex < 0)
+        assertTrue(fenceIndex < dispatchIndex)
     }
 
     @Test

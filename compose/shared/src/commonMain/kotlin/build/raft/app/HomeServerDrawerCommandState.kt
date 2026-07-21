@@ -17,6 +17,19 @@ internal enum class HomeServerDrawerCommandTerminalKind {
     SettledClosed
 }
 
+internal enum class HomeServerDrawerInteractionState {
+    ClosedAppEdgeOwner,
+    OpeningProgrammatic,
+    OpenNativePagerOwner,
+    GestureCloseCommitting,
+    ClosingProgrammatic
+}
+
+internal data class HomeServerDrawerPointerPolicy(
+    val appEdgeEnabled: Boolean = false,
+    val nativePagerEnabled: Boolean = false
+)
+
 internal data class HomeServerDrawerCommandTerminal(
     val generation: Long,
     val kind: HomeServerDrawerCommandTerminalKind
@@ -30,8 +43,63 @@ internal data class HomeServerDrawerCommandState(
     val interactiveGeneration: Long? = null,
     val interactiveRowKey: String? = null,
     val terminals: List<HomeServerDrawerCommandTerminal> = emptyList(),
-    val gestureDismissCount: Int = 0
+    val gestureDismissCount: Int = 0,
+    val interactionState: HomeServerDrawerInteractionState = HomeServerDrawerInteractionState.ClosedAppEdgeOwner,
+    val ownerGeneration: Long? = null
 )
+
+internal fun HomeServerDrawerCommandState.pointerPolicy(
+    authoritativeIntent: HomeServerDrawerCommandIntent
+): HomeServerDrawerPointerPolicy {
+    if (authoritativeIntent != currentIntent || ownerGeneration != authoritativeIntent.generation) {
+        return HomeServerDrawerPointerPolicy()
+    }
+    return when (interactionState) {
+        HomeServerDrawerInteractionState.ClosedAppEdgeOwner ->
+            HomeServerDrawerPointerPolicy(appEdgeEnabled = !authoritativeIntent.desiredOpen)
+        HomeServerDrawerInteractionState.OpenNativePagerOwner ->
+            HomeServerDrawerPointerPolicy(nativePagerEnabled = authoritativeIntent.desiredOpen)
+        HomeServerDrawerInteractionState.OpeningProgrammatic,
+        HomeServerDrawerInteractionState.GestureCloseCommitting,
+        HomeServerDrawerInteractionState.ClosingProgrammatic -> HomeServerDrawerPointerPolicy()
+    }
+}
+
+internal fun HomeServerDrawerCommandState.establishClosedOwner(
+    authoritativeIntent: HomeServerDrawerCommandIntent
+): HomeServerDrawerCommandState =
+    if (
+        phase == HomeServerDrawerCommandPhase.IdleClosed &&
+        !authoritativeIntent.desiredOpen &&
+        authoritativeIntent == currentIntent
+    ) {
+        copy(
+            interactionState = HomeServerDrawerInteractionState.ClosedAppEdgeOwner,
+            ownerGeneration = authoritativeIntent.generation
+        )
+    } else {
+        this
+    }
+
+internal fun HomeServerDrawerCommandState.beginProgrammaticClose(): HomeServerDrawerCommandState =
+    if (currentIntent.desiredOpen) {
+        copy(
+            interactionState = HomeServerDrawerInteractionState.ClosingProgrammatic,
+            ownerGeneration = null
+        )
+    } else {
+        this
+    }
+
+internal fun HomeServerDrawerCommandState.beginProgrammaticOpen(): HomeServerDrawerCommandState =
+    if (!currentIntent.desiredOpen) {
+        copy(
+            interactionState = HomeServerDrawerInteractionState.OpeningProgrammatic,
+            ownerGeneration = null
+        )
+    } else {
+        this
+    }
 
 internal fun HomeServerDrawerCommandState.pendingAdmission(
     intent: HomeServerDrawerCommandIntent
@@ -47,7 +115,14 @@ internal fun HomeServerDrawerCommandState.pendingAdmission(
         rowReadyGeneration = null,
         rowReadyKey = null,
         interactiveGeneration = null,
-        interactiveRowKey = null
+        interactiveRowKey = null,
+        interactionState =
+            if (intent.desiredOpen) {
+                HomeServerDrawerInteractionState.OpeningProgrammatic
+            } else {
+                HomeServerDrawerInteractionState.ClosingProgrammatic
+            },
+        ownerGeneration = null
     )
 
 internal fun HomeServerDrawerCommandState.markSubmitted(
@@ -82,7 +157,14 @@ internal fun HomeServerDrawerCommandState.submit(
         rowReadyGeneration = null,
         rowReadyKey = null,
         interactiveGeneration = null,
-        interactiveRowKey = null
+        interactiveRowKey = null,
+        interactionState =
+            if (intent.desiredOpen) {
+                HomeServerDrawerInteractionState.OpeningProgrammatic
+            } else {
+                HomeServerDrawerInteractionState.ClosingProgrammatic
+            },
+        ownerGeneration = null
     )
 
 internal fun HomeServerDrawerCommandState.settle(
@@ -108,7 +190,9 @@ internal fun HomeServerDrawerCommandState.settle(
             phase = HomeServerDrawerCommandPhase.SettledOpen,
             interactiveGeneration = generation.takeIf { rowReadyGeneration == generation },
             interactiveRowKey = rowReadyKey.takeIf { rowReadyGeneration == generation },
-            terminals = terminals + terminal
+            terminals = terminals + terminal,
+            interactionState = HomeServerDrawerInteractionState.OpenNativePagerOwner,
+            ownerGeneration = generation
         )
     } else {
         copy(
@@ -117,7 +201,9 @@ internal fun HomeServerDrawerCommandState.settle(
             rowReadyKey = null,
             interactiveGeneration = null,
             interactiveRowKey = null,
-            terminals = terminals + terminal
+            terminals = terminals + terminal,
+            interactionState = HomeServerDrawerInteractionState.ClosedAppEdgeOwner,
+            ownerGeneration = generation
         )
     }
 }
@@ -141,10 +227,17 @@ internal fun HomeServerDrawerCommandState.rowLaidOut(
 }
 
 internal fun HomeServerDrawerCommandState.nativeSettledClosedWithoutCommand(): HomeServerDrawerCommandState =
-    if (phase == HomeServerDrawerCommandPhase.SettledOpen && currentIntent.desiredOpen) {
+    if (
+        phase == HomeServerDrawerCommandPhase.SettledOpen &&
+        currentIntent.desiredOpen &&
+        interactionState == HomeServerDrawerInteractionState.OpenNativePagerOwner &&
+        ownerGeneration == currentIntent.generation
+    ) {
         copy(
             phase = HomeServerDrawerCommandPhase.GestureCloseDispatched,
-            gestureDismissCount = gestureDismissCount + 1
+            gestureDismissCount = gestureDismissCount + 1,
+            interactionState = HomeServerDrawerInteractionState.GestureCloseCommitting,
+            ownerGeneration = null
         )
     } else {
         this
@@ -165,4 +258,6 @@ internal fun HomeServerDrawerCommandState.acceptsConversationClick(
 ): Boolean =
     acceptsRowObservation(candidateGeneration, authoritativeIntent) &&
         phase == HomeServerDrawerCommandPhase.SettledOpen &&
+        interactionState == HomeServerDrawerInteractionState.OpenNativePagerOwner &&
+        ownerGeneration == candidateGeneration &&
         interactiveGeneration == candidateGeneration
