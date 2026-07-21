@@ -46,6 +46,11 @@ private const val SharedActivityReplyPrewarmConcurrency = 2
 private const val SharedActivityTailPrewarmDepthCap = 20
 private const val SharedActivityRealtimeBackgroundReconcileDelayMillis = 150L
 
+internal fun activityCanonicalEpochIsCurrent(
+    admittedEpoch: Long,
+    currentEpoch: Long
+): Boolean = admittedEpoch == currentEpoch
+
 private data class ActivityRealtimeHighWater(
     val marker: MessageId?,
     val replyCount: Int
@@ -120,7 +125,8 @@ class SharedActivityStore internal constructor(
     private var tailInFlightJob: Job? = null
     private var tailDrainBarrier: Job? = null
     private var realtimeBackgroundReconcileJob: Job? = null
-    private var realtimeBackgroundReconcileDirty = false
+    private var realtimeReconcileEpoch = 0L
+    private var realtimeReconcileAttemptedEpoch = 0L
     private val realtimeHighWater = mutableMapOf<String, ActivityRealtimeHighWater>()
     // One owner for live row patches, version-ledger changes, background reconcile scheduling,
     // and canonical load folds.
@@ -224,7 +230,8 @@ class SharedActivityStore internal constructor(
             loadJob = null
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
-            realtimeBackgroundReconcileDirty = false
+            realtimeReconcileEpoch = 0L
+            realtimeReconcileAttemptedEpoch = 0L
             realtimeHighWater.clear()
             owner
         }
@@ -680,7 +687,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun scheduleRealtimeBackgroundReconcileLocked(): Job {
-        realtimeBackgroundReconcileDirty = true
+        realtimeReconcileEpoch += 1L
         realtimeBackgroundReconcileJob?.let { return it }
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
@@ -688,8 +695,7 @@ class SharedActivityStore internal constructor(
                 while (true) {
                     val shouldReconcile =
                         synchronized(realtimeOwnerLock) {
-                            if (realtimeBackgroundReconcileDirty) {
-                                realtimeBackgroundReconcileDirty = false
+                            if (realtimeReconcileAttemptedEpoch < realtimeReconcileEpoch) {
                                 true
                             } else {
                                 realtimeBackgroundReconcileJob = null
@@ -798,17 +804,24 @@ class SharedActivityStore internal constructor(
                     return@synchronized null
                 }
                 val generation = ++loadGeneration
+                val admittedRealtimeEpoch = realtimeReconcileEpoch
                 loadJob?.cancel()
                 scope.launch(start = CoroutineStart.LAZY) {
                     val startedAt = TimeSource.Monotonic.markNow()
                     val previous = _state.value
                     val filter = previous.selectedFilter
                     var refreshLimit = SharedActivityPageSize
+                    var backgroundAttemptCancelled = false
+                    var backgroundAttemptSuperseded = false
                     try {
                         val session = authStore.readSession()
                         if (session == null) {
                             synchronized(realtimeOwnerLock) {
-                                if (!backgroundRefresh) setLoadError("unauthenticated", append = !refresh)
+                                if (generation != loadGeneration) {
+                                    backgroundAttemptSuperseded = true
+                                } else if (!backgroundRefresh || shouldSurfaceInitialReplacementFailure()) {
+                                    setLoadError("unauthenticated", append = !refresh)
+                                }
                             }
                             logActivityLoad(
                                 result = "error",
@@ -824,7 +837,11 @@ class SharedActivityStore internal constructor(
                         val serverId = session.currentServerId?.let(::ServerId)
                         if (serverId == null) {
                             synchronized(realtimeOwnerLock) {
-                                if (!backgroundRefresh) setLoadError("server_missing", append = !refresh)
+                                if (generation != loadGeneration) {
+                                    backgroundAttemptSuperseded = true
+                                } else if (!backgroundRefresh || shouldSurfaceInitialReplacementFailure()) {
+                                    setLoadError("server_missing", append = !refresh)
+                                }
                             }
                             logActivityLoad(
                                 result = "error",
@@ -841,7 +858,11 @@ class SharedActivityStore internal constructor(
                         val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         if (server == null) {
                             synchronized(realtimeOwnerLock) {
-                                if (!backgroundRefresh) setLoadError("server_missing", append = !refresh)
+                                if (generation != loadGeneration) {
+                                    backgroundAttemptSuperseded = true
+                                } else if (!backgroundRefresh || shouldSurfaceInitialReplacementFailure()) {
+                                    setLoadError("server_missing", append = !refresh)
+                                }
                             }
                             return@launch
                         }
@@ -920,7 +941,9 @@ class SharedActivityStore internal constructor(
                                 currentSession.accessToken == session.accessToken
                         if (!requestSessionStillCurrent) {
                             synchronized(realtimeOwnerLock) {
-                                if (generation == loadGeneration && !backgroundRefresh) {
+                                if (generation == loadGeneration && backgroundRefresh) {
+                                    backgroundAttemptSuperseded = true
+                                } else if (generation == loadGeneration) {
                                     val current = _state.value
                                     reduceState(
                                         intent,
@@ -931,6 +954,8 @@ class SharedActivityStore internal constructor(
                                             loadingMore = false
                                         )
                                     )
+                                } else if (generation != loadGeneration) {
+                                    backgroundAttemptSuperseded = true
                                 }
                             }
                             diagnosticsLogger(
@@ -942,7 +967,16 @@ class SharedActivityStore internal constructor(
                         val applied =
                             synchronized(realtimeOwnerLock) {
                                 if (generation != loadGeneration) {
+                                    backgroundAttemptSuperseded = true
                                     false
+                                } else if (!activityCanonicalEpochIsCurrent(admittedRealtimeEpoch, realtimeReconcileEpoch)) {
+                                    if (!backgroundRefresh) closeSupersededLoadState(intent)
+                                    diagnosticsLogger(
+                                        "store_load domain=activity result=stale_realtime_epoch " +
+                                            "admittedEpoch=$admittedRealtimeEpoch currentEpoch=$realtimeReconcileEpoch " +
+                                            "background=$backgroundRefresh"
+                                    )
+                                    true
                                 } else {
                                     applyLoadResult(
                                         result = result,
@@ -966,14 +1000,21 @@ class SharedActivityStore internal constructor(
                             durationMs = startedAt.elapsedNow().inWholeMilliseconds
                         )
                     } catch (cancellation: CancellationException) {
+                        backgroundAttemptCancelled = true
                         throw cancellation
                     } catch (_: Throwable) {
                         val handled =
                             synchronized(realtimeOwnerLock) {
                                 if (generation != loadGeneration) {
+                                    backgroundAttemptSuperseded = true
                                     false
+                                } else if (!activityCanonicalEpochIsCurrent(admittedRealtimeEpoch, realtimeReconcileEpoch)) {
+                                    if (!backgroundRefresh) closeSupersededLoadState(intent)
+                                    true
                                 } else {
-                                    if (!backgroundRefresh) setLoadError("activity_network", append = !refresh)
+                                    if (!backgroundRefresh || shouldSurfaceInitialReplacementFailure()) {
+                                        setLoadError("activity_network", append = !refresh)
+                                    }
                                     true
                                 }
                             }
@@ -987,6 +1028,13 @@ class SharedActivityStore internal constructor(
                             backgroundRefresh = backgroundRefresh,
                             durationMs = startedAt.elapsedNow().inWholeMilliseconds
                         )
+                    } finally {
+                        if (backgroundRefresh && !backgroundAttemptCancelled && !backgroundAttemptSuperseded) {
+                            synchronized(realtimeOwnerLock) {
+                                realtimeReconcileAttemptedEpoch =
+                                    maxOf(realtimeReconcileAttemptedEpoch, admittedRealtimeEpoch)
+                            }
+                        }
                     }
                 }.also { loadJob = it }
             }
@@ -1201,7 +1249,17 @@ class SharedActivityStore internal constructor(
                 }
                 is DataResult.Error ->
                     if (backgroundRefresh) {
-                        current
+                        if (shouldSurfaceInitialReplacementFailure(current)) {
+                            current.copy(
+                                loading = false,
+                                refreshing = false,
+                                pullRefreshing = false,
+                                loadingMore = false,
+                                errorCode = result.error.code
+                            )
+                        } else {
+                            current
+                        }
                     } else {
                         current.copy(
                             loading = false,
@@ -1214,7 +1272,17 @@ class SharedActivityStore internal constructor(
                     }
                 is DataResult.NoPermission ->
                     if (backgroundRefresh) {
-                        current
+                        if (shouldSurfaceInitialReplacementFailure(current)) {
+                            current.copy(
+                                loading = false,
+                                refreshing = false,
+                                pullRefreshing = false,
+                                loadingMore = false,
+                                errorCode = result.blocker.code
+                            )
+                        } else {
+                            current
+                        }
                     } else {
                         current.copy(
                             loading = false,
@@ -1639,6 +1707,23 @@ class SharedActivityStore internal constructor(
                 loadMoreErrorCode = if (append) code else null
             )
     }
+
+    private fun closeSupersededLoadState(intent: SharedActivityIntent) {
+        val current = _state.value
+        reduceState(
+            intent,
+            current.copy(
+                loading = current.loading && current.snapshot == null,
+                refreshing = false,
+                pullRefreshing = false,
+                loadingMore = false
+            )
+        )
+    }
+
+    private fun shouldSurfaceInitialReplacementFailure(
+        state: SharedActivityState = _state.value
+    ): Boolean = state.snapshot == null && state.loading
 
     private fun reduceState(
         intent: SharedActivityIntent,

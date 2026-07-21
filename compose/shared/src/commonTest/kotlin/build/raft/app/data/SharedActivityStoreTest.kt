@@ -2481,6 +2481,347 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun realtimeEpochSuppressesOlderForegroundCanonicalBeforeOneBackgroundPublish() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        var canonicalFolds = 0
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L,
+                beforeRealtimeHighWaterFold = { canonicalFolds += 1 }
+            )
+        val first = threadItem("thread-first").copy(replyCount = 1)
+        val second = threadItem("thread-second").copy(replyCount = 2)
+        val patchedSecond =
+            second.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "Realtime preview",
+                latestActivityAt = "2026-07-21T06:55:00Z",
+                replyCount = 3,
+                unreadCount = second.unreadCount + 1,
+                firstUnreadMessageId = second.firstUnreadMessageId ?: MessageId("message-new")
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(first, second)))
+        canonicalFolds = 0
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "message-new",
+                        channelId = "thread-second",
+                        body = "Realtime preview",
+                        timestamp = "2026-07-21T06:55:00Z",
+                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+                    )
+                )
+            )
+        )
+        assertEquals(listOf(second.key, first.key), store.state.value.items.map { it.key })
+
+        inbox.completeNextSnapshot(snapshot(listOf(first, second)))
+
+        assertEquals(0, canonicalFolds, "older foreground canonical must not reach the publish fold")
+        assertEquals(false, store.state.value.refreshing, "older foreground terminal still closes refresh chrome")
+        assertEquals(listOf(second.key, first.key), store.state.value.items.map { it.key })
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(patchedSecond, first)))
+        awaitState(store) { state -> state.items.firstOrNull()?.latestActivityMessageId == MessageId("message-new") }
+
+        assertEquals(1, canonicalFolds, "latest background canonical is the sole canonical publication")
+        assertEquals(listOf(second.key, first.key), store.state.value.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
+    fun newerThreadEpochSuppressesReadyBackgroundUntilLatestReconcilePublishesOnce() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        var canonicalFolds = 0
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L,
+                beforeRealtimeHighWaterFold = { canonicalFolds += 1 }
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+        val messageCanonical =
+            stale.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "Realtime preview",
+                latestActivityAt = "2026-07-21T06:55:00Z",
+                replyCount = 3,
+                unreadCount = stale.unreadCount + 1
+            )
+        val latestCanonical =
+            messageCanonical.copy(
+                latestActivityAt = "2026-07-21T06:56:00Z",
+                replyCount = 4
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        canonicalFolds = 0
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "message-new",
+                        channelId = "thread-channel-1",
+                        body = "Realtime preview",
+                        timestamp = "2026-07-21T06:55:00Z",
+                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+                    )
+                )
+            )
+        )
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        assertEquals(0, canonicalFolds)
+
+        awaitPendingCount(inbox, 1)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-channel-1"),
+                    replyCount = 4,
+                    lastReplyAt = "2026-07-21T06:56:00Z",
+                    participantIds = emptyList(),
+                    unreadCount = messageCanonical.unreadCount,
+                    firstUnreadMessageId = messageCanonical.firstUnreadMessageId
+                )
+            )
+        )
+        inbox.completeNextSnapshot(snapshot(listOf(messageCanonical)))
+        assertEquals(0, canonicalFolds, "background result for an older realtime epoch must not publish")
+        assertEquals(4, store.state.value.items.single().replyCount)
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(latestCanonical)))
+        awaitState(store) { state -> state.items.singleOrNull()?.replyCount == 4 }
+
+        assertEquals(1, canonicalFolds, "only the latest realtime epoch publishes canonical state")
+        assertEquals("2026-07-21T06:56:00Z", store.state.value.items.single().latestActivityAt)
+        scope.cancel()
+    }
+
+    @Test
+    fun foregroundCanonicalWithoutRealtimeStillPublishesOnce() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        var canonicalFolds = 0
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L,
+                beforeRealtimeHighWaterFold = { canonicalFolds += 1 }
+            )
+        val initial = threadItem("thread-initial")
+        val refreshed = threadItem("thread-refreshed")
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(initial)))
+        canonicalFolds = 0
+
+        store.dispatch(SharedActivityIntent.Refresh)
+        inbox.completeNextSnapshot(snapshot(listOf(refreshed)))
+
+        assertEquals(1, canonicalFolds)
+        assertEquals(listOf(refreshed.key), store.state.value.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeEpochAdmissionIsIndependentOfCompletionOrder() {
+        val olderForegroundEpoch = 0L
+        val readyBackgroundEpoch = 1L
+        val latestRealtimeEpoch = 1L
+
+        assertTrue(
+            activityCanonicalEpochIsCurrent(readyBackgroundEpoch, latestRealtimeEpoch),
+            "latest background data may publish even when observed before the older foreground terminal"
+        )
+        assertFalse(
+            activityCanonicalEpochIsCurrent(olderForegroundEpoch, latestRealtimeEpoch),
+            "late foreground completion stays stale after the newer background data is ready"
+        )
+    }
+
+    @Test
+    fun supersededBackgroundDoesNotConsumeEpochWhenForegroundFails() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+        val stale = threadItem("thread-channel-1").copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+        awaitPendingCount(inbox, 1)
+
+        // A foreground refresh supersedes the in-flight background owner. The
+        // deferred test repository deliberately ignores cancellation so the
+        // old background result can arrive after it has lost loadGeneration.
+        store.dispatch(SharedActivityIntent.Refresh)
+        awaitPendingCount(inbox, 2)
+        inbox.completeNextSnapshot(snapshot(listOf(stale)))
+        inbox.completeNextResult(DataResult.Error(ScreenError("foreground_failed")))
+
+        // Losing loadGeneration is not a terminal attempt for the realtime
+        // epoch. Since the replacing foreground failed, the background loop
+        // must still admit a new canonical reconcile instead of consuming the
+        // epoch on the ignored old result.
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(
+            snapshot(
+                listOf(
+                    stale.copy(
+                        latestActivityMessageId = MessageId("message-new"),
+                        latestActivityPreview = "message message-new",
+                        replyCount = 3
+                    )
+                )
+            )
+        )
+        awaitState(store) { state -> state.items.singleOrNull()?.replyCount == 3 }
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeDuringColdInitialLoadNeverExposesFalseEmptyBeforeReplacementTerminal() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        assertEquals(true, store.state.value.loading)
+        assertEquals(null, store.state.value.snapshot)
+
+        // With no initial snapshot the realtime payload cannot patch a row,
+        // but it still advances the reconcile epoch and queues replacement B.
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+        inbox.completeNextSnapshot(snapshot(emptyList()))
+
+        assertEquals(null, store.state.value.snapshot, "stale initial A must not publish")
+        assertEquals(true, store.state.value.loading, "replacement B retains first-load ownership")
+        assertEquals(null, store.state.value.errorCode)
+
+        awaitPendingCount(inbox, 1)
+        assertEquals(true, store.state.value.loading, "parked replacement must not expose false-empty")
+        inbox.completeNextResult(DataResult.Error(ScreenError("replacement_failed")))
+        awaitState(store) { state -> !state.loading && state.errorCode == "replacement_failed" }
+
+        assertEquals(null, store.state.value.snapshot)
+        assertEquals("replacement_failed", store.state.value.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeDuringColdInitialLoadPublishesOnlyReplacementSuccess() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        var canonicalFolds = 0
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L,
+                beforeRealtimeHighWaterFold = { canonicalFolds += 1 }
+            )
+        val latest = threadItem("thread-channel-1").copy(replyCount = 3)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+        inbox.completeNextSnapshot(snapshot(emptyList()))
+
+        assertEquals(0, canonicalFolds, "stale initial A must not publish")
+        assertEquals(true, store.state.value.loading)
+        assertEquals(null, store.state.value.snapshot)
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(latest)))
+        awaitState(store) { state -> !state.loading && state.items.singleOrNull()?.key == latest.key }
+
+        assertEquals(1, canonicalFolds, "replacement B is the sole cold canonical publication")
+        assertEquals(listOf(latest.key), store.state.value.items.map { it.key })
+        assertEquals(null, store.state.value.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun rotatedSessionBackgroundDoesNotConsumeColdRealtimeEpoch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val authStore = InMemorySlockAuthSessionStore(sampleSession())
+        var canonicalFolds = 0
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                authStore = authStore,
+                realtimeBackgroundReconcileDelayMillis = 0L,
+                beforeRealtimeHighWaterFold = { canonicalFolds += 1 }
+            )
+        val latest = threadItem("thread-channel-1").copy(replyCount = 3)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(message("message-new", channelId = "thread-channel-1"))
+            )
+        )
+        inbox.completeNextSnapshot(snapshot(emptyList()))
+        awaitPendingCount(inbox, 1)
+
+        authStore.updateTokens(accessToken = "access-rotated", refreshToken = "refresh-rotated")
+        inbox.completeNextSnapshot(snapshot(emptyList()))
+
+        assertEquals(0, canonicalFolds, "background bound to the old token must not publish")
+        assertEquals(null, store.state.value.snapshot)
+        assertEquals(true, store.state.value.loading)
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(latest)))
+        awaitState(store) { state -> !state.loading && state.items.singleOrNull()?.key == latest.key }
+
+        assertEquals(1, canonicalFolds, "successor-session background is the sole canonical publication")
+        assertEquals(listOf(latest.key), store.state.value.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeHighWaterPreservesLocallyClearedUnreadState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
