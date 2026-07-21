@@ -1,5 +1,7 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -26,12 +28,44 @@ class FocusDismissProductionContractTest {
     }
 
     @Test
-    fun sharedDismissModifierUsesUnconsumedDownAndNeverConsumesTheGesture() {
+    fun focusOwnerRegistryOnlyProtectsDownsInsideAnActiveInput() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val activeOwner = Any()
+        val inactiveOwner = Any()
+
+        registry.setFocused(activeOwner, true) { Rect(100f, 200f, 300f, 400f) }
+        assertFalse(registry.shouldClearFocus(Offset(200f, 300f)))
+        assertFalse(registry.shouldClearFocus(Offset(100f, 200f)), "Input edges belong to the owner")
+        assertTrue(registry.shouldClearFocus(Offset(99f, 300f)))
+        assertTrue(registry.shouldClearFocus(Offset(600f, 700f)), "Inactive input bounds must not suppress dismissal")
+
+        registry.setFocused(inactiveOwner, true) { Rect(500f, 600f, 700f, 800f) }
+        assertFalse(registry.shouldClearFocus(Offset(600f, 700f)), "A down inside any active owner must preserve focus")
+        assertTrue(registry.shouldClearFocus(Offset(900f, 900f)), "A down outside every active owner must dismiss")
+
+        registry.remove(activeOwner)
+        assertTrue(registry.hasActiveOwner)
+        assertTrue(registry.shouldClearFocus(Offset(200f, 300f)), "Disposed owner bounds must stop shielding that region")
+
+        registry.setFocused(inactiveOwner, false)
+        assertFalse(registry.hasActiveOwner)
+        assertFalse(registry.shouldClearFocus(Offset(200f, 300f)), "No active owner means there is nothing to dismiss")
+
+        registry.setFocused(activeOwner, true) { null }
+        assertFalse(registry.shouldClearFocus(Offset(900f, 900f)), "Missing or detached bounds must fail closed")
+    }
+
+    @Test
+    fun sharedDismissModifierObservesConsumedChromeButNeverConsumesTheGesture() {
         val source = source("build/raft/app/BasicWidget.kt")
-        val helper = source.substringAfter("internal fun Modifier.dismissInputFocusOnUnconsumedPointerDown(")
+        val helper = source.substringAfter("internal fun Modifier.dismissInputFocusOnOutsidePointerDown(")
             .substringBefore("/**\n * [touchListener] plus")
 
-        assertContains(helper, "awaitFirstDown(requireUnconsumed = true)")
+        assertContains(helper, "awaitPointerEvent(PointerEventPass.Initial)")
+        assertContains(helper, "changedToDownIgnoreConsumed()")
+        assertFalse("awaitFirstDown(" in helper)
+        assertContains(helper, "hostAnchor.resolve(firstDown.position)")
+        assertContains(helper, "registry.shouldClearFocus(rootPosition)")
         assertContains(helper, "currentFocusManager.clearFocus(force = true)")
         assertFalse(".consume()" in helper)
     }
@@ -41,8 +75,10 @@ class FocusDismissProductionContractTest {
         val source = source("build/raft/app/BasicWidget.kt")
 
         assertTrue(source.occurrences("participatesInGlobalFocusDismiss: Boolean = true") == 2)
-        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, true)") == 2)
-        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, false)") >= 4)
+        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)") == 2)
+        assertTrue(source.occurrences("focusOwnerRegistry?.setFocused(focusOwner, false)") == 2)
+        assertTrue(source.occurrences("focusOwnerRegistry?.remove(focusOwner)") == 2)
+        assertTrue(source.occurrences(".onGloballyPositioned(focusOwnerAnchor::update)") == 2)
         assertContains(source, "DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss)")
     }
 
@@ -78,7 +114,7 @@ class FocusDismissProductionContractTest {
                 .filter { it.isFile && it.extension == "kt" }
                 .filter { file ->
                     file.relativeTo(commonMain).invariantSeparatorsPath != "build/raft/app/BasicWidget.kt" &&
-                        "dismissInputFocusOnUnconsumedPointerDown(" in file.readText()
+                        "dismissInputFocusOnOutsidePointerDown(" in file.readText()
                 }
                 .map { it.relativeTo(commonMain).invariantSeparatorsPath }
                 .toList()
@@ -131,9 +167,12 @@ class FocusDismissProductionContractTest {
         )
         assertContains(settings, "dismissKeyboardOnBlur = true")
         assertTrue(focusHost.occurrences("participatesInGlobalFocusDismiss: Boolean = true") == 2)
-        assertContains(focusHost, "focusOwnerRegistry?.setFocused(focusOwner, true)")
+        assertContains(focusHost, "focusOwnerRegistry?.setFocused(focusOwner, true, focusOwnerAnchor::resolveBounds)")
+        assertTrue(focusHost.occurrences(".onGloballyPositioned(focusOwnerAnchor::update)") == 2)
         assertContains(focusHost, "enabled = registry.hasActiveOwner")
-        assertContains(focusHost, "awaitFirstDown(requireUnconsumed = true)")
+        assertContains(focusHost, "awaitPointerEvent(PointerEventPass.Initial)")
+        assertContains(focusHost, "changedToDownIgnoreConsumed()")
+        assertContains(focusHost, "registry.shouldClearFocus(rootPosition)")
         assertContains(focusHost, "currentFocusManager.clearFocus(force = true)")
         assertTrue(focusHost.occurrences("else if (lastFocus)") == 2)
         assertTrue(focusHost.occurrences("currentOnBlur()") == 2)
