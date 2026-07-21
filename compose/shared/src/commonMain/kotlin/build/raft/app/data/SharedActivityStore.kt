@@ -1344,6 +1344,7 @@ class SharedActivityStore internal constructor(
                 .associateBy { item -> item.key }
         val canonicalKeys = canonicalItems.mapTo(mutableSetOf()) { item -> item.key }
         var preserveTotalUnreadFloor = false
+        val unacknowledgedKeys = mutableSetOf<String>()
         val reconciled =
             canonicalItems.map { canonical ->
                 val localVersion = realtimeHighWater[canonical.key] ?: return@map canonical
@@ -1373,6 +1374,7 @@ class SharedActivityStore internal constructor(
                     return@map canonical
                 }
                 preserveTotalUnreadFloor = true
+                unacknowledgedKeys += canonical.key
                 canonical.withRealtimeActivityProjection(current)
             }
         val missingCurrent =
@@ -1383,7 +1385,10 @@ class SharedActivityStore internal constructor(
             } else {
                 emptyList()
             }
-        if (missingCurrent.isNotEmpty()) preserveTotalUnreadFloor = true
+        if (missingCurrent.isNotEmpty()) {
+            preserveTotalUnreadFloor = true
+            unacknowledgedKeys.addAll(missingCurrent.map(InboxItem::key))
+        }
         realtimeHighWater.keys.toList().forEach { key ->
             if (
                 key !in canonicalKeys &&
@@ -1392,14 +1397,49 @@ class SharedActivityStore internal constructor(
                 realtimeHighWater.remove(key)
             }
         }
+        val projected = (missingCurrent + reconciled).dedupeActivityItems()
         return ActivityRealtimeReconcileResult(
             // A serving-row projection can lag the message event that produced
             // the local high-water. Keep that row in its current position until
             // a canonical response carries the same marker; otherwise the UI
             // exposes an appear→disappear flash between the two stages.
-            items = (missingCurrent + reconciled).dedupeActivityItems(),
+            items =
+                projected.retainUnacknowledgedRealtimePositions(
+                    currentItems = _state.value.items,
+                    unacknowledgedKeys = unacknowledgedKeys
+                ),
             preserveTotalUnreadFloor = preserveTotalUnreadFloor
         )
+    }
+
+    private fun List<InboxItem>.retainUnacknowledgedRealtimePositions(
+        currentItems: List<InboxItem>,
+        unacknowledgedKeys: Set<String>
+    ): List<InboxItem> {
+        if (isEmpty() || currentItems.isEmpty() || unacknowledgedKeys.isEmpty()) return this
+        val currentPositions =
+            currentItems
+                .mapIndexedNotNull { index, item ->
+                    item.key.takeIf(unacknowledgedKeys::contains)?.let { key -> key to index }
+                }
+                .sortedByDescending { (_, index) -> index }
+        if (currentPositions.isEmpty()) return this
+        val candidateByKey = associateBy(InboxItem::key)
+        val retainedKeys = currentPositions.mapTo(mutableSetOf()) { (key, _) -> key }
+        val slots = MutableList<InboxItem?>(size) { null }
+        currentPositions.forEach { (key, currentIndex) ->
+            val item = candidateByKey[key] ?: return@forEach
+            var targetIndex = currentIndex.coerceAtMost(slots.lastIndex)
+            while (targetIndex >= 0 && slots[targetIndex] != null) targetIndex -= 1
+            if (targetIndex >= 0) slots[targetIndex] = item
+        }
+        val canonicalRemainder = filterNot { item -> item.key in retainedKeys }.iterator()
+        slots.indices.forEach { index ->
+            if (slots[index] == null && canonicalRemainder.hasNext()) {
+                slots[index] = canonicalRemainder.next()
+            }
+        }
+        return slots.mapNotNull { it }
     }
 
     private fun InboxItem.withRealtimeActivityProjection(current: InboxItem): InboxItem =

@@ -2040,6 +2040,195 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun currentEpochLaggingCanonicalKeepsRealtimeRowPositionUntilMarkerAcknowledged() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        var canonicalFolds = 0
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 0L,
+                beforeRealtimeHighWaterFold = { canonicalFolds += 1 }
+            )
+        val first = threadItem("thread-first").copy(replyCount = 1)
+        val second = threadItem("thread-second").copy(replyCount = 2)
+        val realtimeMessage =
+            message(
+                id = "message-new",
+                channelId = "thread-second",
+                body = "Realtime preview",
+                timestamp = "2026-07-21T06:55:00Z",
+                conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+            )
+        val acknowledgedSecond =
+            second.copy(
+                latestActivityMessageId = MessageId("message-new"),
+                latestActivityPreview = "Realtime preview",
+                latestActivityAt = "2026-07-21T06:55:00Z",
+                replyCount = 3,
+                unreadCount = second.unreadCount + 1,
+                firstUnreadMessageId = second.firstUnreadMessageId ?: MessageId("message-new")
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(first, second)))
+        canonicalFolds = 0
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(realtimeMessage)))
+        assertEquals(listOf(second.key, first.key), store.state.value.items.map(InboxItem::key))
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(first, second)))
+        withTimeout(2_000L) {
+            while (canonicalFolds < 1) delay(1L)
+        }
+
+        assertEquals(
+            listOf(second.key, first.key),
+            store.state.value.items.map(InboxItem::key),
+            "a current-epoch canonical response with an older marker must not pull the realtime row back"
+        )
+        assertEquals(MessageId("message-new"), store.state.value.items.first().latestActivityMessageId)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-message"),
+                    threadChannelId = ChannelId("thread-second"),
+                    replyCount = 3,
+                    lastReplyAt = "2026-07-21T06:55:00Z",
+                    participantIds = emptyList(),
+                    unreadCount = acknowledgedSecond.unreadCount,
+                    firstUnreadMessageId = acknowledgedSecond.firstUnreadMessageId
+                )
+            )
+        )
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(first, acknowledgedSecond)))
+        withTimeout(2_000L) {
+            while (canonicalFolds < 2) delay(1L)
+        }
+
+        assertEquals(
+            listOf(first.key, second.key),
+            store.state.value.items.map(InboxItem::key),
+            "once the canonical marker catches up, its order becomes authoritative exactly once"
+        )
+        assertEquals(2, canonicalFolds)
+        assertEquals(0, inbox.pendingCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun overlappingHighWaterRowsKeepIndependentSlotsUntilEachMarkerIsAcknowledged() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        var canonicalFolds = 0
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeBackgroundReconcileDelayMillis = 10L,
+                beforeRealtimeHighWaterFold = { canonicalFolds += 1 }
+            )
+        val a = threadItem("thread-a").copy(replyCount = 1)
+        val c = threadItem("thread-c").copy(replyCount = 1)
+        val b = threadItem("thread-b").copy(replyCount = 2)
+        val d = threadItem("thread-d").copy(replyCount = 4)
+        val messageB = message("message-b", channelId = "thread-b", body = "B realtime")
+        val messageD = message("message-d", channelId = "thread-d", body = "D realtime")
+        val acknowledgedB =
+            b.copy(
+                latestActivityMessageId = MessageId("message-b"),
+                latestActivityPreview = "B realtime",
+                replyCount = 3,
+                unreadCount = b.unreadCount + 1,
+                firstUnreadMessageId = b.firstUnreadMessageId ?: MessageId("message-b")
+            )
+        val acknowledgedD =
+            d.copy(
+                latestActivityMessageId = MessageId("message-d"),
+                latestActivityPreview = "D realtime",
+                replyCount = 5,
+                unreadCount = d.unreadCount + 1,
+                firstUnreadMessageId = d.firstUnreadMessageId ?: MessageId("message-d")
+            )
+        fun triggerReconcile() =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-d"),
+                    threadChannelId = ChannelId("thread-d"),
+                    replyCount = 5,
+                    lastReplyAt = acknowledgedD.latestActivityAt,
+                    participantIds = emptyList(),
+                    unreadCount = acknowledgedD.unreadCount,
+                    firstUnreadMessageId = acknowledgedD.firstUnreadMessageId
+                )
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(a, c, b, d)))
+        canonicalFolds = 0
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(messageD)))
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(messageB)))
+        assertEquals(InboxFilter.All, store.state.value.selectedFilter)
+        assertEquals(listOf(b.key, d.key, a.key, c.key), store.state.value.items.map(InboxItem::key))
+
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(d, c, b, a)))
+        withTimeout(2_000L) {
+            while (canonicalFolds < 1) delay(1L)
+        }
+        assertEquals(
+            listOf(b.key, d.key, c.key, a.key),
+            store.state.value.items.map(InboxItem::key),
+            "crossing lagging candidates must keep both pending rows in their visible slots"
+        )
+        assertEquals(4, store.state.value.items.map(InboxItem::key).toSet().size)
+
+        store.dispatch(triggerReconcile())
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(c, b, a)))
+        withTimeout(2_000L) {
+            while (canonicalFolds < 2) delay(1L)
+        }
+        assertEquals(
+            listOf(b.key, d.key, c.key, a.key),
+            store.state.value.items.map(InboxItem::key),
+            "a canonical-missing pending row and a canonical-present pending row keep independent slots"
+        )
+        assertEquals(4, store.state.value.items.map(InboxItem::key).toSet().size)
+
+        store.dispatch(triggerReconcile())
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(a, acknowledgedB, d, c)))
+        withTimeout(2_000L) {
+            while (canonicalFolds < 3) delay(1L)
+        }
+        assertEquals(
+            listOf(a.key, d.key, b.key, c.key),
+            store.state.value.items.map(InboxItem::key),
+            "the acknowledged row adopts canonical order while the remaining pending row keeps its slot"
+        )
+        assertEquals(4, store.state.value.items.map(InboxItem::key).toSet().size)
+
+        store.dispatch(triggerReconcile())
+        awaitPendingCount(inbox, 1)
+        inbox.completeNextSnapshot(snapshot(listOf(a, c, acknowledgedB, acknowledgedD)))
+        withTimeout(2_000L) {
+            while (canonicalFolds < 4) delay(1L)
+        }
+        assertEquals(
+            listOf(a.key, c.key, b.key, d.key),
+            store.state.value.items.map(InboxItem::key),
+            "after every marker is acknowledged, canonical order is adopted without retained-order debt"
+        )
+        assertEquals(4, store.state.value.items.map(InboxItem::key).toSet().size)
+        assertEquals(0, inbox.pendingCount)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeBackgroundReconcileFailureDoesNotPolluteVisibleErrorOrChrome() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
@@ -2098,6 +2287,8 @@ class SharedActivityStoreTest {
 
         inbox.completeNextSnapshot(snapshot(listOf(head), totalUnreadCount = 1))
         awaitState(store) { state -> state.items.map { it.key } == listOf(head.key) }
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        assertEquals(store.state.value.items.size, store.state.value.items.map(InboxItem::key).toSet().size)
         assertEquals(false, store.state.value.refreshing)
         scope.cancel()
     }
@@ -2127,6 +2318,8 @@ class SharedActivityStoreTest {
 
         inbox.completeNextSnapshot(snapshot(emptyList(), totalUnreadCount = 0))
         awaitState(store) { state -> state.items.isEmpty() }
+        assertEquals(InboxFilter.Mentions, store.state.value.selectedFilter)
+        assertEquals(0, store.state.value.items.map(InboxItem::key).toSet().size)
         assertEquals(false, store.state.value.refreshing)
         scope.cancel()
     }
