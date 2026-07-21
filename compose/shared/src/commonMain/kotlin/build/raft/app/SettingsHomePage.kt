@@ -5137,12 +5137,20 @@ private fun AppShellServerDrawerHost(
             val intent = projection.commandIntent
             if (intent.generation == 0L && !intent.desiredOpen) return@LaunchedEffect
             val generation = intent.generation
-            commandState = commandState.submit(intent)
+            commandState = commandState.pendingAdmission(intent)
+            bridge.log(
+                "server_drawer_command_pending_admission generation=$generation desiredOpen=${intent.desiredOpen} " +
+                    "selectedTab=$selectedTab progress=${drawerState.progress}"
+            )
+            if (intent.desiredOpen) drawerState.open() else drawerState.close()
+            if (currentIntent.generation != generation || currentIntent.desiredOpen != intent.desiredOpen) {
+                return@LaunchedEffect
+            }
+            commandState = commandState.markSubmitted(generation, intent.desiredOpen)
             bridge.log(
                 "server_drawer_command_submitted generation=$generation desiredOpen=${intent.desiredOpen} " +
                     "selectedTab=$selectedTab progress=${drawerState.progress}"
             )
-            if (intent.desiredOpen) drawerState.open() else drawerState.close()
             snapshotFlow { DrawerSettledObservation(drawerState.isOpen, drawerState.progress) }
                 .first { observation -> observation.isSettled(intent.desiredOpen) }
             if (currentIntent.generation != generation || currentIntent.desiredOpen != intent.desiredOpen) {
