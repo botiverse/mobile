@@ -14,9 +14,14 @@ import {
 import { nextSlockOhosForegroundEpoch } from '../main/ets/kuikly/SlockOhosRealtimeHostContext';
 import {
   compareOhosDiagnosticsPath,
+  collectOhosDiagnosticsSourceFiles,
   isOhosDiagnosticsLogFileName,
+  isOhosDiagnosticsDescendantPath,
   isOhosFeedbackArchiveName,
-  ohosDiagnosticsArchiveLogName,
+  isOhosSafeDiagnosticsArchiveComponent,
+  OhosDiagnosticsSourceInspector,
+  OhosDiagnosticsSourceNodeKind,
+  ohosDiagnosticsSourceNodeKind,
   ohosUniqueDiagnosticsStagedName,
   selectOhosDiagnosticsCandidateGroups,
 } from '../main/ets/entryability/SlockOhosAppDiagnostics';
@@ -25,6 +30,27 @@ import {
   activityUnreadPersistedFallbackCount,
   createActivityUnreadWidgetRefreshError,
 } from '../main/ets/forms/SlockWidgetData';
+
+class FakeOhosDiagnosticsSourceInspector implements OhosDiagnosticsSourceInspector {
+  private readonly kinds: Map<string, OhosDiagnosticsSourceNodeKind>;
+  private readonly children: Map<string, Array<string>>;
+
+  constructor(
+    kinds: Map<string, OhosDiagnosticsSourceNodeKind>,
+    children: Map<string, Array<string>>
+  ) {
+    this.kinds = kinds;
+    this.children = children;
+  }
+
+  kind(path: string): OhosDiagnosticsSourceNodeKind {
+    return this.kinds.get(path) ?? OhosDiagnosticsSourceNodeKind.Missing;
+  }
+
+  childNames(path: string): Array<string> {
+    return this.children.get(path) ?? [];
+  }
+}
 
 function diagnosticEntry(seq: number, level: string = 'info'): SlockOhosRawAsyncDiagnosticEntry {
   return {
@@ -81,12 +107,50 @@ export default function localUnitTest() {
       expect(a).assertContain(b);
       expect(a).assertEqual(a);
     });
-    it('diagnosticsArchiveUsesRaftNamesAndReadsLegacyNames', 0, () => {
+    it('diagnosticsArchiveUsesOnlyRaftNames', 0, () => {
       expect(isOhosDiagnosticsLogFileName('raft-diagnostics.jsonl')).assertTrue();
-      expect(isOhosDiagnosticsLogFileName('slock-diagnostics.jsonl.1')).assertTrue();
-      expect(ohosDiagnosticsArchiveLogName('slock-diagnostics.jsonl.1')).assertEqual('raft-diagnostics.jsonl.1');
+      expect(isOhosDiagnosticsLogFileName('old-brand-diagnostics.jsonl.1')).assertFalse();
       expect(isOhosFeedbackArchiveName('raft-feedback-1.zip')).assertTrue();
-      expect(isOhosFeedbackArchiveName('slock-feedback-1.zip')).assertTrue();
+      expect(isOhosFeedbackArchiveName('old-brand-feedback-1.zip')).assertFalse();
+      expect(isOhosSafeDiagnosticsArchiveComponent('launch-1-raft-diagnostics.jsonl')).assertTrue();
+      expect(isOhosSafeDiagnosticsArchiveComponent('..')).assertFalse();
+      expect(isOhosSafeDiagnosticsArchiveComponent('launch\\raft-diagnostics.jsonl')).assertFalse();
+      expect(isOhosSafeDiagnosticsArchiveComponent('slock-diagnostics')).assertFalse();
+      expect(isOhosDiagnosticsDescendantPath('/root-a', '/root-a/launch-1/file')).assertTrue();
+      expect(isOhosDiagnosticsDescendantPath('/root-a', '/root-ab/launch-1/file')).assertFalse();
+      expect(isOhosDiagnosticsDescendantPath('/root-a', '/outside/file')).assertFalse();
+      expect(ohosDiagnosticsSourceNodeKind(false, true, false))
+        .assertEqual(OhosDiagnosticsSourceNodeKind.RegularFile);
+      expect(ohosDiagnosticsSourceNodeKind(true, true, false))
+        .assertEqual(OhosDiagnosticsSourceNodeKind.Rejected);
+      expect(ohosDiagnosticsSourceNodeKind(false, false, false))
+        .assertEqual(OhosDiagnosticsSourceNodeKind.Rejected);
+      expect(ohosDiagnosticsSourceNodeKind(false, false, true))
+        .assertEqual(OhosDiagnosticsSourceNodeKind.Directory);
+
+      const sourceKinds = new Map<string, OhosDiagnosticsSourceNodeKind>([
+        ['/root-a', OhosDiagnosticsSourceNodeKind.Directory],
+        ['/root-a/launch-safe', OhosDiagnosticsSourceNodeKind.Directory],
+        ['/root-a/launch-safe/raft-diagnostics.jsonl', OhosDiagnosticsSourceNodeKind.RegularFile],
+        ['/root-a/launch-link', ohosDiagnosticsSourceNodeKind(true, false, true)],
+        ['/root-a/real', OhosDiagnosticsSourceNodeKind.Directory],
+        ['/root-a/real/subdir-link', ohosDiagnosticsSourceNodeKind(true, false, true)],
+        ['/root-ab/launch-outside/raft-diagnostics.jsonl', OhosDiagnosticsSourceNodeKind.RegularFile],
+      ]);
+      const sourceChildren = new Map<string, Array<string>>([
+        ['/root-a', ['launch-safe', 'launch-link', 'real']],
+        ['/root-a/launch-safe', ['raft-diagnostics.jsonl']],
+        ['/root-a/real', ['subdir-link']],
+      ]);
+      const inspector = new FakeOhosDiagnosticsSourceInspector(sourceKinds, sourceChildren);
+      const admitted = collectOhosDiagnosticsSourceFiles('/root-a', '/root-a', inspector);
+      expect(admitted.length).assertEqual(1);
+      expect(admitted[0]).assertEqual('/root-a/launch-safe/raft-diagnostics.jsonl');
+      expect(collectOhosDiagnosticsSourceFiles(
+        '/root-a',
+        '/root-ab/launch-outside/raft-diagnostics.jsonl',
+        inspector
+      ).length).assertEqual(0);
       const reserved = new Set<string>();
       expect(ohosUniqueDiagnosticsStagedName('raft-diagnostics.jsonl', reserved))
         .assertEqual('raft-diagnostics.jsonl');
@@ -96,28 +160,28 @@ export default function localUnitTest() {
         .assertEqual('raft-diagnostics-3.jsonl');
       expect(compareOhosDiagnosticsPath('/b', '/a', 100, 100)).assertEqual(1);
       expect(compareOhosDiagnosticsPath('/new', '/old', 200, 100)).assertEqual(-100);
-      const selectedAfterEmptyCurrent = selectOhosDiagnosticsCandidateGroups([
+      const selectedAfterEmptyGroups = selectOhosDiagnosticsCandidateGroups([
         { entryPrefix: 'current-empty-1-', files: [] },
         { entryPrefix: 'current-empty-2-', files: [] },
         { entryPrefix: 'current-empty-3-', files: [] },
         { entryPrefix: 'current-empty-4-', files: [] },
         { entryPrefix: 'current-empty-5-', files: [] },
-        { entryPrefix: 'legacy-launch-', files: ['/legacy/raft-diagnostics.jsonl'] },
+        { entryPrefix: 'current-launch-', files: ['/current/raft-diagnostics.jsonl'] },
       ], 5);
-      expect(selectedAfterEmptyCurrent.length).assertEqual(1);
-      expect(selectedAfterEmptyCurrent[0].entryPrefix).assertEqual('legacy-launch-');
+      expect(selectedAfterEmptyGroups.length).assertEqual(1);
+      expect(selectedAfterEmptyGroups[0].entryPrefix).assertEqual('current-launch-');
 
       const selectedCurrentFirst = selectOhosDiagnosticsCandidateGroups([
         { entryPrefix: 'current-launch-', files: ['/current/raft-diagnostics.jsonl'] },
-        { entryPrefix: 'legacy-1-', files: ['/legacy/1.jsonl'] },
-        { entryPrefix: 'legacy-2-', files: ['/legacy/2.jsonl'] },
-        { entryPrefix: 'legacy-3-', files: ['/legacy/3.jsonl'] },
-        { entryPrefix: 'legacy-4-', files: ['/legacy/4.jsonl'] },
-        { entryPrefix: 'legacy-5-', files: ['/legacy/5.jsonl'] },
+        { entryPrefix: 'current-1-', files: ['/current/1.jsonl'] },
+        { entryPrefix: 'current-2-', files: ['/current/2.jsonl'] },
+        { entryPrefix: 'current-3-', files: ['/current/3.jsonl'] },
+        { entryPrefix: 'current-4-', files: ['/current/4.jsonl'] },
+        { entryPrefix: 'current-5-', files: ['/current/5.jsonl'] },
       ], 5);
       expect(selectedCurrentFirst.length).assertEqual(5);
       expect(selectedCurrentFirst[0].entryPrefix).assertEqual('current-launch-');
-      expect(selectedCurrentFirst[4].entryPrefix).assertEqual('legacy-4-');
+      expect(selectedCurrentFirst[4].entryPrefix).assertEqual('current-4-');
     });
     it('foregroundEpochAdvancesOnlyOnHiddenToVisibleLeadingEdge', 0, () => {
       const first = nextSlockOhosForegroundEpoch(0, false, true);

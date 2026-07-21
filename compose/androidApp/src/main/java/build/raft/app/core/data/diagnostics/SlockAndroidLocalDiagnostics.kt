@@ -21,9 +21,7 @@ import org.json.JSONObject
 object SlockAndroidLocalDiagnostics {
     private const val Tag = "SlockAndroidDiagnostics"
     private const val FeedbackDirName = "raft-feedback"
-    private const val LegacyFeedbackDirName = "slock-feedback"
     private const val FeedbackFilePrefix = "raft-feedback-"
-    private const val LegacyFeedbackFilePrefix = "slock-feedback-"
     private const val FeedbackZipExtension = ".zip"
     private const val FeedbackSnapshotName = "raft-diagnostics-summary.txt"
     private const val RecentDiagnosticsMaxChars = 120_000
@@ -145,7 +143,7 @@ object SlockAndroidLocalDiagnostics {
         val appContext = context.applicationContext
         check(flush()) { "diagnostics_flush_timeout operation=prepare_archive" }
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
-        feedbackDirs(appContext).forEach(::pruneFeedbackArchives)
+        pruneFeedbackArchives(feedbackDir)
         val archive = File(feedbackDir, "$FeedbackFilePrefix${System.currentTimeMillis()}$FeedbackZipExtension")
         ZipOutputStream(archive.outputStream().buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(FeedbackSnapshotName))
@@ -217,14 +215,9 @@ object SlockAndroidLocalDiagnostics {
             return
         }
         runCatching {
-            feedbackDirs(appContext).forEach { dir ->
-                dir.listFiles()
-                    ?.filter { file ->
-                        file.isFile &&
-                            (file.name.startsWith(FeedbackFilePrefix) || file.name.startsWith(LegacyFeedbackFilePrefix))
-                    }
-                    ?.forEach { it.delete() }
-            }
+            feedbackDir(appContext).listFiles()
+                ?.filter { file -> file.isFile && file.name.startsWith(FeedbackFilePrefix) }
+                ?.forEach { it.delete() }
         }
         SlockGeneralLogRing.clearFiles(appContext)
         SlockAuthCriticalJournal.clearFiles(appContext)
@@ -292,7 +285,7 @@ object SlockAndroidLocalDiagnostics {
         feedbackDir.listFiles()
             ?.filter {
                 it.isFile &&
-                    (it.name.startsWith(FeedbackFilePrefix) || it.name.startsWith(LegacyFeedbackFilePrefix)) &&
+                    it.name.startsWith(FeedbackFilePrefix) &&
                     it.name.endsWith(FeedbackZipExtension)
             }
             ?.sortedByDescending { it.lastModified() }
@@ -302,18 +295,14 @@ object SlockAndroidLocalDiagnostics {
 
     private fun feedbackDir(context: Context): File = File(context.cacheDir, FeedbackDirName)
 
-    private fun legacyFeedbackDir(context: Context): File = File(context.cacheDir, LegacyFeedbackDirName)
-
-    private fun feedbackDirs(context: Context): List<File> =
-        listOf(feedbackDir(context), legacyFeedbackDir(context)).distinctBy { it.absolutePath }
-
 }
 
 internal fun uniqueDiagnosticsZipEntryName(name: String, seenNames: MutableSet<String>): String {
-    if (seenNames.add(name)) return name
-    val slash = name.lastIndexOf('/')
-    val directory = if (slash >= 0) name.substring(0, slash + 1) else ""
-    val fileName = if (slash >= 0) name.substring(slash + 1) else name
+    val safeName = requireSafeDiagnosticsZipEntryName(name)
+    if (seenNames.add(safeName)) return safeName
+    val slash = safeName.lastIndexOf('/')
+    val directory = if (slash >= 0) safeName.substring(0, slash + 1) else ""
+    val fileName = if (slash >= 0) safeName.substring(slash + 1) else safeName
     val dot = fileName.lastIndexOf('.')
     val base = if (dot > 0) fileName.substring(0, dot) else fileName
     val extension = if (dot > 0) fileName.substring(dot) else ""
@@ -323,6 +312,20 @@ internal fun uniqueDiagnosticsZipEntryName(name: String, seenNames: MutableSet<S
         if (seenNames.add(candidate)) return candidate
         index += 1
     }
+}
+
+internal fun requireSafeDiagnosticsZipEntryName(name: String): String {
+    require(name.isNotBlank() && !name.startsWith('/') && !name.contains('\\')) {
+        "Unsafe diagnostics zip entry path"
+    }
+    val segments = name.split('/')
+    require(
+        segments.all { segment ->
+            segment.isNotBlank() && segment != "." && segment != ".." &&
+                !segment.contains("slock", ignoreCase = true)
+        }
+    ) { "Unsafe diagnostics zip entry segment" }
+    return name
 }
 
 internal fun shouldEmitDiagnostic(includeNonCritical: Boolean, authEvent: String?): Boolean =
