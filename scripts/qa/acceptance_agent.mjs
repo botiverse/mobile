@@ -28,6 +28,7 @@ import path from "node:path";
 import { normalizeAssertionAnnotation } from "./assertion_annotations.mjs";
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
+import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 ? argv[i + 1] : d; };
@@ -235,7 +236,7 @@ function preamble(size) {
     '  {"action":"launch"}                            (re)launch the app main activity',
     '  {"action":"note","milestone":"<3-6 words>","note":"<one-sentence conclusion>"}   record a',
     "                                                 progress checkpoint reviewers watch live",
-    '  {"action":"finish","verdict":"pass|fail","reason":"<what you verified / what failed>",',
+    '  {"action":"finish","verdict":"pass|fail|error","reason":"<what you verified / what failed>",',
     '   "annotations":[{"assertion_id":"<stable id from [id] in goal>","step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"[id] <short>"}]}',
     "",
     "Rules:",
@@ -259,8 +260,9 @@ function preamble(size) {
     "- After typing into a field, verify via the screenshot that the text landed in the",
     "  INTENDED field. If text went to the wrong field, tap that field, use clear, and redo.",
     "- finish with verdict pass ONLY if you visually confirmed every requirement of the goal;",
-    "  if blocked, loading forever, or the UI contradicts the goal, finish with verdict fail",
-    "  and a concrete reason. You have a limited turn budget — no exploration detours.",
+    "  use fail only when the APP UNDER TEST contradicts the goal or its own UI is blocked/loading;",
+    "  use error when a foreign system surface (Pixel Launcher, System UI, emulator/OS dialog)",
+    "  prevents testing. Never turn a launcher/emulator failure into a product fail.",
     "- VERDICT BEFORE CLEANUP: once every requirement is verified, finish IMMEDIATELY.",
     "  Cleanup steps (delete test data etc.) come after the requirements in the goal are",
     "  proven — if cleanup looks risky or hard to find, report it unfinished in the reason",
@@ -557,7 +559,7 @@ async function main() {
     }
 
     if (action.action === "finish") {
-      verdict = action.verdict === "pass" ? "pass" : "fail";
+      verdict = action.verdict === "pass" ? "pass" : action.verdict === "error" ? "error" : "fail";
       reason = String(action.reason || "");
       if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
       logStep({ turn: turns, action });
@@ -676,13 +678,13 @@ async function main() {
       pruneImages(messages);
       messages.push({
         role: "user",
-        content: [{ type: "text", text: `BUDGET EXHAUSTED (${budgetCause}). Produce your final verdict NOW as a single finish action. Judge ONLY from what you actually verified: any requirement you did not visually confirm makes the verdict fail, and the reason must name each unverified requirement. Include annotations for whatever you DID verify.` }],
+        content: [{ type: "text", text: `BUDGET EXHAUSTED (${budgetCause}). Produce your final verdict NOW as a single finish action. Judge ONLY from what you actually verified: an unverified requirement caused by the app makes the verdict fail; a foreign system/emulator blocker makes it error. Name each unverified requirement and include annotations for whatever you DID verify.` }],
         timestamp: Date.now(),
       });
       const reply = await callModel(models, model, messages);
       const action = parseAction(reply);
       if (action.action === "finish") {
-        verdict = action.verdict === "pass" ? "pass" : "fail";
+        verdict = action.verdict === "pass" ? "pass" : action.verdict === "error" ? "error" : "fail";
         reason = `[forced at ${budgetCause}] ${String(action.reason || "")}`;
         if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
         logStep({ turn: turns, action });
@@ -694,6 +696,24 @@ async function main() {
   if (!verdict) {
     verdict = "error";
     reason = turns >= opts.maxTurns ? `no verdict within ${opts.maxTurns} turns` : `wall-clock cap ${opts.maxMinutes}min hit`;
+  }
+
+  // Model judgment is not authoritative for infrastructure ownership. If the
+  // final Android surface mechanically names a known foreign system process,
+  // preserve the screenshots/annotations but force an honest harness error.
+  // A Raft/app-under-test ANR does not match this narrow allowlist and remains
+  // a product fail.
+  if (opts.platform === "android" && verdict === "fail") {
+    try {
+      const blocker = detectForeignAndroidSystemBlocker(uiNodes());
+      if (blocker) {
+        logStep({ turn: turns, event: "foreign_system_blocker", blocker });
+        verdict = "error";
+        reason = `harness/system blocker (${blocker.code}): ${blocker.label}; product requirements were not evaluated`;
+      }
+    } catch (e) {
+      logStep({ turn: turns, event: "system_blocker_check_failed", error: String(e?.message || e).slice(0, 200) });
+    }
   }
 
   const annotated = await annotateEvidence(size, tapAnnotations, assertionAnnotations);
