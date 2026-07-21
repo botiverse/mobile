@@ -94,6 +94,23 @@ class FocusDismissProductionContractTest {
         )
     }
 
+    @Test
+    fun sendFeedbackTerminatesTheNativeImeOnBlurWithoutChangingOrdinaryComposer() {
+        val composer = source("build/raft/app/ThreadComposerPage.kt")
+        val settings = source("build/raft/app/SettingsHomePage.kt")
+
+        assertContains(composer, "dismissKeyboardOnBlur: Boolean = false")
+        assertContains(
+            composer,
+            "if (dismissKeyboardOnBlur) {\n                                softwareKeyboardController?.hide()"
+        )
+        assertTrue(
+            commonMainRoot().readAllKotlin().occurrences("dismissKeyboardOnBlur = true") == 1,
+            "Only the Send feedback composer may opt into the explicit blur terminal"
+        )
+        assertContains(settings, "dismissKeyboardOnBlur = true")
+    }
+
     private fun source(path: String): String {
         val commonMain = commonMainRoot()
         val file = File(commonMain, path)

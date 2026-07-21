@@ -10719,6 +10719,7 @@ private fun SharedQuiverFeedbackContent(
                         pendingAttachments = attachments.toFeedbackComposerAttachmentItems(copy)
                     ),
                 composerSendKeyEnabled = composerSendKeyEnabled,
+                dismissKeyboardOnBlur = true,
                 onEvent = { action, value, _, attachmentId ->
                     when (action) {
                         "change" -> {
