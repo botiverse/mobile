@@ -67,7 +67,7 @@ dedupe/label/file machinery.
 
 ## Verified-backlog fix queue
 
-`.github/workflows/visual-fix-queue.yml` is an independent daily consumer. It
+`.github/workflows/visual-fix-queue.yml` is an independent two-hourly consumer. It
 does not depend on patrol filing a new issue that day: it selects the oldest
 1–3 issues that are still open, carry both `visual-drift` and `verified`, have
 no assignee, and are not already processing/refuted/agent-ready.
@@ -96,8 +96,9 @@ Safety boundaries:
   dispatch is dry-run by default, and pull requests always run a real-backlog
   dry-run regardless of the live variable;
 - one global workflow concurrency group plus `fix-queue:processing` prevents
-  duplicate consumption; terminal result labels prevent daily reprocessing;
-- daily case cap is clamped to 1–3; source prompt input is bounded and the
+  duplicate consumption; terminal result labels prevent later-run reprocessing;
+- per-run case cap is clamped to 1–3 (up to 36 cases/day at the two-hour cadence);
+  source prompt input is bounded and the
   token cap defaults to 1T (repo variable `VISUAL_FIX_QUEUE_TOKEN_CAP`) while
   conservatively reserving 75k per selected issue before any M3 call; the large
   budget never raises the 1–3 case cap or weakens any mutation/review boundary;
