@@ -318,15 +318,25 @@ internal enum class ThreadPickedAttachmentComposerAction {
 internal fun resolveThreadPickedAttachmentComposerAction(
     action: String,
     fileCount: Int,
-    imageAnnotationEnabled: Boolean
+    imageAnnotationEnabled: Boolean,
+    allFilesAreImages: Boolean = true,
 ): ThreadPickedAttachmentComposerAction {
     return when {
         fileCount <= 0 -> ThreadPickedAttachmentComposerAction.None
-        action == "attachImage" && imageAnnotationEnabled ->
+        action == "attachImage" && imageAnnotationEnabled && allFilesAreImages ->
             ThreadPickedAttachmentComposerAction.OpenImageAnnotation
         else -> ThreadPickedAttachmentComposerAction.UploadToComposer
     }
 }
+
+internal fun slockComposerImagePickerFilesAreStrictImages(files: List<PlatformFile>): Boolean =
+    files.isNotEmpty() &&
+        files.all { file ->
+            slockComposerImagePickerIsStrictImage(
+                fileName = file.fileName,
+                mimeType = file.mimeType.orEmpty(),
+            )
+        }
 private val ThreadMessageBodyTextStyle =
     SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
 
@@ -7320,7 +7330,8 @@ internal fun SharedThreadRouteContent(
                             resolveThreadPickedAttachmentComposerAction(
                                 action = action,
                                 fileCount = files.size,
-                                imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled()
+                                imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled(),
+                                allFilesAreImages = slockComposerImagePickerFilesAreStrictImages(files),
                             )
                         ) {
                             ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
