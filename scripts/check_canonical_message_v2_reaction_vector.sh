@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# Verifies the vendored Web canonical-message V2 reaction vector against its
+# pinned digest.
+#
+# Provenance: byte-exact copy of github.com/botiverse/slock
+#   @ WEB_HEAD : WEB_PATH (below).
+# Content at a pinned commit is immutable, so the check is fully local — no
+# network fetch or cross-repo token. To update the vector: fetch the new Web
+# file, vendored-copy it, and bump WEB_HEAD + EXPECTED_SHA256 together.
 set -euo pipefail
 
 readonly WEB_REPOSITORY="botiverse/slock"
@@ -7,26 +15,20 @@ readonly WEB_PATH="packages/shared/src/canonicalMessageV2.vector.json"
 readonly EXPECTED_SHA256="9ac66a83515df1e7eada19b864d5b41c6038a1a559de18249479455af4e9086e"
 readonly VENDORED_PATH="compose/shared/src/androidUnitTest/resources/sync/canonical-message-v2-reaction.vector.json"
 
-if [[ -z "${GH_TOKEN:-}" ]]; then
-  echo "GH_TOKEN is required to verify the private Web canonical-message V2 vector" >&2
+if [[ ! -f "$VENDORED_PATH" ]]; then
+  echo "Missing vendored canonical-message V2 vector: $VENDORED_PATH" >&2
   exit 1
 fi
 
-tmp_file="$(mktemp)"
-trap 'rm -f "$tmp_file"' EXIT
+if command -v sha256sum >/dev/null 2>&1; then
+  actual_sha256="$(sha256sum "$VENDORED_PATH" | awk '{print $1}')"
+else
+  actual_sha256="$(shasum -a 256 "$VENDORED_PATH" | awk '{print $1}')"
+fi
 
-gh api "repos/${WEB_REPOSITORY}/contents/${WEB_PATH}?ref=${WEB_HEAD}" --jq '.content' \
-  | tr -d '\n' \
-  | base64 --decode > "$tmp_file"
-
-actual_sha256="$(shasum -a 256 "$tmp_file" | awk '{print $1}')"
 if [[ "$actual_sha256" != "$EXPECTED_SHA256" ]]; then
-  echo "Web canonical-message V2 vector SHA mismatch: expected $EXPECTED_SHA256, got $actual_sha256" >&2
-  exit 1
-fi
-
-if ! cmp -s "$tmp_file" "$VENDORED_PATH"; then
-  echo "Vendored mobile canonical-message V2 vector differs from Web $WEB_HEAD:$WEB_PATH" >&2
+  echo "Vendored canonical-message V2 vector drifted from ${WEB_REPOSITORY}@${WEB_HEAD}:${WEB_PATH}" >&2
+  echo "expected $EXPECTED_SHA256, got $actual_sha256" >&2
   exit 1
 fi
 

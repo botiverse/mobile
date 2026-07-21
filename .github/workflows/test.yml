@@ -14,6 +14,7 @@ on:
       - "scripts/audit_translucent_action_tokens.py"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
+      - "scripts/ci/**"
       - "third_party/kuikly-ui"
       - "third_party/ktor-ohos/**"
       - "third_party/stately"
@@ -35,6 +36,7 @@ on:
       - "scripts/audit_translucent_action_tokens.py"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
+      - "scripts/ci/**"
       - "third_party/kuikly-ui"
       - "third_party/ktor-ohos/**"
       - "third_party/stately"
@@ -398,16 +400,16 @@ jobs:
         shell: bash
         run: scripts/check_attachment_mapper_formatting.sh
 
+      # Both vector guards verify the vendored copy against a digest pinned in
+      # the script — fully local since task #18 (a pinned commit's content is
+      # immutable, so the previous gh api fetch verified nothing and only added
+      # a token/network failure surface).
       - name: Guard Web/mobile read-state authority vector
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN }}
         run: scripts/check_read_state_behavior_vector.sh
 
       - name: Guard Web/mobile canonical-message V2 reaction vector
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN }}
         run: scripts/check_canonical_message_v2_reaction_vector.sh
 
       - name: Guard read-state SyncCore registration boundary
@@ -525,6 +527,16 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
 
+      # Checkout only exists to provide scripts/ci/assert-instrumentation-ok.sh
+      # (the instrumentation gates were previously hardcoded `grep 'OK (N tests)'`
+      # count pins that broke whenever a case was added to a gated class).
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Self-test instrumentation assertion helper
+        shell: bash
+        run: scripts/ci/test_assert_instrumentation_ok.sh
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -576,14 +588,14 @@ jobs:
             adb install -r "$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
             adb shell am instrument -w -r -e class build.raft.app.shared.SlockComposerFirstCharacterBaselineTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner > first-character-baseline-instrumentation.txt
             cat first-character-baseline-instrumentation.txt
-            grep -Fq 'OK (1 test)' first-character-baseline-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh first-character-baseline-instrumentation.txt 1
             adb install -r "$(find android-shared-atomic-sink-test-apk -type f -name '*.apk' | head -n 1)"
             adb shell pm list instrumentation | tee attachment-atomic-sink-instrumentation.txt
             grep -Fq 'instrumentation:build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner' attachment-atomic-sink-instrumentation.txt
             adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadAtomicSinkTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee -a attachment-atomic-sink-instrumentation.txt
-            grep -Fq 'OK (2 tests)' attachment-atomic-sink-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh attachment-atomic-sink-instrumentation.txt 2
             adb shell am instrument -w -r -e class build.raft.app.network.AndroidAttachmentDownloadCoordinatorRuntimeTest build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner | tee attachment-download-runtime-instrumentation.txt
-            grep -Fq 'OK (6 tests)' attachment-download-runtime-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh attachment-download-runtime-instrumentation.txt 6
             grep -Fq 'TASK2_RUNTIME scenario=slow_complete' attachment-download-runtime-instrumentation.txt
             grep -Fq 'TASK2_RUNTIME scenario=cancel_paths' attachment-download-runtime-instrumentation.txt
             grep -Fq 'TASK2_RUNTIME scenario=pause_resume' attachment-download-runtime-instrumentation.txt
@@ -591,7 +603,7 @@ jobs:
             grep -Fq 'TASK2_RUNTIME scenario=publishing_replacement' attachment-download-runtime-instrumentation.txt
             grep -Fq 'TASK2_RUNTIME scenario=generation_safety' attachment-download-runtime-instrumentation.txt
             adb shell am instrument -w -r -e class build.raft.app.core.data.diagnostics.PerformanceTraceFeedbackArchiveConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee performance-trace-feedback-instrumentation.txt
-            grep -Fq 'OK (1 test)' performance-trace-feedback-instrumentation.txt
+            scripts/ci/assert-instrumentation-ok.sh performance-trace-feedback-instrumentation.txt 1
 
       - name: Upload instrumentation output
         if: always()
@@ -617,6 +629,12 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
 
+      # Checkout provides scripts/ci/canonical-final-actual-host.sh (previously
+      # embedded in this workflow as a 160-line heredoc because the job had no
+      # checkout).
+      - name: Checkout
+        uses: actions/checkout@v5
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -632,175 +650,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Prepare canonical-final actual-host regression script
+      # The regression script lives in scripts/ci/canonical-final-actual-host.sh
+      # (extracted from an inline YAML heredoc in task #18 so it can be
+      # shellchecked, reviewed as a normal diff, and run locally).
+      - name: Validate canonical-final actual-host regression script
         shell: bash
-        run: |
-            cat > "$RUNNER_TEMP/canonical-final-actual-host.sh" <<'BASH'
-            set -euo pipefail
-            PACKAGE=build.raft.app.connectedtest
-            TEST_PACKAGE=build.raft.app.connectedtest.test
-            TEST_CLASS=build.raft.app.shared.RealtimeCanonicalFinalActualHostConnectedTest
-            CHAIN="CFH_${GITHUB_RUN_ID: -8}_${GITHUB_RUN_ATTEMPT}"
-            TARGET_UID=""
-            INSTRUMENT_PID=""
-            LOGCAT_PID=""
-            cleanup() {
-              set +eu
-              if test -n "${LOGCAT_PID:-}"; then
-                kill "$LOGCAT_PID" 2>/dev/null || true
-                wait "$LOGCAT_PID" 2>/dev/null || true
-              fi
-              if test -n "${TARGET_UID:-}"; then
-                adb shell iptables -w -D OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
-                adb shell ip6tables -w -D OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
-              fi
-              adb shell iptables -w -F "$CHAIN"
-              adb shell iptables -w -X "$CHAIN"
-              adb shell ip6tables -w -F "$CHAIN"
-              adb shell ip6tables -w -X "$CHAIN"
-            }
-            trap cleanup EXIT
-
-            adb wait-for-device
-            adb root
-            adb wait-for-device
-            for attempt in $(seq 1 120); do
-              if test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 && adb shell cmd package list packages >/dev/null 2>&1; then
-                break
-              fi
-              sleep 0.5
-            done
-            test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
-            adb shell cmd package list packages >/dev/null
-            test "$(adb shell id -u | tr -d '\r')" = 0
-            test "$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | wc -l)" -eq 1
-            test "$(find android-connected-test-apks -type f -name '*androidTest.apk' | wc -l)" -eq 1
-            APP_APK="$(find android-connected-test-apks -type f -name '*connectedTest.apk' -not -name '*androidTest*' | head -n 1)"
-            APP_TEST_APK="$(find android-connected-test-apks -type f -name '*androidTest.apk' | head -n 1)"
-            AAPT_BIN="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
-            test -x "$AAPT_BIN"
-            "$AAPT_BIN" dump badging "$APP_APK" | tee canonical-final-app-apk-badging.txt
-            "$AAPT_BIN" dump badging "$APP_TEST_APK" | tee canonical-final-test-apk-badging.txt
-            grep -Fq "package: name='$PACKAGE'" canonical-final-app-apk-badging.txt
-            grep -Fq "package: name='$TEST_PACKAGE'" canonical-final-test-apk-badging.txt
-            adb install -r "$APP_APK"
-            adb install -r "$APP_TEST_APK"
-            for attempt in $(seq 1 60); do
-              if adb shell pm path "$PACKAGE" | grep -Fq package: && adb shell pm path "$TEST_PACKAGE" | grep -Fq package:; then
-                break
-              fi
-              sleep 0.5
-            done
-            adb shell pm path "$PACKAGE" | tee canonical-final-target-package-path.txt
-            adb shell pm path "$TEST_PACKAGE" | tee canonical-final-test-package-path.txt
-            grep -Fq package: canonical-final-target-package-path.txt
-            grep -Fq package: canonical-final-test-package-path.txt
-            adb shell pm list instrumentation | tee canonical-final-instrumentation-list.txt
-            grep -Fq "instrumentation:$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner" canonical-final-instrumentation-list.txt
-            adb shell dumpsys package "$PACKAGE" > canonical-final-target-package.txt
-            adb shell dumpsys package "$TEST_PACKAGE" > canonical-final-test-package.txt
-
-            PID_BEFORE="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
-            printf 'pid_before=%s\n' "$PID_BEFORE" > canonical-final-process.txt
-            adb shell pm clear "$PACKAGE" | tee canonical-final-pm-clear.txt
-            grep -Fxq Success canonical-final-pm-clear.txt
-            PID_AFTER_CLEAR="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
-            printf 'pid_after_clear=%s\n' "$PID_AFTER_CLEAR" >> canonical-final-process.txt
-            test -z "$PID_AFTER_CLEAR"
-
-            TARGET_UID="$(adb shell cmd package list packages -U | grep -F "package:$PACKAGE uid:" | head -n 1 | sed 's/.*uid://' | tr -d '\r')"
-            test -n "$TARGET_UID"
-            printf 'target_uid=%s\nchain=%s\n' "$TARGET_UID" "$CHAIN" > canonical-final-iptables-identity.txt
-            adb shell iptables -w -N "$CHAIN"
-            adb shell iptables -w -A "$CHAIN" -o lo -j RETURN
-            adb shell iptables -w -A "$CHAIN" -d 127.0.0.0/8 -j RETURN
-            adb shell iptables -w -A "$CHAIN" -j REJECT
-            adb shell iptables -w -I OUTPUT 1 -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
-            adb shell iptables -w -C OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
-            adb shell ip6tables -w -N "$CHAIN"
-            adb shell ip6tables -w -A "$CHAIN" -o lo -j RETURN
-            adb shell ip6tables -w -A "$CHAIN" -d ::1/128 -j RETURN
-            adb shell ip6tables -w -A "$CHAIN" -j REJECT
-            adb shell ip6tables -w -I OUTPUT 1 -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
-            adb shell ip6tables -w -C OUTPUT -m owner --uid-owner "$TARGET_UID" -j "$CHAIN"
-            adb shell iptables -w -L "$CHAIN" -n -v -x > canonical-final-iptables-before.txt
-            adb shell ip6tables -w -L "$CHAIN" -n -v -x > canonical-final-ip6tables-before.txt
-            test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-iptables-before.txt)" = "0 0"
-            test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-before.txt)" = "0 0"
-
-            adb logcat -c
-            adb logcat -v threadtime > canonical-final-logcat-live.txt &
-            LOGCAT_PID=$!
-            (set +e; adb shell am instrument -w -r -e class "$TEST_CLASS" "$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner" > canonical-final-instrumentation.txt 2>&1; echo "$?" > canonical-final-instrumentation-status.txt) &
-            INSTRUMENT_PID=$!
-            PID_DURING=""
-            for attempt in $(seq 1 200); do
-              PID_DURING="$(adb shell pidof "$PACKAGE" | tr -d '\r' || true)"
-              if test -n "$PID_DURING"; then
-                break
-              fi
-              sleep 0.1
-            done
-            printf 'pid_during=%s\n' "$PID_DURING" >> canonical-final-process.txt
-            if test -n "$PID_BEFORE" && test -n "$PID_DURING"; then
-              test "$PID_DURING" != "$PID_BEFORE"
-            fi
-            wait "$INSTRUMENT_PID"
-            INSTRUMENT_STATUS="$(cat canonical-final-instrumentation-status.txt)"
-            kill "$LOGCAT_PID" 2>/dev/null || true
-            wait "$LOGCAT_PID" 2>/dev/null || true
-            LOGCAT_PID=""
-            cat canonical-final-instrumentation.txt
-            adb shell iptables -w -L "$CHAIN" -n -v -x > canonical-final-iptables-after.txt
-            adb shell ip6tables -w -L "$CHAIN" -n -v -x > canonical-final-ip6tables-after.txt
-            adb logcat -d -v threadtime > canonical-final-logcat.txt
-            adb shell ps -A > canonical-final-process-list.txt
-            adb shell pm list instrumentation > canonical-final-instrumentation-list-after.txt
-            grep 'canonical_final_actual_host_trace' canonical-final-logcat.txt > canonical-final-trace.txt || true
-            test -n "$PID_DURING"
-            test "$INSTRUMENT_STATUS" = 0
-            grep -Fq 'OK (1 test)' canonical-final-instrumentation.txt
-            if grep -Eiq '(^|[^0-9])0 tests|skipped|ignored|assumption.*fail' canonical-final-instrumentation.txt; then
-              echo 'Instrumentation reported a skipped or zero-test run.' >&2
-              exit 1
-            fi
-            test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-iptables-after.txt)" = "0 0"
-            test "$(awk '$3 == "REJECT" { print $1 " " $2 }' canonical-final-ip6tables-after.txt)" = "0 0"
-
-            python3 - <<'PY'
-            import hashlib
-            import json
-
-            marker = "canonical_final_actual_host_trace payload="
-            groups = {}
-            with open("canonical-final-trace.txt", encoding="utf-8") as source:
-                for raw in source:
-                    start = raw.index(marker) + len(marker)
-                    end = raw.rindex(" sha256=")
-                    payload_text = raw[start:end]
-                    digest = raw[end + len(" sha256="):].strip()
-                    assert len(payload_text.encode("utf-8")) <= 3000
-                    assert "host-access-" not in payload_text
-                    assert "host-refresh-" not in payload_text
-                    assert "authorization" not in payload_text.lower()
-                    assert hashlib.sha256(payload_text.encode()).hexdigest() == digest
-                    payload = json.loads(payload_text)
-                    groups.setdefault(payload["runNonce"], []).append((payload, digest))
-            assert len(groups) == 1, groups.keys()
-            entries = next(iter(groups.values()))
-            assert [entry[0]["seq"] for entry in entries] == list(range(1, len(entries) + 1))
-            terminals = [entry for entry in entries if entry[0]["terminal"]]
-            assert len(terminals) == 1 and entries[-1] == terminals[0]
-            phases = entries[:-1]
-            terminal = terminals[0][0]
-            assert terminal["success"] is True
-            assert terminal["phaseCount"] == len(phases)
-            assert terminal["lastSeq"] == len(phases)
-            chain = "|".join(entry[1] for entry in phases)
-            assert hashlib.sha256(chain.encode()).hexdigest() == terminal["chainSha256"]
-            PY
-            BASH
-            bash -n "$RUNNER_TEMP/canonical-final-actual-host.sh"
+        run: bash -n scripts/ci/canonical-final-actual-host.sh
 
       - name: Run canonical-final actual-host regression under exact-zero egress gate
         uses: reactivecircus/android-emulator-runner@v2
@@ -814,7 +669,7 @@ jobs:
           emulator-boot-timeout: 1200
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: bash "$RUNNER_TEMP/canonical-final-actual-host.sh"
+          script: bash scripts/ci/canonical-final-actual-host.sh
 
       - name: Upload canonical-final actual-host evidence
         if: always()

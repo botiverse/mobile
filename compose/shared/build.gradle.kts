@@ -108,6 +108,10 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.3")
+                // Virtual-time coroutine testing (runTest/advanceTimeBy) — the
+                // required default for new async tests; see AGENTS.md unit-test
+                // rules (task #18). Version tracks kotlinx-coroutines-core above.
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
             }
         }
         val androidMain by getting {
