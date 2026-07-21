@@ -8,6 +8,24 @@ import kotlin.test.assertTrue
 
 class FocusDismissProductionContractTest {
     @Test
+    fun focusOwnerRegistryDoesNotArmOutsideDismissUntilAFieldOwnsFocus() {
+        val registry = SlockInputFocusOwnerRegistry()
+        val composerOwner = Any()
+        val unrelatedOwner = Any()
+
+        assertFalse(registry.hasActiveOwner)
+        registry.setFocused(composerOwner, true)
+        assertTrue(registry.hasActiveOwner)
+        registry.setFocused(composerOwner, true)
+        assertTrue(registry.hasActiveOwner, "Repeated focus must not create duplicate ownership")
+        registry.setFocused(unrelatedOwner, true)
+        registry.setFocused(composerOwner, false)
+        assertTrue(registry.hasActiveOwner, "Another active owner must keep the shared host armed")
+        registry.setFocused(unrelatedOwner, false)
+        assertFalse(registry.hasActiveOwner)
+    }
+
+    @Test
     fun sharedDismissModifierUsesUnconsumedDownAndNeverConsumesTheGesture() {
         val source = source("build/raft/app/BasicWidget.kt")
         val helper = source.substringAfter("internal fun Modifier.dismissInputFocusOnUnconsumedPointerDown(")
@@ -70,7 +88,7 @@ class FocusDismissProductionContractTest {
     }
 
     @Test
-    fun threadComposerKeepsItsDedicatedNonConsumingTimelineDismissContract() {
+    fun threadComposerTimelineAndSharedHostComposeWithoutConsumingTheGesture() {
         val basic = source("build/raft/app/BasicWidget.kt")
         val thread = source("build/raft/app/ThreadPage.kt")
         val composer = source("build/raft/app/ThreadComposerPage.kt")
@@ -87,17 +105,20 @@ class FocusDismissProductionContractTest {
             Regex("""(?m)^\s*change\.consume\(\)""").containsMatchIn(legacyTouchListener),
             "The release timeline listener must observe without consuming taps or scrolls"
         )
-        assertContains(composer, "participatesInGlobalFocusDismiss = false")
-        assertTrue(
-            commonMainRoot().readAllKotlin().occurrences("participatesInGlobalFocusDismiss = false") == 1,
-            "Thread composer must remain the only explicit global focus-dismiss opt-out"
+        assertFalse("participatesInGlobalFocusDismiss = false" in composer)
+        assertFalse("participatesInGlobalFocusDismiss: Boolean = false" in composer)
+        assertFalse("participatesInGlobalFocusDismiss = false" in commonMainRoot().readAllKotlin())
+        assertContains(
+            functionBlock(composer, "internal fun ThreadComposerScreen()", "@Composable\nprivate fun rememberThreadComposerPayloadTrace("),
+            "SlockInputFocusDismissHost"
         )
     }
 
     @Test
-    fun sendFeedbackTerminatesTheNativeImeOnBlurWithoutChangingOrdinaryComposer() {
+    fun everyComposerUsesTheSharedOutsideDismissHostAndFeedbackAddsOneImeTerminal() {
         val composer = source("build/raft/app/ThreadComposerPage.kt")
         val settings = source("build/raft/app/SettingsHomePage.kt")
+        val focusHost = source("build/raft/app/BasicWidget.kt")
 
         assertContains(composer, "dismissKeyboardOnBlur: Boolean = false")
         assertContains(
@@ -109,6 +130,20 @@ class FocusDismissProductionContractTest {
             "Only the Send feedback composer may opt into the explicit blur terminal"
         )
         assertContains(settings, "dismissKeyboardOnBlur = true")
+        assertTrue(focusHost.occurrences("participatesInGlobalFocusDismiss: Boolean = true") == 2)
+        assertContains(focusHost, "focusOwnerRegistry?.setFocused(focusOwner, true)")
+        assertContains(focusHost, "enabled = registry.hasActiveOwner")
+        assertContains(focusHost, "awaitFirstDown(requireUnconsumed = true)")
+        assertContains(focusHost, "currentFocusManager.clearFocus(force = true)")
+        assertTrue(focusHost.occurrences("else if (lastFocus)") == 2)
+        assertTrue(focusHost.occurrences("currentOnBlur()") == 2)
+        assertTrue(composer.occurrences("softwareKeyboardController?.hide()") == 1)
+        val blurBlock =
+            composer.substringAfter("onBlur = {\n                            focused = false")
+                .substringBefore("                        maxLines = 4")
+        assertContains(blurBlock, "softwareKeyboardController?.hide()")
+        assertContains(blurBlock, "onEvent(\"blur\", null, null, null)")
+        assertFalse("fieldValue =" in blurBlock, "Blur must preserve the feedback draft")
     }
 
     private fun source(path: String): String {

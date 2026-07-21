@@ -587,28 +587,30 @@ internal fun ThreadComposerScreen() {
             "thread_composer_render instanceId=${payload.instanceId} syncNonce=${payload.syncNonce} attachments=${payload.pendingAttachments.size} mode=${payload.composerMode}"
         )
     }
-    Box(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        Box(modifier = Modifier.width(ThreadComposerVisualComponentWidth).heightIn(min = ThreadComposerVisualComponentMinHeight)) {
-            Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-            Box(
-                modifier = Modifier
-                    .width(ThreadComposerVisualInputWidth)
-                    .offset(x = 0f, y = 14f),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                ThreadComposerContent(
-                    payload = payload,
-                    onEvent = { action, _, _, attachmentId ->
-                        bridge.log(
-                            "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
-                        )
-                    },
-                    contentPaddingTop = 0.dp,
-                    contentPaddingBottom = ThreadComposerStandaloneBottomPadding
-                )
+    SlockInputFocusDismissHost { focusDismissModifier ->
+        Box(
+            modifier = focusDismissModifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Box(modifier = Modifier.width(ThreadComposerVisualComponentWidth).heightIn(min = ThreadComposerVisualComponentMinHeight)) {
+                Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                Box(
+                    modifier = Modifier
+                        .width(ThreadComposerVisualInputWidth)
+                        .offset(x = 0f, y = 14f),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    ThreadComposerContent(
+                        payload = payload,
+                        onEvent = { action, _, _, attachmentId ->
+                            bridge.log(
+                                "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
+                            )
+                        },
+                        contentPaddingTop = 0.dp,
+                        contentPaddingBottom = ThreadComposerStandaloneBottomPadding
+                    )
+                }
             }
         }
     }
@@ -1543,7 +1545,6 @@ internal fun ThreadComposerContent(
                         placeholderColor = SlockColor.TextMutedGray,
                         cursorBrush = SolidColor(SlockColor.TextBlack),
                         systemNewlineAction = true,
-                        participatesInGlobalFocusDismiss = false,
                         // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                         focusRequester = composerFocusRequester,
                         modifier = Modifier
