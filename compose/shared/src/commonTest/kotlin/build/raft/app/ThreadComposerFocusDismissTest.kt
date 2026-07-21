@@ -7,8 +7,8 @@ import kotlin.test.assertTrue
 class ThreadComposerFocusDismissTest {
     @Test
     fun timelinePointerDownDismissesComposerWithoutWaitingForScrollOrPointerUp() {
-        assertTrue(shouldDismissThreadComposerOnTimelineTouch(TouchType.Down))
-        assertFalse(shouldDismissThreadComposerOnTimelineTouch(TouchType.Move))
-        assertFalse(shouldDismissThreadComposerOnTimelineTouch(TouchType.Up))
+        assertTrue(shouldDismissInputFocusOnScrollableChrome(TouchType.Down))
+        assertFalse(shouldDismissInputFocusOnScrollableChrome(TouchType.Move))
+        assertFalse(shouldDismissInputFocusOnScrollableChrome(TouchType.Up))
     }
 }

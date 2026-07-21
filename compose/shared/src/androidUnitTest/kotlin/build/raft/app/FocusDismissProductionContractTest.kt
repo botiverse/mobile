@@ -128,15 +128,58 @@ class FocusDismissProductionContractTest {
         val basic = source("build/raft/app/BasicWidget.kt")
         val thread = source("build/raft/app/ThreadPage.kt")
         val composer = source("build/raft/app/ThreadComposerPage.kt")
+        val settings = source("build/raft/app/SettingsHomePage.kt")
+        val feedback =
+            functionBlock(
+                settings,
+                "private fun SharedQuiverFeedbackContent(",
+                "private enum class SettingsQuiverFeedbackEntryKind"
+            )
         val legacyTouchListener =
             functionBlock(
                 basic,
                 "fun Modifier.touchListener(",
                 "/**\n * Clears the current input focus"
             )
+        val scrollableChromeObserver =
+            functionBlock(
+                basic,
+                "internal fun Modifier.dismissInputFocusOnScrollableChrome(",
+                "/**\n * Installs the shared blank-down focus-dismiss boundary"
+            )
 
-        assertContains(thread, ".touchListener { type, _ ->")
-        assertContains(thread, "focusManager.clearFocus(force = true)")
+        assertContains(thread, ".dismissInputFocusOnScrollableChrome()\n                    .touchListener { type, _ ->")
+        assertContains(feedback, "modifier = Modifier.weight(1f).fillMaxWidth().dismissInputFocusOnScrollableChrome()")
+        assertTrue(
+            feedback.indexOf(".dismissInputFocusOnScrollableChrome()") < feedback.indexOf("ThreadComposerContent("),
+            "The feedback scroll chrome must remain a sibling before the composer, never an input ancestor"
+        )
+        val scrollableChromeCallsites =
+            commonMainRoot().walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { it.relativeTo(commonMainRoot()).invariantSeparatorsPath != "build/raft/app/BasicWidget.kt" }
+                .flatMap { file ->
+                    file.readLines().asSequence()
+                        .filter { ".dismissInputFocusOnScrollableChrome()" in it }
+                        .map { file.relativeTo(commonMainRoot()).invariantSeparatorsPath }
+                }
+                .toList()
+                .sorted()
+        assertTrue(
+            scrollableChromeCallsites ==
+                listOf("build/raft/app/SettingsHomePage.kt", "build/raft/app/ThreadPage.kt"),
+            "Unexpected production scrollable-chrome callsites: $scrollableChromeCallsites"
+        )
+        assertFalse("focusManager.clearFocus(force = true)" in thread)
+        assertContains(scrollableChromeObserver, "shouldDismissInputFocusOnScrollableChrome(type)")
+        assertContains(scrollableChromeObserver, "focusOwnerRegistry?.hasActiveOwner == true")
+        assertContains(scrollableChromeObserver, "currentFocusManager.clearFocus(force = true)")
+        assertFalse(".consume()" in scrollableChromeObserver)
+        assertContains(thread, "if (type == TouchType.Move) {")
+        assertContains(thread, "userScrollGeneration.value += 1")
+        assertContains(thread, "pendingFocusedMessageAnchorIdentityState.value")
+        assertContains(thread, "latestLocalSendBottomAnchorActiveKey = null")
+        assertContains(thread, "allowBottomAutoAnchor = false")
         assertFalse(
             Regex("""(?m)^\s*change\.consume\(\)""").containsMatchIn(legacyTouchListener),
             "The release timeline listener must observe without consuming taps or scrolls"

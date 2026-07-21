@@ -635,6 +635,25 @@ internal class SlockInputFocusOwnerRegistry {
 internal val LocalSlockInputFocusOwnerRegistry =
     compositionLocalOf<SlockInputFocusOwnerRegistry?> { null }
 
+internal fun shouldDismissInputFocusOnScrollableChrome(type: TouchType): Boolean =
+    type == TouchType.Down
+
+/**
+ * Shared non-consuming outside-focus observer for scrollable chrome that is a sibling of the
+ * active input. Attaching directly to the scroll node is required on Kuikly/iOS because the native
+ * scroll host does not relay its consumed pointer stream to an ancestor Compose pointerInput.
+ */
+@Composable
+internal fun Modifier.dismissInputFocusOnScrollableChrome(): Modifier {
+    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
+    return touchListener { type, _ ->
+        if (shouldDismissInputFocusOnScrollableChrome(type) && focusOwnerRegistry?.hasActiveOwner == true) {
+            currentFocusManager.clearFocus(force = true)
+        }
+    }
+}
+
 /**
  * Installs the shared blank-down focus-dismiss boundary for an app, page, or modal root.
  * Inputs register themselves through [TextField], so adding a standard input never requires a
