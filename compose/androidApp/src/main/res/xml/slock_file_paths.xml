@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path
-        name="slock_feedback"
+        name="raft_feedback"
+        path="raft-feedback/" />
+    <cache-path
+        name="legacy_slock_feedback"
         path="slock-feedback/" />
     <cache-path
         name="slock_attachments"

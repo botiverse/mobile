@@ -14,7 +14,7 @@ class SlockAuthCriticalJournalTest {
         val launchDir = Files.createTempDirectory("slock-launch-auth").resolve("launch-1800000000000-a").toFile()
 
         assertEquals(
-            launchDir.resolve("slock-auth-critical.jsonl"),
+            launchDir.resolve("raft-auth-critical.jsonl"),
             authJournalFileIn(launchDir)
         )
     }

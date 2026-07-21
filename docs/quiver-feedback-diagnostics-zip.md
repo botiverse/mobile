@@ -1,11 +1,11 @@
-# Reading a Quiver feedback diagnostics zip (Raft mobile)
+# Reading Quiver feedback diagnostics attachments (Raft mobile)
 
 When a user submits feedback in the app, the app bundles its **local**
-diagnostics (a JSONL ring buffer it writes itself) into a
-`slock-feedback-*.zip` and uploads it as a Quiver feedback **attachment**.
-Quiver only transports and stores that zip — it does not define or parse the
-contents. This doc is the source of truth for that archive's layout; the
-app/shared layer owns the format and it may change here.
+diagnostics (a JSONL ring buffer it writes itself) and uploads them as Quiver
+feedback **attachments**. Android and HarmonyOS create a
+`raft-feedback-*.zip`; iOS returns a summary plus separate log attachment
+paths. Quiver only transports and stores those bytes — it does not define or
+parse their contents. The app/shared layer owns these formats.
 
 ## Getting the zip from a feedback id
 
@@ -19,24 +19,26 @@ quiver feedback show raft-android <ticketId>
 # 2. download the raw attachment (bytes as-is; Quiver does not unzip)
 quiver feedback download-attachment raft-android <ticketId> <attachmentId> -o diag.zip
 
-# 3. unzip locally
+# 3. Android/HarmonyOS only: unzip locally
 unzip diag.zip -d diag/
 ```
 
 (Retrieval details — auth, REST equivalents, short-id resolution — live in the
 Quiver docs: `/docs/agent-cli-feedback`. Everything below is app-owned.)
 
-## Archive layout
+## Android ZIP layout
 
 ```
-slock-diagnostics-summary.txt      human-readable environment/session summary
+raft-diagnostics-summary.txt       human-readable environment/session summary
 app_logs/
-  slock-diagnostics.jsonl          current app log (JSONL); rotations .1 .. .N
+  raft-diagnostics.jsonl           current app log (JSONL); rotations .1 .. .N
   recent-memory.jsonl              recent in-memory events
+auth_logs/
+  raft-auth-critical.jsonl         bounded auth-critical journal when present
 ```
 
-`slock-diagnostics-summary.txt` is the first thing to read — it pins down the
-build and device:
+Android writes one `raft-feedback-*.zip`. Its summary is the first thing to
+read — it pins down the build and device:
 
 ```
 App: Raft         Version: 1.0.4   Build: 1000400   Source: <commit>
@@ -45,9 +47,65 @@ Device: HUAWEI SGT-AL10            Session: Signed in / <user> / <server>
 App JSONL log: enabled             (App-owned diagnostics JSONL)
 ```
 
+## iOS attachment layout
+
+iOS prepares a snapshot directory and returns multiple attachment paths rather
+than one ZIP. The first path is the summary; subsequent paths are sanitized log
+copies grouped by launch session:
+
+```
+raft-feedback-<snapshot>/
+  raft-diagnostics-summary.txt
+  launch-<current-session>/
+    raft-diagnostics.jsonl
+    raft-diagnostics.jsonl.1
+  legacy-launch-<old-session>/
+    raft-diagnostics.jsonl
+  legacy/
+    raft-diagnostics.jsonl
+```
+
+Name collisions after legacy normalization are preserved with stable suffixes
+such as `raft-diagnostics-2.jsonl` and `raft-diagnostics-3.jsonl`; source bytes
+are never overwritten. Quiver receives each returned path as an attachment.
+
+## HarmonyOS ZIP layout
+
+HarmonyOS writes one `raft-feedback-*.zip`. It stages the summary and selected
+logs into a flat upload directory before compression, so session identity is
+encoded into each log entry name:
+
+```
+raft-diagnostics-summary.txt
+launch-<current-session>-raft-diagnostics.jsonl
+launch-<current-session>-raft-diagnostics.jsonl.1
+legacy-launch-<old-session>-raft-diagnostics.jsonl
+legacy-1-raft-diagnostics.jsonl
+```
+
+Equal-name collisions use the same stable `-2`, `-3`, ... suffix rule. The
+temporary staged files are removed after ZIP creation, including partially
+copied targets when a copy fails.
+
+## One-release legacy compatibility
+
+The client writes only the `raft-*` names above. For at least one release after
+the rebrand, Android, iOS, and HarmonyOS still discover, package, and clear
+historical `slock-feedback-*`, `slock-diagnostics*`,
+`slock-auth-critical.jsonl`, and `slock_diagnostics_logs` files. Historical
+Hands attachments are immutable and are not renamed server-side. When an old
+local log is included in newly generated attachments, its new attachment name
+is normalized to the corresponding `raft-*` name. Files already stored by
+Hands keep their original names and bytes.
+
+Internal `Slock*` class names, log tags, and stable event/schema identifiers are
+not part of this filename migration. Consumers must continue accepting the
+existing tag/event vocabulary unless a separate versioned contract replaces it.
+
 ## Log line format
 
-Each `app_logs/*.jsonl` line is one JSON object:
+Each diagnostics JSONL line is one JSON object. On Android these live under
+`app_logs/`; iOS and HarmonyOS use the paths described above:
 
 ```json
 {"ts":"2026-07-08T14:16:33.386+08:00","level":"info","tag":"SlockKuikly",

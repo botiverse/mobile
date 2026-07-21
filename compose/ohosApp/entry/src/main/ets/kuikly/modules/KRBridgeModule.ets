@@ -624,7 +624,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           return;
         }
         case "clearDiagnostics": {
-          SlockOhosDiagnostics.clear();
+          SlockOhosAppDiagnostics.clearLocalFiles(getContext(this) as common.UIAbilityContext);
           SlockOhosDiagnostics.record("Settings", "diagnostics_cleared");
           callback({ "status": "ok", "code": "diagnostics_cleared" });
           return;

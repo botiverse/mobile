@@ -20,10 +20,12 @@ import org.json.JSONObject
  */
 object SlockAndroidLocalDiagnostics {
     private const val Tag = "SlockAndroidDiagnostics"
-    private const val FeedbackDirName = "slock-feedback"
-    private const val FeedbackFilePrefix = "slock-feedback-"
+    private const val FeedbackDirName = "raft-feedback"
+    private const val LegacyFeedbackDirName = "slock-feedback"
+    private const val FeedbackFilePrefix = "raft-feedback-"
+    private const val LegacyFeedbackFilePrefix = "slock-feedback-"
     private const val FeedbackZipExtension = ".zip"
-    private const val FeedbackSnapshotName = "slock-diagnostics-summary.txt"
+    private const val FeedbackSnapshotName = "raft-diagnostics-summary.txt"
     private const val RecentDiagnosticsMaxChars = 120_000
     private const val MaxValueLength = 512
     private const val MaxQueuedMessageLength = 8_192
@@ -143,7 +145,7 @@ object SlockAndroidLocalDiagnostics {
         val appContext = context.applicationContext
         check(flush()) { "diagnostics_flush_timeout operation=prepare_archive" }
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
-        pruneFeedbackArchives(feedbackDir)
+        feedbackDirs(appContext).forEach(::pruneFeedbackArchives)
         val archive = File(feedbackDir, "$FeedbackFilePrefix${System.currentTimeMillis()}$FeedbackZipExtension")
         ZipOutputStream(archive.outputStream().buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(FeedbackSnapshotName))
@@ -153,23 +155,20 @@ object SlockAndroidLocalDiagnostics {
             val seenNames = mutableSetOf<String>()
             val performanceTraceJsonl = SlockPerformanceTraceRing.exportRecentJsonl()
             if (performanceTraceJsonl.isNotBlank()) {
-                zip.putNextEntry(ZipEntry("performance/recent-15s.jsonl".uniqueZipEntryName(seenNames)))
+                zip.putNextEntry(ZipEntry(uniqueDiagnosticsZipEntryName("performance/recent-15s.jsonl", seenNames)))
                 zip.write(performanceTraceJsonl.toByteArray(StandardCharsets.UTF_8))
                 zip.closeEntry()
             }
             val recentJsonl = SlockGeneralLogRing.exportRecentJsonl()
             if (recentJsonl.isNotBlank()) {
-                zip.putNextEntry(ZipEntry("app_logs/recent-memory.jsonl".uniqueZipEntryName(seenNames)))
+                zip.putNextEntry(ZipEntry(uniqueDiagnosticsZipEntryName("app_logs/recent-memory.jsonl", seenNames)))
                 zip.write(recentJsonl.toByteArray(StandardCharsets.UTF_8))
                 zip.closeEntry()
             }
             SlockGeneralLogRing.logFiles(appContext).forEach { file ->
                 if (file.isFile && file.length() > 0L) {
-                    val relativePath = SlockGeneralLogRing.relativeLogPath(
-                        SlockGeneralLogRing.logRoot(appContext),
-                        file
-                    )
-                    val entryName = "app_logs/$relativePath".uniqueZipEntryName(seenNames)
+                    val relativePath = SlockGeneralLogRing.archiveRelativeLogPath(appContext, file)
+                    val entryName = uniqueDiagnosticsZipEntryName("app_logs/$relativePath", seenNames)
                     zip.putNextEntry(ZipEntry(entryName))
                     file.inputStream().buffered().use { input -> input.copyTo(zip) }
                     zip.closeEntry()
@@ -177,7 +176,7 @@ object SlockAndroidLocalDiagnostics {
             }
             SlockAuthCriticalJournal.logFiles(appContext).forEach { file ->
                 val relativePath = SlockAuthCriticalJournal.relativeLogPath(appContext, file)
-                val entryName = "auth_logs/$relativePath".uniqueZipEntryName(seenNames)
+                val entryName = uniqueDiagnosticsZipEntryName("auth_logs/$relativePath", seenNames)
                 zip.putNextEntry(ZipEntry(entryName))
                 file.inputStream().buffered().use { input -> input.copyTo(zip) }
                 zip.closeEntry()
@@ -218,9 +217,14 @@ object SlockAndroidLocalDiagnostics {
             return
         }
         runCatching {
-            feedbackDir(appContext).listFiles()
-                ?.filter { it.isFile && it.name.startsWith(FeedbackFilePrefix) }
-                ?.forEach { it.delete() }
+            feedbackDirs(appContext).forEach { dir ->
+                dir.listFiles()
+                    ?.filter { file ->
+                        file.isFile &&
+                            (file.name.startsWith(FeedbackFilePrefix) || file.name.startsWith(LegacyFeedbackFilePrefix))
+                    }
+                    ?.forEach { it.delete() }
+            }
         }
         SlockGeneralLogRing.clearFiles(appContext)
         SlockAuthCriticalJournal.clearFiles(appContext)
@@ -286,7 +290,11 @@ object SlockAndroidLocalDiagnostics {
 
     private fun pruneFeedbackArchives(feedbackDir: File) {
         feedbackDir.listFiles()
-            ?.filter { it.isFile && it.name.startsWith(FeedbackFilePrefix) && it.name.endsWith(FeedbackZipExtension) }
+            ?.filter {
+                it.isFile &&
+                    (it.name.startsWith(FeedbackFilePrefix) || it.name.startsWith(LegacyFeedbackFilePrefix)) &&
+                    it.name.endsWith(FeedbackZipExtension)
+            }
             ?.sortedByDescending { it.lastModified() }
             ?.drop(5)
             ?.forEach { it.delete() }
@@ -294,20 +302,26 @@ object SlockAndroidLocalDiagnostics {
 
     private fun feedbackDir(context: Context): File = File(context.cacheDir, FeedbackDirName)
 
-    private fun String.uniqueZipEntryName(seenNames: MutableSet<String>): String {
-        if (seenNames.add(this)) return this
-        val slash = lastIndexOf('/')
-        val directory = if (slash >= 0) substring(0, slash + 1) else ""
-        val name = if (slash >= 0) substring(slash + 1) else this
-        val dot = name.lastIndexOf('.')
-        val base = if (dot > 0) name.substring(0, dot) else name
-        val extension = if (dot > 0) name.substring(dot) else ""
-        var index = 2
-        while (true) {
-            val candidate = "$directory$base-$index$extension"
-            if (seenNames.add(candidate)) return candidate
-            index += 1
-        }
+    private fun legacyFeedbackDir(context: Context): File = File(context.cacheDir, LegacyFeedbackDirName)
+
+    private fun feedbackDirs(context: Context): List<File> =
+        listOf(feedbackDir(context), legacyFeedbackDir(context)).distinctBy { it.absolutePath }
+
+}
+
+internal fun uniqueDiagnosticsZipEntryName(name: String, seenNames: MutableSet<String>): String {
+    if (seenNames.add(name)) return name
+    val slash = name.lastIndexOf('/')
+    val directory = if (slash >= 0) name.substring(0, slash + 1) else ""
+    val fileName = if (slash >= 0) name.substring(slash + 1) else name
+    val dot = fileName.lastIndexOf('.')
+    val base = if (dot > 0) fileName.substring(0, dot) else fileName
+    val extension = if (dot > 0) fileName.substring(dot) else ""
+    var index = 2
+    while (true) {
+        val candidate = "$directory$base-$index$extension"
+        if (seenNames.add(candidate)) return candidate
+        index += 1
     }
 }
 

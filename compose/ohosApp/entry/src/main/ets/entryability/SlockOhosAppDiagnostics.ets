@@ -19,14 +19,71 @@ const TAG: string = 'SlockOhosDiagnostics';
 const DIAGNOSTIC_UPLOAD_DIR_NAME: string = 'diagnostics_upload';
 const CRASH_DIR_NAME: string = 'crashes';
 const MAX_DIAGNOSTIC_EXPORT_CHARS: number = 180000;
-const FEEDBACK_FILE_PREFIX: string = 'slock-feedback-';
-const FEEDBACK_SUMMARY_NAME: string = 'slock-diagnostics-summary.txt';
-const DIAGNOSTIC_LOG_DIR_NAME: string = 'slock_diagnostics_logs';
-const DIAGNOSTIC_LOG_FILE_NAME: string = 'slock-diagnostics.jsonl';
+const FEEDBACK_FILE_PREFIX: string = 'raft-feedback-';
+const LEGACY_FEEDBACK_FILE_PREFIX: string = 'slock-feedback-';
+const FEEDBACK_SUMMARY_NAME: string = 'raft-diagnostics-summary.txt';
+const DIAGNOSTIC_LOG_DIR_NAME: string = 'raft_diagnostics_logs';
+const LEGACY_DIAGNOSTIC_LOG_DIR_NAME: string = 'slock_diagnostics_logs';
+const DIAGNOSTIC_LOG_FILE_NAME: string = 'raft-diagnostics.jsonl';
+const LEGACY_DIAGNOSTIC_LOG_FILE_NAME: string = 'slock-diagnostics.jsonl';
 const DIAGNOSTIC_SESSION_PREFIX: string = 'launch-';
 const DIAGNOSTIC_MAX_SESSIONS: number = 5;
 const DIAGNOSTIC_MAX_FILES_PER_SESSION: number = 6;
 const DIAGNOSTIC_LOG_MAX_BYTES: number = 1024 * 1024;
+
+export function isOhosDiagnosticsLogFileName(name: string): boolean {
+  return name.startsWith(DIAGNOSTIC_LOG_FILE_NAME) || name.startsWith(LEGACY_DIAGNOSTIC_LOG_FILE_NAME);
+}
+
+export function ohosDiagnosticsArchiveLogName(name: string): string {
+  return name.startsWith(LEGACY_DIAGNOSTIC_LOG_FILE_NAME)
+    ? `${DIAGNOSTIC_LOG_FILE_NAME}${name.slice(LEGACY_DIAGNOSTIC_LOG_FILE_NAME.length)}`
+    : name;
+}
+
+export function isOhosFeedbackArchiveName(name: string): boolean {
+  return (name.startsWith(FEEDBACK_FILE_PREFIX) || name.startsWith(LEGACY_FEEDBACK_FILE_PREFIX)) &&
+    name.endsWith('.zip');
+}
+
+export function ohosUniqueDiagnosticsStagedName(baseName: string, reservedNames: Set<string>): string {
+  const dot = baseName.lastIndexOf('.');
+  const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+  const extension = dot > 0 ? baseName.slice(dot) : '';
+  let suffix = 1;
+  while (true) {
+    const candidate = suffix === 1 ? baseName : `${stem}-${suffix}${extension}`;
+    if (!reservedNames.has(candidate)) {
+      reservedNames.add(candidate);
+      return candidate;
+    }
+    suffix += 1;
+  }
+}
+
+export function compareOhosDiagnosticsPath(
+  leftPath: string,
+  rightPath: string,
+  leftMtime: number,
+  rightMtime: number
+): number {
+  if (rightMtime !== leftMtime) {
+    return rightMtime - leftMtime;
+  }
+  return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0;
+}
+
+export interface OhosDiagnosticsCandidateGroup {
+  entryPrefix: string;
+  files: Array<string>;
+}
+
+export function selectOhosDiagnosticsCandidateGroups(
+  groups: Array<OhosDiagnosticsCandidateGroup>,
+  maxGroups: number
+): Array<OhosDiagnosticsCandidateGroup> {
+  return groups.filter((group: OhosDiagnosticsCandidateGroup): boolean => group.files.length > 0).slice(0, maxGroups);
+}
 
 export class SlockOhosAppDiagnostics {
   private static currentSessionDir: string = '';
@@ -41,6 +98,7 @@ export class SlockOhosAppDiagnostics {
     SlockOhosAppDiagnostics.currentSessionDir = `${root}/${sessionId}`;
     SlockOhosAppDiagnostics.ensureDirectory(SlockOhosAppDiagnostics.currentSessionDir);
     SlockOhosAppDiagnostics.pruneDiagnosticSessions(root);
+    SlockOhosAppDiagnostics.pruneDiagnosticSessions(`${context.filesDir}/${LEGACY_DIAGNOSTIC_LOG_DIR_NAME}`);
     SlockOhosDiagnostics.setPersistentRecorder((entry: SlockOhosDiagnosticEntry): void => {
       SlockOhosAppDiagnostics.appendPersistentEntry(entry);
     });
@@ -86,6 +144,19 @@ export class SlockOhosAppDiagnostics {
   static exportEnvironmentText(context: common.UIAbilityContext): string {
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
     return SlockOhosAppDiagnostics.environmentLines(bundleInfo).join('\n');
+  }
+
+  static clearLocalFiles(context: common.UIAbilityContext): void {
+    SlockOhosDiagnostics.clear();
+    [
+      `${context.filesDir}/${DIAGNOSTIC_LOG_DIR_NAME}`,
+      `${context.filesDir}/${LEGACY_DIAGNOSTIC_LOG_DIR_NAME}`,
+      `${context.filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`,
+    ].forEach((path: string): void => {
+      SlockOhosAppDiagnostics.removeDirectoryRecursively(path);
+    });
+    SlockOhosAppDiagnostics.currentSessionDir = '';
+    SlockOhosAppDiagnostics.initialize(context);
   }
 
   private static diagnosticsHeaderText(
@@ -279,58 +350,97 @@ export class SlockOhosAppDiagnostics {
   }
 
   private static stageRecentLaunchLogs(context: common.UIAbilityContext, uploadDir: string): Array<string> {
-    const root = `${context.filesDir}/${DIAGNOSTIC_LOG_DIR_NAME}`;
     const staged: Array<string> = [];
-    const sessions = SlockOhosAppDiagnostics.diagnosticSessionDirectories(root).slice(0, DIAGNOSTIC_MAX_SESSIONS);
-    sessions
-      .forEach((sessionDir: string): void => {
+    const reservedTargetNames = new Set<string>();
+    const candidateGroups: Array<OhosDiagnosticsCandidateGroup> = [];
+    const roots: Array<string> = [
+      `${context.filesDir}/${DIAGNOSTIC_LOG_DIR_NAME}`,
+      `${context.filesDir}/${LEGACY_DIAGNOSTIC_LOG_DIR_NAME}`,
+    ];
+    roots.forEach((root: string, rootIndex: number): void => {
+      SlockOhosAppDiagnostics.diagnosticSessionDirectories(root).forEach((sessionDir: string): void => {
         const sessionName = sessionDir.slice(sessionDir.lastIndexOf('/') + 1);
-        SlockOhosAppDiagnostics.collectFiles(sessionDir)
-          .filter((path: string): boolean => path.slice(path.lastIndexOf('/') + 1).startsWith(DIAGNOSTIC_LOG_FILE_NAME))
-          .sort((left: string, right: string): number => fs.statSync(right).mtime - fs.statSync(left).mtime)
-          .slice(0, DIAGNOSTIC_MAX_FILES_PER_SESSION)
-          .forEach((sourcePath: string): void => {
-            const sourceName = sourcePath.slice(sourcePath.lastIndexOf('/') + 1);
-            const targetPath = `${uploadDir}/${sessionName}-${sourceName}`;
-            try {
-              fs.copyFileSync(sourcePath, targetPath);
-              staged.push(targetPath);
-            } catch (_error) {
-            }
-          });
+        const files = SlockOhosAppDiagnostics.collectFiles(sessionDir)
+          .filter((path: string): boolean => isOhosDiagnosticsLogFileName(
+            path.slice(path.lastIndexOf('/') + 1)
+          ))
+          .sort((left: string, right: string): number => compareOhosDiagnosticsPath(
+            left,
+            right,
+            fs.statSync(left).mtime,
+            fs.statSync(right).mtime
+          ))
+          .slice(0, DIAGNOSTIC_MAX_FILES_PER_SESSION);
+        candidateGroups.push({
+          entryPrefix: `${rootIndex === 0 ? '' : 'legacy-'}${sessionName}-`,
+          files,
+        });
       });
-    if (sessions.length < DIAGNOSTIC_MAX_SESSIONS && SlockOhosAppDiagnostics.pathIsDirectory(root)) {
-      try {
-        fs.listFileSync(root)
-          .map((name: string): string => `${root}/${name}`)
-          .filter((path: string): boolean => {
-            const name = path.slice(path.lastIndexOf('/') + 1);
-            return SlockOhosAppDiagnostics.pathIsFile(path) && name.startsWith(DIAGNOSTIC_LOG_FILE_NAME);
-          })
-          .sort((left: string, right: string): number => fs.statSync(right).mtime - fs.statSync(left).mtime)
-          .slice(0, DIAGNOSTIC_MAX_FILES_PER_SESSION)
-          .forEach((sourcePath: string): void => {
-            const sourceName = sourcePath.slice(sourcePath.lastIndexOf('/') + 1);
-            const targetPath = `${uploadDir}/legacy-${sourceName}`;
-            try {
-              fs.copyFileSync(sourcePath, targetPath);
-              staged.push(targetPath);
-            } catch (_error) {
-            }
+      if (SlockOhosAppDiagnostics.pathIsDirectory(root)) {
+        try {
+          const flatFiles = fs.listFileSync(root)
+            .map((name: string): string => `${root}/${name}`)
+            .filter((path: string): boolean => {
+              const name = path.slice(path.lastIndexOf('/') + 1);
+              return SlockOhosAppDiagnostics.pathIsFile(path) && isOhosDiagnosticsLogFileName(name);
+            })
+            .sort((left: string, right: string): number => compareOhosDiagnosticsPath(
+              left,
+              right,
+              fs.statSync(left).mtime,
+              fs.statSync(right).mtime
+            ))
+            .slice(0, DIAGNOSTIC_MAX_FILES_PER_SESSION);
+          candidateGroups.push({
+            entryPrefix: `legacy-${rootIndex}-`,
+            files: flatFiles,
           });
-      } catch (_error) {
+        } catch (_error) {
+        }
       }
-    }
+    });
+    selectOhosDiagnosticsCandidateGroups(candidateGroups, DIAGNOSTIC_MAX_SESSIONS)
+      .forEach((group: OhosDiagnosticsCandidateGroup): void => {
+        group.files.forEach((sourcePath: string): void => {
+          const sourceName = sourcePath.slice(sourcePath.lastIndexOf('/') + 1);
+          const targetName = ohosUniqueDiagnosticsStagedName(
+            `${group.entryPrefix}${ohosDiagnosticsArchiveLogName(sourceName)}`,
+            reservedTargetNames
+          );
+          const targetPath = `${uploadDir}/${targetName}`;
+          try {
+            fs.copyFileSync(sourcePath, targetPath);
+            staged.push(targetPath);
+          } catch (_error) {
+            try {
+              if (SlockOhosAppDiagnostics.pathExists(targetPath)) {
+                fs.unlinkSync(targetPath);
+              }
+            } catch (_cleanupError) {
+            }
+          }
+        });
+      });
     return staged;
   }
 
   private static removeDirectoryRecursively(path: string): void {
-    SlockOhosAppDiagnostics.collectFiles(path).forEach((filePath: string): void => {
+    if (!SlockOhosAppDiagnostics.pathExists(path)) {
+      return;
+    }
+    if (SlockOhosAppDiagnostics.pathIsFile(path)) {
       try {
-        fs.unlinkSync(filePath);
+        fs.unlinkSync(path);
       } catch (_error) {
       }
-    });
+      return;
+    }
+    try {
+      fs.listFileSync(path).forEach((name: string): void => {
+        SlockOhosAppDiagnostics.removeDirectoryRecursively(`${path}/${name}`);
+      });
+    } catch (_error) {
+    }
     try {
       fs.rmdirSync(path);
     } catch (_error) {
@@ -360,7 +470,7 @@ export class SlockOhosAppDiagnostics {
   private static pruneFeedbackArchives(uploadDir: string): void {
     try {
       const archives: Array<string> = fs.listFileSync(uploadDir)
-        .filter((name: string) => name.startsWith(FEEDBACK_FILE_PREFIX) && name.endsWith('.zip'))
+        .filter((name: string) => isOhosFeedbackArchiveName(name))
         .map((name: string) => `${uploadDir}/${name}`)
         .sort((left: string, right: string) => {
           return fs.statSync(right).mtime - fs.statSync(left).mtime;
