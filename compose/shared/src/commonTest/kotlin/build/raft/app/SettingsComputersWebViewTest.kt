@@ -59,6 +59,7 @@ class SettingsComputersWebViewTest {
         assertFalse(pageData.has("serverSlug"))
         assertFalse(pageData.has("machines"))
     }
+
 }
 
 private fun computersSession() =

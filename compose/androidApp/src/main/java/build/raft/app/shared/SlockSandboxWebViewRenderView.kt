@@ -53,8 +53,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var urlChangeCallback: KuiklyRenderCallback? = null
     private var navigationStateChangeCallback: KuiklyRenderCallback? = null
     private var documentStartScriptHandler: ScriptHandler? = null
-    private var bootstrapDocumentPending: Boolean = false
-    private var bootstrapDocumentUrl: String = ""
+    private val bootstrapNavigationFence = WebViewBootstrapNavigationFence()
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -332,9 +331,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     super.onPageStarted(view, url, favicon)
                     val target = url.orEmpty()
                     Log.i(LOG_TAG, "page_started url=${target.redactedUrlForLog()}")
-                    if (bootstrapDocumentPending && target != bootstrapDocumentUrl) {
-                        bootstrapDocumentPending = false
-                    }
+                    bootstrapNavigationFence.onMainFrameStarted(target)
                     if (wouldBlockMainFrameNavigation(url)) {
                         view?.stopLoading()
                         handleBlockedMainFrameNavigation(url)
@@ -363,7 +360,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                         notifyUrlChange(target)
                         notifyNavigationState()
                         evaluateInjectedJavaScript()
-                        if (!bootstrapDocumentPending) notifyLoadSuccess(url, "finished")
+                        if (bootstrapNavigationFence.mayUncover(url)) notifyLoadSuccess(url, "finished")
                     }
                 }
 
@@ -377,7 +374,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                         currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                         notifyUrlChange(target)
                         notifyNavigationState()
-                        if (!bootstrapDocumentPending) notifyLoadSuccess(url, "commit_visible")
+                        if (bootstrapNavigationFence.mayUncover(url)) notifyLoadSuccess(url, "commit_visible")
                     }
                 }
 
@@ -599,19 +596,18 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         notifyNavigationState()
         val documentStartInstalled = installDocumentStartScript(normalized)
         if (shouldBootstrapInjectedJavaScript(documentStartInstalled)) {
-            bootstrapDocumentPending = true
-            bootstrapDocumentUrl = injectedJavaScriptBootstrapBaseUrl(normalized) ?: normalized
+            val bootstrapDocumentUrl = injectedJavaScriptBootstrapBaseUrl(normalized) ?: normalized
+            bootstrapNavigationFence.begin(targetUrl = normalized)
             Log.i(LOG_TAG, "load_src bootstrap=true url=${normalized.redactedUrlForLog()}")
             webView.loadDataWithBaseURL(
                 bootstrapDocumentUrl,
                 injectedJavaScriptBootstrapHtml(normalized),
                 "text/html",
                 "UTF-8",
-                normalized
+                bootstrapDocumentUrl
             )
         } else {
-            bootstrapDocumentPending = false
-            bootstrapDocumentUrl = ""
+            bootstrapNavigationFence.reset()
             Log.i(LOG_TAG, "load_src bootstrap=false url=${normalized.redactedUrlForLog()}")
             webView.loadUrl(normalized)
         }
@@ -861,6 +857,30 @@ internal fun documentStartScriptOriginRule(targetUrl: String): String? =
 
 internal fun injectedJavaScriptBootstrapBaseUrl(targetUrl: String): String? =
     documentStartScriptOriginRule(targetUrl)?.let { origin -> "$origin/__raft_mobile_bootstrap__" }
+
+internal class WebViewBootstrapNavigationFence {
+    private var targetUrl: String? = null
+    private var targetStarted: Boolean = false
+
+    fun begin(targetUrl: String) {
+        this.targetUrl = targetUrl
+        targetStarted = false
+    }
+
+    fun reset() {
+        targetUrl = null
+        targetStarted = false
+    }
+
+    fun onMainFrameStarted(url: String) {
+        if (url == targetUrl) targetStarted = true
+    }
+
+    fun mayUncover(url: String): Boolean {
+        val target = targetUrl ?: return true
+        return targetStarted && url == target
+    }
+}
 
 private fun String.redactedUrlForLog(): String {
     val uri = runCatching { Uri.parse(this) }.getOrNull() ?: return "<invalid>"

@@ -106,7 +106,7 @@ private fun SettingsComputersScreenBody(pager: Pager) {
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
     LaunchedEffect(Unit) {
         bridge.log("settings_computers_open")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
     }
     LaunchedEffect(authStore) {
         session = runCatching { authStore.readSession() }.getOrNull()
