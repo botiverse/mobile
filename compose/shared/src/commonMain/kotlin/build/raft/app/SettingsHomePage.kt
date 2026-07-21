@@ -5658,9 +5658,18 @@ private fun SettingsAppShellContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     notificationPreferenceSnapshot = notificationPreferenceSnapshot,
-                    preferenceBusy = settingsState.actionState?.action == MOBILE_ACTION_NOTIFICATION_PREFERENCE && settingsState.actionState.inProgress,
-                    foregroundKeepAliveBusy = settingsState.actionState?.action == MOBILE_ACTION_FOREGROUND_KEEP_ALIVE && settingsState.actionState.inProgress,
-                    foregroundMessageBannersBusy = settingsState.actionState?.action == MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS && settingsState.actionState.inProgress,
+                    preferenceBusy =
+                        settingsState.actionState?.inProgress == true &&
+                            settingsState.actionState.action in
+                            setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_SERVER_MUTE),
+                    foregroundKeepAliveBusy =
+                        settingsState.actionState?.inProgress == true &&
+                            settingsState.actionState.action in
+                            setOf(MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SERVER_MUTE),
+                    foregroundMessageBannersBusy =
+                        settingsState.actionState?.inProgress == true &&
+                            settingsState.actionState.action in
+                            setOf(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS, MOBILE_ACTION_SERVER_MUTE),
                     onNotificationPreferenceChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
                         if (enabled) {
