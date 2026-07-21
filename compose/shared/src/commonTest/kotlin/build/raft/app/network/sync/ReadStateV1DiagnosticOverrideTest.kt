@@ -17,7 +17,7 @@ class ReadStateV1DiagnosticOverrideTest {
     fun `release entitlement fails closed`() {
         controller.observe(owner, "channel-a")
 
-        val result = controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope)
+        val result = controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn)
 
         assertIs<ReadStateV1DiagnosticOverrideMutationResult.Rejected>(result)
         assertEquals("read_state_diagnostic_override_not_entitled", result.code)
@@ -25,22 +25,21 @@ class ReadStateV1DiagnosticOverrideTest {
     }
 
     @Test
-    fun `force on binds exact observed scope and never enables another channel`() {
+    fun `force on applies across the app process before any scope is observed`() {
         controller.configureEntitlement(true)
-        controller.observe(owner, "channel-a")
         assertIs<ReadStateV1DiagnosticOverrideMutationResult.Applied>(
-            controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope)
+            controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn)
         )
 
-        val exact = controller.decide(serverEffective = false, owner, "channel-a")
-        val other = controller.decide(serverEffective = false, owner, "channel-b")
+        val first = controller.decide(serverEffective = false, owner, "channel-a")
+        val other = controller.decide(serverEffective = false, owner.copy(accountId = "account-b"), "channel-b")
 
-        assertTrue(exact.finalEffective)
-        assertTrue(exact.exactScopeMatched)
-        assertEquals("diagnostic_override_exact_scope", exact.precedence)
-        assertFalse(other.finalEffective)
+        assertTrue(first.finalEffective)
+        assertFalse(first.exactScopeMatched)
+        assertEquals("diagnostic_override_force_on", first.precedence)
+        assertTrue(other.finalEffective)
         assertFalse(other.exactScopeMatched)
-        assertEquals("server_wrong_scope", other.precedence)
+        assertEquals("diagnostic_override_force_on", other.precedence)
     }
 
     @Test
@@ -56,10 +55,30 @@ class ReadStateV1DiagnosticOverrideTest {
     }
 
     @Test
+    fun `mode mutation immediately recomputes the cached final decision`() {
+        controller.configureEntitlement(true)
+        controller.decide(serverEffective = false, owner, "channel-a")
+
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn)
+
+        val forcedOn = requireNotNull(controller.snapshot().lastDecision)
+        assertTrue(forcedOn.finalEffective)
+        assertEquals(ReadStateV1DiagnosticOverrideMode.ForceOn, forcedOn.clientOverride)
+        assertEquals("diagnostic_override_force_on", forcedOn.precedence)
+
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOff)
+
+        val forcedOff = requireNotNull(controller.snapshot().lastDecision)
+        assertFalse(forcedOff.finalEffective)
+        assertEquals(ReadStateV1DiagnosticOverrideMode.ForceOff, forcedOff.clientOverride)
+        assertEquals("diagnostic_override_force_off", forcedOff.precedence)
+    }
+
+    @Test
     fun `ttl expiry returns to server mode`() {
         controller.configureEntitlement(true)
         controller.observe(owner, "channel-a")
-        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope, ttlMillis = 10L)
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn, ttlMillis = 10L)
 
         now += 10L
 
@@ -69,25 +88,71 @@ class ReadStateV1DiagnosticOverrideTest {
     }
 
     @Test
-    fun `identity transition clears active override`() {
+    fun `identity transition does not clear process override`() {
         controller.configureEntitlement(true)
-        controller.observe(owner, "channel-a")
-        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope)
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn)
 
         val changedOwner = owner.copy(accountId = "account-b")
         val decision = controller.decide(false, changedOwner, "channel-a")
 
-        assertFalse(decision.finalEffective)
+        assertTrue(decision.finalEffective)
+        assertEquals(ReadStateV1DiagnosticOverrideMode.ForceOn, controller.snapshot().mode)
+        assertEquals(null, controller.snapshot().boundScope)
+        assertEquals(null, controller.snapshot().clearReason)
+    }
+
+    @Test
+    fun `clearing identity observation preserves process override ttl and clears evidence`() {
+        var changedCount = 0
+        controller.setOnChanged { changedCount += 1 }
+        controller.configureEntitlement(true)
+        controller.observe(owner, "channel-a")
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn, ttlMillis = 100L)
+        controller.decide(false, owner, "channel-a")
+        controller.recordSelection(owner, "channel-a", generation = 9L)
+        controller.recordAdjudication(
+            source = "hydrate",
+            result = "Committed",
+            fact = ReadStateV1Fact(channelId = "channel-a", readStateVersion = 4L, maxReadSeq = 12L),
+        )
+        controller.recordPublication(homeStoreCount = 1, activityStoreCount = 1, generation = 9L)
+        controller.recordBarrier("released")
+        controller.recordStalePublicationRejected()
+        val expiresAt = controller.snapshot().expiresAtMillis
+        val changedBeforeClear = changedCount
+
+        controller.clearObservation()
+
+        val cleared = controller.snapshot()
+        assertEquals(ReadStateV1DiagnosticOverrideMode.ForceOn, cleared.mode)
+        assertEquals(expiresAt, cleared.expiresAtMillis)
+        assertNull(cleared.clearReason)
+        assertNull(cleared.observedScope)
+        assertNull(cleared.boundScope)
+        assertNull(cleared.lastDecision)
+        assertNull(cleared.selectedScope)
+        assertNull(cleared.witnessGeneration)
+        assertNull(cleared.durableReadStateVersion)
+        assertNull(cleared.durableMaxReadSeq)
+        assertNull(cleared.latestAdjudication)
+        assertNull(cleared.destinationPublication)
+        assertNull(cleared.barrierState)
+        assertEquals(0L, cleared.stalePublicationRejectedCount)
+        assertEquals(changedBeforeClear + 1, changedCount)
+        assertTrue(controller.decide(false, owner.copy(accountId = "account-b"), "channel-b").finalEffective)
+
+        now = requireNotNull(expiresAt)
+
+        assertFalse(controller.decide(false, owner, "channel-a").finalEffective)
         assertEquals(ReadStateV1DiagnosticOverrideMode.Server, controller.snapshot().mode)
-        assertNull(controller.snapshot().boundScope)
-        assertEquals("identity_changed", controller.snapshot().clearReason)
+        assertEquals("expired", controller.snapshot().clearReason)
     }
 
     @Test
     fun `server mode clears local override and preserves server effective`() {
         controller.configureEntitlement(true)
         controller.observe(owner, "channel-a")
-        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope)
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn)
 
         controller.setMode(ReadStateV1DiagnosticOverrideMode.Server)
 
@@ -109,7 +174,7 @@ class ReadStateV1DiagnosticOverrideTest {
     fun `force off revokes prepared publication and requests snapshot barrier`() = runBlocking {
         controller.configureEntitlement(true)
         controller.observe(owner, "channel-a")
-        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope)
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn)
         val barriers = mutableListOf<String>()
         val canary =
             ReadStateV1ProductionCanary(
@@ -143,7 +208,7 @@ class ReadStateV1DiagnosticOverrideTest {
     fun `ttl expiry revokes prepared publication before completion`() = runBlocking {
         controller.configureEntitlement(true)
         controller.observe(owner, "channel-a")
-        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope, ttlMillis = 10L)
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn, ttlMillis = 10L)
         val barriers = mutableListOf<String>()
         val canary =
             ReadStateV1ProductionCanary(
@@ -177,7 +242,7 @@ class ReadStateV1DiagnosticOverrideTest {
     fun `publication final gate rejects expiry crossed after entry precheck`() = runBlocking {
         controller.configureEntitlement(true)
         controller.observe(owner, "channel-a")
-        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope, ttlMillis = 10L)
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn, ttlMillis = 10L)
         val barriers = mutableListOf<String>()
         val canary =
             ReadStateV1ProductionCanary(
@@ -210,7 +275,7 @@ class ReadStateV1DiagnosticOverrideTest {
     fun `snapshot barrier publication records barrier selection generation`() = runBlocking {
         controller.configureEntitlement(true)
         controller.observe(owner, "channel-a")
-        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOnExactScope)
+        controller.setMode(ReadStateV1DiagnosticOverrideMode.ForceOn)
         val canary =
             ReadStateV1ProductionCanary(
                 isEnabledForServer = { candidateOwner, channelId ->

@@ -122,6 +122,7 @@ import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideSnapshot
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.network.sync.ProcessReadStateV1DiagnosticOverride
+import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMode
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
@@ -4186,7 +4187,7 @@ internal class SlockKuiklyBridgeModule(
         val mode =
                 when (request.optString("mode")) {
                     "force_off" -> DiagnosticFeatureFlagOverrideMode.ForceOff
-                    "force_on_exact_scope" -> DiagnosticFeatureFlagOverrideMode.ForceOnExactScope
+                    "force_on" -> DiagnosticFeatureFlagOverrideMode.ForceOn
                     "server" -> DiagnosticFeatureFlagOverrideMode.Server
                     else -> return mapOf("status" to "error", "code" to "diagnostic_feature_flag_override_mode_unknown")
                 }
@@ -4588,8 +4589,8 @@ internal class SlockKuiklyBridgeModule(
                     .put("observedScope", observedScope?.toStableRedactedLabel().orEmpty())
                     .put("boundScope", boundScope?.toStableRedactedLabel().orEmpty())
                     .put("serverEffective", lastDecision?.serverEffective?.toString().orEmpty())
-                    .put("finalEffective", lastDecision?.finalEffective?.toString().orEmpty())
-                    .put("precedence", lastDecision?.precedence ?: "not_observed")
+                    .put("finalEffective", diagnosticFinalEffective()?.toString().orEmpty())
+                    .put("precedence", diagnosticPrecedence())
                     .put("exactScopeMatched", lastDecision?.exactScopeMatched ?: false)
                     .put(
                             "evidence",
@@ -4617,8 +4618,8 @@ internal class SlockKuiklyBridgeModule(
                     .put("observedScope", observedScope?.toStableRedactedLabel().orEmpty())
                     .put("boundScope", boundScope?.toStableRedactedLabel().orEmpty())
                     .put("serverEffective", lastDecision?.serverEffective?.toString().orEmpty())
-                    .put("finalEffective", lastDecision?.finalEffective?.toString().orEmpty())
-                    .put("precedence", lastDecision?.precedence ?: "not_observed")
+                    .put("finalEffective", diagnosticFinalEffective()?.toString().orEmpty())
+                    .put("precedence", diagnosticPrecedence())
                     .put("exactScopeMatched", lastDecision?.exactScopeMatched ?: false)
                     .put("selectedScope", selectedScope?.toStableRedactedLabel().orEmpty())
                     .put("witnessGeneration", witnessGeneration ?: 0L)
@@ -4628,6 +4629,34 @@ internal class SlockKuiklyBridgeModule(
                     .put("destinationPublication", destinationPublication.orEmpty())
                     .put("barrierState", barrierState.orEmpty())
                     .put("stalePublicationRejectedCount", stalePublicationRejectedCount)
+
+    private fun DiagnosticFeatureFlagOverrideSnapshot.diagnosticFinalEffective(): Boolean? =
+            when (mode) {
+                DiagnosticFeatureFlagOverrideMode.ForceOff -> false
+                DiagnosticFeatureFlagOverrideMode.ForceOn -> true
+                DiagnosticFeatureFlagOverrideMode.Server -> lastDecision?.serverEffective
+            }
+
+    private fun DiagnosticFeatureFlagOverrideSnapshot.diagnosticPrecedence(): String =
+            when (mode) {
+                DiagnosticFeatureFlagOverrideMode.ForceOff -> "diagnostic_override_force_off"
+                DiagnosticFeatureFlagOverrideMode.ForceOn -> "diagnostic_override_force_on"
+                DiagnosticFeatureFlagOverrideMode.Server -> lastDecision?.precedence ?: "not_observed"
+            }
+
+    private fun ReadStateV1DiagnosticOverrideSnapshot.diagnosticFinalEffective(): Boolean? =
+            when (mode) {
+                ReadStateV1DiagnosticOverrideMode.ForceOff -> false
+                ReadStateV1DiagnosticOverrideMode.ForceOn -> true
+                ReadStateV1DiagnosticOverrideMode.Server -> lastDecision?.serverEffective
+            }
+
+    private fun ReadStateV1DiagnosticOverrideSnapshot.diagnosticPrecedence(): String =
+            when (mode) {
+                ReadStateV1DiagnosticOverrideMode.ForceOff -> "diagnostic_override_force_off"
+                ReadStateV1DiagnosticOverrideMode.ForceOn -> "diagnostic_override_force_on"
+                ReadStateV1DiagnosticOverrideMode.Server -> lastDecision?.precedence ?: "not_observed"
+            }
 
     private fun build.raft.app.network.sync.ReadStateV1DiagnosticExactScope.toStableRedactedLabel(): String =
             "env=${environmentId.stableDiagnosticId()} account=${accountId.stableDiagnosticId()} " +

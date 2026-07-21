@@ -51,10 +51,10 @@ class BridgeSettingsDiagnosticsParserTest {
                         .put("supported", true)
                         .put("scopeKind", "ChannelExact")
                         .put("entitled", true)
-                        .put("clientOverride", "ForceOnExactScope")
+                        .put("clientOverride", "ForceOn")
                         .put("observedScope", "env/account/server/channel")
                         .put("finalEffective", true)
-                        .put("precedence", "diagnostic_override_exact_scope")
+                        .put("precedence", "diagnostic_override_force_on")
                         .put("evidence", "witnessGeneration=7")
                 )
                 put(

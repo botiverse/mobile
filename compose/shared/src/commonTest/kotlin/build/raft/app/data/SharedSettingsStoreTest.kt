@@ -23,6 +23,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 class SharedSettingsStoreTest {
     @Test
@@ -1900,6 +1903,76 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun mountedDiagnosticsRefreshesAtLatestOverrideExpiryAndRejectsReplacedTimer() = runBlocking {
+        var now = 1_000L
+        val pendingDelays = mutableListOf<Continuation<Unit>>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        capabilities.setDiagnosticsResult(
+            diagnosticOverridesHostSnapshot(
+                clientOverride = "ForceOn",
+                expiresAtMillis = 1_100L,
+                finalEffective = true,
+            )
+        )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities,
+                    ),
+                scope = scope,
+                nowMillis = { now },
+                diagnosticsRefreshDelay = { suspendCoroutine { pendingDelays += it } },
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        assertEquals(1, pendingDelays.size)
+
+        capabilities.setDiagnosticsResult(
+            diagnosticOverridesHostSnapshot(
+                clientOverride = "ForceOff",
+                expiresAtMillis = 1_200L,
+                finalEffective = false,
+            )
+        )
+        store.accept(
+            SharedSettingsIntent.SetDiagnosticFeatureFlagOverride(
+                key = "mobile_activity_stable_order_v1",
+                mode = "force_off",
+            )
+        )
+        assertEquals(2, pendingDelays.size)
+        assertEquals(2, capabilities.calls.count { it == "diagnostics" })
+
+        pendingDelays[0].resume(Unit)
+        yield()
+
+        assertEquals(2, capabilities.calls.count { it == "diagnostics" })
+        val forced = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
+        assertEquals("ForceOff", forced.featureFlagOverrides.single().clientOverride)
+
+        now = 1_200L
+        capabilities.setDiagnosticsResult(
+            diagnosticOverridesHostSnapshot(
+                clientOverride = "Server",
+                expiresAtMillis = null,
+                finalEffective = true,
+            )
+        )
+        pendingDelays[1].resume(Unit)
+        yield()
+
+        assertEquals(3, capabilities.calls.count { it == "diagnostics" })
+        val expired = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
+        assertEquals("Server", expired.featureFlagOverrides.single().clientOverride)
+        assertNull(expired.featureFlagOverrides.single().expiresAtMillis)
+        assertEquals(true, expired.featureFlagOverrides.single().finalEffective)
+        scope.cancel()
+    }
+
+    @Test
     fun developerEnvironmentLoadsAndSwitchesThroughPlatformCapabilities() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -3087,7 +3160,7 @@ class SharedSettingsStoreTest {
                     selectedServerLabel = "Slock Community"
                 )
             ),
-        private val diagnosticsResult: DataResult<SharedSettingsDiagnosticsHostSnapshot> =
+        private var diagnosticsResult: DataResult<SharedSettingsDiagnosticsHostSnapshot> =
             DataResult.Content(
                 SharedSettingsDiagnosticsHostSnapshot(
                     entries =
@@ -3200,6 +3273,10 @@ class SharedSettingsStoreTest {
             return diagnosticsResult
         }
 
+        fun setDiagnosticsResult(snapshot: SharedSettingsDiagnosticsHostSnapshot) {
+            diagnosticsResult = DataResult.Content(snapshot)
+        }
+
         override suspend fun setDiagnosticFeatureFlagOverride(key: String, mode: String): DataResult<Unit> {
             calls += "diagnosticOverride:$key:$mode"
             return DataResult.Content(Unit)
@@ -3287,6 +3364,32 @@ class SharedSettingsStoreTest {
             }
         }
     }
+
+    private fun diagnosticOverridesHostSnapshot(
+        clientOverride: String,
+        expiresAtMillis: Long?,
+        finalEffective: Boolean,
+    ): SharedSettingsDiagnosticsHostSnapshot =
+        SharedSettingsDiagnosticsHostSnapshot(
+            featureFlagOverrides =
+                listOf(
+                    SharedSettingsDiagnosticFeatureFlagSnapshot(
+                        key = "mobile_activity_stable_order_v1",
+                        supported = true,
+                        entitled = true,
+                        clientOverride = clientOverride,
+                        expiresAtMillis = expiresAtMillis,
+                        serverEffective = true,
+                        finalEffective = finalEffective,
+                        precedence =
+                            when (clientOverride) {
+                                "ForceOn" -> "diagnostic_override_force_on"
+                                "ForceOff" -> "diagnostic_override_force_off"
+                                else -> "server"
+                            },
+                    )
+                )
+        )
 
     private class FakeNotificationPreferenceRepository(
         var enabled: Boolean = false,

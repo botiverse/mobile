@@ -24,11 +24,12 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
     @Test
-    fun diagnosticFeatureFlagSectionsRenderRegisteredAndUnsupportedKeysIndependently() {
+    fun diagnosticsOverviewRoutesToLocalFeatureOverridesWithoutDumpingPerKeyControls() {
         val payload =
             emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
                 state =
@@ -55,19 +56,130 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("sync_core_read_state_v1", "future_registered_flag_v1", "Recomposition profiler", "Actions"),
+            listOf("Developer tools", "Recomposition profiler", "Actions"),
             payload.sections.map { it.title },
         )
-        val supported = payload.sections.first().rows.associateBy { it.title }
-        assertTrue(supported.getValue("Force OFF").enabled)
-        assertTrue(supported.getValue("Force ON exact scope").enabled)
-        assertTrue(supported.getValue("Override lifecycle").detail.contains("expiresAt=none"))
-        val unsupported = payload.sections[1].rows.associateBy { it.title }
-        assertTrue(unsupported.getValue("Override lifecycle").detail.contains("clear=unsupported_no_effect"))
-        assertFalse(unsupported.getValue("Server").enabled)
-        assertFalse(unsupported.getValue("Force OFF").enabled)
-        assertFalse(unsupported.getValue("Force ON exact scope").enabled)
+        val entry = payload.sections.first().rows.single()
+        assertEquals("Local Feature Overrides", entry.title)
+        assertTrue(entry.enabled)
+        assertFalse(payload.sections.any { it.title == "sync_core_read_state_v1" })
+        assertFalse(payload.sections.any { it.title == "future_registered_flag_v1" })
     }
+
+    @Test
+    fun localFeatureOverrideListAlwaysShowsEveryEntitledRegisteredKey() {
+        val snapshot = localFeatureOverrideSnapshot()
+
+        val rows = snapshot.toLocalFeatureOverridesPayload().sections.single().rows
+
+        assertEquals(
+            listOf("mobile_activity_stable_order_v1", "sync_core_read_state_v1"),
+            rows.mapNotNull { parseOpenLocalFeatureOverrideAction(it.key) },
+        )
+        assertEquals(
+            listOf("mobile_activity_stable_order_v1", "sync_core_read_state_v1"),
+            rows.map { it.detail },
+        )
+        assertEquals(listOf("OFF", "ON"), rows.map { it.status })
+        assertFalse(rows.any { it.title.contains("future registered", ignoreCase = true) })
+    }
+
+    @Test
+    fun localFeatureOverrideNavigationCarriesOnlyRegisteredKeyIdentity() {
+        val key = "sync_core_read_state_v1"
+        val destination = localFeatureOverrideDestination(key)
+
+        assertEquals(key, destination.localFeatureOverrideKeyOrNull())
+        assertEquals(key, parseOpenLocalFeatureOverrideAction(openLocalFeatureOverrideAction(key)))
+        assertTrue(localFeatureOverrideDestinationAllowed(destination, available = true))
+        assertFalse(localFeatureOverrideDestinationAllowed(destination, available = false))
+        assertTrue(localFeatureOverrideDestinationAllowed("diagnostics", available = false))
+        assertNull("local-feature-override:../../token".localFeatureOverrideKeyOrNull())
+        assertNull(parseOpenLocalFeatureOverrideAction("openLocalFeatureOverride|unknown-key"))
+    }
+
+    @Test
+    fun appProcessControlsAreEnabledBeforeAnyConsumerIsObserved() {
+        val flag =
+            localFeatureOverrideSnapshot().featureFlagOverrides
+                .first { it.key == "sync_core_read_state_v1" }
+
+        val rows = flag.toLocalFeatureOverrideDetailPayload(actionState = null).sections.flatMap { it.rows }
+        val byTitle = rows.associateBy { it.title }
+
+        assertTrue(byTitle.getValue("Follow Server").enabled)
+        assertTrue(byTitle.getValue("Force OFF").enabled)
+        assertTrue(byTitle.getValue("Force ON").enabled)
+        assertTrue(byTitle.getValue("Force OFF").detail.contains("current app process"))
+        assertTrue(byTitle.getValue("Force ON").detail.contains("current app process"))
+        assertEquals("ON", byTitle.getValue("Final effective").status)
+        assertFalse(rows.any { it.detail.contains("Open the target", ignoreCase = true) })
+    }
+
+    @Test
+    fun serverOffAndOnIntentsStayIsolatedToTheSelectedKey() {
+        val flag = localFeatureOverrideSnapshot().featureFlagOverrides.first().copy(clientOverride = "ForceOff")
+
+        val rows = flag.toLocalFeatureOverrideDetailPayload(actionState = null).sections.flatMap { it.rows }
+        val controls = rows.filter { it.title in setOf("Follow Server", "Force OFF", "Force ON") }
+
+        assertTrue(controls.all { it.enabled })
+        assertEquals(
+            setOf(
+                "diagnosticFlagOverride|mobile_activity_stable_order_v1|server",
+                "diagnosticFlagOverride|mobile_activity_stable_order_v1|force_off",
+                "diagnosticFlagOverride|mobile_activity_stable_order_v1|force_on",
+            ),
+            controls.map { it.key }.toSet(),
+        )
+        assertTrue(controls.none { it.key.contains("sync_core_read_state_v1") })
+    }
+
+    @Test
+    fun localFeatureOverrideSurfaceIsUnreachableWithoutEntitlement() {
+        val releaseSnapshot =
+            localFeatureOverrideSnapshot().copy(
+                featureFlagOverrides =
+                    localFeatureOverrideSnapshot().featureFlagOverrides.map { it.copy(entitled = false) }
+            )
+
+        assertFalse(releaseSnapshot.localFeatureOverridesAvailable())
+        assertTrue(releaseSnapshot.registeredLocalFeatureOverrides().isEmpty())
+        val overview =
+            emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
+                state = ScreenLoadState.Content(releaseSnapshot),
+                actionState = null,
+            )
+        assertFalse(overview.sections.any { it.title == "Developer tools" })
+    }
+
+    private fun localFeatureOverrideSnapshot(): SharedSettingsDiagnosticsSnapshot =
+        SharedSettingsDiagnosticsSnapshot(
+            featureFlagOverrides =
+                listOf(
+                    SharedSettingsDiagnosticFeatureFlagSnapshot(
+                        key = "mobile_activity_stable_order_v1",
+                        supported = true,
+                        scopeKind = "ServerExact",
+                        entitled = true,
+                        serverEffective = false,
+                        finalEffective = false,
+                    ),
+                    SharedSettingsDiagnosticFeatureFlagSnapshot(
+                        key = "sync_core_read_state_v1",
+                        supported = true,
+                        scopeKind = "ChannelExact",
+                        entitled = true,
+                        clientOverride = "ForceOn",
+                    ),
+                    SharedSettingsDiagnosticFeatureFlagSnapshot(
+                        key = "future_registered_flag_v1",
+                        supported = false,
+                        entitled = false,
+                        clearReason = "unsupported_no_effect",
+                    ),
+                )
+        )
 
     @Test
     fun settingsVisualDetailHeadersDoNotRenderSubtitle() {

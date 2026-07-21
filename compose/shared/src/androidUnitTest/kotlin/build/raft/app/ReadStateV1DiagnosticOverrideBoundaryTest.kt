@@ -35,6 +35,24 @@ class ReadStateV1DiagnosticOverrideBoundaryTest {
     }
 
     @Test
+    fun `process overrides do not depend on observed channel or server scope`() {
+        val readStatePolicy =
+            repoRoot.resolve("compose/shared/src/commonMain/kotlin/build/raft/app/network/sync/ReadStateV1DiagnosticOverride.kt").readText()
+        val registry =
+            repoRoot.resolve("compose/shared/src/commonMain/kotlin/build/raft/app/network/sync/DiagnosticFeatureFlagOverrideRegistry.kt").readText()
+        val settings =
+            repoRoot.resolve("compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt").readText()
+
+        assertFalse(readStatePolicy.contains("override_scope_unobserved"))
+        assertFalse(registry.contains("override_scope_unobserved"))
+        assertTrue(readStatePolicy.contains("ReadStateV1DiagnosticOverrideMode.ForceOn -> true"))
+        assertTrue(registry.contains("DiagnosticFeatureFlagOverrideMode.ForceOn ->"))
+        assertFalse(settings.contains("Open the target channel first"))
+        assertFalse(settings.contains("Open Activity on the target server first"))
+        assertTrue(settings.contains("mode in setOf(\"server\", \"force_off\", \"force_on\")"))
+    }
+
+    @Test
     fun `diagnostic UI writes only through settings store intent`() {
         val settings =
             repoRoot.resolve("compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt").readText()
@@ -54,6 +72,10 @@ class ReadStateV1DiagnosticOverrideBoundaryTest {
         assertTrue(host.contains("BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED"))
         assertTrue(host.contains("ProcessDiagnosticFeatureFlagOverrides.registry.configureEntitlement"))
         assertTrue(host.contains("diagnosticFeatureFlagOverridesJson"))
+        assertTrue(host.contains("DiagnosticFeatureFlagOverrideSnapshot.diagnosticFinalEffective"))
+        assertTrue(host.contains("ReadStateV1DiagnosticOverrideSnapshot.diagnosticFinalEffective"))
+        assertTrue(host.contains("DiagnosticFeatureFlagOverrideMode.ForceOn -> true"))
+        assertTrue(host.contains("ReadStateV1DiagnosticOverrideMode.ForceOn -> true"))
     }
 
     @Test
@@ -70,6 +92,26 @@ class ReadStateV1DiagnosticOverrideBoundaryTest {
         assertTrue(activity.contains("revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY)"))
         assertTrue(registry.contains("SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY"))
         assertTrue(registry.contains("MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY"))
+    }
+
+    @Test
+    fun `auth changes clear identity evidence without clearing app process overrides`() {
+        val provider =
+            repoRoot.resolve("compose/shared/src/commonMain/kotlin/build/raft/app/data/SlockSharedStoreProvider.kt").readText()
+
+        assertTrue(provider.contains("ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()"))
+        assertFalse(
+            provider.contains(
+                "ProcessDiagnosticFeatureFlagOverrides.registry.clearAll(\n" +
+                    "                                    reason = \"authenticated_identity_changed\"",
+            ),
+        )
+        assertFalse(
+            provider.contains(
+                "ProcessDiagnosticFeatureFlagOverrides.registry.clearAll(\n" +
+                    "                                    reason = \"logout\"",
+            ),
+        )
     }
 
     private fun locateRepoRoot(): File {

@@ -33,7 +33,7 @@ class ActivityStableOrderDiagnosticOverrideTest {
         }
 
         assertFalse(decision(false))
-        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         assertTrue(decision(false))
         registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
         assertFalse(decision(true))
@@ -62,7 +62,7 @@ class ActivityStableOrderDiagnosticOverrideTest {
                 serverId = "server-a",
             )
         )
-        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         val mountedRevision = registry.revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).value
         assertTrue(
             resolveActivityStableOrderEnabled(

@@ -176,6 +176,7 @@ import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
+import build.raft.app.data.SharedSettingsDiagnosticFeatureFlagSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.SharedSettingsEffect
@@ -570,6 +571,8 @@ private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationOpenSourceLicenses = "open-source-licenses"
 private const val SettingsDestinationReleaseNotes = "releaseNotes"
 private const val SettingsDestinationDiagnostics = "diagnostics"
+private const val SettingsDestinationLocalFeatureOverrides = "local-feature-overrides"
+private const val SettingsDestinationLocalFeatureOverridePrefix = "local-feature-override:"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
 private const val SettingsDestinationQuiverFeedback = "quiver-feedback"
 private const val SettingsDestinationDeveloper = "developer"
@@ -5315,13 +5318,23 @@ private fun SettingsAppShellContent(
     onLogout: () -> Unit
 ) {
     val accountLinkScope = rememberCoroutineScope()
+    val diagnosticsSnapshot =
+        (settingsState.diagnostics as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
+    val localFeatureOverridesAvailable = diagnosticsSnapshot.localFeatureOverridesAvailable()
+    val selectedLocalFeatureOverrideKey = selectedDestination.localFeatureOverrideKeyOrNull()
     val returnFromSettingsDetail: () -> Unit = {
         when (selectedDestination) {
             SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
             SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationHome)
             SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
             SettingsDestinationOpenSourceLicenses -> onDestinationChange(SettingsDestinationAbout)
-            else -> onDestinationChange(SettingsDestinationHome)
+            SettingsDestinationLocalFeatureOverrides -> onDestinationChange(SettingsDestinationDiagnostics)
+            else ->
+                if (selectedLocalFeatureOverrideKey != null) {
+                    onDestinationChange(SettingsDestinationLocalFeatureOverrides)
+                } else {
+                    onDestinationChange(SettingsDestinationHome)
+                }
         }
     }
     val handleSettingsBack: () -> Unit = returnFromSettingsDetail
@@ -5340,10 +5353,22 @@ private fun SettingsAppShellContent(
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
             SettingsDestinationOpenSourceLicenses ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.OpenSourceLicenses))
+            SettingsDestinationLocalFeatureOverrides ->
+                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
             else ->
-                selectedDestination.toSharedSettingsDestination()?.let { destination ->
-                    onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
+                if (selectedLocalFeatureOverrideKey != null) {
+                    onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+                } else {
+                    selectedDestination.toSharedSettingsDestination()?.let { destination ->
+                        onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
+                    }
                 }
+        }
+    }
+
+    LaunchedEffect(selectedDestination, localFeatureOverridesAvailable) {
+        if (!localFeatureOverrideDestinationAllowed(selectedDestination, localFeatureOverridesAvailable)) {
+            onDestinationChange(SettingsDestinationDiagnostics)
         }
     }
 
@@ -5599,7 +5624,30 @@ private fun SettingsAppShellContent(
         onBack = handleSettingsBack,
         trailingContent = null
     ) {
-        when (selectedDestination) {
+        if (selectedLocalFeatureOverrideKey != null) {
+            val selectedOverride =
+                diagnosticsSnapshot
+                    ?.registeredLocalFeatureOverrides()
+                    ?.firstOrNull { it.key == selectedLocalFeatureOverrideKey }
+            if (localFeatureOverridesAvailable && selectedOverride != null) {
+                SharedSettingsLocalFeatureOverrideDetailContent(
+                    flag = selectedOverride,
+                    actionState = settingsState.actionState,
+                    bottomContentPadding = bottomContentPadding,
+                    onSetOverride = { key, mode ->
+                        onSettingsIntent(SharedSettingsIntent.SetDiagnosticFeatureFlagOverride(key, mode))
+                    },
+                    onExportEvidence = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) }
+                )
+            } else {
+                SettingsSharedPlaceholder(
+                    title = "Local Feature Overrides",
+                    detail = "This internal-only feature override is unavailable in this build.",
+                    iconName = SlockLucideIconName.SlidersHorizontal,
+                    bottomContentPadding = bottomContentPadding
+                )
+            }
+        } else when (selectedDestination) {
             SettingsDestinationAccount ->
                 SettingsAccountContent(
                     settingsState.account.toAccountPayload(session, settingsState.actionState),
@@ -6122,6 +6170,11 @@ private fun SettingsAppShellContent(
                     onSetDiagnosticFeatureFlagOverride = { key, mode ->
                         onSettingsIntent(SharedSettingsIntent.SetDiagnosticFeatureFlagOverride(key, mode))
                     },
+                    onOpenLocalFeatureOverrides = {
+                        if (localFeatureOverridesAvailable) {
+                            onDestinationChange(SettingsDestinationLocalFeatureOverrides)
+                        }
+                    },
                     onSetProfilerEnabled = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetRecompositionProfilerEnabled(enabled))
                     },
@@ -6132,6 +6185,23 @@ private fun SettingsAppShellContent(
                     onExportProfilerReport = { onSettingsIntent(SharedSettingsIntent.ExportRecompositionProfilerReport) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
+            SettingsDestinationLocalFeatureOverrides ->
+                if (localFeatureOverridesAvailable && diagnosticsSnapshot != null) {
+                    SharedSettingsLocalFeatureOverridesContent(
+                        snapshot = diagnosticsSnapshot,
+                        bottomContentPadding = bottomContentPadding,
+                        onOpenOverride = { key ->
+                            onDestinationChange(localFeatureOverrideDestination(key))
+                        }
+                    )
+                } else {
+                    SettingsSharedPlaceholder(
+                        title = "Local Feature Overrides",
+                        detail = "This internal-only feature override page is unavailable in this build.",
+                        iconName = SlockLucideIconName.SlidersHorizontal,
+                        bottomContentPadding = bottomContentPadding
+                    )
+                }
             SettingsDestinationDiagnosticsFeedbackChannel ->
                 if (diagnosticsFeedbackDraft == null) {
         SettingsSharedPlaceholder(
@@ -10568,6 +10638,7 @@ internal fun SharedSettingsDiagnosticsContent(
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
     onSetDiagnosticFeatureFlagOverride: (String, String) -> Unit,
+    onOpenLocalFeatureOverrides: (() -> Unit)? = null,
     onSetProfilerEnabled: (Boolean) -> Unit,
     onStartProfiler: () -> Unit,
     onStopProfiler: () -> Unit,
@@ -10577,7 +10648,13 @@ internal fun SharedSettingsDiagnosticsContent(
     onSendFeedback: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
-    val payload = (snapshot?.entries ?: emptyList()).toDiagnosticsPayload(state, actionState, settingsDiagnosticsPayloadCopy())
+    val payload =
+        (snapshot?.entries ?: emptyList()).toDiagnosticsPayload(
+            state = state,
+            actionState = actionState,
+            copy = settingsDiagnosticsPayloadCopy(),
+            includeLocalFeatureOverrides = onOpenLocalFeatureOverrides != null,
+        )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyLogs" -> onCopyLogs()
@@ -10589,6 +10666,7 @@ internal fun SharedSettingsDiagnosticsContent(
             "refreshProfilerReport" -> onRefreshProfilerReport()
             "exportProfilerReport" -> onExportProfilerReport()
             "feedback" -> onSendFeedback()
+            LOCAL_FEATURE_OVERRIDES_OPEN_ACTION -> onOpenLocalFeatureOverrides?.invoke()
             else ->
                 parseDiagnosticFeatureFlagAction(action)?.let { (key, mode) ->
                     onSetDiagnosticFeatureFlagOverride(key, mode)
@@ -10596,6 +10674,67 @@ internal fun SharedSettingsDiagnosticsContent(
         }
     }
 }
+
+@Composable
+private fun SharedSettingsLocalFeatureOverridesContent(
+    snapshot: SharedSettingsDiagnosticsSnapshot,
+    bottomContentPadding: Dp,
+    onOpenOverride: (String) -> Unit,
+) {
+    SharedSettingsSectionContent(
+        payload = snapshot.toLocalFeatureOverridesPayload(),
+        bottomContentPadding = bottomContentPadding,
+    ) { action, _ ->
+        parseOpenLocalFeatureOverrideAction(action)?.let(onOpenOverride)
+    }
+}
+
+@Composable
+private fun SharedSettingsLocalFeatureOverrideDetailContent(
+    flag: SharedSettingsDiagnosticFeatureFlagSnapshot,
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    bottomContentPadding: Dp,
+    onSetOverride: (String, String) -> Unit,
+    onExportEvidence: () -> Unit,
+) {
+    SharedSettingsSectionContent(
+        payload = flag.toLocalFeatureOverrideDetailPayload(actionState),
+        bottomContentPadding = bottomContentPadding,
+    ) { action, _ ->
+        when (action) {
+            LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION -> onExportEvidence()
+            else ->
+                parseDiagnosticFeatureFlagAction(action)?.let { (key, mode) ->
+                    onSetOverride(key, mode)
+                }
+        }
+    }
+}
+
+private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
+private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
+private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
+
+internal fun localFeatureOverrideDestination(key: String): String =
+    "$SettingsDestinationLocalFeatureOverridePrefix$key"
+
+internal fun localFeatureOverrideDestinationAllowed(destination: String, available: Boolean): Boolean =
+    available ||
+        (destination != SettingsDestinationLocalFeatureOverrides && destination.localFeatureOverrideKeyOrNull() == null)
+
+internal fun String.localFeatureOverrideKeyOrNull(): String? =
+    takeIf { startsWith(SettingsDestinationLocalFeatureOverridePrefix) }
+        ?.removePrefix(SettingsDestinationLocalFeatureOverridePrefix)
+        ?.takeIf { it.matches(Regex("^[a-z][a-z0-9_]{2,95}$")) }
+
+internal fun openLocalFeatureOverrideAction(key: String): String =
+    "$LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX$key"
+
+internal fun parseOpenLocalFeatureOverrideAction(action: String): String? =
+    action
+        .takeIf { it.startsWith(LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX) }
+        ?.removePrefix(LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX)
+        ?.takeIf { it.matches(Regex("^[a-z][a-z0-9_]{2,95}$")) }
 
 private fun diagnosticFeatureFlagAction(key: String, mode: String): String =
     "diagnosticFlagOverride|$key|$mode"
@@ -10605,7 +10744,7 @@ private fun parseDiagnosticFeatureFlagAction(action: String): Pair<String, Strin
     if (parts.size != 3 || parts[0] != "diagnosticFlagOverride") return null
     val key = parts[1].trim()
     val mode = parts[2].trim()
-    return (key to mode).takeIf { key.isNotBlank() && mode in setOf("server", "force_off", "force_on_exact_scope") }
+    return (key to mode).takeIf { key.isNotBlank() && mode in setOf("server", "force_off", "force_on") }
 }
 
 @Composable
@@ -13332,7 +13471,8 @@ private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseActionLabel(copy:
 internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
     actionState: build.raft.app.data.SharedSettingsActionState?,
-    copy: SettingsDiagnosticsPayloadCopy = SettingsDiagnosticsPayloadCopy()
+    copy: SettingsDiagnosticsPayloadCopy = SettingsDiagnosticsPayloadCopy(),
+    includeLocalFeatureOverrides: Boolean = true,
 ): KuiklySharedSettingsPayload {
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
@@ -13447,93 +13587,25 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     )
                 }
         )
-    val diagnosticFlagSections =
-        snapshot?.featureFlagOverrides.orEmpty().map { flag ->
-            val busy =
-                actionState?.action == "diagnosticFeatureFlagOverride:${flag.key}" && actionState.inProgress
-            val scopeHint =
-                when (flag.scopeKind) {
-                    "ChannelExact" -> "Open the target channel once to observe environment/account/server/channel."
-                    "ServerExact" -> "Open Activity on the target server once to observe environment/account/server."
-                    else -> "No client consumer is registered for this key."
-                }
-            KuiklySharedSettingsSection(
-                title = flag.key,
-                rows =
-                    buildList {
-                        add(
+    val localFeatureOverridesSection =
+        snapshot
+            ?.takeIf { includeLocalFeatureOverrides && it.localFeatureOverridesAvailable() }
+            ?.let {
+                KuiklySharedSettingsSection(
+                    title = "Developer tools",
+                    rows =
+                        listOf(
                             KuiklySharedSettingsRow(
-                                "diagnosticFlagInfo|${flag.key}",
-                                SlockLucideIconName.Activity,
-                                "Effective decision",
-                                "server=${flag.serverEffective?.toString() ?: "unobserved"} · " +
-                                    "final=${flag.finalEffective?.toString() ?: "unobserved"} · ${flag.precedence}",
-                                status = if (flag.supported) flag.clientOverride else "Unsupported",
+                                key = LOCAL_FEATURE_OVERRIDES_OPEN_ACTION,
+                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                title = "Local Feature Overrides",
+                                detail = "Inspect registered keys and override them for this app process.",
+                                status = "Open",
+                                enabled = true,
                             )
                         )
-                        add(
-                            KuiklySharedSettingsRow(
-                                "diagnosticFlagScope|${flag.key}",
-                                SlockLucideIconName.Server,
-                                flag.scopeKind,
-                                flag.boundScope.ifBlank { flag.observedScope.ifBlank { scopeHint } },
-                                status = if (flag.exactScopeMatched) "Matched" else "Not matched",
-                            )
-                        )
-                        add(
-                            KuiklySharedSettingsRow(
-                                "diagnosticFlagLifecycle|${flag.key}",
-                                SlockLucideIconName.Clock,
-                                "Override lifecycle",
-                                "clear=${flag.clearReason.ifBlank { "active" }} · " +
-                                    "expiresAt=${flag.expiresAtMillis?.toString() ?: "none"}",
-                                status = if (flag.expiresAtMillis == null) "Process local" else "15 min TTL",
-                            )
-                        )
-                        flag.evidence.takeIf { it.isNotBlank() }?.let { evidence ->
-                            add(
-                                KuiklySharedSettingsRow(
-                                    "diagnosticFlagEvidence|${flag.key}",
-                                    SlockLucideIconName.ClipboardList,
-                                    "Consumer evidence",
-                                    evidence,
-                                    status = "Observed",
-                                )
-                            )
-                        }
-                        add(
-                            KuiklySharedSettingsRow(
-                                diagnosticFeatureFlagAction(flag.key, "server"),
-                                SlockLucideIconName.Server,
-                                "Server",
-                                "Clear this key's local override and follow the server result.",
-                                status = if (flag.clientOverride == "Server") "Current" else "Select",
-                                enabled = flag.supported && flag.entitled && !busy,
-                            )
-                        )
-                        add(
-                            KuiklySharedSettingsRow(
-                                diagnosticFeatureFlagAction(flag.key, "force_off"),
-                                SlockLucideIconName.Shield,
-                                "Force OFF",
-                                "Highest-priority local override for this key's observed identity.",
-                                status = if (flag.clientOverride == "ForceOff") "Current" else "15 min",
-                                enabled = flag.supported && flag.entitled && flag.observedScope.isNotBlank() && !busy,
-                            )
-                        )
-                        add(
-                            KuiklySharedSettingsRow(
-                                diagnosticFeatureFlagAction(flag.key, "force_on_exact_scope"),
-                                SlockLucideIconName.ShieldCheck,
-                                "Force ON exact scope",
-                                "Bind this key only to the exact redacted scope shown above.",
-                                status = if (flag.clientOverride == "ForceOnExactScope") "Current" else "15 min",
-                                enabled = flag.supported && flag.entitled && flag.observedScope.isNotBlank() && !busy,
-                            )
-                        )
-                    },
-            )
-        }
+                )
+            }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = copy.title,
@@ -13556,7 +13628,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
-            ) + diagnosticFlagSections + listOf(profilerControlSection) + listOf(
+            ) + listOfNotNull(localFeatureOverridesSection) + listOf(profilerControlSection) + listOf(
                 KuiklySharedSettingsSection(
                     title = copy.actions,
                     rows =
@@ -13568,6 +13640,174 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             )
     )
 }
+
+internal fun SharedSettingsDiagnosticsSnapshot?.localFeatureOverridesAvailable(): Boolean =
+    this?.featureFlagOverrides?.any { it.supported && it.entitled } == true
+
+internal fun SharedSettingsDiagnosticsSnapshot.registeredLocalFeatureOverrides(): List<SharedSettingsDiagnosticFeatureFlagSnapshot> =
+    featureFlagOverrides
+        .filter { it.supported && it.entitled }
+        .distinctBy { it.key }
+        .sortedBy { it.key }
+
+internal fun SharedSettingsDiagnosticsSnapshot.toLocalFeatureOverridesPayload(): KuiklySharedSettingsPayload =
+    KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-local-feature-overrides",
+        title = "Local Feature Overrides",
+        detail = "Process-local controls registered by this internal build.",
+        heroIconName = SlockLucideIconName.SlidersHorizontal,
+        heroLabel = "Local Feature Overrides",
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Registered keys",
+                    rows =
+                        registeredLocalFeatureOverrides().map { flag ->
+                            KuiklySharedSettingsRow(
+                                key = openLocalFeatureOverrideAction(flag.key),
+                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                title = flag.localFeatureOverrideDisplayName(),
+                                detail = flag.key,
+                                status = flag.localFeatureOverrideFinalStatus(),
+                                enabled = true,
+                            )
+                        }
+                )
+            )
+    )
+
+internal fun SharedSettingsDiagnosticFeatureFlagSnapshot.toLocalFeatureOverrideDetailPayload(
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+): KuiklySharedSettingsPayload {
+    val busy = actionState?.action == "diagnosticFeatureFlagOverride:$key" && actionState.inProgress
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-local-feature-override-$key",
+        title = localFeatureOverrideDisplayName(),
+        detail = key,
+        heroIconName = SlockLucideIconName.SlidersHorizontal,
+        heroLabel = localFeatureOverrideDisplayName(),
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Effective decision",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = "localFeatureOverrideServerEffective|$key",
+                                iconName = SlockLucideIconName.Server,
+                                title = "Server effective",
+                                detail = precedence,
+                                status = serverEffective.localFeatureOverrideBooleanStatus(),
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = "localFeatureOverrideClientOverride|$key",
+                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                title = "Client override",
+                                detail = "Applies to every use of this feature in the current app process.",
+                                status = clientOverride,
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = "localFeatureOverrideFinalEffective|$key",
+                                iconName = SlockLucideIconName.Activity,
+                                title = "Final effective",
+                                detail = "Server value after the process-local override is applied.",
+                                status = localFeatureOverrideFinalEffective().localFeatureOverrideBooleanStatus(),
+                            )
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Lifecycle and evidence",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = "localFeatureOverrideLifecycle|$key",
+                                iconName = SlockLucideIconName.Clock,
+                                title = "TTL and clear reason",
+                                detail = "clear=${clearReason.ifBlank { "active" }} · expiresAt=${expiresAtMillis ?: "none"}",
+                                status = if (expiresAtMillis == null) "Process local" else "15 min TTL",
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = "localFeatureOverrideEvidence|$key",
+                                iconName = SlockLucideIconName.ClipboardList,
+                                title = "Consumer evidence",
+                                detail = evidence.ifBlank { "No consumer evidence has been observed yet." },
+                                status = if (evidence.isBlank()) "Unobserved" else "Observed",
+                            )
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Override",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = diagnosticFeatureFlagAction(key, "server"),
+                                iconName = SlockLucideIconName.Server,
+                                title = "Follow Server",
+                                detail = "Clear this key's process-local override and follow the server result.",
+                                status = if (clientOverride == "Server") "Current" else "Select",
+                                enabled = supported && entitled && !busy,
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = diagnosticFeatureFlagAction(key, "force_off"),
+                                iconName = SlockLucideIconName.Shield,
+                                title = "Force OFF",
+                                detail = "Disable this feature throughout the current app process for 15 minutes.",
+                                status = if (clientOverride == "ForceOff") "Current" else "15 min",
+                                enabled = supported && entitled && !busy,
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = diagnosticFeatureFlagAction(key, "force_on"),
+                                iconName = SlockLucideIconName.ShieldCheck,
+                                title = "Force ON",
+                                detail = "Enable this feature throughout the current app process for 15 minutes.",
+                                status = if (clientOverride == "ForceOn") "Current" else "15 min",
+                                enabled = supported && entitled && !busy,
+                            )
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Evidence",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION,
+                                iconName = SlockLucideIconName.Share,
+                                title = "Export diagnostics evidence",
+                                detail = "Share the sanitized diagnostics archive for this process.",
+                                status = "Export",
+                                enabled = true,
+                            )
+                        )
+                )
+            )
+    )
+}
+
+private fun SharedSettingsDiagnosticFeatureFlagSnapshot.localFeatureOverrideDisplayName(): String =
+    key
+        .replace(Regex("_v[0-9]+$"), "")
+        .split('_')
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+        .replaceFirstChar { it.uppercase() }
+        .ifBlank { key }
+
+private fun SharedSettingsDiagnosticFeatureFlagSnapshot.localFeatureOverrideFinalStatus(): String =
+    localFeatureOverrideFinalEffective().localFeatureOverrideBooleanStatus()
+
+private fun SharedSettingsDiagnosticFeatureFlagSnapshot.localFeatureOverrideFinalEffective(): Boolean? =
+    when (clientOverride) {
+        "ForceOff" -> false
+        "ForceOn" -> true
+        else -> finalEffective
+    }
+
+private fun Boolean?.localFeatureOverrideBooleanStatus(): String =
+    when (this) {
+        true -> "ON"
+        false -> "OFF"
+        null -> "Unobserved"
+    }
 
 private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: SettingsDiagnosticsPayloadCopy): List<KuiklySharedSettingsRow> =
     listOf(
@@ -13603,9 +13843,17 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_title)
         SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_title)
+        SettingsDestinationLocalFeatureOverrides -> "Local Feature Overrides"
         SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_title)
         SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_title)
-        else -> stringResource(MR.strings.settings_title)
+        else ->
+            destination.localFeatureOverrideKeyOrNull()
+                ?.replace(Regex("_v[0-9]+$"), "")
+                ?.split('_')
+                ?.filter { it.isNotBlank() }
+                ?.joinToString(" ")
+                ?.replaceFirstChar { it.uppercase() }
+                ?: stringResource(MR.strings.settings_title)
     }
 
 @Composable
@@ -13628,9 +13876,10 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_subtitle)
         SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment_subtitle)
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_subtitle)
+        SettingsDestinationLocalFeatureOverrides -> "Internal process-local feature controls"
         SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_subtitle)
         SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_subtitle)
-        else -> ""
+        else -> if (destination.localFeatureOverrideKeyOrNull() != null) "Registered local override" else ""
     }
 
 private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
@@ -13652,9 +13901,15 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
         SettingsDestinationApiEnvironment -> SlockLucideIconName.SlidersHorizontal
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
+        SettingsDestinationLocalFeatureOverrides -> SlockLucideIconName.SlidersHorizontal
         SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
         SettingsDestinationQuiverFeedback -> SlockLucideIconName.MessageSquarePlus
-        else -> SlockLucideIconName.Settings
+        else ->
+            if (destination.localFeatureOverrideKeyOrNull() != null) {
+                SlockLucideIconName.SlidersHorizontal
+            } else {
+                SlockLucideIconName.Settings
+            }
     }
 
 private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
