@@ -34,11 +34,28 @@ adb shell am instrument -w -r -e class <FQCN> build.raft.app.connectedtest.test/
 
 ## Promoted to CI by task #19 (for reference)
 
-AndroidShellTaskReuseConnectedTest, SlockChildPageVisibilityConnectedTest,
-SlockPagerScrollProbeConnectedTest, core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest,
+SlockChildPageVisibilityConnectedTest, SlockPagerScrollProbeConnectedTest,
+core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest,
 shared androidInstrumentedTest data.DurablePartitionAndroidDriverMigrationTest
 (every PR), SlockThreadNewerAutoPaginationConnectedTest (main/nightly only) —
 all in test.yml's android-device job.
+
+## Pending a shell-lane behavior decision (do not promote, do not "fix" the test)
+
+**AndroidShellTaskReuseConnectedTest** — its first-ever CI run (task #19)
+failed `secondServerLegacyDocumentLaunchCannotCreateAnotherAppShell`:
+expected `android-default-app-shell`, got `server-shell:server-b`. Root
+cause is not the test's device waits: PR #1152 (multi-shell host settings
+gate, 2026-07-17) removed the activity-side
+`normalizeAndroidAppShellPageData` call from `resolvedPageData` that the
+test (written 2026-07-12 for #661/#866/#918) asserts, leaving that function
+with no production caller and `registerAndroidShellWindow` resolving
+targets with `multiShellHostEnabled = true` regardless of the preference.
+Task-reuse assertions still hold (manifest singleTask); the pageData
+demotion no longer happens for raw intents. Whether #1152's semantics are
+intended (→ update the test) or a gap (→ restore normalization) is the
+shell/launch-contract lane's call — routed via Raft task; until then the
+class stays manual and its other three tests remain valid.
 
 ## Deleted by task #19
 
