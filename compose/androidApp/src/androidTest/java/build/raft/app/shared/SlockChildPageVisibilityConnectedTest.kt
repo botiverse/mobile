@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import build.raft.app.SLOCK_CHILD_PAGE_VISIBILITY_PROBE_PAGE
@@ -37,8 +38,30 @@ class SlockChildPageVisibilityConnectedTest {
         var bitmap: Bitmap? = null
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use {
             instrumentation.waitForIdleSync()
-            Thread.sleep(2_500)
-            bitmap = captureScreenshot()
+            // Bounded readiness poll (AGENTS.md device-wait rule): the previous
+            // fixed 2.5s sleep raced first render on a slow CI emulator
+            // (redRatio=0.0 blueRatio=0.0 — nothing painted yet). The page is
+            // ready once either probe color covers most of the sampled region;
+            // the overdraw assertion afterwards judges which color won.
+            val deadline = SystemClock.uptimeMillis() + 15_000
+            var lastCoverage = 0f
+            while (true) {
+                val candidate = captureScreenshot()
+                val coverage =
+                    candidate.matchingPixelRatio { red, green, blue ->
+                        (red > 220 && green < 60 && blue < 60) || (red < 60 && green < 60 && blue > 220)
+                    }
+                lastCoverage = coverage
+                if (coverage > 0.5f) {
+                    bitmap = candidate
+                    break
+                }
+                candidate.recycle()
+                if (SystemClock.uptimeMillis() >= deadline) {
+                    error("Child page visibility probe never rendered within 15s (probe color coverage=$lastCoverage)")
+                }
+                SystemClock.sleep(250)
+            }
         }
         return requireNotNull(bitmap) { "Failed to capture child page visibility probe screenshot" }
     }
