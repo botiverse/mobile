@@ -5,6 +5,45 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
+test("pre-claim status freezes the GitHub run and reports the failing phase", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-dispatch-"));
+  const bin = path.join(root, "bin");
+  const runnerTemp = path.join(root, "runner-temp");
+  fs.mkdirSync(bin);
+  fs.mkdirSync(runnerTemp);
+  fs.writeFileSync(path.join(runnerTemp, "stamp-preclaim-phase"), "fetch_pinned_apk");
+  const payloadLog = path.join(root, "payload.json");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/usr/bin/env bash
+payload=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in --data-binary) payload="$2"; shift 2;; *) shift;; esac
+done
+cp "\${payload#@}" "${payloadLog}"
+`, { mode: 0o755 });
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${path.dirname(process.execPath)}:${process.env.PATH}`,
+    RUNNER_TEMP: runnerTemp,
+    STAMP_RUN_CASE_ID: "rc-preclaim",
+    STAMP_URL: "https://stamp.test",
+    STAMP_TOKEN: "test-token",
+    GITHUB_RUN_ID: "456",
+    GITHUB_REPOSITORY: "botiverse/mobile",
+    STAMP_PRECLAIM_ERROR_REASON: "artifact resolver failed",
+  };
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "dispatch-error"], { cwd: root, env });
+  assert.deepEqual(JSON.parse(fs.readFileSync(payloadLog, "utf8")), {
+    status: "error",
+    ci_job_ref: "https://github.com/botiverse/mobile/actions/runs/456",
+    phase: "fetch_pinned_apk",
+    reason: "artifact resolver failed",
+  });
+  fs.writeFileSync(path.join(runnerTemp, "stamp-claim-rc-preclaim"), "lease", { mode: 0o600 });
+  fs.rmSync(payloadLog);
+  execFileSync("bash", [new URL("./stamp_report.sh", import.meta.url).pathname, "dispatch-error"], { cwd: root, env });
+  assert.equal(fs.existsSync(payloadLog), false);
+});
+
 test("claim payload uses frozen artifact identity overrides", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-claim-"));
   const evidence = path.join(root, "qa-evidence");

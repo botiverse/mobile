@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Report an acceptance run's evidence + verdict back to Stamp
 # (https://raft-app-stamp.botiverse.dev). No-op unless STAMP_RUN_CASE_ID is set.
-# Usage: stamp_report.sh <phase: claim|report> <evidence-dir>
+# Usage: stamp_report.sh <phase: dispatch-start|dispatch-error|claim|report> <evidence-dir>
 set -u
 PHASE="${1:-report}"
 EV="${2:-qa-evidence}"
@@ -12,6 +12,28 @@ BASE="$STAMP_URL/api/agent/run-cases/$STAMP_RUN_CASE_ID"
 JOB_REF="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
 JOB_HEADER="X-Stamp-CI-Job-Ref: $JOB_REF"
 CLAIM_TOKEN_FILE="${RUNNER_TEMP:-$EV}/stamp-claim-$STAMP_RUN_CASE_ID"
+
+if [ "$PHASE" = "dispatch-start" ] || [ "$PHASE" = "dispatch-error" ]; then
+  # Once a claim lease exists, ordinary executor/product failures belong to
+  # the verdict endpoint and must never be rewritten as pre-claim errors.
+  [ ! -f "$CLAIM_TOKEN_FILE" ] || { echo "stamp: already claimed, skipping dispatch status"; exit 0; }
+  STATUS="started"; [ "$PHASE" = "dispatch-error" ] && STATUS="error"
+  PHASE_FILE="${RUNNER_TEMP:-$EV}/stamp-preclaim-phase"
+  PRECLAIM_PHASE="checkout_complete"; [ -f "$PHASE_FILE" ] && PRECLAIM_PHASE=$(cat "$PHASE_FILE")
+  REASON="${STAMP_PRECLAIM_ERROR_REASON:-workflow failed before Stamp claim}"
+  PAYLOAD="${RUNNER_TEMP:-$EV}/stamp-dispatch-status-$STAMP_RUN_CASE_ID.json"
+  STATUS="$STATUS" JOB_REF="$JOB_REF" PRECLAIM_PHASE="$PRECLAIM_PHASE" REASON="$REASON" \
+    node -e 'const fs=require("fs"),e=process.env;const v={status:e.STATUS,ci_job_ref:e.JOB_REF};if(e.STATUS==="error"){v.phase=e.PRECLAIM_PHASE;v.reason=e.REASON}fs.writeFileSync(process.argv[1],JSON.stringify(v))' "$PAYLOAD"
+  if curl -sf -X POST "$BASE/dispatch-status" -H "$AUTH" -H 'content-type: application/json' --data-binary @"$PAYLOAD" >/dev/null; then
+    rm -f "$PAYLOAD"
+    echo "stamp: dispatch $STATUS ($PRECLAIM_PHASE)"
+    exit 0
+  fi
+  rm -f "$PAYLOAD"
+  echo "stamp: dispatch $STATUS report failed" >&2
+  [ "$PHASE" = "dispatch-error" ] && exit 0
+  exit 1
+fi
 
 if [ "$PHASE" = "claim" ]; then
   # bind the exact build under test to the run (artin: every run records its version)

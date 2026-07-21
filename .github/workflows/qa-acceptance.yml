@@ -1,4 +1,5 @@
 name: QA Acceptance (agent-in-CI)
+run-name: Stamp ${{ inputs.stamp_run_case_id || github.run_id }}
 
 # PoC of the acceptance executor (#proj-quality task #2): one acceptance run =
 # one CI job. A goal goes in; an M3 agent drives the REAL debug APK on the
@@ -28,6 +29,10 @@ on:
       # skips the build job entirely. Branch builds use plain --ref dispatch.
       apk_run_id:
         description: "Reuse the qa-acceptance-apk artifact from this workflow run id (skips build)"
+        required: false
+        default: ""
+      apk_artifact_id:
+        description: "Exact GitHub Actions artifact id frozen by Stamp (preferred for strict coordinates)"
         required: false
         default: ""
       apk_url:
@@ -191,6 +196,16 @@ jobs:
       - name: Checkout mobile
         uses: actions/checkout@v5
 
+      - name: Bind pre-claim workflow to Stamp
+        if: ${{ inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: |
+          printf '%s' checkout_complete > "$RUNNER_TEMP/stamp-preclaim-phase"
+          bash scripts/qa/stamp_report.sh dispatch-start
+
       - name: Validate frozen artifact inputs
         env:
           PIN_PRIMARY: ${{ inputs.apk_run_id }}
@@ -225,9 +240,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           APK_RUN_ID: ${{ inputs.apk_run_id }}
+          APK_ARTIFACT_ID: ${{ inputs.apk_artifact_id }}
           APK_URL: ${{ inputs.apk_url }}
           FROZEN_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          FROZEN_ARTIFACT_SOURCE_COMMIT: ${{ inputs.artifact_source_commit }}
         run: |
+          printf '%s' fetch_pinned_apk > "$RUNNER_TEMP/stamp-preclaim-phase"
           mkdir -p apks
           if [ -n "$APK_RUN_ID" ]; then
             # Named artifact first (our own build jobs); fall back to ALL
@@ -237,12 +255,22 @@ jobs:
             if [ -n "$FROZEN_ARTIFACT_SHA256" ]; then
               metadata="$RUNNER_TEMP/pinned-android-artifacts.json"
               resolved="$RUNNER_TEMP/pinned-android-artifact.json"
-              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$APK_RUN_ID/artifacts?per_page=100" > "$metadata"
-              node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID"
+              if [ -n "$APK_ARTIFACT_ID" ]; then
+                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT_ID" > "$metadata"
+                node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID" "$APK_ARTIFACT_ID"
+              else
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$APK_RUN_ID/artifacts?per_page=100" > "$metadata"
+                node scripts/qa/resolve_pinned_android_artifact.mjs "$metadata" "$resolved" "$APK_RUN_ID"
+              fi
               artifact_name=$(jq -r .artifactName "$resolved")
-              source_commit=$(jq -r .sourceCommit "$resolved")
+              source_commit="$FROZEN_ARTIFACT_SOURCE_COMMIT"
               artifact_id=$(jq -r .artifactId "$resolved")
-              gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n "$artifact_name" -D apks
+              if [ -n "$APK_ARTIFACT_ID" ]; then
+                gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$APK_ARTIFACT_ID/zip" > "$RUNNER_TEMP/pinned-android-artifact.zip"
+                unzip -q "$RUNNER_TEMP/pinned-android-artifact.zip" -d apks
+              else
+                gh run download "$APK_RUN_ID" --repo "$GITHUB_REPOSITORY" -n "$artifact_name" -D apks
+              fi
               apk=$(find apks -type f -name '*.apk' -print -quit)
               test -s "$apk"
               bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
@@ -340,6 +368,7 @@ jobs:
           ARTIFACT_VERSION_CODE: ${{ inputs.artifact_version_code }}
           ARTIFACT_PACKAGE_ID: ${{ inputs.artifact_package_id }}
         run: |
+          printf '%s' verify_frozen_artifact > "$RUNNER_TEMP/stamp-preclaim-phase"
           mapfile -t apk_candidates < <(find apks -type f -name '*.apk' -print)
           mapfile -t manifest_candidates < <(find apks -type f -name build-info.json -print)
           if [ "${#apk_candidates[@]}" -ne 1 ] || [ "${#manifest_candidates[@]}" -ne 1 ]; then
@@ -360,6 +389,10 @@ jobs:
           APK_SHA="$sha" APK_PKG="$pkg" APK_VERSION="$vn" APK_CODE="$vc" node -e \
             'const fs=require("fs"),e=process.env;fs.writeFileSync("apks/observed-identity.json",JSON.stringify({sha256:e.APK_SHA,packageId:e.APK_PKG,version:e.APK_VERSION,versionCode:e.APK_CODE}))'
           node scripts/qa/verify_pinned_android_identity.mjs "$manifest" apks/observed-identity.json
+
+      - name: Mark pre-claim preparation complete
+        if: ${{ inputs.stamp_run_case_id != '' }}
+        run: printf '%s' ready_to_claim > "$RUNNER_TEMP/stamp-preclaim-phase"
 
       - name: Enable KVM
         run: |
@@ -500,3 +533,12 @@ jobs:
             rc="$mrc"
           fi
           exit "$rc"
+
+      - name: Report pre-claim infrastructure failure
+        if: ${{ failure() && inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          STAMP_PRECLAIM_ERROR_REASON: workflow failed before Stamp claim; inspect linked GitHub Actions run
+        run: bash scripts/qa/stamp_report.sh dispatch-error
