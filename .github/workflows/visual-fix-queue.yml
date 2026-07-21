@@ -14,7 +14,7 @@ on:
         default: "3"
       token_cap:
         description: "Maximum reserved M3 tokens for this run"
-        default: "225000"
+        default: "1000000000000"
       issue:
         description: "Optional single issue number"
         default: ""
@@ -106,7 +106,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --comparison react__android \
             --case-cap "${{ github.event.inputs.case_cap || '3' }}" \
-            --token-cap "${{ github.event.inputs.token_cap || '225000' }}" \
+            --token-cap "${{ github.event.inputs.token_cap || vars.VISUAL_FIX_QUEUE_TOKEN_CAP || '1000000000000' }}" \
             --issue "${{ github.event.inputs.issue || '' }}" \
             --mobile-root . \
             --slock-root slock \
