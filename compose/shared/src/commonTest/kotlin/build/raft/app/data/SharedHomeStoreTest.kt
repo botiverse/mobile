@@ -4628,9 +4628,13 @@ class SharedHomeStoreTest {
 
         assertEquals(1, loadCount)
         assertEquals(true, store.state.value.serverSwitcherExpanded)
+        assertEquals(1L, store.state.value.serverDrawerCommandIntent.generation)
+        assertEquals(true, store.state.value.serverDrawerCommandIntent.desiredOpen)
         assertEquals(listOf("server-1", "server-2", "server-3"), sessionStore.readSession()?.servers?.map { it.id })
         store.accept(SharedHomeIntent.DismissServerSwitcher)
         assertEquals(false, store.state.value.serverSwitcherExpanded)
+        assertEquals(2L, store.state.value.serverDrawerCommandIntent.generation)
+        assertEquals(false, store.state.value.serverDrawerCommandIntent.desiredOpen)
         blockedLoad.release()
         awaitCondition {
             (store.state.value.content as? SharedHomeContentState.Content)
