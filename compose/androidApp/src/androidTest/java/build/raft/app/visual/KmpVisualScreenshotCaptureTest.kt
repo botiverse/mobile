@@ -1768,11 +1768,16 @@ class KmpVisualScreenshotCaptureTest {
                 // bottom 12dp spacer instead of the footer chips above it; the
                 // old y=251dp point moved into footer content as the row grew.
                 tapDp(xDp = 170f, yDp = 268f)
-                val root =
-                    requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow) {
-                        "Activity fixture accessibility root is unavailable"
-                    }
-                require(root.findAccessibilityNodeInfosByText(openedMarker).isNotEmpty()) {
+                val markerDeadline = SystemClock.uptimeMillis() + ACCESSIBILITY_MARKER_TIMEOUT_MS
+                var markerVisible = false
+                while (!markerVisible && SystemClock.uptimeMillis() < markerDeadline) {
+                    markerVisible =
+                        InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                            ?.findAccessibilityNodeInfosByText(openedMarker)
+                            ?.isNotEmpty() == true
+                    if (!markerVisible) Thread.sleep(ACCESSIBILITY_MARKER_POLL_MS)
+                }
+                require(markerVisible) {
                     "Activity row bottom padding did not open the inbox item"
                 }
             }
@@ -3380,14 +3385,20 @@ class KmpVisualScreenshotCaptureTest {
         val x = xDp * density
         val y = yDp * density
         val downTime = SystemClock.uptimeMillis()
-        instrumentation.uiAutomation.injectInputEvent(
-            MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0),
-            true
-        )
-        instrumentation.uiAutomation.injectInputEvent(
-            MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, x, y, 0),
-            true
-        )
+        val downInjected =
+            instrumentation.uiAutomation.injectInputEvent(
+                MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0),
+                true
+            )
+        Thread.sleep(TAP_DWELL_MS)
+        val upInjected =
+            instrumentation.uiAutomation.injectInputEvent(
+                MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0),
+                true
+            )
+        require(downInjected && upInjected) {
+            "UiAutomation rejected tap at (${xDp}dp, ${yDp}dp): down=$downInjected up=$upInjected"
+        }
         waitForIdleBounded()
     }
 
@@ -4234,6 +4245,9 @@ class KmpVisualScreenshotCaptureTest {
         // Ceiling for ActivityScenario.close() teardown (its moveToState does an
         // unbounded waitForIdleSync). Normal close is sub-second.
         private const val SCENARIO_CLOSE_TIMEOUT_MS = 5_000L
+        private const val TAP_DWELL_MS = 80L
+        private const val ACCESSIBILITY_MARKER_TIMEOUT_MS = 2_000L
+        private const val ACCESSIBILITY_MARKER_POLL_MS = 100L
         // Hard per-case backstop. With every unbounded waitForIdleSync path now
         // bounded (idle waits, onActivity, close — task #362/#364), no case
         // hangs forever, so this is a generous ceiling for legitimately-slow 3x
