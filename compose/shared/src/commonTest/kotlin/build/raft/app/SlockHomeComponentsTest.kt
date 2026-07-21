@@ -5,6 +5,12 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerLoadStatus
+import build.raft.app.data.HomeServerDrawerConversationSection
+import build.raft.app.data.HomeServerDrawerNormalizedContent
+import build.raft.app.data.HomeServerDrawerNormalizedRow
+import build.raft.app.data.HomeServerDrawerSectionState
+import build.raft.app.data.HomeServerDrawerState
+import build.raft.app.data.homeServerDrawerNormalizedContentForSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
@@ -30,9 +36,78 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
+    @Test
+    fun hostedDrawerProjectionRetainsTenThousandNormalizedRowsByIdentity() {
+        val serverId = ServerId("server-scale")
+        val rows =
+            List(10_000) { index ->
+                HomeServerDrawerNormalizedRow.Conversation(
+                    section = HomeServerDrawerConversationSection.Channel,
+                    conversation =
+                        HomeChannelRow(
+                            threadId = ThreadId("channel-$index"),
+                            channelId = ChannelId("channel-$index"),
+                            name = "Channel $index"
+                        )
+                )
+            }
+        val normalized = HomeServerDrawerNormalizedContent(rows, firstConversationIndex = 0)
+        val drawer =
+            HomeServerDrawerState(
+                expanded = true,
+                expandedServerIds = setOf(serverId),
+                sections =
+                    mapOf(
+                        serverId to
+                            HomeServerDrawerSectionState(
+                                server = ServerSummary(serverId, "Scale"),
+                                normalizedContent = normalized,
+                                status = HomeServerDrawerLoadStatus.Loaded
+                            )
+                    )
+            )
+
+        val projected = drawer.toSlockHomeServerDrawerHostedSections()
+
+        assertSame(normalized, projected.single().normalizedContent)
+        assertSame(rows, projected.single().normalizedContent.rows)
+    }
+
+    @Test
+    fun sameSnapshotDrawerToggleDoesNotRenormalizeCachedRows() {
+        val snapshot = testHomeSnapshot()
+        val previous =
+            HomeServerDrawerNormalizedContent(
+                rows =
+                    List(10_000) { index ->
+                        HomeServerDrawerNormalizedRow.Conversation(
+                            section = HomeServerDrawerConversationSection.Channel,
+                            conversation =
+                                HomeChannelRow(
+                                    threadId = ThreadId("cached-$index"),
+                                    channelId = ChannelId("cached-$index"),
+                                    name = "Cached $index"
+                                )
+                        )
+                    },
+                firstConversationIndex = 0
+            )
+        var normalizeCalls = 0
+
+        val retained =
+            homeServerDrawerNormalizedContentForSnapshot(snapshot, snapshot, previous) {
+                normalizeCalls += 1
+                HomeServerDrawerNormalizedContent.Empty
+            }
+
+        assertSame(previous, retained)
+        assertEquals(0, normalizeCalls)
+    }
+
     @Test
     fun homeServerDrawerFlattensMultipleExpandedServersIntoOneKeyedRowList() {
         val sharedId = "shared-conversation"

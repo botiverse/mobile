@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SlockSidebarSortMode
+import build.raft.app.base.putIfAbsent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -23,6 +24,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
@@ -386,10 +388,15 @@ internal class SharedHomeStore(
                     } else {
                         _state.value.serverDrawer.copy(expanded = false, reorderMode = false)
                     }
+                val nextIntent = _state.value.serverDrawerCommandIntent.transitionTo(expanding)
+                nextIntent.supersededGeneration?.let { generation ->
+                    diagnosticsLogger("server_drawer_command_superseded generation=$generation")
+                }
                 reduceState(
                     _state.value.copy(
                         serverSwitcherExpanded = expanding,
-                        serverDrawer = drawer
+                        serverDrawer = drawer,
+                        serverDrawerCommandIntent = nextIntent.intent
                     )
                 )
                 if (expanding) {
@@ -403,13 +410,19 @@ internal class SharedHomeStore(
                     }
                 }
             }
-            SharedHomeIntent.DismissServerSwitcher ->
+            SharedHomeIntent.DismissServerSwitcher -> {
+                val nextIntent = _state.value.serverDrawerCommandIntent.transitionTo(false)
+                nextIntent.supersededGeneration?.let { generation ->
+                    diagnosticsLogger("server_drawer_command_superseded generation=$generation")
+                }
                 reduceState(
                     _state.value.copy(
                         serverSwitcherExpanded = false,
-                        serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false)
+                        serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false),
+                        serverDrawerCommandIntent = nextIntent.intent
                     )
                 )
+            }
             is SharedHomeIntent.ToggleServerDrawerSection ->
                 toggleServerDrawerSection(intent.serverId)
             is SharedHomeIntent.RetryServerDrawerSection ->
@@ -458,10 +471,15 @@ internal class SharedHomeStore(
                     } else {
                         _state.value.serverSwitchState.select(intent.serverId)
                     }
+                val nextDrawerIntent = _state.value.serverDrawerCommandIntent.transitionTo(false)
+                nextDrawerIntent.supersededGeneration?.let { generation ->
+                    diagnosticsLogger("server_drawer_command_superseded generation=$generation")
+                }
                 reduceState(
                     _state.value.copy(
                         serverSwitcherExpanded = false,
                         serverDrawer = _state.value.serverDrawer.copy(expanded = false, reorderMode = false),
+                        serverDrawerCommandIntent = nextDrawerIntent.intent,
                         serverSwitchState = nextSwitch,
                         selectedConversationId = null,
                         selectedTopAction = null,
@@ -1102,13 +1120,21 @@ internal class SharedHomeStore(
         status: HomeServerDrawerLoadStatus
     ): HomeServerDrawerState {
         val serverId = content.snapshot.server.id
-        val section = sections[serverId] ?: return this
+        val section = sections[serverId] ?: HomeServerDrawerSectionState(server = content.snapshot.server)
         return copy(
             sections =
                 sections +
                     (serverId to
                         section.copy(
                             content = content,
+                            normalizedContent =
+                                homeServerDrawerNormalizedContentForSnapshot(
+                                    previousSnapshot =
+                                        section.content?.snapshot
+                                            ?.takeIf { section.normalizedContent !== HomeServerDrawerNormalizedContent.Empty },
+                                    nextSnapshot = content.snapshot,
+                                    previousContent = section.normalizedContent
+                                ),
                             status = status,
                             errorCode = null
                         ))
@@ -1151,6 +1177,11 @@ internal class SharedHomeStore(
                     HomeServerDrawerSectionState(
                         server = server,
                         content = cached,
+                        normalizedContent =
+                            previous.sections[server.id]?.normalizedContent
+                                ?: cached?.takeIf { server.id == selectedServerId }
+                                    ?.snapshot?.toHomeServerDrawerNormalizedContent()
+                                ?: HomeServerDrawerNormalizedContent.Empty,
                         status = status,
                         requestGeneration = previous.sections[server.id]?.requestGeneration ?: 0L
                     )
@@ -1183,11 +1214,29 @@ internal class SharedHomeStore(
                     val cached = existing?.content ?: contentByServer[server.id]
                     server.id to
                         if (existing != null) {
-                            existing.copy(server = server, content = cached)
+                            existing.copy(
+                                server = server,
+                                content = cached,
+                                normalizedContent =
+                                    cached?.snapshot?.let { snapshot ->
+                                        homeServerDrawerNormalizedContentForSnapshot(
+                                            previousSnapshot =
+                                                existing.content?.snapshot
+                                                    ?.takeIf {
+                                                        existing.normalizedContent !== HomeServerDrawerNormalizedContent.Empty
+                                                    },
+                                            nextSnapshot = snapshot,
+                                            previousContent = existing.normalizedContent
+                                        )
+                                    } ?: HomeServerDrawerNormalizedContent.Empty
+                            )
                         } else {
                             HomeServerDrawerSectionState(
                                 server = server,
                                 content = cached,
+                                normalizedContent =
+                                    cached?.snapshot?.toHomeServerDrawerNormalizedContent()
+                                        ?: HomeServerDrawerNormalizedContent.Empty,
                                 status =
                                     if (cached == null) {
                                         HomeServerDrawerLoadStatus.Unloaded
@@ -1251,6 +1300,18 @@ internal class SharedHomeStore(
         val loadingSection =
             section.copy(
                 content = cached,
+                normalizedContent =
+                    if (cached == null) {
+                        HomeServerDrawerNormalizedContent.Empty
+                    } else {
+                        homeServerDrawerNormalizedContentForSnapshot(
+                            previousSnapshot =
+                                section.content?.snapshot
+                                    ?.takeIf { section.normalizedContent !== HomeServerDrawerNormalizedContent.Empty },
+                            nextSnapshot = cached.snapshot,
+                            previousContent = section.normalizedContent
+                        )
+                    },
                 status =
                     if (cached == null) {
                         HomeServerDrawerLoadStatus.Loading
@@ -1376,6 +1437,7 @@ internal class SharedHomeStore(
                                 (serverId to
                                     section.copy(
                                         content = content,
+                                        normalizedContent = content.snapshot.toHomeServerDrawerNormalizedContent(),
                                         status = HomeServerDrawerLoadStatus.Loaded,
                                         errorCode = null
                                     ))
@@ -3495,10 +3557,149 @@ enum class HomeServerDrawerLoadStatus {
 data class HomeServerDrawerSectionState(
     val server: ServerSummary,
     val content: SharedHomeContentState.Content? = null,
+    val normalizedContent: HomeServerDrawerNormalizedContent = HomeServerDrawerNormalizedContent.Empty,
     val status: HomeServerDrawerLoadStatus = HomeServerDrawerLoadStatus.Unloaded,
     val requestGeneration: Long = 0L,
     val errorCode: String? = null
 )
+
+data class HomeServerDrawerCommandIntent(
+    val generation: Long = 0L,
+    val desiredOpen: Boolean = false
+)
+
+internal data class HomeServerDrawerCommandTransition(
+    val intent: HomeServerDrawerCommandIntent,
+    val supersededGeneration: Long?
+)
+
+internal fun HomeServerDrawerCommandIntent.transitionTo(desiredOpen: Boolean): HomeServerDrawerCommandTransition =
+    if (this.desiredOpen == desiredOpen) {
+        HomeServerDrawerCommandTransition(this, null)
+    } else {
+        HomeServerDrawerCommandTransition(
+            intent = HomeServerDrawerCommandIntent(generation = generation + 1L, desiredOpen = desiredOpen),
+            supersededGeneration = generation.takeIf { it > 0L }
+        )
+    }
+
+enum class HomeServerDrawerConversationSection {
+    Pinned,
+    Channel,
+    JointChannel,
+    DirectMessage
+}
+
+sealed interface HomeServerDrawerNormalizedRow {
+    val key: String
+
+    data class SectionHeader(
+        val section: HomeServerDrawerConversationSection,
+        val count: Int
+    ) : HomeServerDrawerNormalizedRow {
+        override val key: String = "section:${section.name.lowercase()}"
+    }
+
+    data class Conversation(
+        val section: HomeServerDrawerConversationSection,
+        val conversation: HomeConversationRow
+    ) : HomeServerDrawerNormalizedRow {
+        override val key: String = "conversation:${section.name.lowercase()}:${conversation.threadId.value}"
+    }
+}
+
+data class HomeServerDrawerNormalizedContent(
+    val rows: List<HomeServerDrawerNormalizedRow>,
+    val firstConversationIndex: Int
+) {
+    companion object {
+        val Empty = HomeServerDrawerNormalizedContent(emptyList(), -1)
+    }
+}
+
+internal fun homeServerDrawerNormalizedContentForSnapshot(
+    previousSnapshot: HomeSnapshot?,
+    nextSnapshot: HomeSnapshot,
+    previousContent: HomeServerDrawerNormalizedContent,
+    normalize: (HomeSnapshot) -> HomeServerDrawerNormalizedContent = HomeSnapshot::toHomeServerDrawerNormalizedContent
+): HomeServerDrawerNormalizedContent =
+    if (previousSnapshot === nextSnapshot) previousContent else normalize(nextSnapshot)
+
+internal fun HomeSnapshot.toHomeServerDrawerNormalizedContent(): HomeServerDrawerNormalizedContent {
+    val order = sidebarOrder ?: SettingsServerSidebarOrderSnapshot()
+    val visibleDirectMessages =
+        directMessages
+            .orderedForHomeServerDrawer(order.dmOrder)
+            .filter { row -> row.threadId.value !in order.hiddenDmIds || row.unreadCount > 0 }
+            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.dmSortMode))
+    val regularChannels =
+        channels
+            .filter { row -> row.kind != ConversationKind.Joint }
+            .orderedForHomeServerDrawer(order.channelOrder)
+            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.channelSortMode))
+    val jointChannels =
+        channels
+            .filter { row -> row.kind == ConversationKind.Joint }
+            .orderedForHomeServerDrawer(order.channelOrder)
+            .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.channelSortMode))
+    val pinned = homeServerDrawerPinnedConversations(channels, directMessages, order)
+    val rows =
+        buildList {
+            fun append(section: HomeServerDrawerConversationSection, conversations: List<HomeConversationRow>) {
+                if (conversations.isEmpty()) return
+                add(HomeServerDrawerNormalizedRow.SectionHeader(section, conversations.size))
+                conversations.forEach { add(HomeServerDrawerNormalizedRow.Conversation(section, it)) }
+            }
+            append(HomeServerDrawerConversationSection.Pinned, pinned)
+            append(HomeServerDrawerConversationSection.Channel, regularChannels)
+            append(HomeServerDrawerConversationSection.JointChannel, jointChannels)
+            append(HomeServerDrawerConversationSection.DirectMessage, visibleDirectMessages)
+        }
+    return HomeServerDrawerNormalizedContent(
+        rows = rows,
+        firstConversationIndex = rows.indexOfFirst { it is HomeServerDrawerNormalizedRow.Conversation }
+    )
+}
+
+private fun List<HomeConversationRow>.orderedForHomeServerDrawer(order: List<String>): List<HomeConversationRow> {
+    if (isEmpty() || order.isEmpty()) return this
+    val byId = associateBy { it.threadId.value }
+    val ordered = LinkedHashMap<String, HomeConversationRow>()
+    order.forEach { id -> byId[id]?.let { row -> ordered[row.threadId.value] = row } }
+    forEach { row -> ordered.putIfAbsent(row.threadId.value, row) }
+    return ordered.values.toList()
+}
+
+private fun List<HomeConversationRow>.sortedForHomeServerDrawer(mode: SlockSidebarSortMode): List<HomeConversationRow> =
+    when (mode) {
+        SlockSidebarSortMode.Manual -> this
+        SlockSidebarSortMode.Recent ->
+            sortedWith(
+                compareByDescending<HomeConversationRow> {
+                    parseSlockTimestampEpochMillisOrNull(it.lastMessageAt) ?: Long.MIN_VALUE
+                }.thenBy { it.name.trim().lowercase() }.thenBy { it.threadId.value }
+            )
+        SlockSidebarSortMode.Az ->
+            sortedWith(compareBy<HomeConversationRow> { it.name.trim().lowercase() }.thenBy { it.threadId.value })
+    }
+
+private fun homeServerDrawerPinnedConversations(
+    channels: List<HomeConversationRow>,
+    directMessages: List<HomeConversationRow>,
+    order: SettingsServerSidebarOrderSnapshot
+): List<HomeConversationRow> {
+    val byConversationId = (channels + directMessages).associateBy { it.threadId.value }
+    val byMemberId =
+        directMessages.mapNotNull { row -> row.presenceMemberId?.value?.let { memberId -> memberId to row } }.toMap()
+    return order.typedPinnedOrLegacy().mapNotNull { item ->
+        when (item.kind.trim().lowercase()) {
+            "channel" -> byConversationId[item.id]
+            "agent", "human" -> byMemberId[item.id] ?: byConversationId[item.id]
+            else -> null
+        }
+    }.distinctBy { it.threadId.value }
+        .sortedForHomeServerDrawer(SlockSidebarSortMode.fromWireValue(order.pinnedSortMode))
+}
 
 data class HomeServerDrawerState(
     val expanded: Boolean = false,
@@ -3512,6 +3713,7 @@ data class SharedHomeState(
     val serverSwitchState: HomeServerSwitchState = HomeServerSwitchState(),
     val serverSwitcherExpanded: Boolean = false,
     val serverDrawer: HomeServerDrawerState = HomeServerDrawerState(),
+    val serverDrawerCommandIntent: HomeServerDrawerCommandIntent = HomeServerDrawerCommandIntent(),
     val selectedConversationId: String? = null,
     val selectedTopAction: SharedHomeTopAction? = null,
     val notifications: List<SharedHomeNotification> = emptyList(),

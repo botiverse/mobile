@@ -163,6 +163,7 @@ import build.raft.app.data.SharedHomeShellDestinationActivity
 import build.raft.app.data.SharedHomeShellDestinationSaved
 import build.raft.app.data.SharedHomeShellDestinationSearch
 import build.raft.app.data.SharedHomeShellIntent
+import build.raft.app.data.SharedHomeShellState
 import build.raft.app.data.SharedHomeShellStore
 import build.raft.app.data.RealtimeGuardedDomainEventSinks
 import build.raft.app.data.RealtimeShellCallbackGate
@@ -414,6 +415,7 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -426,6 +428,7 @@ import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
@@ -438,6 +441,8 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.drawer.MoveableDrawer
+import com.tencent.kuikly.compose.foundation.drawer.rememberMoveableDrawerState
 import com.tencent.kuikly.compose.text.SelectionContainer
 import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.material3.Text
@@ -452,6 +457,7 @@ import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
@@ -485,8 +491,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -2934,7 +2943,25 @@ internal fun SlockAppShellContent(
     DisposableEffect(homeShellStore) {
         onDispose { homeShellStore.clear() }
     }
-    val homeShellState by homeShellStore.state.collectAsState()
+    val homeShellRenderState =
+        remember(homeShellStore, serverDrawerEnabled) {
+            if (serverDrawerEnabled) {
+                homeShellStore.state
+                    .map { state -> state.withoutServerDrawerRuntimeForAppShellRender() }
+                    .distinctUntilChanged()
+            } else {
+                homeShellStore.state
+            }
+        }
+    val initialHomeShellRenderState =
+        remember(homeShellStore, serverDrawerEnabled) {
+            if (serverDrawerEnabled) {
+                homeShellStore.state.value.withoutServerDrawerRuntimeForAppShellRender()
+            } else {
+                homeShellStore.state.value
+            }
+        }
+    val homeShellState by homeShellRenderState.collectAsState(initialHomeShellRenderState)
     val homeState = homeShellState.home
     val homeActivityState = homeShellState.activity
     val homeSearchSavedState = homeShellState.searchSaved
@@ -4400,7 +4427,68 @@ internal fun SlockAppShellContent(
         }
     }
 
-    val mainRouteContent: @Composable () -> Unit = {
+    val appShellHomeLabels = SlockHomeShellLabels.localized()
+    val serverDrawerUserHeader =
+        remember(
+            readySession?.user?.id,
+            readySession?.user?.displayName,
+            readySession?.user?.name,
+            readySession?.user?.email,
+            readySession?.user?.avatarUrl
+        ) {
+            val user = readySession?.user
+            val displayName = user?.bestDisplayName ?: "Raft user"
+            SlockServerDrawerUserHeader(
+                displayName = displayName,
+                avatarWireValue = user?.avatarUrl,
+                avatarLabel = displayName.take(2).uppercase().ifBlank { "?" }
+            )
+        }
+    fun openServerDrawerConversation(serverIdValue: String, conversationId: String) {
+        val normalizedServerId = serverIdValue.trim().takeIf { it.isNotBlank() } ?: return
+        val normalizedConversationId = conversationId.trim().takeIf { it.isNotBlank() } ?: return
+        appShellCoroutineScope.launch {
+            val serverId = ServerId(normalizedServerId)
+            val drawerSection = homeShellStore.state.value.home.serverDrawer.sections[serverId]
+            val conversation =
+                drawerSection?.content?.snapshot?.let { it.channels + it.directMessages }
+                    ?.firstOrNull { it.threadId.value == normalizedConversationId }
+            val selectedSession = latestReadySession?.withAppShellSelectedServer(normalizedServerId)
+            if (drawerSection == null || conversation == null || selectedSession == null) {
+                bridge.logWarn(
+                    "server_drawer_open_rejected serverId=$normalizedServerId " +
+                        "conversationId=$normalizedConversationId reason=stale_projection"
+                )
+                bridge.toast("Conversation is no longer available")
+                return@launch
+            }
+            if (selectedServerStore.selectedServerId.value != normalizedServerId) {
+                shellAuthStore.updateSelectedServer(normalizedServerId, drawerSection.server.slug)
+                authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(selectedSession))
+                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
+            }
+            val targetStoreScope =
+                SlockShellStoreScope.create(
+                    shellInstanceId = storeScope.shellInstanceId,
+                    initialServerId = normalizedServerId
+                )
+            val identity = conversation.toThreadLaunchConversationIdentity()
+            val payload =
+                buildStandaloneConversationThreadLaunchPayload(
+                    conversation = identity,
+                    timeContext = threadTimeContext,
+                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                    compactConsecutiveMessages = compactConsecutiveMessages,
+                    threadRowAffordances = threadRowAffordances,
+                    onWarn = bridge::logWarn
+                ) ?: return@launch
+            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(identity.threadId.value))
+            pager.openStandaloneThreadLaunchPayload(payload, targetStoreScope)
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+        }
+    }
+
+    val mainRouteSurface: @Composable () -> Unit = {
         SlockAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
@@ -4908,6 +4996,25 @@ internal fun SlockAppShellContent(
         }
     }
 
+    val mainRouteContent: @Composable () -> Unit = {
+        if (serverDrawerEnabled) {
+            AppShellServerDrawerHost(
+                homeShellStore = homeShellStore,
+                bridge = bridge,
+                labels = appShellHomeLabels,
+                userHeader = serverDrawerUserHeader,
+                topSafeArea = shellScope.topSafeArea,
+                bottomSafeArea = shellScope.bottomSafeArea,
+                serverMembersStore = appShellServerMembersStore,
+                selectedTab = selectedTab,
+                onConversationClick = ::openServerDrawerConversation,
+                content = mainRouteSurface
+            )
+        } else {
+            mainRouteSurface()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         SlockForegroundBannerHost(
             banner = foregroundMessageBanner,
@@ -4926,6 +5033,209 @@ internal fun SlockAppShellContent(
             onBannerDismiss = { target -> foregroundBannerStore.dismiss(target.id) }
         ) {
             key("route-main") { mainRouteContent() }
+        }
+    }
+}
+
+internal fun SharedHomeShellState.withoutServerDrawerRuntimeForAppShellRender(): SharedHomeShellState =
+    copy(
+        home =
+            home.copy(
+                serverSwitcherExpanded = false,
+                serverDrawer = HomeServerDrawerState(),
+                serverDrawerCommandIntent = build.raft.app.data.HomeServerDrawerCommandIntent()
+            )
+    )
+
+private data class AppShellServerDrawerProjection(
+    val commandIntent: build.raft.app.data.HomeServerDrawerCommandIntent,
+    val drawer: HomeServerDrawerState,
+    val unreadCounts: Map<String, Int>
+)
+
+private data class DrawerSettledObservation(
+    val isOpen: Boolean,
+    val progress: Float
+)
+
+private fun DrawerSettledObservation.isSettled(desiredOpen: Boolean): Boolean =
+    if (desiredOpen) isOpen && progress >= 0.99f else !isOpen && progress <= 0.01f
+
+@Composable
+private fun AppShellServerDrawerHost(
+    homeShellStore: SharedHomeShellStore,
+    bridge: build.raft.app.base.BridgeModule,
+    labels: SlockHomeShellLabels,
+    userHeader: SlockServerDrawerUserHeader,
+    topSafeArea: Dp,
+    bottomSafeArea: Dp,
+    serverMembersStore: SharedServerMembersStore?,
+    selectedTab: String,
+    onConversationClick: (String, String) -> Unit,
+    content: @Composable () -> Unit
+) {
+    val projectionFlow =
+        remember(homeShellStore) {
+            homeShellStore.state
+                .map { shellState ->
+                    AppShellServerDrawerProjection(
+                        commandIntent = shellState.home.serverDrawerCommandIntent,
+                        drawer = shellState.home.serverDrawer,
+                        unreadCounts = shellState.home.serverUnreadCounts
+                    )
+                }
+                .distinctUntilChanged()
+        }
+    val initialProjection =
+        remember(homeShellStore) {
+            val home = homeShellStore.state.value.home
+            AppShellServerDrawerProjection(home.serverDrawerCommandIntent, home.serverDrawer, home.serverUnreadCounts)
+        }
+    val projection by projectionFlow.collectAsState(initialProjection)
+    val currentIntent by rememberUpdatedState(projection.commandIntent)
+    val drawerSections =
+        remember(projection.drawer, projection.unreadCounts) {
+            projection.drawer.toSlockHomeServerDrawerHostedSections(projection.unreadCounts)
+        }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val drawerState =
+            rememberMoveableDrawerState(
+                initiallyOpen = false,
+                drawerWidth = homeServerDrawerWidth(maxWidth)
+            )
+        var commandState by remember(drawerState) { mutableStateOf(HomeServerDrawerCommandState()) }
+        val edgeDensity = LocalDensity.current
+
+        LaunchedEffect(drawerState, projection.commandIntent.generation) {
+            val intent = projection.commandIntent
+            if (intent.generation == 0L && !intent.desiredOpen) return@LaunchedEffect
+            val generation = intent.generation
+            commandState = commandState.submit(intent)
+            bridge.log(
+                "server_drawer_command_submitted generation=$generation desiredOpen=${intent.desiredOpen} " +
+                    "selectedTab=$selectedTab progress=${drawerState.progress}"
+            )
+            if (intent.desiredOpen) drawerState.open() else drawerState.close()
+            snapshotFlow { DrawerSettledObservation(drawerState.isOpen, drawerState.progress) }
+                .first { observation -> observation.isSettled(intent.desiredOpen) }
+            if (currentIntent.generation != generation || currentIntent.desiredOpen != intent.desiredOpen) {
+                return@LaunchedEffect
+            }
+            val previousInteractive = commandState.interactiveGeneration
+            commandState = commandState.settle(generation, intent.desiredOpen)
+            if (commandState.interactiveGeneration == generation && previousInteractive != generation) {
+                bridge.log(
+                    "server_drawer_interactive generation=$generation " +
+                        "rowKey=${commandState.interactiveRowKey.orEmpty()} selectedTab=$selectedTab"
+                )
+            }
+            bridge.log(
+                "server_drawer_command_settled generation=$generation terminal=" +
+                    "${if (intent.desiredOpen) "settled_open" else "settled_closed"} " +
+                    "isOpen=${drawerState.isOpen} progress=${drawerState.progress}"
+            )
+        }
+
+        LaunchedEffect(drawerState) {
+            snapshotFlow { DrawerSettledObservation(drawerState.isOpen, drawerState.progress) }
+                .collect { observation ->
+                    if (observation.isSettled(desiredOpen = false)) {
+                        val previousDismissCount = commandState.gestureDismissCount
+                        val generation = commandState.currentIntent.generation
+                        commandState = commandState.nativeSettledClosedWithoutCommand()
+                        if (commandState.gestureDismissCount > previousDismissCount) {
+                            bridge.log("server_drawer_gesture_closed generation=$generation")
+                            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+                        }
+                    }
+                }
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            MoveableDrawer(
+                state = drawerState,
+                drawerContent = {
+                    HomeServerDrawerHostedPanel(
+                        sections = drawerSections,
+                        labels = labels,
+                        userHeader = userHeader,
+                        topSafeArea = topSafeArea,
+                        bottomSafeArea = bottomSafeArea,
+                        serverMembersStore = serverMembersStore,
+                        rowObservationGeneration =
+                            commandState.currentIntent.generation.takeIf {
+                                commandState.currentIntent.desiredOpen &&
+                                    commandState.phase in
+                                        setOf(
+                                            HomeServerDrawerCommandPhase.SubmittedOpen,
+                                            HomeServerDrawerCommandPhase.SettledOpen
+                                        )
+                            },
+                        interactiveGeneration = commandState.interactiveGeneration,
+                        authoritativeOpenGeneration =
+                            projection.commandIntent.generation.takeIf { projection.commandIntent.desiredOpen },
+                        onSectionToggle = { serverId ->
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(
+                                    SharedHomeIntent.ToggleServerDrawerSection(ServerId(serverId))
+                                )
+                            )
+                        },
+                        onRetry = { serverId ->
+                            homeShellStore.dispatch(
+                                SharedHomeShellIntent.Home(SharedHomeIntent.RetryServerDrawerSection(ServerId(serverId)))
+                            )
+                        },
+                        onConversationClick = { generation, serverId, conversationId ->
+                            if (commandState.acceptsConversationClick(generation, currentIntent)) {
+                                onConversationClick(serverId, conversationId)
+                            }
+                        },
+                        onFirstInteractiveRow = { generation, rowKey ->
+                            if (!commandState.acceptsRowObservation(generation, currentIntent)) {
+                                return@HomeServerDrawerHostedPanel
+                            }
+                            val previousInteractive = commandState.interactiveGeneration
+                            commandState = commandState.rowLaidOut(generation, rowKey)
+                            if (commandState.interactiveGeneration == generation && previousInteractive != generation) {
+                                bridge.log(
+                                    "server_drawer_interactive generation=$generation rowKey=$rowKey selectedTab=$selectedTab"
+                                )
+                            }
+                        }
+                    )
+                },
+                content = content
+            )
+            if (!projection.commandIntent.desiredOpen && drawerState.progress <= 0.01f) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .width(32.dp)
+                            .pointerInput(drawerState) {
+                                var horizontalDragPx = 0f
+                                detectHorizontalDragGestures(
+                                    onDragStart = { horizontalDragPx = 0f },
+                                    onDragEnd = {
+                                        val horizontalDragDp = horizontalDragPx / edgeDensity.density
+                                        if (shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp)) {
+                                            bridge.log(
+                                                "server_drawer_input source=app_shell_edge selectedTab=$selectedTab dragDp=$horizontalDragDp"
+                                            )
+                                            homeShellStore.dispatch(
+                                                SharedHomeShellIntent.Home(SharedHomeIntent.ToggleServerSwitcher)
+                                            )
+                                        }
+                                        horizontalDragPx = 0f
+                                    },
+                                    onDragCancel = { horizontalDragPx = 0f }
+                                ) { _, dragAmount -> horizontalDragPx += dragAmount }
+                            }
+                )
+            }
         }
     }
 }
@@ -18219,6 +18529,25 @@ internal fun HomeServerDrawerState.toSlockHomeServerDrawerSections(
         )
     }
 }
+
+internal fun HomeServerDrawerState.toSlockHomeServerDrawerHostedSections(
+    serverUnreadCounts: Map<String, Int> = emptyMap()
+): List<SlockHomeServerDrawerHostedSection> =
+    sections.values.map { section ->
+        SlockHomeServerDrawerHostedSection(
+            header =
+                SlockHomeServerDrawerSection(
+                    server = section.server.toSharedSwitcherItem(serverUnreadCounts),
+                    expanded = section.server.id in expandedServerIds,
+                    status = section.status,
+                    requestGeneration = section.requestGeneration,
+                    errorCode = section.errorCode
+                ),
+            normalizedContent = section.normalizedContent,
+            hasCachedConversations =
+                section.content?.snapshot?.let { it.channels.isNotEmpty() || it.directMessages.isNotEmpty() } == true
+        )
+    }
 
 private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
     SharedHomeConversationRowSeed(
