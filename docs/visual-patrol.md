@@ -65,6 +65,49 @@ difference?* Consensus decides:
 `scripts/patrol/lib.mjs` so future lenses (i18n, code-smell) reuse the same
 dedupe/label/file machinery.
 
+## Verified-backlog fix queue
+
+`.github/workflows/visual-fix-queue.yml` is an independent daily consumer. It
+does not depend on patrol filing a new issue that day: it selects the oldest
+1–3 issues that are still open, carry both `visual-drift` and `verified`, have
+no assignee, and are not already processing/refuted/agent-ready.
+
+For each claimed issue, `scripts/patrol/fix_queue.mjs` runs a bounded pipeline:
+
+1. requires the case in both the canonical manifest and exact published
+   comparison analysis, plus non-empty pinned React/RUI and Android/KMP source
+   authority, before spending any M3 call;
+2. derives React truth from the pinned Slock staging checkout plus the pinned
+   `botiverse/rui` checkout, enumerating theme/state variants;
+3. asks M3 for a minimal, source-authoritative Android/KMP patch without
+   applying it;
+4. validates every proposed patch path and unified-diff header against the
+   located Android product-source set, excluding tests, baselines, and shared
+   registries;
+5. gives the patch result (including a fail-closed no-patch result) to three
+   independent M3 reviewers, so every admitted case has a full 3× panel record;
+6. records `REFUTED` with the precise flaw, or labels `UNREFUTED` as
+   `fix-queue:agent-ready` with the exact agent handoff: targeted Visual Testing,
+   `visual_verify.py`, three-column evidence, then a draft PR.
+
+Safety boundaries:
+
+- scheduled mutation is disabled until `VISUAL_FIX_QUEUE_LIVE=true`; manual
+  dispatch is dry-run by default, and pull requests always run a real-backlog
+  dry-run regardless of the live variable;
+- one global workflow concurrency group plus `fix-queue:processing` prevents
+  duplicate consumption; terminal result labels prevent daily reprocessing;
+- daily case cap is clamped to 1–3; source prompt input is bounded and the
+  token cap conservatively reserves 75k per selected issue before any M3 call;
+- all three fresh panel replies must be valid strict JSON before a terminal
+  verdict; each model stage gets one bounded strict-JSON retry, and exhausted
+  retries remain `REVIEW` with a bounded redacted audit record;
+- full mobile/Slock/RUI/model/workflow/script provenance plus the gh-pages
+  analysis commit/path/hash is uploaded and summarized on the issue;
+- the job never applies product source, changes a baseline, opens or merges a
+  PR. An implementation agent owns the targeted CI/evidence/draft-PR step, and
+  product merge still requires the normal independent review and owner approval.
+
 ## Boundaries
 
 - **Style/token drifts** (color/font/spacing): a follow-up (phase 2) attaches an M3 draft
@@ -82,7 +125,7 @@ node scripts/visual_patrol.mjs --analysis gh-pages --comparison react__android -
 ## Roadmap
 
 - Phase 1 (this change): detect → dedupe → file issues (dry-run-safe).
-- Phase 2: attach M3 draft patch + panel verdict to style/token issues.
+- Phase 2: implemented by the independent verified-backlog fix queue above.
 - Later: auto-close issues whose drift no longer reproduces; multi-comparison sweep in one run.
 
 ## token-audit lens
