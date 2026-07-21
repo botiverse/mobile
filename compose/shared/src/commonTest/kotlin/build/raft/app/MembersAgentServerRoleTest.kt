@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.ScreenError
+import build.raft.app.data.SettingsServerActionResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -7,6 +12,103 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MembersAgentServerRoleTest {
+    @Test
+    fun ownerHumanRoleOptionsMatchWebPolicy() {
+        assertEquals(
+            listOf(MembersHumanServerRole.Owner, MembersHumanServerRole.Admin),
+            editableHumanRoles(actorRole = "owner", targetRole = "member")
+        )
+        assertEquals(
+            listOf(MembersHumanServerRole.Owner, MembersHumanServerRole.Member),
+            editableHumanRoles(actorRole = "owner", targetRole = "admin")
+        )
+        assertEquals(
+            listOf(MembersHumanServerRole.Admin, MembersHumanServerRole.Member),
+            editableHumanRoles(actorRole = "owner", targetRole = "owner", ownerCount = 2)
+        )
+        assertEquals(
+            emptyList(),
+            editableHumanRoles(actorRole = "owner", targetRole = "owner", ownerCount = 1)
+        )
+        assertEquals(
+            emptyList(),
+            editableHumanRoles(actorRole = "owner", targetRole = "owner", ownerCount = null)
+        )
+    }
+
+    @Test
+    fun adminCanOnlyPromoteHumanMemberToAdmin() {
+        assertEquals(
+            listOf(MembersHumanServerRole.Admin),
+            editableHumanRoles(actorRole = "admin", targetRole = "member")
+        )
+        assertEquals(emptyList(), editableHumanRoles(actorRole = "admin", targetRole = "admin"))
+        assertEquals(emptyList(), editableHumanRoles(actorRole = "admin", targetRole = "owner"))
+    }
+
+    @Test
+    fun humanRoleEditorFailsClosedForSelfRemovedRemoteAndUnknownRole() {
+        assertEquals(emptyList(), editableHumanRoles(currentUserId = "human-1"))
+        assertEquals(emptyList(), editableHumanRoles(targetMembershipStatus = "removed"))
+        assertEquals(emptyList(), editableHumanRoles(targetServerId = "server-2"))
+        assertEquals(emptyList(), editableHumanRoles(targetRole = "mystery"))
+        assertEquals(emptyList(), editableHumanRoles(targetRole = ""))
+    }
+
+    @Test
+    fun humanRoleOptionsNeverIncludeCurrentRole() {
+        MembersHumanServerRole.entries.forEach { current ->
+            assertFalse(
+                editableHumanRoles(targetRole = current.wireValue, ownerCount = 2).contains(current)
+            )
+        }
+    }
+
+    @Test
+    fun humanRoleSaveOutcomeOnlyClosesOnSuccessfulContentOrEmpty() {
+        assertEquals(
+            MembersHumanRoleSaveOutcome.Success,
+            DataResult.Content(SettingsServerActionResult(success = true)).membersHumanRoleSaveOutcome()
+        )
+        assertEquals(
+            MembersHumanRoleSaveOutcome.Success,
+            DataResult.Empty(EmptyReason.NoMembers).membersHumanRoleSaveOutcome()
+        )
+        assertEquals(
+            MembersHumanRoleSaveOutcome.Error,
+            DataResult.Content(SettingsServerActionResult(success = false)).membersHumanRoleSaveOutcome()
+        )
+        assertEquals(
+            MembersHumanRoleSaveOutcome.NoPermission,
+            DataResult.NoPermission(PermissionBlocker("forbidden")).membersHumanRoleSaveOutcome()
+        )
+        assertEquals(
+            MembersHumanRoleSaveOutcome.Error,
+            DataResult.Error(ScreenError("network")).membersHumanRoleSaveOutcome()
+        )
+    }
+
+    private fun editableHumanRoles(
+        actorRole: String? = "owner",
+        targetRole: String? = "member",
+        targetMembershipStatus: String? = "active",
+        targetMemberId: String = "human-1",
+        currentUserId: String? = "owner-1",
+        targetServerId: String? = "server-1",
+        currentServerId: String? = "server-1",
+        ownerCount: Int? = 2
+    ): List<MembersHumanServerRole> =
+        membersEditableHumanServerRoles(
+            actorRole = actorRole,
+            targetRole = targetRole,
+            targetMembershipStatus = targetMembershipStatus,
+            targetMemberId = targetMemberId,
+            currentUserId = currentUserId,
+            targetServerId = targetServerId,
+            currentServerId = currentServerId,
+            ownerCount = ownerCount
+        )
+
     @Test
     fun parsesEditableAgentServerRoles() {
         assertEquals(MembersAgentServerRole.Admin, "admin".toMembersAgentServerRoleOrNull())
