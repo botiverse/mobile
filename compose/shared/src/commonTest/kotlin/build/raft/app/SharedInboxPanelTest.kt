@@ -168,12 +168,31 @@ class SharedInboxPanelTest {
     fun activityDoneClickIdentityTracksLazyRowIdentity() {
         val first = activityItem(key = "channel:first")
         val second = activityItem(key = "channel:second")
+        val owner = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
 
-        assertEquals("activity-done:channel:first", first.activityDoneClickIdentity())
-        assertNotEquals(first.activityDoneClickIdentity(), second.activityDoneClickIdentity())
         assertEquals(
-            first.activityDoneClickIdentity(),
-            first.copy(lastMessagePreview = "display-only update").activityDoneClickIdentity()
+            "activity-done:channel:first|owner:$owner|presentation:0",
+            first.activityDoneClickIdentity(presentationOwnerIdentity = owner),
+        )
+        assertNotEquals(
+            first.activityDoneClickIdentity(presentationOwnerIdentity = owner),
+            second.activityDoneClickIdentity(presentationOwnerIdentity = owner),
+        )
+        assertEquals(
+            first.activityDoneClickIdentity(presentationOwnerIdentity = owner),
+            first.copy(lastMessagePreview = "display-only update")
+                .activityDoneClickIdentity(presentationOwnerIdentity = owner),
+        )
+        assertNotEquals(
+            first.activityDoneClickIdentity(0, owner),
+            first.activityDoneClickIdentity(1, owner),
+        )
+        assertNotEquals(
+            first.activityDoneClickIdentity(0, owner),
+            first.activityDoneClickIdentity(
+                0,
+                activityPresentationOwnerIdentity("account-b", "server-a", InboxFilter.All),
+            ),
         )
     }
 
@@ -217,7 +236,7 @@ class SharedInboxPanelTest {
         val selectedPrewarm =
             activityReplyThreadPrewarmNextAfterClick(
                 items = listOf(previous, clicked, next, ineligibleRead, later),
-                clickedIndex = 1,
+                clickedKey = clicked.key,
                 serverId = "server-1"
             )
 
@@ -233,11 +252,11 @@ class SharedInboxPanelTest {
 
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = -1, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(items, clickedKey = "missing", serverId = "server-1")
         )
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = items.size, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(emptyList(), clickedKey = "first", serverId = "server-1")
         )
     }
 
@@ -1613,6 +1632,7 @@ class SharedInboxPanelTest {
     @Test
     fun activityOpenGestureKeyChangesWhenPresentedOrderGenerationChanges() {
         val item = activityItem(key = "channel:stable", latestActivityMessageId = "message:old", unreadCount = 0)
+        val owner = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
         val updatedSameSlot =
             item.copy(
                 latestActivityMessageId = MessageId("message:new"),
@@ -1621,12 +1641,141 @@ class SharedInboxPanelTest {
             )
 
         assertEquals(
-            item.activityOpenGestureKey(presentationGeneration = 3),
-            updatedSameSlot.activityOpenGestureKey(presentationGeneration = 3)
+            item.activityOpenGestureKey(3, owner),
+            updatedSameSlot.activityOpenGestureKey(3, owner),
         )
         assertNotEquals(
-            item.activityOpenGestureKey(presentationGeneration = 3),
-            item.activityOpenGestureKey(presentationGeneration = 4)
+            item.activityOpenGestureKey(3, owner),
+            item.activityOpenGestureKey(4, owner),
+        )
+        assertNotEquals(
+            item.activityOpenGestureKey(3, owner),
+            item.activityOpenGestureKey(
+                3,
+                activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.Unread),
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureCommitsNewestContentForTheSameRenderedKeyAndGeneration() {
+        val rendered = activityItem(key = "thread:stable", latestActivityMessageId = "message:old", unreadCount = 0)
+        val updated =
+            rendered.copy(
+                latestActivityMessageId = MessageId("message:new"),
+                firstUnreadMessageId = MessageId("message:new"),
+                unreadCount = 2,
+            )
+
+        assertEquals(
+            updated,
+            activityItemForCommittedGesture(
+                renderedItemKey = rendered.key,
+                renderedPresentationOwnerIdentity = "owner-a",
+                renderedPresentationGeneration = 7,
+                currentItems = listOf(updated),
+                currentPresentationOwnerIdentity = "owner-a",
+                currentPresentationGeneration = 7,
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureCancelsWhenCanonicalOrderChangesBeforePointerUp() {
+        val first = activityItem(key = "thread:first")
+        val second = activityItem(key = "thread:second")
+
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = first.key,
+                renderedPresentationOwnerIdentity = "owner-a",
+                renderedPresentationGeneration = 7,
+                currentItems = listOf(second, first),
+                currentPresentationOwnerIdentity = "owner-a",
+                currentPresentationGeneration = 8,
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureCancelsWhenRenderedKeyIsRemovedBeforePointerUp() {
+        val rendered = activityItem(key = "thread:removed")
+        val replacement = activityItem(key = "thread:replacement")
+
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = rendered.key,
+                renderedPresentationOwnerIdentity = "owner-a",
+                renderedPresentationGeneration = 7,
+                currentItems = listOf(replacement),
+                currentPresentationOwnerIdentity = "owner-a",
+                currentPresentationGeneration = 7,
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureCancelsAcrossAccountOrServerOwnerSwitchWithTheSameKeyAndGeneration() {
+        val sharedKey = activityItem(key = "thread:shared")
+        val accountA = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
+        val accountB = activityPresentationOwnerIdentity("account-b", "server-a", InboxFilter.All)
+        val serverB = activityPresentationOwnerIdentity("account-a", "server-b", InboxFilter.All)
+
+        listOf(accountB, serverB).forEach { currentOwner ->
+            assertEquals(
+                null,
+                activityItemForCommittedGesture(
+                    renderedItemKey = sharedKey.key,
+                    renderedPresentationOwnerIdentity = accountA,
+                    renderedPresentationGeneration = 0,
+                    currentItems = listOf(sharedKey),
+                    currentPresentationOwnerIdentity = currentOwner,
+                    currentPresentationGeneration = 0,
+                ),
+            )
+            assertEquals(
+                sharedKey,
+                activityItemForCommittedGesture(
+                    renderedItemKey = sharedKey.key,
+                    renderedPresentationOwnerIdentity = currentOwner,
+                    renderedPresentationGeneration = 0,
+                    currentItems = listOf(sharedKey),
+                    currentPresentationOwnerIdentity = currentOwner,
+                    currentPresentationGeneration = 0,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun activityGestureCancelsAcrossFilterSwitchWithTheSameKeyAndGeneration() {
+        val sharedKey = activityItem(key = "thread:shared")
+        val all = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
+        val unread = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.Unread)
+
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = sharedKey.key,
+                renderedPresentationOwnerIdentity = all,
+                renderedPresentationGeneration = 0,
+                currentItems = listOf(sharedKey),
+                currentPresentationOwnerIdentity = unread,
+                currentPresentationGeneration = 0,
+            ),
+        )
+        assertEquals(
+            sharedKey,
+            activityItemForCommittedGesture(
+                renderedItemKey = sharedKey.key,
+                renderedPresentationOwnerIdentity = unread,
+                renderedPresentationGeneration = 0,
+                currentItems = listOf(sharedKey),
+                currentPresentationOwnerIdentity = unread,
+                currentPresentationGeneration = 0,
+            ),
         )
     }
 
