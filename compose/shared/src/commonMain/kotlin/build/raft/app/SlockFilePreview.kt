@@ -4709,9 +4709,10 @@ internal fun SlockFilePreviewPageScaffold(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var menuAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
-    Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            SlockTopPageHeader(
+    SlockInputFocusDismissHost { focusDismissModifier ->
+        Box(modifier = modifier.then(focusDismissModifier).fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SlockTopPageHeader(
                 title = title,
                 subtitle = subtitle,
                 iconName = iconName,
@@ -4738,26 +4739,27 @@ internal fun SlockFilePreviewPageScaffold(
                         } else {
                             null
                         }
-            )
-            Column(
-                modifier = Modifier.fillMaxSize().padding(contentPadding),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-            ) {
-                content()
+                )
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(contentPadding),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                ) {
+                    content()
+                }
             }
-        }
-        if (menuOpen && overflowMenuItems.isNotEmpty() && menuAnchor != null) {
-            SlockRaftUiControlledMenu(
-                expanded = menuOpen,
-                anchor = menuAnchor!!,
-                items = overflowMenuItems,
-                onSelect = { id ->
-                    menuOpen = false
-                    onOverflowMenuSelect(id)
-                },
-                onDismiss = { menuOpen = false },
-                width = 180.dp
-            )
+            if (menuOpen && overflowMenuItems.isNotEmpty() && menuAnchor != null) {
+                SlockRaftUiControlledMenu(
+                    expanded = menuOpen,
+                    anchor = menuAnchor!!,
+                    items = overflowMenuItems,
+                    onSelect = { id ->
+                        menuOpen = false
+                        onOverflowMenuSelect(id)
+                    },
+                    onDismiss = { menuOpen = false },
+                    width = 180.dp
+                )
+            }
         }
     }
 }

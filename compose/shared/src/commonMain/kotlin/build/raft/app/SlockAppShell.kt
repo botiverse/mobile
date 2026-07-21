@@ -106,37 +106,39 @@ internal fun SlockAppShellSurface(
         } else {
             null
         }
-    Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockUnifiedDialogHostProvider(effectiveModalHostState) {
-            Column(
-                modifier =
-                    Modifier
-                        .zIndex(SlockAppContentHostZIndex)
-                        .fillMaxSize()
-                        .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
-            ) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    CompositionLocalProvider(LocalSlockAppShellBodyTopBanner provides bodyTopBanner) {
-                        content()
-                    }
-                }
-            }
-            if (showBottomTabs) {
-                SlockAppBottomTabBarHost(
-                    items = bottomTabs,
-                    onSelect = onBottomTabSelected,
+    SlockInputFocusDismissHost { focusDismissModifier ->
+        Box(modifier = modifier.then(focusDismissModifier).fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            SlockUnifiedDialogHostProvider(effectiveModalHostState) {
+                Column(
                     modifier =
                         Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter),
-                    bottomSafeArea = shellScope.bottomSafeArea
+                            .zIndex(SlockAppContentHostZIndex)
+                            .fillMaxSize()
+                            .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        CompositionLocalProvider(LocalSlockAppShellBodyTopBanner provides bodyTopBanner) {
+                            content()
+                        }
+                    }
+                }
+                if (showBottomTabs) {
+                    SlockAppBottomTabBarHost(
+                        items = bottomTabs,
+                        onSelect = onBottomTabSelected,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomCenter),
+                        bottomSafeArea = shellScope.bottomSafeArea
+                    )
+                }
+                SlockUnifiedDialogHost(
+                    state = effectiveModalHostState,
+                    modifier = Modifier.fillMaxSize(),
+                    bottomInset = shellScope.globalDialogBottomInset(showBottomTabs)
                 )
             }
-            SlockUnifiedDialogHost(
-                state = effectiveModalHostState,
-                modifier = Modifier.fillMaxSize(),
-                bottomInset = shellScope.globalDialogBottomInset(showBottomTabs)
-            )
         }
     }
 }
