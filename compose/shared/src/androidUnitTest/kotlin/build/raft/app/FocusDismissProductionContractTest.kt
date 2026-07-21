@@ -154,7 +154,22 @@ class FocusDismissProductionContractTest {
             feedback.indexOf(".dismissInputFocusOnScrollableChrome()") < feedback.indexOf("ThreadComposerContent("),
             "The feedback scroll chrome must remain a sibling before the composer, never an input ancestor"
         )
-        assertTrue(commonMainRoot().readAllKotlin().occurrences(".dismissInputFocusOnScrollableChrome()") == 2)
+        val scrollableChromeCallsites =
+            commonMainRoot().walkTopDown()
+                .filter { it.isFile && it.extension == "kt" }
+                .filter { it.relativeTo(commonMainRoot()).invariantSeparatorsPath != "build/raft/app/BasicWidget.kt" }
+                .flatMap { file ->
+                    file.readLines().asSequence()
+                        .filter { ".dismissInputFocusOnScrollableChrome()" in it }
+                        .map { file.relativeTo(commonMainRoot()).invariantSeparatorsPath }
+                }
+                .toList()
+                .sorted()
+        assertTrue(
+            scrollableChromeCallsites ==
+                listOf("build/raft/app/SettingsHomePage.kt", "build/raft/app/ThreadPage.kt"),
+            "Unexpected production scrollable-chrome callsites: $scrollableChromeCallsites"
+        )
         assertFalse("focusManager.clearFocus(force = true)" in thread)
         assertContains(scrollableChromeObserver, "shouldDismissInputFocusOnScrollableChrome(type)")
         assertContains(scrollableChromeObserver, "focusOwnerRegistry?.hasActiveOwner == true")
