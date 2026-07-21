@@ -15,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1575,12 +1576,16 @@ class SharedSettingsStore(
     private val dataSource: SharedSettingsDataSource,
     private val scope: CoroutineScope,
     initialState: SharedSettingsState = SharedSettingsState(),
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val nowMillis: () -> Long = ::defaultNowMillis,
+    private val diagnosticsRefreshDelay: suspend (Long) -> Unit = { delay(it) },
 ) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private var diagnosticsRefreshJob: Job? = null
+    private var diagnosticsRefreshToken: Long = 0L
 
     fun dispatch(intent: SharedSettingsIntent) {
         if (intent.loadsSettingsContent) {
@@ -1599,16 +1604,19 @@ class SharedSettingsStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        cancelDiagnosticsExpiryRefresh()
     }
 
     suspend fun accept(intent: SharedSettingsIntent) {
         when (intent) {
             SharedSettingsIntent.Start -> loadHome()
             is SharedSettingsIntent.OpenDestination -> {
+                cancelDiagnosticsExpiryRefresh()
                 _state.value = _state.value.copy(route = SharedSettingsRoute(intent.destination), routeErrorCode = null)
                 loadCurrentRoute()
             }
             is SharedSettingsIntent.OpenComputer -> {
+                cancelDiagnosticsExpiryRefresh()
                 _state.value =
                     _state.value.copy(
                         route = SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, intent.machineId),
@@ -1617,6 +1625,7 @@ class SharedSettingsStore(
                 loadComputerDetail(intent.machineId)
             }
             SharedSettingsIntent.Back -> {
+                cancelDiagnosticsExpiryRefresh()
                 _state.value =
                     _state.value.copy(
                         route = SharedSettingsRoute(SharedSettingsDestination.Home),
@@ -2177,6 +2186,7 @@ class SharedSettingsStore(
             SharedSettingsIntent.ClearDiagnostics ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.ClearDiagnostics)
             is SharedSettingsIntent.SetDiagnosticFeatureFlagOverride -> {
+                cancelDiagnosticsExpiryRefresh()
                 _state.value =
                     _state.value.copy(
                         actionState = SharedSettingsActionState("diagnosticFeatureFlagOverride:${intent.key}", inProgress = true)
@@ -2274,7 +2284,7 @@ class SharedSettingsStore(
             SharedSettingsDestination.Developer ->
                 dataSource.loadDeveloper().applyToState(destination) { copy(developer = it) }
             SharedSettingsDestination.Diagnostics ->
-                dataSource.loadDiagnostics().applyToState(destination) { copy(diagnostics = it) }
+                loadDiagnostics()
             SharedSettingsDestination.Router -> loadHome()
         }
     }
@@ -2938,6 +2948,35 @@ class SharedSettingsStore(
                 routeErrorCode = nextDiagnostics.routeErrorCode(),
                 effect = null
             )
+        (_state.value.diagnostics as? ScreenLoadState.Content)?.data?.let(::scheduleDiagnosticsExpiryRefresh)
+    }
+
+    private suspend fun loadDiagnostics(expectedRefreshToken: Long? = null) {
+        if (expectedRefreshToken == null) cancelDiagnosticsExpiryRefresh()
+        val result = dataSource.loadDiagnostics()
+        if (expectedRefreshToken != null && expectedRefreshToken != diagnosticsRefreshToken) return
+        result.applyToState(SharedSettingsDestination.Diagnostics) { copy(diagnostics = it) }
+        if (expectedRefreshToken != null && expectedRefreshToken != diagnosticsRefreshToken) return
+        (_state.value.diagnostics as? ScreenLoadState.Content)?.data?.let(::scheduleDiagnosticsExpiryRefresh)
+    }
+
+    private fun scheduleDiagnosticsExpiryRefresh(snapshot: SharedSettingsDiagnosticsSnapshot) {
+        val nextExpiry = snapshot.featureFlagOverrides.mapNotNull { it.expiresAtMillis }.minOrNull()
+        cancelDiagnosticsExpiryRefresh()
+        if (nextExpiry == null || _state.value.route.destination != SharedSettingsDestination.Diagnostics) return
+        val token = diagnosticsRefreshToken
+        diagnosticsRefreshJob =
+            scope.launch {
+                diagnosticsRefreshDelay((nextExpiry - nowMillis()).coerceAtLeast(0L))
+                if (token != diagnosticsRefreshToken || _state.value.route.destination != SharedSettingsDestination.Diagnostics) return@launch
+                loadDiagnostics(expectedRefreshToken = token)
+            }
+    }
+
+    private fun cancelDiagnosticsExpiryRefresh() {
+        diagnosticsRefreshToken += 1L
+        diagnosticsRefreshJob?.cancel()
+        diagnosticsRefreshJob = null
     }
 
     private fun DataResult<SharedSettingsDeveloperSnapshot>.applyDeveloperActionResult(

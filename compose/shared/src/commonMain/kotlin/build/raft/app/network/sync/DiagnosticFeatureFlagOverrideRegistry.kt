@@ -20,7 +20,7 @@ internal const val DIAGNOSTIC_FEATURE_FLAG_OVERRIDE_TTL_MILLIS: Long = 15L * 60L
 enum class DiagnosticFeatureFlagOverrideMode {
     Server,
     ForceOff,
-    ForceOnExactScope,
+    ForceOn,
 }
 
 enum class DiagnosticFeatureFlagScopeKind {
@@ -40,8 +40,6 @@ data class DiagnosticFeatureFlagScope(
             serverId.isNotBlank() &&
             (kind == DiagnosticFeatureFlagScopeKind.ServerExact || !channelId.isNullOrBlank())
 
-    fun hasSameIdentity(other: DiagnosticFeatureFlagScope): Boolean =
-        environmentId == other.environmentId && accountId == other.accountId && serverId == other.serverId
 }
 
 data class DiagnosticFeatureFlagDecision(
@@ -103,6 +101,7 @@ private interface DiagnosticFeatureFlagOverrideConsumer {
     fun decide(serverEffective: Boolean, scope: DiagnosticFeatureFlagScope): DiagnosticFeatureFlagDecision
     fun snapshot(): DiagnosticFeatureFlagOverrideSnapshot
     fun clear(reason: String)
+    fun clearObservation()
 }
 
 private class ServerExactDiagnosticFeatureFlagConsumer(
@@ -116,7 +115,6 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
     private data class ActiveOverride(
         val token: Long,
         val mode: DiagnosticFeatureFlagOverrideMode,
-        val scope: DiagnosticFeatureFlagScope,
         val expiresAtMillis: Long,
     )
 
@@ -144,10 +142,6 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
         val changed = synchronized(lock) {
             expireLocked()
             val normalized = scope.copy(channelId = null)
-            val activeScope = activeOverride?.scope
-            if (activeScope != null && !activeScope.hasSameIdentity(normalized)) {
-                clearLocked("identity_changed")
-            }
             val changed = observedScope != normalized
             observedScope = normalized
             changed
@@ -164,7 +158,6 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
                     clearLocked("server_mode_selected")
                     DiagnosticFeatureFlagOverrideMutationResult.Applied(snapshotLocked())
                 }
-                observedScope == null -> rejected("diagnostic_feature_flag_override_scope_unobserved")
                 else -> {
                     expiryHandle?.cancel()
                     expiryHandle = null
@@ -173,9 +166,9 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
                         ActiveOverride(
                             token = nextOverrideToken,
                             mode = mode,
-                            scope = requireNotNull(observedScope),
                             expiresAtMillis = nowMillis() + DIAGNOSTIC_FEATURE_FLAG_OVERRIDE_TTL_MILLIS,
                         )
+                    lastDecision = lastDecision?.withOverride(mode)
                     clearReason = null
                     DiagnosticFeatureFlagOverrideMutationResult.Applied(snapshotLocked())
                 }
@@ -191,51 +184,37 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
         serverEffective: Boolean,
         scope: DiagnosticFeatureFlagScope,
     ): DiagnosticFeatureFlagDecision {
-        if (!scope.isValidFor(scopeKind)) {
-            return DiagnosticFeatureFlagDecision(
-                serverEffective = serverEffective,
-                clientOverride = DiagnosticFeatureFlagOverrideMode.Server,
-                finalEffective = serverEffective,
-                precedence = "server_scope_unobserved",
-                exactScopeMatched = false,
-            )
-        }
         val (decision, changed) = synchronized(lock) {
             val expired = expireLocked()
             val normalized = scope.copy(channelId = null)
             if (normalized.isValidFor(scopeKind)) {
-                val activeScope = activeOverride?.scope
-                if (activeScope != null && !activeScope.hasSameIdentity(normalized)) {
-                    clearLocked("identity_changed")
-                }
                 observedScope = normalized
             }
             val active = activeOverride.takeIf { entitled }
-            val exactMatch = active?.scope == normalized
             val decision =
                 when {
-                    active?.mode == DiagnosticFeatureFlagOverrideMode.ForceOff && exactMatch ->
+                    active?.mode == DiagnosticFeatureFlagOverrideMode.ForceOff ->
                         DiagnosticFeatureFlagDecision(
                             serverEffective = serverEffective,
                             clientOverride = active.mode,
                             finalEffective = false,
                             precedence = "diagnostic_override_force_off",
-                            exactScopeMatched = exactMatch,
+                            exactScopeMatched = false,
                         )
-                    active?.mode == DiagnosticFeatureFlagOverrideMode.ForceOnExactScope && exactMatch ->
+                    active?.mode == DiagnosticFeatureFlagOverrideMode.ForceOn ->
                         DiagnosticFeatureFlagDecision(
                             serverEffective = serverEffective,
                             clientOverride = active.mode,
                             finalEffective = true,
-                            precedence = "diagnostic_override_exact_scope",
-                            exactScopeMatched = true,
+                            precedence = "diagnostic_override_force_on",
+                            exactScopeMatched = false,
                         )
                     else ->
                         DiagnosticFeatureFlagDecision(
                             serverEffective = serverEffective,
                             clientOverride = active?.mode ?: DiagnosticFeatureFlagOverrideMode.Server,
                             finalEffective = serverEffective,
-                            precedence = if (active == null) "server" else "server_wrong_scope",
+                            precedence = "server",
                             exactScopeMatched = false,
                         )
                 }
@@ -258,6 +237,16 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
             val hadState = activeOverride != null || lastDecision != null || clearReason != reason
             clearLocked(reason)
             hadState
+        }
+        if (changed) onChanged()
+    }
+
+    override fun clearObservation() {
+        val changed = synchronized(lock) {
+            val changed = observedScope != null || lastDecision != null
+            observedScope = null
+            lastDecision = null
+            changed
         }
         if (changed) onChanged()
     }
@@ -324,7 +313,7 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
             entitled = entitled,
             mode = activeOverride?.mode ?: DiagnosticFeatureFlagOverrideMode.Server,
             observedScope = observedScope,
-            boundScope = activeOverride?.scope,
+            boundScope = null,
             expiresAtMillis = activeOverride?.expiresAtMillis,
             lastDecision = lastDecision,
             clearReason = clearReason,
@@ -336,6 +325,33 @@ private class ServerExactDiagnosticFeatureFlagConsumer(
         Stale,
     }
 }
+
+private fun DiagnosticFeatureFlagDecision.withOverride(
+    mode: DiagnosticFeatureFlagOverrideMode,
+): DiagnosticFeatureFlagDecision =
+    when (mode) {
+        DiagnosticFeatureFlagOverrideMode.Server ->
+            copy(
+                clientOverride = mode,
+                finalEffective = serverEffective,
+                precedence = "server",
+                exactScopeMatched = false,
+            )
+        DiagnosticFeatureFlagOverrideMode.ForceOff ->
+            copy(
+                clientOverride = mode,
+                finalEffective = false,
+                precedence = "diagnostic_override_force_off",
+                exactScopeMatched = false,
+            )
+        DiagnosticFeatureFlagOverrideMode.ForceOn ->
+            copy(
+                clientOverride = mode,
+                finalEffective = true,
+                precedence = "diagnostic_override_force_on",
+                exactScopeMatched = false,
+            )
+    }
 
 private class ReadStateV1DiagnosticFeatureFlagConsumer(
     private val controller: ReadStateV1DiagnosticOverrideController,
@@ -380,6 +396,8 @@ private class ReadStateV1DiagnosticFeatureFlagConsumer(
     override fun snapshot(): DiagnosticFeatureFlagOverrideSnapshot = controller.snapshot().toGenericSnapshot()
 
     override fun clear(reason: String) = controller.clear(reason)
+
+    override fun clearObservation() = controller.clearObservation()
 }
 
 class DiagnosticFeatureFlagOverrideRegistry(
@@ -474,6 +492,11 @@ class DiagnosticFeatureFlagOverrideRegistry(
         supportedKeys.forEach(::bumpRevision)
     }
 
+    fun clearObservations() {
+        consumers.values.forEach { it.clearObservation() }
+        supportedKeys.forEach(::bumpRevision)
+    }
+
     private fun unsupportedSnapshot(key: String): DiagnosticFeatureFlagOverrideSnapshot =
         DiagnosticFeatureFlagOverrideSnapshot(
             key = key,
@@ -537,14 +560,14 @@ private fun DiagnosticFeatureFlagOverrideMode.toReadStateMode(): ReadStateV1Diag
     when (this) {
         DiagnosticFeatureFlagOverrideMode.Server -> ReadStateV1DiagnosticOverrideMode.Server
         DiagnosticFeatureFlagOverrideMode.ForceOff -> ReadStateV1DiagnosticOverrideMode.ForceOff
-        DiagnosticFeatureFlagOverrideMode.ForceOnExactScope -> ReadStateV1DiagnosticOverrideMode.ForceOnExactScope
+        DiagnosticFeatureFlagOverrideMode.ForceOn -> ReadStateV1DiagnosticOverrideMode.ForceOn
     }
 
 private fun ReadStateV1DiagnosticOverrideMode.toGenericMode(): DiagnosticFeatureFlagOverrideMode =
     when (this) {
         ReadStateV1DiagnosticOverrideMode.Server -> DiagnosticFeatureFlagOverrideMode.Server
         ReadStateV1DiagnosticOverrideMode.ForceOff -> DiagnosticFeatureFlagOverrideMode.ForceOff
-        ReadStateV1DiagnosticOverrideMode.ForceOnExactScope -> DiagnosticFeatureFlagOverrideMode.ForceOnExactScope
+        ReadStateV1DiagnosticOverrideMode.ForceOn -> DiagnosticFeatureFlagOverrideMode.ForceOn
     }
 
 private fun ReadStateV1DiagnosticExactScope.toGenericScope(): DiagnosticFeatureFlagScope =

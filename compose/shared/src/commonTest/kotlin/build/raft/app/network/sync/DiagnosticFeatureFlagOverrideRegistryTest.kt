@@ -39,7 +39,7 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
 
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(
-            registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+            registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         )
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(
             registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
@@ -47,24 +47,22 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
     }
 
     @Test
-    fun `activity force modes are exact server scoped and server mode preserves server result`() {
+    fun `activity force modes apply across the process before observation`() {
         registry.configureEntitlement(true)
-        registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
         assertIs<DiagnosticFeatureFlagOverrideMutationResult.Applied>(
             registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
         )
 
         assertFalse(registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
         val wrongServer = serverScope.copy(serverId = "server-b")
-        val wrongScopeDecision =
+        val otherServerDecision =
             registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, true, wrongServer)
-        assertTrue(wrongScopeDecision.finalEffective)
-        assertEquals("server", wrongScopeDecision.precedence)
-        assertEquals("identity_changed", registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).clearReason)
+        assertFalse(otherServerDecision.finalEffective)
+        assertEquals("diagnostic_override_force_off", otherServerDecision.precedence)
 
-        registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
-        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         assertTrue(registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, false, serverScope).finalEffective)
+        assertTrue(registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, false, wrongServer).finalEffective)
 
         registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
         assertTrue(registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
@@ -72,13 +70,33 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
     }
 
     @Test
+    fun `activity mode mutation immediately recomputes the cached final decision`() {
+        registry.configureEntitlement(true)
+        registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, false, serverScope)
+
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+
+        val forcedOn = requireNotNull(registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).lastDecision)
+        assertTrue(forcedOn.finalEffective)
+        assertEquals(DiagnosticFeatureFlagOverrideMode.ForceOn, forcedOn.clientOverride)
+        assertEquals("diagnostic_override_force_on", forcedOn.precedence)
+
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+
+        val forcedOff = requireNotNull(registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).lastDecision)
+        assertFalse(forcedOff.finalEffective)
+        assertEquals(DiagnosticFeatureFlagOverrideMode.ForceOff, forcedOff.clientOverride)
+        assertEquals("diagnostic_override_force_off", forcedOff.precedence)
+    }
+
+    @Test
     fun `per key ttl and mode changes do not clear the other consumer`() {
         registry.configureEntitlement(true)
         registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
-        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         now += 100L
         registry.observe(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, channelScope)
-        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
 
         now = 1_000L + DIAGNOSTIC_FEATURE_FLAG_OVERRIDE_TTL_MILLIS
 
@@ -97,7 +115,7 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         registry.observe(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, channelScope)
         val activityRevision = registry.revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).value
 
-        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
 
         assertEquals(
             activityRevision,
@@ -107,12 +125,10 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
     }
 
     @Test
-    fun `activity identity transition clears only its exact binding`() {
+    fun `identity transitions preserve independent process overrides`() {
         registry.configureEntitlement(true)
-        registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
-        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
-        registry.observe(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, channelScope)
-        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
 
         registry.decide(
             MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
@@ -121,19 +137,78 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
         )
 
         val activity = registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY)
-        assertEquals(DiagnosticFeatureFlagOverrideMode.Server, activity.mode)
+        assertEquals(DiagnosticFeatureFlagOverrideMode.ForceOn, activity.mode)
         assertNull(activity.boundScope)
-        assertEquals("identity_changed", activity.clearReason)
+        assertEquals(null, activity.clearReason)
         assertEquals(
-            DiagnosticFeatureFlagOverrideMode.ForceOnExactScope,
+            DiagnosticFeatureFlagOverrideMode.ForceOn,
             registry.snapshot(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY).mode,
         )
     }
 
     @Test
+    fun `auth observation clear preserves independent modes and expiry while refreshing both keys`() {
+        registry.configureEntitlement(true)
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
+        now += 100L
+        registry.setMode(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, true, serverScope)
+        registry.decide(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY, false, channelScope)
+        readStateController.recordSelection(
+            owner = ReadStateV1ProductionOwner("https://api.example", "account-a", "server-a"),
+            channelId = "channel-a",
+            generation = 7L,
+        )
+        readStateController.recordPublication(homeStoreCount = 1, activityStoreCount = 1, generation = 7L)
+        val activityBefore = registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY)
+        val readStateBefore = registry.snapshot(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY)
+        val activityRevision = registry.revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).value
+        val readStateRevision = registry.revisionFor(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY).value
+
+        registry.clearObservations()
+
+        val activityAfter = registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY)
+        val readStateAfter = registry.snapshot(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY)
+        assertEquals(DiagnosticFeatureFlagOverrideMode.ForceOff, activityAfter.mode)
+        assertEquals(activityBefore.expiresAtMillis, activityAfter.expiresAtMillis)
+        assertNull(activityAfter.observedScope)
+        assertNull(activityAfter.boundScope)
+        assertNull(activityAfter.lastDecision)
+        assertEquals(DiagnosticFeatureFlagOverrideMode.ForceOn, readStateAfter.mode)
+        assertEquals(readStateBefore.expiresAtMillis, readStateAfter.expiresAtMillis)
+        assertNull(readStateAfter.observedScope)
+        assertNull(readStateAfter.boundScope)
+        assertNull(readStateAfter.lastDecision)
+        assertNull(readStateAfter.evidence.selectedScope)
+        assertNull(readStateAfter.evidence.witnessGeneration)
+        assertNull(readStateAfter.evidence.destinationPublication)
+        assertTrue(registry.revisionFor(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).value > activityRevision)
+        assertTrue(registry.revisionFor(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY).value > readStateRevision)
+        assertFalse(
+            registry.decide(
+                MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
+                serverEffective = true,
+                scope = serverScope.copy(accountId = "account-b", serverId = "server-b"),
+            ).finalEffective,
+        )
+        assertTrue(
+            registry.decide(
+                SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
+                serverEffective = false,
+                scope = channelScope.copy(accountId = "account-b", serverId = "server-b", channelId = "channel-b"),
+            ).finalEffective,
+        )
+
+        now = requireNotNull(activityAfter.expiresAtMillis)
+        assertTrue(registry.decide(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, true, serverScope).finalEffective)
+        assertEquals("expired", registry.snapshot(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY).clearReason)
+        assertEquals(DiagnosticFeatureFlagOverrideMode.ForceOn, registry.snapshot(SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY).mode)
+    }
+
+    @Test
     fun `valid unknown key is visible as unsupported no effect and rejects mutation`() {
         val key = "future_registered_flag_v1"
-        val result = registry.setMode(key, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        val result = registry.setMode(key, DiagnosticFeatureFlagOverrideMode.ForceOn)
 
         val rejected = assertIs<DiagnosticFeatureFlagOverrideMutationResult.Rejected>(result)
         assertEquals("diagnostic_feature_flag_consumer_unsupported", rejected.code)
@@ -147,7 +222,7 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
     fun `new registry represents process restart without inherited overrides`() {
         registry.configureEntitlement(true)
         registry.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
-        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        registry.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
 
         val restarted = DiagnosticFeatureFlagOverrideRegistry({ now }, ReadStateV1DiagnosticOverrideController { now })
 
@@ -166,7 +241,7 @@ class DiagnosticFeatureFlagOverrideRegistryTest {
             )
         isolated.configureEntitlement(true)
         isolated.observe(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, serverScope)
-        isolated.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOnExactScope)
+        isolated.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         isolated.setMode(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
 
         scheduler.fire(index = 0, evenIfCancelled = true)

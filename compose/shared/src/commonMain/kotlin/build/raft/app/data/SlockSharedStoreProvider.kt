@@ -1382,13 +1382,13 @@ internal class SlockSharedStoreProvider private constructor(
                     when (event) {
                         is AuthSessionEvent.Authenticated ->
                             {
-                                ProcessDiagnosticFeatureFlagOverrides.registry.clearAll("authenticated_identity_changed")
+                                ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 processServerMembersCore.invalidateAll(reason = "authenticated")
                                 activityUnreadSummaryStore.invalidateAll(reason = "authenticated")
                             }
                         is AuthSessionEvent.Cleared ->
                             {
-                                ProcessDiagnosticFeatureFlagOverrides.registry.clearAll("logout")
+                                ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
                             }

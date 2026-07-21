@@ -9,7 +9,7 @@ internal const val READ_STATE_V1_DIAGNOSTIC_OVERRIDE_TTL_MILLIS: Long = 15L * 60
 enum class ReadStateV1DiagnosticOverrideMode {
     Server,
     ForceOff,
-    ForceOnExactScope,
+    ForceOn,
 }
 
 data class ReadStateV1DiagnosticExactScope(
@@ -57,7 +57,6 @@ class ReadStateV1DiagnosticOverrideController(
 ) {
     private data class ActiveOverride(
         val mode: ReadStateV1DiagnosticOverrideMode,
-        val scope: ReadStateV1DiagnosticExactScope?,
         val expiresAtMillis: Long,
     )
 
@@ -92,10 +91,6 @@ class ReadStateV1DiagnosticOverrideController(
         val scope = owner.toDiagnosticScope(channelId) ?: return
         synchronized(lock) {
             expireLocked()
-            val activeScope = activeOverride?.scope
-            if (activeScope != null && !activeScope.hasSameIdentity(scope)) {
-                clearLocked("identity_changed")
-            }
             observedScope = scope
         }
     }
@@ -117,19 +112,14 @@ class ReadStateV1DiagnosticOverrideController(
                         clearLocked("server_mode_selected")
                         ReadStateV1DiagnosticOverrideMutationResult.Applied(snapshotLocked())
                     }
-                    observedScope == null ->
-                        ReadStateV1DiagnosticOverrideMutationResult.Rejected(
-                            code = "read_state_diagnostic_override_scope_unobserved",
-                            snapshot = snapshotLocked(),
-                        )
                     else -> {
                         val normalizedTtl = ttlMillis.coerceIn(1L, READ_STATE_V1_DIAGNOSTIC_OVERRIDE_TTL_MILLIS)
                         activeOverride =
                             ActiveOverride(
                                 mode = mode,
-                                scope = observedScope,
                                 expiresAtMillis = nowMillis() + normalizedTtl,
                             )
+                        lastDecision = lastDecision?.withOverride(mode)
                         clearReason = null
                         ReadStateV1DiagnosticOverrideMutationResult.Applied(snapshotLocked())
                     }
@@ -143,6 +133,27 @@ class ReadStateV1DiagnosticOverrideController(
     fun clear(reason: String) {
         val listener = synchronized(lock) { clearLocked(reason); onChanged }
         listener?.invoke()
+    }
+
+    fun clearObservation() {
+        val (changed, listener) = synchronized(lock) {
+            val changed =
+                observedScope != null || lastDecision != null || selectedScope != null || witnessGeneration != null ||
+                    durableReadStateVersion != null || durableMaxReadSeq != null || latestAdjudication != null ||
+                    destinationPublication != null || barrierState != null || stalePublicationRejectedCount != 0L
+            observedScope = null
+            lastDecision = null
+            selectedScope = null
+            witnessGeneration = null
+            durableReadStateVersion = null
+            durableMaxReadSeq = null
+            latestAdjudication = null
+            destinationPublication = null
+            barrierState = null
+            stalePublicationRejectedCount = 0L
+            changed to onChanged
+        }
+        if (changed) listener?.invoke()
     }
 
     fun refreshExpired(): Boolean {
@@ -186,17 +197,12 @@ class ReadStateV1DiagnosticOverrideController(
     ): Boolean = synchronized(lock) {
         expireLocked()
         val scope = owner.toDiagnosticScope(channelId) ?: return@synchronized false
-        val activeScope = activeOverride?.scope
-        if (activeScope != null && !activeScope.hasSameIdentity(scope)) {
-            clearLocked("identity_changed")
-        }
         observedScope = scope
         val active = activeOverride.takeIf { entitled }
-        val exactMatch = active?.scope != null && active.scope == scope
         val effective =
             when {
                 active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOff -> false
-                active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOnExactScope && exactMatch -> true
+                active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOn -> true
                 else -> serverEffective
             }
         if (effective) publish()
@@ -227,14 +233,9 @@ class ReadStateV1DiagnosticOverrideController(
         return synchronized(lock) {
             expireLocked()
             if (scope != null) {
-                val activeScope = activeOverride?.scope
-                if (activeScope != null && !activeScope.hasSameIdentity(scope)) {
-                    clearLocked("identity_changed")
-                }
                 observedScope = scope
             }
             val active = activeOverride.takeIf { entitled }
-            val exactMatch = active?.scope != null && active.scope == scope
             val decision =
                 when {
                     active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOff ->
@@ -243,22 +244,22 @@ class ReadStateV1DiagnosticOverrideController(
                             clientOverride = active.mode,
                             finalEffective = false,
                             precedence = "diagnostic_override_force_off",
-                            exactScopeMatched = exactMatch,
+                            exactScopeMatched = false,
                         )
-                    active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOnExactScope && exactMatch ->
+                    active?.mode == ReadStateV1DiagnosticOverrideMode.ForceOn ->
                         ReadStateV1DiagnosticDecision(
                             serverEffective = serverEffective,
                             clientOverride = active.mode,
                             finalEffective = true,
-                            precedence = "diagnostic_override_exact_scope",
-                            exactScopeMatched = true,
+                            precedence = "diagnostic_override_force_on",
+                            exactScopeMatched = false,
                         )
                     else ->
                         ReadStateV1DiagnosticDecision(
                             serverEffective = serverEffective,
                             clientOverride = active?.mode ?: ReadStateV1DiagnosticOverrideMode.Server,
                             finalEffective = serverEffective,
-                            precedence = if (active == null) "server" else "server_wrong_scope",
+                            precedence = "server",
                             exactScopeMatched = false,
                         )
                 }
@@ -298,7 +299,7 @@ class ReadStateV1DiagnosticOverrideController(
             entitled = entitled,
             mode = activeOverride?.mode ?: ReadStateV1DiagnosticOverrideMode.Server,
             observedScope = observedScope,
-            boundScope = activeOverride?.scope,
+            boundScope = null,
             expiresAtMillis = activeOverride?.expiresAtMillis,
             lastDecision = lastDecision,
             clearReason = clearReason,
@@ -312,6 +313,33 @@ class ReadStateV1DiagnosticOverrideController(
             stalePublicationRejectedCount = stalePublicationRejectedCount,
         )
 }
+
+private fun ReadStateV1DiagnosticDecision.withOverride(
+    mode: ReadStateV1DiagnosticOverrideMode,
+): ReadStateV1DiagnosticDecision =
+    when (mode) {
+        ReadStateV1DiagnosticOverrideMode.Server ->
+            copy(
+                clientOverride = mode,
+                finalEffective = serverEffective,
+                precedence = "server",
+                exactScopeMatched = false,
+            )
+        ReadStateV1DiagnosticOverrideMode.ForceOff ->
+            copy(
+                clientOverride = mode,
+                finalEffective = false,
+                precedence = "diagnostic_override_force_off",
+                exactScopeMatched = false,
+            )
+        ReadStateV1DiagnosticOverrideMode.ForceOn ->
+            copy(
+                clientOverride = mode,
+                finalEffective = true,
+                precedence = "diagnostic_override_force_on",
+                exactScopeMatched = false,
+            )
+    }
 
 object ProcessReadStateV1DiagnosticOverride {
     val controller: ReadStateV1DiagnosticOverrideController =
@@ -329,6 +357,3 @@ private fun ReadStateV1ProductionOwner.toDiagnosticScope(channelId: String): Rea
             channelId = channelId.trim(),
         )
     }
-
-private fun ReadStateV1DiagnosticExactScope.hasSameIdentity(other: ReadStateV1DiagnosticExactScope): Boolean =
-    environmentId == other.environmentId && accountId == other.accountId && serverId == other.serverId
