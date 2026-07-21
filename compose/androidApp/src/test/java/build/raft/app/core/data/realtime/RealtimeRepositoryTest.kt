@@ -2130,7 +2130,7 @@ class RealtimeRepositoryTest {
         ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
             AuthApiResult.Failure(404)
 
-        override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
+        override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
             AuthApiResult.Failure(404)
 
         override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =

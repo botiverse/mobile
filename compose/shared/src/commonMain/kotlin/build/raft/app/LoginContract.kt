@@ -20,32 +20,55 @@ data class LoginFormState(
 }
 
 data class CreateAccountFormState(
-    val name: String = "",
     val email: String = "",
     val password: String = "",
     val submitting: Boolean = false,
     val errorMessage: String? = null,
-    val nameError: String? = null,
     val emailFormatError: String? = null,
     val passwordError: String? = null
 ) {
-    val normalizedName: String
-        get() = name.trim()
-
     val normalizedEmail: String
         get() = email.trim()
 
     val canSubmit: Boolean
-        get() = normalizedName.isNotEmpty() &&
-            normalizedEmail.isNotEmpty() &&
+        get() = normalizedEmail.isNotEmpty() &&
             password.isNotEmpty() &&
-            nameError == null &&
             emailFormatError == null &&
             passwordError == null &&
             !submitting
 }
 
-private const val AUTH_NAME_MIN_LENGTH = 5
+private const val AUTH_IDENTITY_NAME_MIN_LENGTH = 5
+private const val AUTH_IDENTITY_NAME_MAX_LENGTH = 32
+private const val AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH = 80
+private val AUTH_IDENTITY_NAME_REGEX = Regex("""^[\p{L}][\p{L}\p{N}_-]*$""")
+private val AUTH_IDENTITY_RESERVED_NAMES =
+    setOf("all", "human", "humans", "agent", "agents", "here", "idle", "busy", "system")
+
+internal fun identityHandleValidationError(value: String): String? {
+    val handle = value.trim().removePrefix("@")
+    return when {
+        handle.length < AUTH_IDENTITY_NAME_MIN_LENGTH ->
+            "Username must be at least $AUTH_IDENTITY_NAME_MIN_LENGTH characters"
+        handle.length > AUTH_IDENTITY_NAME_MAX_LENGTH ->
+            "Username must be at most $AUTH_IDENTITY_NAME_MAX_LENGTH characters"
+        !AUTH_IDENTITY_NAME_REGEX.matches(handle) ->
+            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores"
+        handle.lowercase().startsWith("pending_") || handle.lowercase() in AUTH_IDENTITY_RESERVED_NAMES ->
+            "This username is reserved. Choose another name."
+        else -> null
+    }
+}
+
+internal fun identityDisplayNameValidationError(value: String): String? {
+    val displayName = value.trim()
+    return when {
+        displayName.isEmpty() -> "Display name is required"
+        displayName.length > AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH ->
+            "Display name must be at most $AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH characters"
+        else -> null
+    }
+}
 
 data class ForgotPasswordFormState(
     val email: String = "",
@@ -153,21 +176,17 @@ internal fun canSubmitLoginForm(
     email.isNotBlank() && password.isNotBlank() && emailFormatError == null && !formBusy
 
 internal fun canSubmitRegisterForm(
-    name: String,
     email: String,
     password: String,
     termsAccepted: Boolean,
     formBusy: Boolean,
-    nameError: String? = null,
     emailFormatError: String? = null,
     passwordError: String? = null
 ): Boolean =
-    name.isNotBlank() &&
-        email.isNotBlank() &&
+    email.isNotBlank() &&
         password.isNotBlank() &&
         termsAccepted &&
         !formBusy &&
-        nameError == null &&
         emailFormatError == null &&
         passwordError == null
 
@@ -195,7 +214,6 @@ internal fun isLoginSubmitInFlight(
     submitting || pendingLogin || socialSubmitting
 
 sealed class CreateAccountFormEvent {
-    data class NameChanged(val value: String) : CreateAccountFormEvent()
     data class EmailChanged(val value: String) : CreateAccountFormEvent()
     data class PasswordChanged(val value: String) : CreateAccountFormEvent()
     data object Submit : CreateAccountFormEvent()
@@ -203,11 +221,9 @@ sealed class CreateAccountFormEvent {
 
 sealed class CreateAccountFormEffect {
     data class SubmitCreateAccount(
-        val name: String,
         val email: String,
         val password: String
     ) : CreateAccountFormEffect()
-    data object FocusName : CreateAccountFormEffect()
     data object FocusEmail : CreateAccountFormEffect()
     data object FocusPassword : CreateAccountFormEffect()
 }
@@ -223,9 +239,6 @@ class CreateAccountFormReducer {
         event: CreateAccountFormEvent
     ): CreateAccountFormUpdate =
         when (event) {
-            is CreateAccountFormEvent.NameChanged ->
-                CreateAccountFormUpdate(state.copy(name = event.value, errorMessage = null, nameError = null))
-
             is CreateAccountFormEvent.EmailChanged ->
                 CreateAccountFormUpdate(state.copy(email = event.value, errorMessage = null, emailFormatError = null))
 
@@ -234,31 +247,10 @@ class CreateAccountFormReducer {
 
             CreateAccountFormEvent.Submit ->
                 when {
-                    state.normalizedName.isEmpty() ->
-                        CreateAccountFormUpdate(
-                            state.copy(
-                                errorMessage = null,
-                                nameError = "Name is required",
-                                emailFormatError = null,
-                                passwordError = null
-                            ),
-                            CreateAccountFormEffect.FocusName
-                        )
-                    state.normalizedName.length < AUTH_NAME_MIN_LENGTH ->
-                        CreateAccountFormUpdate(
-                            state.copy(
-                                errorMessage = null,
-                                nameError = "Name must be at least $AUTH_NAME_MIN_LENGTH characters",
-                                emailFormatError = null,
-                                passwordError = null
-                            ),
-                            CreateAccountFormEffect.FocusName
-                        )
                     !isValidAuthEmailFormat(state.email) ->
                         CreateAccountFormUpdate(
                             state.copy(
                                 errorMessage = null,
-                                nameError = null,
                                 emailFormatError = AUTH_INVALID_EMAIL_FORMAT,
                                 passwordError = null
                             ),
@@ -268,7 +260,6 @@ class CreateAccountFormReducer {
                         CreateAccountFormUpdate(
                             state.copy(
                                 errorMessage = null,
-                                nameError = null,
                                 emailFormatError = null,
                                 passwordError = AUTH_PASSWORD_TOO_SHORT
                             ),
@@ -279,14 +270,80 @@ class CreateAccountFormReducer {
                             state = state.copy(
                                 submitting = true,
                                 errorMessage = null,
-                                nameError = null,
                                 emailFormatError = null,
                                 passwordError = null
                             ),
                             effect = CreateAccountFormEffect.SubmitCreateAccount(
-                                name = state.normalizedName,
                                 email = state.normalizedEmail,
                                 password = state.password
+                            )
+                        )
+                }
+        }
+}
+
+data class IdentitySetupFormState(
+    val handle: String = "",
+    val displayName: String = "",
+    val submitting: Boolean = false,
+    val errorMessage: String? = null,
+    val handleError: String? = null,
+    val displayNameError: String? = null
+) {
+    val normalizedHandle: String
+        get() = handle.trim().removePrefix("@")
+
+    val normalizedDisplayName: String
+        get() = displayName.trim()
+}
+
+sealed class IdentitySetupFormEvent {
+    data class HandleChanged(val value: String) : IdentitySetupFormEvent()
+    data class DisplayNameChanged(val value: String) : IdentitySetupFormEvent()
+    data object Submit : IdentitySetupFormEvent()
+}
+
+sealed class IdentitySetupFormEffect {
+    data class SubmitIdentity(val handle: String, val displayName: String) : IdentitySetupFormEffect()
+    data object FocusHandle : IdentitySetupFormEffect()
+    data object FocusDisplayName : IdentitySetupFormEffect()
+}
+
+data class IdentitySetupFormUpdate(
+    val state: IdentitySetupFormState,
+    val effect: IdentitySetupFormEffect? = null
+)
+
+class IdentitySetupFormReducer {
+    fun reduce(state: IdentitySetupFormState, event: IdentitySetupFormEvent): IdentitySetupFormUpdate =
+        when (event) {
+            is IdentitySetupFormEvent.HandleChanged ->
+                IdentitySetupFormUpdate(
+                    state.copy(handle = event.value.removePrefix("@"), errorMessage = null, handleError = null)
+                )
+            is IdentitySetupFormEvent.DisplayNameChanged ->
+                IdentitySetupFormUpdate(
+                    state.copy(displayName = event.value, errorMessage = null, displayNameError = null)
+                )
+            IdentitySetupFormEvent.Submit ->
+                when {
+                    state.submitting -> IdentitySetupFormUpdate(state)
+                    identityHandleValidationError(state.normalizedHandle) != null ->
+                        IdentitySetupFormUpdate(
+                            state.copy(handleError = identityHandleValidationError(state.normalizedHandle)),
+                            IdentitySetupFormEffect.FocusHandle
+                        )
+                    identityDisplayNameValidationError(state.normalizedDisplayName) != null ->
+                        IdentitySetupFormUpdate(
+                            state.copy(displayNameError = identityDisplayNameValidationError(state.normalizedDisplayName)),
+                            IdentitySetupFormEffect.FocusDisplayName
+                        )
+                    else ->
+                        IdentitySetupFormUpdate(
+                            state.copy(submitting = true, errorMessage = null, handleError = null, displayNameError = null),
+                            IdentitySetupFormEffect.SubmitIdentity(
+                                handle = state.normalizedHandle,
+                                displayName = state.normalizedDisplayName
                             )
                         )
                 }

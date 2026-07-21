@@ -409,6 +409,9 @@ class SharedSlockAuthTransport internal constructor(
     override suspend fun currentUser(authorization: String): AuthNetworkResponse =
         request(path = "auth/me", method = "GET", authorization = authorization)
 
+    override suspend fun completeProfile(authorization: String, bodyText: String): AuthNetworkResponse =
+        request(path = "auth/me/complete-profile", method = "POST", authorization = authorization, bodyText = bodyText)
+
     override suspend fun refresh(bodyText: String): AuthNetworkResponse =
         request(path = "auth/refresh", method = "POST", bodyText = bodyText)
 

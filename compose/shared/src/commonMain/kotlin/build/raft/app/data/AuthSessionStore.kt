@@ -233,9 +233,15 @@ data class StoredAuthUser(
     val description: String? = null,
     val avatarUrl: String? = null,
     val emailVerified: Boolean? = null,
+    val profileSetupCompletedAt: String? = "legacy_complete",
+    val profileSetupSuggestedHandle: String? = null,
+    val profileSetupProvider: String? = null,
     val preferredTimeFormat: String? = null,
     val timeFormat: String? = null
 ) {
+    val requiresProfileSetup: Boolean
+        get() = profileSetupCompletedAt.isNullOrBlank()
+
     val bestDisplayName: String
         get() =
             displayName?.takeIf { it.isNotBlank() }

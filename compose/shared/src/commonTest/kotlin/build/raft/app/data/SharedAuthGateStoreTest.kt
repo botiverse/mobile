@@ -88,6 +88,62 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
+    fun restoreVerifiedPendingProfileMovesToProfileSetupRequiredBeforeServerGate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val store =
+            SharedAuthGateStore(
+                restoreSession = {
+                    SharedAuthResult.Success(
+                        storedSession(
+                            selectedServerId = null,
+                            emailVerified = true,
+                            profileSetupCompletedAt = null
+                        )
+                    )
+                },
+                scope = scope
+            )
+
+        store.accept(SharedAuthGateIntent.Restore)
+
+        assertTrue(store.state.value is SharedAuthGateState.ProfileSetupRequired)
+        scope.cancel()
+    }
+
+    @Test
+    fun completedProfileMovesFromProfileSetupRequiredToServerRequired() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val pending =
+            storedSession(
+                selectedServerId = null,
+                emailVerified = true,
+                profileSetupCompletedAt = null
+            )
+        val store =
+            SharedAuthGateStore(
+                restoreSession = { SharedAuthResult.Success(pending) },
+                scope = scope
+            )
+
+        store.accept(SharedAuthGateIntent.SignedIn(pending))
+        assertTrue(store.state.value is SharedAuthGateState.ProfileSetupRequired)
+
+        val completed =
+            pending.copy(
+                user =
+                    pending.user.copy(
+                        name = "artin",
+                        displayName = "Artin Chen",
+                        profileSetupCompletedAt = "2026-07-21T00:00:00Z"
+                    )
+            )
+        store.accept(SharedAuthGateIntent.SignedIn(completed))
+
+        assertTrue(store.state.value is SharedAuthGateState.ServerRequired)
+        scope.cancel()
+    }
+
+    @Test
     fun unauthenticatedRestoreMovesToAuthRequired() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val store =
@@ -479,6 +535,7 @@ class SharedAuthGateStoreTest {
     private fun storedSession(
         selectedServerId: String?,
         emailVerified: Boolean? = null,
+        profileSetupCompletedAt: String? = "legacy_complete",
         accessToken: String = "access-token",
         userId: String = "user-1"
     ): StoredAuthSession =
@@ -488,7 +545,8 @@ class SharedAuthGateStoreTest {
                     id = userId,
                     email = "user@slock.ai",
                     displayName = "Artin",
-                    emailVerified = emailVerified
+                    emailVerified = emailVerified,
+                    profileSetupCompletedAt = profileSetupCompletedAt
                 ),
             accessToken = accessToken,
             refreshToken = "refresh-token",

@@ -2274,9 +2274,22 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_auth_register_inputs",
             pageData =
                 JSONObject()
-                    .put("registerName", "Product UX Designer")
                     .put("registerEmail", "new@slock.ai")
                     .put("registerPassword", "correct horse battery staple"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureAuthProfileSetupScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.auth.profile-setup",
+            pageName = "compose_auth_profile_setup_visual",
+            pageData =
+                JSONObject()
+                    .put("profileSetupHandle", "new_designer")
+                    .put("profileSetupDisplayName", "New Designer"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )

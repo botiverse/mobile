@@ -78,6 +78,7 @@ import kotlinx.coroutines.launch
 
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
+const val AUTH_PROFILE_SETUP_PAGE = "compose_auth_profile_setup"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
 const val AUTH_LEGAL_ACCEPTANCE_PAGE = "compose_auth_legal_acceptance"
 const val AUTH_ABOUT_PAGE = "compose_auth_developer"
@@ -95,12 +96,14 @@ private const val AUTH_LOGIN_VISUAL_FIXTURE_SIGNING = "signing"
 // 21-char password so both sides mask the same number of dots.
 private const val AUTH_LOGIN_VISUAL_SIGNING_EMAIL = "artin@raft.build"
 private const val AUTH_LOGIN_VISUAL_SIGNING_PASSWORD = "visual-sign-in-secret"
-private const val AUTH_REGISTER_VISUAL_NAME_KEY = "registerName"
 private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
 private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
-private const val AUTH_REGISTER_VISUAL_DEFAULT_NAME = "Product UX Designer"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_EMAIL = "new@raft.build"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery staple"
+private const val AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY = "profileSetupHandle"
+private const val AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY = "profileSetupDisplayName"
+private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE = "new_designer"
+private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME = "New Designer"
 private const val AUTH_TERMS_URL = "https://raft.build/terms"
 private const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
@@ -142,6 +145,14 @@ internal class ComposeRegisterPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { RegisterScreen() }
+    }
+}
+
+@Page(AUTH_PROFILE_SETUP_PAGE, supportInLocal = true)
+internal class ComposeAuthProfileSetupPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthProfileSetupScreen() }
     }
 }
 
@@ -351,9 +362,14 @@ private data class PendingSocialAuth(
 
 private data class PendingRegister(
     val nonce: Int,
-    val name: String,
     val email: String,
     val password: String
+)
+
+private data class PendingProfileSetup(
+    val nonce: Int,
+    val handle: String,
+    val displayName: String
 )
 
 private data class PendingForgotPassword(
@@ -509,7 +525,6 @@ private fun RegisterScreen() {
         val result =
             runCatchingPreservingCancellation {
                 authDataSource.register(
-                    name = effect.name,
                     email = effect.email,
                     password = effect.password
                 )
@@ -556,18 +571,12 @@ private fun RegisterScreen() {
     }
 
     RegisterContent(
-        name = state.name,
         email = state.email,
         password = state.password,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
-        nameError = state.nameError,
         emailError = state.emailFormatError,
         passwordError = state.passwordError,
-        onNameChange = {
-            errorPresentation = null
-            state = reducer.reduce(state, CreateAccountFormEvent.NameChanged(it)).state
-        },
         onEmailChange = {
             errorPresentation = null
             state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state
@@ -584,18 +593,110 @@ private fun RegisterScreen() {
                 is CreateAccountFormEffect.SubmitCreateAccount -> {
                     pendingRegister = PendingRegister(
                         nonce = (pendingRegister?.nonce ?: 0) + 1,
-                        name = effect.name,
                         email = effect.email,
                         password = effect.password
                     )
                 }
-                CreateAccountFormEffect.FocusName -> Unit
                 CreateAccountFormEffect.FocusEmail -> Unit
                 CreateAccountFormEffect.FocusPassword -> Unit
                 null -> Unit
             }
         },
         onBackToSignIn = { pager.closeAuthSubPage() },
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
+    )
+}
+
+@Composable
+private fun AuthProfileSetupScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val reducer = remember { IdentitySetupFormReducer() }
+    var state by remember { mutableStateOf(IdentitySetupFormState()) }
+    var loaded by remember { mutableStateOf(false) }
+    var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
+    var pendingProfileSetup by remember { mutableStateOf<PendingProfileSetup?>(null) }
+
+    LaunchedEffect(Unit) {
+        val authDataSource = currentEnvironmentAuthDataSource(bridge)
+        when (val current = authDataSource.currentSession()) {
+            is SharedAuthResult.Success -> {
+                if (!current.data.user.requiresProfileSetup) {
+                    pager.openPostAuthRoute(current.data)
+                    return@LaunchedEffect
+                }
+                state = state.copy(
+                    handle = current.data.user.profileSetupSuggestedHandle.orEmpty(),
+                    displayName = current.data.user.displayName.orEmpty()
+                )
+                loaded = true
+            }
+            SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
+            is SharedAuthResult.Failure -> {
+                loaded = true
+                errorPresentation = AuthErrorPresentation.Dynamic(current.message)
+            }
+        }
+    }
+
+    LaunchedEffect(pendingProfileSetup) {
+        val effect = pendingProfileSetup ?: return@LaunchedEffect
+        val authDataSource = currentEnvironmentAuthDataSource(bridge)
+        val result =
+            runCatchingPreservingCancellation {
+                authDataSource.completeProfile(effect.handle, effect.displayName)
+            }.getOrNull()
+        pendingProfileSetup = null
+        when (result) {
+            is SharedAuthResult.Success -> pager.openPostAuthRoute(result.data)
+            is SharedAuthResult.Failure -> {
+                state = state.copy(submitting = false)
+                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
+            }
+            SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
+            null -> {
+                state = state.copy(submitting = false)
+                errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_profile_setup_failed.desc())
+            }
+        }
+    }
+
+    if (!loaded) {
+        AuthScaffold { AuthCenterMark() }
+        return
+    }
+
+    AuthProfileSetupContent(
+        handle = state.handle,
+        displayName = state.displayName,
+        submitting = state.submitting,
+        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
+        handleError = state.handleError,
+        displayNameError = state.displayNameError,
+        onHandleChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, IdentitySetupFormEvent.HandleChanged(it)).state
+        },
+        onDisplayNameChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, IdentitySetupFormEvent.DisplayNameChanged(it)).state
+        },
+        onSubmit = {
+            errorPresentation = null
+            val update = reducer.reduce(state, IdentitySetupFormEvent.Submit)
+            state = update.state
+            when (val effect = update.effect) {
+                is IdentitySetupFormEffect.SubmitIdentity ->
+                    pendingProfileSetup = PendingProfileSetup(
+                        nonce = (pendingProfileSetup?.nonce ?: 0) + 1,
+                        handle = effect.handle,
+                        displayName = effect.displayName
+                    )
+                IdentitySetupFormEffect.FocusHandle,
+                IdentitySetupFormEffect.FocusDisplayName,
+                null -> Unit
+            }
+        },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
@@ -1023,17 +1124,31 @@ internal fun AuthRegisterInputsVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     RegisterContent(
-        name = params.optString(AUTH_REGISTER_VISUAL_NAME_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_NAME },
         email = params.optString(AUTH_REGISTER_VISUAL_EMAIL_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_EMAIL },
         password = params.optString(AUTH_REGISTER_VISUAL_PASSWORD_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD },
         submitting = false,
         errorMessage = null,
-        onNameChange = {},
         onEmailChange = {},
         onPasswordChange = {},
         onSubmit = {},
-        onBackToSignIn = {},
-        forceNameFocused = false
+        onBackToSignIn = {}
+    )
+}
+
+@Composable
+internal fun AuthProfileSetupVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
+    AuthProfileSetupContent(
+        handle = params.optString(AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY)
+            .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE },
+        displayName = params.optString(AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY)
+            .ifBlank { AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME },
+        submitting = false,
+        errorMessage = null,
+        onHandleChange = {},
+        onDisplayNameChange = {},
+        onSubmit = {}
     )
 }
 
@@ -1247,20 +1362,16 @@ internal fun LoginContent(
 
 @Composable
 internal fun RegisterContent(
-    name: String,
     email: String,
     password: String,
     submitting: Boolean,
     errorMessage: String?,
-    nameError: String? = null,
     emailError: String? = null,
     passwordError: String? = null,
-    onNameChange: (String) -> Unit,
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
-    forceNameFocused: Boolean = true,
     onOpenDiagnostics: () -> Unit = {}
 ) {
     var termsAccepted by remember { mutableStateOf(false) }
@@ -1268,12 +1379,10 @@ internal fun RegisterContent(
     val passwordFocusRequester = remember { FocusRequester() }
     val canSubmit =
         canSubmitRegisterForm(
-            name = name,
             email = email,
             password = password,
             termsAccepted = termsAccepted,
             formBusy = submitting,
-            nameError = nameError,
             emailFormatError = emailError,
             passwordError = passwordError
         )
@@ -1298,23 +1407,13 @@ internal fun RegisterContent(
             // the create-account request is in flight — only the legal checkbox
             // and submit button get disabled={loading} (task #372).
             AuthTextField(
-                name,
-                onNameChange,
-                stringResource(MR.strings.auth_label_name),
-                placeholder = stringResource(MR.strings.auth_password_pattern),
-                isError = !nameError.isNullOrBlank(),
-                errorText = nameError,
-                forceFocused = forceNameFocused,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { emailFocusRequester.requestFocus() })
-            )
-            AuthTextField(
                 email,
                 onEmailChange,
                 stringResource(MR.strings.auth_label_email),
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
                 focusRequester = emailFocusRequester,
+                forceFocused = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
             )
@@ -1351,6 +1450,93 @@ internal fun RegisterContent(
                 stringResource(MR.strings.auth_prompt_already_have_account),
                 stringResource(MR.strings.auth_action_sign_in)
             ) { onBackToSignIn() }
+        }
+    }
+}
+
+@Composable
+internal fun AuthProfileSetupContent(
+    handle: String,
+    displayName: String,
+    submitting: Boolean,
+    errorMessage: String?,
+    handleError: String? = null,
+    displayNameError: String? = null,
+    onHandleChange: (String) -> Unit,
+    onDisplayNameChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onOpenDiagnostics: () -> Unit = {}
+) {
+    val displayNameFocusRequester = remember { FocusRequester() }
+    val canSubmit =
+        identityHandleValidationError(handle) == null &&
+            identityDisplayNameValidationError(displayName) == null &&
+            handleError == null &&
+            displayNameError == null &&
+            !submitting
+    val submitIfAllowed = { if (canSubmit) onSubmit() }
+
+    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics, contentScrollable = true) {
+        AuthCenterMark()
+        Text(
+            text = stringResource(MR.strings.auth_title_profile_setup),
+            style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.authPageStaticTextFocus()
+        )
+        Text(
+            text = stringResource(MR.strings.auth_hint_profile_setup),
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.authPageStaticTextFocus()
+        )
+        AuthFormColumn {
+            AuthTextField(
+                handle,
+                onHandleChange,
+                stringResource(MR.strings.auth_label_username),
+                placeholder = stringResource(MR.strings.auth_username_placeholder),
+                isError = !handleError.isNullOrBlank(),
+                errorText = handleError,
+                forceFocused = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { displayNameFocusRequester.requestFocus() })
+            )
+            Text(
+                text = stringResource(MR.strings.auth_hint_username),
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.authPageStaticTextFocus()
+            )
+            AuthTextField(
+                displayName,
+                onDisplayNameChange,
+                stringResource(MR.strings.auth_label_display_name),
+                placeholder = stringResource(MR.strings.auth_display_name_placeholder),
+                isError = !displayNameError.isNullOrBlank(),
+                errorText = displayNameError,
+                focusRequester = displayNameFocusRequester,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
+            )
+            Text(
+                text = stringResource(MR.strings.auth_hint_display_name),
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.authPageStaticTextFocus()
+            )
+            AuthError(errorMessage)
+            AuthActionButton(
+                text = if (submitting) {
+                    stringResource(MR.strings.auth_state_finishing_profile)
+                } else {
+                    stringResource(MR.strings.auth_action_continue)
+                },
+                onClick = submitIfAllowed,
+                tone = AuthButtonTone.Pink,
+                enabled = canSubmit,
+                loading = submitting
+            )
         }
     }
 }
@@ -1617,12 +1803,10 @@ private fun LoginContentPreview() {
 @Composable
 private fun RegisterStatesPreview() {
     RegisterContent(
-        name = "Very Long Name With 中文 Mixed",
         email = "new@raft.build",
         password = "password",
         submitting = false,
         errorMessage = null,
-        onNameChange = {},
         onEmailChange = {},
         onPasswordChange = {},
         onSubmit = {},
@@ -1662,8 +1846,20 @@ private fun Pager.openPostAuthRoute(session: StoredAuthSession) {
         )
 }
 
+internal fun Pager.openAuthProfileSetupReplacingCurrentPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+        AUTH_PROFILE_SETUP_PAGE,
+        authPageData(pageName = AUTH_PROFILE_SETUP_PAGE, replaceCurrent = true)
+    )
+}
+
 internal fun postAuthRouteDestination(session: StoredAuthSession? = null): AuthRouteDestination =
-    if (!session?.selectedServerId.isNullOrBlank()) {
+    if (session != null && (session.user.emailVerified == false || session.user.requiresProfileSetup)) {
+        AuthRouteDestination(
+            pageName = SLOCK_APP_SHELL_PAGE,
+            pageData = appShellPageData(replaceCurrent = true, suppressRestoreLanding = true)
+        )
+    } else if (!session?.selectedServerId.isNullOrBlank()) {
         AuthRouteDestination(
             pageName = SLOCK_APP_SHELL_PAGE,
             pageData = appShellPageData(replaceCurrent = true, suppressRestoreLanding = true)

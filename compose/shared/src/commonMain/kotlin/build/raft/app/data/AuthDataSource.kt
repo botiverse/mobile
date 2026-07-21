@@ -425,14 +425,13 @@ class SharedAuthDataSource(
     }
 
     suspend fun register(
-        name: String,
         email: String,
         password: String
     ): SharedAuthResult<StoredAuthSession> {
-        if (name.isBlank() || email.isBlank() || password.isBlank()) {
+        if (email.isBlank() || password.isBlank()) {
             return SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
-                "Name, email, and password are required."
+                "Email and password are required."
             )
         }
         if (password.length < 8) {
@@ -443,7 +442,7 @@ class SharedAuthDataSource(
         }
 
         val register =
-            when (val response = api.register(name = name.trim(), email = email.trim(), password = password)) {
+            when (val response = api.register(email = email.trim(), password = password)) {
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> return response.toSharedAuthFailure()
             }
@@ -465,6 +464,37 @@ class SharedAuthDataSource(
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         sessionStore.replaceAuthenticatedSession(session)
         return SharedAuthResult.Success(session)
+    }
+
+    suspend fun completeProfile(name: String, displayName: String): SharedAuthResult<StoredAuthSession> {
+        val normalizedName = name.trim().removePrefix("@")
+        val normalizedDisplayName = displayName.trim()
+        if (normalizedName.length < 5 || normalizedDisplayName.isBlank()) {
+            return SharedAuthResult.Failure(
+                SharedAuthErrorCode.Validation,
+                "Username and display name are required."
+            )
+        }
+        val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        val updatedUser =
+            when (
+                val response = api.completeProfile(
+                    authorization = current.bearer(),
+                    name = normalizedName,
+                    displayName = normalizedDisplayName
+                )
+            ) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        sessionStore.updateMetadata(expectedAccountId = current.user.id) { latest ->
+            latest.copy(user = updatedUser)
+        }
+        val persisted = sessionStore.readSession()
+        if (persisted == null || persisted.user.id != current.user.id || persisted.user != updatedUser) {
+            return SharedAuthResult.Unauthenticated
+        }
+        return SharedAuthResult.Success(persisted)
     }
 
     suspend fun forgotPassword(email: String): SharedAuthResult<Unit> {
@@ -1130,7 +1160,12 @@ interface SlockAuthApi {
         codeVerifier: String,
         authorization: String
     ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse>
-    suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse>
+    suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse>
+    suspend fun completeProfile(
+        authorization: String,
+        name: String,
+        displayName: String
+    ): AuthApiResult<StoredAuthUser> = AuthApiResult.Failure(code = 501)
     suspend fun forgotPassword(email: String): AuthApiResult<Unit>
     suspend fun resendVerification(authorization: String): AuthApiResult<Unit>
     suspend fun verifyEmail(token: String): AuthApiResult<Unit>
@@ -1270,9 +1305,23 @@ class SlockAuthApiClient(
             it.toDomain()
         }
 
-    override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
-        transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password, name = name)))
+    override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
+        transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password)))
             .mapAuthBody("auth_register_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
+
+    override suspend fun completeProfile(
+        authorization: String,
+        name: String,
+        displayName: String
+    ): AuthApiResult<StoredAuthUser> =
+        transport.completeProfile(
+            authorization,
+            authJson.encodeToString(AuthCompleteProfileRequestBody(name = name, displayName = displayName))
+        ).mapAuthBody(
+            "auth_complete_profile_contract_mismatch",
+            StoredAuthUser.serializer(),
+            diagnosticsLogger
+        ) { it }
 
     override suspend fun forgotPassword(email: String): AuthApiResult<Unit> {
         val response = transport.forgotPassword(authJson.encodeToString(AuthForgotPasswordRequestBody(email = email)))
@@ -1472,11 +1521,16 @@ data class AuthMobileOAuthLinkCompleteRequestBody(
 data class AuthRegisterRequestBody(
     val email: String,
     val password: String,
-    val name: String,
     val acceptTerms: Boolean = true,
     val termsVersion: String = CURRENT_TERMS_VERSION,
     val privacyVersion: String = CURRENT_PRIVACY_VERSION,
     val legalAcceptanceSource: String = "signup"
+)
+
+@kotlinx.serialization.Serializable
+data class AuthCompleteProfileRequestBody(
+    val name: String,
+    val displayName: String
 )
 
 @kotlinx.serialization.Serializable

@@ -84,7 +84,6 @@ class LoginContractTest {
         assertEquals(
             false,
             canSubmitRegisterForm(
-                name = "Product UX Designer",
                 email = "new@slock.ai",
                 password = "password123",
                 termsAccepted = false,
@@ -94,7 +93,6 @@ class LoginContractTest {
         assertEquals(
             false,
             canSubmitRegisterForm(
-                name = "Product UX Designer",
                 email = "new@slock.ai",
                 password = "password123",
                 termsAccepted = true,
@@ -104,7 +102,6 @@ class LoginContractTest {
         assertEquals(
             false,
             canSubmitRegisterForm(
-                name = "Product UX Designer",
                 email = "new@slock.ai",
                 password = "password123",
                 termsAccepted = true,
@@ -115,7 +112,6 @@ class LoginContractTest {
         assertEquals(
             true,
             canSubmitRegisterForm(
-                name = "Product UX Designer",
                 email = "new@slock.ai",
                 password = "password123",
                 termsAccepted = true,
@@ -160,7 +156,7 @@ class LoginContractTest {
     fun createAccountInvalidEmailShowsInlineEmailError() {
         val update =
             CreateAccountFormReducer().reduce(
-                CreateAccountFormState(name = "Artin User", email = "artin", password = "password123"),
+                CreateAccountFormState(email = "artin", password = "password123"),
                 CreateAccountFormEvent.Submit
             )
 
@@ -170,29 +166,77 @@ class LoginContractTest {
     }
 
     @Test
-    fun createAccountShortNameShowsInlineNameError() {
+    fun identitySetupShortUsernameShowsInlineError() {
         val update =
-            CreateAccountFormReducer().reduce(
-                CreateAccountFormState(name = "Art", email = "artin@example.com", password = "password123"),
-                CreateAccountFormEvent.Submit
+            IdentitySetupFormReducer().reduce(
+                IdentitySetupFormState(handle = "Art", displayName = "Artin User"),
+                IdentitySetupFormEvent.Submit
             )
 
         assertEquals(null, update.state.errorMessage)
-        assertEquals("Name must be at least 5 characters", update.state.nameError)
-        assertEquals(CreateAccountFormEffect.FocusName, update.effect)
+        assertEquals("Username must be at least 5 characters", update.state.handleError)
+        assertEquals(IdentitySetupFormEffect.FocusHandle, update.effect)
+    }
+
+    @Test
+    fun identitySetupRejectsInvalidAndReservedUsernames() {
+        val invalid =
+            IdentitySetupFormReducer().reduce(
+                IdentitySetupFormState(handle = "1invalid", displayName = "Artin User"),
+                IdentitySetupFormEvent.Submit
+            )
+        assertEquals(
+            "Username must start with a letter and can only contain letters, numbers, hyphens, and underscores",
+            invalid.state.handleError
+        )
+        assertEquals(IdentitySetupFormEffect.FocusHandle, invalid.effect)
+
+        val reserved =
+            IdentitySetupFormReducer().reduce(
+                IdentitySetupFormState(handle = "pending_user", displayName = "Artin User"),
+                IdentitySetupFormEvent.Submit
+            )
+        assertEquals("This username is reserved. Choose another name.", reserved.state.handleError)
+        assertEquals(IdentitySetupFormEffect.FocusHandle, reserved.effect)
+    }
+
+    @Test
+    fun identitySetupUsesServerDisplayNameMaximum() {
+        val update =
+            IdentitySetupFormReducer().reduce(
+                IdentitySetupFormState(handle = "artin", displayName = "x".repeat(81)),
+                IdentitySetupFormEvent.Submit
+            )
+
+        assertEquals("Display name must be at most 80 characters", update.state.displayNameError)
+        assertEquals(IdentitySetupFormEffect.FocusDisplayName, update.effect)
     }
 
     @Test
     fun createAccountShortPasswordShowsInlinePasswordError() {
         val update =
             CreateAccountFormReducer().reduce(
-                CreateAccountFormState(name = "Artin User", email = "artin@example.com", password = "short"),
+                CreateAccountFormState(email = "artin@example.com", password = "short"),
                 CreateAccountFormEvent.Submit
             )
 
         assertEquals(null, update.state.errorMessage)
         assertEquals("Password must be at least 8 characters", update.state.passwordError)
         assertEquals(CreateAccountFormEffect.FocusPassword, update.effect)
+    }
+
+    @Test
+    fun validIdentitySetupTrimsFieldsAndSubmits() {
+        val update =
+            IdentitySetupFormReducer().reduce(
+                IdentitySetupFormState(handle = " @artin ", displayName = " Artin Chen "),
+                IdentitySetupFormEvent.Submit
+            )
+        assertEquals(
+            IdentitySetupFormEffect.SubmitIdentity(handle = "artin", displayName = "Artin Chen"),
+            update.effect
+        )
+        assertEquals(true, update.state.submitting)
     }
 
     @Test

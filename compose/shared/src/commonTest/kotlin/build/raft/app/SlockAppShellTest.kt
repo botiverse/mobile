@@ -3604,6 +3604,68 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun postAuthRouteUsesAppShellGateForPendingProfileBeforeServerChoice() {
+        val destination =
+            postAuthRouteDestination(
+                StoredAuthSession(
+                    user = StoredAuthUser(
+                        id = "user-1",
+                        email = "artin@raft.build",
+                        emailVerified = true,
+                        profileSetupCompletedAt = null
+                    ),
+                    accessToken = "access",
+                    refreshToken = "refresh"
+                )
+            )
+
+        assertEquals(SLOCK_APP_SHELL_PAGE, destination.pageName)
+        assertEquals(true, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
+    }
+
+    @Test
+    fun postAuthRouteUsesAppShellGateForUnverifiedPendingProfile() {
+        val destination =
+            postAuthRouteDestination(
+                StoredAuthSession(
+                    user =
+                        StoredAuthUser(
+                            id = "user-1",
+                            email = "artin@raft.build",
+                            emailVerified = false,
+                            profileSetupCompletedAt = null
+                        ),
+                    accessToken = "access",
+                    refreshToken = "refresh"
+                )
+            )
+
+        assertEquals(SLOCK_APP_SHELL_PAGE, destination.pageName)
+        assertEquals(true, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
+    }
+
+    @Test
+    fun postAuthRouteUsesServerChooserForCompletedProfileWithoutServer() {
+        val destination =
+            postAuthRouteDestination(
+                StoredAuthSession(
+                    user =
+                        StoredAuthUser(
+                            id = "user-1",
+                            email = "artin@raft.build",
+                            emailVerified = true,
+                            profileSetupCompletedAt = "2026-07-21T00:00:00Z"
+                        ),
+                    accessToken = "access",
+                    refreshToken = "refresh"
+                )
+            )
+
+        assertEquals(AUTH_CHOOSE_SERVER_PAGE, destination.pageName)
+        assertEquals(false, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
+    }
+
+    @Test
     fun postAuthSessionReadbackRequiresSameUserAndTokens() {
         val session =
             StoredAuthSession(
