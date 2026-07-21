@@ -10,6 +10,101 @@ import kotlin.test.assertTrue
 
 class HomeServerDrawerCommandStateTest {
     @Test
+    fun pointerOwnershipIsFailClosedUntilMatchingPhysicalTerminal() {
+        val authoritativeClosed = HomeServerDrawerCommandIntent(generation = 0L, desiredOpen = false)
+        var state = HomeServerDrawerCommandState()
+
+        assertEquals(HomeServerDrawerInteractionState.ClosedAppEdgeOwner, state.interactionState)
+        assertNull(state.ownerGeneration)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(authoritativeClosed))
+
+        state = state.establishClosedOwner(authoritativeClosed)
+
+        assertEquals(
+            HomeServerDrawerPointerPolicy(appEdgeEnabled = true),
+            state.pointerPolicy(authoritativeClosed)
+        )
+    }
+
+    @Test
+    fun programmaticTransitionsFenceBothPointersUntilCurrentTerminal() {
+        val closed = HomeServerDrawerCommandIntent(generation = 0L, desiredOpen = false)
+        val open = HomeServerDrawerCommandIntent(generation = 1L, desiredOpen = true)
+        val close = HomeServerDrawerCommandIntent(generation = 2L, desiredOpen = false)
+        var state = HomeServerDrawerCommandState().establishClosedOwner(closed)
+
+        state = state.pendingAdmission(open)
+        assertEquals(HomeServerDrawerInteractionState.OpeningProgrammatic, state.interactionState)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(open))
+
+        state = state.markSubmitted(open.generation, desiredOpen = true)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(open))
+        state = state.settle(open.generation, desiredOpen = true)
+        assertEquals(HomeServerDrawerInteractionState.OpenNativePagerOwner, state.interactionState)
+        assertEquals(
+            HomeServerDrawerPointerPolicy(nativePagerEnabled = true),
+            state.pointerPolicy(open)
+        )
+
+        state = state.pendingAdmission(close)
+        assertEquals(HomeServerDrawerInteractionState.ClosingProgrammatic, state.interactionState)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(close))
+        state = state.markSubmitted(close.generation, desiredOpen = false)
+        state = state.settle(close.generation, desiredOpen = false)
+        assertEquals(
+            HomeServerDrawerPointerPolicy(appEdgeEnabled = true),
+            state.pointerPolicy(close)
+        )
+    }
+
+    @Test
+    fun localProgrammaticCloseFencesNativeBeforeAuthoritativeIntentChanges() {
+        val open = HomeServerDrawerCommandIntent(generation = 7L, desiredOpen = true)
+        var state = HomeServerDrawerCommandState().submit(open).settle(open.generation, desiredOpen = true)
+
+        assertTrue(state.pointerPolicy(open).nativePagerEnabled)
+        state = state.beginProgrammaticClose()
+
+        assertEquals(HomeServerDrawerInteractionState.ClosingProgrammatic, state.interactionState)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(open))
+        assertFalse(state.acceptsConversationClick(open.generation, open))
+    }
+
+    @Test
+    fun localProgrammaticOpenFencesAppEdgeBeforeAuthoritativeIntentChanges() {
+        val closed = HomeServerDrawerCommandIntent(generation = 4L, desiredOpen = false)
+        var state = HomeServerDrawerCommandState(currentIntent = closed).establishClosedOwner(closed)
+
+        assertTrue(state.pointerPolicy(closed).appEdgeEnabled)
+        state = state.beginProgrammaticOpen()
+
+        assertEquals(HomeServerDrawerInteractionState.OpeningProgrammatic, state.interactionState)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(closed))
+    }
+
+    @Test
+    fun nativeSettledCloseCommitsGestureAndFencesPointersInSameReduction() {
+        val open = HomeServerDrawerCommandIntent(generation = 9L, desiredOpen = true)
+        var state = HomeServerDrawerCommandState().submit(open).settle(open.generation, desiredOpen = true)
+
+        state = state.nativeSettledClosedWithoutCommand()
+
+        assertEquals(HomeServerDrawerInteractionState.GestureCloseCommitting, state.interactionState)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(open))
+        assertEquals(1, state.gestureDismissCount)
+    }
+
+    @Test
+    fun staleAuthoritativeGenerationCannotEnableEitherPointerOwner() {
+        val open = HomeServerDrawerCommandIntent(generation = 11L, desiredOpen = true)
+        val stale = HomeServerDrawerCommandIntent(generation = 10L, desiredOpen = true)
+        val state = HomeServerDrawerCommandState().submit(open).settle(open.generation, desiredOpen = true)
+
+        assertTrue(state.pointerPolicy(open).nativePagerEnabled)
+        assertEquals(HomeServerDrawerPointerPolicy(), state.pointerPolicy(stale))
+    }
+
+    @Test
     fun pendingAdmissionRevokesOldInteractivityUntilCurrentNativeSubmission() {
         val openA = HomeServerDrawerCommandIntent(31L, true)
         val openC = HomeServerDrawerCommandIntent(33L, true)

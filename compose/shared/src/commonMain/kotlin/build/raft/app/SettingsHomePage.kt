@@ -414,9 +414,11 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coroutines.withKuiklyIdleContext
+import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestures
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
@@ -480,9 +482,11 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.event.ClickParams
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.core.views.DivView
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
@@ -2836,6 +2840,7 @@ internal fun SlockAppShellContent(
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
     var serverDrawerEnabled by remember { mutableStateOf(false) }
+    var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
@@ -3796,6 +3801,7 @@ internal fun SlockAppShellContent(
             return true
         }
         if (homeState.serverSwitcherExpanded) {
+            serverDrawerProgrammaticCloseFence?.invoke("back")
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return true
         }
@@ -4556,6 +4562,7 @@ internal fun SlockAppShellContent(
                 )
                 if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, nextTab)) {
                     homeFocusLossDismissEpoch += 1
+                    serverDrawerProgrammaticCloseFence?.invoke("bottom_tab")
                     homeShellStore.dispatch(
                         SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
                     )
@@ -5039,6 +5046,7 @@ internal fun SlockAppShellContent(
                 serverMembersStore = appShellServerMembersStore,
                 selectedTab = selectedTab,
                 onConversationClick = ::openServerDrawerConversation,
+                onProgrammaticCloseFenceChanged = { serverDrawerProgrammaticCloseFence = it },
                 content = mainRouteSurface
             )
         } else {
@@ -5103,6 +5111,7 @@ private fun AppShellServerDrawerHost(
     serverMembersStore: SharedServerMembersStore?,
     selectedTab: String,
     onConversationClick: (String, String) -> Unit,
+    onProgrammaticCloseFenceChanged: (((String) -> Unit)?) -> Unit,
     content: @Composable () -> Unit
 ) {
     val projectionFlow =
@@ -5130,13 +5139,38 @@ private fun AppShellServerDrawerHost(
         }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val drawerWidth = homeServerDrawerWidth(maxWidth)
         val drawerState =
             rememberMoveableDrawerState(
                 initiallyOpen = false,
-                drawerWidth = homeServerDrawerWidth(maxWidth)
+                drawerWidth = drawerWidth
             )
+        val scrimWidth = (maxWidth - drawerWidth * drawerState.progress).coerceAtLeast(0.dp)
         var commandState by remember(drawerState) { mutableStateOf(HomeServerDrawerCommandState()) }
         val edgeDensity = LocalDensity.current
+        val pointerPolicy = commandState.pointerPolicy(projection.commandIntent)
+
+        fun requestProgrammaticClose(source: String) {
+            if (!currentIntent.desiredOpen) return
+            commandState = commandState.beginProgrammaticClose()
+            bridge.log(
+                "server_drawer_programmatic_close_fenced generation=${currentIntent.generation} source=$source"
+            )
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+        }
+        val currentCloseRequest by rememberUpdatedState<(String) -> Unit> { source ->
+            requestProgrammaticClose(source)
+        }
+        val programmaticCloseFence = remember {
+            { source: String -> currentCloseRequest(source) }
+        }
+        DisposableEffect(programmaticCloseFence, onProgrammaticCloseFenceChanged) {
+            onProgrammaticCloseFenceChanged(programmaticCloseFence)
+            onDispose { onProgrammaticCloseFenceChanged(null) }
+        }
+        val closeDrawerEvent = remember(programmaticCloseFence) {
+            { _: ClickParams -> programmaticCloseFence("scrim_native") }
+        }
 
         LaunchedEffect(drawerState, projection.commandIntent.generation) {
             val intent = projection.commandIntent
@@ -5182,7 +5216,10 @@ private fun AppShellServerDrawerHost(
                     if (observation.isSettled(desiredOpen = false)) {
                         val previousDismissCount = commandState.gestureDismissCount
                         val generation = commandState.currentIntent.generation
-                        commandState = commandState.nativeSettledClosedWithoutCommand()
+                        commandState =
+                            commandState
+                                .establishClosedOwner(currentIntent)
+                                .nativeSettledClosedWithoutCommand()
                         if (commandState.gestureDismissCount > previousDismissCount) {
                             bridge.log("server_drawer_gesture_closed generation=$generation")
                             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
@@ -5194,6 +5231,8 @@ private fun AppShellServerDrawerHost(
         Box(modifier = Modifier.fillMaxSize()) {
             MoveableDrawer(
                 state = drawerState,
+                scrimColor = Color.Transparent,
+                userScrollEnabled = pointerPolicy.nativePagerEnabled,
                 drawerContent = {
                     HomeServerDrawerHostedPanel(
                         sections = drawerSections,
@@ -5228,6 +5267,7 @@ private fun AppShellServerDrawerHost(
                         },
                         onConversationClick = { generation, serverId, conversationId ->
                             if (commandState.acceptsConversationClick(generation, currentIntent)) {
+                                commandState = commandState.beginProgrammaticClose()
                                 onConversationClick(serverId, conversationId)
                             }
                         },
@@ -5247,7 +5287,27 @@ private fun AppShellServerDrawerHost(
                 },
                 content = content
             )
-            if (!projection.commandIntent.desiredOpen && drawerState.progress <= 0.01f) {
+            if (drawerState.progress > 0.01f) {
+                MakeKuiklyComposeNode<DivView>(
+                    factory = { DivView() },
+                    modifier =
+                        Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(scrimWidth)
+                            .background(Color.Black.copy(alpha = 0.3f * drawerState.progress))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                requestProgrammaticClose("scrim_compose")
+                            },
+                    viewInit = {
+                        getViewEvent().click(closeDrawerEvent)
+                    }
+                )
+            }
+            if (pointerPolicy.appEdgeEnabled && drawerState.progress <= 0.01f) {
                 Box(
                     modifier =
                         Modifier
@@ -5261,6 +5321,7 @@ private fun AppShellServerDrawerHost(
                                     onDragEnd = {
                                         val horizontalDragDp = horizontalDragPx / edgeDensity.density
                                         if (shouldOpenHomeServerDrawerOnEdgeSwipe(horizontalDragDp)) {
+                                            commandState = commandState.beginProgrammaticOpen()
                                             bridge.log(
                                                 "server_drawer_input source=app_shell_edge selectedTab=$selectedTab dragDp=$horizontalDragDp"
                                             )
