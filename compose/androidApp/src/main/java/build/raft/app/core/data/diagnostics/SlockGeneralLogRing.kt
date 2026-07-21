@@ -20,10 +20,7 @@ private const val DiagnosticsLogMaxTotalMiB = 30L
 /** Ordinary persistent JSONL sink. Routing and auth-critical classification happen upstream. */
 object SlockGeneralLogRing {
     private const val LogDirName = "raft_diagnostics_logs"
-    private const val LegacyLogDirName = "slock_diagnostics_logs"
     private const val LogFileName = "raft-diagnostics.jsonl"
-    private const val LegacyJsonlLogFileName = "slock-diagnostics.jsonl"
-    private const val LegacyLogFileName = "slock-diagnostics.log"
     private const val LogMaxBytes = 1L * 1024L * 1024L
     private const val LogMaxFiles = 30
     private const val LogMaxSessions = 5
@@ -101,12 +98,10 @@ object SlockGeneralLogRing {
         logFiles(context.applicationContext).any { it.isFile && it.length() > 0L }
 
     fun clearFiles(context: Context) {
-        diagnosticRoots(context.applicationContext).forEach { root ->
-            runCatching {
-                root.walkBottomUp()
-                    .filter { it.isFile }
-                    .forEach { it.delete() }
-            }
+        runCatching {
+            logDir(context.applicationContext).walkBottomUp()
+                .filter { it.isFile && isDiagnosticsLogFile(it) }
+                .forEach { it.delete() }
         }
     }
 
@@ -119,11 +114,7 @@ object SlockGeneralLogRing {
     fun logFiles(context: Context): List<File> {
         val appContext = context.applicationContext
         val nowMs = System.currentTimeMillis()
-        return mergeDiagnosticsLogFiles(
-            current = logFilesIn(dir = logDir(appContext), nowMs = nowMs),
-            legacy = logFilesIn(dir = legacyLogDir(appContext), nowMs = nowMs),
-            maxFiles = LogExportMaxFiles,
-        )
+        return logFilesIn(dir = logDir(appContext), nowMs = nowMs)
     }
 
     internal fun logFilesIn(dir: File, nowMs: Long): List<File> {
@@ -141,13 +132,13 @@ object SlockGeneralLogRing {
                         }
                         .sortedWith(compareByDescending<File> { it.lastModified() }.thenBy { it.absolutePath })
                 }
-        val legacyFallback =
+        val flatFallback =
             if (sessions.size < LogMaxSessions) {
-                legacyDiagnosticsFilesIn(dir, nowMs)
+                flatDiagnosticsFilesIn(dir, nowMs)
             } else {
                 emptyList()
             }
-        val groups = sessionGroups + listOfNotNull(legacyFallback.takeIf { it.isNotEmpty() })
+        val groups = sessionGroups + listOfNotNull(flatFallback.takeIf { it.isNotEmpty() })
         val newestFromEachLaunch = groups.mapNotNull { it.firstOrNull() }
         val remainingByRecency = groups.flatMap { it.drop(1) }
             .sortedWith(compareByDescending<File> { it.lastModified() }.thenBy { it.absolutePath })
@@ -268,14 +259,7 @@ object SlockGeneralLogRing {
 
     private fun logDir(context: Context): File = File(context.filesDir, LogDirName)
 
-    private fun legacyLogDir(context: Context): File = File(context.filesDir, LegacyLogDirName)
-
-    private fun diagnosticRoots(context: Context): List<File> =
-        listOf(logDir(context), legacyLogDir(context)).distinctBy { it.absolutePath }
-
     internal fun logRoot(context: Context): File = logDir(context.applicationContext)
-
-    internal fun legacyLogRoot(context: Context): File = legacyLogDir(context.applicationContext)
 
     internal fun currentLaunchDir(context: Context): File =
         synchronized(fileLock) {
@@ -285,17 +269,23 @@ object SlockGeneralLogRing {
             }
         }
 
-    internal fun relativeLogPath(root: File, file: File): String =
-        file.relativeToOrNull(root)?.invariantSeparatorsPath ?: file.name
+    internal fun relativeLogPathWithin(root: File, file: File): String? =
+        runCatching {
+            val canonicalRoot = root.canonicalFile
+            val canonicalFile = file.canonicalFile
+            val rootPrefix = canonicalRoot.path.trimEnd(File.separatorChar) + File.separator
+            if (canonicalFile.path != canonicalRoot.path && !canonicalFile.path.startsWith(rootPrefix)) {
+                null
+            } else {
+                canonicalFile.relativeTo(canonicalRoot).invariantSeparatorsPath
+            }
+        }.getOrNull()
 
     internal fun archiveRelativeLogPath(context: Context, file: File): String {
-        val root = diagnosticRoots(context.applicationContext)
-            .firstOrNull { file.relativeToOrNull(it) != null }
-        val relative = root?.let { relativeLogPath(it, file) } ?: file.name
-        val slash = relative.lastIndexOf('/')
-        val directory = if (slash >= 0) relative.substring(0, slash + 1) else ""
-        val name = if (slash >= 0) relative.substring(slash + 1) else relative
-        return directory + normalizeArchiveLogName(name)
+        val appContext = context.applicationContext
+        return requireNotNull(relativeLogPathWithin(logRoot(appContext), file)) {
+            "Diagnostics log escaped the Raft diagnostics root"
+        }
     }
 
     private fun diagnosticsSessionDirsIn(root: File): List<File> =
@@ -304,7 +294,7 @@ object SlockGeneralLogRing {
             .filter { it.isDirectory && it.name.startsWith(SessionDirPrefix) }
             .sortedByDescending { it.name }
 
-    private fun legacyDiagnosticsFilesIn(root: File, nowMs: Long): List<File> =
+    private fun flatDiagnosticsFilesIn(root: File, nowMs: Long): List<File> =
         root.listFiles()
             .orEmpty()
             .filter {
@@ -340,17 +330,7 @@ object SlockGeneralLogRing {
     }
 
     private fun isDiagnosticsLogFile(file: File): Boolean =
-        file.name.startsWith(LogFileName) ||
-            file.name.startsWith(LegacyJsonlLogFileName) ||
-            file.name.startsWith(LegacyLogFileName)
-
-    internal fun normalizeArchiveLogName(name: String): String =
-        when {
-            name.startsWith(LogFileName) -> name
-            name.startsWith(LegacyJsonlLogFileName) -> LogFileName + name.removePrefix(LegacyJsonlLogFileName)
-            name.startsWith(LegacyLogFileName) -> LogFileName + name.removePrefix(LegacyLogFileName)
-            else -> name
-        }
+        file.name.startsWith(LogFileName)
 
     private fun isRecentDiagnosticsLogFile(file: File, nowMs: Long): Boolean {
         val modifiedAt = file.lastModified()
@@ -399,18 +379,3 @@ internal object SlockDiagnosticsLaunchSession {
 
 internal fun diagnosticsRetentionLabel(fileCount: Int): String =
     "Files: $fileCount (latest 5 launches, up to $DiagnosticsLogMaxTotalMiB MiB, max age 2 days)"
-
-internal fun mergeDiagnosticsLogFiles(
-    current: List<File>,
-    legacy: List<File>,
-    maxFiles: Int,
-): List<File> {
-    if (maxFiles <= 0) return emptyList()
-    val currentUnique = current.distinctBy { it.absolutePath }.take(maxFiles)
-    val currentPaths = currentUnique.mapTo(mutableSetOf()) { it.absolutePath }
-    return currentUnique + legacy
-        .asSequence()
-        .filter { currentPaths.add(it.absolutePath) }
-        .take(maxFiles - currentUnique.size)
-        .toList()
-}

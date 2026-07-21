@@ -59,15 +59,13 @@ raft-feedback-<snapshot>/
   launch-<current-session>/
     raft-diagnostics.jsonl
     raft-diagnostics.jsonl.1
-  legacy-launch-<old-session>/
-    raft-diagnostics.jsonl
-  legacy/
+  flat/
     raft-diagnostics.jsonl
 ```
 
-Name collisions after legacy normalization are preserved with stable suffixes
-such as `raft-diagnostics-2.jsonl` and `raft-diagnostics-3.jsonl`; source bytes
-are never overwritten. Quiver receives each returned path as an attachment.
+Name collisions are preserved with stable suffixes such as
+`raft-diagnostics-2.jsonl` and `raft-diagnostics-3.jsonl`; source bytes are
+never overwritten. Quiver receives each returned path as an attachment.
 
 ## HarmonyOS ZIP layout
 
@@ -79,24 +77,19 @@ encoded into each log entry name:
 raft-diagnostics-summary.txt
 launch-<current-session>-raft-diagnostics.jsonl
 launch-<current-session>-raft-diagnostics.jsonl.1
-legacy-launch-<old-session>-raft-diagnostics.jsonl
-legacy-1-raft-diagnostics.jsonl
+flat-raft-diagnostics.jsonl
 ```
 
 Equal-name collisions use the same stable `-2`, `-3`, ... suffix rule. The
 temporary staged files are removed after ZIP creation, including partially
 copied targets when a copy fails.
 
-## One-release legacy compatibility
+## Local format boundary
 
-The client writes only the `raft-*` names above. For at least one release after
-the rebrand, Android, iOS, and HarmonyOS still discover, package, and clear
-historical `slock-feedback-*`, `slock-diagnostics*`,
-`slock-auth-critical.jsonl`, and `slock_diagnostics_logs` files. Historical
-Hands attachments are immutable and are not renamed server-side. When an old
-local log is included in newly generated attachments, its new attachment name
-is normalized to the corresponding `raft-*` name. Files already stored by
-Hands keep their original names and bytes.
+New clients generate, discover, package, rotate, and clear only the `raft-*`
+paths described above. They do not scan, migrate, package, or delete files from
+older local diagnostic layouts. Historical Hands attachments are immutable and
+keep their original names and bytes; Hands does not rename them server-side.
 
 Internal `Slock*` class names, log tags, and stable event/schema identifiers are
 not part of this filename migration. Consumers must continue accepting the

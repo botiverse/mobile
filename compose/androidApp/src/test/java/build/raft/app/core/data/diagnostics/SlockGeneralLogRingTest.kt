@@ -15,14 +15,14 @@ class SlockGeneralLogRingTest {
         val currentSession = dir.resolve("launch-1800000000000-current").apply { mkdirs() }
         val previousSession = dir.resolve("launch-1799990000000-previous").apply { mkdirs() }
         val active = currentSession.writeLog("raft-diagnostics.jsonl", now - TimeUnit.HOURS.toMillis(1))
-        val rotated = previousSession.writeLog("slock-diagnostics.jsonl.1", now - TimeUnit.HOURS.toMillis(12))
-        val legacy = dir.writeLog("slock-diagnostics.log", now - TimeUnit.HOURS.toMillis(36))
-        val old = dir.writeLog("slock-diagnostics.jsonl.2", now - TimeUnit.DAYS.toMillis(3))
+        val rotated = previousSession.writeLog("raft-diagnostics.jsonl.1", now - TimeUnit.HOURS.toMillis(12))
+        val flat = dir.writeLog("raft-diagnostics.jsonl.2", now - TimeUnit.HOURS.toMillis(36))
+        val old = dir.writeLog("raft-diagnostics.jsonl.3", now - TimeUnit.DAYS.toMillis(3))
         dir.writeLog("unrelated.jsonl", now)
 
         val files = SlockGeneralLogRing.logFilesIn(dir, now)
 
-        assertEquals(listOf(active, rotated, legacy), files)
+        assertEquals(listOf(active, rotated, flat), files)
         assertFalse(files.any { it.name == old.name })
     }
 
@@ -33,7 +33,7 @@ class SlockGeneralLogRingTest {
         repeat(7) { sessionIndex ->
             val session = dir.resolve("launch-${now - sessionIndex}-$sessionIndex").apply { mkdirs() }
             repeat(6) { fileIndex ->
-                session.writeLog("slock-diagnostics.jsonl.$fileIndex", now - sessionIndex * 100 - fileIndex)
+                session.writeLog("raft-diagnostics.jsonl.$fileIndex", now - sessionIndex * 100 - fileIndex)
             }
         }
 
@@ -45,34 +45,13 @@ class SlockGeneralLogRingTest {
     }
 
     @Test
-    fun logFilesFallsBackToLegacyFlatFilesWhenNoLaunchSessionsExist() {
-        val dir = Files.createTempDirectory("slock-diagnostics-legacy").toFile()
+    fun logFilesFallsBackToCurrentFlatFilesWhenNoLaunchSessionsExist() {
+        val dir = Files.createTempDirectory("raft-diagnostics-flat").toFile()
         val now = 1_800_000_000_000L
-        val active = dir.writeLog("slock-diagnostics.jsonl", now - 1)
-        val legacy = dir.writeLog("slock-diagnostics.log", now - 2)
+        val active = dir.writeLog("raft-diagnostics.jsonl", now - 1)
+        val rotated = dir.writeLog("raft-diagnostics.jsonl.1", now - 2)
 
-        assertEquals(listOf(active, legacy), SlockGeneralLogRing.logFilesIn(dir, now))
-    }
-
-    @Test
-    fun logFilesAndArchiveNamesKeepOneReleaseLegacyCompatibility() {
-        val dir = Files.createTempDirectory("raft-diagnostics-dual-read").toFile()
-        val now = 1_800_000_000_000L
-        val current = dir.writeLog("raft-diagnostics.jsonl", now)
-        val legacy = dir.writeLog("slock-diagnostics.jsonl.1", now - 1)
-
-        assertEquals(listOf(current, legacy), SlockGeneralLogRing.logFilesIn(dir, now))
-        assertEquals("raft-diagnostics.jsonl.1", SlockGeneralLogRing.normalizeArchiveLogName(legacy.name))
-        assertEquals("raft-diagnostics.jsonl", SlockGeneralLogRing.normalizeArchiveLogName("slock-diagnostics.log"))
-    }
-
-    @Test
-    fun mergedRootsAlwaysReserveCapacityForCurrentRaftLogsBeforeLegacyLogs() {
-        val dir = Files.createTempDirectory("raft-diagnostics-root-priority").toFile()
-        val current = (1..3).map { dir.writeLog("raft-$it.jsonl", 100L + it) }
-        val legacy = (1..3).map { dir.writeLog("legacy-$it.jsonl", 200L + it) }
-
-        assertEquals(current + legacy.take(1), mergeDiagnosticsLogFiles(current, legacy, maxFiles = 4))
+        assertEquals(listOf(active, rotated), SlockGeneralLogRing.logFilesIn(dir, now))
     }
 
     @Test
@@ -87,36 +66,7 @@ class SlockGeneralLogRingTest {
     }
 
     @Test
-    fun equalMtimeCurrentAndLegacyRootsKeepCurrentCapacityAndStableCollisionSuffixes() {
-        val parent = Files.createTempDirectory("raft-diagnostics-cross-root-equal-mtime").toFile()
-        val currentRoot = parent.resolve("raft_diagnostics_logs").apply { mkdirs() }
-        val legacyRoot = parent.resolve("slock_diagnostics_logs").apply { mkdirs() }
-        val now = 1_800_000_000_000L
-        val current = currentRoot.writeLog("raft-diagnostics.jsonl", now)
-        val legacy = legacyRoot.writeLog("slock-diagnostics.jsonl", now)
-
-        val merged = mergeDiagnosticsLogFiles(
-            SlockGeneralLogRing.logFilesIn(currentRoot, now),
-            SlockGeneralLogRing.logFilesIn(legacyRoot, now),
-            maxFiles = 2,
-        )
-        assertEquals(listOf(current, legacy), merged)
-
-        val seen = mutableSetOf<String>()
-        val normalizedNames = merged.map { file ->
-            uniqueDiagnosticsZipEntryName(
-                "app_logs/${SlockGeneralLogRing.normalizeArchiveLogName(file.name)}",
-                seen,
-            )
-        }
-        assertEquals(
-            listOf("app_logs/raft-diagnostics.jsonl", "app_logs/raft-diagnostics-2.jsonl"),
-            normalizedNames,
-        )
-    }
-
-    @Test
-    fun normalizedLegacyEntriesUseStableSuffixesInsteadOfOverwritingCurrentBytes() {
+    fun duplicateCurrentEntriesUseStableSuffixesInsteadOfOverwritingBytes() {
         val seen = mutableSetOf<String>()
         val entry = "app_logs/launch-1/raft-diagnostics.jsonl"
 
@@ -133,15 +83,68 @@ class SlockGeneralLogRingTest {
 
     @Test
     fun relativeLogPathKeepsLaunchIdentity() {
-        val dir = Files.createTempDirectory("slock-diagnostics-relative").toFile()
-        val file = dir.resolve("launch-1800000000000-a/slock-diagnostics.jsonl").apply {
+        val dir = Files.createTempDirectory("raft-diagnostics-relative").toFile()
+        val file = dir.resolve("launch-1800000000000-a/raft-diagnostics.jsonl").apply {
             requireNotNull(parentFile).mkdirs()
             writeText("{}\n")
         }
 
         assertEquals(
-            "launch-1800000000000-a/slock-diagnostics.jsonl",
-            SlockGeneralLogRing.relativeLogPath(dir, file)
+            "launch-1800000000000-a/raft-diagnostics.jsonl",
+            SlockGeneralLogRing.relativeLogPathWithin(dir, file)
+        )
+    }
+
+    @Test
+    fun relativeLogPathWithinRejectsSiblingRootsInsteadOfEmittingDotDot() {
+        val parent = Files.createTempDirectory("raft-diagnostics-path-safety").toFile()
+        val currentRoot = parent.resolve("raft_diagnostics_logs").apply { mkdirs() }
+        val outsideFile = parent.resolve("outside_logs/launch-outside/raft-diagnostics.jsonl").apply {
+            requireNotNull(parentFile).mkdirs()
+            writeText("{}\n")
+        }
+
+        assertEquals(null, SlockGeneralLogRing.relativeLogPathWithin(currentRoot, outsideFile))
+        assertFalse(SlockGeneralLogRing.relativeLogPathWithin(currentRoot, outsideFile).orEmpty().contains(".."))
+    }
+
+    @Test
+    fun relativeLogPathWithinRejectsPrefixConfusableAndSymlinkEscapes() {
+        val parent = Files.createTempDirectory("raft-diagnostics-prefix-safety").toFile()
+        val root = parent.resolve("root-a").apply { mkdirs() }
+        val confusable = parent.resolve("root-ab/raft-diagnostics.jsonl").apply {
+            requireNotNull(parentFile).mkdirs()
+            writeText("{}\n")
+        }
+        val outside = parent.resolve("outside/raft-diagnostics.jsonl").apply {
+            requireNotNull(parentFile).mkdirs()
+            writeText("{}\n")
+        }
+        val linkedDirectory = root.resolve("launch-linked")
+        Files.createSymbolicLink(linkedDirectory.toPath(), requireNotNull(outside.parentFile).toPath())
+
+        assertEquals(null, SlockGeneralLogRing.relativeLogPathWithin(root, confusable))
+        assertEquals(
+            null,
+            SlockGeneralLogRing.relativeLogPathWithin(root, linkedDirectory.resolve(outside.name)),
+        )
+    }
+
+    @Test
+    fun zipEntryGuardRejectsTraversalAbsoluteBackslashEmptyAndOldBrandSegments() {
+        listOf(
+            "app_logs/../raft-diagnostics.jsonl",
+            "/app_logs/raft-diagnostics.jsonl",
+            "app_logs\\raft-diagnostics.jsonl",
+            "app_logs//raft-diagnostics.jsonl",
+            "app_logs/./raft-diagnostics.jsonl",
+            "app_logs/slock_diagnostics_logs/raft-diagnostics.jsonl",
+        ).forEach { unsafe ->
+            assertTrue(runCatching { requireSafeDiagnosticsZipEntryName(unsafe) }.isFailure)
+        }
+        assertEquals(
+            "app_logs/launch-1/raft-diagnostics.jsonl",
+            requireSafeDiagnosticsZipEntryName("app_logs/launch-1/raft-diagnostics.jsonl"),
         )
     }
 

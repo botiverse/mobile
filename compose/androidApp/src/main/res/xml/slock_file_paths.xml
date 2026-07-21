@@ -4,9 +4,6 @@
         name="raft_feedback"
         path="raft-feedback/" />
     <cache-path
-        name="legacy_slock_feedback"
-        path="slock-feedback/" />
-    <cache-path
         name="slock_attachments"
         path="slock-attachments/" />
     <cache-path

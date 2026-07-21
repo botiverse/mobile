@@ -253,6 +253,10 @@ jobs:
           echo "profile_team=${PROFILE_TEAM}" >> "$GITHUB_OUTPUT"
           echo "keychain_path=${KEYCHAIN_PATH}" >> "$GITHUB_OUTPUT"
 
+      - name: Test diagnostics path admission
+        shell: bash
+        run: compose/iosApp/scripts/test_diagnostics_path_admission.sh
+
       - name: Archive app
         working-directory: compose/iosApp
         shell: bash
