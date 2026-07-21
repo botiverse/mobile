@@ -374,6 +374,7 @@ android {
             "PERFORMANCE_TRACE_RING_ENABLED",
             slockBuildConfigBoolean("SLOCK_PERFORMANCE_TRACE_RING_ENABLED", false).toString()
         )
+        buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "false")
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
@@ -386,12 +387,14 @@ android {
     buildTypes {
         getByName("debug") {
             buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
+            buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
         }
         create("alpha") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".alpha"
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
             buildConfigField("Boolean", "PERFORMANCE_TRACE_RING_ENABLED", "true")
+            buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
             buildConfigField("String", "QUIVER_CHANNEL", "\"debug\"")
             matchingFallbacks += listOf("debug")
         }
@@ -399,6 +402,7 @@ android {
             initWith(getByName("debug"))
             applicationIdSuffix = ".connectedtest"
             buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
+            buildConfigField("Boolean", "READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED", "true")
             buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
             matchingFallbacks += listOf("debug")
         }

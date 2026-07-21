@@ -29,6 +29,9 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.network.sync.ReadStateV1Fact
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +45,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -50,6 +54,369 @@ import kotlin.test.assertTrue
 import kotlin.concurrent.Volatile
 
 class SharedHomeStoreTest {
+    @Test
+    fun flagOffHomeFinalStateIsByteEquivalentToLegacyPath() = runBlocking {
+        val legacyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val canaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val legacyVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val canaryVersionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        listOf(legacyVersionStore, canaryVersionStore).forEach { versionStore ->
+            versionStore.writeReadStateCheckpoint(
+                ServerId("server-1"),
+                MemberId("user-1"),
+                ChannelId("channel-1"),
+                build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(3, 7),
+            )
+        }
+        val base = sampleHome(ServerId("server-1"))
+        val carrier = base.copy(
+            channels = base.channels.map { row ->
+                if (row.channelId == ChannelId("channel-1")) {
+                    row.copy(readStateV1Hydrate = ReadStateV1HydrateCarrier(9, 44))
+                } else {
+                    row
+                }
+            }
+        )
+        val legacy =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(base),
+                scope = legacyScope,
+                perReceiverStateVersionStore = legacyVersionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                nowMillis = { 42L },
+            )
+        val flagOff =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(carrier),
+                scope = canaryScope,
+                perReceiverStateVersionStore = canaryVersionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary =
+                    ReadStateV1ProductionCanary(
+                        isEnabledForServer = { false },
+                        store = TestReadStateV1Store(),
+                        onProjection = { _, _, _ -> },
+                        onRebaseline = { _, _, _ -> },
+                    ),
+                nowMillis = { 42L },
+            )
+
+        legacy.accept(SharedHomeIntent.Start)
+        flagOff.accept(SharedHomeIntent.Start)
+
+        assertEquals(legacy.state.value, flagOff.state.value)
+        legacyScope.cancel()
+        canaryScope.cancel()
+    }
+
+    @Test
+    fun flagOffHydrateCarrierNeverReachesFinalStateOrPersistedBytes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val snapshot =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(7, 44),
+                        )
+                    )
+            )
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(snapshot),
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary =
+                    ReadStateV1ProductionCanary(
+                        isEnabledForServer = { false },
+                        store = TestReadStateV1Store(),
+                        onProjection = { _, _, _ -> },
+                        onRebaseline = { _, _, _ -> },
+                    ),
+            )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val finalSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(null, finalSnapshot.channels.single().readStateV1Hydrate)
+        assertFalse(Json.encodeToString(HomeSnapshot.serializer(), finalSnapshot).contains("readStateV1Hydrate"))
+        scope.cancel()
+    }
+
+    @Test
+    fun selectedHydrateCommitsBeforeExactFencedFirstHomeStateAndNeverFillsLegacyCheckpoint() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            ServerId("server-1"),
+            MemberId("user-1"),
+            ChannelId("channel-1"),
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+        )
+        val durable = TestReadStateV1Store()
+        lateinit var store: SharedHomeStore
+        var projectedAfterFreshContent = false
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = durable,
+                onProjection = { projectedOwner, _, fact ->
+                    projectedAfterFreshContent =
+                        (store.state.value.content as? SharedHomeContentState.Content)
+                            ?.snapshot
+                            ?.channels
+                            ?.single()
+                            ?.readStateMaxReadSeq == fact.maxReadSeq
+                    store.applyReadStateV1Projection(projectedOwner, fact)
+                },
+                onRebaseline = { _, _, _ -> },
+            )
+        val snapshot =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(1, 10),
+                        )
+                    )
+            )
+        store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(snapshot),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary = canary,
+            )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val row = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertEquals(10, row.readStateMaxReadSeq)
+        assertEquals(null, row.readStateV1Hydrate)
+        assertTrue(projectedAfterFreshContent)
+        assertEquals(ReadStateV1Fact("channel-1", 1, 10), durable.facts.values.single())
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun selectedHydrateCommitFailureKeepsFirstHomeStateDark() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            ServerId("server-1"),
+            MemberId("user-1"),
+            ChannelId("channel-1"),
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+        )
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = TestReadStateV1Store(failCommit = true),
+                onProjection = { _, _, _ -> },
+                onRebaseline = { _, _, _ -> },
+            )
+        val snapshot =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "general").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(1, 10),
+                        )
+                    )
+            )
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(snapshot),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary = canary,
+            )
+
+        store.accept(SharedHomeIntent.Start)
+
+        assertEquals(
+            null,
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().readStateMaxReadSeq,
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun staleSelectedRefreshCannotRepublishStateIdentitySidebarOrBackgroundCacheAfterRevoke() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val owner = ReadStateV1ProductionOwner("production", "user-1", "server-1")
+        val api = RecordingHomeApi()
+        var networkSnapshot =
+            sampleHome(ServerId("server-1")).copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "good-name").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(3, 9),
+                        )
+                    ),
+                serverUnreadCounts = mapOf("server-1" to 0, "server-2" to 3),
+                sidebarOrder = SettingsServerSidebarOrderSnapshot(channelOrder = listOf("good-order")),
+            )
+        val dataSource =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = api,
+                parseHome = { _, _ -> DataResult.Content(networkSnapshot) },
+            )
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = TestReadStateV1Store(),
+                onProjection = { _, _, _ -> },
+                onRebaseline = { _, _, _ -> },
+            )
+        var revokeBeforePublication = false
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = dataSource,
+                scope = scope,
+                readReceiptOwnerFactory = { serverId, accountId ->
+                    ReadReceiptOwner("production", accountId, serverId)
+                },
+                readStateV1Canary = canary,
+                nowMillis = {
+                    if (revokeBeforePublication) {
+                        revokeBeforePublication = false
+                        canary.revoke(owner)
+                    }
+                    42L
+                },
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        val acceptedSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        val acceptedIdentity = store.resolveProjection(ServerId("server-1"), "channel-1")
+        val backgroundMessage =
+            MessageNew(
+                Message(
+                    id = MessageId("background-101"),
+                    threadId = ThreadId("channel-b"),
+                    channelId = ChannelId("channel-b"),
+                    seq = 101,
+                    author = sampleMember().copy(id = MemberId("member-2"), displayName = "Cindy"),
+                    timestampLabel = "12:01",
+                    body = "background update",
+                )
+            )
+        store.accept(SharedHomeIntent.ApplyBackgroundServerUnreadEvent("server-2", backgroundMessage))
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
+        networkSnapshot =
+            networkSnapshot.copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "stale-name").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(2, 99),
+                        )
+                    ),
+                sidebarOrder = SettingsServerSidebarOrderSnapshot(channelOrder = listOf("stale-order")),
+            )
+        revokeBeforePublication = true
+        store.accept(SharedHomeIntent.ForegroundRefresh)
+
+        assertEquals(acceptedSnapshot, (store.state.value.content as SharedHomeContentState.Content).snapshot)
+        assertEquals(acceptedIdentity, store.resolveProjection(ServerId("server-1"), "channel-1"))
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
+        networkSnapshot =
+            networkSnapshot.copy(
+                channels =
+                    listOf(
+                        channel("channel-1", "good-name").copy(
+                            readStateV1Hydrate = ReadStateV1HydrateCarrier(3, 9),
+                        )
+                    ),
+                sidebarOrder = null,
+            )
+        store.accept(SharedHomeIntent.ForegroundRefresh)
+
+        val recovered = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(listOf("good-order"), recovered.sidebarOrder?.channelOrder)
+        assertEquals("good-name", store.resolveProjection(ServerId("server-1"), "channel-1")?.title)
+        scope.cancel()
+    }
+
+    @Test
+    fun selectedReadStateRealtimeCommitsBeforeHomeProjectionWithoutWritingLegacyCheckpoint() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val owner = ReadStateV1ProductionOwner("production", "user-1", "server-1")
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            ServerId("server-1"),
+            MemberId("user-1"),
+            ChannelId("channel-1"),
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+        )
+        lateinit var store: SharedHomeStore
+        var project = false
+        val canary =
+            ReadStateV1ProductionCanary(
+                isEnabledForServer = { true },
+                store = TestReadStateV1Store(),
+                onProjection = { projectedOwner, _, fact ->
+                    if (project) store.applyReadStateV1Projection(projectedOwner, fact)
+                },
+                onRebaseline = { _, _, _ -> },
+            )
+        store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1"))),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore,
+                readReceiptOwnerFactory = { serverId, accountId -> ReadReceiptOwner("production", accountId, serverId) },
+                readStateV1Canary = canary,
+            )
+        store.accept(SharedHomeIntent.Start)
+        store.applyReadStateV1Projection(
+            ReadStateV1ProductionOwner("staging", "user-1", "server-1"),
+            ReadStateV1Fact("channel-1", 50, 50),
+        )
+        assertEquals(
+            99,
+            (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().readStateMaxReadSeq,
+        )
+        canary.applyHydrate(owner, "channel-1", 1, 10)
+        project = true
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                "server-1",
+                PerReceiverReadStateChanged(
+                    ServerId("server-1"),
+                    listOf(PerReceiverReadStateScope(ChannelId("channel-1"), 5, 2)),
+                ),
+            )
+        )
+
+        val row = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels
+            .first { it.channelId == ChannelId("channel-1") }
+        assertEquals(5, row.readStateMaxReadSeq)
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(99, 99),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1")),
+        )
+        scope.cancel()
+    }
+
     @Test
     fun startLoadsHomeThroughCommonStateFlow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -2317,6 +2684,230 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun machineNotificationsFollowStoreRoleAuthority() = runBlocking {
+        listOf(
+            "owner" to true,
+            "admin" to true,
+            "member" to false,
+            "unknown" to false,
+            null to false
+        ).forEach { (role, expectedMachineNotification) ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = role))
+            val computersApi = RecordingComputersApi()
+            val store =
+                SharedHomeStore(
+                    authStore = sessionStore,
+                    dataSource =
+                        source(
+                            api = RecordingHomeApi(),
+                            computersApi = computersApi,
+                            sessionStore = sessionStore
+                        ),
+                    scope = scope
+                )
+
+            store.accept(SharedHomeIntent.Start)
+
+            assertEquals(
+                expectedMachineNotification,
+                store.state.value.notifications.any { it.id.isMachineHomeNotificationId() },
+                "role=$role"
+            )
+            assertEquals(
+                if (expectedMachineNotification) listOf("GET machines:server-1") else emptyList(),
+                computersApi.calls,
+                "role=$role"
+            )
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun missingSelectedServerDoesNotCallMachineSource() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession(role = "owner").copy(selectedServerId = "missing-server")
+            )
+        val computersApi = RecordingComputersApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = RecordingHomeApi(),
+                        computersApi = computersApi,
+                        sessionStore = sessionStore
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedHomeIntent.Start)
+
+        assertFalse(store.state.value.notifications.any { it.id.isMachineHomeNotificationId() })
+        assertEquals(emptyList(), computersApi.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun sameServerDemotionClearsOnlyMachineNotificationsBeforeNetworkCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "owner"))
+        val homeApi = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = homeApi,
+                        computersApi = RecordingComputersApi(),
+                        sessionStore = sessionStore
+                    ),
+                scope = scope
+            )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.UpsertNotification(appUpdateNotification()))
+        store.accept(SharedHomeIntent.UpsertNotification(otherNotification()))
+        sessionStore.saveSession(sampleSession(role = "member"))
+        val blockedLoad = homeApi.blockNextChannels("server-1")
+
+        val demotion = launch { store.accept(SharedHomeIntent.Refresh) }
+        blockedLoad.awaitStarted()
+
+        assertEquals(
+            setOf(APP_UPDATE_HOME_NOTIFICATION_ID, "announcement:other"),
+            store.state.value.notifications.mapTo(mutableSetOf()) { it.id }
+        )
+        blockedLoad.release()
+        demotion.join()
+        scope.cancel()
+    }
+
+    @Test
+    fun serverSwitchClearsOnlyMachineNotificationsBeforeNetworkCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession(role = "owner", secondServerRole = "member")
+            )
+        val homeApi = RecordingHomeApi()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = homeApi,
+                        computersApi = RecordingComputersApi(),
+                        sessionStore = sessionStore
+                    ),
+                scope = scope
+            )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.UpsertNotification(appUpdateNotification()))
+        store.accept(SharedHomeIntent.UpsertNotification(otherNotification()))
+        val blockedLoad = homeApi.blockNextChannels("server-2")
+
+        val switch = launch { store.accept(SharedHomeIntent.SelectServer("server-2")) }
+        blockedLoad.awaitStarted()
+
+        assertEquals(
+            setOf(APP_UPDATE_HOME_NOTIFICATION_ID, "announcement:other"),
+            store.state.value.notifications.mapTo(mutableSetOf()) { it.id }
+        )
+        blockedLoad.release()
+        switch.join()
+        scope.cancel()
+    }
+
+    @Test
+    fun staleOwnerMachineRequestCannotPublishAfterSwitchOrDemotion() = runBlocking {
+        listOf("switch", "demotion").forEach { transition ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val initialSession =
+                sampleSession(role = "owner", secondServerRole = "member")
+            val sessionStore = InMemorySlockAuthSessionStore(initialSession)
+            val computersApi = BlockingComputersApi()
+            val store =
+                SharedHomeStore(
+                    authStore = sessionStore,
+                    dataSource =
+                        source(
+                            api = RecordingHomeApi(),
+                            computersApi = computersApi,
+                            sessionStore = sessionStore,
+                            appUpdateStatusProvider = { DataResult.Content(updateAvailableSnapshot()) }
+                        ),
+                    scope = scope
+                )
+
+            val oldOwnerLoad = launch { store.accept(SharedHomeIntent.Start) }
+            computersApi.awaitStarted()
+            when (transition) {
+                "switch" -> store.accept(SharedHomeIntent.SelectServer("server-2"))
+                else -> {
+                    sessionStore.saveSession(sampleSession(role = "member", secondServerRole = "member"))
+                    store.accept(SharedHomeIntent.Refresh)
+                }
+            }
+            assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+
+            computersApi.release()
+            oldOwnerLoad.join()
+
+            assertEquals(
+                listOf(APP_UPDATE_HOME_NOTIFICATION_ID),
+                store.state.value.notifications.map { it.id },
+                "transition=$transition"
+            )
+            assertEquals(1, computersApi.calls, "transition=$transition")
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun ownerRequestThatPassedNetworkCannotPublishAfterCommitTimeServerSwitch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                sampleSession(role = "owner", secondServerRole = "member")
+            )
+        val homeApi = RecordingHomeApi()
+        val publicationBarrier = NotificationPublicationBarrier()
+        val store =
+            SharedHomeStore(
+                authStore = sessionStore,
+                dataSource =
+                    source(
+                        api = homeApi,
+                        computersApi = RecordingComputersApi(),
+                        sessionStore = sessionStore,
+                        appUpdateStatusProvider = { DataResult.Content(updateAvailableSnapshot()) }
+                    ),
+                scope = scope,
+                beforeNotificationPublicationCommit = publicationBarrier::intercept
+            )
+        store.accept(SharedHomeIntent.Start)
+        assertTrue(store.state.value.notifications.any { it.id.isMachineHomeNotificationId() })
+        publicationBarrier.arm()
+
+        val oldOwnerRefresh = launch { store.accept(SharedHomeIntent.RefreshNotifications) }
+        publicationBarrier.awaitStarted()
+        val blockedSwitch = homeApi.blockNextChannels("server-2")
+        val switch = launch { store.accept(SharedHomeIntent.SelectServer("server-2")) }
+        blockedSwitch.awaitStarted()
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+
+        publicationBarrier.release()
+        oldOwnerRefresh.join()
+
+        assertEquals(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), store.state.value.notifications.map { it.id })
+        blockedSwitch.release()
+        switch.join()
+        scope.cancel()
+    }
+
+    @Test
     fun startLoadsOutdatedMachinesIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val computersApi =
@@ -2784,13 +3375,15 @@ class SharedHomeStoreTest {
         api: SlockHomeApi,
         announcementsApi: SlockAnnouncementsRemindersApi? = null,
         computersApi: SlockComputersApi? = null,
-        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null
     ): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
             api = api,
             announcementsApi = announcementsApi,
             computersApi = computersApi,
+            appUpdateStatusProvider = appUpdateStatusProvider,
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
         )
 
@@ -3208,7 +3801,71 @@ class SharedHomeStoreTest {
             error("not reached")
     }
 
-    private fun sampleSession(): StoredAuthSession =
+    private class BlockingComputersApi : SlockComputersApi {
+        private val started = CompletableDeferred<Unit>()
+        private val released = CompletableDeferred<Unit>()
+        var calls: Int = 0
+            private set
+
+        suspend fun awaitStarted() = started.await()
+
+        fun release() {
+            released.complete(Unit)
+        }
+
+        override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
+            calls += 1
+            started.complete(Unit)
+            released.await()
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """{"machines":[{"id":"machine-1","name":"Old owner machine","status":"offline","statusVersion":1}]}"""
+            )
+        }
+
+        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("not reached")
+        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("not reached")
+        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse = error("not reached")
+        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("not reached")
+        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("not reached")
+        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse = error("not reached")
+        override suspend fun deleteMachineWorkspace(
+            serverId: ServerId,
+            machineId: String,
+            directoryName: String
+        ): HomeNetworkResponse = error("not reached")
+    }
+
+    private class NotificationPublicationBarrier {
+        private var armed = false
+        private var started = CompletableDeferred<Unit>()
+        private var released = CompletableDeferred<Unit>()
+
+        fun arm() {
+            armed = true
+            started = CompletableDeferred()
+            released = CompletableDeferred()
+        }
+
+        suspend fun intercept() {
+            if (!armed) return
+            armed = false
+            started.complete(Unit)
+            released.await()
+        }
+
+        suspend fun awaitStarted() = started.await()
+
+        fun release() {
+            released.complete(Unit)
+        }
+    }
+
+    private fun sampleSession(
+        role: String? = "owner",
+        secondServerRole: String? = role
+    ): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
             accessToken = "token-a",
@@ -3216,9 +3873,29 @@ class SharedHomeStoreTest {
             selectedServerId = "server-1",
             servers =
                 listOf(
-                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock"),
-                    StoredAuthServer(id = "server-2", name = "Work", slug = "work")
+                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock", role = role),
+                    StoredAuthServer(id = "server-2", name = "Work", slug = "work", role = secondServerRole)
                 )
+        )
+
+    private fun updateAvailableSnapshot(): SharedSettingsUpdateCheckSnapshot =
+        SharedSettingsUpdateCheckSnapshot(
+            supported = true,
+            updateAvailable = true,
+            currentVersionCode = 1L,
+            latestVersionCode = 2L
+        )
+
+    private fun appUpdateNotification(): SharedHomeNotification =
+        updateAvailableSnapshot().toSharedHomeAppUpdateNotification()!!
+
+    private fun otherNotification(): SharedHomeNotification =
+        SharedHomeNotification(
+            id = "announcement:other",
+            title = "Other notification",
+            body = "Must survive machine authority changes.",
+            actionLabel = "View",
+            targetId = "other"
         )
 
     private fun sampleHome(serverId: ServerId): HomeSnapshot =

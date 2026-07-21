@@ -5808,6 +5808,9 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding,
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
+                    onSetDiagnosticFeatureFlagOverride = { key, mode ->
+                        onSettingsIntent(SharedSettingsIntent.SetDiagnosticFeatureFlagOverride(key, mode))
+                    },
                     onSetProfilerEnabled = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetRecompositionProfilerEnabled(enabled))
                     },
@@ -10335,6 +10338,7 @@ internal fun SharedSettingsDiagnosticsContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
+    onSetDiagnosticFeatureFlagOverride: (String, String) -> Unit,
     onSetProfilerEnabled: (Boolean) -> Unit,
     onStartProfiler: () -> Unit,
     onStopProfiler: () -> Unit,
@@ -10356,8 +10360,23 @@ internal fun SharedSettingsDiagnosticsContent(
             "refreshProfilerReport" -> onRefreshProfilerReport()
             "exportProfilerReport" -> onExportProfilerReport()
             "feedback" -> onSendFeedback()
+            else ->
+                parseDiagnosticFeatureFlagAction(action)?.let { (key, mode) ->
+                    onSetDiagnosticFeatureFlagOverride(key, mode)
+                }
         }
     }
+}
+
+private fun diagnosticFeatureFlagAction(key: String, mode: String): String =
+    "diagnosticFlagOverride|$key|$mode"
+
+private fun parseDiagnosticFeatureFlagAction(action: String): Pair<String, String>? {
+    val parts = action.split('|')
+    if (parts.size != 3 || parts[0] != "diagnosticFlagOverride") return null
+    val key = parts[1].trim()
+    val mode = parts[2].trim()
+    return (key to mode).takeIf { key.isNotBlank() && mode in setOf("server", "force_off", "force_on_exact_scope") }
 }
 
 @Composable
@@ -13199,6 +13218,93 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     )
                 }
         )
+    val diagnosticFlagSections =
+        snapshot?.featureFlagOverrides.orEmpty().map { flag ->
+            val busy =
+                actionState?.action == "diagnosticFeatureFlagOverride:${flag.key}" && actionState.inProgress
+            val scopeHint =
+                when (flag.scopeKind) {
+                    "ChannelExact" -> "Open the target channel once to observe environment/account/server/channel."
+                    "ServerExact" -> "Open Activity on the target server once to observe environment/account/server."
+                    else -> "No client consumer is registered for this key."
+                }
+            KuiklySharedSettingsSection(
+                title = flag.key,
+                rows =
+                    buildList {
+                        add(
+                            KuiklySharedSettingsRow(
+                                "diagnosticFlagInfo|${flag.key}",
+                                SlockLucideIconName.Activity,
+                                "Effective decision",
+                                "server=${flag.serverEffective?.toString() ?: "unobserved"} · " +
+                                    "final=${flag.finalEffective?.toString() ?: "unobserved"} · ${flag.precedence}",
+                                status = if (flag.supported) flag.clientOverride else "Unsupported",
+                            )
+                        )
+                        add(
+                            KuiklySharedSettingsRow(
+                                "diagnosticFlagScope|${flag.key}",
+                                SlockLucideIconName.Server,
+                                flag.scopeKind,
+                                flag.boundScope.ifBlank { flag.observedScope.ifBlank { scopeHint } },
+                                status = if (flag.exactScopeMatched) "Matched" else "Not matched",
+                            )
+                        )
+                        add(
+                            KuiklySharedSettingsRow(
+                                "diagnosticFlagLifecycle|${flag.key}",
+                                SlockLucideIconName.Clock,
+                                "Override lifecycle",
+                                "clear=${flag.clearReason.ifBlank { "active" }} · " +
+                                    "expiresAt=${flag.expiresAtMillis?.toString() ?: "none"}",
+                                status = if (flag.expiresAtMillis == null) "Process local" else "15 min TTL",
+                            )
+                        )
+                        flag.evidence.takeIf { it.isNotBlank() }?.let { evidence ->
+                            add(
+                                KuiklySharedSettingsRow(
+                                    "diagnosticFlagEvidence|${flag.key}",
+                                    SlockLucideIconName.ClipboardList,
+                                    "Consumer evidence",
+                                    evidence,
+                                    status = "Observed",
+                                )
+                            )
+                        }
+                        add(
+                            KuiklySharedSettingsRow(
+                                diagnosticFeatureFlagAction(flag.key, "server"),
+                                SlockLucideIconName.Server,
+                                "Server",
+                                "Clear this key's local override and follow the server result.",
+                                status = if (flag.clientOverride == "Server") "Current" else "Select",
+                                enabled = flag.supported && flag.entitled && !busy,
+                            )
+                        )
+                        add(
+                            KuiklySharedSettingsRow(
+                                diagnosticFeatureFlagAction(flag.key, "force_off"),
+                                SlockLucideIconName.Shield,
+                                "Force OFF",
+                                "Highest-priority local override for this key's observed identity.",
+                                status = if (flag.clientOverride == "ForceOff") "Current" else "15 min",
+                                enabled = flag.supported && flag.entitled && flag.observedScope.isNotBlank() && !busy,
+                            )
+                        )
+                        add(
+                            KuiklySharedSettingsRow(
+                                diagnosticFeatureFlagAction(flag.key, "force_on_exact_scope"),
+                                SlockLucideIconName.ShieldCheck,
+                                "Force ON exact scope",
+                                "Bind this key only to the exact redacted scope shown above.",
+                                status = if (flag.clientOverride == "ForceOnExactScope") "Current" else "15 min",
+                                enabled = flag.supported && flag.entitled && flag.observedScope.isNotBlank() && !busy,
+                            )
+                        )
+                    },
+            )
+        }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = copy.title,
@@ -13221,7 +13327,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
-            ) + listOf(profilerControlSection) + listOf(
+            ) + diagnosticFlagSections + listOf(profilerControlSection) + listOf(
                 KuiklySharedSettingsSection(
                     title = copy.actions,
                     rows =
@@ -15947,19 +16053,40 @@ private fun SharedHomeSearchPanel(
     }
     var openFilterId by remember(initialOpenFilterId) { mutableStateOf<String?>(null) }
     var pendingInitialOpenFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
-    var scopeAnchor by remember { mutableStateOf(Offset.Zero) }
-    var senderAnchor by remember { mutableStateOf(Offset.Zero) }
-    var channelAnchor by remember { mutableStateOf(Offset.Zero) }
-    var timeAnchor by remember { mutableStateOf(Offset.Zero) }
-    var sortAnchor by remember { mutableStateOf(Offset.Zero) }
+    var scopeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var senderAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var channelAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var timeAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var sortAnchor by remember { mutableStateOf<SlockPopoverAnchor?>(null) }
+    var scopeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var senderAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var channelAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var timeAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
+    var sortAnchorResolver by remember { mutableStateOf<SlockPopoverAnchorResolver?>(null) }
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSearch)
     }
-    LaunchedEffect(initialOpenFilterId, scopeAnchor, senderAnchor, channelAnchor, timeAnchor, sortAnchor) {
+    LaunchedEffect(
+        initialOpenFilterId,
+        scopeAnchorResolver,
+        senderAnchorResolver,
+        channelAnchorResolver,
+        timeAnchorResolver,
+        sortAnchorResolver
+    ) {
         val pending = pendingInitialOpenFilterId ?: return@LaunchedEffect
-        if (homeSearchFilterAnchorReady(pending, scopeAnchor, senderAnchor, channelAnchor, timeAnchor, sortAnchor)) {
+        val resolved =
+            when (pending) {
+                "scope" -> scopeAnchorResolver?.resolve()?.also { scopeAnchor = it }
+                "sender" -> senderAnchorResolver?.resolve()?.also { senderAnchor = it }
+                "channel" -> channelAnchorResolver?.resolve()?.also { channelAnchor = it }
+                "time" -> timeAnchorResolver?.resolve()?.also { timeAnchor = it }
+                "sort" -> sortAnchorResolver?.resolve()?.also { sortAnchor = it }
+                else -> null
+            }
+        if (resolved != null) {
             openFilterId = pending
             pendingInitialOpenFilterId = null
         }
@@ -15991,12 +16118,21 @@ private fun SharedHomeSearchPanel(
             SharedHomeSearchFilters(
                 state = state,
                 channelFilters = channelFilters,
-                scopeAnchorChanged = { scopeAnchor = it },
-                senderAnchorChanged = { senderAnchor = it },
-                channelAnchorChanged = { channelAnchor = it },
-                timeAnchorChanged = { timeAnchor = it },
-                sortAnchorChanged = { sortAnchor = it },
-                onOpenFilter = { openFilterId = it },
+                scopeAnchorChanged = { scopeAnchorResolver = it },
+                senderAnchorChanged = { senderAnchorResolver = it },
+                channelAnchorChanged = { channelAnchorResolver = it },
+                timeAnchorChanged = { timeAnchorResolver = it },
+                sortAnchorChanged = { sortAnchorResolver = it },
+                onOpenFilter = { id, anchor ->
+                    when (id) {
+                        "scope" -> scopeAnchor = anchor
+                        "sender" -> senderAnchor = anchor
+                        "channel" -> channelAnchor = anchor
+                        "time" -> timeAnchor = anchor
+                        "sort" -> sortAnchor = anchor
+                    }
+                    openFilterId = id
+                },
                 onIntent = onIntent,
                 showSenderFilter = showSenderFilter
             )
@@ -16242,23 +16378,6 @@ private fun SharedHomeSearchDivider() {
                 .background(SlockColor.BorderBlack)
     )
 }
-
-private fun homeSearchFilterAnchorReady(
-    filterId: String,
-    scopeAnchor: Offset,
-    senderAnchor: Offset,
-    channelAnchor: Offset,
-    timeAnchor: Offset,
-    sortAnchor: Offset
-): Boolean =
-    when (filterId) {
-        "scope" -> scopeAnchor != Offset.Zero
-        "sender" -> senderAnchor != Offset.Zero
-        "channel" -> channelAnchor != Offset.Zero
-        "time" -> timeAnchor != Offset.Zero
-        "sort" -> sortAnchor != Offset.Zero
-        else -> false
-    }
 
 @Composable
 private fun SharedHomeSearchToolbar(
@@ -16512,7 +16631,7 @@ private const val SharedHomeSavedMenuActionRemove = "remove"
 
 private data class SharedHomeSavedContextMenuState(
     val item: InboxItem,
-    val anchor: Offset
+    val anchor: SlockPopoverAnchor
 )
 
 internal fun sharedHomeSavedPermalink(
@@ -16708,12 +16827,12 @@ private fun SharedHomePanelSearchField(
 private fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
     channelFilters: List<SearchChannelFilterItem>,
-    scopeAnchorChanged: (Offset) -> Unit,
-    senderAnchorChanged: (Offset) -> Unit,
-    channelAnchorChanged: (Offset) -> Unit,
-    timeAnchorChanged: (Offset) -> Unit,
-    sortAnchorChanged: (Offset) -> Unit,
-    onOpenFilter: (String) -> Unit,
+    scopeAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    senderAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    channelAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    timeAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    sortAnchorChanged: (SlockPopoverAnchorResolver) -> Unit,
+    onOpenFilter: (String, SlockPopoverAnchor) -> Unit,
     onIntent: (SharedHomeSearchSavedIntent) -> Unit,
     showSenderFilter: Boolean = true
 ) {
@@ -16742,6 +16861,7 @@ private fun SharedHomeSearchFilters(
                         HomeSearchFilter.Sender ->
                             SlockAnchoredToolbarChip(
                                 label = state.localizedSenderFilterLabel(),
+                                anchorIdentity = "search_filter:sender",
                                 active = senderActive,
                                 enabled = true,
                                 uppercase = !senderActive,
@@ -16751,13 +16871,13 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = senderAnchorChanged,
                                 onClick = { anchor ->
-                                    senderAnchorChanged(anchor)
-                                    onOpenFilter("sender")
+                                    onOpenFilter("sender", anchor)
                                 }
                             )
                         HomeSearchFilter.Scope ->
                             SlockAnchoredToolbarChip(
                                 label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
+                                anchorIdentity = "search_filter:scope",
                                 active = scopeActive,
                                 enabled = true,
                                 uppercase = !scopeActive,
@@ -16767,13 +16887,13 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = scopeAnchorChanged,
                                 onClick = { anchor ->
-                                    scopeAnchorChanged(anchor)
-                                    onOpenFilter("scope")
+                                    onOpenFilter("scope", anchor)
                                 }
                             )
                         HomeSearchFilter.Channel ->
                             SlockAnchoredToolbarChip(
                                 label = selectedChannel?.label ?: channelLabel,
+                                anchorIdentity = "search_filter:channel",
                                 active = channelActive,
                                 enabled = true,
                                 uppercase = selectedChannel == null,
@@ -16783,13 +16903,13 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = channelAnchorChanged,
                                 onClick = { anchor ->
-                                    channelAnchorChanged(anchor)
-                                    onOpenFilter("channel")
+                                    onOpenFilter("channel", anchor)
                                 }
                             )
                         HomeSearchFilter.Time ->
                             SlockAnchoredToolbarChip(
                                 label = state.timeRange.localizedSearchLabel(),
+                                anchorIdentity = "search_filter:time",
                                 active = timeActive,
                                 enabled = true,
                                 uppercase = false,
@@ -16799,8 +16919,7 @@ private fun SharedHomeSearchFilters(
                                 reserveActiveShadowSpace = true,
                                 onAnchorChanged = timeAnchorChanged,
                                 onClick = { anchor ->
-                                    timeAnchorChanged(anchor)
-                                    onOpenFilter("time")
+                                    onOpenFilter("time", anchor)
                                 }
                             )
                     }
@@ -16809,6 +16928,7 @@ private fun SharedHomeSearchFilters(
             item {
                 SlockAnchoredToolbarChip(
                     label = state.sort.localizedSearchLabel(),
+                    anchorIdentity = "search_filter:sort",
                     active = sortActive,
                     enabled = true,
                     uppercase = false,
@@ -16818,8 +16938,7 @@ private fun SharedHomeSearchFilters(
                     reserveActiveShadowSpace = true,
                     onAnchorChanged = sortAnchorChanged,
                     onClick = { anchor ->
-                        sortAnchorChanged(anchor)
-                        onOpenFilter("sort")
+                        onOpenFilter("sort", anchor)
                     }
                 )
             }
@@ -16989,7 +17108,7 @@ private fun SharedHomeSavedResultCard(
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onUnsave: () -> Unit,
     onOpen: () -> Unit,
-    onContextMenu: (Offset) -> Unit,
+    onContextMenu: (SlockPopoverAnchor) -> Unit,
     timeContext: AppShellThreadTimeContext? = null
 ) {
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
@@ -17005,7 +17124,7 @@ private fun SharedHomeSavedResultCard(
             item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
-    val contentAnchor = remember(openGestureKey) { SlockLiveRootAnchorRef() }
+    val contentAnchor = remember(openGestureKey) { SlockLiveRootAnchorRef(identity = openGestureKey) }
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier =
@@ -17029,7 +17148,7 @@ private fun SharedHomeSavedResultCard(
                             detectTapGestures(
                                 onTap = { currentOnOpen() },
                                 onLongPress = { localOffset ->
-                                    contentAnchor.resolve(localOffset)?.let(currentOnContextMenu)
+                                    contentAnchor.resolve(SlockPopoverLocalPoint.Exact(localOffset))?.let(currentOnContextMenu)
                                 }
                             )
                         },

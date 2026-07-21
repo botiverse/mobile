@@ -35,7 +35,21 @@ class SharedServerFeatureFlagsTest {
         assertTrue(snapshot.resolved)
         assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
         assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY)) // absent from evaluations -> off
+        assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
         assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS, api.lastKeys) // batch: all registered keys
+    }
+
+    @Test
+    fun readStateV1FlagIsIndependentAndDefaultsOffUntilItsOwnEvaluation() = runBlocking {
+        val flags =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true},{"key":"sync_core_read_state_v1","enabled":true}]}"""))
+            )
+
+        assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
+        flags.prefetch(server)
+        assertTrue(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
     }
 
     @Test

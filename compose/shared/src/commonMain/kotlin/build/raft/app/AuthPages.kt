@@ -840,6 +840,13 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                     onShareLogs = {
                         bridgeCallScope.launch { settingsCapabilities.shareDiagnostics() }
                     },
+                    onSetDiagnosticFeatureFlagOverride = { key, mode ->
+                        bridgeCallScope.launch {
+                            diagnosticsState =
+                                settingsDataSource.setDiagnosticFeatureFlagOverride(key, mode)
+                                    .toDiagnosticsScreenLoadState()
+                        }
+                    },
                     onSetProfilerEnabled = { enabled ->
                         bridgeCallScope.launch {
                             diagnosticsState = settingsDataSource.setRecompositionProfilerEnabled(enabled).toDiagnosticsScreenLoadState()

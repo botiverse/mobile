@@ -7,6 +7,7 @@ import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
+import build.raft.app.data.SharedSettingsDiagnosticFeatureFlagSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
@@ -26,6 +27,48 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
+    @Test
+    fun diagnosticFeatureFlagSectionsRenderRegisteredAndUnsupportedKeysIndependently() {
+        val payload =
+            emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
+                state =
+                    ScreenLoadState.Content(
+                        SharedSettingsDiagnosticsSnapshot(
+                            featureFlagOverrides =
+                                listOf(
+                                    SharedSettingsDiagnosticFeatureFlagSnapshot(
+                                        key = "sync_core_read_state_v1",
+                                        supported = true,
+                                        scopeKind = "ChannelExact",
+                                        entitled = true,
+                                        observedScope = "env/account/server/channel",
+                                    ),
+                                    SharedSettingsDiagnosticFeatureFlagSnapshot(
+                                        key = "future_registered_flag_v1",
+                                        supported = false,
+                                        clearReason = "unsupported_no_effect",
+                                    ),
+                                ),
+                        )
+                    ),
+                actionState = null,
+            )
+
+        assertEquals(
+            listOf("sync_core_read_state_v1", "future_registered_flag_v1", "Recomposition profiler", "Actions"),
+            payload.sections.map { it.title },
+        )
+        val supported = payload.sections.first().rows.associateBy { it.title }
+        assertTrue(supported.getValue("Force OFF").enabled)
+        assertTrue(supported.getValue("Force ON exact scope").enabled)
+        assertTrue(supported.getValue("Override lifecycle").detail.contains("expiresAt=none"))
+        val unsupported = payload.sections[1].rows.associateBy { it.title }
+        assertTrue(unsupported.getValue("Override lifecycle").detail.contains("clear=unsupported_no_effect"))
+        assertFalse(unsupported.getValue("Server").enabled)
+        assertFalse(unsupported.getValue("Force OFF").enabled)
+        assertFalse(unsupported.getValue("Force ON exact scope").enabled)
+    }
+
     @Test
     fun settingsVisualDetailHeadersDoNotRenderSubtitle() {
         assertEquals("", settingsVisualHeaderSubtitle("account-provider-linked"))

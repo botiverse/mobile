@@ -29,10 +29,20 @@ private val unreadJson = Json {
 private data class WireReadReceipt(
     val channelId: String? = null,
     val seq: Long? = null,
+    val readStateVersion: Long? = null,
+    val maxReadSeq: Long? = null,
     val unreadCount: Int = 0,
     val changed: Boolean = true,
     val ok: Boolean = true,
     val markedCount: Int = 0,
+    val scopes: List<WireReadStateAckScope> = emptyList(),
+)
+
+@Serializable
+private data class WireReadStateAckScope(
+    val scopeId: String? = null,
+    val readStateVersion: Long? = null,
+    val maxReadSeq: Long? = null,
 )
 
 /**
@@ -66,6 +76,14 @@ fun parseReadReceiptResult(
         ReadReceiptResult(
             channelId = decoded.channelId?.let(::ChannelId) ?: fallbackChannelId,
             seq = decoded.seq ?: fallbackSeq,
+            readStateVersion = decoded.readStateVersion,
+            maxReadSeq = decoded.maxReadSeq ?: decoded.seq,
+            scopes =
+                decoded.scopes.mapNotNull { scope ->
+                    scope.scopeId?.takeIf { it.isNotBlank() }?.let { channelId ->
+                        ReadStateV1AckScope(ChannelId(channelId), scope.readStateVersion, scope.maxReadSeq)
+                    }
+                },
             unreadCount = decoded.unreadCount,
             changed = decoded.changed,
         )

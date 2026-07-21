@@ -21,6 +21,10 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.network.sync.ReadStateV1Fact
+import build.raft.app.network.sync.ReadStateV1ProductionCanary
+import build.raft.app.network.sync.ReadStateV1ProductionDisposition
+import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -52,7 +56,8 @@ private data class ActivityRealtimeHighWater(
 )
 
 private data class ActivityRealtimeReconcileResult(
-    val items: List<InboxItem>
+    val items: List<InboxItem>,
+    val preserveTotalUnreadFloor: Boolean = false
 )
 
 data class ActivityReplyThreadPrewarmKey(
@@ -78,6 +83,7 @@ class SharedActivityStore internal constructor(
     private val perReceiverStateVersionStore: PerReceiverStateVersionStore,
     private var readReceiptCoordinator: ReadReceiptCoordinator? = null,
     private var readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
+    private var readStateV1Canary: ReadStateV1ProductionCanary? = null,
     private var prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
@@ -96,6 +102,7 @@ class SharedActivityStore internal constructor(
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
+    internal val presentationStore = SharedActivityPresentationStore()
 
     private var loadJob: Job? = null
     private var loadGeneration: Long = 0L
@@ -137,6 +144,7 @@ class SharedActivityStore internal constructor(
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
         readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
+        readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
         onUnreadCountsChanged: (() -> Unit)? = null,
         onSummaryFact: ((ActivityUnreadSummaryFact) -> Unit)? = null,
         onSummaryInvalidated: ((ActivityUnreadSummaryInvalidation) -> Unit)? = null,
@@ -158,6 +166,7 @@ class SharedActivityStore internal constructor(
         this.persistSlices = persistSlices
         this.readReceiptCoordinator = readReceiptCoordinator
         this.readReceiptOwnerFactory = readReceiptOwnerFactory
+        this.readStateV1Canary = readStateV1Canary
         if (onUnreadCountsChanged != null) {
             this.onUnreadCountsChanged = onUnreadCountsChanged
         }
@@ -232,6 +241,7 @@ class SharedActivityStore internal constructor(
 
     fun reset() {
         clear()
+        presentationStore.clear()
         synchronized(realtimeOwnerLock) {
             unreadClearOverrides = emptyMap()
             doneOverrides = emptyMap()
@@ -534,7 +544,11 @@ class SharedActivityStore internal constructor(
             else -> Unit
         }
         if (event is MessageNew || event is SyncResumeResponse || event is ThreadUpdated) {
-            if (intent.allowLocalPatch && _state.value.selectedFilter != InboxFilter.Mentions) {
+            // Only All has stable membership under a message-only payload. Unread
+            // and Mentions depend on receiver-specific read/mention facts that are
+            // not fully carried by every realtime frame; patching those filters
+            // exposes a transient row that the background projection may remove.
+            if (intent.allowLocalPatch && _state.value.selectedFilter == InboxFilter.All) {
                 when (event) {
                     is MessageNew -> applyMessageNewPatch(event.message, intent)
                     is ThreadUpdated -> applyThreadUpdatedPatch(event, intent)
@@ -572,6 +586,13 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) return true
+        val unreadIncrement =
+            if (message.author.id.value != current.ownerUserId) {
+                1
+            } else {
+                0
+            }
+        val nextUnreadCount = existing.unreadCount + unreadIncrement
 
         val patched =
             existing.copy(
@@ -582,7 +603,11 @@ class SharedActivityStore internal constructor(
                 latestActivitySenderId = message.author.id.value,
                 latestActivitySenderKind = message.author.kind,
                 latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
-                replyCount = existing.replyCount + 1
+                replyCount = existing.replyCount + 1,
+                unreadCount = nextUnreadCount,
+                firstUnreadMessageId =
+                    existing.firstUnreadMessageId
+                        ?: message.id.takeIf { unreadIncrement > 0 }
             )
         advanceReplyThreadContent(existing, patched)
         rememberRealtimeHighWater(patched)
@@ -604,6 +629,7 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (event.replyCount < existing.replyCount) return true
+        val nextUnreadCount = event.unreadCount ?: existing.unreadCount
         val patched =
             existing.copy(
                 replyCount = event.replyCount,
@@ -612,6 +638,13 @@ class SharedActivityStore internal constructor(
                         event.lastReplyAt
                     } else {
                         existing.latestActivityAt
+                    },
+                unreadCount = nextUnreadCount,
+                firstUnreadMessageId =
+                    if (nextUnreadCount > 0) {
+                        event.firstUnreadMessageId ?: existing.firstUnreadMessageId
+                    } else {
+                        null
                     }
             )
         if (patched == existing) return true
@@ -724,8 +757,24 @@ class SharedActivityStore internal constructor(
         if (event.serverId != null && event.serverId != serverId) return
         val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return
         var acceptedHere = false
-        synchronized(realtimeOwnerLock) {
-            event.scopes.forEach { readScope ->
+        event.scopes.forEach { readScope ->
+            val productionOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(serverId.value, memberId.value)
+                    ?.toReadStateV1ProductionOwner()
+            if (productionOwner != null) {
+                val disposition =
+                    readStateV1Canary?.applyOwnerRealtime(
+                        owner = productionOwner,
+                        channelId = readScope.scopeId.value,
+                        readStateVersion = readScope.readStateVersion,
+                        maxReadSeq = readScope.maxReadSeq,
+                    )
+                if (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy) {
+                    return@forEach
+                }
+            }
+            synchronized(realtimeOwnerLock) {
                 val maxReadSeq = readScope.maxReadSeq ?: return@forEach
                 val result =
                     perReceiverStateVersionStore.applyOrObserveReadStateFact(
@@ -746,6 +795,43 @@ class SharedActivityStore internal constructor(
             diagnosticsLogger("activity_read_state_patch result=checkpoint_only reason=identity_only_event")
             onUnreadCountsChanged()
         }
+    }
+
+    internal fun applyReadStateV1Projection(owner: ReadStateV1ProductionOwner, fact: ReadStateV1Fact) {
+        val accepted = synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val serverId = current.ownerServerId ?: return@synchronized false
+            val userId = current.ownerUserId ?: return@synchronized false
+            val currentOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(serverId, userId)
+                    ?.toReadStateV1ProductionOwner()
+                    ?: return@synchronized false
+            if (currentOwner != owner) return@synchronized false
+            diagnosticsLogger(
+                "activity_read_state_patch result=durable_v1_projection scopeId=${fact.channelId} " +
+                    "version=${fact.readStateVersion} maxReadSeq=${fact.maxReadSeq}"
+            )
+            true
+        }
+        if (accepted) onUnreadCountsChanged()
+    }
+
+    internal fun requestReadStateV1Rebaseline(owner: ReadStateV1ProductionOwner, channelId: String) {
+        val accepted = synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            val serverId = current.ownerServerId ?: return@synchronized false
+            val userId = current.ownerUserId ?: return@synchronized false
+            val currentOwner =
+                readReceiptOwnerFactory
+                    ?.invoke(serverId, userId)
+                    ?.toReadStateV1ProductionOwner()
+                    ?: return@synchronized false
+            if (currentOwner != owner) return@synchronized false
+            diagnosticsLogger("activity_read_state_patch result=rebaseline_requested scopeId=$channelId")
+            true
+        }
+        if (accepted) onUnreadCountsChanged()
     }
 
     private fun load(
@@ -829,6 +915,7 @@ class SharedActivityStore internal constructor(
                                     replyThreadFreshnessLedger.invalidateServer(previousServerId)
                                 }
                                 realtimeHighWater.clear()
+                                presentationStore.clear()
                             }
                             val stateForOwner =
                                 if (ownerChanged) {
@@ -1065,20 +1152,31 @@ class SharedActivityStore internal constructor(
                             .reconcileLocallyClearedUnreadItems(current.selectedFilter)
                             .reconcileLocallyDoneItems()
                     beforeRealtimeHighWaterFold()
-                    val realtimeReconcile = reconcileRealtimeHighWater(pageItems.items, append)
+                    val realtimeReconcile =
+                        reconcileRealtimeHighWater(
+                            canonicalItems = pageItems.items,
+                            append = append,
+                            preservePendingRealtimeUnread = backgroundRefresh
+                        )
                     val items =
                         if (append) {
                             (current.items + realtimeReconcile.items).dedupeActivityItems()
                         } else {
                             realtimeReconcile.items.dedupeActivityItems()
                         }
-                    val canonicalUnreadCount =
+                    val adjustedCanonicalUnreadCount =
                         maxOf(
                             0,
                             result.data.totalUnreadCount -
                                 pageItems.suppressedUnreadCount -
                                 pageItems.suppressedDoneUnreadCount
                         )
+                    val canonicalUnreadCount =
+                        if (realtimeReconcile.preserveTotalUnreadFloor) {
+                            maxOf(current.totalUnreadCount, adjustedCanonicalUnreadCount)
+                        } else {
+                            adjustedCanonicalUnreadCount
+                        }
                     val nextState =
                         current.copy(
                             snapshot =
@@ -1107,18 +1205,50 @@ class SharedActivityStore internal constructor(
                     nextState
                 }
                 is DataResult.Empty -> {
-                    if (!append) realtimeHighWater.clear()
+                    val realtimeReconcile =
+                        if (!append) {
+                            reconcileRealtimeHighWater(
+                                canonicalItems = emptyList(),
+                                append = false,
+                                preservePendingRealtimeUnread = backgroundRefresh
+                            )
+                        } else {
+                            ActivityRealtimeReconcileResult(items = emptyList())
+                        }
+                    if (!append && !realtimeReconcile.preserveTotalUnreadFloor) {
+                        realtimeHighWater.clear()
+                    }
                     val snapshot =
                         if (append) {
                             current.snapshot?.copy(hasMore = false, nextOffset = null)
                                 ?: InboxSnapshot(server = server, items = emptyList())
                         } else {
-                            InboxSnapshot(server = server, items = emptyList(), totalCount = 0, totalUnreadCount = 0)
+                            InboxSnapshot(
+                                server = server,
+                                items = realtimeReconcile.items,
+                                totalCount =
+                                    if (realtimeReconcile.preserveTotalUnreadFloor) {
+                                        maxOf(current.totalCount, realtimeReconcile.items.size)
+                                    } else {
+                                        0
+                                    },
+                                totalUnreadCount =
+                                    if (realtimeReconcile.preserveTotalUnreadFloor) {
+                                        current.totalUnreadCount
+                                    } else {
+                                        0
+                                    }
+                            )
                         }
                     val nextState =
                         current.copy(
                             snapshot = snapshot,
-                            senderProfiles = if (append) current.senderProfiles else senderProfiles,
+                            senderProfiles =
+                                if (append || realtimeReconcile.preserveTotalUnreadFloor) {
+                                    current.senderProfiles + senderProfiles
+                                } else {
+                                    senderProfiles
+                                },
                             loaded = true,
                             loading = false,
                             refreshing = false,
@@ -1193,7 +1323,8 @@ class SharedActivityStore internal constructor(
 
     private fun reconcileRealtimeHighWater(
         canonicalItems: List<InboxItem>,
-        append: Boolean
+        append: Boolean,
+        preservePendingRealtimeUnread: Boolean
     ): ActivityRealtimeReconcileResult {
         if (append || realtimeHighWater.isEmpty()) {
             return ActivityRealtimeReconcileResult(items = canonicalItems)
@@ -1204,6 +1335,7 @@ class SharedActivityStore internal constructor(
                 .filter { item -> item.kind == InboxItemKind.Thread }
                 .associateBy { item -> item.key }
         val canonicalKeys = canonicalItems.mapTo(mutableSetOf()) { item -> item.key }
+        var preserveTotalUnreadFloor = false
         val reconciled =
             canonicalItems.map { canonical ->
                 val localVersion = realtimeHighWater[canonical.key] ?: return@map canonical
@@ -1213,27 +1345,60 @@ class SharedActivityStore internal constructor(
                     return@map canonical
                 }
                 if (canonical.replyCount > localVersion.replyCount) {
-                    rememberRealtimeHighWater(canonical)
+                    if (preservePendingRealtimeUnread && canonical.unreadCount < current.unreadCount) {
+                        rememberRealtimeHighWater(canonical.withRealtimeUnreadProjection(current))
+                        preserveTotalUnreadFloor = true
+                        return@map canonical.withRealtimeUnreadProjection(current)
+                    }
+                    realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }
                 if (
                     canonical.replyCount == localVersion.replyCount &&
                     canonical.latestActivityMessageId == localVersion.marker
                 ) {
+                    if (preservePendingRealtimeUnread && canonical.unreadCount < current.unreadCount) {
+                        preserveTotalUnreadFloor = true
+                        return@map canonical.withRealtimeUnreadProjection(current)
+                    }
+                    realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }
-                canonical.withRealtimeActivityContent(current)
+                preserveTotalUnreadFloor = true
+                canonical.withRealtimeActivityProjection(current)
             }
+        val missingCurrent =
+            if (preservePendingRealtimeUnread) {
+                currentThreads.values.filter { current ->
+                    current.key !in canonicalKeys && current.key in realtimeHighWater
+                }
+            } else {
+                emptyList()
+            }
+        if (missingCurrent.isNotEmpty()) preserveTotalUnreadFloor = true
         realtimeHighWater.keys.toList().forEach { key ->
-            if (key !in canonicalKeys) realtimeHighWater.remove(key)
+            if (
+                key !in canonicalKeys &&
+                (!preservePendingRealtimeUnread || key !in currentThreads)
+            ) {
+                realtimeHighWater.remove(key)
+            }
         }
         return ActivityRealtimeReconcileResult(
-            items = reconciled
+            // A serving-row projection can lag the message event that produced
+            // the local high-water. Keep that row in its current position until
+            // a canonical response carries the same marker; otherwise the UI
+            // exposes an appear→disappear flash between the two stages.
+            items = (missingCurrent + reconciled).dedupeActivityItems(),
+            preserveTotalUnreadFloor = preserveTotalUnreadFloor
         )
     }
 
-    private fun InboxItem.withRealtimeActivityContent(current: InboxItem): InboxItem =
-        // Realtime high-water owns only live activity content. Read/mention/task state stays canonical.
+    private fun InboxItem.withRealtimeActivityProjection(current: InboxItem): InboxItem =
+        // Until the canonical row reaches the same message/reply high-water, it
+        // predates the local message fact. Preserve the locally-derived unread
+        // range as part of that same atomic projection; otherwise the stale
+        // snapshot briefly flips the row back to read before its successor.
         copy(
             latestActivityMessageId = current.latestActivityMessageId,
             latestActivityPreview = current.latestActivityPreview,
@@ -1242,7 +1407,15 @@ class SharedActivityStore internal constructor(
             latestActivitySenderId = current.latestActivitySenderId,
             latestActivitySenderKind = current.latestActivitySenderKind,
             latestActivitySenderAvatarWireValue = current.latestActivitySenderAvatarWireValue,
-            replyCount = current.replyCount
+            replyCount = current.replyCount,
+            unreadCount = current.unreadCount,
+            firstUnreadMessageId = current.firstUnreadMessageId
+        )
+
+    private fun InboxItem.withRealtimeUnreadProjection(current: InboxItem): InboxItem =
+        copy(
+            unreadCount = current.unreadCount,
+            firstUnreadMessageId = current.firstUnreadMessageId
         )
 
     private fun markAllRead() {
@@ -1266,7 +1439,26 @@ class SharedActivityStore internal constructor(
             val serverId = currentServerId()
             val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
-            if (result is DataResult.Content || result is DataResult.Empty) {
+            val owner =
+                readReceiptOwnerFactory
+                    ?.invoke(previous.ownerServerId.orEmpty(), previous.ownerUserId.orEmpty())
+                    ?.toReadStateV1ProductionOwner()
+            var selected = false
+            if (result is DataResult.Content && owner != null) {
+                result.data.scopes.forEach { ack ->
+                    val disposition =
+                        readStateV1Canary?.applyMutationAck(
+                            owner = owner,
+                            channelId = ack.channelId.value,
+                            readStateVersion = ack.readStateVersion,
+                            maxReadSeq = ack.maxReadSeq,
+                        )
+                    selected = selected || (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy)
+                }
+            }
+            if (selected) {
+                onUnreadCountsChanged()
+            } else if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
             } else {
                 forgetUnreadCleared(snapshot.items)
@@ -1481,7 +1673,24 @@ class SharedActivityStore internal constructor(
         )
         scope.launch {
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
-            if (result is DataResult.Content || result is DataResult.Empty) {
+            val owner =
+                readReceiptOwnerFactory
+                    ?.invoke(previous.ownerServerId.orEmpty(), currentUserId().orEmpty())
+                    ?.toReadStateV1ProductionOwner()
+            val disposition =
+                if (result is DataResult.Content && owner != null) {
+                    readStateV1Canary?.applyMutationAck(
+                        owner = owner,
+                        channelId = targetChannelId.value,
+                        readStateVersion = result.data.readStateVersion,
+                        maxReadSeq = result.data.maxReadSeq,
+                    )
+                } else {
+                    null
+                }
+            if (disposition != null && disposition !is ReadStateV1ProductionDisposition.Legacy) {
+                onUnreadCountsChanged()
+            } else if (result is DataResult.Content || result is DataResult.Empty) {
                 onUnreadCountsChanged()
             } else {
                 onUnreadCountsChanged()
