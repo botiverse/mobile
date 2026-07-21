@@ -17,6 +17,30 @@ test("derives source only from a unique server-bound canonical artifact", () => 
   });
 });
 
+test("ignores mapping and native-symbol side artifacts from the same release run", () => {
+  const mapping = {
+    id: 8438855616,
+    name: `android-alpha-mapping-588-${source}`,
+    expired: false,
+    workflow_run: { id: Number(runId), head_sha: source },
+  };
+  const symbols = {
+    id: 8438855617,
+    name: `android-alpha-native-symbols-588-${source}`,
+    expired: false,
+    workflow_run: { id: Number(runId), head_sha: source },
+  };
+  assert.deepEqual(
+    resolvePinnedAndroidArtifact({ total_count: 3, artifacts: [mapping, canonical, symbols] }, runId),
+    {
+      artifactId: "8438855615",
+      artifactName: canonical.name,
+      buildRunId: runId,
+      sourceCommit: source,
+    },
+  );
+});
+
 test("rejects missing, duplicate, expired, or malformed canonical artifacts", () => {
   for (const payload of [
     { total_count: 0, artifacts: [] },
@@ -27,7 +51,7 @@ test("rejects missing, duplicate, expired, or malformed canonical artifacts", ()
 });
 
 test("rejects paginated metadata and server-side run or head mismatches", () => {
-  assert.throws(() => resolvePinnedAndroidArtifact({ total_count: 2, artifacts: [canonical] }, runId), /exactly one server artifact/);
+  assert.throws(() => resolvePinnedAndroidArtifact({ total_count: 2, artifacts: [canonical] }, runId), /incomplete or paginated/);
   assert.throws(() => resolvePinnedAndroidArtifact({ total_count: 1, artifacts: [{ ...canonical, workflow_run: { ...canonical.workflow_run, id: 1 } }] }, runId), /run id mismatch/);
   assert.throws(() => resolvePinnedAndroidArtifact({ total_count: 1, artifacts: [{ ...canonical, workflow_run: { ...canonical.workflow_run, head_sha: "4".repeat(40) } }] }, runId), /name\/source head mismatch/);
 });

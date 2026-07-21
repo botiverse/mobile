@@ -2,7 +2,10 @@ import fs from "node:fs";
 
 export function resolvePinnedAndroidArtifact(payload, runId) {
   const artifacts = Array.isArray(payload?.artifacts) ? payload.artifacts : [];
-  if (Number(payload?.total_count ?? artifacts.length) !== 1 || artifacts.length !== 1) throw new Error("expected exactly one server artifact");
+  const totalCount = Number(payload?.total_count ?? artifacts.length);
+  if (!Number.isInteger(totalCount) || totalCount !== artifacts.length) {
+    throw new Error("server artifact metadata is incomplete or paginated");
+  }
   const candidates = artifacts.filter((artifact) =>
     artifact?.expired === false && /^android-alpha-[0-9]+-[0-9a-f]{40}$/.test(String(artifact?.name || ""))
   );

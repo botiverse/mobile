@@ -1,4 +1,5 @@
 name: QA Acceptance (agent-in-CI)
+run-name: Stamp ${{ inputs.stamp_run_case_id || github.run_id }}
 
 # PoC of the acceptance executor (#proj-quality task #2): one acceptance run =
 # one CI job. A goal goes in; an M3 agent drives the REAL debug APK on the
@@ -191,6 +192,16 @@ jobs:
       - name: Checkout mobile
         uses: actions/checkout@v5
 
+      - name: Bind pre-claim workflow to Stamp
+        if: ${{ inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: |
+          printf '%s' checkout_complete > "$RUNNER_TEMP/stamp-preclaim-phase"
+          bash scripts/qa/stamp_report.sh dispatch-start
+
       - name: Validate frozen artifact inputs
         env:
           PIN_PRIMARY: ${{ inputs.apk_run_id }}
@@ -228,6 +239,7 @@ jobs:
           APK_URL: ${{ inputs.apk_url }}
           FROZEN_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
         run: |
+          printf '%s' fetch_pinned_apk > "$RUNNER_TEMP/stamp-preclaim-phase"
           mkdir -p apks
           if [ -n "$APK_RUN_ID" ]; then
             # Named artifact first (our own build jobs); fall back to ALL
@@ -340,6 +352,7 @@ jobs:
           ARTIFACT_VERSION_CODE: ${{ inputs.artifact_version_code }}
           ARTIFACT_PACKAGE_ID: ${{ inputs.artifact_package_id }}
         run: |
+          printf '%s' verify_frozen_artifact > "$RUNNER_TEMP/stamp-preclaim-phase"
           mapfile -t apk_candidates < <(find apks -type f -name '*.apk' -print)
           mapfile -t manifest_candidates < <(find apks -type f -name build-info.json -print)
           if [ "${#apk_candidates[@]}" -ne 1 ] || [ "${#manifest_candidates[@]}" -ne 1 ]; then
@@ -360,6 +373,10 @@ jobs:
           APK_SHA="$sha" APK_PKG="$pkg" APK_VERSION="$vn" APK_CODE="$vc" node -e \
             'const fs=require("fs"),e=process.env;fs.writeFileSync("apks/observed-identity.json",JSON.stringify({sha256:e.APK_SHA,packageId:e.APK_PKG,version:e.APK_VERSION,versionCode:e.APK_CODE}))'
           node scripts/qa/verify_pinned_android_identity.mjs "$manifest" apks/observed-identity.json
+
+      - name: Mark pre-claim preparation complete
+        if: ${{ inputs.stamp_run_case_id != '' }}
+        run: printf '%s' ready_to_claim > "$RUNNER_TEMP/stamp-preclaim-phase"
 
       - name: Enable KVM
         run: |
@@ -500,3 +517,12 @@ jobs:
             rc="$mrc"
           fi
           exit "$rc"
+
+      - name: Report pre-claim infrastructure failure
+        if: ${{ failure() && inputs.stamp_run_case_id != '' }}
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+          STAMP_PRECLAIM_ERROR_REASON: workflow failed before Stamp claim; inspect linked GitHub Actions run
+        run: bash scripts/qa/stamp_report.sh dispatch-error

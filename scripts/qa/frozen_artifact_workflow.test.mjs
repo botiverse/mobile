@@ -30,6 +30,9 @@ test("Android exposes the same frozen identity names for strict claim overrides"
   assert.match(android, /resolve_pinned_android_artifact\.mjs/);
   assert.match(android, /gh run download "\$APK_RUN_ID"[\s\S]*-n "\$artifact_name"/);
   assert.match(android, /requires exactly one APK and one build-info\.json/);
+  assert.match(android, /run-name: Stamp \$\{\{ inputs\.stamp_run_case_id/);
+  assert.match(android, /name: Bind pre-claim workflow to Stamp/);
+  assert.match(android, /name: Report pre-claim infrastructure failure/);
   assert.doesNotMatch(android, /STAMP_CLAIM_SOURCE_COMMIT: \$\{\{ inputs\.artifact_source_commit \}\}/);
 });
 
