@@ -100,8 +100,12 @@ class RealForwardMessageTargetRepository(
         currentSession() ?: return forwardAuthRequired()
         val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
         val channels = channelRepository.getChannels(serverId).contentOrEmpty { it.channels }
+        val members = memberRepository.getMembers(DataRequestPriority.Foreground, serverId).contentOrEmpty { it.members }
+        val membersById = members.associateBy { it.id }
         val items =
-            (directMessages.mapNotNull { it.toRecentForwardTarget(serverId) } +
+            (directMessages.mapNotNull { directMessage ->
+                directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(membersById::get))
+            } +
                 channels.mapNotNull { it.toRecentForwardTarget(serverId) })
                 .distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
                 .take(limit.coerceAtLeast(1))
@@ -328,7 +332,10 @@ private inline fun <T, R> DataResult<T>.mapContent(mapper: (T) -> R): DataResult
         is DataResult.NoPermission -> DataResult.NoPermission(blocker)
     }
 
-private fun HomeDirectMessageRow.toRecentForwardTarget(serverId: ServerId): ForwardMessageTarget? {
+private fun HomeDirectMessageRow.toRecentForwardTarget(
+    serverId: ServerId,
+    peer: MemberProfile? = null
+): ForwardMessageTarget? {
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
@@ -337,7 +344,8 @@ private fun HomeDirectMessageRow.toRecentForwardTarget(serverId: ServerId): Forw
         id = channelId.value,
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Recent DM",
-        avatarLabel = title.take(1).uppercase(),
+        avatarWireValue = peer?.avatar?.wireValue ?: peer?.avatarUrl,
+        avatarLabel = peer?.avatarLabel?.takeIf { it.isNotBlank() } ?: title.take(1).uppercase(),
         channelId = channelId,
         channelKind = ConversationKind.DirectMessage,
         memberId = presenceMemberId,
@@ -393,8 +401,11 @@ internal fun fallbackForwardMessageTargets(
     limit: Int
 ): List<ForwardMessageTarget> {
     val existingDmMemberIds = directMessages.mapNotNull { it.presenceMemberId }.toSet()
+    val membersById = members.associateBy { it.id }
     return (
-        directMessages.mapNotNull { it.toRecentForwardTarget(serverId) } +
+        directMessages.mapNotNull { directMessage ->
+            directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(membersById::get))
+        } +
             channels.mapNotNull { it.toSearchForwardTarget(serverId) } +
             members
                 .filterNot { it.id in existingDmMemberIds }

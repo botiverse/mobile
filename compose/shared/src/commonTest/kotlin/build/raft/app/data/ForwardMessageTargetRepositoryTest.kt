@@ -169,7 +169,9 @@ class ForwardMessageTargetRepositoryTest {
                             id = MemberId("user-ada"),
                             displayName = "Ada",
                             handle = "ada",
-                            kind = MemberKind.Human
+                            kind = MemberKind.Human,
+                            avatarUrl = "pixel:user",
+                            avatarLabel = "AD"
                         ),
                         MemberProfile(
                             id = MemberId("agent-build"),
@@ -190,6 +192,8 @@ class ForwardMessageTargetRepositoryTest {
 
         assertEquals(listOf("dm-ada", "agent-build"), targets.map { it.id })
         assertEquals(ForwardMessageTargetKind.RecentDirectMessage, targets[0].kind)
+        assertEquals("pixel:user", targets[0].avatarWireValue)
+        assertEquals("AD", targets[0].avatarLabel)
         assertEquals(ForwardMessageTargetKind.AgentDirectMessageCandidate, targets[1].kind)
         assertEquals(ForwardMessageTargetRequiredAction.CreateDirectMessage, targets[1].requiredAction)
     }
