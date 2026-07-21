@@ -14,6 +14,7 @@ import androidx.test.runner.lifecycle.Stage
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.json.JSONException
 import org.json.JSONObject
 
 class AndroidShellTaskReuseConnectedTest {
@@ -186,12 +187,30 @@ class AndroidShellTaskReuseConnectedTest {
     private fun readCurrentPageData(
         instrumentation: android.app.Instrumentation,
         activity: SlockAppShellActivity,
+        timeoutMillis: Long = 5_000,
     ): JSONObject {
-        val pageData = AtomicReference<JSONObject>()
-        instrumentation.runOnMainSync {
-            pageData.set(activity.currentPageDataSnapshotForTest())
+        // The replacement activity can reach RESUMED before its page spec is
+        // applied on the main thread, so an immediate snapshot read sees an
+        // empty string ("End of input at character 0" on the CI emulator).
+        // Poll until the snapshot parses.
+        val deadline = SystemClock.uptimeMillis() + timeoutMillis
+        var lastFailure: Exception? = null
+        while (SystemClock.uptimeMillis() < deadline) {
+            val pageData = AtomicReference<JSONObject?>()
+            instrumentation.runOnMainSync {
+                pageData.set(
+                    try {
+                        activity.currentPageDataSnapshotForTest()
+                    } catch (failure: JSONException) {
+                        lastFailure = failure
+                        null
+                    }
+                )
+            }
+            pageData.get()?.let { return it }
+            SystemClock.sleep(10)
         }
-        return requireNotNull(pageData.get())
+        error("Timed out waiting for the page data snapshot to parse: ${lastFailure?.message}")
     }
 
     private fun appShellTaskCount(activityManager: ActivityManager, packageName: String): Int =
