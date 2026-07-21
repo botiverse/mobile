@@ -3,11 +3,11 @@ package build.raft.app
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.SlockShellStoreScope
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class SettingsComputersWebViewTest {
     @Test
@@ -42,10 +42,22 @@ class SettingsComputersWebViewTest {
     }
 
     @Test
-    fun computersBackConsumesWebHistoryBeforeLeavingSettings() {
-        assertTrue(settingsComputersShouldConsumeBack("computers", canGoBack = true))
-        assertFalse(settingsComputersShouldConsumeBack("computers", canGoBack = false))
-        assertFalse(settingsComputersShouldConsumeBack("mobile", canGoBack = true))
+    fun computersStandaloneLaunchCarriesOnlyShellIdentity() {
+        val pageData =
+            settingsComputersPageData(
+                SlockShellStoreScope.create(
+                    shellInstanceId = "shell-computers",
+                    initialServerId = "server-1"
+                )
+            )
+
+        assertEquals(SETTINGS_COMPUTERS_PAGE, pageData.optString("pageName"))
+        assertEquals("shell-computers", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("server-1", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertFalse(pageData.has("payload"))
+        assertFalse(pageData.has("accessToken"))
+        assertFalse(pageData.has("serverSlug"))
+        assertFalse(pageData.has("machines"))
     }
 }
 

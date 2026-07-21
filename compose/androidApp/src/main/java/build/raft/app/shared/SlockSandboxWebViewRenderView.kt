@@ -17,9 +17,13 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.ScriptHandler
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.tencent.kuikly.core.render.android.expand.component.KRView
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.ByteArrayInputStream
+import java.net.URI
 import org.json.JSONObject
 
 internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context) {
@@ -48,6 +52,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var navigationBlockedCallback: KuiklyRenderCallback? = null
     private var urlChangeCallback: KuiklyRenderCallback? = null
     private var navigationStateChangeCallback: KuiklyRenderCallback? = null
+    private var documentStartScriptHandler: ScriptHandler? = null
+    private var bootstrapDocumentPending: Boolean = false
+    private var bootstrapDocumentUrl: String = ""
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -212,6 +219,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         navigationBlockedCallback = null
         urlChangeCallback = null
         navigationStateChangeCallback = null
+        removeDocumentStartScript()
         Log.i(LOG_TAG, "destroy_webview loadedSrc=${loadedSrc.redactedUrlForLog()}")
         webView.stopLoading()
         webView.loadUrl("about:blank")
@@ -324,6 +332,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     super.onPageStarted(view, url, favicon)
                     val target = url.orEmpty()
                     Log.i(LOG_TAG, "page_started url=${target.redactedUrlForLog()}")
+                    if (bootstrapDocumentPending && target != bootstrapDocumentUrl) {
+                        bootstrapDocumentPending = false
+                    }
                     if (wouldBlockMainFrameNavigation(url)) {
                         view?.stopLoading()
                         handleBlockedMainFrameNavigation(url)
@@ -352,7 +363,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                         notifyUrlChange(target)
                         notifyNavigationState()
                         evaluateInjectedJavaScript()
-                        notifyLoadSuccess(url, "finished")
+                        if (!bootstrapDocumentPending) notifyLoadSuccess(url, "finished")
                     }
                 }
 
@@ -366,7 +377,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                         currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                         notifyUrlChange(target)
                         notifyNavigationState()
-                        notifyLoadSuccess(url, "commit_visible")
+                        if (!bootstrapDocumentPending) notifyLoadSuccess(url, "commit_visible")
                     }
                 }
 
@@ -506,7 +517,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
 
     private fun updateInjectedJavaScript(next: String) {
         if (destroyed) return
+        if (injectedJavaScript == next) return
         injectedJavaScript = next
+        removeDocumentStartScript()
     }
 
     private fun updateAllowedNavigationSchemes(next: String) {
@@ -584,16 +597,21 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         currentUrl = normalized
         currentIsLoading = true
         notifyNavigationState()
-        if (shouldBootstrapInjectedJavaScript()) {
+        val documentStartInstalled = installDocumentStartScript(normalized)
+        if (shouldBootstrapInjectedJavaScript(documentStartInstalled)) {
+            bootstrapDocumentPending = true
+            bootstrapDocumentUrl = injectedJavaScriptBootstrapBaseUrl(normalized) ?: normalized
             Log.i(LOG_TAG, "load_src bootstrap=true url=${normalized.redactedUrlForLog()}")
             webView.loadDataWithBaseURL(
-                normalized,
+                bootstrapDocumentUrl,
                 injectedJavaScriptBootstrapHtml(normalized),
                 "text/html",
                 "UTF-8",
                 normalized
             )
         } else {
+            bootstrapDocumentPending = false
+            bootstrapDocumentUrl = ""
             Log.i(LOG_TAG, "load_src bootstrap=false url=${normalized.redactedUrlForLog()}")
             webView.loadUrl(normalized)
         }
@@ -715,11 +733,37 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         }
     }
 
-    private fun shouldBootstrapInjectedJavaScript(): Boolean =
+    private fun shouldBootstrapInjectedJavaScript(documentStartInstalled: Boolean): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT &&
             allowScripts &&
             domStorageEnabled &&
-            injectedJavaScript.isNotBlank()
+            injectedJavaScript.isNotBlank() &&
+            !documentStartInstalled
+
+    private fun installDocumentStartScript(targetUrl: String): Boolean {
+        removeDocumentStartScript()
+        val script = injectedJavaScript.takeIf { allowScripts && domStorageEnabled && it.isNotBlank() } ?: return false
+        val originRule = documentStartScriptOriginRule(targetUrl) ?: return false
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return false
+        return runCatching {
+            documentStartScriptHandler =
+                WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    script,
+                    setOf(originRule)
+                )
+            Log.i(LOG_TAG, "document_start_script installed origin=${originRule.redactedUrlForLog()}")
+            true
+        }.getOrElse { error ->
+            Log.w(LOG_TAG, "document_start_script unavailable fallback=bootstrap", error)
+            false
+        }
+    }
+
+    private fun removeDocumentStartScript() {
+        runCatching { documentStartScriptHandler?.remove() }
+        documentStartScriptHandler = null
+    }
 
     private fun isRestrictedGenericMode(): Boolean =
         allowedNavigationSchemes.isNotEmpty() && injectedJavaScript.isBlank()
@@ -805,6 +849,18 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                 this == EVENT_NAVIGATION_STATE_CHANGE
     }
 }
+
+internal fun documentStartScriptOriginRule(targetUrl: String): String? =
+    runCatching {
+        val uri = URI(targetUrl)
+        val scheme = uri.scheme?.lowercase()?.takeIf { it == "http" || it == "https" } ?: return null
+        val host = uri.host?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+        val port = uri.port.takeIf { it >= 0 }?.let { ":$it" }.orEmpty()
+        "$scheme://$host$port"
+    }.getOrNull()
+
+internal fun injectedJavaScriptBootstrapBaseUrl(targetUrl: String): String? =
+    documentStartScriptOriginRule(targetUrl)?.let { origin -> "$origin/__raft_mobile_bootstrap__" }
 
 private fun String.redactedUrlForLog(): String {
     val uri = runCatching { Uri.parse(this) }.getOrNull() ?: return "<invalid>"
