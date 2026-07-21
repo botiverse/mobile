@@ -10,6 +10,36 @@ import kotlin.test.assertTrue
 
 class HomeServerDrawerCommandStateTest {
     @Test
+    fun pendingAdmissionRevokesOldInteractivityUntilCurrentNativeSubmission() {
+        val openA = HomeServerDrawerCommandIntent(31L, true)
+        val openC = HomeServerDrawerCommandIntent(33L, true)
+        var state =
+            HomeServerDrawerCommandState()
+                .submit(openA)
+                .rowLaidOut(openA.generation, "row-a")
+                .settle(openA.generation, desiredOpen = true)
+
+        assertTrue(state.acceptsConversationClick(openA.generation, openA))
+
+        state = state.pendingAdmission(openC)
+        assertEquals(HomeServerDrawerCommandPhase.PendingAdmissionOpen, state.phase)
+        assertNull(state.interactiveGeneration)
+        assertNull(state.interactiveRowKey)
+        assertFalse(state.acceptsConversationClick(openA.generation, openC))
+        assertFalse(state.acceptsConversationClick(openC.generation, openC))
+        assertEquals(state, state.settle(openC.generation, desiredOpen = true))
+
+        state = state.markSubmitted(openC.generation, desiredOpen = true)
+        assertEquals(HomeServerDrawerCommandPhase.SubmittedOpen, state.phase)
+        assertFalse(state.acceptsConversationClick(openC.generation, openC))
+
+        state = state.rowLaidOut(openC.generation, "row-c")
+        state = state.settle(openC.generation, desiredOpen = true)
+        assertTrue(state.acceptsConversationClick(openC.generation, openC))
+        assertEquals("row-c", state.interactiveRowKey)
+    }
+
+    @Test
     fun submittedOpenTapIsRejectedUntilFreshRowAndSettleOwnInteractivity() {
         val intent = HomeServerDrawerCommandIntent(11L, true)
         var state = HomeServerDrawerCommandState().submit(intent)

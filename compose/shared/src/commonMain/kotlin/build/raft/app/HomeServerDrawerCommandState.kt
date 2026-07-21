@@ -4,8 +4,10 @@ import build.raft.app.data.HomeServerDrawerCommandIntent
 
 internal enum class HomeServerDrawerCommandPhase {
     IdleClosed,
+    PendingAdmissionOpen,
     SubmittedOpen,
     SettledOpen,
+    PendingAdmissionClose,
     SubmittedClose,
     GestureCloseDispatched
 }
@@ -30,6 +32,41 @@ internal data class HomeServerDrawerCommandState(
     val terminals: List<HomeServerDrawerCommandTerminal> = emptyList(),
     val gestureDismissCount: Int = 0
 )
+
+internal fun HomeServerDrawerCommandState.pendingAdmission(
+    intent: HomeServerDrawerCommandIntent
+): HomeServerDrawerCommandState =
+    copy(
+        currentIntent = intent,
+        phase =
+            if (intent.desiredOpen) {
+                HomeServerDrawerCommandPhase.PendingAdmissionOpen
+            } else {
+                HomeServerDrawerCommandPhase.PendingAdmissionClose
+            },
+        rowReadyGeneration = null,
+        rowReadyKey = null,
+        interactiveGeneration = null,
+        interactiveRowKey = null
+    )
+
+internal fun HomeServerDrawerCommandState.markSubmitted(
+    generation: Long,
+    desiredOpen: Boolean
+): HomeServerDrawerCommandState {
+    if (generation != currentIntent.generation || desiredOpen != currentIntent.desiredOpen) return this
+    val expectedPhase =
+        if (desiredOpen) HomeServerDrawerCommandPhase.PendingAdmissionOpen else HomeServerDrawerCommandPhase.PendingAdmissionClose
+    if (phase != expectedPhase) return this
+    return copy(
+        phase =
+            if (desiredOpen) {
+                HomeServerDrawerCommandPhase.SubmittedOpen
+            } else {
+                HomeServerDrawerCommandPhase.SubmittedClose
+            }
+    )
+}
 
 internal fun HomeServerDrawerCommandState.submit(
     intent: HomeServerDrawerCommandIntent
