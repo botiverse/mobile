@@ -940,12 +940,20 @@ private fun SharedActivityList(
     }
     val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
+    val presentationOwnerIdentity =
+        activityPresentationOwnerIdentity(
+            accountId = presentationAccountId,
+            serverId = presentationServerId,
+            filter = selectedFilter,
+        )
+    val currentPresentationOwnerIdentityState = rememberUpdatedState(presentationOwnerIdentity)
     // Freeze the item/key/content triplet for one LazyColumn composition. Reading the mutable
     // presentedItems list independently from the count-key lambda and the row-content lambda can
     // bind a node to the new key while its content/callback still belongs to the old index during
     // an immediate-canonical reorder (Hands e3866a35/acb153fa).
     val renderedItems = presentedItems
     val renderedPresentationGeneration = presentationGeneration
+    val renderedPresentationOwnerIdentity = presentationOwnerIdentity
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.
@@ -972,12 +980,15 @@ private fun SharedActivityList(
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     captureMenuAnchor = !listState.isScrollInProgress,
                     presentationGeneration = renderedPresentationGeneration,
+                    presentationOwnerIdentity = renderedPresentationOwnerIdentity,
                     onOpen = open@{
                         val currentItem =
                             activityItemForCommittedGesture(
                                 renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
                                 renderedPresentationGeneration = renderedPresentationGeneration,
                                 currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
                                 currentPresentationGeneration = presentationGenerationState.value,
                             ) ?: return@open
                         selectedItemKey = currentItem.key
@@ -997,8 +1008,10 @@ private fun SharedActivityList(
                         val currentItem =
                             activityItemForCommittedGesture(
                                 renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
                                 renderedPresentationGeneration = renderedPresentationGeneration,
                                 currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
                                 currentPresentationGeneration = presentationGenerationState.value,
                             ) ?: return@done
                         onIntent(SharedActivityIntent.MarkDone(currentItem))
@@ -1007,8 +1020,10 @@ private fun SharedActivityList(
                         val currentItem =
                             activityItemForCommittedGesture(
                                 renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
                                 renderedPresentationGeneration = renderedPresentationGeneration,
                                 currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
                                 currentPresentationGeneration = presentationGenerationState.value,
                             ) ?: return@menu
                         activeMenuItem = currentItem
@@ -1140,13 +1155,22 @@ internal fun activityReplyThreadPrewarmNextAfterClick(
  */
 internal fun activityItemForCommittedGesture(
     renderedItemKey: String,
+    renderedPresentationOwnerIdentity: String,
     renderedPresentationGeneration: Int,
     currentItems: List<InboxItem>,
+    currentPresentationOwnerIdentity: String,
     currentPresentationGeneration: Int,
 ): InboxItem? {
+    if (renderedPresentationOwnerIdentity != currentPresentationOwnerIdentity) return null
     if (renderedPresentationGeneration != currentPresentationGeneration) return null
     return currentItems.firstOrNull { item -> item.key == renderedItemKey }
 }
+
+internal fun activityPresentationOwnerIdentity(
+    accountId: String,
+    serverId: String,
+    filter: InboxFilter,
+): String = "account:$accountId|server:$serverId|filter:${filter.wireValue}"
 
 internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
     // The destination store acknowledges the stable channel/thread identity after it is loaded
@@ -1215,13 +1239,17 @@ private fun SharedActivityRow(
     activityTaskStatusBadgesEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
     presentationGeneration: Int = 0,
+    presentationOwnerIdentity: String = "",
     onOpen: () -> Unit,
     onDone: () -> Unit,
     onOpenMenu: (SlockPopoverAnchor) -> Unit
 ) {
     val openGestureKey =
-        remember(item, presentationGeneration) {
-            item.activityOpenGestureKey(presentationGeneration)
+        remember(item, presentationGeneration, presentationOwnerIdentity) {
+            item.activityOpenGestureKey(
+                presentationGeneration = presentationGeneration,
+                presentationOwnerIdentity = presentationOwnerIdentity,
+            )
         }
     val mutedPrimaryContent = item.activityPrimaryContentMuted()
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
@@ -1337,7 +1365,11 @@ private fun SharedActivityRow(
                 ) {
                     SharedActivitySmallIconButton(
                         iconName = SlockLucideIconName.Check,
-                        clickIdentity = item.activityDoneClickIdentity(presentationGeneration),
+                        clickIdentity =
+                            item.activityDoneClickIdentity(
+                                presentationGeneration = presentationGeneration,
+                                presentationOwnerIdentity = presentationOwnerIdentity,
+                            ),
                         onClick = onDone
                     )
                 }
@@ -1363,8 +1395,10 @@ private fun SharedActivityRow(
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
     kind != InboxItemKind.System && unreadCount == 0
 
-internal fun InboxItem.activityDoneClickIdentity(presentationGeneration: Int = 0): String =
-    "activity-done:$key|presentation:$presentationGeneration"
+internal fun InboxItem.activityDoneClickIdentity(
+    presentationGeneration: Int = 0,
+    presentationOwnerIdentity: String = "",
+): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
 @Composable
 private fun Modifier.activityRowGestures(
@@ -1411,12 +1445,15 @@ internal fun InboxItem.inboxItemOpenGestureKey(): String =
         unreadCount.toString()
     ).joinToString("|")
 
-internal fun InboxItem.activityOpenGestureKey(presentationGeneration: Int): String =
+internal fun InboxItem.activityOpenGestureKey(
+    presentationGeneration: Int,
+    presentationOwnerIdentity: String = "",
+): String =
     // The Activity pointer owner follows the stable presented slot, not the
     // latest anchor/unread fields. The captured callback resolves newest content
     // through stable current-state holders; only a committed order generation
     // change may cancel a DOWN→UP gesture that started on this slot.
-    "activity-open:$key|presentation:$presentationGeneration"
+    "activity-open:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)

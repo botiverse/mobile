@@ -14,6 +14,7 @@ class ActivityClickIdentityProductionContractTest {
 
         assertTrue("val renderedItems = presentedItems" in source)
         assertTrue("val renderedPresentationGeneration = presentationGeneration" in source)
+        assertTrue("val renderedPresentationOwnerIdentity = presentationOwnerIdentity" in source)
         assertTrue("val presentedItemsState =" in source)
         assertTrue("var presentedItems by presentedItemsState" in source)
         assertTrue("val presentationGenerationState =" in source)
@@ -39,10 +40,12 @@ class ActivityClickIdentityProductionContractTest {
         assertTrue("onTap = { onClick() }" in gestureBody)
         assertTrue("activityItemForCommittedGesture(" in source)
         assertTrue("currentItems = presentedItemsState.value" in source)
+        assertTrue("currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value" in source)
         assertTrue("currentPresentationGeneration = presentationGenerationState.value" in source)
+        assertTrue("renderedPresentationOwnerIdentity != currentPresentationOwnerIdentity" in source)
         assertTrue("renderedPresentationGeneration != currentPresentationGeneration" in source)
         assertTrue("item.key == renderedItemKey" in source)
-        assertTrue("clickIdentity = item.activityDoneClickIdentity(presentationGeneration)" in source)
+        assertTrue("presentationOwnerIdentity = presentationOwnerIdentity" in source)
     }
 
     private fun source(): String {
