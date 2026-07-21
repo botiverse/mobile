@@ -76,19 +76,7 @@ internal fun settingsComputersWebViewUrl(
 }
 
 internal fun settingsComputersWebViewInjectedJavaScript(session: StoredAuthSession?): String {
-    if (session == null) return ""
-    val currentServerSlug =
-        session.selectedServerSlug
-            ?: session.servers.firstOrNull { it.id == session.currentServerId }?.slug
-            ?: session.servers.firstOrNull()?.slug
-    val writes =
-        buildList {
-            add(settingsComputersLocalStorageWrite("slock_access_token", session.accessToken))
-            add(settingsComputersLocalStorageWrite("slock_refresh_token", session.refreshToken))
-            currentServerSlug?.takeIf { it.isNotBlank() }?.let {
-                add(settingsComputersLocalStorageWrite("slock_last_server_slug", it))
-            }
-        }.joinToString(separator = ";")
+    val writes = settingsWebViewAuthStorageJavaScript(session)
     return """
         (function() {
           try {
@@ -99,8 +87,3 @@ internal fun settingsComputersWebViewInjectedJavaScript(session: StoredAuthSessi
         })();
     """.trimIndent()
 }
-
-private val settingsComputersWebViewJson = Json
-
-private fun settingsComputersLocalStorageWrite(key: String, value: String): String =
-    "window.localStorage.setItem(${settingsComputersWebViewJson.encodeToString(key)}, ${settingsComputersWebViewJson.encodeToString(value)})"

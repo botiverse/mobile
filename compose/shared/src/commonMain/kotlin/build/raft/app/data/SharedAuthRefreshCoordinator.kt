@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Process-wide refresh-token execution owner.
@@ -27,7 +28,8 @@ internal class SharedAuthRefreshCoordinator(
     private val clockMillis: () -> Long,
     private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {},
-    private val criticalLogger: (String) -> Unit = warningLogger
+    private val criticalLogger: (String) -> Unit = warningLogger,
+    private val refreshAttemptTimeoutMillis: Long = AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS
 ) {
     suspend fun refreshSession(
         failedAccessToken: String? = null,
@@ -55,11 +57,17 @@ internal class SharedAuthRefreshCoordinator(
 
         val selection =
             coordinationMutex.withLock {
-                val recent =
+                val recentAmbiguous =
+                    recentAmbiguousByRefreshToken[refreshToken]
+                        ?.takeIf { it.matches(current, clockMillis()) }
+                        .also { active ->
+                            if (active == null) recentAmbiguousByRefreshToken.remove(refreshToken)
+                        }
+                val recentUnauthorized =
                     recentUnauthorizedByRefreshToken[refreshToken]
                         ?.takeIf { it.matches(current, clockMillis()) }
-                if (recent != null) {
-                    FlightSelection.Completed(recent.exchange)
+                if (recentUnauthorized != null) {
+                    FlightSelection.Completed(recentUnauthorized.exchange)
                 } else {
                     val existing = inFlightByRefreshToken[refreshToken]
                     if (existing != null) {
@@ -69,7 +77,8 @@ internal class SharedAuthRefreshCoordinator(
                         val flight =
                             InFlightRefresh(
                                 originalSession = current,
-                                result = result
+                                result = result,
+                                inheritedAmbiguous = recentAmbiguous,
                             )
                         inFlightByRefreshToken[refreshToken] = flight
                         FlightSelection.Owner(flight)
@@ -134,7 +143,17 @@ internal class SharedAuthRefreshCoordinator(
                             "access=${latest.accessToken.authTokenDiagnosticsFingerprint()} " +
                             "refresh=${refreshToken.authTokenDiagnosticsFingerprint()}"
                     )
-                    when (val response = authApi.refresh(refreshToken)) {
+                    val response =
+                        refreshWithAmbiguousTimeoutRecovery(
+                            refreshToken = refreshToken,
+                            safeCaller = safeCaller,
+                            safeReason = safeReason,
+                        ).preserveUnauthorizedAfterPriorAmbiguous(
+                            inheritedAmbiguous = flight.inheritedAmbiguous != null,
+                            safeCaller = safeCaller,
+                            safeReason = safeReason,
+                        )
+                    when (response) {
                         is AuthApiResult.Success ->
                             commitSuccessfulRefresh(
                                 original = flight.originalSession,
@@ -167,6 +186,76 @@ internal class SharedAuthRefreshCoordinator(
         cleanupFlight(refreshToken, flight, exchange)
     }
 
+    private suspend fun refreshWithAmbiguousTimeoutRecovery(
+        refreshToken: String,
+        safeCaller: String,
+        safeReason: String,
+    ): AuthApiResult<AuthRefreshResponse> {
+        val attemptStartedAtMillis = clockMillis()
+        val first = refreshAttempt(refreshToken)
+        if (first != null && !first.isAmbiguousTransportFailure()) return first
+        val elapsedMillis = (clockMillis() - attemptStartedAtMillis).coerceAtLeast(0L)
+        if (elapsedMillis > AUTH_REFRESH_REPLAY_RETRY_WINDOW_MILLIS) {
+            criticalLogger(
+                "refresh_attempt_ambiguous action=preserve_session reason=replay_window_elapsed " +
+                    "requestReason=$safeReason caller=$safeCaller elapsedMs=$elapsedMillis"
+            )
+            return ambiguousRefreshFailure("refresh_replay_window_elapsed")
+        }
+        criticalLogger(
+            "refresh_attempt_ambiguous action=retry_same_token " +
+                "reason=$safeReason caller=$safeCaller elapsedMs=$elapsedMillis"
+        )
+        val retry = refreshAttempt(refreshToken)
+            ?: return ambiguousRefreshFailure("refresh_retry_timeout")
+        if (retry is AuthApiResult.Failure && (retry.code == 401 || retry.code == 403)) {
+            criticalLogger(
+                "refresh_attempt_ambiguous action=preserve_session reason=retry_unauthorized " +
+                    "requestReason=$safeReason caller=$safeCaller status=${retry.code}"
+            )
+            return ambiguousRefreshFailure("refresh_ambiguous_retry_unauthorized")
+        }
+        return retry
+    }
+
+    private suspend fun refreshAttempt(refreshToken: String): AuthApiResult<AuthRefreshResponse>? {
+        val result = CompletableDeferred<AuthApiResult<AuthRefreshResponse>>()
+        val request =
+            coordinatorScope.launch {
+                runCatching { authApi.refresh(refreshToken) }
+                    .onSuccess(result::complete)
+                    .onFailure(result::completeExceptionally)
+            }
+        val response = withTimeoutOrNull(refreshAttemptTimeoutMillis) { result.await() }
+        if (response == null) request.cancel()
+        return response
+    }
+
+    private fun AuthApiResult<AuthRefreshResponse>.isAmbiguousTransportFailure(): Boolean =
+        this is AuthApiResult.Failure && code == 0
+
+    private fun ambiguousRefreshFailure(contractCode: String): AuthApiResult.Failure =
+        AuthApiResult.Failure(
+            code = 0,
+            errorBodyText = """{"error":"network_timeout","message":"refresh result is ambiguous"}""",
+            contractCode = contractCode,
+        )
+
+    private fun AuthApiResult<AuthRefreshResponse>.preserveUnauthorizedAfterPriorAmbiguous(
+        inheritedAmbiguous: Boolean,
+        safeCaller: String,
+        safeReason: String,
+    ): AuthApiResult<AuthRefreshResponse> {
+        if (!inheritedAmbiguous || this !is AuthApiResult.Failure || (code != 401 && code != 403)) {
+            return this
+        }
+        criticalLogger(
+            "refresh_attempt_ambiguous action=preserve_session reason=prior_ambiguous_unauthorized " +
+                "requestReason=$safeReason caller=$safeCaller status=$code"
+        )
+        return ambiguousRefreshFailure("refresh_prior_ambiguous_unauthorized")
+    }
+
     private suspend fun cleanupFlight(
         refreshToken: String,
         flight: InFlightRefresh,
@@ -177,13 +266,21 @@ internal class SharedAuthRefreshCoordinator(
                 inFlightByRefreshToken.remove(refreshToken)
             }
             when (exchange) {
-                is RefreshExchange.Success ->
+                is RefreshExchange.Success -> {
                     recentUnauthorizedByRefreshToken.remove(exchange.originalSession.refreshToken)
-                is RefreshExchange.Failure ->
-                    if (exchange.response.code == 401 || exchange.response.code == 403) {
+                    recentAmbiguousByRefreshToken.remove(exchange.originalSession.refreshToken)
+                }
+                is RefreshExchange.Failure -> {
+                    if (exchange.response.isAmbiguousRefreshFailure()) {
+                        val token = exchange.originalSession.refreshToken
+                        recentAmbiguousByRefreshToken[token] =
+                            flight.inheritedAmbiguous ?: RecentAmbiguousRefresh(exchange)
+                        recentUnauthorizedByRefreshToken.remove(exchange.originalSession.refreshToken)
+                    } else if (exchange.response.code == 401 || exchange.response.code == 403) {
                         recentUnauthorizedByRefreshToken[exchange.originalSession.refreshToken] =
                             RecentUnauthorizedRefresh(exchange)
                     }
+                }
                 else -> Unit
             }
         }
@@ -361,6 +458,7 @@ internal class SharedAuthRefreshCoordinator(
         val coordinationMutex = Mutex()
         val inFlightByRefreshToken = mutableMapOf<String, InFlightRefresh>()
         val recentUnauthorizedByRefreshToken = mutableMapOf<String, RecentUnauthorizedRefresh>()
+        val recentAmbiguousByRefreshToken = mutableMapOf<String, RecentAmbiguousRefresh>()
     }
 }
 
@@ -372,7 +470,8 @@ internal sealed interface SharedAuthRefreshResult {
 
 private data class InFlightRefresh(
     val originalSession: StoredAuthSession,
-    val result: CompletableDeferred<RefreshExchange>
+    val result: CompletableDeferred<RefreshExchange>,
+    val inheritedAmbiguous: RecentAmbiguousRefresh?,
 )
 
 private sealed interface FlightSelection {
@@ -407,6 +506,16 @@ private data class RecentUnauthorizedRefresh(
             nowMillis - exchange.failedAtMillis in 0..PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS
 }
 
+private data class RecentAmbiguousRefresh(
+    val exchange: RefreshExchange.Failure
+) {
+    fun matches(session: StoredAuthSession, nowMillis: Long): Boolean =
+        exchange.originalSession.sameTokensAs(session) &&
+            nowMillis - exchange.failedAtMillis in 0..PRESERVED_AMBIGUOUS_REFRESH_MILLIS
+}
+
+private fun AuthApiResult.Failure.isAmbiguousRefreshFailure(): Boolean = code == 0
+
 private fun StoredAuthSession.isNewerThan(
     failedAccessToken: String?,
     failedRefreshToken: String?
@@ -418,6 +527,9 @@ private fun StoredAuthSession.sameTokensAs(other: StoredAuthSession): Boolean =
     accessToken == other.accessToken && refreshToken == other.refreshToken
 
 private const val PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS = 30_000L
+private const val PRESERVED_AMBIGUOUS_REFRESH_MILLIS = 30L * 60L * 1_000L
+private const val AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS = 4_000L
+private const val AUTH_REFRESH_REPLAY_RETRY_WINDOW_MILLIS = 8_000L
 
 internal fun String?.authTokenDiagnosticsFingerprint(): String {
     if (this.isNullOrBlank()) return "blank"

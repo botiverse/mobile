@@ -33,8 +33,6 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_ADMINISTRATION_PAGE = "compose_settings_administration"
 
@@ -189,8 +187,6 @@ private fun SettingsAdministrationLoadingContent() {
     }
 }
 
-private val settingsAdministrationWebViewJson = Json
-
 internal fun settingsAdministrationWebViewUrl(
     webBaseUrl: String?,
     session: StoredAuthSession?,
@@ -211,19 +207,7 @@ internal fun settingsAdministrationWebViewUrl(
 }
 
 internal fun settingsAdministrationWebViewInjectedJavaScript(session: StoredAuthSession?): String {
-    if (session == null) return ""
-    val currentServerSlug = session.selectedServerSlug
-        ?: session.servers.firstOrNull { it.id == session.currentServerId }?.slug
-        ?: session.servers.firstOrNull()?.slug
-    val writes =
-        buildList {
-            add(settingsAdministrationLocalStorageWrite("slock_access_token", session.accessToken))
-            add(settingsAdministrationLocalStorageWrite("slock_refresh_token", session.refreshToken))
-            currentServerSlug?.takeIf { it.isNotBlank() }?.let {
-                add(settingsAdministrationLocalStorageWrite("slock_last_server_slug", it))
-            }
-        }
-            .joinToString(separator = ";")
+    val writes = settingsWebViewAuthStorageJavaScript(session)
     return """
         (function() {
           try {
@@ -234,6 +218,3 @@ internal fun settingsAdministrationWebViewInjectedJavaScript(session: StoredAuth
         })();
     """.trimIndent()
 }
-
-private fun settingsAdministrationLocalStorageWrite(key: String, value: String): String =
-    "window.localStorage.setItem(${settingsAdministrationWebViewJson.encodeToString(key)}, ${settingsAdministrationWebViewJson.encodeToString(value)})"
