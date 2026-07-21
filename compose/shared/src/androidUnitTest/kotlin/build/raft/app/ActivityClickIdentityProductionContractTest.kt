@@ -1,0 +1,58 @@
+package build.raft.app
+
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/** Production wiring gate for Activity DOWN-key -> opened-key atomicity. */
+class ActivityClickIdentityProductionContractTest {
+
+    @Test
+    fun activityRowsFreezeOneImmutableItemSnapshotForLazyKeyContentAndCallbacks() {
+        val source = source()
+
+        assertTrue("val renderedItems = presentedItems" in source)
+        assertTrue("val renderedPresentationGeneration = presentationGeneration" in source)
+        assertTrue("val presentedItemsState =" in source)
+        assertTrue("var presentedItems by presentedItemsState" in source)
+        assertTrue("val presentationGenerationState =" in source)
+        assertTrue("var presentationGeneration by presentationGenerationState" in source)
+        assertTrue("items(items = renderedItems, key = { item -> item.key }) { item ->" in source)
+        assertFalse(
+            "items(presentedItems.size, key = { index -> presentedItems[index].key })" in source,
+            "A mutable count/index source can bind a new lazy key to old row content during reorder.",
+        )
+    }
+
+    @Test
+    fun activityPointerCallbackCannotBeRetargetedBeforeTheOldDownIsCancelled() {
+        val source = source()
+        val gestureBody =
+            source.substringAfter("private fun Modifier.activityRowGestures(")
+                .substringBefore("internal fun InboxItem.inboxItemOpenGestureKey()")
+
+        assertFalse(
+            "rememberUpdatedState(onClick)" in gestureBody,
+            "The pointer generation must capture its callback; dynamic replacement can retarget an in-flight DOWN.",
+        )
+        assertTrue("onTap = { onClick() }" in gestureBody)
+        assertTrue("activityItemForCommittedGesture(" in source)
+        assertTrue("currentItems = presentedItemsState.value" in source)
+        assertTrue("currentPresentationGeneration = presentationGenerationState.value" in source)
+        assertTrue("renderedPresentationGeneration != currentPresentationGeneration" in source)
+        assertTrue("item.key == renderedItemKey" in source)
+        assertTrue("clickIdentity = item.activityDoneClickIdentity(presentationGeneration)" in source)
+    }
+
+    private fun source(): String {
+        val commonMain =
+            requireNotNull(
+                listOf(File("src/commonMain/kotlin"), File("shared/src/commonMain/kotlin"))
+                    .firstOrNull(File::isDirectory),
+            ) { "Could not locate shared commonMain Kotlin sources" }
+        val file = File(commonMain, "build/raft/app/SharedInboxPanel.kt")
+        assertTrue(file.isFile, "Missing production source ${file.path}")
+        return file.readText().replace("\r\n", "\n")
+    }
+}

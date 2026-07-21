@@ -169,12 +169,13 @@ class SharedInboxPanelTest {
         val first = activityItem(key = "channel:first")
         val second = activityItem(key = "channel:second")
 
-        assertEquals("activity-done:channel:first", first.activityDoneClickIdentity())
+        assertEquals("activity-done:channel:first|presentation:0", first.activityDoneClickIdentity())
         assertNotEquals(first.activityDoneClickIdentity(), second.activityDoneClickIdentity())
         assertEquals(
             first.activityDoneClickIdentity(),
             first.copy(lastMessagePreview = "display-only update").activityDoneClickIdentity()
         )
+        assertNotEquals(first.activityDoneClickIdentity(0), first.activityDoneClickIdentity(1))
     }
 
     @Test
@@ -217,7 +218,7 @@ class SharedInboxPanelTest {
         val selectedPrewarm =
             activityReplyThreadPrewarmNextAfterClick(
                 items = listOf(previous, clicked, next, ineligibleRead, later),
-                clickedIndex = 1,
+                clickedKey = clicked.key,
                 serverId = "server-1"
             )
 
@@ -233,11 +234,11 @@ class SharedInboxPanelTest {
 
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = -1, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(items, clickedKey = "missing", serverId = "server-1")
         )
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = items.size, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(emptyList(), clickedKey = "first", serverId = "server-1")
         )
     }
 
@@ -1627,6 +1628,59 @@ class SharedInboxPanelTest {
         assertNotEquals(
             item.activityOpenGestureKey(presentationGeneration = 3),
             item.activityOpenGestureKey(presentationGeneration = 4)
+        )
+    }
+
+    @Test
+    fun activityGestureCommitsNewestContentForTheSameRenderedKeyAndGeneration() {
+        val rendered = activityItem(key = "thread:stable", latestActivityMessageId = "message:old", unreadCount = 0)
+        val updated =
+            rendered.copy(
+                latestActivityMessageId = MessageId("message:new"),
+                firstUnreadMessageId = MessageId("message:new"),
+                unreadCount = 2,
+            )
+
+        assertEquals(
+            updated,
+            activityItemForCommittedGesture(
+                renderedItemKey = rendered.key,
+                renderedPresentationGeneration = 7,
+                currentItems = listOf(updated),
+                currentPresentationGeneration = 7,
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureCancelsWhenCanonicalOrderChangesBeforePointerUp() {
+        val first = activityItem(key = "thread:first")
+        val second = activityItem(key = "thread:second")
+
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = first.key,
+                renderedPresentationGeneration = 7,
+                currentItems = listOf(second, first),
+                currentPresentationGeneration = 8,
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureCancelsWhenRenderedKeyIsRemovedBeforePointerUp() {
+        val rendered = activityItem(key = "thread:removed")
+        val replacement = activityItem(key = "thread:replacement")
+
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = rendered.key,
+                renderedPresentationGeneration = 7,
+                currentItems = listOf(replacement),
+                currentPresentationGeneration = 7,
+            ),
         )
     }
 
