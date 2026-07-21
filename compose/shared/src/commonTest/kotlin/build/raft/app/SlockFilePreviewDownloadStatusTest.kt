@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.tmm.kmmresource.resource.desc.desc
@@ -164,6 +165,81 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun composerImageDefaultMosaicBrushUsesTheCompactThreeByThreeFootprint() {
+        val tiles = slockComposerImageMosaicTilesAt(point = Offset(90f, 90f))
+
+        assertEquals(9, tiles.size)
+        assertEquals(4, tiles.minOf { it.column })
+        assertEquals(6, tiles.maxOf { it.column })
+        assertEquals(4, tiles.minOf { it.row })
+        assertEquals(6, tiles.maxOf { it.row })
+    }
+
+    @Test
+    fun composerImageMosaicAccumulatorMutatesInPlaceWithoutDuplicatingVisitedTiles() {
+        val tiles = mutableSetOf<SlockComposerImageMosaicTile>()
+
+        assertTrue(
+            slockComposerImageAccumulateMosaicTiles(
+                target = tiles,
+                point = Offset(35f, 25f),
+                tileSizePx = 10f,
+                brushRadius = 1,
+            )
+        )
+        assertEquals(9, tiles.size)
+        assertFalse(
+            slockComposerImageAccumulateMosaicTiles(
+                target = tiles,
+                point = Offset(35f, 25f),
+                tileSizePx = 10f,
+                brushRadius = 1,
+            )
+        )
+        assertEquals(9, tiles.size)
+    }
+
+    @Test
+    fun composerImageMosaicSamplesTheAspectFitSourcePixel() {
+        val sample =
+            slockComposerImageMosaicSample(
+                tile = SlockComposerImageMosaicTile(column = 2, row = 2),
+                imageWidth = 100,
+                imageHeight = 50,
+                canvasWidth = 200f,
+                canvasHeight = 200f,
+                tileSizePx = 20f,
+            )
+
+        assertEquals(
+            SlockComposerImageMosaicSample(
+                sourceX = 25,
+                sourceY = 2,
+                destinationX = 40,
+                destinationY = 50,
+                destinationWidth = 21,
+                destinationHeight = 11,
+            ),
+            sample,
+        )
+    }
+
+    @Test
+    fun composerImageMosaicDoesNotPaintOutsideTheAspectFitImage() {
+        assertEquals(
+            null,
+            slockComposerImageMosaicSample(
+                tile = SlockComposerImageMosaicTile(column = 2, row = 0),
+                imageWidth = 100,
+                imageHeight = 50,
+                canvasWidth = 200f,
+                canvasHeight = 200f,
+                tileSizePx = 20f,
+            ),
+        )
+    }
+
+    @Test
     fun composerImageEraserRemovesNearbyMosaicTiles() {
         val tiles =
             setOf(
@@ -195,6 +271,386 @@ class SlockFilePreviewDownloadStatusTest {
             )
 
         assertEquals(setOf(first), afterSecond.undo().content.mosaicTiles)
+    }
+
+    @Test
+    fun composerImageUndoRemovesTheFirstAndFinalCommittedMosaicGesture() {
+        val first = SlockComposerImageMosaicTile(column = 1, row = 1)
+        val final = SlockComposerImageMosaicTile(column = 8, row = 8)
+        val afterFirst =
+            slockComposerImageCommitMosaicGesture(
+                history = SlockComposerImageEditorHistory(),
+                tiles = setOf(first),
+            )
+        val afterFinal =
+            slockComposerImageCommitMosaicGesture(
+                history = afterFirst,
+                tiles = setOf(final),
+            )
+
+        val withoutFinal = afterFinal.undo()
+        assertEquals(setOf(first), withoutFinal.content.mosaicTiles)
+        assertEquals(
+            listOf(SlockComposerImageDrawOperation.Mosaic(setOf(first))),
+            withoutFinal.content.slockComposerImageResolvedDrawOperations(),
+        )
+        val withoutFirst = withoutFinal.undo()
+        assertTrue(withoutFirst.content.mosaicTiles.isEmpty())
+        assertTrue(withoutFirst.content.slockComposerImageResolvedDrawOperations().isEmpty())
+        assertFalse(withoutFirst.canUndo)
+
+        val restoredFirst = withoutFirst.redo()
+        assertEquals(setOf(first), restoredFirst.content.mosaicTiles)
+        assertEquals(
+            listOf(SlockComposerImageDrawOperation.Mosaic(setOf(first))),
+            restoredFirst.content.slockComposerImageResolvedDrawOperations(),
+        )
+        val restoredFinal = restoredFirst.redo()
+        assertEquals(setOf(first, final), restoredFinal.content.mosaicTiles)
+        assertEquals(
+            listOf(
+                SlockComposerImageDrawOperation.Mosaic(setOf(first)),
+                SlockComposerImageDrawOperation.Mosaic(setOf(final)),
+            ),
+            restoredFinal.content.slockComposerImageResolvedDrawOperations(),
+        )
+    }
+
+    @Test
+    fun composerImageDrawOperationsPreserveGestureCommitOrder() {
+        val stroke =
+            SlockComposerImageStroke(
+                points = listOf(Offset(4f, 4f), Offset(40f, 40f)),
+            )
+        val tile = SlockComposerImageMosaicTile(column = 2, row = 3)
+
+        val pencilThenMosaic =
+            slockComposerImageCommitMosaicGesture(
+                history =
+                    SlockComposerImageEditorHistory(
+                        content = SlockComposerImageEditorContent().slockComposerImageAppendStroke(stroke)
+                    ),
+                tiles = setOf(tile),
+            ).content.slockComposerImageResolvedDrawOperations()
+        val mosaicThenPencil =
+            slockComposerImageCommitMosaicGesture(
+                history = SlockComposerImageEditorHistory(),
+                tiles = setOf(tile),
+            ).content.slockComposerImageAppendStroke(stroke).slockComposerImageResolvedDrawOperations()
+
+        assertEquals(
+            listOf(
+                SlockComposerImageDrawOperation.Pencil(stroke),
+                SlockComposerImageDrawOperation.Mosaic(setOf(tile)),
+            ),
+            pencilThenMosaic,
+        )
+        assertEquals(
+            listOf(
+                SlockComposerImageDrawOperation.Mosaic(setOf(tile)),
+                SlockComposerImageDrawOperation.Pencil(stroke),
+            ),
+            mosaicThenPencil,
+        )
+    }
+
+    @Test
+    fun composerImageActiveMosaicMatchesThePostCommitDeltaOverExistingLayers() {
+        val existingTile = SlockComposerImageMosaicTile(column = 2, row = 2)
+        val newTile = SlockComposerImageMosaicTile(column = 3, row = 3)
+        val stroke = SlockComposerImageStroke(points = listOf(Offset(0f, 0f), Offset(40f, 40f)))
+        val before =
+            slockComposerImageCommitMosaicGesture(
+                history = SlockComposerImageEditorHistory(),
+                tiles = setOf(existingTile),
+            ).let { history ->
+                history.copy(content = history.content.slockComposerImageAppendStroke(stroke))
+            }
+        val touched = setOf(existingTile, newTile)
+
+        val activeDelta =
+            slockComposerImageActiveMosaicTiles(
+                touchedTiles = touched,
+                committedTiles = before.content.mosaicTiles,
+            )
+        val after = slockComposerImageCommitMosaicGesture(history = before, tiles = touched)
+
+        assertEquals(setOf(newTile), activeDelta)
+        assertEquals(
+            before.content.slockComposerImageResolvedDrawOperations() +
+                SlockComposerImageDrawOperation.Mosaic(activeDelta),
+            after.content.slockComposerImageResolvedDrawOperations(),
+        )
+    }
+
+    @Test
+    fun composerImageFullyOverlappingMosaicIsInvisibleAndDoesNotCreateHistory() {
+        val tile = SlockComposerImageMosaicTile(column = 2, row = 2)
+        val before =
+            slockComposerImageCommitMosaicGesture(
+                history = SlockComposerImageEditorHistory(),
+                tiles = setOf(tile),
+            )
+
+        assertTrue(
+            slockComposerImageActiveMosaicTiles(
+                touchedTiles = setOf(tile),
+                committedTiles = before.content.mosaicTiles,
+            ).isEmpty()
+        )
+        assertEquals(before, slockComposerImageCommitMosaicGesture(history = before, tiles = setOf(tile)))
+    }
+
+    @Test
+    fun composerImageEraseRetainsOnlyVisibleDrawOperationFragments() {
+        val firstStroke = SlockComposerImageStroke(points = listOf(Offset(0f, 0f), Offset(5f, 5f)))
+        val secondStroke = SlockComposerImageStroke(points = listOf(Offset(50f, 50f), Offset(60f, 60f)))
+        val firstTile = SlockComposerImageMosaicTile(column = 1, row = 1)
+        val secondTile = SlockComposerImageMosaicTile(column = 2, row = 2)
+        val content =
+            SlockComposerImageEditorContent(
+                strokes = listOf(firstStroke, secondStroke),
+                mosaicTiles = setOf(firstTile, secondTile),
+                drawOperations =
+                    listOf(
+                        SlockComposerImageDrawOperation.Pencil(firstStroke),
+                        SlockComposerImageDrawOperation.Mosaic(setOf(firstTile, secondTile)),
+                        SlockComposerImageDrawOperation.Pencil(secondStroke),
+                    ),
+            )
+
+        val retained =
+            content.slockComposerImageRetainDrawOperations(
+                strokes = listOf(secondStroke),
+                mosaicTiles = setOf(firstTile),
+            )
+
+        assertEquals(
+            listOf(
+                SlockComposerImageDrawOperation.Mosaic(setOf(firstTile)),
+                SlockComposerImageDrawOperation.Pencil(secondStroke),
+            ),
+            retained.drawOperations,
+        )
+    }
+
+    @Test
+    fun composerImageSingleCharacterUsesTheMeasuredHitTarget() {
+        val annotation = SlockComposerImageTextAnnotation(id = 7, text = "A", position = Offset(100f, 80f))
+
+        assertTrue(annotation.hitTest(point = Offset(143f, 105f), layoutSize = IntSize(144, 102)))
+        assertFalse(annotation.hitTest(point = Offset(250f, 105f), layoutSize = IntSize(144, 102)))
+    }
+
+    @Test
+    fun composerImageTextHitSelectsTheTopmostCommittedAnnotation() {
+        val bottom = SlockComposerImageTextAnnotation(id = 1, text = "bottom", position = Offset(20f, 20f))
+        val top = SlockComposerImageTextAnnotation(id = 2, text = "top", position = Offset(20f, 20f))
+
+        assertEquals(
+            top,
+            slockComposerImageTopmostTextAnnotationAt(
+                annotations = listOf(bottom, top),
+                point = Offset(30f, 30f),
+            ),
+        )
+        assertEquals(
+            null,
+            slockComposerImageTopmostTextAnnotationAt(
+                annotations = listOf(bottom, top),
+                point = Offset(300f, 300f),
+            ),
+        )
+    }
+
+    @Test
+    fun composerImageLongTextHitUsesTheFullMeasuredMultilineBounds() {
+        val annotation =
+            SlockComposerImageTextAnnotation(
+                id = 5,
+                text = "a".repeat(80),
+                position = Offset(20f, 30f),
+            )
+        val measuredSize = IntSize(width = 260, height = 82)
+
+        assertEquals(
+            annotation,
+            slockComposerImageTopmostTextAnnotationAt(
+                annotations = listOf(annotation),
+                point = Offset(270f, 105f),
+                layoutSizes = mapOf(annotation.id to measuredSize),
+            ),
+        )
+        assertEquals(
+            null,
+            slockComposerImageTopmostTextAnnotationAt(
+                annotations = listOf(annotation),
+                point = Offset(281f, 113f),
+                layoutSizes = mapOf(annotation.id to measuredSize),
+            ),
+        )
+    }
+
+    @Test
+    fun composerImageTextPositionClampsAllFourEdgesUsingMeasuredBounds() {
+        val annotationSize = IntSize(width = 260, height = 82)
+        val canvasSize = IntSize(width = 390, height = 520)
+
+        assertEquals(
+            Offset.Zero,
+            slockComposerImageClampTextPosition(
+                position = Offset(-20f, -30f),
+                annotationSize = annotationSize,
+                canvasSize = canvasSize,
+            ),
+        )
+        assertEquals(
+            Offset(130f, 438f),
+            slockComposerImageClampTextPosition(
+                position = Offset(300f, 500f),
+                annotationSize = annotationSize,
+                canvasSize = canvasSize,
+            ),
+        )
+    }
+
+    @Test
+    fun composerImageTextFallbackScalesDpAndLineHeightForDenseDisplays() {
+        assertEquals(
+            IntSize(width = 520, height = 164),
+            slockComposerImageTextFallbackSize(
+                text = "a".repeat(80),
+                densityScale = 2f,
+                fontScale = 1f,
+            ),
+        )
+    }
+
+    @Test
+    fun composerImageFirstMeasuredBoundsReclampANewAnnotationWithoutNewHistory() {
+        val annotation =
+            SlockComposerImageTextAnnotation(
+                id = 11,
+                text = "a".repeat(80),
+                position = Offset(300f, 500f),
+            )
+        val added =
+            SlockComposerImageEditorHistory().apply(
+                SlockComposerImageEditorContent(textAnnotations = listOf(annotation))
+            )
+        val actualPosition =
+            slockComposerImageClampTextPosition(
+                position = annotation.position,
+                annotationSize = IntSize(width = 260, height = 82),
+                canvasSize = IntSize(width = 390, height = 520),
+            )
+        val reclamped =
+            added.replaceWithoutHistory(
+                slockComposerImageMoveTextAnnotation(
+                    content = added.content,
+                    annotationId = annotation.id,
+                    position = actualPosition,
+                )
+            )
+
+        assertEquals(1, reclamped.undoStack.size)
+        assertEquals(Offset(130f, 438f), reclamped.content.textAnnotations.single().position)
+        assertTrue(reclamped.undo().content.textAnnotations.isEmpty())
+    }
+
+    @Test
+    fun composerImageEraserUsesMeasuredMultilineTextBounds() {
+        val annotation =
+            SlockComposerImageTextAnnotation(
+                id = 12,
+                text = "a".repeat(80),
+                position = Offset(20f, 30f),
+            )
+
+        assertTrue(
+            slockComposerImageEraseTextAnnotations(
+                annotations = listOf(annotation),
+                point = Offset(270f, 105f),
+                layoutSizes = mapOf(annotation.id to IntSize(width = 260, height = 82)),
+            ).isEmpty()
+        )
+        assertEquals(
+            listOf(annotation),
+            slockComposerImageEraseTextAnnotations(
+                annotations = listOf(annotation),
+                point = Offset(281f, 113f),
+                layoutSizes = mapOf(annotation.id to IntSize(width = 260, height = 82)),
+            ),
+        )
+    }
+
+    @Test
+    fun composerImageTextMoveCommitsOneUndoableTransactionAndRedoRestoresIt() {
+        val original = SlockComposerImageTextAnnotation(id = 7, text = "move", position = Offset(20f, 20f))
+        val origin = SlockComposerImageEditorContent(textAnnotations = listOf(original))
+        val initial = SlockComposerImageEditorHistory(content = origin)
+        val movedContent =
+            slockComposerImageMoveTextAnnotation(
+                content = initial.content,
+                annotationId = original.id,
+                position = Offset(80f, 90f),
+            )
+        val duringDrag = initial.replaceWithoutHistory(movedContent)
+
+        assertFalse(duringDrag.canUndo)
+        val committed = duringDrag.commitTransaction(origin)
+        assertEquals(1, committed.undoStack.size)
+        assertEquals(Offset(80f, 90f), committed.content.textAnnotations.single().position)
+
+        val undone = committed.undo()
+        assertEquals(Offset(20f, 20f), undone.content.textAnnotations.single().position)
+        val redone = undone.redo()
+        assertEquals(Offset(80f, 90f), redone.content.textAnnotations.single().position)
+    }
+
+    @Test
+    fun composerImageTextMoveOnlyChangesTheLockedAnnotation() {
+        val first = SlockComposerImageTextAnnotation(id = 1, text = "first", position = Offset(10f, 10f))
+        val second = SlockComposerImageTextAnnotation(id = 2, text = "second", position = Offset(30f, 30f))
+
+        val moved =
+            slockComposerImageMoveTextAnnotation(
+                content = SlockComposerImageEditorContent(textAnnotations = listOf(first, second)),
+                annotationId = second.id,
+                position = Offset(90f, 100f),
+            )
+
+        assertEquals(first, moved.textAnnotations[0])
+        assertEquals(Offset(90f, 100f), moved.textAnnotations[1].position)
+    }
+
+    @Test
+    fun composerImagePendingTextDraftIsCommittedBeforeDoneCaptureContent() {
+        val committed =
+            slockComposerImageAddTextDraft(
+                content = SlockComposerImageEditorContent(),
+                draft = "  pending caption  ",
+                position = Offset(44f, 55f),
+                annotationId = 9,
+            )
+
+        assertEquals(
+            SlockComposerImageTextAnnotation(
+                id = 9,
+                text = "pending caption",
+                position = Offset(44f, 55f),
+            ),
+            committed.textAnnotations.single(),
+        )
+        assertEquals(
+            committed,
+            slockComposerImageAddTextDraft(
+                content = committed,
+                draft = "   ",
+                position = Offset.Zero,
+                annotationId = 10,
+            ),
+        )
     }
 
     @Test
