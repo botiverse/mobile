@@ -1,0 +1,166 @@
+name: Android Visual Testbox
+on:
+  workflow_dispatch:
+    inputs:
+      testbox_id:
+        type: string
+        description: "Testbox session ID"
+        required: true
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
+  GRADLE_MAX_WORKERS: "1"
+  VISUAL_AVD_NAME: "visual-testbox-api34"
+  TESTBOX_ID: ${{ inputs.testbox_id }}
+  TESTBOX_ACTIONS_RUN_ID: ${{ github.run_id }}
+  TESTBOX_WORKFLOW: visual-android-testbox.yml
+  TESTBOX_JOB: android_visual
+  TESTBOX_RESOLVED_REF: ${{ github.ref }}
+  TESTBOX_RESOLVED_REF_SHA: ${{ github.sha }}
+  TESTBOX_AVD_NAME: visual-testbox-api34
+  TESTBOX_SYSTEM_IMAGE: system-images;android-34;google_apis;x86_64
+  TESTBOX_KVM: "true"
+  TESTBOX_RENDERER: swiftshader_indirect
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  android_visual:
+    name: Android Visual Testbox
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
+    steps:
+      - name: Begin Testbox
+        uses: useblacksmith/begin-testbox@233448af4bfdc6fca509a7f0974411ac6d8a8043 # v2
+        with:
+          testbox_id: ${{ inputs.testbox_id }}
+
+      - name: Checkout workflow base
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK and emulator image
+        shell: bash
+        run: |
+          sdkmanager \
+            "platform-tools" \
+            "emulator" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "system-images;android-34;google_apis;x86_64"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Create and boot warm Pixel 6 Pro AVD
+        shell: bash
+        run: |
+          echo "no" | avdmanager create avd \
+            --force \
+            --name "$VISUAL_AVD_NAME" \
+            --package "system-images;android-34;google_apis;x86_64" \
+            --device "pixel_6_pro"
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd "$VISUAL_AVD_NAME" \
+            -no-snapshot \
+            -no-window \
+            -gpu swiftshader_indirect \
+            -noaudio \
+            -no-boot-anim \
+            -camera-back none \
+            -no-metrics \
+            > "$RUNNER_TEMP/visual-testbox-emulator.log" 2>&1 &
+          adb wait-for-device
+          for attempt in $(seq 1 180); do
+            if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+              adb shell input keyevent 82 >/dev/null 2>&1 || true
+              adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+              adb shell getprop ro.build.fingerprint
+              adb shell cat /proc/sys/kernel/random/boot_id
+              exit 0
+            fi
+            if ! kill -0 "$(pgrep -n -f 'emulator.*visual-testbox-api34')" 2>/dev/null; then
+              tail -200 "$RUNNER_TEMP/visual-testbox-emulator.log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          tail -200 "$RUNNER_TEMP/visual-testbox-emulator.log" >&2
+          exit 1
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          umask 077
+          {
+            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
+            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
+          } > compose/github-packages.properties
+          chmod 600 compose/github-packages.properties
+
+      - name: Publish Kuikly fork artifacts
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --android-only
+
+      - name: Hydrate visual APK build
+        working-directory: ./compose
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --console=plain -PslockVisualFixtures=true \
+            :androidApp:assembleConnectedTest \
+            :androidApp:assembleConnectedTestAndroidTest
+
+      - name: Remove credentials before interactive Testbox
+        shell: bash
+        run: |
+          (cd compose && ./gradlew --stop) || true
+          rm -f compose/github-packages.properties
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git submodule foreach --recursive \
+            'git config --local --unset-all http.https://github.com/.extraheader || true'
+          if pgrep -f 'org.gradle.launcher.daemon.bootstrap.GradleDaemon' >/dev/null; then
+            pkill -f 'org.gradle.launcher.daemon.bootstrap.GradleDaemon' || true
+            for attempt in $(seq 1 30); do
+              pgrep -f 'org.gradle.launcher.daemon.bootstrap.GradleDaemon' >/dev/null || break
+              sleep 1
+            done
+          fi
+          test ! -e compose/github-packages.properties
+          if git config --local --get-regexp '^http\..*\.extraheader$' >/dev/null; then
+            echo "GitHub checkout credential survived cleanup" >&2
+            exit 1
+          fi
+          if pgrep -f 'org.gradle.launcher.daemon.bootstrap.GradleDaemon' >/dev/null; then
+            echo "Gradle daemon survived credential cleanup" >&2
+            exit 1
+          fi
+
+      - name: Run Testbox
+        uses: useblacksmith/run-testbox@5ca05834db1d3813554d1dd109e5f2087a8d7cbc # v2
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
+          GRADLE_MAX_WORKERS: "1"
