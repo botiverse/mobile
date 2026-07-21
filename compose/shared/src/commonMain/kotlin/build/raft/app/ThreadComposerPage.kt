@@ -2558,6 +2558,7 @@ private fun PendingMentionActionRow(
                     },
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
+                    leadingIcon = SlockLucideIconName.UserPlus,
                     onClick = onInvite
                 )
             }
@@ -2578,6 +2579,7 @@ private fun PendingMentionActionRow(
                     },
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
+                    leadingIcon = SlockLucideIconName.BellRing,
                     onClick = onNotify
                 )
             }
@@ -3135,17 +3137,21 @@ private fun ComposerTextChip(
 ) {
     if (variant == ComposerTextChipVariant.MutedText) {
         val mutedColor = SlockColor.TextBlack.copy(alpha = if (enabled) 0.45f else 0.3f)
-        Text(
-            text = text,
+        Button(
+            onClick = onClick,
+            enabled = enabled,
             modifier =
                 Modifier
-                    .clickable(enabled = enabled, onClick = onClick)
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-            style = SlockType.Caption.copy(color = mutedColor),
-            color = mutedColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = text,
+                style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = mutedColor),
+                color = mutedColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         return
     }
 
@@ -3188,6 +3194,7 @@ private fun ComposerTextChip(
         minWidth = 0.dp,
         minHeight = 26.dp,
         shadowOffset = 2.dp,
+        leadingIcon = leadingIcon,
         textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
     )
 }
