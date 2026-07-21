@@ -9,9 +9,11 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.ActivityUnreadSummaryProjection
+import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
@@ -21,10 +23,16 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivitySenderProfile
+import build.raft.app.data.SharedActivityPresentationCheckpoint
+import build.raft.app.data.SharedActivityPresentationStore
 import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.data.activityPendingUpdateIncrement
+import build.raft.app.data.activityPendingUpdateMarkers
+import build.raft.app.data.activityUpdatePresentation
+import build.raft.app.data.activityUpdateRevisionMessageId
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
@@ -72,6 +80,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.items
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -95,8 +104,6 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
-private const val ActivityUpdateTrackingWindow = 20
-private const val ActivityRetiredUpdateTrackingWindow = ActivityUpdateTrackingWindow * 5
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -211,6 +218,13 @@ internal fun SharedHomeActivityScreen(
         remember(state, activitySummary) {
             projectActivityStateWithProcessSummary(state, activitySummary)
         }
+    val stableOrderEnabledAtRouteEntry =
+        remember(activityStore, state.ownerUserId, activitySummaryServerId) {
+            sharedStores.serverFeatureFlags.isEnabled(
+                activitySummaryServerId,
+                MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
+            )
+        }
     val sharedHomeStore = remember(sharedStores, storeScope) {
         sharedStores.sharedHomeStore(storeScope)
     }
@@ -290,6 +304,8 @@ internal fun SharedHomeActivityScreen(
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
+        stableOrderEnabled = stableOrderEnabledAtRouteEntry,
+        presentationStore = activityStore.presentationStore,
         modifier = modifier
     )
 }
@@ -350,6 +366,8 @@ internal fun SharedHomeActivityScreen(
     activityTaskStatusBadgesEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
+    stableOrderEnabled: Boolean = true,
+    presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     modifier: Modifier = Modifier
 ) {
     SharedActivityPanelContent(
@@ -364,6 +382,8 @@ internal fun SharedHomeActivityScreen(
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
         draftProjection = draftProjection,
         onTitleClick = onTitleClick,
+        stableOrderEnabled = stableOrderEnabled,
+        presentationStore = presentationStore,
         modifier = modifier
     )
 }
@@ -382,6 +402,8 @@ internal fun SharedHomeActivityPanel(
     activityTaskStatusBadgesEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     onTitleClick: (() -> Unit)? = null,
+    stableOrderEnabled: Boolean = true,
+    presentationStore: SharedActivityPresentationStore = remember { SharedActivityPresentationStore() },
     modifier: Modifier = Modifier
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
@@ -401,6 +423,8 @@ internal fun SharedHomeActivityPanel(
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             draftProjection = draftProjection,
             onTitleClick = onTitleClick,
+            stableOrderEnabled = stableOrderEnabled,
+            presentationStore = presentationStore,
             modifier = modifier
         )
     }
@@ -419,6 +443,8 @@ private fun SharedActivityPanelContent(
     activityTaskStatusBadgesEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     onTitleClick: (() -> Unit)?,
+    stableOrderEnabled: Boolean,
+    presentationStore: SharedActivityPresentationStore,
     modifier: Modifier = Modifier
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
@@ -449,6 +475,9 @@ private fun SharedActivityPanelContent(
             listState = listState,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             draftProjection = draftProjection,
+            presentationAccountId = state.ownerUserId.orEmpty(),
+            stableOrderEnabled = stableOrderEnabled,
+            presentationStore = presentationStore,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
     }
@@ -464,6 +493,9 @@ private fun SharedActivityBodyContent(
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
+    presentationAccountId: String,
+    stableOrderEnabled: Boolean,
+    presentationStore: SharedActivityPresentationStore,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -529,7 +561,10 @@ private fun SharedActivityBodyContent(
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
                     listState = listState,
-                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                    presentationAccountId = presentationAccountId,
+                    stableOrderEnabled = stableOrderEnabled,
+                    presentationStore = presentationStore
                 )
         }
     }
@@ -652,17 +687,68 @@ private fun SharedActivityList(
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
     listState: LazyListState = rememberLazyListState(),
-    activityTaskStatusBadgesEnabled: Boolean
+    activityTaskStatusBadgesEnabled: Boolean,
+    presentationAccountId: String,
+    stableOrderEnabled: Boolean,
+    presentationStore: SharedActivityPresentationStore
 ) {
+    val presentationServerId = snapshot.server.id.value
+    val restoredPresentation =
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter, stableOrderEnabled) {
+            if (stableOrderEnabled) {
+                presentationStore.restoreOrCreate(
+                    accountId = presentationAccountId,
+                    serverId = presentationServerId,
+                    filter = selectedFilter,
+                    canonicalItems = snapshot.items
+                )
+            } else {
+                presentationStore.clearOwner(presentationAccountId, presentationServerId)
+                SharedActivityPresentationCheckpoint(
+                    presentedItems = snapshot.items,
+                    updateTracking = ActivityUpdateTrackingState(selectedFilter).recordSnapshot(selectedFilter, snapshot.items)
+                )
+            }
+        }
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
-    var updateTracking by remember(selectedFilter) { mutableStateOf(ActivityUpdateTrackingState(filter = selectedFilter)) }
+    var updateTracking by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+        mutableStateOf(restoredPresentation.updateTracking)
+    }
     var revealRequest by remember(selectedFilter) { mutableStateOf(0) }
+    val presentedItemsState =
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+            mutableStateOf(restoredPresentation.presentedItems)
+        }
+    var presentedItems by presentedItemsState
+    val presentationGenerationState =
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+            mutableStateOf(restoredPresentation.presentationGeneration)
+        }
+    var presentationGeneration by presentationGenerationState
+    var pullRefreshInFlight by remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+        mutableStateOf(restoredPresentation.pullRefreshInFlight)
+    }
+    fun savePresentation() {
+        if (!stableOrderEnabled) return
+        presentationStore.save(
+            accountId = presentationAccountId,
+            serverId = presentationServerId,
+            filter = selectedFilter,
+            checkpoint =
+                SharedActivityPresentationCheckpoint(
+                    presentedItems = presentedItems,
+                    updateTracking = updateTracking,
+                    presentationGeneration = presentationGeneration,
+                    pullRefreshInFlight = pullRefreshInFlight
+                )
+        )
+    }
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
-    LaunchedEffect(snapshot.items) {
+    LaunchedEffect(presentedItems) {
         val visibleItemKeys =
             listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
                 itemInfo.key as? String
@@ -671,47 +757,83 @@ private fun SharedActivityList(
             activityListShouldRecoverVisibleContent(
                 firstVisibleItemIndex = listState.firstVisibleItemIndex,
                 visibleItemKeys = visibleItemKeys,
-                currentItemKeys = snapshot.items.map(InboxItem::key)
+                currentItemKeys = presentedItems.map(InboxItem::key)
             )
         ) {
             updateTracking = updateTracking.consumePending()
+            savePresentation()
             listState.scrollToItem(0)
         }
     }
-    LaunchedEffect(snapshot.items) {
+    LaunchedEffect(presentedItems) {
         val selected = selectedItemKey
-        if (selected != null && snapshot.items.none { it.key == selected }) {
+        if (selected != null && presentedItems.none { it.key == selected }) {
             selectedItemKey = null
         }
     }
     LaunchedEffect(selectedFilter, snapshot.items, refreshing, pullRefreshing) {
-        // Realtime arrivals never take ownership of the Activity viewport, even
-        // while it is parked away from the new head. Once the rendered viewport
-        // already contains that head, however, the batch has been shown and the
-        // banner must retire synchronously instead of advertising visible rows.
-        // Refresh transitions re-run the same reconciliation so a stale marker
-        // cannot survive a pull refresh. Filter changes establish a fresh
-        // baseline: All, Unread and Mentions never classify one another's
-        // membership changes as arrivals.
-        updateTracking =
+        if (!stableOrderEnabled) {
+            val nextPresentedItems =
+                activityItemsAfterCanonicalSnapshot(
+                    stableOrderEnabled = false,
+                    pendingCount = 0,
+                    pullRefreshCompleted = false,
+                    presentedItems = presentedItems,
+                    canonicalItems = snapshot.items
+                )
+            presentationGeneration =
+                activityNextPresentationGeneration(
+                    currentGeneration = presentationGeneration,
+                    presentedItems = presentedItems,
+                    nextPresentedItems = nextPresentedItems
+                )
+            presentedItems = nextPresentedItems
+            updateTracking =
+                ActivityUpdateTrackingState(selectedFilter)
+                    .recordSnapshot(selectedFilter, snapshot.items)
+            pullRefreshInFlight = false
+            return@LaunchedEffect
+        }
+        if (pullRefreshing) {
+            pullRefreshInFlight = true
+        }
+        val pullRefreshCompleted = pullRefreshInFlight && !pullRefreshing
+        var nextTracking =
             updateTracking
                 .recordSnapshot(selectedFilter, snapshot.items)
-                .reconcileVisibleSnapshot(
+                .reconcileCanonicalSnapshot(
                     nextFilter = selectedFilter,
-                    currentItems = snapshot.items,
-                    visibleItemKeys =
-                        listState.layoutInfo.visibleItemsInfo.mapNotNull { itemInfo ->
-                            itemInfo.key as? String
-                        }
+                    currentItems = snapshot.items
                 )
+        val nextPresentedItems =
+            activityItemsAfterCanonicalSnapshot(
+                stableOrderEnabled = true,
+                pendingCount = nextTracking.pendingCount,
+                pullRefreshCompleted = pullRefreshCompleted,
+                presentedItems = presentedItems,
+                canonicalItems = snapshot.items
+            )
+        presentationGeneration =
+            activityNextPresentationGeneration(
+                currentGeneration = presentationGeneration,
+                presentedItems = presentedItems,
+                nextPresentedItems = nextPresentedItems
+            )
+        presentedItems = nextPresentedItems
+        if (pullRefreshCompleted) {
+            nextTracking = nextTracking.consumePending()
+            pullRefreshInFlight = false
+        }
+        updateTracking = nextTracking
+        savePresentation()
     }
     LaunchedEffect(selectedFilter, revealRequest) {
         if (revealRequest > 0) {
             listState.animateScrollToTopExpressive()
         }
     }
-    LaunchedEffect(listState, selectedFilter, snapshot.server.id, snapshot.items) {
-        val activityItemsByKey = snapshot.items.associateBy(InboxItem::key)
+    LaunchedEffect(listState, selectedFilter, snapshot.server.id, presentedItems) {
+        val activityItemsByKey = presentedItems.associateBy(InboxItem::key)
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo
                 .mapNotNull { itemInfo ->
@@ -721,15 +843,6 @@ private fun SharedActivityList(
         }
             .distinctUntilChanged()
             .collect { visibleItemKeys ->
-                // layoutInfo is updated after remeasure. This is the decisive
-                // signal for prepended rows: if the new head is now in the
-                // viewport, the corresponding update batch is already visible.
-                updateTracking =
-                    updateTracking.reconcileVisibleSnapshot(
-                        nextFilter = selectedFilter,
-                        currentItems = snapshot.items,
-                        visibleItemKeys = visibleItemKeys
-                    )
                 val markers =
                     visibleItemKeys
                         .mapNotNull { key ->
@@ -747,6 +860,23 @@ private fun SharedActivityList(
     }
     val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
+    val presentationOwnerIdentity =
+        activityPresentationOwnerIdentity(
+            accountId = presentationAccountId,
+            serverId = presentationServerId,
+            filter = selectedFilter,
+        )
+    val currentPresentationOwnerIdentityState = rememberUpdatedState(presentationOwnerIdentity)
+    // Freeze the item/key/content triplet for one LazyColumn composition. Reading the mutable
+    // presentedItems list independently from the count-key lambda and the row-content lambda can
+    // bind a node to the new key while its content/callback still belongs to the old index during
+    // an immediate-canonical reorder (Hands e3866a35/acb153fa).
+    val renderedItems = presentedItems
+    val renderedPresentationGeneration = presentationGeneration
+    val renderedPresentationOwnerIdentity = presentationOwnerIdentity
+    // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
+    // the backing MutableState objects at commit time so the old callback sees an order change
+    // immediately, even before the next recomposition updates or cancels its pointerInput node.
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
@@ -760,8 +890,7 @@ private fun SharedActivityList(
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) }
                 )
             }
-            items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
-                val item = snapshot.items[index]
+            items(items = renderedItems, key = { item -> item.key }) { item ->
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
@@ -770,23 +899,54 @@ private fun SharedActivityList(
                     timeContext = timeContext,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     captureMenuAnchor = !listState.isScrollInProgress,
-                    onOpen = {
-                        selectedItemKey = item.key
+                    presentationGeneration = renderedPresentationGeneration,
+                    presentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                    onOpen = open@{
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedPresentationGeneration = renderedPresentationGeneration,
+                                currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationGeneration = presentationGenerationState.value,
+                            ) ?: return@open
+                        selectedItemKey = currentItem.key
                         onIntent(
                             SharedActivityIntent.PrewarmActivityTail(
                                 activityReplyThreadPrewarmNextAfterClick(
-                                    items = snapshot.items,
-                                    clickedIndex = index,
+                                    items = presentedItems,
+                                    clickedKey = currentItem.key,
                                     serverId = snapshot.server.id.value
                                 )
                             )
                         )
-                        item.activityOpenReadIntent()?.let(onIntent)
-                        onOpenItem(item)
+                        currentItem.activityOpenReadIntent()?.let(onIntent)
+                        onOpenItem(currentItem)
                     },
-                    onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
-                    onOpenMenu = { anchor ->
-                        activeMenuItem = item
+                    onDone = done@{
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedPresentationGeneration = renderedPresentationGeneration,
+                                currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationGeneration = presentationGenerationState.value,
+                            ) ?: return@done
+                        onIntent(SharedActivityIntent.MarkDone(currentItem))
+                    },
+                    onOpenMenu = menu@{ anchor ->
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedPresentationGeneration = renderedPresentationGeneration,
+                                currentItems = presentedItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationGeneration = presentationGenerationState.value,
+                            ) ?: return@menu
+                        activeMenuItem = currentItem
                         menuAnchor = anchor
                     }
                 )
@@ -822,7 +982,7 @@ private fun SharedActivityList(
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
         }
-        if (updateTracking.pendingCount > 0) {
+        if (stableOrderEnabled && updateTracking.pendingCount > 0) {
             SlockBrutalActionButton(
                 label = stringResource(
                     if (updateTracking.pendingCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
@@ -834,7 +994,15 @@ private fun SharedActivityList(
                     // marker and remains actionable; animation completion never
                     // clears work that arrived after this click.
                     updateTracking = updateTracking.consumePending()
+                    presentationGeneration =
+                        activityNextPresentationGeneration(
+                            currentGeneration = presentationGeneration,
+                            presentedItems = presentedItems,
+                            nextPresentedItems = snapshot.items
+                        )
+                    presentedItems = snapshot.items
                     revealRequest += 1
+                    savePresentation()
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
                 minHeight = 30.dp,
@@ -887,9 +1055,10 @@ private fun SharedActivityList(
  */
 internal fun activityReplyThreadPrewarmNextAfterClick(
     items: List<InboxItem>,
-    clickedIndex: Int,
+    clickedKey: String,
     serverId: String
 ): List<ActivityReplyThreadPrewarmMarker> {
+    val clickedIndex = items.indexOfFirst { item -> item.key == clickedKey }
     if (clickedIndex !in items.indices) return emptyList()
     return listOfNotNull(
         items
@@ -897,6 +1066,30 @@ internal fun activityReplyThreadPrewarmNextAfterClick(
         .firstNotNullOfOrNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
     )
 }
+
+/**
+ * Commits an Activity row gesture only while the exact rendered order generation still owns the
+ * row key. Content-only updates for the same key are allowed and resolve to the newest canonical
+ * item; any reorder/removal cancels the stale DOWN instead of retargeting its UP to another row.
+ */
+internal fun activityItemForCommittedGesture(
+    renderedItemKey: String,
+    renderedPresentationOwnerIdentity: String,
+    renderedPresentationGeneration: Int,
+    currentItems: List<InboxItem>,
+    currentPresentationOwnerIdentity: String,
+    currentPresentationGeneration: Int,
+): InboxItem? {
+    if (renderedPresentationOwnerIdentity != currentPresentationOwnerIdentity) return null
+    if (renderedPresentationGeneration != currentPresentationGeneration) return null
+    return currentItems.firstOrNull { item -> item.key == renderedItemKey }
+}
+
+internal fun activityPresentationOwnerIdentity(
+    accountId: String,
+    serverId: String,
+    filter: InboxFilter,
+): String = "account:$accountId|server:$serverId|filter:${filter.wireValue}"
 
 internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
     // The destination store acknowledges the stable channel/thread identity after it is loaded
@@ -964,11 +1157,19 @@ private fun SharedActivityRow(
     timeContext: SlockTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
+    presentationGeneration: Int = 0,
+    presentationOwnerIdentity: String = "",
     onOpen: () -> Unit,
     onDone: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ) {
-    val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
+    val openGestureKey =
+        remember(item, presentationGeneration, presentationOwnerIdentity) {
+            item.activityOpenGestureKey(
+                presentationGeneration = presentationGeneration,
+                presentationOwnerIdentity = presentationOwnerIdentity,
+            )
+        }
     val mutedPrimaryContent = item.activityPrimaryContentMuted()
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
@@ -984,7 +1185,12 @@ private fun SharedActivityRow(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+                            .activityRowGestures(
+                                openGestureKey,
+                                captureMenuAnchor,
+                                onOpen,
+                                onOpenMenu
+                            )
                             .padding(start = 12.dp, top = 12.dp)
                 ) {
                 // Tag + timestamp share the top row — artin's ruling on #1039
@@ -1078,7 +1284,11 @@ private fun SharedActivityRow(
                 ) {
                     SharedActivitySmallIconButton(
                         iconName = SlockLucideIconName.Check,
-                        clickIdentity = item.activityDoneClickIdentity(),
+                        clickIdentity =
+                            item.activityDoneClickIdentity(
+                                presentationGeneration = presentationGeneration,
+                                presentationOwnerIdentity = presentationOwnerIdentity,
+                            ),
                         onClick = onDone
                     )
                 }
@@ -1090,7 +1300,12 @@ private fun SharedActivityRow(
                 Modifier
                     .fillMaxWidth()
                     .height(12.dp)
-                    .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+                    .activityRowGestures(
+                        openGestureKey,
+                        captureMenuAnchor,
+                        onOpen,
+                        onOpenMenu
+                    )
             )
         }
     }
@@ -1099,7 +1314,10 @@ private fun SharedActivityRow(
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
     kind != InboxItemKind.System && unreadCount == 0
 
-internal fun InboxItem.activityDoneClickIdentity(): String = "activity-done:$key"
+internal fun InboxItem.activityDoneClickIdentity(
+    presentationGeneration: Int = 0,
+    presentationOwnerIdentity: String = "",
+): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
 @Composable
 private fun Modifier.activityRowGestures(
@@ -1108,8 +1326,6 @@ private fun Modifier.activityRowGestures(
     onClick: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ): Modifier {
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnOpenMenu by rememberUpdatedState(onOpenMenu)
     val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef() }
     return this
         .then(
@@ -1121,9 +1337,12 @@ private fun Modifier.activityRowGestures(
         )
         .pointerInput(gestureKey) {
             detectTapGestures(
-                onTap = { currentOnClick() },
+                // Deliberately capture the callback owned by this pointerInput generation. Using
+                // rememberUpdatedState here lets a recomposed row replace the callback before the
+                // old DOWN is cancelled, which can open the item newly occupying the same slot.
+                onTap = { onClick() },
                 onLongPress = { localOffset ->
-                    rootAnchor.resolve(localOffset)?.let(currentOnOpenMenu)
+                    rootAnchor.resolve(localOffset)?.let(onOpenMenu)
                 }
             )
         }
@@ -1143,6 +1362,16 @@ internal fun InboxItem.inboxItemOpenGestureKey(): String =
         resolveInboxAnchorMessageId()?.value.orEmpty(),
         unreadCount.toString()
     ).joinToString("|")
+
+internal fun InboxItem.activityOpenGestureKey(
+    presentationGeneration: Int,
+    presentationOwnerIdentity: String = "",
+): String =
+    // The Activity pointer owner follows the stable presented slot, not the
+    // latest anchor/unread fields. The captured callback resolves newest content
+    // through stable current-state holders; only a committed order generation
+    // change may cancel a DOWN→UP gesture that started on this slot.
+    "activity-open:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -1609,172 +1838,53 @@ internal fun activityListShouldRecoverVisibleContent(
     return visibleItemKeys.none(currentKeys::contains)
 }
 
-internal data class ActivityUpdateMarker(
-    val filter: InboxFilter,
-    val itemKey: String,
-    val latestActivityMessageId: String?
-)
-
-internal data class ActivityPendingUpdateLedger(
-    val pendingMarkers: Set<ActivityUpdateMarker> = emptySet(),
-    val retiredMarkers: Set<ActivityUpdateMarker> = emptySet()
-) {
-    val count: Int
-        get() = pendingMarkers.size
-
-    fun record(markers: Set<ActivityUpdateMarker>): ActivityPendingUpdateLedger {
-        val genuinelyPending = markers - retiredMarkers
-        if (genuinelyPending.isEmpty()) return this
-        return copy(pendingMarkers = pendingMarkers + genuinelyPending)
-    }
-
-    fun retire(markers: Set<ActivityUpdateMarker>): ActivityPendingUpdateLedger {
-        val retiring = pendingMarkers intersect markers
-        if (retiring.isEmpty()) return this
-        val allRetired = (retiredMarkers + retiring).toList()
-        val retainedFrom = (allRetired.size - ActivityRetiredUpdateTrackingWindow).coerceAtLeast(0)
-        val retired =
-            allRetired
-                .subList(retainedFrom, allRetired.size)
-                .toSet()
-        return copy(pendingMarkers = pendingMarkers - retiring, retiredMarkers = retired)
-    }
-
-    fun consumePending(): ActivityPendingUpdateLedger = retire(pendingMarkers)
+internal fun activityItemsPreservingPresentedOrder(
+    presentedItems: List<InboxItem>,
+    canonicalItems: List<InboxItem>
+): List<InboxItem> {
+    // Stable LazyColumn keys preserve node identity only when the business list
+    // also preserves slots. Reordering the backing list between DOWN and UP can
+    // otherwise let a new coordinate occupant receive the gesture on affected
+    // Kuikly runtimes. Update fields in place and reveal canonical order later.
+    if (presentedItems.isEmpty() || canonicalItems.isEmpty()) return presentedItems
+    val canonicalByKey = canonicalItems.associateBy(InboxItem::key)
+    return presentedItems.map { presented -> canonicalByKey[presented.key] ?: presented }
 }
 
-internal data class ActivityUpdateTrackingState(
-    val filter: InboxFilter,
-    val previousItems: List<InboxItem> = emptyList(),
-    val pendingUpdates: ActivityPendingUpdateLedger = ActivityPendingUpdateLedger()
-) {
-    val pendingCount: Int
-        get() = pendingUpdates.count
+internal fun activityShouldAdoptCanonicalOrder(
+    pendingCount: Int,
+    pullRefreshCompleted: Boolean
+): Boolean = pendingCount == 0 || pullRefreshCompleted
 
-    fun recordSnapshot(
-        nextFilter: InboxFilter,
-        currentItems: List<InboxItem>
-    ): ActivityUpdateTrackingState {
-        val currentWindow = currentItems.take(ActivityUpdateTrackingWindow)
-        if (filter != nextFilter) {
-            return ActivityUpdateTrackingState(
-                filter = nextFilter,
-                previousItems = currentWindow
-            )
-        }
-        val update =
-            activityUpdatePresentation(
-                filter = nextFilter,
-                previousItems = previousItems,
-                currentItems = currentItems
-            )
-        return copy(
-            previousItems = currentWindow,
-            pendingUpdates = pendingUpdates.record(update.pendingMarkers)
-        )
-    }
-
-    fun consumePending(): ActivityUpdateTrackingState =
-        copy(pendingUpdates = pendingUpdates.consumePending())
-
-    fun reconcileVisibleSnapshot(
-        nextFilter: InboxFilter,
-        currentItems: List<InboxItem>,
-        visibleItemKeys: Collection<String>
-    ): ActivityUpdateTrackingState {
-        if (filter != nextFilter || pendingUpdates.pendingMarkers.isEmpty()) return this
-
-        val currentMarkers =
-            currentItems.mapTo(linkedSetOf()) { item ->
-                ActivityUpdateMarker(
-                    filter = nextFilter,
-                    itemKey = item.key,
-                    latestActivityMessageId = item.latestActivityMessageId?.value
-                )
-            }
-        var reconciled =
-            pendingUpdates.retire(pendingUpdates.pendingMarkers - currentMarkers)
-        val leadingPendingMarker =
-            currentItems.firstNotNullOfOrNull { item ->
-                ActivityUpdateMarker(
-                    filter = nextFilter,
-                    itemKey = item.key,
-                    latestActivityMessageId = item.latestActivityMessageId?.value
-                ).takeIf(reconciled.pendingMarkers::contains)
-            }
-        if (leadingPendingMarker != null && leadingPendingMarker.itemKey in visibleItemKeys) {
-            reconciled = reconciled.consumePending()
-        }
-        return if (reconciled == pendingUpdates) this else copy(pendingUpdates = reconciled)
+internal fun activityItemsAfterCanonicalSnapshot(
+    stableOrderEnabled: Boolean,
+    pendingCount: Int,
+    pullRefreshCompleted: Boolean,
+    presentedItems: List<InboxItem>,
+    canonicalItems: List<InboxItem>
+): List<InboxItem> {
+    if (!stableOrderEnabled) return canonicalItems
+    return if (activityShouldAdoptCanonicalOrder(pendingCount, pullRefreshCompleted)) {
+        canonicalItems
+    } else {
+        // Realtime/background snapshots may advance content for a stable row,
+        // and route-return/foreground reconciliation may confirm a self-authored
+        // send, but neither owns its visible slot. Keep every presented key in
+        // place and withhold new keys until explicit banner/PTR adoption.
+        activityItemsPreservingPresentedOrder(presentedItems, canonicalItems)
     }
 }
 
-internal data class ActivityUpdatePresentation(
-    val pendingMarkers: Set<ActivityUpdateMarker>
-) {
-    val pendingIncrement: Int
-        get() = pendingMarkers.size
-}
-
-internal fun activityUpdatePresentation(
-    filter: InboxFilter = InboxFilter.All,
-    previousItems: List<InboxItem>,
-    currentItems: List<InboxItem>
-): ActivityUpdatePresentation {
-    // A data arrival is not a viewport-replacement intent. Always accumulate
-    // genuine head changes behind the explicit reveal action; do not silently
-    // scroll just because the current viewport happens to be near the top.
-    val pendingMarkers =
-        activityPendingUpdateMarkers(
-            filter = filter,
-            previousItems = previousItems,
-            currentItems = currentItems,
-            nearTop = false
-        )
-    return ActivityUpdatePresentation(pendingMarkers = pendingMarkers)
-}
-
-// "↑ x new" counts ONLY genuinely new activity, never the user's own actions.
-// Two things qualify (task #554 follow-up — the old whole-signature diff
-// counted mark-read/unread/done mutations as "new updates"):
-//  1. fresh rows that sorted in above every previously known row (the feed is
-//     newest-first, so real arrivals enter at the top; rows revealed from
-//     below the tracked window sit under a known key and don't count);
-//  2. known conversations whose latest activity MESSAGE changed — read-state
-//     and task-status mutations never touch latestActivityMessageId.
-internal fun activityPendingUpdateIncrement(
-    previousItems: List<InboxItem>,
-    currentItems: List<InboxItem>,
-    nearTop: Boolean,
-    filter: InboxFilter = InboxFilter.All
-): Int = activityPendingUpdateMarkers(filter, previousItems, currentItems, nearTop).size
-
-internal fun activityPendingUpdateMarkers(
-    filter: InboxFilter,
-    previousItems: List<InboxItem>,
-    currentItems: List<InboxItem>,
-    nearTop: Boolean
-): Set<ActivityUpdateMarker> {
-    if (nearTop || previousItems.isEmpty()) return emptySet()
-    val previousByKey = previousItems.associateBy { it.key }
-    val currentWindow = currentItems.take(ActivityUpdateTrackingWindow)
-    if (currentWindow.isEmpty()) return emptySet()
-    val freshTopRows = currentWindow.takeWhile { it.key !in previousByKey }
-    val advancedKnownRows =
-        currentWindow.filter { current ->
-            val previous = previousByKey[current.key] ?: return@filter false
-            val currentLatest = current.latestActivityMessageId?.value
-            currentLatest != null && currentLatest != previous.latestActivityMessageId?.value
-        }
-    return (freshTopRows + advancedKnownRows)
-        .mapTo(linkedSetOf()) { item ->
-            ActivityUpdateMarker(
-                filter = filter,
-                itemKey = item.key,
-                latestActivityMessageId = item.latestActivityMessageId?.value
-            )
-        }
-}
+internal fun activityNextPresentationGeneration(
+    currentGeneration: Int,
+    presentedItems: List<InboxItem>,
+    nextPresentedItems: List<InboxItem>
+): Int =
+    if (presentedItems.map(InboxItem::key) == nextPresentedItems.map(InboxItem::key)) {
+        currentGeneration
+    } else {
+        currentGeneration + 1
+    }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = resolveInboxStreamChannelId()
