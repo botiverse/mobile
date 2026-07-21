@@ -74,6 +74,10 @@ test("patch scope is restricted to located product sources and exact diff header
     diff: `--- a/${testSource}\n+++ b/${testSource}\n@@ -1 +1 @@`,
   }] }, [{ path: testSource }]), /forbidden queue scope/);
   assert.match(patchScopeProblem({ patchable: true, patch: [{ path: sources[0].path, diff: "missing headers" }] }, sources), /diff headers/);
+  assert.match(patchScopeProblem({ patchable: true, patch: [{
+    path: sources[0].path,
+    diff: `--- a/${sources[0].path}\n+++ b/${sources[0].path}\n@@ -1 +1 @@\n--- a/packages/visual-testing/shared/sharedCases.json\n+++ b/packages/visual-testing/shared/sharedCases.json\n@@ -1 +1 @@`,
+  }] }, sources), /diff headers/);
 });
 
 test("source records dedupe by repo-relative path", () => {

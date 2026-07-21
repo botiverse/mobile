@@ -288,8 +288,19 @@ export function patchScopeProblem(patchResult, androidSources) {
     if (!allowed.has(patchPath)) return `patch path is outside located Android authority: ${patchPath || "<missing>"}`;
     if (isForbiddenSourcePath(patchPath)) return `patch path is forbidden queue scope: ${patchPath}`;
     const diff = String(entry?.diff || "");
-    if (!diff.includes(`--- a/${patchPath}`) || !diff.includes(`+++ b/${patchPath}`)) {
+    const oldHeaders = [...diff.matchAll(/^---\s+([^\t\r\n]+).*$/gm)].map((match) => match[1]);
+    const newHeaders = [...diff.matchAll(/^\+\+\+\s+([^\t\r\n]+).*$/gm)].map((match) => match[1]);
+    const gitHeaders = [...diff.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)];
+    if (oldHeaders.length !== 1 || newHeaders.length !== 1
+      || oldHeaders[0] !== `a/${patchPath}` || newHeaders[0] !== `b/${patchPath}`) {
       return `patch diff headers do not bind to declared path: ${patchPath}`;
+    }
+    if (gitHeaders.length > 1 || (gitHeaders[0]
+      && (gitHeaders[0][1] !== patchPath || gitHeaders[0][2] !== patchPath))) {
+      return `patch contains a second or mismatched file header: ${patchPath}`;
+    }
+    if (/^(?:rename|copy) (?:from|to) |^Binary files |^GIT binary patch$/m.test(diff)) {
+      return `patch uses forbidden rename/copy/binary form: ${patchPath}`;
     }
   }
   return null;
