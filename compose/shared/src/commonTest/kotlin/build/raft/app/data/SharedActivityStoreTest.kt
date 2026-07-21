@@ -57,6 +57,36 @@ import kotlin.test.assertTrue
 private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
 
 class SharedActivityStoreTest {
+
+    @Test
+    fun presentationEpochAdvancesMonotonicallyAcrossOwnerFilterAndOrderAba() {
+        val itemA = activityItem("a")
+        val itemB = activityItem("b")
+        val initial =
+            SharedActivityState(
+                selectedFilter = InboxFilter.All,
+                snapshot = snapshot(items = listOf(itemA, itemB)),
+                ownerServerId = "server-a",
+                ownerUserId = "account-a",
+                presentationEpoch = 7L,
+            )
+
+        val ownerB = initial.copy(ownerUserId = "account-b").withActivityPresentationEpoch(initial)
+        val ownerAAgain = ownerB.copy(ownerUserId = "account-a").withActivityPresentationEpoch(ownerB)
+        val unread = ownerAAgain.copy(selectedFilter = InboxFilter.Unread).withActivityPresentationEpoch(ownerAAgain)
+        val allAgain = unread.copy(selectedFilter = InboxFilter.All).withActivityPresentationEpoch(unread)
+        val reordered = allAgain.copy(snapshot = snapshot(items = listOf(itemB, itemA))).withActivityPresentationEpoch(allAgain)
+        val originalOrderAgain = reordered.copy(snapshot = snapshot(items = listOf(itemA, itemB))).withActivityPresentationEpoch(reordered)
+
+        assertEquals(listOf(8L, 9L, 10L, 11L, 12L, 13L), listOf(
+            ownerB.presentationEpoch,
+            ownerAAgain.presentationEpoch,
+            unread.presentationEpoch,
+            allAgain.presentationEpoch,
+            reordered.presentationEpoch,
+            originalOrderAgain.presentationEpoch,
+        ))
+    }
     @Test
     fun visibleReplyPrewarmDedupesStableGenerationAndRefetchesAfterLedgerAdvance() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

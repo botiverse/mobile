@@ -237,7 +237,7 @@ class SharedActivityStore internal constructor(
             doneOverrides = emptyMap()
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
-            _state.value = SharedActivityState()
+            _state.value = SharedActivityState(presentationEpoch = _state.value.presentationEpoch + 1L)
         }
     }
 
@@ -489,6 +489,7 @@ class SharedActivityStore internal constructor(
                 _state.value =
                     SharedActivityState(
                         selectedFilter = filter,
+                        presentationEpoch = _state.value.presentationEpoch + 1L,
                         loading = true
                     )
                 true
@@ -502,7 +503,8 @@ class SharedActivityStore internal constructor(
             realtimeHighWater.clear()
             _state.value =
                 SharedActivityState(
-                    selectedFilter = _state.value.selectedFilter
+                    selectedFilter = _state.value.selectedFilter,
+                    presentationEpoch = _state.value.presentationEpoch + 1L,
                 )
         }
     }
@@ -1538,7 +1540,7 @@ class SharedActivityStore internal constructor(
         val finalState =
             persistSlices.fold(nextState) { state, slice ->
                 slice.reduce(previous = previousState, intent = intent, reduced = state)
-            }
+            }.withActivityPresentationEpoch(previousState)
         if (finalState == previousState) return false
         _state.value = finalState
         persistSlices.forEach { slice ->
@@ -1814,6 +1816,7 @@ data class SharedActivityState(
     val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
     val ownerServerId: String? = null,
     val ownerUserId: String? = null,
+    val presentationEpoch: Long = 0L,
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
@@ -1832,6 +1835,19 @@ data class SharedActivityState(
         get() = snapshot?.hasMore == true
     val nextOffset: Int?
         get() = snapshot?.nextOffset
+}
+
+internal fun SharedActivityState.withActivityPresentationEpoch(previous: SharedActivityState): SharedActivityState {
+    val ownerChanged = ownerServerId != previous.ownerServerId || ownerUserId != previous.ownerUserId
+    val filterChanged = selectedFilter != previous.selectedFilter
+    val orderChanged = items.map(InboxItem::key) != previous.items.map(InboxItem::key)
+    val nextEpoch =
+        if (ownerChanged || filterChanged || orderChanged) {
+            previous.presentationEpoch + 1L
+        } else {
+            previous.presentationEpoch
+        }
+    return if (presentationEpoch == nextEpoch) this else copy(presentationEpoch = nextEpoch)
 }
 
 private fun InboxFilter.keepsReadActivityRows(): Boolean =

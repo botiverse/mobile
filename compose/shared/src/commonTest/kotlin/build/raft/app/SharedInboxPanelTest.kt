@@ -166,6 +166,125 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityGestureCommitsNewestContentForSameOwnerKeyAndOrder() {
+        val rendered = activityItem(key = "thread:stable")
+        val updated = rendered.copy(lastMessagePreview = "newest", unreadCount = 3)
+        val owner = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
+        val order = activityPresentationOrderIdentity(listOf(rendered))
+
+        assertEquals(
+            updated,
+            activityItemForCommittedGesture(
+                renderedItemKey = rendered.key,
+                renderedPresentationOwnerIdentity = owner,
+                renderedOrderIdentity = order,
+                renderedPresentationEpoch = 7L,
+                currentItems = listOf(updated),
+                currentPresentationOwnerIdentity = owner,
+                currentPresentationEpoch = 7L,
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureCancelsAcrossReorderRemovalOwnerAndFilterChanges() {
+        val first = activityItem(key = "thread:first")
+        val second = activityItem(key = "thread:second")
+        val allOwner = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
+        val renderedOrder = activityPresentationOrderIdentity(listOf(first, second))
+
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = first.key,
+                renderedPresentationOwnerIdentity = allOwner,
+                renderedOrderIdentity = renderedOrder,
+                renderedPresentationEpoch = 7L,
+                currentItems = listOf(second, first),
+                currentPresentationOwnerIdentity = allOwner,
+                currentPresentationEpoch = 8L,
+            ),
+        )
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = first.key,
+                renderedPresentationOwnerIdentity = allOwner,
+                renderedOrderIdentity = renderedOrder,
+                renderedPresentationEpoch = 7L,
+                currentItems = listOf(second),
+                currentPresentationOwnerIdentity = allOwner,
+                currentPresentationEpoch = 8L,
+            ),
+        )
+        listOf(
+            activityPresentationOwnerIdentity("account-b", "server-a", InboxFilter.All),
+            activityPresentationOwnerIdentity("account-a", "server-b", InboxFilter.All),
+            activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.Unread),
+        ).forEach { changedOwner ->
+            assertEquals(
+                null,
+                activityItemForCommittedGesture(
+                    renderedItemKey = first.key,
+                    renderedPresentationOwnerIdentity = allOwner,
+                    renderedOrderIdentity = renderedOrder,
+                    renderedPresentationEpoch = 7L,
+                    currentItems = listOf(first, second),
+                    currentPresentationOwnerIdentity = changedOwner,
+                    currentPresentationEpoch = 8L,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun activityGestureCancelsAfterOwnerFilterOrOrderReturnsToTheSameValue() {
+        val item = activityItem(key = "thread:stable")
+        val owner = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
+        val order = activityPresentationOrderIdentity(listOf(item))
+
+        assertEquals(
+            null,
+            activityItemForCommittedGesture(
+                renderedItemKey = item.key,
+                renderedPresentationOwnerIdentity = owner,
+                renderedOrderIdentity = order,
+                renderedPresentationEpoch = 7L,
+                currentItems = listOf(item),
+                currentPresentationOwnerIdentity = owner,
+                currentPresentationEpoch = 9L,
+            ),
+        )
+        assertEquals(
+            item,
+            activityItemForCommittedGesture(
+                renderedItemKey = item.key,
+                renderedPresentationOwnerIdentity = owner,
+                renderedOrderIdentity = order,
+                renderedPresentationEpoch = 9L,
+                currentItems = listOf(item),
+                currentPresentationOwnerIdentity = owner,
+                currentPresentationEpoch = 9L,
+            ),
+        )
+    }
+
+    @Test
+    fun activityGestureIdentityIncludesOwnerAndOrderForOpenAndDone() {
+        val item = activityItem(key = "thread:stable")
+        val owner = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
+        val order = activityPresentationOrderIdentity(listOf(item))
+
+        assertNotEquals(item.activityOpenGestureKey(order, owner, 7L), item.activityOpenGestureKey("other", owner, 7L))
+        assertNotEquals(item.activityOpenGestureKey(order, owner, 7L), item.activityOpenGestureKey(order, "other", 7L))
+        assertNotEquals(item.activityOpenGestureKey(order, owner, 7L), item.activityOpenGestureKey(order, owner, 8L))
+        assertNotEquals(
+            item.activityDoneClickIdentity(order, owner, 7L),
+            item.activityDoneClickIdentity(order, owner, 8L),
+        )
+    }
+
+    @Test
     fun replyPrewarmMarkerRequiresVisiblePlannerEligibleUnreadThreadIdentity() {
         val unreadReply =
             InboxItem(
@@ -205,7 +324,7 @@ class SharedInboxPanelTest {
         val selectedPrewarm =
             activityReplyThreadPrewarmNextAfterClick(
                 items = listOf(previous, clicked, next, ineligibleRead, later),
-                clickedIndex = 1,
+                clickedKey = clicked.key,
                 serverId = "server-1"
             )
 
@@ -221,11 +340,11 @@ class SharedInboxPanelTest {
 
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = -1, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(items, clickedKey = "missing", serverId = "server-1")
         )
         assertEquals(
             emptyList(),
-            activityReplyThreadPrewarmNextAfterClick(items, clickedIndex = items.size, serverId = "server-1")
+            activityReplyThreadPrewarmNextAfterClick(items, clickedKey = "also-missing", serverId = "server-1")
         )
     }
 

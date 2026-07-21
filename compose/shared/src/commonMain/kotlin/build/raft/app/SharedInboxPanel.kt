@@ -72,6 +72,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
+import com.tencent.kuikly.compose.foundation.lazy.items
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -529,7 +530,10 @@ private fun SharedActivityBodyContent(
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
                     listState = listState,
-                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
+                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                    presentationAccountId = state.ownerUserId.orEmpty(),
+                    presentationServerId = state.ownerServerId ?: snapshot.server.id.value,
+                    presentationEpoch = state.presentationEpoch,
                 )
         }
     }
@@ -652,13 +656,25 @@ private fun SharedActivityList(
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
     listState: LazyListState = rememberLazyListState(),
-    activityTaskStatusBadgesEnabled: Boolean
+    activityTaskStatusBadgesEnabled: Boolean,
+    presentationAccountId: String,
+    presentationServerId: String,
+    presentationEpoch: Long,
 ) {
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
     var updateTracking by remember(selectedFilter) { mutableStateOf(ActivityUpdateTrackingState(filter = selectedFilter)) }
     var revealRequest by remember(selectedFilter) { mutableStateOf(0) }
+    val currentItemsState = rememberUpdatedState(snapshot.items)
+    val presentationOwnerIdentity =
+        activityPresentationOwnerIdentity(
+            accountId = presentationAccountId,
+            serverId = presentationServerId,
+            filter = selectedFilter,
+        )
+    val currentPresentationOwnerIdentityState = rememberUpdatedState(presentationOwnerIdentity)
+    val currentPresentationEpochState = rememberUpdatedState(presentationEpoch)
     val latestOnIntent by rememberUpdatedState(onIntent)
     val refreshPresentation = activityRefreshPresentation(refreshing, pullRefreshing)
     val pullToRefreshState = rememberPullToRefreshState(refreshPresentation.pullRefreshing)
@@ -747,6 +763,12 @@ private fun SharedActivityList(
     }
     val showPullToRefreshItem = slockPlatformSupportsKuiklyPullToRefreshItem()
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
+    // Freeze key, content, and callbacks from one immutable list snapshot. Reading a mutable
+    // count/index source independently can bind a new key to the old row callback during reorder.
+    val renderedItems = snapshot.items
+    val renderedOrderIdentity = activityPresentationOrderIdentity(renderedItems)
+    val renderedPresentationOwnerIdentity = presentationOwnerIdentity
+    val renderedPresentationEpoch = presentationEpoch
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
             state = listState,
@@ -760,8 +782,7 @@ private fun SharedActivityList(
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) }
                 )
             }
-            items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
-                val item = snapshot.items[index]
+            items(items = renderedItems, key = { item -> item.key }) { item ->
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
@@ -770,23 +791,58 @@ private fun SharedActivityList(
                     timeContext = timeContext,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
                     captureMenuAnchor = !listState.isScrollInProgress,
-                    onOpen = {
-                        selectedItemKey = item.key
+                    presentationOrderIdentity = renderedOrderIdentity,
+                    presentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                    presentationEpoch = renderedPresentationEpoch,
+                    onOpen = open@{
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedOrderIdentity = renderedOrderIdentity,
+                                renderedPresentationEpoch = renderedPresentationEpoch,
+                                currentItems = currentItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationEpoch = currentPresentationEpochState.value,
+                            ) ?: return@open
+                        selectedItemKey = currentItem.key
                         onIntent(
                             SharedActivityIntent.PrewarmActivityTail(
                                 activityReplyThreadPrewarmNextAfterClick(
-                                    items = snapshot.items,
-                                    clickedIndex = index,
+                                    items = currentItemsState.value,
+                                    clickedKey = currentItem.key,
                                     serverId = snapshot.server.id.value
                                 )
                             )
                         )
-                        item.activityOpenReadIntent()?.let(onIntent)
-                        onOpenItem(item)
+                        currentItem.activityOpenReadIntent()?.let(onIntent)
+                        onOpenItem(currentItem)
                     },
-                    onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
-                    onOpenMenu = { anchor ->
-                        activeMenuItem = item
+                    onDone = done@{
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedOrderIdentity = renderedOrderIdentity,
+                                renderedPresentationEpoch = renderedPresentationEpoch,
+                                currentItems = currentItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationEpoch = currentPresentationEpochState.value,
+                            ) ?: return@done
+                        onIntent(SharedActivityIntent.MarkDone(currentItem))
+                    },
+                    onOpenMenu = menu@{ anchor ->
+                        val currentItem =
+                            activityItemForCommittedGesture(
+                                renderedItemKey = item.key,
+                                renderedPresentationOwnerIdentity = renderedPresentationOwnerIdentity,
+                                renderedOrderIdentity = renderedOrderIdentity,
+                                renderedPresentationEpoch = renderedPresentationEpoch,
+                                currentItems = currentItemsState.value,
+                                currentPresentationOwnerIdentity = currentPresentationOwnerIdentityState.value,
+                                currentPresentationEpoch = currentPresentationEpochState.value,
+                            ) ?: return@menu
+                        activeMenuItem = currentItem
                         menuAnchor = anchor
                     }
                 )
@@ -887,9 +943,10 @@ private fun SharedActivityList(
  */
 internal fun activityReplyThreadPrewarmNextAfterClick(
     items: List<InboxItem>,
-    clickedIndex: Int,
+    clickedKey: String,
     serverId: String
 ): List<ActivityReplyThreadPrewarmMarker> {
+    val clickedIndex = items.indexOfFirst { item -> item.key == clickedKey }
     if (clickedIndex !in items.indices) return emptyList()
     return listOfNotNull(
         items
@@ -897,6 +954,34 @@ internal fun activityReplyThreadPrewarmNextAfterClick(
         .firstNotNullOfOrNull { item -> item.toReplyThreadPrewarmMarker(serverId) }
     )
 }
+
+/**
+ * Commits an Activity gesture only while the exact owner and rendered order still own its key.
+ * Content-only updates for the same key are allowed and resolve to the newest canonical item.
+ */
+internal fun activityItemForCommittedGesture(
+    renderedItemKey: String,
+    renderedPresentationOwnerIdentity: String,
+    renderedOrderIdentity: String,
+    renderedPresentationEpoch: Long,
+    currentItems: List<InboxItem>,
+    currentPresentationOwnerIdentity: String,
+    currentPresentationEpoch: Long,
+): InboxItem? {
+    if (renderedPresentationOwnerIdentity != currentPresentationOwnerIdentity) return null
+    if (renderedPresentationEpoch != currentPresentationEpoch) return null
+    if (renderedOrderIdentity != activityPresentationOrderIdentity(currentItems)) return null
+    return currentItems.firstOrNull { item -> item.key == renderedItemKey }
+}
+
+internal fun activityPresentationOwnerIdentity(
+    accountId: String,
+    serverId: String,
+    filter: InboxFilter,
+): String = "account:$accountId|server:$serverId|filter:${filter.wireValue}"
+
+internal fun activityPresentationOrderIdentity(items: List<InboxItem>): String =
+    items.joinToString(separator = "\u001f") { item -> item.key }
 
 internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? {
     // The destination store acknowledges the stable channel/thread identity after it is loaded
@@ -964,11 +1049,21 @@ private fun SharedActivityRow(
     timeContext: SlockTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
     captureMenuAnchor: Boolean = true,
+    presentationOrderIdentity: String = "",
+    presentationOwnerIdentity: String = "",
+    presentationEpoch: Long = 0L,
     onOpen: () -> Unit,
     onDone: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ) {
-    val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
+    val openGestureKey =
+        remember(item, presentationOrderIdentity, presentationOwnerIdentity, presentationEpoch) {
+            item.activityOpenGestureKey(
+                presentationOrderIdentity = presentationOrderIdentity,
+                presentationOwnerIdentity = presentationOwnerIdentity,
+                presentationEpoch = presentationEpoch,
+            )
+        }
     val mutedPrimaryContent = item.activityPrimaryContentMuted()
     val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
     val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
@@ -1078,7 +1173,12 @@ private fun SharedActivityRow(
                 ) {
                     SharedActivitySmallIconButton(
                         iconName = SlockLucideIconName.Check,
-                        clickIdentity = item.activityDoneClickIdentity(),
+                        clickIdentity =
+                            item.activityDoneClickIdentity(
+                                presentationOrderIdentity = presentationOrderIdentity,
+                                presentationOwnerIdentity = presentationOwnerIdentity,
+                                presentationEpoch = presentationEpoch,
+                            ),
                         onClick = onDone
                     )
                 }
@@ -1099,7 +1199,16 @@ private fun SharedActivityRow(
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
     kind != InboxItemKind.System && unreadCount == 0
 
-internal fun InboxItem.activityDoneClickIdentity(): String = "activity-done:$key"
+internal fun InboxItem.activityDoneClickIdentity(
+    presentationOrderIdentity: String = "",
+    presentationOwnerIdentity: String = "",
+    presentationEpoch: Long = 0L,
+): String =
+    if (presentationOrderIdentity.isEmpty() && presentationOwnerIdentity.isEmpty() && presentationEpoch == 0L) {
+        "activity-done:$key"
+    } else {
+        "activity-done:$key|owner:$presentationOwnerIdentity|order:$presentationOrderIdentity|epoch:$presentationEpoch"
+    }
 
 @Composable
 private fun Modifier.activityRowGestures(
@@ -1108,8 +1217,6 @@ private fun Modifier.activityRowGestures(
     onClick: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ): Modifier {
-    val currentOnClick by rememberUpdatedState(onClick)
-    val currentOnOpenMenu by rememberUpdatedState(onOpenMenu)
     val rootAnchor = remember(gestureKey) { SlockLiveRootAnchorRef() }
     return this
         .then(
@@ -1121,9 +1228,11 @@ private fun Modifier.activityRowGestures(
         )
         .pointerInput(gestureKey) {
             detectTapGestures(
-                onTap = { currentOnClick() },
+                // Capture the callback owned by this pointerInput generation. Dynamically replacing
+                // it before the old DOWN is cancelled can retarget UP to a different rendered row.
+                onTap = { onClick() },
                 onLongPress = { localOffset ->
-                    rootAnchor.resolve(localOffset)?.let(currentOnOpenMenu)
+                    rootAnchor.resolve(localOffset)?.let(onOpenMenu)
                 }
             )
         }
@@ -1143,6 +1252,12 @@ internal fun InboxItem.inboxItemOpenGestureKey(): String =
         resolveInboxAnchorMessageId()?.value.orEmpty(),
         unreadCount.toString()
     ).joinToString("|")
+
+internal fun InboxItem.activityOpenGestureKey(
+    presentationOrderIdentity: String,
+    presentationOwnerIdentity: String = "",
+    presentationEpoch: Long = 0L,
+): String = "activity-open:$key|owner:$presentationOwnerIdentity|order:$presentationOrderIdentity|epoch:$presentationEpoch"
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
