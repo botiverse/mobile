@@ -4711,55 +4711,57 @@ internal fun SlockFilePreviewPageScaffold(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
-    Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            SlockTopPageHeader(
-                title = title,
-                subtitle = subtitle,
-                iconName = iconName,
-                backgroundColor = SlockColor.SurfaceWhite,
-                leadingContent = {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.ArrowLeft,
-                        onClick = onBack,
-                        size = 30.dp,
-                        shadowOffset = 2.dp
-                    )
-                },
-                trailingContent =
-                    trailingContent
-                        ?: if (overflowMenuItems.isNotEmpty()) {
-                            {
-                                SlockFilePreviewOverflowMenuButton(
-                                    onOpenMenu = { anchor ->
-                                        menuAnchor = anchor
-                                        menuOpen = true
-                                    }
-                                )
+    SlockInputFocusDismissHost { focusDismissModifier ->
+        Box(modifier = modifier.then(focusDismissModifier).fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SlockTopPageHeader(
+                    title = title,
+                    subtitle = subtitle,
+                    iconName = iconName,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    leadingContent = {
+                        SlockBrutalIconButton(
+                            iconName = SlockLucideIconName.ArrowLeft,
+                            onClick = onBack,
+                            size = 30.dp,
+                            shadowOffset = 2.dp
+                        )
+                    },
+                    trailingContent =
+                        trailingContent
+                            ?: if (overflowMenuItems.isNotEmpty()) {
+                                {
+                                    SlockFilePreviewOverflowMenuButton(
+                                        onOpenMenu = { anchor ->
+                                            menuAnchor = anchor
+                                            menuOpen = true
+                                        }
+                                    )
+                                }
+                            } else {
+                                null
                             }
-                        } else {
-                            null
-                        }
-            )
-            Column(
-                modifier = Modifier.fillMaxSize().padding(contentPadding),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-            ) {
-                content()
+                )
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(contentPadding),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                ) {
+                    content()
+                }
             }
-        }
-        if (menuOpen && overflowMenuItems.isNotEmpty()) {
-            SlockRaftUiControlledMenu(
-                expanded = menuOpen,
-                anchor = menuAnchor,
-                items = overflowMenuItems,
-                onSelect = { id ->
-                    menuOpen = false
-                    onOverflowMenuSelect(id)
-                },
-                onDismiss = { menuOpen = false },
-                width = 180.dp
-            )
+            if (menuOpen && overflowMenuItems.isNotEmpty()) {
+                SlockRaftUiControlledMenu(
+                    expanded = menuOpen,
+                    anchor = menuAnchor,
+                    items = overflowMenuItems,
+                    onSelect = { id ->
+                        menuOpen = false
+                        onOverflowMenuSelect(id)
+                    },
+                    onDismiss = { menuOpen = false },
+                    width = 180.dp
+                )
+            }
         }
     }
 }

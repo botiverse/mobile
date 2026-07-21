@@ -114,44 +114,47 @@ internal fun AuthScaffold(
                 }
             }
         }
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(SlockColor.SurfaceWhite)
-    ) {
-        AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
-        Box(
-            modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
-            contentAlignment = Alignment.TopCenter
+    SlockInputFocusDismissHost { focusDismissModifier ->
+        Column(
+            modifier = modifier
+                .then(focusDismissModifier)
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
         ) {
-            if (contentScrollable) {
-                LazyColumn(
-                    modifier = Modifier
-                        .widthIn(max = 314.dp)
-                        .fillMaxSize(),
-                    contentPadding = PaddingValues(top = contentTopPadding, bottom = 40.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    item {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            content = content
-                        )
+            AuthTopBar(statusBarHeight, onBrandClick, topBarHorizontalPadding, topBarBrandImagePadding, topLeadingContent)
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                if (contentScrollable) {
+                    LazyColumn(
+                        modifier = Modifier
+                            .widthIn(max = 314.dp)
+                            .fillMaxSize(),
+                        contentPadding = PaddingValues(top = contentTopPadding, bottom = 40.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        item {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                content = content
+                            )
+                        }
                     }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 314.dp)
+                            .padding(top = contentTopPadding),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        content = content
+                    )
                 }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = 314.dp)
-                        .padding(top = contentTopPadding),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    content = content
-                )
             }
         }
     }
