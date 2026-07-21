@@ -630,11 +630,9 @@ jobs:
             scripts/ci/assert-instrumentation-ok.sh durable-partition-migration-instrumentation.txt 2
             # Long (60-90s) gesture-driven acceptance for task #692: main/nightly
             # only, mirroring the iOS-compile policy of keeping slow coverage off
-            # the PR critical path.
-            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
-              adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-newer-auto-pagination-instrumentation.txt
-              scripts/ci/assert-instrumentation-ok.sh thread-newer-auto-pagination-instrumentation.txt 1
-            fi
+            # the PR critical path. Single line: the emulator-runner action feeds
+            # each script line to its own `sh -c`, so multi-line if/fi breaks.
+            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-newer-auto-pagination-instrumentation.txt && scripts/ci/assert-instrumentation-ok.sh thread-newer-auto-pagination-instrumentation.txt 1; fi
 
       - name: Upload instrumentation output
         if: always()
