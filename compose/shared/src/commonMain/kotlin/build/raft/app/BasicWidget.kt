@@ -3,8 +3,11 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +71,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.onSizeChanged
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.semantics.disabled
 import com.tencent.kuikly.compose.ui.semantics.onClick
@@ -540,6 +544,66 @@ fun Modifier.touchListener(
     }
 }
 
+/**
+ * Clears the current input focus when a pointer down reaches container chrome without a child
+ * consuming it.
+ *
+ * Kuikly text fields and clickable controls consume their down event during the Main pass, so
+ * their focus/cursor/click behavior remains intact. Blank container regions and the first down of
+ * a scroll stay unconsumed, allowing the page/dialog to dismiss the software keyboard without
+ * consuming the gesture that owns the eventual tap or drag.
+ */
+@Composable
+internal fun Modifier.dismissInputFocusOnUnconsumedPointerDown(
+    enabled: Boolean = true
+): Modifier {
+    val currentFocusManager by rememberUpdatedState(LocalFocusManager.current)
+    return pointerInput(enabled) {
+        if (!enabled) return@pointerInput
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = true)
+            currentFocusManager.clearFocus(force = true)
+        }
+    }
+}
+
+internal class SlockInputFocusOwnerRegistry {
+    private val activeOwners = mutableSetOf<Any>()
+    var hasActiveOwner by mutableStateOf(false)
+        private set
+
+    fun setFocused(owner: Any, focused: Boolean) {
+        if (focused) {
+            activeOwners += owner
+        } else {
+            activeOwners -= owner
+        }
+        hasActiveOwner = activeOwners.isNotEmpty()
+    }
+}
+
+internal val LocalSlockInputFocusOwnerRegistry =
+    compositionLocalOf<SlockInputFocusOwnerRegistry?> { null }
+
+/**
+ * Installs the shared blank-down focus-dismiss boundary for an app, page, or modal root.
+ * Inputs register themselves through [TextField], so adding a standard input never requires a
+ * business-page tap handler or allowlist entry.
+ */
+@Composable
+internal fun SlockInputFocusDismissHost(
+    content: @Composable (Modifier) -> Unit
+) {
+    val registry = remember { SlockInputFocusOwnerRegistry() }
+    CompositionLocalProvider(LocalSlockInputFocusOwnerRegistry provides registry) {
+        content(
+            Modifier.dismissInputFocusOnUnconsumedPointerDown(
+                enabled = registry.hasActiveOwner
+            )
+        )
+    }
+}
+
 enum class TouchType { Down, Move, Up }
 
 private object SlockPressTokens {
@@ -606,8 +670,10 @@ fun Modal(
         onDismissRequest = { onWillDismiss?.invoke("") },
         properties = slockModalDialogProperties()
     ) {
-        Box(modifier = modifier.fillMaxSize()) {
-            content()
+        SlockInputFocusDismissHost { focusDismissModifier ->
+            Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
+                content()
+            }
         }
     }
 }
@@ -732,6 +798,7 @@ internal fun TextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
     systemNewlineAction: Boolean = false,
+    participatesInGlobalFocusDismiss: Boolean = true,
     /**
      * Task #43 QA-4: visual transformation for password-typed inputs.
      * When non-null (e.g. [PasswordVisualTransformation()]), the
@@ -742,12 +809,21 @@ internal fun TextField(
     contentAlignment: Alignment = Alignment.CenterStart
 ) {
     var lastFocus by remember { mutableStateOf(false) }
+    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusOwner = remember { Any() }
 
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
     val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
+    DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
+        onDispose {
+            if (participatesInGlobalFocusDismiss) {
+                focusOwnerRegistry?.setFocused(focusOwner, false)
+            }
+        }
+    }
 
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
@@ -757,10 +833,16 @@ internal fun TextField(
         .onFocusChanged {
             if (it.isFocused) {
                 if (!lastFocus) {
+                    if (participatesInGlobalFocusDismiss) {
+                        focusOwnerRegistry?.setFocused(focusOwner, true)
+                    }
                     currentOnFocus()
                     lastFocus = true
                 }
             } else if (lastFocus) {
+                if (participatesInGlobalFocusDismiss) {
+                    focusOwnerRegistry?.setFocused(focusOwner, false)
+                }
                 currentOnBlur()
                 lastFocus = false
             }
@@ -825,16 +907,26 @@ internal fun TextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
     systemNewlineAction: Boolean = false,
+    participatesInGlobalFocusDismiss: Boolean = true,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart
 ) {
     var lastFocus by remember { mutableStateOf(false) }
+    val focusOwnerRegistry = LocalSlockInputFocusOwnerRegistry.current
+    val focusOwner = remember { Any() }
 
     val currentOnBlur by rememberUpdatedState(onBlur)
     val currentOnFocus by rememberUpdatedState(onFocus)
     val currentKeyboardHeightChange by rememberUpdatedState(keyboardHeightChange)
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
+    DisposableEffect(focusOwnerRegistry, focusOwner, participatesInGlobalFocusDismiss) {
+        onDispose {
+            if (participatesInGlobalFocusDismiss) {
+                focusOwnerRegistry?.setFocused(focusOwner, false)
+            }
+        }
+    }
 
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
@@ -844,10 +936,16 @@ internal fun TextField(
         .onFocusChanged {
             if (it.isFocused) {
                 if (!lastFocus) {
+                    if (participatesInGlobalFocusDismiss) {
+                        focusOwnerRegistry?.setFocused(focusOwner, true)
+                    }
                     currentOnFocus()
                     lastFocus = true
                 }
             } else if (lastFocus) {
+                if (participatesInGlobalFocusDismiss) {
+                    focusOwnerRegistry?.setFocused(focusOwner, false)
+                }
                 currentOnBlur()
                 lastFocus = false
             }
