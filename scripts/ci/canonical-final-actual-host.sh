@@ -28,7 +28,18 @@ cleanup() {
 trap cleanup EXIT
 
 adb wait-for-device
-adb root
+# `adb root` restarts adbd; right after boot the restart can race the client
+# ("unable to connect for root: closed" / "device offline" — run 29831219834).
+# Retry until the shell is actually root; the hard `id -u` gate below still
+# fails the job if root is never reached.
+for attempt in $(seq 1 60); do
+  adb root >/dev/null 2>&1 || true
+  adb wait-for-device >/dev/null 2>&1 || true
+  if test "$(adb shell id -u 2>/dev/null | tr -d '\r')" = 0; then
+    break
+  fi
+  sleep 1
+done
 adb wait-for-device
 for attempt in $(seq 1 120); do
   if test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 && adb shell cmd package list packages >/dev/null 2>&1; then
