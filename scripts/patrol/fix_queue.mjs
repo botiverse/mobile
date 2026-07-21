@@ -1,0 +1,475 @@
+#!/usr/bin/env node
+// Daily consumer for the verified visual-drift backlog.
+//
+// This job deliberately stops before mutating product source. It claims a small,
+// bounded batch of open+verified+unassigned issues, derives React truth, asks M3
+// for a minimal Android patch, and submits that patch to three fresh adversarial
+// M3 reviewers. REFUTED issues receive the concrete flaw. UNREFUTED issues receive
+// an agent-ready handoff for targeted capture, visual_verify, and a draft PR.
+
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const PROCESSING_LABEL = "fix-queue:processing";
+const REFUTED_LABEL = "fix-queue:refuted";
+const AGENT_READY_LABEL = "fix-queue:agent-ready";
+const TERMINAL_LABELS = new Set([REFUTED_LABEL, AGENT_READY_LABEL]);
+const SOURCE_EXTENSIONS = new Set([".kt", ".kts", ".ts", ".tsx", ".js", ".jsx", ".css"]);
+// Includes prompt input as well as bounded output across truth + patch + 3 reviews.
+// Source collection is separately capped below so this remains a conservative
+// admission reservation rather than an unbounded best-effort estimate.
+const DEFAULT_CASE_TOKEN_RESERVATION = 75_000;
+
+function parseArgs(argv = process.argv.slice(2)) {
+  const value = (flag, fallback) => {
+    const index = argv.indexOf(flag);
+    return index >= 0 ? argv[index + 1] : fallback;
+  };
+  return {
+    repo: value("--repo", "botiverse/mobile"),
+    comparison: value("--comparison", "react__android"),
+    caseCap: Math.max(1, Math.min(3, Number(value("--case-cap", "3")))),
+    tokenCap: Math.max(DEFAULT_CASE_TOKEN_RESERVATION, Number(value("--token-cap", "225000"))),
+    voters: Math.max(3, Number(value("--voters", "3"))),
+    threshold: Math.max(2, Number(value("--threshold", "2"))),
+    mobileRoot: path.resolve(value("--mobile-root", ".")),
+    slockRoot: path.resolve(value("--slock-root", "slock")),
+    ruiRoot: path.resolve(value("--rui-root", "rui")),
+    report: path.resolve(value("--report", "visual-fix-queue-report.json")),
+    issue: value("--issue", ""),
+    live: argv.includes("--live"),
+  };
+}
+
+function gh(args, options = {}) {
+  return execFileSync("gh", args, {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    ...options,
+  });
+}
+
+function gitSha(root) {
+  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+}
+
+function labelsOf(issue) {
+  return (issue.labels || []).map((label) => typeof label === "string" ? label : label.name);
+}
+
+export function isEligibleIssue(issue) {
+  const labels = labelsOf(issue);
+  return issue.state === "OPEN"
+    && labels.includes("visual-drift")
+    && labels.includes("verified")
+    && !labels.includes(PROCESSING_LABEL)
+    && !labels.some((label) => TERMINAL_LABELS.has(label))
+    && (issue.assignees || []).length === 0;
+}
+
+export function selectFixQueueIssues(issues, caseCap, tokenCap, reservation = DEFAULT_CASE_TOKEN_RESERVATION) {
+  const eligible = issues
+    .filter(isEligibleIssue)
+    .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)) || left.number - right.number);
+  const affordable = Math.floor(tokenCap / reservation);
+  return eligible.slice(0, Math.min(caseCap, affordable));
+}
+
+function issueCaseId(issue) {
+  return (/\[visual-drift\]\s+([^:]+):/.exec(issue.title || "") || [])[1]?.trim() || null;
+}
+
+function issueComparison(issue, fallback) {
+  return (/\*\*Comparison:\*\*\s+`([^`]+)`/.exec(issue.body || "") || [])[1] || fallback;
+}
+
+function listIssues(opts) {
+  if (opts.issue) {
+    return [JSON.parse(gh(["issue", "view", opts.issue, "--repo", opts.repo, "--json",
+      "number,title,body,state,labels,assignees,createdAt,url"]))];
+  }
+  return JSON.parse(gh(["issue", "list", "--repo", opts.repo, "--label", "visual-drift", "--label", "verified",
+    "--state", "open", "--limit", "300", "--json", "number,title,body,state,labels,assignees,createdAt,url"]));
+}
+
+function ensureLabels(opts) {
+  if (!opts.live) return;
+  for (const [name, color, description] of [
+    [PROCESSING_LABEL, "FBCA04", "Nightly visual fix queue currently owns this issue"],
+    [REFUTED_LABEL, "D93F0B", "M3 patch was refuted; concrete flaw is recorded"],
+    [AGENT_READY_LABEL, "0E8A16", "M3 patch is unrefuted and ready for agent CI/evidence/PR handoff"],
+  ]) {
+    gh(["label", "create", name, "--repo", opts.repo, "--color", color, "--description", description, "--force"]);
+  }
+}
+
+function claimIssue(issue, opts, provenance) {
+  if (!opts.live) return true;
+  gh(["issue", "edit", String(issue.number), "--repo", opts.repo, "--add-label", PROCESSING_LABEL]);
+  const current = JSON.parse(gh(["issue", "view", String(issue.number), "--repo", opts.repo, "--json", "state,labels,assignees"]));
+  if (!isEligibleIssue({ ...current, labels: labelsOf(current).filter((label) => label !== PROCESSING_LABEL) })) {
+    gh(["issue", "edit", String(issue.number), "--repo", opts.repo, "--remove-label", PROCESSING_LABEL]);
+    return false;
+  }
+  gh(["issue", "comment", String(issue.number), "--repo", opts.repo, "--body",
+    `<!-- visual-fix-queue:claim=${provenance.runKey} -->\nFix queue claimed this issue for bounded M3 truth/patch/panel processing. No product code or PR will be created automatically.`]);
+  return true;
+}
+
+function releaseClaim(issue, opts) {
+  if (!opts.live) return;
+  try { gh(["issue", "edit", String(issue.number), "--repo", opts.repo, "--remove-label", PROCESSING_LABEL]); } catch {}
+}
+
+function loadAnalysis(opts) {
+  try {
+    const text = execFileSync("git", ["-c", "submodule.recurse=false", "show",
+      `origin/gh-pages:visual-testing/latest/analysis/${opts.comparison}.json`],
+    { cwd: opts.mobileRoot, encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
+    return JSON.parse(text);
+  } catch {
+    return { generatedAt: null, cases: [] };
+  }
+}
+
+function manifestCase(caseId, opts) {
+  const manifestPath = path.join(opts.slockRoot, "packages/visual-testing/shared/sharedCases.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  return (manifest.cases || []).find((entry) => entry.id === caseId) || null;
+}
+
+function walkFiles(root, output = []) {
+  if (!fs.existsSync(root)) return output;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if ([".git", "node_modules", "build", ".gradle", "dist"].includes(entry.name)) continue;
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) walkFiles(full, output);
+    else if (SOURCE_EXTENSIONS.has(path.extname(entry.name))) output.push(full);
+  }
+  return output;
+}
+
+function sourceRecord(root, file) {
+  if (!file || !fs.existsSync(file)) return null;
+  return {
+    path: path.relative(root, file),
+    src: fs.readFileSync(file, "utf8").slice(0, 28_000),
+  };
+}
+
+function sourceMatches(root, needles, limit = 5) {
+  const normalized = [...new Set(needles.filter(Boolean).map((needle) => String(needle).split(/[/.]/).pop()))];
+  if (!normalized.length) return [];
+  const matches = [];
+  for (const file of walkFiles(root)) {
+    const basename = path.basename(file, path.extname(file));
+    const basenameHit = normalized.some((needle) => basename === needle);
+    let content = "";
+    if (!basenameHit) {
+      content = fs.readFileSync(file, "utf8");
+      if (!normalized.some((needle) => content.includes(needle))) continue;
+    }
+    matches.push(sourceRecord(root, file));
+    if (matches.length >= limit) break;
+  }
+  return matches.filter(Boolean);
+}
+
+export function dedupeSources(sources) {
+  const seen = new Set();
+  return sources.filter((source) => {
+    if (!source || seen.has(source.path)) return false;
+    seen.add(source.path);
+    return true;
+  });
+}
+
+export function capSources(sources, maxChars = 60_000) {
+  const capped = [];
+  let remaining = maxChars;
+  for (const source of sources) {
+    if (remaining <= 0) break;
+    const src = source.src.slice(0, remaining);
+    if (!src) continue;
+    capped.push({ ...source, src });
+    remaining -= src.length;
+  }
+  return capped;
+}
+
+function collectSources(entry, opts) {
+  const react = entry?.providerMatrix?.react || {};
+  const android = entry?.providerMatrix?.android || {};
+  const reactExact = sourceRecord(opts.slockRoot, react.path ? path.join(opts.slockRoot, react.path) : "");
+  const androidExact = sourceRecord(opts.mobileRoot, android.path ? path.join(opts.mobileRoot, android.path) : "");
+  const reactComponents = react.components || [];
+  const androidComponents = android.components || [];
+  return {
+    react: capSources(dedupeSources([
+      reactExact,
+      ...sourceMatches(opts.slockRoot, reactComponents, 4),
+      ...sourceMatches(opts.ruiRoot, reactComponents, 5),
+    ])),
+    android: capSources(dedupeSources([
+      androidExact,
+      ...sourceMatches(path.join(opts.mobileRoot, "compose"), androidComponents, 6),
+    ])),
+  };
+}
+
+function loadModels() {
+  return import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all").then((sdk) => sdk.builtinModels());
+}
+
+function parseJsonReply(message) {
+  if (message.stopReason === "error" || message.stopReason === "aborted") throw new Error(message.errorMessage || message.stopReason);
+  const text = message.content.filter((block) => block.type === "text").map((block) => block.text).join("\n").trim();
+  const match = /\{[\s\S]*\}/.exec(text);
+  return JSON.parse(match ? match[0] : text);
+}
+
+async function completeJson(models, model, prompt, maxTokens) {
+  const controller = new AbortController();
+  const timeoutMs = 180_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const message = await models.complete(model,
+      { messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }] },
+      { apiKey: process.env.MINIMAX_API_KEY || process.env.PI_API_KEY, maxTokens, signal: controller.signal, timeoutMs });
+    return { data: parseJsonReply(message), usage: message.usage || null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function truthPrompt(candidate) {
+  return [
+    "Derive the exact React visual truth for this verified cross-platform drift from the supplied source.",
+    "Do not estimate from prose. Trace component -> token/class -> concrete value and enumerate every theme/state variant.",
+    "Classify whether the finding is safely patchable as a narrow style/token/fixture change. Semantic, structural,",
+    "interaction, ambiguous-source, or geometry-without-exact-source findings are patchable=false with one precise flaw.",
+    `Case: ${candidate.caseId} Comparison: ${candidate.comparison}`,
+    "Verified issue:", candidate.issueBody,
+    "React sources:",
+    ...candidate.sources.react.map((source) => `--- ${source.path} ---\n${source.src}`),
+    'Return strict JSON: {"patchable":bool,"classification":"token|style|fixture|geometry|semantic|ambiguous",',
+    '"reactTruth":"exact target and derivation","values":[{"element":"","state":"","property":"","value":"","derivation":""}],"specificFlaw":string|null}',
+  ].join("\n\n");
+}
+
+function patchPrompt(candidate, truth) {
+  return [
+    "Produce a minimal unified diff that makes Android/KMP match the authoritative React truth.",
+    "Change only the verified divergence. Enumerate and cover all relevant theme/state variants. Do not apply the patch.",
+    "Do not edit tests, registries, baselines, or unrelated properties. If exact source authority is missing, return patchable=false",
+    "and a precise specificFlaw instead of guessing. CSS px is not automatically dp; preserve units explicitly.",
+    `Case: ${candidate.caseId}`,
+    `React truth: ${truth.reactTruth}`,
+    "Verified issue:", candidate.issueBody,
+    "Android sources:",
+    ...candidate.sources.android.map((source) => `--- ${source.path} ---\n${source.src}`),
+    'Return strict JSON: {"patchable":bool,"trueValueChain":"","rationale":"","specificFlaw":string|null,',
+    '"patch":[{"path":"repo-relative path","diff":"unified diff"}]}',
+  ].join("\n\n");
+}
+
+function reviewPrompt(candidate, truth, patchResult, voter) {
+  const patchEntries = Array.isArray(patchResult.patch) ? patchResult.patch : [];
+  return [
+    "You are an independent adversarial reviewer in a fresh context. Try to REFUTE this proposed visual patch.",
+    "Demonstrate a concrete flaw: wrong source/value/unit, missing theme/state, excessive blast radius, test/baseline dodge,",
+    "or a semantic/structural change masquerading as a token fix. Do not refute on vague uncertainty.",
+    `Reviewer slot: ${voter} Case: ${candidate.caseId}`,
+    `Authoritative React truth: ${truth.reactTruth}`,
+    `True-value chain: ${patchResult.trueValueChain || "missing"}`,
+    `Patch generator classification: patchable=${patchResult.patchable !== false}`,
+    `Patch generator flaw: ${patchResult.specificFlaw || "none"}`,
+    "Patch:", ...(patchEntries.length
+      ? patchEntries.map((entry) => `--- ${entry.path} ---\n${entry.diff}`)
+      : ["(no patch emitted)"]),
+    'Return strict JSON: {"refuted":bool,"reason":"one concrete sentence","specificFlaw":string|null,"confidence":number}',
+  ].join("\n\n");
+}
+
+export function panelDecision(votes, threshold) {
+  const valid = votes.filter((vote) => !vote.error);
+  const refuted = valid.filter((vote) => vote.refuted).length;
+  if (valid.length < 2) return { verdict: "REVIEW", valid: valid.length, refuted };
+  return { verdict: refuted >= threshold ? "REFUTED" : "UNREFUTED", valid: valid.length, refuted };
+}
+
+function usageTokens(usage) {
+  if (!usage) return 0;
+  return Number(usage.totalTokens || usage.total_tokens || 0)
+    || Number(usage.inputTokens || usage.input_tokens || 0) + Number(usage.outputTokens || usage.output_tokens || 0);
+}
+
+async function processCandidate(candidate, opts, models, model) {
+  const usages = [];
+  const truthCall = await completeJson(models, model, truthPrompt(candidate), 3_072);
+  usages.push(truthCall.usage);
+  const truth = truthCall.data;
+
+  const patchCall = await completeJson(models, model, patchPrompt(candidate, truth), 4_096);
+  usages.push(patchCall.usage);
+  const patchResult = patchCall.data;
+
+  const votes = await Promise.all(Array.from({ length: opts.voters }, async (_, index) => {
+    try {
+      const call = await completeJson(models, model, reviewPrompt(candidate, truth, patchResult, index + 1), 2_048);
+      usages.push(call.usage);
+      return { voter: index + 1, ...call.data };
+    } catch (error) {
+      return { voter: index + 1, error: String(error?.message || error).slice(0, 300) };
+    }
+  }));
+  const decision = panelDecision(votes, opts.threshold);
+  const patchUsable = truth.patchable !== false
+    && patchResult.patchable !== false
+    && Array.isArray(patchResult.patch)
+    && patchResult.patch.length > 0;
+  const strongestFlaw = votes.find((vote) => vote.refuted && vote.specificFlaw)?.specificFlaw
+    || votes.find((vote) => vote.refuted)?.reason
+    || truth.specificFlaw
+    || patchResult.specificFlaw
+    || (decision.verdict === "REVIEW" ? "Fewer than two valid independent panel votes." : null);
+  return {
+    ...decision,
+    verdict: patchUsable ? decision.verdict : "REFUTED",
+    stage: patchUsable ? "panel" : (truth.patchable === false ? "truth" : "patch"),
+    specificFlaw: strongestFlaw || "M3 produced no safe minimal patch.",
+    truth,
+    patch: patchResult,
+    votes,
+    tokenUsage: usages.reduce((sum, usage) => sum + usageTokens(usage), 0),
+  };
+}
+
+function compactJson(value, limit = 18_000) {
+  const text = JSON.stringify(value, null, 2);
+  return text.length <= limit ? text : `${text.slice(0, limit)}\n…truncated in comment; full record is in workflow artifact.`;
+}
+
+export function resultComment(result, provenance) {
+  const header = result.verdict === "UNREFUTED"
+    ? "## Visual fix queue: UNREFUTED → agent handoff"
+    : result.verdict === "REFUTED"
+      ? "## Visual fix queue: REFUTED"
+      : "## Visual fix queue: REVIEW / retry required";
+  const next = result.verdict === "UNREFUTED"
+    ? "An implementation agent may now apply the proposed patch on a fresh current-main branch, run targeted `Visual Testing` for this case, execute `scripts/visual_verify.py`, embed React | before | after evidence, and open a **draft** PR. No automatic product merge is authorized."
+    : result.verdict === "REFUTED"
+      ? `Do not apply this patch. Concrete flaw: ${result.specificFlaw || "panel refuted without a usable patch"}`
+      : "The claim is released so a later bounded run may retry; do not apply or open a PR from this record.";
+  return [
+    `<!-- visual-fix-queue:result=${provenance.runKey};verdict=${result.verdict} -->`,
+    header,
+    "",
+    next,
+    "",
+    `**Provenance:** mobile \`${provenance.mobileSha}\` · slock \`${provenance.slockSha}\` · analysis \`${provenance.analysisGeneratedAt || "unavailable"}\` · model \`${provenance.model}\` · workflow \`${provenance.runKey}\``,
+    `**Budget:** reserved ${provenance.reservedTokens} tokens · reported usage ${result.tokenUsage || "unavailable"}`,
+    "",
+    "<details><summary>Truth / patch / independent votes</summary>",
+    "",
+    "```json", compactJson({ truth: result.truth, patch: result.patch, votes: result.votes }), "```",
+    "</details>",
+  ].join("\n");
+}
+
+function applyResult(issue, result, opts, provenance) {
+  if (!opts.live) return;
+  gh(["issue", "comment", String(issue.number), "--repo", opts.repo, "--body", resultComment(result, provenance)]);
+  releaseClaim(issue, opts);
+  if (result.verdict === "REFUTED") {
+    gh(["issue", "edit", String(issue.number), "--repo", opts.repo, "--add-label", REFUTED_LABEL]);
+  } else if (result.verdict === "UNREFUTED") {
+    gh(["issue", "edit", String(issue.number), "--repo", opts.repo, "--add-label", AGENT_READY_LABEL]);
+  }
+}
+
+function scriptSha() {
+  return crypto.createHash("sha256").update(fs.readFileSync(fileURLToPath(import.meta.url))).digest("hex");
+}
+
+async function main() {
+  const opts = parseArgs();
+  if (!process.env.PI_API_KEY && !process.env.MINIMAX_API_KEY) throw new Error("PI_API_KEY/MINIMAX_API_KEY is required");
+  ensureLabels(opts);
+  const analysis = loadAnalysis(opts);
+  const analysisByCase = new Map((analysis.cases || []).map((entry) => [entry.id, entry]));
+  const issues = listIssues(opts);
+  const selected = selectFixQueueIssues(issues, opts.caseCap, opts.tokenCap);
+  const models = await loadModels();
+  const provider = String(process.env.PI_PROVIDER || "minimax");
+  const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
+  const model = models.getModel(provider, modelName);
+  if (!model) throw new Error(`${provider}/${modelName} not found`);
+
+  const runKey = `${process.env.GITHUB_RUN_ID || "local"}.${process.env.GITHUB_RUN_ATTEMPT || "1"}`;
+  const baseProvenance = {
+    runKey,
+    mobileSha: gitSha(opts.mobileRoot),
+    slockSha: gitSha(opts.slockRoot),
+    analysisGeneratedAt: analysis.generatedAt || null,
+    model: `${provider}/${modelName}`,
+    scriptSha256: scriptSha(),
+    reservedTokens: DEFAULT_CASE_TOKEN_RESERVATION,
+  };
+  const results = [];
+  for (const issue of selected) {
+    const caseId = issueCaseId(issue);
+    const provenance = { ...baseProvenance, issue: issue.number, caseId };
+    if (!caseId || !claimIssue(issue, opts, provenance)) {
+      results.push({ issue: issue.number, caseId, verdict: "SKIPPED", reason: caseId ? "claim lost" : "missing case id" });
+      continue;
+    }
+    try {
+      const entry = manifestCase(caseId, opts);
+      const sources = collectSources(entry, opts);
+      const candidate = {
+        caseId,
+        comparison: issueComparison(issue, opts.comparison),
+        issueBody: issue.body || "",
+        analysis: analysisByCase.get(caseId) || null,
+        manifest: entry,
+        sources,
+      };
+      const result = await processCandidate(candidate, opts, models, model);
+      applyResult(issue, result, opts, provenance);
+      results.push({ issue: issue.number, caseId, ...result, provenance });
+    } catch (error) {
+      releaseClaim(issue, opts);
+      results.push({ issue: issue.number, caseId, verdict: "ERROR", error: String(error?.stack || error).slice(0, 2_000), provenance });
+    }
+  }
+
+  const report = {
+    mode: opts.live ? "LIVE" : "DRY_RUN",
+    generatedAt: new Date().toISOString(),
+    limits: { caseCap: opts.caseCap, tokenCap: opts.tokenCap, reservedPerCase: DEFAULT_CASE_TOKEN_RESERVATION },
+    counts: {
+      eligible: issues.filter(isEligibleIssue).length,
+      selected: selected.length,
+      refuted: results.filter((result) => result.verdict === "REFUTED").length,
+      unrefuted: results.filter((result) => result.verdict === "UNREFUTED").length,
+      review: results.filter((result) => result.verdict === "REVIEW").length,
+      errors: results.filter((result) => result.verdict === "ERROR").length,
+    },
+    provenance: baseProvenance,
+    results,
+    note: "No product code, PR, baseline, or merge was created by this job.",
+  };
+  fs.writeFileSync(opts.report, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(JSON.stringify(report, null, 2));
+  if (results.some((result) => result.verdict === "ERROR")) process.exitCode = 1;
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) main().catch((error) => {
+  console.error(JSON.stringify({ error: String(error?.stack || error) }));
+  process.exit(1);
+});

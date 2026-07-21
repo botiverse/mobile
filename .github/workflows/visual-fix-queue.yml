@@ -1,0 +1,126 @@
+name: Visual Fix Queue (verified backlog → M3 handoff)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/visual-fix-queue.yml"
+      - "scripts/patrol/fix_queue.mjs"
+      - "scripts/patrol/fix_queue.test.mjs"
+      - "docs/visual-patrol.md"
+  workflow_dispatch:
+    inputs:
+      case_cap:
+        description: "Verified backlog issues to consume (1-3)"
+        default: "3"
+      token_cap:
+        description: "Maximum reserved M3 tokens for this run"
+        default: "225000"
+      issue:
+        description: "Optional single issue number"
+        default: ""
+      dry_run:
+        description: "Dry run (no claim, labels, or comments)"
+        type: boolean
+        default: true
+  schedule:
+    # Independent of patrol/new-issue verification: this consumes the verified
+    # backlog even when the nightly patrol dedupes every finding.
+    - cron: "30 9 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: visual-fix-queue
+  cancel-in-progress: false
+
+jobs:
+  consume-verified-backlog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Mobile exact
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Initialize fail-closed provenance record
+        run: |
+          node -e 'require("fs").writeFileSync("visual-fix-queue-report.json", JSON.stringify({status:"bootstrap", runId:process.env.GITHUB_RUN_ID, runAttempt:process.env.GITHUB_RUN_ATTEMPT, mobileSha:process.env.GITHUB_SHA}, null, 2) + "\n")'
+          node -e 'require("fs").writeFileSync("visual-fix-queue.log", "fix queue bootstrap\n")'
+
+      - name: Fetch published analysis ref
+        run: git fetch origin gh-pages:refs/remotes/origin/gh-pages
+
+      - name: Checkout Slock staging truth source
+        uses: actions/checkout@v4
+        with:
+          repository: botiverse/slock
+          ref: staging
+          path: slock
+          fetch-depth: 1
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+
+      - name: Checkout React component library truth source
+        uses: actions/checkout@v4
+        with:
+          repository: botiverse/rui
+          ref: main
+          path: rui
+          fetch-depth: 1
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install M3 SDK
+        run: |
+          mkdir -p "$RUNNER_TEMP/m3" && cd "$RUNNER_TEMP/m3"
+          echo '{"name":"m3","private":true}' > package.json
+          npm i @earendil-works/pi-ai@0.80.10 --no-audit --no-fund
+
+      - name: Resolve live/dry-run
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ github.event.inputs.dry_run }}" = "false" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            [ "${{ vars.VISUAL_FIX_QUEUE_LIVE }}" = "true" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
+          else
+            # PR validation always exercises the real backlog in read-only mode,
+            # even if the repository's scheduled live switch is enabled.
+            echo "live=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Consume verified visual backlog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          MINIMAX_API_KEY: ${{ secrets.PI_API_KEY }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+        run: |
+          set -o pipefail
+          if [ -z "$PI_API_KEY" ]; then echo "PI_API_KEY is required"; exit 1; fi
+          node scripts/patrol/fix_queue.mjs \
+            --repo "$GITHUB_REPOSITORY" \
+            --comparison react__android \
+            --case-cap "${{ github.event.inputs.case_cap || '3' }}" \
+            --token-cap "${{ github.event.inputs.token_cap || '225000' }}" \
+            --issue "${{ github.event.inputs.issue || '' }}" \
+            --mobile-root . \
+            --slock-root slock \
+            --rui-root rui \
+            --report visual-fix-queue-report.json \
+            ${{ steps.mode.outputs.live }} | tee visual-fix-queue.log
+
+      - name: Upload full provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-fix-queue-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            visual-fix-queue-report.json
+            visual-fix-queue.log
+          if-no-files-found: error
+          retention-days: 30
