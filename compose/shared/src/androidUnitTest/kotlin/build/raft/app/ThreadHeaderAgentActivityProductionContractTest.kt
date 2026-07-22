@@ -10,6 +10,10 @@ class ThreadHeaderAgentActivityProductionContractTest {
     @Test
     fun productionDmHeaderSubscribesToThePeerLiveActivityProjection() {
         val source = productionSource()
+        val statusSource =
+            File(commonMainRoot(), "build/raft/app/SlockAgentStatusIndicator.kt")
+                .readText()
+                .replace("\r\n", "\n")
         val header =
             source.substringAfter("private fun ThreadPageHeader(")
                 .substringBefore("@Composable\nprivate fun ThreadChannelTile(")
@@ -23,7 +27,7 @@ class ThreadHeaderAgentActivityProductionContractTest {
             source,
             "slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)"
         )
-        assertContains(source, "?: return EmptySlockAgentStatusResolver")
+        assertContains(statusSource, "?: return EmptySlockAgentStatusResolver")
         assertFalse(
             "slockAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)" in source,
             "Unknown header scope must use the fail-closed resolver instead of the cross-server null lookup"
