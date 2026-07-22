@@ -16,6 +16,36 @@ import kotlin.test.assertTrue
 
 class SharedAuthGateStoreTest {
     @Test
+    fun coldRestoreQaBootstrapSessionStopsAtRecoveryGate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val session =
+            storedSession(selectedServerId = "server-1").copy(
+                qaBootstrap =
+                    StoredQaBootstrapMetadata(
+                        ticketDigest = "sha256:ticket",
+                        runCaseId = "run-case",
+                        attempt = 1,
+                        ciJobRef = "gha:job",
+                        principalId = "user-1",
+                        serverId = "server-1",
+                        sessionGeneration = "generation-1",
+                        targetRoute = "compose_slock_app_shell",
+                        applicationId = "build.raft.app.alpha",
+                        signingCertSha256 = "sha256:cert",
+                        deviceBootGeneration = "sha256:boot"
+                    )
+            )
+        val store = SharedAuthGateStore(restoreSession = { SharedAuthResult.Success(session) }, scope = scope)
+
+        store.accept(SharedAuthGateIntent.Restore)
+
+        assertEquals(SharedAuthGateState.BootstrapRecoveryRequired(session), store.state.value)
+        store.accept(SharedAuthGateIntent.ResumeQaBootstrap(session))
+        assertTrue(store.state.value is SharedAuthGateState.Ready)
+        scope.cancel()
+    }
+
+    @Test
     fun restoreReadySessionMovesDirectlyToReady() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val store =

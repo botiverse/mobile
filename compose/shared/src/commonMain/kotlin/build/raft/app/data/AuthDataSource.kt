@@ -945,6 +945,171 @@ class SharedAuthDataSource(
         return SharedAuthResult.Success(updated)
     }
 
+    suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): SharedAuthResult<StoredAuthSession> {
+        runCatchingPreservingCancellation {
+            sessionStore.clearSession(reason = "qa_bootstrap_replace", source = "qa_bootstrap")
+        }.getOrElse {
+            return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not clear the previous QA session.")
+        }
+        val consumed =
+            when (val response = api.consumeQaBootstrap(request)) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        val servers =
+            when (val response = api.servers("Bearer ${consumed.accessToken}")) {
+                is AuthApiResult.Success -> response.data
+                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
+            }
+        val orderedServers =
+            servers.orderedByServerOrder(
+                loadServerOrderOrNull("Bearer ${consumed.accessToken}", source = "qa_bootstrap")
+            )
+        val selected = orderedServers.firstOrNull { it.id == consumed.bootstrap.serverId }
+            ?: return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "The QA bootstrap server is unavailable.")
+        if (consumed.user.id != consumed.bootstrap.principalId) {
+            return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "The QA bootstrap principal is invalid.")
+        }
+        val session =
+            StoredAuthSession(
+                user = consumed.user,
+                accessToken = consumed.accessToken,
+                refreshToken = consumed.refreshToken,
+                selectedServerId = selected.id,
+                selectedServerSlug = selected.slug,
+                servers = orderedServers,
+                qaBootstrap =
+                    StoredQaBootstrapMetadata(
+                        ticketDigest = consumed.bootstrap.ticketDigest,
+                        runCaseId = consumed.bootstrap.runCaseId,
+                        attempt = consumed.bootstrap.attempt,
+                        ciJobRef = consumed.bootstrap.ciJobRef,
+                        principalId = consumed.bootstrap.principalId,
+                        serverId = consumed.bootstrap.serverId,
+                        sessionGeneration = consumed.bootstrap.sessionGeneration,
+                        targetRoute = consumed.bootstrap.targetRoute,
+                        applicationId = request.applicationId,
+                        signingCertSha256 = request.signingCertSha256,
+                        deviceBootGeneration = request.deviceBootGeneration
+                    ),
+                qaBootstrapLaunchAuthorized = true,
+                allowImplicitServerFallback = false
+            )
+        return runCatchingPreservingCancellation {
+            sessionStore.replaceAuthenticatedSession(session)
+            SharedAuthResult.Success(session)
+        }.getOrElse {
+            SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Could not save the QA bootstrap session.")
+        }
+    }
+
+    suspend fun readyQaBootstrap(): SharedAuthResult<QaBootstrapReadyResponse> {
+        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        val metadata = session.qaBootstrap ?: return SharedAuthResult.Unauthenticated
+        return when (
+            val response =
+                api.readyQaBootstrap(
+                    ticketDigest = metadata.ticketDigest,
+                    authorization = session.bearer(),
+                    sessionGeneration = metadata.sessionGeneration
+                )
+        ) {
+            is AuthApiResult.Success -> {
+                if (!response.data.matchesFrozenBinding(metadata)) {
+                    return SharedAuthResult.Failure(
+                        SharedAuthErrorCode.Unknown,
+                        "The QA bootstrap READY receipt does not match the consumed session."
+                    )
+                }
+                val persisted = sessionStore.updateQaBootstrapIfBindingMatches(metadata) { latest ->
+                    latest.copy(
+                        qaBootstrap =
+                            requireNotNull(latest.qaBootstrap).copy(
+                                state = "ready",
+                                readyReceipt =
+                                    StoredQaBootstrapReadyReceipt(
+                                        receiptId = response.data.receiptId,
+                                        receiptDigest = response.data.receiptDigest,
+                                        version = response.data.receipt.version,
+                                        readyAtServer = response.data.receipt.readyAtServer
+                                    )
+                            )
+                    )
+                }
+                if (persisted == null) {
+                    SharedAuthResult.Failure(
+                        SharedAuthErrorCode.Unknown,
+                        "The QA bootstrap session changed before the READY receipt was saved."
+                    )
+                } else {
+                    response.toSharedAuthResult()
+                }
+            }
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
+    suspend fun statusQaBootstrap(): SharedAuthResult<QaBootstrapStatusResponse> {
+        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        val metadata = session.qaBootstrap ?: return SharedAuthResult.Unauthenticated
+        return when (val response = api.statusQaBootstrap(metadata.ticketDigest, session.bearer())) {
+            is AuthApiResult.Success -> {
+                if (response.data.status == "ready" && response.data.readyResponseOrNull()?.matchesFrozenBinding(metadata) != true) {
+                    SharedAuthResult.Failure(
+                        SharedAuthErrorCode.Unknown,
+                        "The recovered QA bootstrap READY receipt does not match the consumed session."
+                    )
+                } else {
+                    SharedAuthResult.Success(response.data)
+                }
+            }
+            is AuthApiResult.Failure -> response.toSharedAuthFailure()
+        }
+    }
+
+    suspend fun readStoredSession(): StoredAuthSession? = sessionStore.readSession()
+
+    suspend fun authorizeQaBootstrapLaunch(session: StoredAuthSession): StoredAuthSession? =
+        session.qaBootstrap?.let { expected ->
+            sessionStore.updateQaBootstrapIfBindingMatches(expected) { latest ->
+                latest.copy(qaBootstrapLaunchAuthorized = true)
+            }
+        }
+
+    suspend fun applyQaBootstrapStatus(status: QaBootstrapStatusResponse): StoredAuthSession? {
+        val session = sessionStore.readSession() ?: return null
+        val metadata = session.qaBootstrap ?: return null
+        if (status.status != "ready") {
+            return session
+        }
+        val ready = status.readyResponseOrNull()?.takeIf { it.matchesFrozenBinding(metadata) } ?: return null
+        return sessionStore.updateQaBootstrapIfBindingMatches(metadata) { latest ->
+            latest.copy(
+                qaBootstrap =
+                    requireNotNull(latest.qaBootstrap).copy(
+                        state = "ready",
+                        readyReceipt =
+                            StoredQaBootstrapReadyReceipt(
+                                receiptId = ready.receiptId,
+                                receiptDigest = ready.receiptDigest,
+                                version = ready.receipt.version,
+                                readyAtServer = ready.receipt.readyAtServer
+                            )
+                        )
+            )
+        }
+    }
+
+    suspend fun saveQaBootstrapRuntimeEnvelope(
+        expected: StoredQaBootstrapMetadata,
+        envelope: StoredQaBootstrapRuntimeEnvelope,
+    ): StoredAuthSession? =
+        sessionStore.updateQaBootstrapIfBindingMatches(expected) { latest ->
+            latest.copy(
+                qaBootstrap = requireNotNull(latest.qaBootstrap).copy(runtimeEnvelope = envelope)
+            )
+        }
+
     suspend fun logout(): SharedAuthResult<Unit> {
         val session = sessionStore.readSession()
         if (session != null) {
@@ -1037,6 +1202,8 @@ class SharedAuthDataSource(
             }
         }
 }
+
+private fun <T> AuthApiResult.Success<T>.toSharedAuthResult(): SharedAuthResult<T> = SharedAuthResult.Success(data)
 
 private val MobileOAuthProviders = setOf("google", "github")
 private const val AUTH_ME_CONTRACT_MISMATCH = "auth_me_contract_mismatch"
@@ -1175,6 +1342,12 @@ interface SlockAuthApi {
     suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>>
     suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference>
     suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer>
+    suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): AuthApiResult<QaBootstrapConsumeResponse> =
+        AuthApiResult.Failure(501)
+    suspend fun readyQaBootstrap(ticketDigest: String, authorization: String, sessionGeneration: String): AuthApiResult<QaBootstrapReadyResponse> =
+        AuthApiResult.Failure(501)
+    suspend fun statusQaBootstrap(ticketDigest: String, authorization: String): AuthApiResult<QaBootstrapStatusResponse> =
+        AuthApiResult.Failure(501)
 }
 
 class SlockAuthApiClient(
@@ -1382,6 +1555,28 @@ class SlockAuthApiClient(
     override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
         transport.createServer(authorization, bodyText)
             .mapAuthBody("server_create_contract_mismatch", StoredAuthServer.serializer(), diagnosticsLogger) { it }
+
+    override suspend fun consumeQaBootstrap(request: QaBootstrapConsumeRequest): AuthApiResult<QaBootstrapConsumeResponse> =
+        transport.consumeQaBootstrap(authJson.encodeToString(request))
+            .mapAuthBody("qa_bootstrap_consume_contract_mismatch", QaBootstrapConsumeResponse.serializer(), diagnosticsLogger) { it }
+
+    override suspend fun readyQaBootstrap(
+        ticketDigest: String,
+        authorization: String,
+        sessionGeneration: String
+    ): AuthApiResult<QaBootstrapReadyResponse> =
+        transport.readyQaBootstrap(
+            ticketDigest,
+            authorization,
+            authJson.encodeToString(QaBootstrapReadyRequest(sessionGeneration))
+        ).mapAuthBody("qa_bootstrap_ready_contract_mismatch", QaBootstrapReadyResponse.serializer(), diagnosticsLogger) { it }
+
+    override suspend fun statusQaBootstrap(
+        ticketDigest: String,
+        authorization: String
+    ): AuthApiResult<QaBootstrapStatusResponse> =
+        transport.statusQaBootstrap(ticketDigest, authorization)
+            .mapAuthBody("qa_bootstrap_status_contract_mismatch", QaBootstrapStatusResponse.serializer(), diagnosticsLogger) { it }
 }
 
 sealed interface AuthApiResult<out T> {
@@ -1398,6 +1593,96 @@ data class AuthLoginResponse(
     val accessToken: String,
     val refreshToken: String
 )
+
+@Serializable
+data class QaBootstrapConsumeRequest(
+    val ticket: String,
+    val applicationId: String,
+    val signingCertSha256: String,
+    val deviceBootGeneration: String
+)
+
+@Serializable
+data class QaBootstrapBinding(
+    val ticketDigest: String,
+    val runCaseId: String,
+    val attempt: Int,
+    val ciJobRef: String,
+    val principalId: String,
+    val serverId: String,
+    val sessionGeneration: String,
+    val targetRoute: String,
+    val consumedAt: String
+)
+
+@Serializable
+data class QaBootstrapConsumeResponse(
+    val user: StoredAuthUser,
+    val accessToken: String,
+    val refreshToken: String,
+    val bootstrap: QaBootstrapBinding
+)
+
+@Serializable
+private data class QaBootstrapReadyRequest(val sessionGeneration: String)
+
+@Serializable
+data class QaBootstrapStableReceipt(
+    val version: String,
+    val ticketDigest: String,
+    val runCaseId: String,
+    val attempt: Int,
+    val ciJobRef: String,
+    val principalId: String,
+    val serverId: String,
+    val sessionGeneration: String,
+    val targetRoute: String,
+    val applicationId: String,
+    val signingCertSha256: String,
+    val deviceBootGeneration: String,
+    val serverReadyVersion: Int,
+    val readyAtServer: String
+)
+
+@Serializable
+data class QaBootstrapReadyResponse(
+    val receiptId: String,
+    val receiptDigest: String,
+    val receipt: QaBootstrapStableReceipt
+)
+
+@Serializable
+data class QaBootstrapStatusResponse(
+    val status: String,
+    val receiptId: String? = null,
+    val receiptDigest: String? = null,
+    val receipt: QaBootstrapStableReceipt? = null
+)
+
+private fun QaBootstrapStatusResponse.readyResponseOrNull(): QaBootstrapReadyResponse? {
+    val id = receiptId ?: return null
+    val digest = receiptDigest ?: return null
+    val stable = receipt ?: return null
+    return QaBootstrapReadyResponse(id, digest, stable)
+}
+
+private fun QaBootstrapReadyResponse.matchesFrozenBinding(metadata: StoredQaBootstrapMetadata): Boolean =
+    receiptId.isNotBlank() &&
+        receiptDigest.isNotBlank() &&
+        receipt.version == "qa-bootstrap-ready/v1" &&
+        receipt.serverReadyVersion == 1 &&
+        receipt.readyAtServer.isNotBlank() &&
+        receipt.ticketDigest == metadata.ticketDigest &&
+        receipt.runCaseId == metadata.runCaseId &&
+        receipt.attempt == metadata.attempt &&
+        receipt.ciJobRef == metadata.ciJobRef &&
+        receipt.principalId == metadata.principalId &&
+        receipt.serverId == metadata.serverId &&
+        receipt.sessionGeneration == metadata.sessionGeneration &&
+        receipt.targetRoute == metadata.targetRoute &&
+        receipt.applicationId == metadata.applicationId &&
+        receipt.signingCertSha256 == metadata.signingCertSha256 &&
+        receipt.deviceBootGeneration == metadata.deviceBootGeneration
 
 data class AuthSocialCompleteResponse(
     val accessToken: String,

@@ -120,6 +120,34 @@ interface SlockAuthSessionStore {
         }
         saveSession(updated)
     }
+
+    /**
+     * Applies a QA-bootstrap session mutation only while the complete immutable binding captured
+     * by the caller is still current. The binding comparison runs inside [updateMetadata]'s store
+     * write lock, so a same-account successor attempt cannot receive an older attempt's receipt,
+     * runtime envelope, or launch authorization. Token rotation remains allowed because [transform]
+     * receives the latest session and metadata writers are forbidden from changing its tokens.
+     */
+    suspend fun updateQaBootstrapIfBindingMatches(
+        expected: StoredQaBootstrapMetadata,
+        transform: (StoredAuthSession) -> StoredAuthSession,
+    ): StoredAuthSession? {
+        var applied: StoredAuthSession? = null
+        updateMetadata(expectedAccountId = expected.principalId) { latest ->
+            val current = latest.qaBootstrap
+            if (current == null || !current.hasSameImmutableBinding(expected)) {
+                latest
+            } else {
+                transform(latest).also { updated ->
+                    require(updated.qaBootstrap?.hasSameImmutableBinding(expected) == true) {
+                        "QA bootstrap update must preserve the immutable binding"
+                    }
+                    applied = updated
+                }
+            }
+        }
+        return applied
+    }
 }
 
 private fun StoredAuthSession.withPreservedProcessSelection(current: StoredAuthSession?): StoredAuthSession {
@@ -193,6 +221,8 @@ data class StoredAuthSession(
     val selectedServerId: String? = null,
     val selectedServerSlug: String? = null,
     val servers: List<StoredAuthServer> = emptyList(),
+    val qaBootstrap: StoredQaBootstrapMetadata? = null,
+    @Transient val qaBootstrapLaunchAuthorized: Boolean = false,
     @Transient val allowImplicitServerFallback: Boolean = true
 ) {
     val currentServerId: String?
@@ -216,6 +246,58 @@ data class StoredAuthSession(
         )
     }
 }
+
+@Serializable
+data class StoredQaBootstrapMetadata(
+    val ticketDigest: String,
+    val runCaseId: String,
+    val attempt: Int,
+    val ciJobRef: String,
+    val principalId: String,
+    val serverId: String,
+    val sessionGeneration: String,
+    val targetRoute: String,
+    val applicationId: String,
+    val signingCertSha256: String,
+    val deviceBootGeneration: String,
+    val state: String = "pending",
+    val readyReceipt: StoredQaBootstrapReadyReceipt? = null,
+    val runtimeEnvelope: StoredQaBootstrapRuntimeEnvelope? = null
+)
+
+internal fun StoredQaBootstrapMetadata.hasSameImmutableBinding(other: StoredQaBootstrapMetadata): Boolean =
+    ticketDigest == other.ticketDigest &&
+        runCaseId == other.runCaseId &&
+        attempt == other.attempt &&
+        ciJobRef == other.ciJobRef &&
+        principalId == other.principalId &&
+        serverId == other.serverId &&
+        sessionGeneration == other.sessionGeneration &&
+        targetRoute == other.targetRoute &&
+        applicationId == other.applicationId &&
+        signingCertSha256 == other.signingCertSha256 &&
+        deviceBootGeneration == other.deviceBootGeneration
+
+@Serializable
+data class StoredQaBootstrapReadyReceipt(
+    val receiptId: String,
+    val receiptDigest: String,
+    val version: String,
+    val readyAtServer: String
+)
+
+@Serializable
+data class StoredQaBootstrapRuntimeEnvelope(
+    val envelopeDigest: String,
+    val readyReceiptDigest: String,
+    val pid: Int,
+    val processInstanceId: String,
+    val processGeneration: String,
+    val deviceBootGeneration: String,
+    val deviceReadyElapsedRealtimeNanos: String,
+    val routeReadyProofDigest: String,
+    val recoveryOf: String? = null
+)
 
 @Serializable
 data class StoredAuthTokens(

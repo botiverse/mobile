@@ -77,6 +77,20 @@
             android:exported="true"
             android:theme="@style/Theme.Slock" />
         <activity
+            android:name=".core.data.auth.QaSessionBootstrapActivity"
+            android:enabled="@bool/qa_session_bootstrap_enabled"
+            android:excludeFromRecents="true"
+            android:exported="@bool/qa_session_bootstrap_enabled"
+            android:theme="@style/Theme.Slock.Starting" />
+        <receiver
+            android:name=".core.data.auth.QaCaptureBoundaryReceiver"
+            android:enabled="@bool/qa_session_bootstrap_enabled"
+            android:exported="@bool/qa_session_bootstrap_enabled">
+            <intent-filter>
+                <action android:name="build.raft.app.qa.CAPTURE_BOUNDARY" />
+            </intent-filter>
+        </receiver>
+        <activity
             android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:exported="true"

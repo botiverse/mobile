@@ -42,6 +42,8 @@ class SharedAuthGateStore(
                 setExplicitGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
                 setExplicitGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
+            is SharedAuthGateIntent.ResumeQaBootstrap ->
+                setExplicitGateState(SharedAuthGateState.Ready(intent.session.copy(qaBootstrapLaunchAuthorized = true)), source = "qa_bootstrap_resume")
             SharedAuthGateIntent.ShowSignIn ->
                 setExplicitGateState(SharedAuthGateState.AuthRequired, source = "show_sign_in")
             SharedAuthGateIntent.SignedOut ->
@@ -63,6 +65,8 @@ class SharedAuthGateStore(
                 setExplicitGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
                 setExplicitGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
+            is SharedAuthGateIntent.ResumeQaBootstrap ->
+                setExplicitGateState(SharedAuthGateState.Ready(intent.session.copy(qaBootstrapLaunchAuthorized = true)), source = "qa_bootstrap_resume")
             SharedAuthGateIntent.ShowSignIn,
             SharedAuthGateIntent.SignedOut ->
                 setExplicitGateState(SharedAuthGateState.AuthRequired, source = intent.logSource)
@@ -220,6 +224,7 @@ sealed interface SharedAuthGateIntent {
     data object SignedOut : SharedAuthGateIntent
     data class SignedIn(val session: StoredAuthSession) : SharedAuthGateIntent
     data class ServerReady(val session: StoredAuthSession) : SharedAuthGateIntent
+    data class ResumeQaBootstrap(val session: StoredAuthSession) : SharedAuthGateIntent
 }
 
 sealed interface SharedAuthGateState {
@@ -229,11 +234,14 @@ sealed interface SharedAuthGateState {
     data class ProfileSetupRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class ServerRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class Ready(val session: StoredAuthSession) : SharedAuthGateState
+    data class BootstrapRecoveryRequired(val session: StoredAuthSession) : SharedAuthGateState
     data class Error(val message: String) : SharedAuthGateState
 }
 
 private fun StoredAuthSession.asGateState(): SharedAuthGateState =
-    if (user.emailVerified == false) {
+    if (qaBootstrap != null && !qaBootstrapLaunchAuthorized) {
+        SharedAuthGateState.BootstrapRecoveryRequired(this)
+    } else if (user.emailVerified == false) {
         SharedAuthGateState.EmailVerificationRequired(this)
     } else if (user.requiresProfileSetup) {
         SharedAuthGateState.ProfileSetupRequired(this)
@@ -244,6 +252,7 @@ private fun StoredAuthSession.asGateState(): SharedAuthGateState =
     }
 
 private fun StoredAuthSession.isColdStartCachedReadyEligible(): Boolean =
+    qaBootstrap == null &&
     user.id.isNotBlank() &&
         accessToken.isNotBlank() &&
         !selectedServerId.isNullOrBlank() &&
@@ -259,6 +268,7 @@ private val SharedAuthGateIntent.logSource: String
             SharedAuthGateIntent.SignedOut -> "signed_out"
             is SharedAuthGateIntent.SignedIn -> "signed_in"
             is SharedAuthGateIntent.ServerReady -> "server_ready"
+            is SharedAuthGateIntent.ResumeQaBootstrap -> "qa_bootstrap_resume"
         }
 
 private fun SharedAuthGateState.diagnosticsName(): String =
@@ -269,6 +279,7 @@ private fun SharedAuthGateState.diagnosticsName(): String =
         is SharedAuthGateState.ProfileSetupRequired -> "profile_setup_required"
         is SharedAuthGateState.ServerRequired -> "server_required"
         is SharedAuthGateState.Ready -> "ready"
+        is SharedAuthGateState.BootstrapRecoveryRequired -> "qa_bootstrap_recovery"
         is SharedAuthGateState.Error -> "error"
     }
 
@@ -278,6 +289,7 @@ private fun SharedAuthGateState.hasSelectedServer(): Boolean =
         is SharedAuthGateState.ServerRequired -> !session.selectedServerId.isNullOrBlank()
         is SharedAuthGateState.EmailVerificationRequired -> !session.selectedServerId.isNullOrBlank()
         is SharedAuthGateState.ProfileSetupRequired -> !session.selectedServerId.isNullOrBlank()
+        is SharedAuthGateState.BootstrapRecoveryRequired -> false
         SharedAuthGateState.AuthRequired,
         is SharedAuthGateState.Error,
         SharedAuthGateState.Restoring -> false
