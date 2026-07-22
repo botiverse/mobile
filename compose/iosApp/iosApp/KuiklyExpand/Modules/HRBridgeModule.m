@@ -1761,6 +1761,54 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     return trimmed.length > 0 ? trimmed : @"attachment";
 }
 
+static UTType *SlockPreferredPickedMediaType(NSItemProvider *provider) {
+    UTType *preferred = nil;
+    NSInteger preferredScore = NSIntegerMin;
+    for (NSString *identifier in provider.registeredTypeIdentifiers) {
+        UTType *type = [UTType typeWithIdentifier:identifier];
+        BOOL isImage = [type conformsToType:UTTypeImage];
+        BOOL isVideo = [type conformsToType:UTTypeMovie];
+        if (!isImage && !isVideo) {
+            continue;
+        }
+        BOOL isGeneric =
+            [type isEqual:UTTypeImage] ||
+            [type isEqual:UTTypeMovie] ||
+            [type isEqual:UTTypeVideo] ||
+            [type isEqual:UTTypeAudiovisualContent];
+        NSInteger score = isGeneric ? 0 : 4;
+        if (type.preferredMIMEType.length > 0) {
+            score += 2;
+        }
+        if (type.preferredFilenameExtension.length > 0) {
+            score += 2;
+        }
+        if (!preferred || score > preferredScore) {
+            preferred = type;
+            preferredScore = score;
+        }
+    }
+    return preferred;
+}
+
+static NSString *SlockPickedAttachmentDisplayName(NSString *suggestedName,
+                                                   NSURL *sourceURL,
+                                                   NSString *mimeType) {
+    NSString *displayName =
+        SlockAttachmentExportFileName(suggestedName.length > 0 ? suggestedName : sourceURL.lastPathComponent);
+    if (displayName.pathExtension.length > 0) {
+        return displayName;
+    }
+    NSString *extension = sourceURL.pathExtension;
+    if (extension.length == 0 && mimeType.length > 0) {
+        extension = [UTType typeWithMIMEType:mimeType].preferredFilenameExtension;
+    }
+    if (extension.length > 0) {
+        displayName = [displayName stringByAppendingPathExtension:extension];
+    }
+    return displayName;
+}
+
 @interface HRBridgeModule () <PHPickerViewControllerDelegate, UIDocumentPickerDelegate, SharedAttachmentDownloadObserver>
 
 @property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
@@ -2260,7 +2308,10 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
         }
         PHPickerConfiguration *configuration =
             [[PHPickerConfiguration alloc] initWithPhotoLibrary:PHPhotoLibrary.sharedPhotoLibrary];
-        configuration.filter = PHPickerFilter.imagesFilter;
+        configuration.filter = [PHPickerFilter anyFilterMatchingSubfilters:@[
+            PHPickerFilter.imagesFilter,
+            PHPickerFilter.videosFilter
+        ]];
         configuration.selectionLimit = 0;
         configuration.preferredAssetRepresentationMode = PHPickerConfigurationAssetRepresentationModeCurrent;
         PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:configuration];
@@ -2308,8 +2359,9 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     }
     [results enumerateObjectsUsingBlock:^(PHPickerResult *result, NSUInteger index, BOOL *stop) {
         NSItemProvider *provider = result.itemProvider;
-        NSString *typeIdentifier = UTTypeImage.identifier;
-        if (![provider hasItemConformingToTypeIdentifier:typeIdentifier]) {
+        UTType *mediaType = SlockPreferredPickedMediaType(provider);
+        NSString *typeIdentifier = mediaType.identifier;
+        if (mediaType == nil || ![provider hasItemConformingToTypeIdentifier:typeIdentifier]) {
             @synchronized (errors) {
                 [errors addObject:@{ @"index" : @(index), @"errorCode" : @"attachment_read_failed" }];
             }
@@ -2326,7 +2378,7 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
             if (url && !cacheError) {
                 file = [self slock_cachePickedAttachmentURL:url
                                              suggestedName:provider.suggestedName
-                                                  mimeType:nil
+                                                  mimeType:mediaType.preferredMIMEType
                                                      error:&cacheError];
             }
             if (file) {
@@ -2432,8 +2484,8 @@ static NSString *SlockAttachmentExportFileName(NSString *value) {
     if (![fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:error]) {
         return nil;
     }
-    NSString *displayName = SlockAttachmentExportFileName(suggestedName.length > 0 ? suggestedName : sourceURL.lastPathComponent);
-    NSString *extension = displayName.pathExtension.length > 0 ? displayName.pathExtension : sourceURL.pathExtension;
+    NSString *displayName = SlockPickedAttachmentDisplayName(suggestedName, sourceURL, mimeType);
+    NSString *extension = displayName.pathExtension;
     NSString *cacheName = NSUUID.UUID.UUIDString;
     if (extension.length > 0) {
         cacheName = [cacheName stringByAppendingPathExtension:extension];
