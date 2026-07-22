@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
-import { effectiveExecutorVerdict, normalizeSelfDiagnosis, repeatedActionKey } from "./execution_diagnosis.mjs";
+import {
+  bindDiagnosisToLedger, effectiveExecutorVerdict, normalizeExecutionLimits,
+  normalizeSelfDiagnosis, observationFingerprint, repeatedActionKey,
+} from "./execution_diagnosis.mjs";
 
 test("unverified, navigation, fixture, budget, and infra conclusions cannot become product fail", () => {
   for (const classification of ["navigation_contract", "fixture", "budget", "infra"]) {
     const diagnosis = normalizeSelfDiagnosis({
-      classification, target_surface_reached: classification === "budget",
+      classification, confidence: "high", target_surface_reached: classification === "budget",
+      surface_evidence_steps: classification === "budget" ? [4] : [],
       first_blocked_step: "open-target", missing_guidance: [], first_product_failure: null,
     });
     assert.ok(diagnosis);
@@ -17,20 +21,70 @@ test("unverified, navigation, fixture, budget, and infra conclusions cannot beco
 
 test("product fail requires reached target and a concrete contradictory action", () => {
   const diagnosis = normalizeSelfDiagnosis({
-    classification: "product", target_surface_reached: true, first_blocked_step: "save",
+    classification: "product", confidence: "high", target_surface_reached: true, surface_evidence_steps: [18], first_blocked_step: "save",
     missing_guidance: [], first_product_failure: {
-      action: "tap Save", expected: "renamed header", observed: "old header", evidence_step: 19,
+      action: "tap Save", expected: "renamed header", observed: "old header", action_step: 19, evidence_steps: [19],
     },
   });
   assert.ok(diagnosis);
-  assert.equal(effectiveExecutorVerdict("fail", diagnosis), "fail");
-  assert.equal(effectiveExecutorVerdict("pass", diagnosis), "pass");
-  assert.equal(effectiveExecutorVerdict("fail", { ...diagnosis, target_surface_reached: false }), "harness");
+  const bound = bindDiagnosisToLedger(diagnosis, {
+    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64) }]]),
+    observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+  });
+  assert.equal(effectiveExecutorVerdict("fail", bound), "fail");
+  assert.equal(effectiveExecutorVerdict("pass", bound), "harness");
+  assert.equal(effectiveExecutorVerdict("pass", null), "pass");
+  assert.equal(effectiveExecutorVerdict("fail", { ...bound, target_surface_reached: false }), "harness");
+  assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger(diagnosis, {
+    actions: new Map(), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+  })), "harness");
+  assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger({ ...diagnosis, first_product_failure: { ...diagnosis.first_product_failure, action_step: 999, evidence_steps: [999] } }, {
+    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64) }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+  })), "harness");
+  assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger({ ...diagnosis, first_product_failure: { ...diagnosis.first_product_failure, evidence_steps: [18] } }, {
+    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64) }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+  })), "harness");
+  assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger(diagnosis, {
+    actions: new Map([[19, { performed: false, identity_sha256: "a".repeat(64) }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+  })), "harness");
 });
 
 test("repeated action key groups tiny coordinate jitter but separates actual actions", () => {
   assert.equal(repeatedActionKey({ action: "tap", x: 101, y: 199 }), repeatedActionKey({ action: "tap", x: 109, y: 205 }));
   assert.notEqual(repeatedActionKey({ action: "tap", x: 101, y: 199 }), repeatedActionKey({ action: "swipe", direction: "up" }));
+  assert.notEqual(repeatedActionKey({ action: "text", value: "first" }), repeatedActionKey({ action: "text", value: "second" }));
+  assert.notEqual(repeatedActionKey({ action: "key", name: "back" }), repeatedActionKey({ action: "key", name: "enter" }));
+  assert.notEqual(repeatedActionKey({ action: "wait", seconds: 1 }), repeatedActionKey({ action: "wait", seconds: 5 }));
+  assert.notEqual(repeatedActionKey({ action: "open_link", url: "raft://one" }), repeatedActionKey({ action: "open_link", url: "raft://two" }));
+  assert.notEqual(repeatedActionKey({ action: "note", milestone: "opened", note: "first" }), repeatedActionKey({ action: "note", milestone: "saved", note: "second" }));
+});
+
+test("no-progress fingerprint resets on changed UI or feedback", () => {
+  const actionKey = repeatedActionKey({ action: "swipe", direction: "up" });
+  const first = observationFingerprint({ actionKey, screenshotSha256: "a", feedback: "ok" });
+  assert.equal(first, observationFingerprint({ actionKey, screenshotSha256: "a", feedback: "ok" }));
+  assert.notEqual(first, observationFingerprint({ actionKey, screenshotSha256: "b", feedback: "ok" }));
+  assert.notEqual(first, observationFingerprint({ actionKey, screenshotSha256: "a", feedback: "new rows" }));
+});
+
+test("execution budgets fail closed on malformed and out-of-range values", () => {
+  assert.deepEqual(normalizeExecutionLimits({ maxTurns: 20, maxMinutes: 10, noProgressTurns: 3 }), { maxTurns: 20, maxMinutes: 10, noProgressTurns: 3 });
+  assert.deepEqual(normalizeExecutionLimits({ maxTurns: 160, maxMinutes: 90, noProgressTurns: 30 }), { maxTurns: 160, maxMinutes: 90, noProgressTurns: 30 });
+  for (const invalid of [
+    { maxTurns: "NaN", maxMinutes: 20, noProgressTurns: 8 },
+    { maxTurns: 0, maxMinutes: 20, noProgressTurns: 8 },
+    { maxTurns: 45.5, maxMinutes: 20, noProgressTurns: 8 },
+    { maxTurns: 45, maxMinutes: 999, noProgressTurns: 8 },
+    { maxTurns: 45, maxMinutes: 20, noProgressTurns: 2 },
+    { maxTurns: Infinity, maxMinutes: 20, noProgressTurns: 8 },
+    { maxTurns: -1, maxMinutes: 20, noProgressTurns: 8 },
+  ]) assert.equal(normalizeExecutionLimits(invalid), null);
+});
+
+test("tap_text is recorded as performed only after a concrete target is resolved and tapped", () => {
+  const source = fs.readFileSync(new URL("./acceptance_agent.mjs", import.meta.url), "utf8");
+  assert.match(source, /if \(r\.x !== undefined\) \{[\s\S]*mechanicallyPerformed = true;/);
+  assert.doesNotMatch(source, /feedback = r\.feedback;\s*mechanicallyPerformed = true;/);
 });
 
 test("Android and iOS workflows pass frozen minutes and no-progress budgets to the executor", () => {
@@ -47,7 +101,10 @@ test("failure diagnosis workflow uses an independent reviewer token and the shar
   const workflow = fs.readFileSync(new URL("../../.github/workflows/qa-failure-diagnosis.yml", import.meta.url), "utf8");
   const agent = fs.readFileSync(new URL("./failure_diagnosis_agent.mjs", import.meta.url), "utf8");
   assert.match(workflow, /STAMP_REVIEW_TOKEN/);
-  assert.match(agent, /\/api\/diagnoses\/\$\{runCaseId\}\/model-capacity\/acquire/);
-  assert.match(agent, /finally \{\s*await releaseCapacity\(leaseId\)/);
+  assert.match(agent, /const stampToken = process\.env\.STAMP_REVIEW_TOKEN \|\| ""/);
+  assert.doesNotMatch(agent, /STAMP_REVIEW_TOKEN \|\| process\.env\.STAMP_TOKEN/);
+  assert.match(agent, /capacityPath: `\/api\/diagnoses\/\$\{runCaseId\}\/model-capacity`/);
+  assert.match(agent, /runWithModelRetries\(\{/);
+  assert.match(agent, /capacity_evidence_sha256/);
   assert.match(agent, /\/api\/diagnoses\/\$\{runCaseId\}/);
 });

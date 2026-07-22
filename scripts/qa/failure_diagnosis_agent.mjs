@@ -6,17 +6,19 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { runWithModelRetries, StampModelCapacityClient } from "./model_capacity.mjs";
+import { validateReviewerDiagnosis } from "./failure_diagnosis_contract.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (name, fallback = "") => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : fallback; };
 const runCaseId = arg("--run-case-id", process.env.STAMP_RUN_CASE_ID || "");
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
-const stampToken = process.env.STAMP_REVIEW_TOKEN || process.env.STAMP_TOKEN || "";
+const stampToken = process.env.STAMP_REVIEW_TOKEN || "";
 const piKey = process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
 const ciJobRef = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
   ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : "";
 const out = arg("--out", "failure-diagnosis.json");
-if (!runCaseId || !stampToken || !piKey || !ciJobRef) throw new Error("run-case id, reviewer token, model key, and GitHub run identity are required");
+if (!runCaseId || !stampToken || !piKey || !ciJobRef) throw new Error("run-case id, dedicated STAMP_REVIEW_TOKEN, model key, and GitHub run identity are required");
 
 async function stamp(path, init = {}) {
   const res = await fetch(`${stampUrl}${path}`, {
@@ -49,48 +51,6 @@ async function evidenceBytes(runId, evidence) {
   const digest = crypto.createHash("sha256").update(bytes).digest("hex");
   if (digest !== evidence.sha256) throw new Error(`evidence ${evidence.id} sha256 mismatch`);
   return bytes;
-}
-
-async function acquireCapacity() {
-  while (true) {
-    const res = await fetch(`${stampUrl}/api/diagnoses/${runCaseId}/model-capacity/acquire`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${stampToken}`, "content-type": "application/json", "x-stamp-ci-job-ref": ciJobRef },
-      body: JSON.stringify({ provider: "minimax", model: "MiniMax-M3" }),
-    });
-    const body = await res.json();
-    if (res.status === 200) return body.lease_id;
-    if (res.status !== 202) throw new Error(`capacity acquire ${res.status}: ${JSON.stringify(body)}`);
-    await new Promise((resolve) => setTimeout(resolve, Number(body.retry_after_ms || 5000)));
-  }
-}
-
-async function releaseCapacity(leaseId) {
-  if (!leaseId) return;
-  let last = "";
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const res = await fetch(`${stampUrl}/api/diagnoses/${runCaseId}/model-capacity/release`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${stampToken}`, "content-type": "application/json", "x-stamp-ci-job-ref": ciJobRef },
-      body: JSON.stringify({ lease_id: leaseId }),
-    });
-    last = await res.text();
-    if (res.ok) {
-      const body = last ? JSON.parse(last) : {};
-      if (body.released || body.alreadyReleased) return;
-    }
-    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
-  }
-  throw new Error(`capacity release was not confirmed: ${last.slice(0, 300)}`);
-}
-
-function validate(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("diagnosis must be an object");
-  if (!["product", "navigation_contract", "fixture", "budget", "infra"].includes(value.classification)) throw new Error("invalid classification");
-  if (!["high", "medium", "low"].includes(value.confidence)) throw new Error("invalid confidence");
-  if (typeof value.target_surface_reached !== "boolean" || typeof value.summary !== "string" || !value.summary.trim()) throw new Error("missing diagnosis facts");
-  if (!Array.isArray(value.missing_guidance) || !Array.isArray(value.evidence_ids)) throw new Error("missing arrays");
-  return value;
 }
 
 async function main() {
@@ -133,20 +93,42 @@ async function main() {
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
   const models = providers.builtinModels();
   const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
-  let diagnosis, raw = "", leaseId;
-  try {
-    leaseId = await acquireCapacity();
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const response = await models.complete(model, { messages: [{ role: "user", content, timestamp: Date.now() }] }, { apiKey: piKey, maxTokens: 3000, timeoutMs: 180000 });
+  let raw = "";
+  const capacity = new StampModelCapacityClient({
+    stampUrl, stampToken, runCaseId, claimToken: "", ciJobRef,
+    provider: "minimax", model: "MiniMax-M3", outDir: ".",
+    capacityPath: `/api/diagnoses/${runCaseId}/model-capacity`,
+    queueTimeoutMs: 600_000, releaseAttempts: 3,
+  });
+  const includedIds = new Set(included.map((item) => item.id));
+  const diagnosis = await runWithModelRetries({
+    capacity,
+    maxAttempts: 3,
+    retryBudgetMs: 300_000,
+    invoke: async (attempt) => {
+      const attemptContent = attempt === 1 ? content : [
+        { type: "text", text: "FORMAT/CONTRACT CORRECTION: return exactly one JSON object matching every classification, retry-plan, budget, and evidence-id constraint." },
+        ...content,
+      ];
+      const response = await models.complete(model,
+        { messages: [{ role: "user", content: attemptContent, timestamp: Date.now() }] },
+        { apiKey: piKey, maxTokens: 3000, timeoutMs: 180000 });
+      if (response.stopReason === "error" || response.stopReason === "aborted") throw new Error(response.errorMessage || response.stopReason);
       raw = response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
-      try { diagnosis = validate(JSON.parse(raw.trim())); break; } catch (error) {
-        if (attempt === 3) throw error;
-        content.unshift({ type: "text", text: "FORMAT CORRECTION: output exactly one valid JSON object matching the schema." });
-      }
-    }
-  } finally {
-    await releaseCapacity(leaseId);
-  }
+      return validateReviewerDiagnosis(JSON.parse(raw.trim()), includedIds);
+    },
+  });
+  const capacityBytes = fs.readFileSync("model-capacity.jsonl");
+  diagnosis.provenance = {
+    schema_version: "failure-diagnosis/v1",
+    prompt_version: "failure-diagnosis-prompt/v1",
+    model: "MiniMax-M3",
+    source_commit: process.env.GITHUB_SHA || "",
+    workflow_run_id: process.env.GITHUB_RUN_ID || "",
+    workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || "",
+    workflow_ref: process.env.GITHUB_WORKFLOW_REF || "",
+    capacity_evidence_sha256: crypto.createHash("sha256").update(capacityBytes).digest("hex"),
+  };
   const submitted = await stamp(`/api/diagnoses/${runCaseId}`, { method: "POST", body: JSON.stringify(diagnosis) });
   fs.writeFileSync(out, JSON.stringify({ run_case_id: runCaseId, diagnosis, submitted, raw_model_output: raw }, null, 2));
   console.log(JSON.stringify({ run_case_id: runCaseId, diagnosis, submitted }, null, 2));

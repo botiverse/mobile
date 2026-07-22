@@ -101,8 +101,8 @@ export async function runWithModelRetries({
 }
 
 export class StampModelCapacityClient {
-  constructor({ stampUrl, stampToken, runCaseId, claimToken, ciJobRef, provider, model, outDir, onEvent, fetchImpl = fetch, sleepImpl = sleep, queueTimeoutMs = 900_000, releaseAttempts = 3, releaseRetryBaseMs = 1_000 }) {
-    this.base = `${String(stampUrl).replace(/\/$/, "")}/api/agent/run-cases/${runCaseId}/model-capacity`;
+  constructor({ stampUrl, stampToken, runCaseId, claimToken, ciJobRef, provider, model, outDir, onEvent, capacityPath, fetchImpl = fetch, sleepImpl = sleep, queueTimeoutMs = 900_000, releaseAttempts = 3, releaseRetryBaseMs = 1_000 }) {
+    this.base = `${String(stampUrl).replace(/\/$/, "")}${capacityPath || `/api/agent/run-cases/${runCaseId}/model-capacity`}`;
     this.stampToken = stampToken;
     this.claimToken = claimToken;
     this.ciJobRef = ciJobRef;
@@ -131,7 +131,7 @@ export class StampModelCapacityClient {
       authorization: `Bearer ${this.stampToken}`,
       "content-type": "application/json",
       "x-stamp-ci-job-ref": this.ciJobRef,
-      "x-stamp-claim-token": this.claimToken,
+      ...(this.claimToken ? { "x-stamp-claim-token": this.claimToken } : {}),
     };
   }
 

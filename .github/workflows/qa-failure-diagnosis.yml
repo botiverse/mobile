@@ -35,5 +35,7 @@ jobs:
         if: always()
         with:
           name: failure-diagnosis-${{ inputs.stamp_run_case_id }}
-          path: failure-diagnosis.json
+          path: |
+            failure-diagnosis.json
+            model-capacity.jsonl
           if-no-files-found: warn

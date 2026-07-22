@@ -27,7 +27,14 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeAssertionAnnotation } from "./assertion_annotations.mjs";
-import { effectiveExecutorVerdict, normalizeSelfDiagnosis, repeatedActionKey } from "./execution_diagnosis.mjs";
+import {
+  bindDiagnosisToLedger,
+  effectiveExecutorVerdict,
+  normalizeExecutionLimits,
+  normalizeSelfDiagnosis,
+  observationFingerprint,
+  repeatedActionKey,
+} from "./execution_diagnosis.mjs";
 import { captureAndroidScreenshotWithPostProof } from "./android_capture_proof.mjs";
 import { buildEvidenceOverlays, screenshotPixelTap } from "./evidence_annotations.mjs";
 import { capacityClientFromEnv, runWithModelRetries } from "./model_capacity.mjs";
@@ -298,10 +305,12 @@ function preamble(size) {
     "                                                 progress checkpoint reviewers watch live",
     '  {"action":"finish","verdict":"pass|fail|error","reason":"<what you verified / what failed>",',
     '   "diagnosis":{"classification":"product|navigation_contract|fixture|budget|infra",',
-    '     "target_surface_reached":true|false,"first_blocked_step":"<step or null>",',
+    '     "confidence":"high|medium|low","target_surface_reached":true|false,',
+    '     "surface_evidence_steps":[<turns proving target>],"first_blocked_step":"<step or null>",',
     '     "missing_guidance":["<specific locator/navigation/precondition gap>"],',
     '     "first_product_failure":{"action":"<performed action>","expected":"<state>",',
-    '       "observed":"<contradictory fresh state>","evidence_step":<turn>}|null},',
+    '       "observed":"<contradictory fresh state>","action_step":<performed turn>,',
+    '       "evidence_steps":[<fresh post-action turns>]}|null}|null,',
     '   "annotations":[{"assertion_id":"<stable id from [id] in goal>","step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"[id] <short>"}]}',
     "",
     "Rules:",
@@ -325,6 +334,7 @@ function preamble(size) {
     "- After typing into a field, verify via the screenshot that the text landed in the",
     "  INTENDED field. If text went to the wrong field, tap that field, use clear, and redo.",
     "- finish with verdict pass ONLY if you visually confirmed every requirement of the goal;",
+    "  pass MUST set diagnosis=null; a pass paired with a blocker diagnosis is inconsistent.",
     "  use product fail only when the target surface was reached, a real action was performed,",
     "  and fresh evidence contradicts the expected state. Navigation/fixture/budget gaps are",
     "  diagnosis causes, not product failures; the runner preserves them as harness/incomplete.",
@@ -537,6 +547,9 @@ async function annotateEvidence(size, taps, assertions) {
 async function main() {
   if (!opts.goal) { console.error("no --goal / QA_GOAL"); process.exit(2); }
   if (!piKey()) { console.error("no PI_API_KEY/MINIMAX_API_KEY"); process.exit(2); }
+  const limits = normalizeExecutionLimits(opts);
+  if (!limits) { console.error("invalid execution budget: turns 20-160, minutes 10-90, no-progress 3-30 required"); process.exit(2); }
+  Object.assign(opts, limits);
   fs.mkdirSync(opts.out, { recursive: true });
   modelCapacity = capacityClientFromEnv({
     outDir: opts.out,
@@ -557,13 +570,16 @@ async function main() {
   const models = await loadModels();
   const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
   const size = screenSize();
+  const actionLedger = new Map();
+  const observationLedger = new Map();
 
   const shoot = (turn) => {
     const png = screenshotPng();
+    const imageSha256 = createHash("sha256").update(png).digest("hex");
+    observationLedger.set(turn, imageSha256);
     const fileName = `step-${String(turn).padStart(2, "0")}.png`;
     fs.writeFileSync(path.join(opts.out, fileName), png);
     if (lastCaptureBoundary) {
-      const imageSha256 = createHash("sha256").update(png).digest("hex");
       if (lastCaptureBoundary.imageSha256 !== imageSha256) {
         throw new Error("QA capture boundary does not bind the saved screenshot bytes");
       }
@@ -599,7 +615,7 @@ async function main() {
   stampCheckpoint(0, "auto:start", opts.goal);
 
   let verdict = null, reason = "", turns = 0, executionDiagnosis = null;
-  let noProgressTriggered = false, lastActionKey = "", sameActionTurns = 0;
+  let noProgressTriggered = false, lastObservationFingerprint = "", sameObservationTurns = 0;
   const tapAnnotations = [];
   const assertionAnnotations = [];
   while (turns < opts.maxTurns && Date.now() < deadline) {
@@ -636,14 +652,16 @@ async function main() {
       logStep({ turn: turns, event: "model_error", error: String(e?.message || e).slice(0, 300) });
       verdict = "error"; reason = `model call failed: ${String(e?.message || e).slice(0, 200)}`;
       executionDiagnosis = {
-        classification: "infra", target_surface_reached: false,
+        classification: "infra", confidence: "high", target_surface_reached: false, surface_evidence_steps: [],
         first_blocked_step: "model-call", missing_guidance: [], first_product_failure: null,
       };
       break;
     }
 
     if (action.action === "finish") {
-      executionDiagnosis = normalizeSelfDiagnosis(action.diagnosis, redact);
+      executionDiagnosis = bindDiagnosisToLedger(normalizeSelfDiagnosis(action.diagnosis, redact), {
+        actions: actionLedger, observations: observationLedger,
+      });
       verdict = action.verdict === "error" ? "error" : effectiveExecutorVerdict(action.verdict, executionDiagnosis);
       reason = String(action.reason || "");
       if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
@@ -652,11 +670,13 @@ async function main() {
     }
 
     let feedback = "ok";
+    let mechanicallyPerformed = false;
     try {
       switch (action.action) {
         case "tap":
           if (drv) await drv.tap(Math.round(action.x), Math.round(action.y));
           else adb(["shell", "input", "tap", String(Math.round(action.x)), String(Math.round(action.y))]);
+          mechanicallyPerformed = true;
           // The agent decided this tap while looking at the PREVIOUS turn's
           // screenshot — that's the frame the crosshair belongs on.
           tapAnnotations.push(screenshotPixelTap(turns, action.x, action.y));
@@ -671,6 +691,7 @@ async function main() {
           if (r.x !== undefined) {
             if (drv) await drv.tap(r.x, r.y);
             else adb(["shell", "input", "tap", String(r.x), String(r.y)]);
+            mechanicallyPerformed = true;
             // A fresh dump refines the coordinate but does not capture a new
             // screenshot. The action was still chosen from the pre-action
             // frame, just like a coordinate tap.
@@ -683,6 +704,7 @@ async function main() {
           const { w, h } = size;
           const c = { up: [w / 2, h * 0.7, w / 2, h * 0.3], down: [w / 2, h * 0.3, w / 2, h * 0.7], left: [w * 0.8, h / 2, w * 0.2, h / 2], right: [w * 0.2, h / 2, w * 0.8, h / 2] }[action.direction] || [w / 2, h * 0.7, w / 2, h * 0.3];
           adb(["shell", "input", "swipe", ...c.map((n) => String(Math.round(n))), "300"]);
+          mechanicallyPerformed = true;
           break;
         }
         case "long_press":
@@ -691,6 +713,7 @@ async function main() {
           else adb(["shell", "input", "swipe",
             String(Math.round(action.x)), String(Math.round(action.y)),
             String(Math.round(action.x)), String(Math.round(action.y)), "800"]);
+          mechanicallyPerformed = true;
           tapAnnotations.push(screenshotPixelTap(turns, action.x, action.y));
           break;
         case "open_link": {
@@ -698,12 +721,14 @@ async function main() {
           if (!/^[a-z][a-z0-9+.-]*:\/\/\S+$/i.test(url)) { feedback = "open_link needs a scheme://... url"; break; }
           if (drv) drv.openLink(url);
           else adb(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url]);
+          mechanicallyPerformed = true;
           break;
         }
         case "text": {
           let v = String(action.value ?? "");
           for (const [ph, real] of Object.entries(SECRETS)) v = v.split(ph).join(real);
           await inputText(v);
+          mechanicallyPerformed = true;
           // The recurring login failure mode is text landing in the wrong
           // field because a tap didn't move focus. Report the focused node's
           // content back mechanically so the model sees the landing spot
@@ -714,13 +739,15 @@ async function main() {
         case "key":
           if (drv) await drv.key(String(action.name));
           else adb(["shell", "input", "keyevent", KEYCODES[action.name] || String(action.name)]);
+          mechanicallyPerformed = true;
           break;
-        case "clear": await clearField(); break;
+        case "clear": await clearField(); mechanicallyPerformed = true; break;
         case "dump_ui": feedback = await dumpUi(); break;
-        case "wait": await new Promise((r) => setTimeout(r, Math.min(10, Math.max(1, Number(action.seconds) || 2)) * 1000)); break;
+        case "wait": await new Promise((r) => setTimeout(r, Math.min(10, Math.max(1, Number(action.seconds) || 2)) * 1000)); mechanicallyPerformed = true; break;
         case "launch":
           if (drv) await drv.launch();
           else adb(["shell", "am", "start", "-n", `${opts.appPackage}/.MainActivity`]);
+          mechanicallyPerformed = true;
           break;
         case "note": {
           const milestone = String(action.milestone ?? "").trim();
@@ -740,21 +767,31 @@ async function main() {
     await new Promise((r) => setTimeout(r, 1500));
 
     logStep({ turn: turns, action: { ...action, value: action.action === "text" ? redact(String(action.value ?? "")) : action.value }, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars` });
-    const actionKey = repeatedActionKey(action);
-    sameActionTurns = actionKey === lastActionKey ? sameActionTurns + 1 : 1;
-    lastActionKey = actionKey;
+    const actionKey = repeatedActionKey(action, redact);
+    actionLedger.set(turns, {
+      performed: mechanicallyPerformed && !String(feedback).startsWith("action failed:"),
+      identity_sha256: createHash("sha256").update(actionKey).digest("hex"),
+    });
     recordSession("user_turn", { turn: turns, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars`, screenshot: `step-${String(turns).padStart(2, "0")}.png` });
+    const observation = shoot(turns);
     messages.push({
       role: "user",
       content: [
         { type: "text", text: `Result: ${feedback}\nTurn ${turns}/${opts.maxTurns}. Current screen:` },
-        shoot(turns),
+        observation,
       ],
       timestamp: Date.now(),
     });
-    if (sameActionTurns >= opts.noProgressTurns) {
+    const fingerprint = observationFingerprint({
+      actionKey,
+      screenshotSha256: observationLedger.get(turns),
+      feedback: feedback === "ok" ? "ok" : feedback,
+    });
+    sameObservationTurns = fingerprint === lastObservationFingerprint ? sameObservationTurns + 1 : 1;
+    lastObservationFingerprint = fingerprint;
+    if (sameObservationTurns >= opts.noProgressTurns) {
       noProgressTriggered = true;
-      logStep({ turn: turns, event: "no_progress_fuse", repeated_action: action.action, repeated_turns: sameActionTurns });
+      logStep({ turn: turns, event: "no_progress_fuse", repeated_action: action.action, unchanged_observation_turns: sameObservationTurns });
       break;
     }
   }
@@ -779,7 +816,9 @@ async function main() {
       const reply = await callModel(models, model, messages);
       const action = parseAction(reply);
       if (action.action === "finish") {
-        executionDiagnosis = normalizeSelfDiagnosis(action.diagnosis, redact);
+        executionDiagnosis = bindDiagnosisToLedger(normalizeSelfDiagnosis(action.diagnosis, redact), {
+          actions: actionLedger, observations: observationLedger,
+        });
         verdict = action.verdict === "error" ? "error" : effectiveExecutorVerdict(action.verdict, executionDiagnosis);
         reason = `[forced at ${budgetCause}] ${String(action.reason || "")}`;
         if (Array.isArray(action.annotations)) assertionAnnotations.push(...action.annotations);
@@ -794,7 +833,9 @@ async function main() {
     reason = turns >= opts.maxTurns ? `no verdict within ${opts.maxTurns} turns` : `wall-clock cap ${opts.maxMinutes}min hit`;
     executionDiagnosis = {
       classification: "infra",
+      confidence: "high",
       target_surface_reached: false,
+      surface_evidence_steps: [],
       first_blocked_step: null,
       missing_guidance: [],
       first_product_failure: null,
@@ -815,7 +856,9 @@ async function main() {
         reason = `harness/system blocker (${blocker.code}): ${blocker.label}; product requirements were not evaluated`;
         executionDiagnosis = {
           classification: "infra",
+          confidence: "high",
           target_surface_reached: false,
+          surface_evidence_steps: [],
           first_blocked_step: "foreign-system-blocker",
           missing_guidance: [],
           first_product_failure: null,

@@ -205,6 +205,27 @@ test("release retries response loss idempotently and confirms before returning",
   assert.equal(events[2].idempotent, true);
 });
 
+test("independent diagnosis reuses shared capacity client without executor claim authority", async () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "stamp-diagnosis-capacity-"));
+  const calls = [];
+  const responses = [
+    new Response(JSON.stringify({ status: "acquired", lease_id: "review-lease", slot: 3, active: 1, queued: 0, limit: 3 }), { status: 200, headers: { "content-type": "application/json" } }),
+    new Response(JSON.stringify({ ok: true, released: true, active: 0, queued: 0, limit: 3 }), { status: 200, headers: { "content-type": "application/json" } }),
+  ];
+  const client = new StampModelCapacityClient({
+    stampUrl: "https://stamp.example", stampToken: "review-token", runCaseId: "rc-review",
+    claimToken: "", ciJobRef: "https://github.com/botiverse/mobile/actions/runs/4",
+    provider: "minimax", model: "MiniMax-M3", outDir,
+    capacityPath: "/api/diagnoses/rc-review/model-capacity",
+    fetchImpl: async (url, init) => { calls.push({ url, init }); return responses.shift(); },
+  });
+  const lease = await client.acquire();
+  assert.equal(await client.release(lease), true);
+  assert.equal(calls[0].init.headers["x-stamp-claim-token"], undefined);
+  assert.match(calls[0].url, /api\/diagnoses\/rc-review\/model-capacity\/acquire$/);
+  assert.match(calls[1].url, /api\/diagnoses\/rc-review\/model-capacity\/release$/);
+});
+
 test("workflow wires provider retry budget and uploads capacity evidence", () => {
   const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
   const reporter = fs.readFileSync(path.resolve("scripts/qa/stamp_report.sh"), "utf8");
