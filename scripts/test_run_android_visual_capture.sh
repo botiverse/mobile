@@ -214,8 +214,12 @@ current="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 if [[ "${FAKE_SIGNER_STYLE:-rotated}" == "mismatch" && "$apk" == *test.apk ]]; then
   current="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 fi
-case "${FAKE_SIGNER_STYLE:-rotated}" in
-  rotated|mismatch)
+case "${FAKE_SIGNER_STYLE:-v37}" in
+  v37|mismatch)
+    echo "V3.1 Signer: (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: $current"
+    echo "V3.0 Signer: (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ;;
+  v36)
     echo "Signer (minSdkVersion=33, maxSdkVersion=2147483647) certificate SHA-256 digest: $current"
     echo "Signer (minSdkVersion=24, maxSdkVersion=32) certificate SHA-256 digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     ;;
@@ -273,7 +277,7 @@ PY
 
 rm -rf "$FAKE_ADB_STATE"
 mkdir -p "$FAKE_ADB_STATE/device-results"
-env "${COMMON_ENV[@]}" FAKE_HANG_METHOD="captureSettingsAppearancePage" "$ROOT/scripts/run_android_visual_capture.sh" \
+env "${COMMON_ENV[@]}" FAKE_SIGNER_STYLE=v36 FAKE_HANG_METHOD="captureSettingsAppearancePage" "$ROOT/scripts/run_android_visual_capture.sh" \
   --app-apk "$TMP/app.apk" \
   --test-apk "$TMP/test.apk" \
   --method-filter "$FILTER" \
