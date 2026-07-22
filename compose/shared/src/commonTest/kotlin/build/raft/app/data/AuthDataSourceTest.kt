@@ -101,7 +101,7 @@ class AuthDataSourceTest {
         val source = SharedAuthDataSource(transport = api, sessionStore = store)
         val digest = "sha256:${"a".repeat(64)}"
         val envelope =
-            """{"version":"qa-bootstrap-login/v1","run_case_id":"00000000-0000-4000-8000-000000000001","attempt":2,"ci_job_ref":"https://github.com/botiverse/mobile/actions/runs/1","principal_id":"user-1","server_id":"server-1","target_route":"compose_slock_app_shell","application_id":"build.raft.app.alpha","signing_cert_sha256":"sha256:cert","boot_generation":"sha256:boot","user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"access_token":"login-access","refresh_token":"login-refresh"}"""
+            """{"version":"qa-bootstrap-login/v1","run_case_id":"00000000-0000-4000-8000-000000000001","attempt":2,"ci_job_ref":"https://github.com/botiverse/mobile/actions/runs/1","principal_id":"user-1","server_id":"server-1","target_route":"compose_slock_app_shell","application_id":"build.raft.app.alpha","signing_cert_sha256":"sha256:cert","boot_generation":"sha256:boot","user":{"id":"user-1","email":"","displayName":"Artin"},"access_token":"login-access","refresh_token":"login-refresh"}"""
 
         val result =
             source.consumeQaLoginBootstrap(
@@ -116,6 +116,7 @@ class AuthDataSourceTest {
         val session = requireNotNull(store.readSession())
         assertEquals("login-access", session.accessToken)
         assertEquals("login-refresh", session.refreshToken)
+        assertEquals("", session.user.email)
         assertEquals("server-1", session.selectedServerId)
         assertEquals(QA_BOOTSTRAP_LOGIN_PROTOCOL, session.qaBootstrap?.protocol)
         assertEquals(digest, session.qaBootstrap?.ticketDigest)
