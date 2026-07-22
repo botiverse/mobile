@@ -522,13 +522,90 @@ class ThreadComposerPayloadTest {
                 build.raft.app.data.PendingMentionActionExecuteResult(
                     resolutionId = "res-1",
                     status = "no_permission",
-                    reason = "invite_requires_member_management_authority"
+                    reason = "add_requires_member_management_authority"
                 )
             )
         )
         assertEquals(
-            "This mention action could not be applied. Refresh the thread and try again.",
+            "Notification was not delivered because delivery is temporarily unavailable. Try again.",
+            formatMentionActionStatusNotice(
+                build.raft.app.data.PendingMentionActionExecuteResult(
+                    resolutionId = "res-1",
+                    status = "dropped",
+                    reason = "delivery_unavailable"
+                )
+            )
+        )
+        assertEquals(
+            "This mention action is no longer pending.",
+            formatMentionActionStatusNotice(
+                build.raft.app.data.PendingMentionActionExecuteResult(
+                    resolutionId = "res-1",
+                    status = "stale",
+                    reason = "no_longer_pending"
+                )
+            )
+        )
+        assertEquals(
+            "This mention action is no longer available.",
             formatMentionActionStatusNotice(null)
         )
+        listOf(
+            "expired" to "This mention action has expired.",
+            "not_found" to "This mention action is no longer available.",
+            "ambiguous" to "This mention action matched more than one target. Refresh and try again."
+        ).forEach { (status, expected) ->
+            assertEquals(
+                expected,
+                formatMentionActionStatusNotice(
+                    build.raft.app.data.PendingMentionActionExecuteResult(
+                        resolutionId = "res-1",
+                        status = status
+                    )
+                )
+            )
+        }
+        listOf(
+            "add_not_allowed_for_surface" to
+                "That person cannot be added from this mention action. Use the channel member controls instead.",
+            "add_requires_human_member_authority" to
+                "Agents cannot add channel members from mention actions. Ask a human member to add them.",
+            "sender_lacks_channel_access" to
+                "You no longer have access to that channel, so this mention action was not applied."
+        ).forEach { (reason, expected) ->
+            assertEquals(
+                expected,
+                formatMentionActionStatusNotice(
+                    build.raft.app.data.PendingMentionActionExecuteResult(
+                        resolutionId = "res-1",
+                        status = "no_permission",
+                        reason = reason
+                    )
+                )
+            )
+        }
+    }
+
+    @Test
+    fun mentionActionSuccessClassificationMatchesCanonicalActionStatusPairs() {
+        val queued =
+            build.raft.app.data.PendingMentionActionExecuteResult(
+                resolutionId = "res-1",
+                status = "queued"
+            )
+        val alreadyQueued = queued.copy(reason = "already_queued")
+        val delivered = queued.copy(status = "delivered")
+        val dropped = queued.copy(status = "dropped", reason = "delivery_unavailable")
+        val stale = queued.copy(status = "stale", reason = "no_longer_pending")
+
+        assertTrue(mentionActionSucceeded("notify", queued))
+        assertTrue(mentionActionSucceeded("notify", alreadyQueued))
+        assertFalse(mentionActionSucceeded("notify", delivered))
+        assertTrue(mentionActionSucceeded("add", delivered))
+        assertTrue(mentionActionSucceeded("invite", delivered))
+        assertFalse(mentionActionSucceeded("add", queued))
+        assertFalse(mentionActionSucceeded("notify", dropped))
+        assertFalse(mentionActionSucceeded("notify", stale))
+        assertFalse(mentionActionSucceeded("notify", null))
     }
 }

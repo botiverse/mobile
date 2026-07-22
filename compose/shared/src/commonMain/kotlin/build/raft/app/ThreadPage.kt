@@ -7294,9 +7294,9 @@ internal fun SharedThreadRouteContent(
                             (result as? ThreadApiResult.Success)
                                 ?.data
                                 ?.firstOrNull { it.resolutionId == resolutionId }
-                        val delivered = rowResult?.status == "delivered"
+                        val succeeded = mentionActionSucceeded(verb, rowResult)
                         val notice =
-                            if (delivered) {
+                            if (succeeded) {
                                 pendingAction.mentionActionDeliveredNotice(verb, composerSurface.mentionScopeChannelLabel())
                             } else {
                                 formatMentionActionStatusNotice(rowResult)
@@ -7305,14 +7305,14 @@ internal fun SharedThreadRouteContent(
                             SharedThreadComposerDraftIntent.FinishMentionAction(
                                 resolutionId = resolutionId,
                                 notice = notice,
-                                delivered = delivered,
+                                delivered = succeeded,
                                 state = localState
                             )
                         )
-                        if (delivered && verb == "add") {
+                        if (succeeded && verb == "add") {
                             refreshComposerMemberSuggestionsAfterMembershipMutation()
                         }
-                        if (delivered) {
+                        if (succeeded) {
                             delay(ThreadComposerMentionActionFadeDelayMs)
                             composerDraftViewModel.dispatch(
                                 SharedThreadComposerDraftIntent.MarkMentionActionRemoving(resolutionId)
@@ -10244,19 +10244,44 @@ internal fun KuiklyPendingMentionActionItem.mentionActionDeliveredNotice(
     }
 }
 
+internal fun mentionActionSucceeded(
+    action: String,
+    result: PendingMentionActionExecuteResult?
+): Boolean =
+    when (action) {
+        "notify", "notify_only" -> result?.status == "queued"
+        "add", "invite" -> result?.status == "delivered"
+        else -> false
+    }
+
 internal fun formatMentionActionStatusNotice(result: PendingMentionActionExecuteResult?): String =
-    when (result?.reason) {
-        "sender_lacks_channel_access" -> "You no longer have access to that channel, so this mention action was not applied."
-        "target_lacks_read_access" -> "That person cannot read this conversation, so they were not notified."
-        "invite_not_allowed_for_surface" -> "That person cannot be added from this mention action. Use the channel member controls instead."
-        "invite_requires_human_member_authority" -> "Agents cannot add channel members from mention actions. Ask a human member to add them."
-        "invite_requires_member_management_authority" -> "Only channel admins can add members from this mention action."
-        "target_already_member" -> "That target is already in the channel, so no action is needed."
-        "target_unavailable" -> "That target is no longer available."
+    when (result?.status) {
+        null -> "This mention action is no longer available."
+        "dropped" ->
+            if (result.reason == "delivery_unavailable") {
+                "Notification was not delivered because delivery is temporarily unavailable. Try again."
+            } else {
+                "That target was not notified right now. Try again."
+            }
+        "no_permission" ->
+            when (result.reason) {
+                "sender_lacks_channel_access" -> "You no longer have access to that channel, so this mention action was not applied."
+                "target_lacks_read_access" -> "That person cannot read this conversation, so they were not notified."
+                "add_not_allowed_for_surface" -> "That person cannot be added from this mention action. Use the channel member controls instead."
+                "add_requires_human_member_authority" -> "Agents cannot add channel members from mention actions. Ask a human member to add them."
+                "add_requires_member_management_authority" -> "Only channel admins can add members from this mention action."
+                else -> "This mention action is not available for the current channel state."
+            }
+        "stale" ->
+            when (result.reason) {
+                "target_already_member" -> "That target is already in the channel, so no action is needed."
+                "target_unavailable" -> "That target is no longer available."
+                else -> "This mention action is no longer pending."
+            }
         "expired" -> "This mention action has expired."
         "not_found" -> "This mention action is no longer available."
         "ambiguous" -> "This mention action matched more than one target. Refresh and try again."
-        else -> "This mention action could not be applied. Refresh the thread and try again."
+        else -> "This mention action could not be applied."
     }
 
 private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
