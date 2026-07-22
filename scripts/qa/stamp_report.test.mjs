@@ -105,6 +105,8 @@ test("report reads a relative verdict path and freezes scope before writes", () 
   fs.mkdirSync(bin);
   fs.mkdirSync(runnerTemp);
   fs.writeFileSync(path.join(evidence, "logcat.txt"), "app log\n");
+  fs.writeFileSync(path.join(evidence, "step-00.annotated.png"), "step zero");
+  fs.writeFileSync(path.join(evidence, "step-19.png"), "step nineteen");
   fs.writeFileSync(path.join(evidence, "verdict.json"), JSON.stringify({
     verdict: "pass",
     log_scope: { filtered: true, package_id: "build.raft.app", pids: [1234], generation: "99:1" },
@@ -130,5 +132,10 @@ test("report reads a relative verdict path and freezes scope before writes", () 
   assert.match(calls[0], /execution-scope/);
   assert.match(calls[0], /X-Stamp-Claim-Token: lease-token/);
   assert(calls.some((call) => call.includes("/evidence?kind=logcat")));
+  const annotated = calls.find((call) => call.includes("kind=screenshot_annotated"));
+  const raw = calls.find((call) => call.includes("kind=screenshot&"));
+  assert.match(annotated, /[?&]step=0(?:&|\s)/);
+  assert.match(raw, /[?&]step=19(?:&|\s)/);
+  assert.notEqual(new URL(annotated.match(/https:\/\/\S+/)[0]).searchParams.get("seq"), new URL(raw.match(/https:\/\/\S+/)[0]).searchParams.get("seq"));
   assert.match(calls.at(-1), /\/verdict/);
 });
