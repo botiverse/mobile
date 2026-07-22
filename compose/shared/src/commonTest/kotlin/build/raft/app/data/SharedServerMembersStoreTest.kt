@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.slockScopedAgentStatusResolver
 import build.raft.app.model.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -1725,6 +1726,48 @@ class SharedServerMembersStoreTest {
             listOf("u1", "u2"),
             store.currentChannelMembers(ServerId("server-1"), ChannelId("channel-1")).map { it.id.value }
         )
+    }
+
+    @Test
+    fun scopedAgentStatusResolverNeverCrossesServersForTheSameAgentId() = runBlocking {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                server("server-route"),
+                listOf(
+                    member("agent-friday", "Friday").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
+                    )
+                )
+            )
+        )
+        store.seed(
+            MemberSnapshot(
+                server("server-other"),
+                listOf(
+                    member("agent-friday", "Friday Elsewhere").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Error,
+                        presence = Presence.Away
+                    )
+                )
+            )
+        )
+
+        val routeStatus =
+            slockScopedAgentStatusResolver(store, "server-route")
+                .invoke("agent-friday")
+                .first()
+        val unknownScopeStatus =
+            slockScopedAgentStatusResolver(store, null)
+                .invoke("agent-friday")
+                .first()
+
+        assertEquals(AgentStatus.Working, routeStatus?.status)
+        assertEquals("Working", routeStatus?.label)
+        assertNull(unknownScopeStatus)
     }
 
     private class FakeMemberRepository : MemberRepository {

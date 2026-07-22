@@ -5008,7 +5008,7 @@ internal fun SharedThreadRouteContent(
     }
     val agentStatusResolver =
         remember(serverMembersStore, headerProjectionServerId) {
-            slockAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
+            slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)
         }
     val renderedThread = renderedPayload
     val messagePermalinkLabelResolver =

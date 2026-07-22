@@ -25,6 +25,15 @@ internal typealias SlockAgentStatusResolver = (String?) -> Flow<SlockAgentStatus
 
 internal val EmptySlockAgentStatusResolver: SlockAgentStatusResolver = { flowOf(null) }
 
+internal fun slockScopedAgentStatusResolver(
+    serverMembersStore: SharedServerMembersStore?,
+    serverId: String?
+): SlockAgentStatusResolver {
+    val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
+        ?: return EmptySlockAgentStatusResolver
+    return slockAgentStatusResolver(serverMembersStore, cleanServerId)
+}
+
 internal fun slockAgentStatusResolver(
     serverMembersStore: SharedServerMembersStore?,
     serverId: String?

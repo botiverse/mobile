@@ -21,11 +21,12 @@ class ThreadHeaderAgentActivityProductionContractTest {
         )
         assertContains(
             source,
-            "slockAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)"
+            "slockScopedAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)"
         )
+        assertContains(source, "?: return EmptySlockAgentStatusResolver")
         assertFalse(
-            "slockAgentStatusResolver(serverMembersStore, currentSession?.currentServerId)" in source,
-            "Session-pending activity lookup must retain the route/store scope instead of falling back across servers"
+            "slockAgentStatusResolver(serverMembersStore, headerProjectionServerId?.value)" in source,
+            "Unknown header scope must use the fail-closed resolver instead of the cross-server null lookup"
         )
         assertContains(header, "headerDisplay.dmAgentActivityMemberId()")
         assertContains(header, "rememberSlockAgentStatusIndicatorState(")
