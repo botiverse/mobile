@@ -633,6 +633,12 @@ jobs:
             # the PR critical path. Single line: the emulator-runner action feeds
             # each script line to its own `sh -c`, so multi-line if/fi breaks.
             if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb shell am instrument -w -r -e class build.raft.app.shared.SlockThreadNewerAutoPaginationConnectedTest build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner | tee thread-newer-auto-pagination-instrumentation.txt && scripts/ci/assert-instrumentation-ok.sh thread-newer-auto-pagination-instrumentation.txt 1; fi
+            # Thread-open budget TELEMETRY (Raft task #20 t2): harvest the frozen-v3
+            # perf markers the pagination run just produced. Baseline collection
+            # only — currently 3/3 runs fail the 100ms draw budget, so this must
+            # NOT gate until the budget or the render path is fixed. `|| true`
+            # keeps collection failures from failing the nightly job.
+            if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then adb logcat -d -v threadtime | grep -E "thread_first_content_budget|kuikly_perf_snapshot|thread_payload_ready_gate|thread_host_traversal|thread_first_content_ready" > thread-open-budget-telemetry.txt || true; fi
 
       - name: Upload instrumentation output
         if: always()
@@ -649,6 +655,7 @@ jobs:
             diagnostics-caller-pipeline-instrumentation.txt
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
+            thread-open-budget-telemetry.txt
           if-no-files-found: warn
           retention-days: 7
 
