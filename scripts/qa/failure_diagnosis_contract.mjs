@@ -13,7 +13,8 @@ export function validBudget(value) {
     Number.isInteger(value.no_progress_turns) && value.no_progress_turns >= 3 && value.no_progress_turns <= 30;
 }
 
-export function validateReviewerDiagnosis(value, includedEvidenceIds) {
+export function validateReviewerDiagnosis(value, { evidenceIndex, executorDiagnosis, trajectory }) {
+  const includedEvidenceIds = new Set(evidenceIndex.keys());
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("diagnosis must be an object");
   if (!Object.hasOwn(PLANS, value.classification)) throw new Error("invalid classification");
   if (!["high", "medium", "low"].includes(value.confidence)) throw new Error("invalid confidence");
@@ -32,11 +33,24 @@ export function validateReviewerDiagnosis(value, includedEvidenceIds) {
     if (!Array.isArray(first.evidence_ids) || !first.evidence_ids.length || first.evidence_ids.some((id) => !includedEvidenceIds.has(id))) {
       throw new Error("product failure evidence must be downloaded and frozen");
     }
+    const proof = executorDiagnosis?.product_proof;
+    if (!Number.isInteger(first.action_step) || first.action_step !== proof?.action_step ||
+        String(first.action || "") !== String(proof?.action_summary || "")) {
+      throw new Error("product failure must cite the executor-owned performed action fact");
+    }
+    const cited = first.evidence_ids.map((id) => evidenceIndex.get(id));
+    if (!cited.some((item) => item?.kind === "steps_log") ||
+        !cited.some((item) => ["screenshot", "screenshot_annotated", "ui_dump"].includes(item?.kind) && Number(item?.step_index) >= first.action_step)) {
+      throw new Error("product failure requires steps_log plus fresh post-action visual evidence");
+    }
   } else if (value.first_product_failure != null) {
     throw new Error("non-product diagnosis cannot carry a product failure");
   }
   if (value.classification === "budget") {
     if (!value.target_surface_reached || !validBudget(value.recommended_budget)) throw new Error("budget requires reached surface and bounded budget");
+    if (!trajectory?.checkpointCount || trajectory.performedActionCount < 2 || trajectory.distinctPostActionScreens < 2) {
+      throw new Error("budget requires a checkpoint and continuing measurable trajectory progress");
+    }
   } else if (value.recommended_budget != null) {
     throw new Error("only budget classification can recommend execution budget");
   }

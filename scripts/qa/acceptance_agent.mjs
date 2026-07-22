@@ -306,7 +306,7 @@ function preamble(size) {
     '  {"action":"finish","verdict":"pass|fail|error","reason":"<what you verified / what failed>",',
     '   "diagnosis":{"classification":"product|navigation_contract|fixture|budget|infra",',
     '     "confidence":"high|medium|low","target_surface_reached":true|false,',
-    '     "surface_evidence_steps":[<turns proving target>],"first_blocked_step":"<step or null>",',
+    '     "surface_evidence_steps":[<turns proving target>],"surface_checkpoint_step":<prior note turn proving target>,"first_blocked_step":"<step or null>",',
     '     "missing_guidance":["<specific locator/navigation/precondition gap>"],',
     '     "first_product_failure":{"action":"<performed action>","expected":"<state>",',
     '       "observed":"<contradictory fresh state>","action_step":<performed turn>,',
@@ -314,6 +314,7 @@ function preamble(size) {
     '   "annotations":[{"assertion_id":"<stable id from [id] in goal>","step":<turn>,"result":"pass|fail","bounds":"[x1,y1][x2,y2]","label":"[id] <short>"}]}',
     "",
     "Rules:",
+    "- Before any action that may support a product failure, emit a note checkpoint while the target surface is visible; product diagnosis must cite that earlier note turn.",
     ...(opts.platform === "ios"
       ? [
           "- PLATFORM: iOS Simulator. key back = the left-edge back-swipe gesture; home/app_switch",
@@ -572,6 +573,7 @@ async function main() {
   const size = screenSize();
   const actionLedger = new Map();
   const observationLedger = new Map();
+  const checkpointLedger = new Map();
 
   const shoot = (turn) => {
     const png = screenshotPng();
@@ -660,7 +662,7 @@ async function main() {
 
     if (action.action === "finish") {
       executionDiagnosis = bindDiagnosisToLedger(normalizeSelfDiagnosis(action.diagnosis, redact), {
-        actions: actionLedger, observations: observationLedger,
+        actions: actionLedger, observations: observationLedger, checkpoints: checkpointLedger,
       });
       verdict = action.verdict === "error" ? "error" : effectiveExecutorVerdict(action.verdict, executionDiagnosis);
       reason = String(action.reason || "");
@@ -671,6 +673,7 @@ async function main() {
 
     let feedback = "ok";
     let mechanicallyPerformed = false;
+    let checkpointMilestone = null;
     try {
       switch (action.action) {
         case "tap":
@@ -755,6 +758,7 @@ async function main() {
           // The screenshot the model was looking at when it drew this
           // conclusion is the previous turn's — same frame logic as taps.
           feedback = stampCheckpoint(turns - 1, milestone, action.note);
+          checkpointMilestone = redact(milestone).slice(0, 200);
           break;
         }
         default: feedback = `unknown action "${action.action}" — use one of the documented actions`;
@@ -768,12 +772,25 @@ async function main() {
 
     logStep({ turn: turns, action: { ...action, value: action.action === "text" ? redact(String(action.value ?? "")) : action.value }, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars` });
     const actionKey = repeatedActionKey(action, redact);
-    actionLedger.set(turns, {
+    const actionFact = {
       performed: mechanicallyPerformed && !String(feedback).startsWith("action failed:"),
       identity_sha256: createHash("sha256").update(actionKey).digest("hex"),
-    });
+      action_type: String(action.action),
+      safe_summary: `${String(action.action)}:${createHash("sha256").update(actionKey).digest("hex").slice(0, 12)}`,
+    };
+    actionLedger.set(turns, actionFact);
     recordSession("user_turn", { turn: turns, feedback: feedback === "ok" ? "ok" : `${feedback.length} chars`, screenshot: `step-${String(turns).padStart(2, "0")}.png` });
     const observation = shoot(turns);
+    logStep({
+      turn: turns, event: "action_fact", action_step: turns, action_type: actionFact.action_type,
+      action_identity_sha256: actionFact.identity_sha256, action_summary: actionFact.safe_summary,
+      performed: actionFact.performed, post_action_screenshot_sha256: observationLedger.get(turns),
+    });
+    if (checkpointMilestone) {
+      const checkpointFact = { milestone: checkpointMilestone, screenshot_sha256: observationLedger.get(turns) };
+      checkpointLedger.set(turns, checkpointFact);
+      logStep({ turn: turns, event: "surface_checkpoint", checkpoint_step: turns, ...checkpointFact });
+    }
     messages.push({
       role: "user",
       content: [
@@ -817,7 +834,7 @@ async function main() {
       const action = parseAction(reply);
       if (action.action === "finish") {
         executionDiagnosis = bindDiagnosisToLedger(normalizeSelfDiagnosis(action.diagnosis, redact), {
-          actions: actionLedger, observations: observationLedger,
+          actions: actionLedger, observations: observationLedger, checkpoints: checkpointLedger,
         });
         verdict = action.verdict === "error" ? "error" : effectiveExecutorVerdict(action.verdict, executionDiagnosis);
         reason = `[forced at ${budgetCause}] ${String(action.reason || "")}`;

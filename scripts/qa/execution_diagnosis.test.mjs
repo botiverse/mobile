@@ -21,31 +21,43 @@ test("unverified, navigation, fixture, budget, and infra conclusions cannot beco
 
 test("product fail requires reached target and a concrete contradictory action", () => {
   const diagnosis = normalizeSelfDiagnosis({
-    classification: "product", confidence: "high", target_surface_reached: true, surface_evidence_steps: [18], first_blocked_step: "save",
+    classification: "product", confidence: "high", target_surface_reached: true, surface_evidence_steps: [18], surface_checkpoint_step: 18, first_blocked_step: "save",
     missing_guidance: [], first_product_failure: {
       action: "tap Save", expected: "renamed header", observed: "old header", action_step: 19, evidence_steps: [19],
     },
   });
   assert.ok(diagnosis);
   const bound = bindDiagnosisToLedger(diagnosis, {
-    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64) }]]),
+    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64), action_type: "tap", safe_summary: "tap:aaaaaaaaaaaa" }]]),
     observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+    checkpoints: new Map([[18, { milestone: "target-open", screenshot_sha256: "b".repeat(64) }]]),
   });
   assert.equal(effectiveExecutorVerdict("fail", bound), "fail");
+  assert.equal(bound.first_product_failure.action, "tap:aaaaaaaaaaaa");
   assert.equal(effectiveExecutorVerdict("pass", bound), "harness");
   assert.equal(effectiveExecutorVerdict("pass", null), "pass");
   assert.equal(effectiveExecutorVerdict("fail", { ...bound, target_surface_reached: false }), "harness");
   assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger(diagnosis, {
-    actions: new Map(), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+    actions: new Map(), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]), checkpoints: new Map([[18, { milestone: "target-open", screenshot_sha256: "b".repeat(64) }]]),
   })), "harness");
   assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger({ ...diagnosis, first_product_failure: { ...diagnosis.first_product_failure, action_step: 999, evidence_steps: [999] } }, {
-    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64) }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64), action_type: "tap", safe_summary: "tap:aaaaaaaaaaaa" }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]), checkpoints: new Map([[18, { milestone: "target-open", screenshot_sha256: "b".repeat(64) }]]),
   })), "harness");
   assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger({ ...diagnosis, first_product_failure: { ...diagnosis.first_product_failure, evidence_steps: [18] } }, {
-    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64) }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64), action_type: "tap", safe_summary: "tap:aaaaaaaaaaaa" }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]), checkpoints: new Map([[18, { milestone: "target-open", screenshot_sha256: "b".repeat(64) }]]),
   })), "harness");
   assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger(diagnosis, {
-    actions: new Map([[19, { performed: false, identity_sha256: "a".repeat(64) }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+    actions: new Map([[19, { performed: false, identity_sha256: "a".repeat(64), action_type: "tap", safe_summary: "tap:aaaaaaaaaaaa" }]]), observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]), checkpoints: new Map([[18, { milestone: "target-open", screenshot_sha256: "b".repeat(64) }]]),
+  })), "harness");
+  const unrelatedAction = bindDiagnosisToLedger(diagnosis, {
+    actions: new Map([[19, { performed: true, identity_sha256: "d".repeat(64), action_type: "wait", safe_summary: "wait:dddddddddddd" }]]),
+    observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]),
+    checkpoints: new Map([[18, { milestone: "target-open", screenshot_sha256: "b".repeat(64) }]]),
+  });
+  assert.equal(effectiveExecutorVerdict("fail", unrelatedAction), "harness");
+  assert.equal(effectiveExecutorVerdict("fail", bindDiagnosisToLedger(diagnosis, {
+    actions: new Map([[19, { performed: true, identity_sha256: "a".repeat(64), action_type: "tap", safe_summary: "tap:aaaaaaaaaaaa" }]]),
+    observations: new Map([[18, "b".repeat(64)], [19, "c".repeat(64)]]), checkpoints: new Map(),
   })), "harness");
 });
 
@@ -106,5 +118,8 @@ test("failure diagnosis workflow uses an independent reviewer token and the shar
   assert.match(agent, /capacityPath: `\/api\/diagnoses\/\$\{runCaseId\}\/model-capacity`/);
   assert.match(agent, /runWithModelRetries\(\{/);
   assert.match(agent, /capacity_evidence_sha256/);
+  assert.match(agent, /model: `\$\{providerName\}\/\$\{modelName\}`/);
+  assert.match(agent, /provider: providerName, model: modelName/);
+  assert.match(agent, /capacity_evidence_jsonl/);
   assert.match(agent, /\/api\/diagnoses\/\$\{runCaseId\}/);
 });

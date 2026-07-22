@@ -15,6 +15,8 @@ const runCaseId = arg("--run-case-id", process.env.STAMP_RUN_CASE_ID || "");
 const stampUrl = (process.env.STAMP_URL || "https://stamp.build").replace(/\/$/, "");
 const stampToken = process.env.STAMP_REVIEW_TOKEN || "";
 const piKey = process.env.MINIMAX_API_KEY || process.env.PI_API_KEY || "";
+const providerName = String(process.env.PI_PROVIDER || "minimax");
+const modelName = String(process.env.PI_MODEL || "MiniMax-M3");
 const ciJobRef = process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
   ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}` : "";
 const out = arg("--out", "failure-diagnosis.json");
@@ -57,7 +59,7 @@ async function main() {
   const context = await stamp(`/api/diagnoses/${runCaseId}/context`);
   const rc = context.run_case;
   const evidence = context.evidence;
-  const shots = evenly(evidence.filter((item) => item.kind === "screenshot"), 12);
+  const shots = evenly(evidence.filter((item) => ["screenshot", "screenshot_annotated"].includes(item.kind)), 12);
   const textEvidence = evidence.filter((item) => ["steps_log", "session_log", "ui_dump", "report", "logcat", "checkpoint"].includes(item.kind));
   const included = [...shots, ...textEvidence];
   const bytes = new Map();
@@ -77,12 +79,12 @@ async function main() {
     "Frozen case YAML:", rc.spec_yaml,
     "",
     "Return strict JSON only:",
-    '{"classification":"product|navigation_contract|fixture|budget|infra","confidence":"high|medium|low","target_surface_reached":true|false,"first_blocked_step":"step/id or null","summary":"evidence-grounded root cause","missing_guidance":["specific addition"],"recommended_budget":{"max_turns":20-160,"max_minutes":10-90,"no_progress_turns":3-30}|null,"retry_plan":"review_product|revise_case|repair_fixture|retry_budget|retry_infra","evidence_ids":["ids used"],"first_product_failure":{"action":"performed action","expected":"expected state","observed":"fresh contradictory state","evidence_ids":["ids"]}|null}',
+    '{"classification":"product|navigation_contract|fixture|budget|infra","confidence":"high|medium|low","target_surface_reached":true|false,"first_blocked_step":"step/id or null","summary":"evidence-grounded root cause","missing_guidance":["specific addition"],"recommended_budget":{"max_turns":20-160,"max_minutes":10-90,"no_progress_turns":3-30}|null,"retry_plan":"review_product|revise_case|repair_fixture|retry_budget|retry_infra","evidence_ids":["ids used"],"first_product_failure":{"action":"exact executor-owned product_proof.action_summary","action_step":19,"expected":"expected state","observed":"fresh contradictory state","evidence_ids":["steps_log id","post-action screenshot/ui id"]}|null}',
   ].join("\n");
   const content = [{ type: "text", text: prompt }];
   for (const item of included) {
     const value = bytes.get(item.id);
-    if (item.kind === "screenshot") {
+    if (["screenshot", "screenshot_annotated"].includes(item.kind)) {
       content.push({ type: "text", text: `SCREENSHOT id=${item.id} seq=${item.seq} step=${item.step_index ?? "?"}` });
       content.push({ type: "image", data: value.toString("base64"), mimeType: "image/png" });
     } else {
@@ -92,15 +94,33 @@ async function main() {
 
   const providers = await import(process.env.SLOCK_PI_AI_MODULE || "@earendil-works/pi-ai/providers/all");
   const models = providers.builtinModels();
-  const model = models.getModel(String(process.env.PI_PROVIDER || "minimax"), String(process.env.PI_MODEL || "MiniMax-M3"));
+  const model = models.getModel(providerName, modelName);
   let raw = "";
   const capacity = new StampModelCapacityClient({
     stampUrl, stampToken, runCaseId, claimToken: "", ciJobRef,
-    provider: "minimax", model: "MiniMax-M3", outDir: ".",
+    provider: providerName, model: modelName, outDir: ".",
     capacityPath: `/api/diagnoses/${runCaseId}/model-capacity`,
     queueTimeoutMs: 600_000, releaseAttempts: 3,
   });
-  const includedIds = new Set(included.map((item) => item.id));
+  const evidenceIndex = new Map(included.map((item) => [item.id, item]));
+  let executorDiagnosis = null;
+  try { executorDiagnosis = JSON.parse(rc.verdict_json || "null")?.execution_diagnosis ?? null; } catch { executorDiagnosis = null; }
+  const actionFacts = [];
+  let checkpointCount = 0;
+  for (const item of textEvidence.filter((entry) => entry.kind === "steps_log")) {
+    for (const line of sanitized(bytes.get(item.id), 2_000_000).split("\n")) {
+      try {
+        const fact = JSON.parse(line);
+        if (fact.event === "action_fact" && fact.performed === true) actionFacts.push(fact);
+        if (fact.event === "surface_checkpoint") checkpointCount++;
+      } catch { /* malformed legacy lines do not create progress facts */ }
+    }
+  }
+  const trajectory = {
+    checkpointCount,
+    performedActionCount: actionFacts.length,
+    distinctPostActionScreens: new Set(actionFacts.map((fact) => fact.post_action_screenshot_sha256).filter(Boolean)).size,
+  };
   const diagnosis = await runWithModelRetries({
     capacity,
     maxAttempts: 3,
@@ -115,19 +135,20 @@ async function main() {
         { apiKey: piKey, maxTokens: 3000, timeoutMs: 180000 });
       if (response.stopReason === "error" || response.stopReason === "aborted") throw new Error(response.errorMessage || response.stopReason);
       raw = response.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
-      return validateReviewerDiagnosis(JSON.parse(raw.trim()), includedIds);
+      return validateReviewerDiagnosis(JSON.parse(raw.trim()), { evidenceIndex, executorDiagnosis, trajectory });
     },
   });
   const capacityBytes = fs.readFileSync("model-capacity.jsonl");
   diagnosis.provenance = {
     schema_version: "failure-diagnosis/v1",
     prompt_version: "failure-diagnosis-prompt/v1",
-    model: "MiniMax-M3",
+    model: `${providerName}/${modelName}`,
     source_commit: process.env.GITHUB_SHA || "",
     workflow_run_id: process.env.GITHUB_RUN_ID || "",
     workflow_run_attempt: process.env.GITHUB_RUN_ATTEMPT || "",
     workflow_ref: process.env.GITHUB_WORKFLOW_REF || "",
     capacity_evidence_sha256: crypto.createHash("sha256").update(capacityBytes).digest("hex"),
+    capacity_evidence_jsonl: capacityBytes.toString("utf8"),
   };
   const submitted = await stamp(`/api/diagnoses/${runCaseId}`, { method: "POST", body: JSON.stringify(diagnosis) });
   fs.writeFileSync(out, JSON.stringify({ run_case_id: runCaseId, diagnosis, submitted, raw_model_output: raw }, null, 2));

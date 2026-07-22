@@ -1,4 +1,5 @@
 const CLASSIFICATIONS = new Set(["product", "navigation_contract", "fixture", "budget", "infra"]);
+const PRODUCT_ACTION_TYPES = new Set(["tap", "tap_text", "swipe", "long_press", "open_link", "text", "key", "clear"]);
 
 export function normalizeSelfDiagnosis(value, scrub = (text) => String(text)) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -25,6 +26,7 @@ export function normalizeSelfDiagnosis(value, scrub = (text) => String(text)) {
     confidence,
     target_surface_reached: value.target_surface_reached,
     surface_evidence_steps: steps(value.surface_evidence_steps),
+    surface_checkpoint_step: Number.isInteger(Number(value.surface_checkpoint_step)) ? Number(value.surface_checkpoint_step) : null,
     first_blocked_step: clean(value.first_blocked_step) || null,
     missing_guidance: Array.isArray(value.missing_guidance)
       ? value.missing_guidance.map((item) => clean(item)).filter(Boolean).slice(0, 12)
@@ -40,22 +42,34 @@ export function effectiveExecutorVerdict(requested, diagnosis) {
   return "fail";
 }
 
-export function bindDiagnosisToLedger(diagnosis, { actions, observations }) {
+export function bindDiagnosisToLedger(diagnosis, { actions, observations, checkpoints = new Map() }) {
   if (!diagnosis) return null;
   const surface = diagnosis.surface_evidence_steps ?? [];
   if (!surface.length || surface.some((step) => !observations.has(step))) return { ...diagnosis, product_proof: null };
   if (diagnosis.classification !== "product") return { ...diagnosis, product_proof: null };
   const failure = diagnosis.first_product_failure;
   const action = failure?.action_step == null ? null : actions.get(failure.action_step);
+  const checkpoint = diagnosis.surface_checkpoint_step == null ? null : checkpoints.get(diagnosis.surface_checkpoint_step);
   const evidenceSteps = failure?.evidence_steps ?? [];
-  if (!action?.performed || !evidenceSteps.length || evidenceSteps.some((step) => !observations.has(step) || step < failure.action_step)) {
+  if (!action?.performed || !PRODUCT_ACTION_TYPES.has(action.action_type) || !checkpoint || !surface.includes(diagnosis.surface_checkpoint_step) ||
+      diagnosis.surface_checkpoint_step >= failure.action_step ||
+      checkpoint.screenshot_sha256 !== observations.get(diagnosis.surface_checkpoint_step) ||
+      !evidenceSteps.length || evidenceSteps.some((step) => !observations.has(step) || step < failure.action_step)) {
     return { ...diagnosis, product_proof: null };
   }
   return {
     ...diagnosis,
+    first_product_failure: { ...failure, action: action.safe_summary },
     product_proof: {
       action_step: failure.action_step,
       action_identity_sha256: action.identity_sha256,
+      action_type: action.action_type,
+      action_summary: action.safe_summary,
+      surface_checkpoint: {
+        step: diagnosis.surface_checkpoint_step,
+        milestone: checkpoint.milestone,
+        screenshot_sha256: checkpoint.screenshot_sha256,
+      },
       surface_evidence: surface.map((step) => ({ step, screenshot_sha256: observations.get(step) })),
       contradiction_evidence: evidenceSteps.map((step) => ({ step, screenshot_sha256: observations.get(step) })),
     },
